@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa · Live decision</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101419; color: #e8edf2; }
+    body { margin: 0; } main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+    header, section { background: #141a20; border: 1px solid #303a45; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+    h1, h2 { margin: 0 0 10px; } h1 { font-size: 1.4rem; } h2 { font-size: 1rem; }
+    .subtle { color: #afbdc9; } .error { color: #ffb4b4; } .live { color: #a1e9ba; }
+    .layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 14px; }
+    .image-stage { min-height: 260px; display: grid; place-items: center; background: #07090b; border-radius: 5px; overflow: hidden; }
+    img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+    .facts { display: grid; gap: 10px; } pre { margin: 0; overflow: auto; max-height: 280px; white-space: pre-wrap; overflow-wrap: anywhere; background: #0d1116; padding: 10px; border-radius: 5px; }
+    dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 5px 10px; } dt { color: #afbdc9; } dd { margin: 0; overflow-wrap: anywhere; }
+    @media (max-width: 780px) { main { padding: 10px; } .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Live shadow decision</h1>
+      <p id="status" class="subtle" role="status">Connecting to this producer generation…</p>
+      <p class="subtle">Read-only. Proposed output, authorized idle output, and host observation are shown separately.</p>
+    </header>
+    <section class="layout" id="content" hidden>
+      <div>
+        <h2>Exact decision image</h2>
+        <div class="image-stage"><img id="image" alt="Exact camera image for the displayed decision cycle"></div>
+        <dl id="image-facts"></dl>
+      </div>
+      <div class="facts">
+        <div><h2>Selected proposal</h2><pre id="selected"></pre></div>
+        <div><h2>Proposed command</h2><pre id="proposed"></pre></div>
+        <div><h2>Authorized output</h2><pre id="authorized"></pre></div>
+        <div><h2>Host observation</h2><pre id="host"></pre></div>
+      </div>
+    </section>
+    <section id="details" hidden>
+      <h2>Cycle and provenance</h2>
+      <pre id="provenance"></pre>
+    </section>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+      const params = new URLSearchParams(location.search);
+      const generation = params.get("generation");
+      const status = document.querySelector("#status");
+      const content = document.querySelector("#content");
+      const details = document.querySelector("#details");
+      const image = document.querySelector("#image");
+      let serial = 0;
+      let displayedUrl = null;
+      let expiryTimer = null;
+
+      const print = value => JSON.stringify(value === undefined ? null : value, null, 2);
+      function fail(message) { status.textContent = message; status.className = "error"; }
+      function imageFacts(imageData, freshness) {
+        const facts = [["Frame", imageData.frame_id], ["Captured", imageData.captured_at_ms],
+          ["Image SHA-256", imageData.sha256], ["Published", freshness.published_at_ms],
+          ["Age", freshness.age_ms + " ms"]];
+        const target = document.querySelector("#image-facts");
+        target.replaceChildren(...facts.flatMap(([name, value]) => {
+          const term = document.createElement("dt"); term.textContent = name;
+          const description = document.createElement("dd"); description.textContent = value ?? "unavailable";
+          return [term, description];
+        }));
+      }
+      function scheduleExpiry(payload, ownSerial) {
+        if (expiryTimer) clearTimeout(expiryTimer);
+        const delay = Math.max(0, payload.freshness.expires_at_ms - Date.now()) + 10;
+        expiryTimer = setTimeout(() => {
+          if (ownSerial === serial) { content.hidden = true; details.hidden = true; fail("Displayed decision expired; waiting for a current cycle."); }
+        }, delay);
+      }
+      async function load() {
+        const ownSerial = ++serial;
+        if (!/^[0-9a-f]{64}$/.test(generation || "")) { fail("This page needs a valid producer generation."); return; }
+        try {
+          const response = await fetch("/api/decision/latest?generation=" + encodeURIComponent(generation), { cache: "no-store" });
+          const payload = await response.json();
+          if (!response.ok || payload.status !== "current" || payload.generation_id !== generation) throw new Error(payload.reason || "Decision is unavailable.");
+          const imageResponse = await fetch(payload.current_image.url, { cache: "no-store" });
+          if (!imageResponse.ok) throw new Error("Exact decision image is unavailable.");
+          const blob = await imageResponse.blob();
+          if (ownSerial !== serial) return;
+          const nextUrl = URL.createObjectURL(blob);
+          const probe = new Image();
+          probe.onload = () => {
+            if (ownSerial !== serial) { URL.revokeObjectURL(nextUrl); return; }
+            if (displayedUrl) URL.revokeObjectURL(displayedUrl);
+            displayedUrl = nextUrl;
+            image.src = nextUrl;
+            const decision = payload.decision || {};
+            const authority = payload.authority || {};
+            document.querySelector("#selected").textContent = print(decision.plan_summary || {});
+            document.querySelector("#proposed").textContent = print(authority.proposed);
+            document.querySelector("#authorized").textContent = print(authority.authorized_output);
+            document.querySelector("#host").textContent = print(authority.host_application);
+            document.querySelector("#provenance").textContent = print({ decision: decision.cycle, provenance: payload.provenance });
+            imageFacts(payload.current_image, payload.freshness);
+            content.hidden = false; details.hidden = false;
+            status.textContent = "Current decision · proposed_applied=false · generation " + generation.slice(0, 12);
+            status.className = "live";
+            scheduleExpiry(payload, ownSerial);
+          };
+          probe.onerror = () => { URL.revokeObjectURL(nextUrl); if (ownSerial === serial) fail("Exact decision image could not be decoded."); };
+          probe.src = nextUrl;
+        } catch (error) {
+          if (ownSerial === serial) { content.hidden = true; details.hidden = true; fail(error.message); }
+        }
+      }
+      load();
+      setInterval(load, 750);
+      addEventListener("beforeunload", () => { if (displayedUrl) URL.revokeObjectURL(displayedUrl); });
+    })();
+  </script>
+</body>
+</html>

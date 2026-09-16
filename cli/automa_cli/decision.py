@@ -664,14 +664,41 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
             },
         }
 
+    # D2 discovery is a short, read-only loopback probe. It never starts a
+    # worker or creates a capture; an unavailable producer remains explicit.
+    if engine_id != ENGINE_ID:
+        view_status = {
+            "available": False,
+            "status": "unavailable",
+            "reason": "wrong_engine",
+            "generation_id": None,
+            "identity": None,
+            "api_url": None,
+            "url": None,
+        }
+    else:
+        from .decision_view import get_decision_view_status
+
+        view_status = get_decision_view_status(
+            automation_dir=Path(bundle["runtime_dir"]) / "automation",
+            vehicle_id=vehicle_id,
+            activation=activation,
+        )
+
     combined_view = {
         "view_id": COMBINED_VIEW_ID,
-        "url": None,
         "path_template": f"cli/automa_cli/decision_view.html#{COMBINED_VIEW_ID}",
         "launch_command": (
             "./cli/automa vehicles decision inspect --id "
             + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
         ),
+        "available": view_status["available"],
+        "status": view_status["status"],
+        "reason": view_status["reason"],
+        "url": view_status["url"],
+        "api_url": view_status["api_url"],
+        "generation_id": view_status["generation_id"],
+        "identity": view_status["identity"],
     }
 
     payload = {
@@ -3218,11 +3245,15 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
             ]
         )
     combined = payload.get("combined_view") if isinstance(payload.get("combined_view"), dict) else {}
+    live_view = (
+        f"status={combined.get('status')} url={combined.get('url')} "
+        f"reason={combined.get('reason')}"
+    )
     lines.extend(
         [
             "",
             f"Combined view: id={combined.get('view_id')} "
-            f"url={combined.get('url')} path_template={combined.get('path_template')}",
+            f"{live_view} path_template={combined.get('path_template')}",
             f"Open saved input: {combined.get('launch_command')}",
         ]
     )

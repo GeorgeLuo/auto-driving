@@ -108,6 +108,26 @@ def _reject_forbidden_channel_keys(value: object, *, path: str) -> None:
             _reject_forbidden_channel_keys(item, path=f"{path}[{index}]")
 
 
+def omit_forbidden_channel_keys(value: Any) -> Any:
+    """Copy a JSON-like tree without privileged origin keys.
+
+    DecisionDataSource still fail-closes if those keys remain. Callers that
+    adapt live captures for the shadow engine must strip them first.
+    """
+
+    if isinstance(value, dict):
+        return {
+            key: omit_forbidden_channel_keys(item)
+            for key, item in value.items()
+            if not _is_forbidden_channel_key(key)
+        }
+    if isinstance(value, list):
+        return [omit_forbidden_channel_keys(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(omit_forbidden_channel_keys(item) for item in value)
+    return value
+
+
 def _plain_mapping(value: object) -> dict[str, Any]:
     plain = frozen_mapping_to_dict(value)
     if not isinstance(plain, dict):

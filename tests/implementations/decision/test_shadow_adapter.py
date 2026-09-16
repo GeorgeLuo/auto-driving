@@ -112,6 +112,32 @@ class ShadowAdapterTests(unittest.TestCase):
                 default_engine_config={},
             )
 
+    def test_step_strips_evaluator_metadata_from_live_capture(self) -> None:
+        observation = Observation(
+            observation_id="obs_live",
+            created_at_ms=1000,
+            sensor_snapshot={
+                "readings": {
+                    "front_camera": {
+                        "metadata": {
+                            "content_type": "image/png",
+                            "evaluator_reference": {"status": "available"},
+                        }
+                    }
+                }
+            },
+            summary=("line",),
+        )
+        engine = ShadowProposalsAutonomyEngine()
+        control = engine.step(_snapshot(observation=observation))
+        self.assertEqual(control.reason, AUTHORIZED_IDLE_REASON)
+        self.assertIsNotNone(engine.last_cycle_result)
+        assert engine.last_cycle_result is not None
+        self.assertEqual(engine.last_cycle_result.status, "ok")
+        self.assertNotEqual(
+            engine.last_cycle_result.reason, "decision_data_source_invalid"
+        )
+
     def test_step_success_idle_control_and_cycle_result(self) -> None:
         engine = ShadowProposalsAutonomyEngine()
         control = engine.step(_snapshot())

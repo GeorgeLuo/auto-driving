@@ -130,7 +130,9 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
             self.assertEqual(response.read(), expected_image)
 
         with urlopen(f"{self.server.url}decision?generation={generation}", timeout=1.0) as response:
-            self.assertIn("Exact decision image", response.read().decode("utf-8"))
+            page = response.read().decode("utf-8")
+        self.assertIn("Automa Decision", page)
+        self.assertIn('id="pauseButton"', page)
         with urlopen(self.server.url, timeout=1.0) as response:
             self.assertIn(f"/decision?generation={generation}", response.read().decode("utf-8"))
 

@@ -1296,33 +1296,42 @@ def validate_plan_text(text: str) -> PlanState:
             live_names = {
                 frontier.name for frontier in active_frontiers if frontier.name
             }
-            started_review_states = {
-                "proposal_in_review",
-                "ready_for_implementation",
-                "proposal_amendment_in_review",
-                "implementation_in_review",
-            }
-            active_before_opening = {
-                name: state
-                for name, state in effective_states.items()
-                if state in started_review_states
-                or (name in live_names and state == "ready_for_proposal")
-            }
-            if active_before_opening:
-                if history_state != "proposal_in_review":
-                    raise PlanContractError(
-                        "a parallel frontier must open at proposal_in_review"
+            if history_frontier in live_names:
+                started_review_states = {
+                    "proposal_in_review",
+                    "ready_for_implementation",
+                    "proposal_amendment_in_review",
+                    "implementation_in_review",
+                }
+                active_before_opening = {
+                    name: state
+                    for name, state in effective_states.items()
+                    if name in live_names
+                    and (
+                        state in started_review_states
+                        or state == "ready_for_proposal"
                     )
-                if not any(
-                    state in {
-                        "implementation_in_review",
-                        "proposal_amendment_in_review",
-                    }
-                    for state in active_before_opening.values()
-                ):
+                }
+                if active_before_opening:
+                    if history_state != "proposal_in_review":
+                        raise PlanContractError(
+                            "a parallel frontier must open at proposal_in_review"
+                        )
+                    if not any(
+                        state in {
+                            "implementation_in_review",
+                            "proposal_amendment_in_review",
+                        }
+                        for state in active_before_opening.values()
+                    ):
+                        raise PlanContractError(
+                            "a parallel frontier may open only beside an "
+                            "implementation_in_review or proposal_amendment_in_review frontier"
+                        )
+                elif history_state not in {"ready_for_proposal", "proposal_in_review"}:
                     raise PlanContractError(
-                        "a parallel frontier may open only beside an "
-                        "implementation_in_review or proposal_amendment_in_review frontier"
+                        "Workflow History must begin each frontier at "
+                        "ready_for_proposal or proposal_in_review"
                     )
             elif history_state not in {"ready_for_proposal", "proposal_in_review"}:
                 raise PlanContractError(

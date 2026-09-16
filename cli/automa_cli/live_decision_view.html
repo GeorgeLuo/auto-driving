@@ -307,11 +307,31 @@
       return `steer ${command.steering} / throttle ${command.throttle}`;
     }
 
-    function observationThings() {
-      const observation = latest?.provenance?.observation;
-      const value = observation?.value || observation;
-      const things = value?.things;
-      return Array.isArray(things) ? things : [];
+    function selectedCandidate() {
+      const plan = latest?.decision?.plan_summary || {};
+      const selected = plan.selected_proposal_id;
+      const candidates = Array.isArray(plan.candidates) ? plan.candidates : [];
+      return candidates.find((candidate) => candidate.proposal_id === selected) || candidates[0] || null;
+    }
+
+    function memoryRecords() {
+      const memory = latest?.provenance?.memory;
+      const value = memory?.value || memory;
+      const records = value?.records;
+      return Array.isArray(records) ? records : [];
+    }
+
+    function primaryRecordIds() {
+      const refs = selectedCandidate()?.source_refs;
+      return new Set((Array.isArray(refs) ? refs : []).map((ref) => String(ref.id || "")));
+    }
+
+    function evidenceRecords() {
+      return memoryRecords().filter((record) => {
+        const location = record?.location;
+        return record?.kind !== "signal" && record?.kind !== "sensor_frame" &&
+          location?.frame === "image" && normalizedBox(location);
+      });
     }
 
     function clampNorm(value) {
@@ -327,32 +347,35 @@
       return x2 > x1 && y2 > y1 ? [x1, y1, x2, y2] : null;
     }
 
-    function drawableThings() {
-      return observationThings().filter((thing) => {
-        const location = thing?.location;
-        return thing?.kind !== "sensor_frame" && location?.frame === "image" && normalizedBox(location);
-      });
-    }
-
     function drawOverlays() {
       if (!frameImage.naturalWidth || !latest) return;
       canvas.width = frameImage.naturalWidth;
       canvas.height = frameImage.naturalHeight;
       context.clearRect(0, 0, canvas.width, canvas.height);
-      for (const thing of drawableThings()) {
-        const box = normalizedBox(thing.location);
+      const primary = primaryRecordIds();
+      context.font = "14px ui-sans-serif, system-ui, sans-serif";
+      for (const record of evidenceRecords()) {
+        const box = normalizedBox(record.location);
         if (!box) continue;
         const [x1, y1, x2, y2] = box;
         const x = x1 * canvas.width;
         const y = y1 * canvas.height;
         const width = (x2 - x1) * canvas.width;
         const height = (y2 - y1) * canvas.height;
-        const color = colorFor(String(thing.kind || "unknown"));
+        const isPrimary = primary.has(String(record.record_id || ""));
+        const color = isPrimary ? "#ffb000" : colorFor(String(record.kind || "unknown"));
         context.fillStyle = `${color}22`;
         context.strokeStyle = color;
-        context.lineWidth = Math.max(2, canvas.width / 320);
+        context.lineWidth = Math.max(isPrimary ? 4 : 2, canvas.width / 320);
         context.fillRect(x, y, width, height);
         context.strokeRect(x, y, width, height);
+        const label = `${isPrimary ? "selected " : ""}${record.kind || "evidence"} ${record.location?.zone || ""}`.trim();
+        const metrics = context.measureText(label);
+        const labelY = Math.max(0, y - 18);
+        context.fillStyle = color;
+        context.fillRect(x, labelY, metrics.width + 10, 18);
+        context.fillStyle = "#101214";
+        context.fillText(label, x + 5, labelY + 14);
       }
     }
 
@@ -362,34 +385,37 @@
       const cycle = decision.cycle || {};
       const plan = decision.plan_summary || {};
       const authority = latest.authority || {};
-      vehicleEl.textContent = identity.vehicle_id || latest.identity?.vehicle_id || "unknown vehicle";
+      const candidate = selectedCandidate();
+      const primary = primaryRecordIds();
+      vehicleEl.textContent = identity.vehicle_id || "unknown vehicle";
 
       const cycleMetrics = document.getElementById("cycleMetrics");
       cycleMetrics.replaceChildren();
       appendMetric(cycleMetrics, "Frame", latest.current_image?.frame_id);
       appendMetric(cycleMetrics, "Status", cycle.status || latest.status);
-      appendMetric(cycleMetrics, "Reason", cycle.reason || "—");
+      appendMetric(cycleMetrics, "Proposal", candidate?.reason || plan.status || "—");
+      appendMetric(cycleMetrics, "Freshness", candidate?.freshness || candidate?.lifecycle || "—");
       appendMetric(cycleMetrics, "Capture age", latest.freshness?.capture_age_ms != null ? `${latest.freshness.capture_age_ms} ms` : "—");
-      appendMetric(cycleMetrics, "Publication age", latest.freshness?.age_ms != null ? `${latest.freshness.age_ms} ms` : "—");
 
       const authorityMetrics = document.getElementById("authorityMetrics");
       authorityMetrics.replaceChildren();
-      appendMetric(authorityMetrics, "Selected", plan.selected_proposal_id || "none");
-      appendMetric(authorityMetrics, "Proposed", commandText(authority.proposed));
+      appendMetric(authorityMetrics, "Plugin", candidate?.plugin_id || "none");
+      appendMetric(authorityMetrics, "Proposed", commandText(authority.proposed || candidate?.command));
       appendMetric(authorityMetrics, "Authorized", commandText(authority.authorized_output));
-      appendMetric(authorityMetrics, "Applied", String(Boolean(authority.proposed_applied)));
+      appendMetric(authorityMetrics, "Applied", authority.proposed_applied ? "true" : "false");
       appendMetric(authorityMetrics, "Host", authority.host_application?.status || "—");
 
       const candidates = document.getElementById("candidates");
       candidates.replaceChildren();
-      for (const candidate of plan.candidates || []) {
+      for (const rowCandidate of plan.candidates || []) {
         const row = document.createElement("div");
-        row.className = `run ${candidate.lifecycle || ""}`;
+        const selected = rowCandidate.proposal_id === plan.selected_proposal_id;
+        row.className = `run ${selected ? "ok" : (rowCandidate.lifecycle || "")}`;
         const name = document.createElement("div");
-        name.textContent = candidate.plugin_id || "unknown plugin";
+        name.textContent = rowCandidate.reason || rowCandidate.plugin_id || "unknown plugin";
         const detail = document.createElement("div");
         detail.className = "secondary";
-        detail.textContent = `${candidate.lifecycle || "unknown"} | ${candidate.reason || "—"} | conf ${Number(candidate.confidence || 0).toFixed(3)}`;
+        detail.textContent = `${rowCandidate.plugin_id || "unknown"} | ${rowCandidate.lifecycle || "unknown"} | ${commandText(rowCandidate.command)} | conf ${Number(rowCandidate.confidence || 0).toFixed(3)}`;
         row.append(name, detail);
         candidates.append(row);
       }
@@ -397,34 +423,36 @@
 
       const things = document.getElementById("things");
       things.replaceChildren();
-      for (const thing of observationThings()) {
+      for (const record of evidenceRecords()) {
         const row = document.createElement("div");
+        const isPrimary = primary.has(String(record.record_id || ""));
         row.className = "thing";
-        row.style.borderColor = colorFor(String(thing.kind || "unknown"));
+        row.style.borderColor = isPrimary ? "#ffb000" : colorFor(String(record.kind || "unknown"));
         const name = document.createElement("div");
-        name.textContent = thing.label || thing.thing_id || "unnamed finding";
+        name.textContent = `${isPrimary ? "selected · " : ""}${record.label || record.kind || "evidence"}`;
         const detail = document.createElement("div");
         detail.className = "secondary";
-        detail.textContent = `${thing.kind || "unknown"} | ${thing.location?.frame || "unknown"}:${thing.location?.zone || "unknown"} | ${Number(thing.confidence || 0).toFixed(3)}`;
+        detail.textContent = `${record.kind || "unknown"} | ${record.location?.frame || "unknown"}:${record.location?.zone || "unknown"} | ${Number(record.confidence || 0).toFixed(3)}`;
         row.append(name, detail);
         things.append(row);
       }
-      if (!things.children.length) things.textContent = "No findings";
+      if (!things.children.length) things.textContent = "No image-located evidence";
 
       document.getElementById("rawData").textContent = JSON.stringify(latest, null, 2);
       drawOverlays();
     }
 
     function liveStatus(payload) {
+      latest = payload;
       const cycle = payload?.decision?.cycle || {};
-      const plan = payload?.decision?.plan_summary || {};
+      const candidate = selectedCandidate();
       if (cycle.status === "engine_error") {
         return { text: `Live | ${cycle.reason || "engine_error"}`, mode: "error" };
       }
-      if (plan.selected_proposal_id) {
-        return { text: "Live | proposal selected", mode: "live" };
+      if (candidate?.reason) {
+        return { text: `Live | ${candidate.reason.replaceAll("_", " ")}`, mode: "live" };
       }
-      return { text: `Live | plan ${plan.status || cycle.status || "idle"}`, mode: "stale" };
+      return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.status || "idle"}`, mode: "stale" };
     }
 
     async function loadDecisionImage(imageUrl) {

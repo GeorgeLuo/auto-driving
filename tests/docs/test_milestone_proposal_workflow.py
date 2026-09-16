@@ -23,6 +23,7 @@ from docs.milestones.workflow import (
     accept_proposal,
     accept_proposal_amendment,
     start_implementation_branch,
+    start_proposal_branch,
     start_proposal_amendment_branch,
     validate_merged_proposal_amendment_metadata,
     validate_merged_proposal_metadata,
@@ -51,6 +52,9 @@ from tests.docs.milestone_workflow_fixtures import (
     PROPOSAL_AMENDMENT_RELATIVE,
     PROPOSAL_BRANCH,
     PROPOSAL_RELATIVE,
+    PARALLEL_CRITERION,
+    PARALLEL_FRONTIER,
+    parallel_proposal_review_plan_text,
     handoff_receipt,
     implementation_adjunct_body,
     implementation_review_plan_text,
@@ -63,6 +67,59 @@ from tests.docs.milestone_workflow_fixtures import (
 PLAN_REVISION_BRANCH = "m900/plan-shadow-proposals"
 REVISED_FRONTIER = "Shadow action proposals"
 REVIEW_KIND = "Deterministic invariant closure"
+PARALLEL_PROPOSAL_RELATIVE = (
+    "docs/milestones/900-workflow-fixture/proposals/"
+    "parallel-evidence-inspection.md"
+)
+PARALLEL_PROPOSAL_BRANCH = "m900/parallel-evidence-inspection-proposal"
+
+
+def _empty_remaining_path(text: str) -> str:
+    text = _replace_frontier_map(
+        text,
+        FrontierMap(path=(), cadence="linked-list", nodes=(), off_path=()),
+    )
+    return _replace_frontier(
+        text,
+        "### Next-Frontier Candidate",
+        [
+            "**None**",
+            "",
+            "- Reason: No remaining work-order node is contracted.",
+            "- Revisit when: The next proposal may introduce a node.",
+        ],
+    )
+
+
+def _parallel_introduction_plan(text: str) -> str:
+    parallel = f"""### Parallel Frontiers
+
+#### Frontier: {PARALLEL_FRONTIER}
+
+- Workflow state: proposal_in_review
+- Proposal branch: `{PARALLEL_PROPOSAL_BRANCH}`
+- Implementation branch: `m900/parallel-evidence-inspection`
+- Proposal path: `{PARALLEL_PROPOSAL_RELATIVE}`
+- Review kind: Behavioral feature slice
+- Review question: Does the independent inspection path preserve the published evidence state?
+- Acceptance owner: Synthetic evidence inspection
+- Exit criteria affected: {PARALLEL_CRITERION}
+- Prerequisite: Evidence policy implementation is in review
+- Non-goals: Change the evidence policy or its implementation review
+
+"""
+    text = text.replace(
+        "### Next-Frontier Candidate\n",
+        parallel + "### Next-Frontier Candidate\n",
+        1,
+    )
+    return text.replace(
+        "\n\n## Accepted Review Units",
+        f"\n| {PARALLEL_FRONTIER} | proposal_in_review | "
+        "Parallel proposal opened from the milestone. |"
+        "\n\n## Accepted Review Units",
+        1,
+    )
 
 
 def _review_unit_body(review_kind: str = REVIEW_KIND) -> str:
@@ -1033,6 +1090,26 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "proposal")
+
+    def test_explicit_frontier_selector_does_not_fall_back_to_branch(self) -> None:
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "active frontier 'stale frontier' was not found",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body(),
+                frontier_name="stale frontier",
+            )
 
     def test_opening_proposal_can_edit_current_before_contract_receipt(self) -> None:
         changed = self.proposal_head.replace(
@@ -2275,6 +2352,440 @@ class ProposalAmendmentAcceptanceMetadataTests(unittest.TestCase):
             )
 
 
+class ParallelFrontierStartTests(unittest.TestCase):
+    def _git(self, root: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    def _plan_with_parallel_node(self) -> str:
+        text = _accepted_plan().replace(
+            "- Path: `Milestone closeout`\n",
+            "- Path: `Parallel evidence inspection` → `Milestone closeout`\n",
+            1,
+        )
+        node = """#### Node: Parallel evidence inspection
+
+- Proposal branch: `m900/parallel-evidence-inspection-proposal`
+- Implementation branch: `m900/parallel-evidence-inspection`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/parallel-evidence-inspection.md`
+- Review kind: Behavioral feature slice
+- Review question: Does the independent inspection path preserve the published evidence state?
+- Acceptance owner: Synthetic evidence inspection
+- Exit criteria affected: M900-02
+- Prerequisite: Evidence policy implementation is in review
+- Non-goals: Change the evidence policy or its implementation review
+
+"""
+        return text.replace("#### Node: Milestone closeout\n", node + "#### Node: Milestone closeout\n", 1)
+
+    def test_parallel_start_requires_published_primary_review_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            plan.write_text(self._plan_with_parallel_node(), encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "accepted A proposal",
+            )
+            ready = validate_plan_text(plan.read_text(encoding="utf-8"))
+            with self.assertRaisesRegex(PlanContractError, "may open only beside"):
+                start_proposal_branch(
+                    plan,
+                    ready,
+                    "m900/parallel-evidence-inspection-proposal",
+                    frontier_name=PARALLEL_FRONTIER,
+                    repo_root=root,
+                )
+
+            start_implementation_branch(
+                plan,
+                ready,
+                IMPLEMENTATION_BRANCH,
+                frontier_name=CURRENT_FRONTIER,
+                repo_root=root,
+            )
+            published = validate_plan_text(plan.read_text(encoding="utf-8"))
+            start_proposal_branch(
+                plan,
+                published,
+                "m900/parallel-evidence-inspection-proposal",
+                frontier_name=PARALLEL_FRONTIER,
+                repo_root=root,
+            )
+            state = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                state.current.fields["workflow state"], "implementation_in_review"
+            )
+            self.assertEqual(
+                [
+                    (frontier.name, frontier.fields["workflow state"])
+                    for frontier in state.parallel_frontiers
+                ],
+                [(PARALLEL_FRONTIER, "proposal_in_review")],
+            )
+
+    def test_parallel_proposal_may_introduce_a_frontier_when_path_is_empty(self) -> None:
+        base = _empty_remaining_path(implementation_review_plan_text())
+        head = _parallel_introduction_plan(base)
+        proposal = ParallelFrontierGitTopologyTests()._parallel_proposal_text()
+
+        self.assertEqual(
+            validate_review_unit_transition(
+                base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PARALLEL_PROPOSAL_RELATIVE,
+                },
+                head_branch=PARALLEL_PROPOSAL_BRANCH,
+                proposal_text=proposal,
+                pr_body=_review_unit_body("Behavioral feature slice"),
+            ),
+            "proposal",
+        )
+        with self.assertRaisesRegex(PlanContractError, "must target"):
+            validate_review_unit_transition(
+                base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PARALLEL_PROPOSAL_RELATIVE,
+                },
+                head_branch=PARALLEL_PROPOSAL_BRANCH,
+                proposal_text=proposal,
+                pr_body=_review_unit_body("Behavioral feature slice"),
+                frontier_name=CURRENT_FRONTIER,
+            )
+
+    def test_parallel_proposal_cannot_smuggle_work_order_rewrites(self) -> None:
+        base = _empty_remaining_path(implementation_review_plan_text())
+        smuggled = _parallel_introduction_plan(base).replace(
+            "- Path: none\n",
+            "- Path: `Post-D2 cleanup`\n",
+            1,
+        )
+        node = """
+#### Node: Post-D2 cleanup
+
+- Proposal branch: `m900/post-d2-cleanup-proposal`
+- Implementation branch: `m900/post-d2-cleanup`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/post-d2-cleanup.md`
+- Review kind: Behavioral feature slice
+- Review question: Was cleanup queued without its own review?
+- Acceptance owner: Synthetic cleanup
+- Exit criteria affected: M900-03
+- Prerequisite: D2 is accepted
+- Non-goals: Change the evidence policy
+"""
+        smuggled = smuggled.replace(
+            "- Cadence: linked-list\n",
+            "- Cadence: linked-list\n" + node,
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot change the frontier map except by lifting",
+        ):
+            validate_review_unit_transition(
+                base,
+                smuggled,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PARALLEL_PROPOSAL_RELATIVE,
+                },
+                head_branch=PARALLEL_PROPOSAL_BRANCH,
+                proposal_text=ParallelFrontierGitTopologyTests()._parallel_proposal_text(),
+                pr_body=_review_unit_body("Behavioral feature slice"),
+            )
+
+
+class ParallelFrontierGitTopologyTests(unittest.TestCase):
+    def _git(self, root: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    def _configure_git(self, root: Path) -> None:
+        self._git(root, "config", "user.name", "Milestone Test")
+        self._git(root, "config", "user.email", "milestone@example.invalid")
+
+    def _commit(self, root: Path, message: str) -> str:
+        self._git(root, "add", ".")
+        self._git(
+            root,
+            "-c",
+            "user.name=Milestone Test",
+            "-c",
+            "user.email=milestone@example.invalid",
+            "commit",
+            "-m",
+            message,
+        )
+        return self._git(root, "rev-parse", "HEAD")
+
+    def _parallel_proposal_text(self) -> str:
+        return """# Proposal: Parallel evidence inspection
+
+## Review Kind
+
+Behavioral feature slice
+
+## Review Question
+
+Does the independent inspection path preserve the published evidence state?
+
+## Proposed Contract
+
+Expose the already-published evidence without changing the evidence policy.
+
+## Ownership
+
+Synthetic evidence inspection owns the read-only presentation path.
+
+## Affected Paths
+
+Inspection presentation and its focused test.
+
+## Adversarial Matrix
+
+| Case | Expected |
+| --- | --- |
+| Missing evidence | Preserve the existing explicit absence result. |
+
+## External Assumptions
+
+The published evidence state is available to the inspection path.
+
+## Non-Goals
+
+Change the evidence policy or its implementation review.
+
+## File Impact
+
+Inspection implementation and focused tests.
+
+## Validation Plan
+
+Exercise the normal inspection path against published evidence.
+
+## Expected Handoff
+
+```json
+{
+  "schema": "milestone_handoff_template_v1",
+  "outcome": "advance",
+  "result": "Accepted",
+  "durable_evidence": "Parallel inspection tests in PR #{pr}",
+  "criterion_updates": {
+    "M900-02": {
+      "status": "Met",
+      "evidence": "Parallel inspection accepted in PR #{pr}"
+    }
+  },
+  "risk_remove": [],
+  "risk_upsert": [],
+  "next_frontier": {
+    "state": "none",
+    "reason": "The remaining work-order node is unchanged.",
+    "revisit_when": "The primary frontier determines the next proposal."
+  }
+}
+```
+"""
+
+    def _repository(self, parent: Path) -> tuple[Path, str]:
+        root = parent / "repo"
+        root.mkdir()
+        plan = root / PLAN_RELATIVE
+        plan.parent.mkdir(parents=True)
+        plan.write_text(implementation_review_plan_text(), encoding="utf-8")
+        self._git(root, "init", "-b", MILESTONE_BRANCH)
+        self._configure_git(root)
+        self._commit(root, "canonical A implementation review")
+        before_publication = self._git(root, "rev-parse", "HEAD")
+
+        self._git(root, "switch", "-c", IMPLEMENTATION_BRANCH)
+        (root / "a-product.txt").write_text("A implementation\n", encoding="utf-8")
+        self._commit(root, "implement A product")
+
+        self._git(root, "switch", MILESTONE_BRANCH)
+        plan.write_text(parallel_proposal_review_plan_text(), encoding="utf-8")
+        self._commit(root, "publish B proposal state canonically")
+        return root, before_publication
+
+    def test_canonical_parallel_proposal_and_primary_continuation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, _ = self._repository(Path(temp_dir))
+            base_sha = self._git(root, "rev-parse", "HEAD")
+            parallel_branch = "m900/parallel-evidence-inspection-proposal"
+            self._git(root, "switch", "-c", parallel_branch)
+            proposal = root / "docs/milestones/900-workflow-fixture/proposals/parallel-evidence-inspection.md"
+            proposal.parent.mkdir(parents=True, exist_ok=True)
+            proposal.write_text(self._parallel_proposal_text(), encoding="utf-8")
+            parallel_head = self._commit(root, "propose B from canonical milestone")
+
+            self.assertEqual(
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=parallel_branch,
+                    base_sha=base_sha,
+                    head_sha=parallel_head,
+                    frontier_name=PARALLEL_FRONTIER,
+                    pr_body=_review_unit_body("Behavioral feature slice"),
+                    repo_root=root,
+                ),
+                "proposal",
+            )
+            with self.assertRaisesRegex(
+                PlanContractError,
+                "active frontier 'stale frontier' was not found",
+            ):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=parallel_branch,
+                    base_sha=base_sha,
+                    head_sha=parallel_head,
+                    frontier_name="stale frontier",
+                    pr_body=_review_unit_body("Behavioral feature slice"),
+                    repo_root=root,
+                )
+            with self.assertRaisesRegex(PlanContractError, "implementation PR must use"):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=parallel_branch,
+                    base_sha=base_sha,
+                    head_sha=parallel_head,
+                    frontier_name=CURRENT_FRONTIER,
+                    pr_body=_review_unit_body("Behavioral feature slice"),
+                    repo_root=root,
+                )
+
+            self._git(root, "switch", IMPLEMENTATION_BRANCH)
+            self._git(root, "rebase", MILESTONE_BRANCH)
+            primary_head = self._git(root, "rev-parse", "HEAD")
+            self.assertEqual(
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=IMPLEMENTATION_BRANCH,
+                    base_sha=base_sha,
+                    head_sha=primary_head,
+                    frontier_name=CURRENT_FRONTIER,
+                    pr_body=_review_unit_body(),
+                    repo_root=root,
+                ),
+                "implementation",
+            )
+
+    def test_parallel_proposal_may_introduce_a_frontier_when_path_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "repo"
+            root.mkdir()
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            plan.write_text(
+                _empty_remaining_path(implementation_review_plan_text()),
+                encoding="utf-8",
+            )
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._configure_git(root)
+            self._commit(root, "canonical A implementation review with empty path")
+            base_sha = self._git(root, "rev-parse", "HEAD")
+
+            self._git(root, "switch", "-c", PARALLEL_PROPOSAL_BRANCH)
+            plan.write_text(
+                _parallel_introduction_plan(plan.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+            proposal = (
+                root
+                / "docs/milestones/900-workflow-fixture/proposals/"
+                / "parallel-evidence-inspection.md"
+            )
+            proposal.parent.mkdir(parents=True, exist_ok=True)
+            proposal.write_text(self._parallel_proposal_text(), encoding="utf-8")
+            parallel_head = self._commit(
+                root, "introduce B from empty remaining path"
+            )
+
+            self.assertEqual(
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=PARALLEL_PROPOSAL_BRANCH,
+                    base_sha=base_sha,
+                    head_sha=parallel_head,
+                    frontier_name=PARALLEL_FRONTIER,
+                    pr_body=_review_unit_body("Behavioral feature slice"),
+                    repo_root=root,
+                ),
+                "proposal",
+            )
+
+    def test_parallel_proposal_rejects_stale_or_stacked_primary_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, before_publication = self._repository(Path(temp_dir))
+            milestone_tip = self._git(root, "rev-parse", MILESTONE_BRANCH)
+            parallel_branch = "m900/parallel-evidence-inspection-proposal"
+
+            self._git(root, "switch", "-c", parallel_branch, before_publication)
+            proposal = root / "docs/milestones/900-workflow-fixture/proposals/parallel-evidence-inspection.md"
+            proposal.parent.mkdir(parents=True, exist_ok=True)
+            proposal.write_text(self._parallel_proposal_text(), encoding="utf-8")
+            stale_head = self._commit(root, "open B from stale milestone")
+            with self.assertRaisesRegex(PlanContractError, "does not contain the current milestone tip"):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=parallel_branch,
+                    base_sha=milestone_tip,
+                    head_sha=stale_head,
+                    frontier_name=PARALLEL_FRONTIER,
+                    pr_body=_review_unit_body("Behavioral feature slice"),
+                    repo_root=root,
+                )
+
+            self._git(root, "switch", IMPLEMENTATION_BRANCH)
+            self._git(root, "rebase", MILESTONE_BRANCH)
+            self._git(root, "switch", "-c", "m900/parallel-evidence-inspection-stacked")
+            proposal.parent.mkdir(parents=True, exist_ok=True)
+            proposal.write_text(self._parallel_proposal_text(), encoding="utf-8")
+            stacked_head = self._commit(root, "stack B on A product")
+            with self.assertRaisesRegex(PlanContractError, "contains implementation changes"):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=parallel_branch,
+                    base_sha=milestone_tip,
+                    head_sha=stacked_head,
+                    frontier_name=PARALLEL_FRONTIER,
+                    pr_body=_review_unit_body("Behavioral feature slice"),
+                    repo_root=root,
+                )
+
+
 class ReviewUnitGitDiffTests(unittest.TestCase):
     def _git(self, root: Path, *args: str) -> str:
         result = subprocess.run(
@@ -2970,7 +3481,7 @@ Plan validation.
 
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
-                PROPOSAL_AMENDMENT_BRANCH,
+                MILESTONE_BRANCH,
             )
             transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
             self.assertEqual(
@@ -3025,7 +3536,7 @@ Plan validation.
 
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
-                IMPLEMENTATION_BRANCH,
+                MILESTONE_BRANCH,
             )
             transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
             self.assertEqual(

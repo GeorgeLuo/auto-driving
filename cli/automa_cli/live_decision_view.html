@@ -280,6 +280,7 @@
     let paused = false;
     let refreshing = false;
     let loadedImageUrl = null;
+    let refreshToken = 0;
     const palette = ["#00d084", "#ffb000", "#ff5a5f", "#4ea5ff", "#d678ff", "#f46f36", "#12b8b0"];
 
     function colorFor(value) {
@@ -526,23 +527,39 @@
       return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.status || "idle"}`, mode: "stale" };
     }
 
+    function nonExpiredPayload(payload, now = Date.now()) {
+      const freshness = payload?.freshness || {};
+      return Number.isInteger(freshness.published_at_ms) &&
+        Number.isInteger(freshness.expires_at_ms) &&
+        freshness.expires_at_ms >= freshness.published_at_ms &&
+        now >= freshness.published_at_ms && now <= freshness.expires_at_ms;
+    }
+
+    function supersededPayload(payload) {
+      const incoming = payload?.freshness?.published_at_ms;
+      const displayed = latest?.freshness?.published_at_ms;
+      return Number.isInteger(incoming) && Number.isInteger(displayed) && incoming < displayed;
+    }
+
     function loadDecisionImage(imageUrl) {
       return new Promise((resolve, reject) => {
-        const loaded = () => { cleanup(); resolve(); };
+        const candidate = new Image();
+        const loaded = () => { cleanup(); resolve(candidate); };
         const failed = () => { cleanup(); reject(new Error("frame unavailable")); };
         const cleanup = () => {
-          frameImage.removeEventListener("load", loaded);
-          frameImage.removeEventListener("error", failed);
+          candidate.removeEventListener("load", loaded);
+          candidate.removeEventListener("error", failed);
         };
-        frameImage.addEventListener("load", loaded);
-        frameImage.addEventListener("error", failed);
-        frameImage.src = imageUrl;
+        candidate.addEventListener("load", loaded);
+        candidate.addEventListener("error", failed);
+        candidate.src = imageUrl;
       });
     }
 
     async function refresh() {
       if (paused || refreshing) return;
       refreshing = true;
+      const requestToken = ++refreshToken;
       try {
         if (!/^[0-9a-f]{64}$/.test(generation || "")) {
           throw new Error("this page needs a producer generation");
@@ -552,10 +569,19 @@
         if (!response.ok || payload.status !== "current" || payload.generation_id !== generation) {
           throw new Error(payload.reason || `HTTP ${response.status}`);
         }
+        if (supersededPayload(payload)) return;
+        if (!nonExpiredPayload(payload)) throw new Error("decision payload expired");
         const imageUrl = payload.current_image?.url;
         if (!imageUrl) throw new Error("exact decision image is unavailable");
         if (imageUrl !== loadedImageUrl) {
           await loadDecisionImage(imageUrl);
+        }
+        if (requestToken !== refreshToken || paused) return;
+        if (!nonExpiredPayload(payload, Date.now()) || supersededPayload(payload)) {
+          throw new Error("decision payload expired or superseded");
+        }
+        if (imageUrl !== loadedImageUrl) {
+          frameImage.src = imageUrl;
           loadedImageUrl = imageUrl;
         }
         latest = payload;
@@ -563,6 +589,7 @@
         const status = liveStatus(payload);
         setStatus(status.text, status.mode);
       } catch (error) {
+        if (requestToken !== refreshToken) return;
         if (latest !== null && loadedImageUrl !== null) {
           setStatus(`Frozen/stale snapshot | ${error.message}`, "stale");
         } else {

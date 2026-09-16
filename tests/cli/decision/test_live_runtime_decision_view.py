@@ -563,6 +563,18 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         self.assertIn("Frozen/stale snapshot", page)
         self.assertIn("Paused | frozen snapshot", page)
 
+    def test_page_discards_expired_or_superseded_payload_before_image_commit(self) -> None:
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        with urlopen(f"{self.server.url}decision?generation={generation}", timeout=1.0) as response:
+            page = response.read().decode("utf-8")
+        self.assertIn("function nonExpiredPayload(payload, now = Date.now())", page)
+        self.assertIn("function supersededPayload(payload)", page)
+        self.assertIn("const candidate = new Image();", page)
+        self.assertIn("if (!nonExpiredPayload(payload, Date.now()) || supersededPayload(payload))", page)
+        self.assertIn("if (requestToken !== refreshToken || paused) return;", page)
+        self.assertIn("frameImage.src = imageUrl;", page)
+
     def test_old_session_is_unavailable_after_public_activation_restaging(self) -> None:
         self._publish_exact_transaction()
         old_generation = self.server.decision.generation_id

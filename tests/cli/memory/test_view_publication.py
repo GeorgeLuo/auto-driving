@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from cli.automa_cli.runtime_view import MEMORY_VIEW_HTML_PATH
 from cli.automa_cli.physical_observation import publication_to_frame_record
 from cli.automa_cli.perception_view import (
-    MEMORY_VIEW_HTML_PATH,
     VIEW_HTML_PATH,
     _publication_payload,
 )

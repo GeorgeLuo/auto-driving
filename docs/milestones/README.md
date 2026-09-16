@@ -257,9 +257,8 @@ before requesting review, the implementer may treat those tests as the black
 box and collapse two shapes in the same owner against them. Do this once, not
 during fill and not after each repair.
 
-Drive the tests through the public door: committed artifacts or the documented
-command in, pass or fail on the named mutation out. Do not pin helper names or
-error substrings as the contract.
+Use the [testing purpose and regression value](#testing-purpose-and-regression-value)
+contract below to keep this pass independent of implementation details.
 
 The pass is implementer-owned and documentary. It has no receipt, ledger row,
 or CI gate. Leftover two-shapes are `## Concerns`, not a completion lock.
@@ -451,9 +450,11 @@ parent PR in totality. The parent implementation remains the frontier’s sole
 acceptance and ledger unit.
 
 Do not create an implementation branch until its proposal PR has merged and the
-workflow records `ready_for_implementation`. Do not begin the next frontier
-before the current implementation PR merges unless the milestone decision log
-records a narrow parallel exception.
+workflow records `ready_for_implementation`. A parallel proposal may begin only
+after an existing frontier is canonically recorded on the milestone branch as
+`implementation_in_review` or `proposal_amendment_in_review`; publish that
+state before creating the sibling branch. Do not begin a parallel proposal
+while active work is only `ready_for_implementation` or `proposal_in_review`.
 
 If approved maintenance reaches `main` during an active milestone, merge updated
 `main` into the milestone branch before starting another review unit. Do not
@@ -538,8 +539,9 @@ table.
 
 ### 6. Current Delivery
 
-A frontier map (the work-order artifact), a current pointer that may be idle,
-and a successor slot derived from the remaining path.
+A frontier map (the work-order artifact), a `Current Frontier` attention pointer
+that may be idle, an optional active `Parallel Frontiers` registry, and a
+successor slot derived from the remaining path.
 
 **Frontier map** records remaining unstarted work:
 
@@ -582,6 +584,16 @@ commit before implementation starts. Record each accepted additive proposal
 amendment with its artifact path, PR, and merge commit. Add the active PR only
 for the phase currently under review.
 
+The active registry is the nonempty Current record plus the records under the
+optional, single `### Parallel Frontiers` section. Each parallel record uses
+the same fields and is written as `#### Frontier: <name>`. Current is only the
+attention pointer; it is not a second source of workflow truth. It may be empty
+while one or more parallel frontiers remain active. Each active frontier has a
+unique name, proposal branch, implementation branch, and proposal path within
+the milestone. Do not reuse that identity after its accepted ledger entry exists.
+Lifecycle commands target a named frontier; branch inference is permitted only
+when it resolves exactly one active frontier.
+
 The current frontier and every remaining-path or off-path node must use one of
 the supported values in [Review Kinds](#review-kinds). The value is the stable
 review focus for that frontier across its proposal, any proposal amendments,
@@ -622,9 +634,23 @@ commits cannot change current identity, question, owner, or kind. Remaining-path
 edits may continue. CI compares that freeze to the plan at the first receipt
 commit, not only to the milestone base.
 
+A parallel proposal PR is the review surface for adding one new active name. It
+may introduce that node, including when `Path: none`, or lift it from the
+remaining path. It writes the record under `### Parallel Frontiers` at
+`proposal_in_review`, appends that frontier's history row, and leaves Current
+and other actives unchanged. The remaining map stays unchanged, or loses only
+the lifted name; it is not a second work-order rewrite window. `start-proposal`
+remains optional sugar for an already-queued node; it does not invent an
+unqueued name.
+
+The `Milestone closeout` review kind is Current-only. A closeout cannot open
+as a parallel frontier while another active frontier could still block or
+change the milestone.
+
 The proposal cannot delete a contracted node. Implementation, amendment, and
-repair PRs may not edit the map or current identity. The mechanical handoff
-may not invent a node or start the next unit.
+repair PRs may not edit the map, any active frontier, or frontier identity. The
+mechanical handoff may not invent a node, start the next unit, or implicitly
+promote another active frontier.
 
 A name plus a vague “likely question” alone is not a candidate. Use an explicit
 empty successor instead:
@@ -643,12 +669,15 @@ at milestone start, after the last remaining node is selected as current, and
 when no further unit is contracted yet. It is required after closeout is
 current. It does not block `advance`.
 
-**Frontier handoff:** accepting the current review unit records the ledger,
-criteria, and risks, then sets current to idle. Remaining work-order nodes
-stay. Do not promote a successor, wipe later contracted nodes, or invent one.
-The receipt's `next_frontier.state` remains `none` because the map, not the
-receipt, owns remaining work. The next proposal selects current from that
-artifact (or introduces the first/next node, including closeout).
+**Frontier handoff:** accepting a named review unit records the ledger,
+criteria, and risks, then removes only that active frontier. If the completed
+frontier was Current, Current becomes idle; other active frontiers remain
+unchanged and visible. Do not promote a successor, wipe later contracted
+nodes, or invent one. The receipt's `next_frontier.state` remains `none`
+because the map, not the receipt, owns remaining work. The next proposal
+selects Current from that artifact (or introduces the first/next node, including
+closeout). Global `block` and closeout are rejected while any other active
+frontier remains.
 
 Windows:
 
@@ -656,8 +685,9 @@ Windows:
 | --- | --- | --- |
 | Fresh milestone | `Path: none` or unstarted nodes | Idle |
 | Opening proposal | May rewire, add, or select | Becomes path[0] or a new node |
+| Parallel proposal or implementation | Current stays unchanged | Named parallel record is active |
 | Implementation | Frozen | Frozen |
-| After `advance` | Unchanged remaining path | Idle |
+| After `advance` | Unchanged remaining path | Target removed; Current idle if it was the target |
 | `block` | Keeps queued and off-path nodes | Idle / blocked |
 | Closeout selected | Remaining path must be empty | Closeout |
 | After `close` | `Path: none` | Closed |
@@ -669,12 +699,23 @@ Append-only state-transition ledger:
 | Frontier | State | Evidence |
 | --- | --- | --- |
 
-While current is set, the latest row must match that frontier and its
-machine-readable workflow state. Idle current (milestone start or after
-`advance`) need not match a live pointer; the latest row may be `accepted`.
-A new frontier may start at `proposal_in_review` when selected from the work
-order after `accepted` or idle. Preserve proposal acceptance and implementation
-acceptance as separate events.
+The table is global audit order, but effective state is evaluated per frontier
+name: the latest valid row for each active name must match that record's
+machine-readable workflow state. Current being set does not require the global
+latest row to name Current. Idle Current (milestone start or after `advance`)
+need not match a live pointer; the latest row may be `accepted`.
+
+An accepted handoff retains the completed frontier's branch and proposal-path
+identity in its history evidence. Later frontiers may not reuse that name,
+branch, or proposal path within the same milestone.
+
+A new frontier may start at `proposal_in_review` only when the milestone
+already has an active `implementation_in_review` or
+`proposal_amendment_in_review` frontier recorded canonically. It cannot open
+beside only `ready_for_proposal`, `proposal_in_review`, or
+`ready_for_implementation` work. Preserve proposal acceptance and
+implementation acceptance as separate events, and do not let one frontier's
+completion mutate another frontier's history.
 
 ### 8. Accepted Review Units
 
@@ -988,6 +1029,57 @@ file impact. The implementation PR links that proposal, reports exact
 validation, and notes a drift only when the diff departed from it. Do not
 restate the contract in the PR body.
 
+<a id="testing-purpose-and-regression-value"></a>
+
+### Testing Purpose And Regression Value
+
+For every new or materially changed test, name a concrete, plausible regression
+and the observable behavior or justified mechanism that exposes it.
+
+| Purpose | When to use | What failure it detects |
+| --- | --- | --- |
+| `consumer` | Public CLI/API/UI journeys | Observable incompatibility despite passing internal tests. |
+| `boundary` | Invalid, missing, malformed, unsupported, raced, degraded, or relevant edge cases | Lost contracted rejection, fail-closed result, or explicit degraded outcome. |
+| `mechanism` | Narrow internal invariant lacking a useful public-door check; justify why | Violation of that invariant. |
+
+Identify purpose and regression in a name or short docstring/note.
+Purpose is independent of [ownership/layer](../../tests/README.md#ownership):
+CLI tests can be consumer or boundary; unit tests can be boundary. Purposes may
+overlap.
+
+Prefer the owner's public entry point; cover normal usage first. Add
+off-path cases reachable normally, contracted, or required by safety, integrity,
+or ownership. Domain owners reject unsupported inputs/states; outer boundaries
+translate into CLI/API structured error contracts. Repairs stay within accepted
+matrices.
+
+Assert refactoring-stable behavior: named mutations cause contracted failures
+without pinning helpers or incidental error substrings. Universal claims check
+final externally visible values after storage, serialization, or transport.
+
+Replace bare assignment/readback tautologies such as `value = 3; assert value == 3`.
+Keep field checks exercising meaningful setters/getters, normalization,
+wire/schema, serialization, transport, or consumer-output contracts—for example,
+a setter normalizing input or a normalized value surviving serialization.
+
+Optional [QCA observations](../../qca/README.md), available via
+`python3 -m qca diff --base <base-ref> --head <head-ref>`, can focus inspection:
+
+- `test_effectiveness` assignment-readback, literal/same-operand, and other static
+  candidates: would a plausible behavior change fail this assertion?
+  Inspect meaningful boundaries before replacing it.
+- Private imports/calls: can a public-door test protect the regression, or is
+  mechanism coverage justified?
+- `contracts` changes: which consumer compatibility needs checking? Static
+  observations do not prove runtime compatibility.
+- Supplied coverage/runtime evidence: identify unexercised behavior to consider
+  within scope. Absent evidence is unmeasured.
+
+QCA candidates/counts do not classify, score, or justify automatic test deletion.
+No QCA run, decision record, metadata schema, gate, suite retrofit/rewrite/deletion,
+coverage target, or new framework is required. Preserve placement/execution;
+add tagging/filtering only for reporting/execution needs.
+
 ### Invariant Closure (When Claiming Universals)
 
 Words such as `bounded`, `detached`, `deterministic`, `exact`, `fail-closed`,
@@ -1212,7 +1304,9 @@ After the implementation PR is accepted:
 
 1. squash-merge it into the milestone branch;
 2. from a clean local milestone branch, run the completion command below;
-3. confirm current is idle and the work order still holds remaining nodes;
+3. confirm the completed frontier left the active registry; if it was Current,
+   Current is idle, remaining parallel frontiers stay visible, and the work
+   order still holds remaining nodes;
 4. open the next proposal PR from git when ready; do not wait on `start-proposal`.
 
 ```sh
@@ -1226,7 +1320,10 @@ confirms the implementation PR is merged and its body still matches the
 canonical review kind, fills the reviewed template with the PR number and merge
 SHA, applies the existing handoff owner, verifies that only canonical `plan.md`
 and generated `plan.html` changed, commits them, and pushes the milestone
-branch. It returns current to idle. It does not start the next proposal.
+branch. If the completed frontier was Current, it sets current to idle;
+remaining parallel frontiers stay active. It does not start the next proposal
+or promote another frontier. When more than one frontier is active, pass
+`--frontier <name>`.
 
 The lower-level `handoff --receipt <path>` command remains available for a
 reviewed exceptional receipt or recovery, but normal successful completion
@@ -1347,11 +1444,19 @@ a guidance file directs it, when workflow meaning is ambiguous, or when
 changing the workflow itself.
 
 Guidance files may summarize or route to this contract. They must not introduce
-new process rules, carry current milestone state, or override this contract. If
-the two conflict, this contract wins. Operation classification does not
-authorize a workflow phase transition. Long-running conversations should
-retain current work state and findings, not act as the durable store for
-process rules.
+new canonical workflow or milestone process rules, carry current milestone
+state, or override this contract. An explicitly operator-selected and named,
+immutable, versioned
+orchestration policy under `docs/guidance/orchestration/` is a bounded exception:
+it may define execution organization for that named run, including delegation,
+synchronization, reasoning allocation, escalation, and receipt topology. The
+policy must preserve the existing role and task guidance and may not change
+canonical milestone state, workflow phase transitions, accepted proposal or
+review contracts, safety or authority boundaries, ownership, external schemas,
+completion or merge predicates, or any other canonical rule. If the two
+conflict, this contract wins. Operation classification does not authorize a
+workflow phase transition. Long-running conversations should retain current
+work state and findings, not act as the durable store for process rules.
 
 ## Non-Goals Of This Contract
 

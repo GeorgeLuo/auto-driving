@@ -39,7 +39,7 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .paths import ROOT, display_path, safe_path_part
-from .perception_view import PerceptionViewServer
+from .runtime_view import RuntimeViewServer
 from .physical_observation import (
     fetch_autonomy_status,
     fetch_observation_publication,
@@ -1480,10 +1480,10 @@ def _stream_physical_memory_with_inspector(
     runtime_dir = physical_observation_dir(vehicle_id)
     runtime_dir.mkdir(parents=True, exist_ok=True)
     frame_path = runtime_dir / "latest_frame.jpg"
-    view_server: PerceptionViewServer | None = None
+    view_server: RuntimeViewServer | None = None
     view_error: str | None = None
     try:
-        view_server = PerceptionViewServer(
+        view_server = RuntimeViewServer(
             vehicle_id=vehicle_id,
             automation_dir=runtime_dir,
         ).start()
@@ -1530,7 +1530,7 @@ def _stream_physical_memory_with_inspector(
                 ]
                 if memory_view_url:
                     lines.append(f"memory map: {memory_view_url}")
-                    lines.append("perception view: " + memory_view_url.rsplit("/", 1)[0] + "/")
+                    lines.append("perception view: " + memory_view_url.rsplit("/", 1)[0] + "/perception")
                 elif view_error:
                     lines.append(f"memory map: unavailable ({view_error})")
                 else:

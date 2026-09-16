@@ -39,7 +39,75 @@ class CouplingFactorTests(unittest.TestCase):
         finding = next(item for item in coupling["findings"] if item["kind"] == "cycle")
         self.assertEqual(finding["path"], "a.py")
         self.assertEqual(finding["line"], 1)
-        self.assertIn("a.py -> b.py -> a.py", finding["message"])
+        self.assertIn("a.py, b.py", finding["message"])
+        self.assertNotIn(" -> ", finding["message"])
+        self.assertEqual(finding["cycle_representation"], "scc_members")
+
+    def test_marks_missing_dotted_child_as_ancestor_fallback(self) -> None:
+        result = analyze_coupling(
+            {
+                "app.py": "import pkg.missing\n",
+                "pkg/__init__.py": "VALUE = 1\n",
+            }
+        )
+        coupling = result["coupling"]
+        edge = next(item for item in coupling["graph"]["edges"]
+                    if item["source"] == "app.py")
+        self.assertEqual(edge["target"], "pkg/__init__.py")
+        self.assertEqual(edge["resolution"], "ancestor_fallback")
+        self.assertEqual(edge["requested_name"], "pkg.missing")
+        self.assertEqual(edge["matched_module"], "pkg")
+        self.assertEqual(edge["unresolved_suffix"], "missing")
+        self.assertEqual(edge["resolution_details"][0]["resolution"],
+                         "ancestor_fallback")
+
+    def test_marks_real_dotted_module_as_exact(self) -> None:
+        result = analyze_coupling(
+            {
+                "app.py": "import pkg.real\n",
+                "pkg/__init__.py": "VALUE = 1\n",
+                "pkg/real.py": "VALUE = 2\n",
+            }
+        )
+        edge = next(item for item in result["coupling"]["graph"]["edges"]
+                    if item["source"] == "app.py")
+        self.assertEqual(edge["target"], "pkg/real.py")
+        self.assertEqual(edge["resolution"], "exact")
+        self.assertEqual(edge["requested_name"], "pkg.real")
+        self.assertEqual(edge["matched_module"], "pkg.real")
+        self.assertIsNone(edge["unresolved_suffix"])
+
+    def test_from_symbol_keeps_owner_edge_with_distinct_resolution(self) -> None:
+        result = analyze_coupling(
+            {
+                "app.py": "from pkg import exported\n",
+                "pkg/__init__.py": "exported = 1\n",
+            }
+        )
+        coupling = result["coupling"]
+        edge = next(item for item in coupling["graph"]["edges"]
+                    if item["source"] == "app.py")
+        self.assertEqual(edge["target"], "pkg/__init__.py")
+        self.assertEqual(edge["resolution"], "symbol_owner")
+        self.assertEqual(edge["requested_name"], "pkg.exported")
+        self.assertEqual(edge["matched_module"], "pkg")
+        self.assertEqual(edge["unresolved_suffix"], "exported")
+        self.assertEqual(coupling["metrics"]["external_import_count"], 0)
+
+    def test_cycle_finding_does_not_invent_path_for_non_lexical_scc(self) -> None:
+        result = analyze_coupling(
+            {
+                "a.py": "import c\n",
+                "b.py": "import a\n",
+                "c.py": "import b\n",
+            }
+        )
+        coupling = result["coupling"]
+        self.assertEqual(coupling["graph"]["cycles"], [["a.py", "b.py", "c.py"]])
+        finding = next(item for item in coupling["findings"] if item["kind"] == "cycle")
+        self.assertEqual(finding["members"], ["a.py", "b.py", "c.py"])
+        self.assertNotIn(" -> ", finding["message"])
+        self.assertEqual(coupling["graph"]["cycle_representation"], "scc_members")
 
     def test_contract_surface_captures_signatures_dict_shapes_and_cli_declarations(self) -> None:
         result = analyze_coupling(

@@ -4,21 +4,32 @@ from __future__ import annotations
 
 from typing import Any
 
-from .coupling import analyze_coupling
-from .structure import analyze_structure
-from .verification import analyze_verification
+from ..indicators.context import AnalysisContext
+from .coupling import analyze_coupling_context
+from .structure import analyze_structure_context
+from .verification import analyze_verification_context
 
 
 FACTOR_VERSION = "1"
 
 
-def measure_factors(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
-    """Measure the same explicitly included Python source set for each factor."""
+def measure_factors(
+    sources: dict[str, str],
+    *,
+    revision: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Measure the same explicitly included Python source set for each factor.
 
+    One shared analysis context is used so families with the same parse mode
+    reuse syntax trees.  ``revision`` is the Git SHA for immutable revisions
+    and remains ``None`` for in-memory or working-tree snapshots.
+    """
+
+    context = AnalysisContext.from_sources(sources, revision=revision)
     return dict(sorted({
-        **analyze_structure(sources),
-        **analyze_coupling(sources),
-        **analyze_verification(sources),
+        **analyze_structure_context(context),
+        **analyze_coupling_context(context),
+        **analyze_verification_context(context),
     }.items()))
 
 

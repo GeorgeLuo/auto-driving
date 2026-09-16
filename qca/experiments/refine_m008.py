@@ -92,7 +92,7 @@ def _compact(report: dict) -> dict:
 
 def _changed_coverage(checkout: Path, candidate: str, baseline: dict, after: dict) -> dict:
     result = {}
-    files = _read_git_diff(repo_root=checkout, base_sha=M008, head_sha=candidate, scope_rel=".")
+    files = _read_git_diff(repo_root=checkout, base_sha=M008, head_sha=candidate, pathspecs=(".",))
     for side, tests, attribute in (("base", baseline, "changed_old_lines"), ("head", after, "changed_new_lines")):
         executable = covered = 0
         missing = []

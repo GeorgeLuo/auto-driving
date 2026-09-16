@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="8bf3ab86f15f32debd88ce7a68a11499702854eac8161f9194f3b1a6969debea">
+  <meta name="source-sha256" content="55c7da87e04a53c2d39232a4e46dc7a775a7a33719bc7cad05839066c6d8e104">
   <base target="_blank">
   <title>Milestone plan — 006-decision-facing-perception-readiness</title>
   <style>
@@ -271,7 +271,7 @@ for simulator and physical vehicles.</p>
 <h3>Current Frontier</h3>
 <p><strong>Cross-environment shadow proposal evidence</strong></p>
 <ul>
-<li>Workflow state: ready_for_implementation</li>
+<li>Workflow state: implementation_in_review</li>
 <li>Proposal branch: <code>m006/shadow-proposal-evidence-proposal</code></li>
 <li>Implementation branch: <code>m006/shadow-proposal-evidence</code></li>
 <li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md</code></li>
@@ -282,6 +282,21 @@ for simulator and physical vehicles.</p>
 <li>Exit criteria affected: M006-06, M006-07</li>
 <li>Prerequisite: Automa shadow decision surfaces accepted (M006-05) with stage/info/apply/stream/view and deterministic replay</li>
 <li>Milestone-level non-goal: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims</li>
+</ul>
+<h3>Parallel Frontiers</h3>
+<h4>Frontier: D2 live decision view</h4>
+<ul>
+<li>Workflow state: implementation_in_review</li>
+<li>Proposal branch: <code>m006/live-decision-view-proposal</code></li>
+<li>Implementation branch: <code>m006/live-decision-view</code></li>
+<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/live-decision-view.md</code></li>
+<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/216">#216</a> at <code>8b27553bb722bad23477e3c5744c76a321e1c99a</code> (reviewed head <code>cff47a76f487434985a5b531984546a6f3748771</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-16T01:22:55Z</code>)</li>
+<li>Review kind: Behavioral feature slice</li>
+<li>Review question: Does <code>RuntimeViewServer</code> host a generation-bound <code>/decision</code> page in the same CLI loopback class as <code>/perception</code> and <code>/memory</code>, with the cycle's actual image as the primary object?</li>
+<li>Acceptance owner: <code>RuntimeViewServer</code> decision-view boundary</li>
+<li>Exit criteria affected: M006-08</li>
+<li>Prerequisite: Current A remains canonically <code>implementation_in_review</code>; accepted M006-05 decision surfaces and PR #207's <code>RuntimeViewServer</code> are available</li>
+<li>Non-goals: Change M006-06/M006-07 ownership or status, complete #202 evidence, apply movement, or close M006</li>
 </ul>
 <h3>Frontier Map</h3>
 <ul>
@@ -383,6 +398,26 @@ for simulator and physical vehicles.</p>
 <td>Cross-environment shadow proposal evidence</td>
 <td>ready_for_implementation</td>
 <td>Proposal PR #201 accepted at 9e2a353c736a04fed22c1ce5d456c6115fbfbddc (reviewed head <code>f9705785e62ba6c7d193cee8dcd86d0052ed6508</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-09T04:31:46Z</code>).</td>
+</tr>
+<tr>
+<td>Cross-environment shadow proposal evidence</td>
+<td>implementation_in_review</td>
+<td>Started m006/shadow-proposal-evidence.</td>
+</tr>
+<tr>
+<td>D2 live decision view</td>
+<td>proposal_in_review</td>
+<td>Started m006/live-decision-view-proposal.</td>
+</tr>
+<tr>
+<td>D2 live decision view</td>
+<td>ready_for_implementation</td>
+<td>Proposal PR #216 accepted at 8b27553bb722bad23477e3c5744c76a321e1c99a (reviewed head <code>cff47a76f487434985a5b531984546a6f3748771</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-16T01:22:55Z</code>).</td>
+</tr>
+<tr>
+<td>D2 live decision view</td>
+<td>implementation_in_review</td>
+<td>Started m006/live-decision-view.</td>
 </tr>
 </tbody>
 </table>
@@ -505,11 +540,6 @@ for simulator and physical vehicles.</p>
 <td>2026-07-28</td>
 <td>Permit nonzero shadow intent but forbid application</td>
 <td>Proposed and applied controls must be distinguishable before any movement milestone begins</td>
-</tr>
-<tr>
-<td>2026-09-09</td>
-<td>Authorize D2 proposal and implementation together on <code>m006/live-decision-view</code> while #202 remains the active evidence implementation</td>
-<td>Operator override for this combined job; A1 constrains design, Luna implements, and A2 independently reviews. No separate D2 acceptance or criterion promotion is asserted; current tooling cannot represent the combined unit without a workflow transition</td>
 </tr>
 </tbody>
 </table>

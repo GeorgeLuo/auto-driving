@@ -97,6 +97,19 @@ for simulator and physical vehicles.
 - Prerequisite: Current A remains canonically `implementation_in_review`; accepted M006-05 decision surfaces and PR #207's `RuntimeViewServer` are available
 - Non-goals: Change M006-06/M006-07 ownership or status, complete #202 evidence, apply movement, or close M006
 
+#### Frontier: Decision playback workbench
+
+- Workflow state: proposal_in_review
+- Proposal branch: `m006/decision-workbench-playback-proposal`
+- Implementation branch: `m006/decision-workbench-playback`
+- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/decision-workbench-playback.md`
+- Review kind: Behavioral feature slice
+- Review question: Can the local workbench replay a bounded recorded decision input and present a frame-correlated analysis of proposals, selection, evidence, and shadow authority without changing decision semantics, depending on a live producer, or making proposed movement appear applied?
+- Acceptance owner: Existing workbench server/runner and offline decision replay boundary
+- Exit criteria affected: M006-05
+- Prerequisite: Accepted M006 decision replay/apply surfaces and the closed M008 workbench implementation are available on the M006 base branch
+- Non-goals: Change live `RuntimeViewServer` behavior, complete Chase/PiRacer evidence, apply movement, change decision policy, or reopen M008
+
 ### Frontier Map
 
 - Path: none
@@ -133,6 +146,7 @@ for simulator and physical vehicles.
 | D2 live decision view | proposal_in_review | Started m006/live-decision-view-proposal. |
 | D2 live decision view | ready_for_implementation | Proposal PR #216 accepted at 8b27553bb722bad23477e3c5744c76a321e1c99a (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`). |
 | D2 live decision view | implementation_in_review | Started m006/live-decision-view. |
+| Decision playback workbench | proposal_in_review | Started m006/decision-workbench-playback-proposal. |
 
 ## Accepted Review Units
 

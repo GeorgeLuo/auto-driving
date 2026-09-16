@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="55c7da87e04a53c2d39232a4e46dc7a775a7a33719bc7cad05839066c6d8e104">
+  <meta name="source-sha256" content="dd0a0f1e4cba3857f94069b346599cf3eea0b25335b7f773626a3627f2b34156">
   <base target="_blank">
   <title>Milestone plan — 006-decision-facing-perception-readiness</title>
   <style>
@@ -298,6 +298,19 @@ for simulator and physical vehicles.</p>
 <li>Prerequisite: Current A remains canonically <code>implementation_in_review</code>; accepted M006-05 decision surfaces and PR #207's <code>RuntimeViewServer</code> are available</li>
 <li>Non-goals: Change M006-06/M006-07 ownership or status, complete #202 evidence, apply movement, or close M006</li>
 </ul>
+<h4>Frontier: Decision playback workbench</h4>
+<ul>
+<li>Workflow state: proposal_in_review</li>
+<li>Proposal branch: <code>m006/decision-workbench-playback-proposal</code></li>
+<li>Implementation branch: <code>m006/decision-workbench-playback</code></li>
+<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/decision-workbench-playback.md</code></li>
+<li>Review kind: Behavioral feature slice</li>
+<li>Review question: Can the local workbench replay a bounded recorded decision input and present a frame-correlated analysis of proposals, selection, evidence, and shadow authority without changing decision semantics, depending on a live producer, or making proposed movement appear applied?</li>
+<li>Acceptance owner: Existing workbench server/runner and offline decision replay boundary</li>
+<li>Exit criteria affected: M006-05</li>
+<li>Prerequisite: Accepted M006 decision replay/apply surfaces and the closed M008 workbench implementation are available on the M006 base branch</li>
+<li>Non-goals: Change live <code>RuntimeViewServer</code> behavior, complete Chase/PiRacer evidence, apply movement, change decision policy, or reopen M008</li>
+</ul>
 <h3>Frontier Map</h3>
 <ul>
 <li>Path: none</li>
@@ -418,6 +431,11 @@ for simulator and physical vehicles.</p>
 <td>D2 live decision view</td>
 <td>implementation_in_review</td>
 <td>Started m006/live-decision-view.</td>
+</tr>
+<tr>
+<td>Decision playback workbench</td>
+<td>proposal_in_review</td>
+<td>Started m006/decision-workbench-playback-proposal.</td>
 </tr>
 </tbody>
 </table>

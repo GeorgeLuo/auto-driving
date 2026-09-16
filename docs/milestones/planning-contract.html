@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="263cba257fc8e0f075921da21d36e4306db3ebe0e77c4964e3caed1a75ddc169">
+  <meta name="source-sha256" content="5ca179191ac58b0860e3a535a4e61c3a22ba1c968a63b1d61d663fa8a5a67d28">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -638,12 +638,12 @@ commit before implementation starts. Record each accepted additive proposal
 amendment with its artifact path, PR, and merge commit. Add the active PR only
 for the phase currently under review.</p>
 <p>The active registry is the nonempty Current record plus the records under the
-optional <code>### Parallel Frontiers</code> section. Each parallel record uses the same
-fields and is written as <code>#### Frontier: &lt;name&gt;</code>. Current is only the attention
-pointer; it is not a second source of workflow truth. It may be empty while one
-or more parallel frontiers remain active. Each active frontier has a unique
-name, proposal branch, implementation branch, and proposal path within the
-milestone. Do not reuse that identity after its accepted ledger entry exists.
+optional, single <code>### Parallel Frontiers</code> section. Each parallel record uses
+the same fields and is written as <code>#### Frontier: &lt;name&gt;</code>. Current is only the
+attention pointer; it is not a second source of workflow truth. It may be empty
+while one or more parallel frontiers remain active. Each active frontier has a
+unique name, proposal branch, implementation branch, and proposal path within
+the milestone. Do not reuse that identity after its accepted ledger entry exists.
 Lifecycle commands target a named frontier; branch inference is permitted only
 when it resolves exactly one active frontier.</p>
 <p>The current frontier and every remaining-path or off-path node must use one of

@@ -585,12 +585,12 @@ amendment with its artifact path, PR, and merge commit. Add the active PR only
 for the phase currently under review.
 
 The active registry is the nonempty Current record plus the records under the
-optional `### Parallel Frontiers` section. Each parallel record uses the same
-fields and is written as `#### Frontier: <name>`. Current is only the attention
-pointer; it is not a second source of workflow truth. It may be empty while one
-or more parallel frontiers remain active. Each active frontier has a unique
-name, proposal branch, implementation branch, and proposal path within the
-milestone. Do not reuse that identity after its accepted ledger entry exists.
+optional, single `### Parallel Frontiers` section. Each parallel record uses
+the same fields and is written as `#### Frontier: <name>`. Current is only the
+attention pointer; it is not a second source of workflow truth. It may be empty
+while one or more parallel frontiers remain active. Each active frontier has a
+unique name, proposal branch, implementation branch, and proposal path within
+the milestone. Do not reuse that identity after its accepted ledger entry exists.
 Lifecycle commands target a named frontier; branch inference is permitted only
 when it resolves exactly one active frontier.
 

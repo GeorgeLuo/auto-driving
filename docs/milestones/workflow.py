@@ -430,6 +430,10 @@ def parse_parallel_frontiers(text: str) -> tuple[Frontier, ...]:
     """Parse the optional non-primary members of the active-frontier registry."""
 
     lines = text.splitlines()
+    if sum(line.strip() == "### Parallel Frontiers" for line in lines) > 1:
+        raise PlanContractError(
+            "plan cannot contain duplicate ### Parallel Frontiers sections"
+        )
     try:
         start, end = _section_bounds(lines, "### Parallel Frontiers")
     except PlanContractError:

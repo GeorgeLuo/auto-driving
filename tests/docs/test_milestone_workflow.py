@@ -717,6 +717,18 @@ class ParallelFrontierTests(unittest.TestCase):
         ):
             validate_plan_text(parallel_closeout)
 
+    def test_parallel_frontiers_reject_duplicate_registry_sections(self) -> None:
+        duplicated = parallel_proposal_review_plan_text().replace(
+            "\n## Workflow History",
+            "\n### Parallel Frontiers\n\n**None**\n\n## Workflow History",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "duplicate ### Parallel Frontiers sections",
+        ):
+            validate_plan_text(duplicated)
+
 
 class MilestoneHandoffGitOrderingTests(unittest.TestCase):
     def _git(self, root: Path, *args: str) -> str:

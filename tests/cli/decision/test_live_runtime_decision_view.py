@@ -226,6 +226,45 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         self.assertEqual(payload["current_image"]["frame_id"], latest["frame_id"])
         self.assertEqual(payload["decision"]["frame_id"], latest["frame_id"])
 
+    def test_rejected_publication_does_not_serve_cached_success(self) -> None:
+        stream_frame, _expected_image = self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        frame_record = {
+            "frame_id": stream_frame["frame_id"],
+            "frame_index": stream_frame["frame_index"],
+            "captured_at_ms": stream_frame["timestamp_ms"],
+            "run_id": "run-live",
+            "worker_pid": os.getpid(),
+        }
+        rejected_frame = {**stream_frame, "cycle": None}
+        self.assertFalse(
+            self.server.decision.publish(
+                stream_frame=rejected_frame,
+                frame_record=frame_record,
+                image=self.server.perception.frame(stream_frame["frame_id"]),
+            )
+        )
+
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(caught.exception.code, 503)
+        error = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertEqual(error["reason"], "decision_warming")
+        self.assertNotIn("transaction_id", error)
+
+        recovered, _ = self._publish_exact_transaction(image_name="recovered-frame.png")
+        with urlopen(
+            f"{self.server.url}api/decision/latest?generation={generation}",
+            timeout=1.0,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(payload["status"], "current")
+        self.assertEqual(payload["decision"]["frame_id"], recovered["frame_id"])
+
     def test_slow_image_response_does_not_hold_decision_view_lock(self) -> None:
         """A delayed public image response cannot block the next publication."""
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import threading
 import time
 from collections import OrderedDict
@@ -61,6 +62,152 @@ def _sha256_json(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(value, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     ).hexdigest()
+
+
+def _supported_image_bbox(location: Any) -> bool:
+    """Return whether D2 can render this location without coercion or guessing."""
+
+    if not isinstance(location, dict) or location.get("frame") != "image":
+        return False
+    raw = location.get("bbox_xyxy_norm")
+    if not isinstance(raw, list) or len(raw) != 4:
+        return False
+    values: list[float] = []
+    for value in raw:
+        if type(value) not in {int, float} or not math.isfinite(value):
+            return False
+        normalized = float(value)
+        if not 0.0 <= normalized <= 1.0:
+            return False
+        values.append(normalized)
+    x1, y1, x2, y2 = values
+    return x2 > x1 and y2 > y1
+
+
+def _evidence_projection(
+    *,
+    transaction_id: str,
+    frame_id: str,
+    observation: Any,
+    memory: Any,
+) -> dict[str, Any]:
+    """Project only evidence that is exactly attributable to the current image.
+
+    The accepted cycle remains available unchanged under ``provenance``. This
+    projection is the machine-visible rendering gate: an unavailable record
+    carries its raw provenance but never carries renderable geometry.
+    """
+
+    observation_value = (
+        observation.get("value")
+        if isinstance(observation, dict) and observation.get("status") == "ready"
+        else None
+    )
+    memory_value = (
+        memory.get("value")
+        if isinstance(memory, dict) and memory.get("status") == "ready"
+        else None
+    )
+    records = memory_value.get("records") if isinstance(memory_value, dict) else None
+    raw_records = records if isinstance(records, list) else []
+    observation_id = (
+        observation_value.get("observation_id")
+        if isinstance(observation_value, dict)
+        else None
+    )
+    observation_things = (
+        observation_value.get("things")
+        if isinstance(observation_value, dict)
+        else None
+    )
+    things = observation_things if isinstance(observation_things, list) else []
+    observation_plugin_id = (
+        observation_value.get("perception_plugin_id")
+        if isinstance(observation_value, dict)
+        else None
+    )
+
+    projected: list[dict[str, Any]] = []
+    for record in raw_records:
+        record_id = record.get("record_id") if isinstance(record, dict) else None
+        provenance = record.get("provenance") if isinstance(record, dict) else None
+        reason = ""
+        matched_thing: dict[str, Any] | None = None
+        if not isinstance(record, dict) or type(record_id) is not str or not record_id:
+            reason = "invalid_record"
+        elif not isinstance(provenance, dict):
+            reason = "provenance_unavailable"
+        elif provenance.get("frame_id") != frame_id:
+            reason = "source_image_unavailable"
+        elif type(observation_id) is not str or not observation_id:
+            reason = "observation_unavailable"
+        elif provenance.get("observation_id") != observation_id:
+            reason = "observation_mismatch"
+        elif type(provenance.get("evidence_id")) is not str or not provenance.get("evidence_id"):
+            reason = "provenance_unavailable"
+        else:
+            matches = [
+                thing
+                for thing in things
+                if isinstance(thing, dict)
+                and thing.get("thing_id") == provenance["evidence_id"]
+            ]
+            if not matches:
+                reason = "evidence_missing"
+            elif len(matches) != 1:
+                reason = "evidence_ambiguous"
+            else:
+                matched_thing = matches[0]
+
+        if not reason and matched_thing is not None:
+            source_plugin_id = matched_thing.get("source_plugin_id")
+            if source_plugin_id is None:
+                source_plugin_id = observation_plugin_id
+            if (
+                provenance.get("coordinate_frame") != "image"
+                or provenance.get("source_plugin_id") != source_plugin_id
+            ):
+                reason = "provenance_mismatch"
+            elif not _supported_image_bbox(record.get("location")):
+                reason = "unsupported_geometry"
+            elif record.get("location") != matched_thing.get("location"):
+                reason = "geometry_mismatch"
+            elif (
+                record.get("kind") != matched_thing.get("kind")
+                or record.get("label") != matched_thing.get("label")
+            ):
+                reason = "evidence_mismatch"
+
+        available = not reason
+        projected.append(
+            {
+                "record_id": record_id if type(record_id) is str else None,
+                "status": "available" if available else "unavailable",
+                "reason": reason,
+                "provenance": _json_copy(provenance) if isinstance(provenance, dict) else None,
+                "record": _json_copy(record) if available else None,
+            }
+        )
+
+    available_count = sum(item["status"] == "available" for item in projected)
+    if available_count == len(projected) and projected:
+        status = "available"
+        reason = ""
+    elif available_count:
+        status = "partial"
+        reason = "evidence_association_partial"
+    else:
+        status = "unavailable"
+        reason = "evidence_association_unavailable"
+    return {
+        "status": status,
+        "reason": reason,
+        "transaction_id": transaction_id,
+        "frame_id": frame_id,
+        "available_count": available_count,
+        "record_count": len(projected),
+        "records": projected,
+    }
 
 
 def _activation_identity(activation: dict[str, Any]) -> dict[str, Any]:
@@ -343,6 +490,14 @@ class DecisionView:
         cycle = transaction.stream_frame["cycle"]
         source = cycle.get("source") if isinstance(cycle, dict) else None
         authority = transaction.stream_frame.get("authority_summary")
+        observation = source.get("observation") if isinstance(source, dict) else None
+        memory = source.get("memory") if isinstance(source, dict) else None
+        evidence = _evidence_projection(
+            transaction_id=transaction.transaction_id,
+            frame_id=transaction.frame_record["frame_id"],
+            observation=observation,
+            memory=memory,
+        )
         return {
             "schema": DECISION_VIEW_SCHEMA,
             "view_id": DECISION_VIEW_ID,
@@ -372,9 +527,10 @@ class DecisionView:
             },
             "provenance": {
                 "sensor_snapshot": _json_copy(transaction.frame_record.get("sensor_snapshot")),
-                "observation": _json_copy(source.get("observation")) if isinstance(source, dict) else None,
-                "memory": _json_copy(source.get("memory")) if isinstance(source, dict) else None,
+                "observation": _json_copy(observation),
+                "memory": _json_copy(memory),
             },
+            "evidence": evidence,
             "authority": _json_copy(authority) if isinstance(authority, dict) else None,
         }
 

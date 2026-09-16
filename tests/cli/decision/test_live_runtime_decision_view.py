@@ -7,6 +7,7 @@ import os
 import tempfile
 import threading
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
@@ -69,8 +70,9 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         ).start()
         self.addCleanup(self.server.stop)
 
-    def _accepted_frame(self, *, run_id: str = "run-live") -> dict:
-        raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
+    def _accepted_frame(self, *, run_id: str = "run-live", raw: dict | None = None) -> dict:
+        if raw is None:
+            raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
         cycle, _control = create_shadow_proposals_engine().run_cycle(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
@@ -87,6 +89,26 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
             activation_activated_at_ms=self.activation["activated_at_ms"],
         )
 
+    def _accepted_frame_with_evidence(self, mutate=None) -> dict:
+        raw = deepcopy(
+            json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
+        )
+        record = raw["memory"]["records"][0]
+        provenance = record["provenance"]
+        thing = {
+            "thing_id": provenance["evidence_id"],
+            "kind": record["kind"],
+            "label": record["label"],
+            "location": deepcopy(record["location"]),
+            "confidence": record["confidence"],
+            "properties": deepcopy(record["properties"]),
+            "source_plugin_id": provenance["source_plugin_id"],
+        }
+        raw["observation"]["things"] = [thing]
+        if mutate is not None:
+            mutate(raw, record, thing)
+        return self._accepted_frame(raw=raw)
+
     def _publish_exact_transaction(
         self,
         *,
@@ -94,9 +116,10 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         run_id: str = "run-live",
         image_name: str = "decision-frame.png",
         image_color: tuple[int, int, int] = (20, 80, 150),
+        stream_frame: dict | None = None,
     ) -> tuple[dict, bytes]:
         target = self.server if server is None else server
-        stream_frame = self._accepted_frame(run_id=run_id)
+        stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
         frame_path = Path(self._temporary.name) / image_name
         Image.new("RGB", (40, 30), image_color).save(frame_path)
         frame_record = {
@@ -131,6 +154,15 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
             )
         )
         return stream_frame, frame_path.read_bytes()
+
+    def _latest_payload(self) -> dict:
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        with urlopen(
+            f"{self.server.url}api/decision/latest?generation={generation}",
+            timeout=1.0,
+        ) as response:
+            return json.loads(response.read().decode("utf-8"))
 
     def test_serves_exact_decision_image_and_separate_authority_facts(self) -> None:
         stream_frame, expected_image = self._publish_exact_transaction()
@@ -225,6 +257,82 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
             payload = json.loads(response.read().decode("utf-8"))
         self.assertEqual(payload["current_image"]["frame_id"], latest["frame_id"])
         self.assertEqual(payload["decision"]["frame_id"], latest["frame_id"])
+
+    def test_exact_retained_evidence_is_machine_visible_and_renderable(self) -> None:
+        stream_frame = self._accepted_frame_with_evidence()
+        self._publish_exact_transaction(stream_frame=stream_frame)
+
+        payload = self._latest_payload()
+        evidence = payload["evidence"]
+        self.assertEqual(evidence["status"], "available")
+        self.assertEqual(evidence["frame_id"], payload["current_image"]["frame_id"])
+        self.assertEqual(evidence["transaction_id"], payload["transaction_id"])
+        self.assertEqual(evidence["available_count"], 1)
+        projected = evidence["records"][0]
+        self.assertEqual(projected["status"], "available")
+        self.assertEqual(projected["reason"], "")
+        self.assertEqual(
+            projected["record"],
+            payload["provenance"]["memory"]["value"]["records"][0],
+        )
+
+        generation = self.server.decision.generation_id
+        with urlopen(f"{self.server.url}decision?generation={generation}", timeout=1.0) as response:
+            page = response.read().decode("utf-8")
+        self.assertIn("function evidenceItems()", page)
+        self.assertIn('item?.status === "available"', page)
+
+    def test_unmatched_retained_evidence_preserves_provenance_without_overlay(self) -> None:
+        def older_frame(_raw, record, _thing) -> None:
+            record["provenance"]["frame_id"] = "frame_older"
+
+        def observation_mismatch(_raw, record, _thing) -> None:
+            record["provenance"]["observation_id"] = "obs_other"
+
+        def missing_evidence(_raw, _record, thing) -> None:
+            thing["thing_id"] = "ev_other"
+
+        def ambiguous_evidence(raw, _record, thing) -> None:
+            raw["observation"]["things"].append(deepcopy(thing))
+
+        def provenance_mismatch(_raw, record, _thing) -> None:
+            record["provenance"]["source_plugin_id"] = "other_plugin"
+
+        def geometry_mismatch(_raw, _record, thing) -> None:
+            thing["location"]["bbox_xyxy_norm"] = [0.1, 0.0, 0.3, 0.5]
+
+        def unsupported_geometry(_raw, record, thing) -> None:
+            record["location"]["bbox_xyxy_norm"] = None
+            thing["location"]["bbox_xyxy_norm"] = None
+
+        cases = (
+            ("source_image_unavailable", older_frame),
+            ("observation_mismatch", observation_mismatch),
+            ("evidence_missing", missing_evidence),
+            ("evidence_ambiguous", ambiguous_evidence),
+            ("provenance_mismatch", provenance_mismatch),
+            ("geometry_mismatch", geometry_mismatch),
+            ("unsupported_geometry", unsupported_geometry),
+        )
+        for index, (expected_reason, mutate) in enumerate(cases):
+            with self.subTest(reason=expected_reason):
+                stream_frame = self._accepted_frame_with_evidence(mutate)
+                self._publish_exact_transaction(
+                    stream_frame=stream_frame,
+                    image_name=f"evidence-{index}.png",
+                )
+                payload = self._latest_payload()
+                evidence = payload["evidence"]
+                self.assertEqual(evidence["status"], "unavailable")
+                self.assertEqual(evidence["available_count"], 0)
+                projected = evidence["records"][0]
+                self.assertEqual(projected["status"], "unavailable")
+                self.assertEqual(projected["reason"], expected_reason)
+                self.assertIsNone(projected["record"])
+                self.assertEqual(
+                    projected["provenance"],
+                    payload["provenance"]["memory"]["value"]["records"][0]["provenance"],
+                )
 
     def test_rejected_publication_does_not_serve_cached_success(self) -> None:
         stream_frame, _expected_image = self._publish_exact_transaction()

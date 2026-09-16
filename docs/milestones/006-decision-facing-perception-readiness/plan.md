@@ -85,10 +85,11 @@ for simulator and physical vehicles.
 
 #### Frontier: D2 live decision view
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m006/live-decision-view-proposal`
 - Implementation branch: `m006/live-decision-view`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/live-decision-view.md`
+- Accepted proposal: [#216](https://github.com/GeorgeLuo/auto-driving/pull/216) at `8b27553bb722bad23477e3c5744c76a321e1c99a` (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`)
 - Review kind: Behavioral feature slice
 - Review question: Does `RuntimeViewServer` host a generation-bound `/decision` page in the same CLI loopback class as `/perception` and `/memory`, with the cycle's actual image as the primary object?
 - Acceptance owner: `RuntimeViewServer` decision-view boundary
@@ -130,6 +131,7 @@ for simulator and physical vehicles.
 | Cross-environment shadow proposal evidence | ready_for_implementation | Proposal PR #201 accepted at 9e2a353c736a04fed22c1ce5d456c6115fbfbddc (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`). |
 | Cross-environment shadow proposal evidence | implementation_in_review | Started m006/shadow-proposal-evidence. |
 | D2 live decision view | proposal_in_review | Started m006/live-decision-view-proposal. |
+| D2 live decision view | ready_for_implementation | Proposal PR #216 accepted at 8b27553bb722bad23477e3c5744c76a321e1c99a (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`). |
 
 ## Accepted Review Units
 

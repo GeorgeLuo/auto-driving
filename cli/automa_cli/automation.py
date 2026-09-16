@@ -633,15 +633,16 @@ def run_vehicle_automation(
                         worker_pid=int(state.get("pid") or os.getpid()),
                         activation_activated_at_ms=decision_activation.get("activated_at_ms"),
                     )
-                    exact_image = view_server.perception.frame(context.frame_id)
-                    if (
-                        latest_decision is None
-                        or not view_server.decision.publish(
+                    if latest_decision is None:
+                        view_server.decision.invalidate_latest()
+                        decision_view_skip = True
+                    else:
+                        decision_view_skip = not view_server.decision.publish(
                             stream_frame=latest_decision,
                             frame_record=frame_record,
-                            image=exact_image,
+                            image=view_server.perception.frame(context.frame_id),
                         )
-                    ):
+                    if decision_view_skip:
                         _record_decision_publish_skip(
                             state,
                             state_path,

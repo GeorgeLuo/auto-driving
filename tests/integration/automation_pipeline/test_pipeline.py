@@ -262,6 +262,68 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertEqual(latest["control"]["throttle"], 0.0)
             self.assertFalse(latest["control"]["applied"])
 
+    def test_missing_latest_decision_invalidates_view_and_records_skip(self) -> None:
+        """A reader bypass cannot leave a cached decision current."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            bundle = controller_bundle_paths(runtime_root / vehicle_id)
+            _write_activations(bundle)
+            mapper = _SlowMapper()
+            vehicle = {
+                "id": vehicle_id,
+                "provider": "chase-sim",
+                "connection": {"ws_url": "ws://unused"},
+                "status": {
+                    "passive_capture": {
+                        "status": "available",
+                        "session_preservation": {
+                            "preserved": True,
+                            "changed_fields": [],
+                            "unknown_fields": [],
+                        },
+                    }
+                },
+            }
+
+            with (
+                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
+                patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
+                patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
+                patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
+                patch(
+                    "cli.automa_cli.automation.publish_shadow_decision_frame",
+                    return_value=True,
+                ),
+                patch(
+                    "cli.automa_cli.automation._read_latest_decision_frame_for_view",
+                    return_value=None,
+                ),
+                patch(
+                    "cli.automa_cli.decision_view.DecisionView.invalidate_latest",
+                    autospec=True,
+                ) as invalidate_latest,
+            ):
+                result = run_vehicle_automation(
+                    vehicle_id=vehicle_id,
+                    interval_s=0.0,
+                    frames=1,
+                    take_control=False,
+                )
+
+            self.assertEqual(result.exit_code, 0, result.message)
+            invalidate_latest.assert_called_once()
+            automation_dir = Path(bundle["runtime_dir"]) / "automation"
+            state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "completed")
+            self.assertEqual(state["decision"]["latest_frame_publish_skips"], 1)
+            self.assertEqual(
+                state["decision"]["latest_frame_publish_skip_reason"],
+                "decision_view_exact_transaction_unavailable",
+            )
+
     def test_slow_cycle_keeps_its_exact_capture_through_cache_turnover(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

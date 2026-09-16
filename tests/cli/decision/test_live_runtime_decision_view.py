@@ -265,6 +265,24 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         self.assertEqual(payload["status"], "current")
         self.assertEqual(payload["decision"]["frame_id"], recovered["frame_id"])
 
+    def test_reader_bypass_invalidation_preserves_warming_contract(self) -> None:
+        self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+
+        self.server.decision.invalidate_latest()
+
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(caught.exception.code, 503)
+        error = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertEqual(error["status"], "unavailable")
+        self.assertEqual(error["reason"], "decision_warming")
+        self.assertNotIn("transaction_id", error)
+
     def test_slow_image_response_does_not_hold_decision_view_lock(self) -> None:
         """A delayed public image response cannot block the next publication."""
 

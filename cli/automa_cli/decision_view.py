@@ -216,8 +216,8 @@ class DecisionView:
         if generation != self.generation_id:
             raise DecisionViewError(409, "generation_mismatch", "decision view belongs to another generation")
 
-    def _invalidate_latest(self) -> None:
-        """Hide a cached success after a publication is rejected."""
+    def invalidate_latest(self) -> None:
+        """Hide a cached success when no complete transaction is available."""
 
         with self._lock:
             self._latest_transaction_id = None
@@ -232,7 +232,7 @@ class DecisionView:
         """Store one exact transaction only after all local identities agree."""
 
         if self.identity is None or self._startup_activation is None or image is None:
-            self._invalidate_latest()
+            self.invalidate_latest()
             return False
         try:
             accept_decision_stream_frame(
@@ -256,17 +256,17 @@ class DecisionView:
                     "activation_activated_at_ms",
                 )
             ):
-                self._invalidate_latest()
+                self.invalidate_latest()
                 return False
             frame_id = stream_frame.get("frame_id")
             if frame_record.get("frame_id") != frame_id:
-                self._invalidate_latest()
+                self.invalidate_latest()
                 return False
             if frame_record.get("run_id") != self.identity["run_id"]:
-                self._invalidate_latest()
+                self.invalidate_latest()
                 return False
             if frame_record.get("worker_pid") != self.identity["worker_pid"]:
-                self._invalidate_latest()
+                self.invalidate_latest()
                 return False
             image_bytes, content_type = image
             if (
@@ -275,14 +275,14 @@ class DecisionView:
                 or content_type not in {"image/png", "image/jpeg"}
                 or not self._activation_matches()
             ):
-                self._invalidate_latest()
+                self.invalidate_latest()
                 return False
             copied_stream = _json_copy(stream_frame)
             copied_record = _json_copy(frame_record)
         except Exception:  # noqa: BLE001 - publication must not affect the worker cycle
             # DecisionSurfaceError is intentionally not imported: this owner is
             # fail-closed for every bad publication shape.
-            self._invalidate_latest()
+            self.invalidate_latest()
             return False
 
         transaction_id = _sha256_json(

@@ -280,7 +280,6 @@
     let paused = false;
     let refreshing = false;
     let loadedImageUrl = null;
-    let displayedBlobUrl = null;
     const palette = ["#00d084", "#ffb000", "#ff5a5f", "#4ea5ff", "#d678ff", "#f46f36", "#12b8b0"];
 
     function colorFor(value) {
@@ -455,12 +454,8 @@
       return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.status || "idle"}`, mode: "stale" };
     }
 
-    async function loadDecisionImage(imageUrl) {
-      const response = await fetch(imageUrl, { cache: "no-store" });
-      if (!response.ok) throw new Error("Exact decision image is unavailable.");
-      const blob = await response.blob();
-      const nextUrl = URL.createObjectURL(blob);
-      await new Promise((resolve, reject) => {
+    function loadDecisionImage(imageUrl) {
+      return new Promise((resolve, reject) => {
         const loaded = () => { cleanup(); resolve(); };
         const failed = () => { cleanup(); reject(new Error("frame unavailable")); };
         const cleanup = () => {
@@ -469,10 +464,8 @@
         };
         frameImage.addEventListener("load", loaded);
         frameImage.addEventListener("error", failed);
-        frameImage.src = nextUrl;
+        frameImage.src = imageUrl;
       });
-      if (displayedBlobUrl) URL.revokeObjectURL(displayedBlobUrl);
-      displayedBlobUrl = nextUrl;
     }
 
     async function refresh() {
@@ -516,9 +509,6 @@
       if (!paused) refresh();
     });
     window.addEventListener("resize", drawOverlays);
-    addEventListener("beforeunload", () => {
-      if (displayedBlobUrl) URL.revokeObjectURL(displayedBlobUrl);
-    });
 
     refresh();
     setInterval(refresh, 200);

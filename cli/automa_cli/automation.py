@@ -752,6 +752,8 @@ def run_vehicle_automation(
                     worker_errors.append(exc)
                     worker_failed.set()
             finally:
+                if isinstance(item, _PendingAutomationFrame) and view_server is not None:
+                    view_server.perception.release_frame(item.context.frame_id)
                 if isinstance(item, _PendingAutomationFrame) and not record:
                     item.front_path.unlink(missing_ok=True)
                 pending_frames.task_done()
@@ -774,6 +776,8 @@ def run_vehicle_automation(
                     continue
                 if isinstance(dropped, _PendingAutomationFrame) and not record:
                     dropped.front_path.unlink(missing_ok=True)
+                if isinstance(dropped, _PendingAutomationFrame) and view_server is not None:
+                    view_server.perception.release_frame(dropped.context.frame_id)
                 pending_frames.task_done()
                 with state_lock:
                     state["frames_dropped"] = int(state["frames_dropped"]) + 1
@@ -785,6 +789,8 @@ def run_vehicle_automation(
             except queue.Empty:
                 dropped = None
             if isinstance(dropped, _PendingAutomationFrame):
+                if view_server is not None:
+                    view_server.perception.release_frame(dropped.context.frame_id)
                 if not record:
                     dropped.front_path.unlink(missing_ok=True)
                 with state_lock:
@@ -990,6 +996,8 @@ def run_vehicle_automation(
                     "control_application": "stop_only_safety_gate" if take_control else "not_applied",
                 },
             )
+            if view_server is not None:
+                view_server.perception.retain_frame(frame_id)
             enqueue_latest(
                 _PendingAutomationFrame(
                     context=context,

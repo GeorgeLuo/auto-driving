@@ -262,6 +262,71 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertEqual(latest["control"]["throttle"], 0.0)
             self.assertFalse(latest["control"]["applied"])
 
+    def test_slow_cycle_keeps_its_exact_capture_through_cache_turnover(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            bundle = controller_bundle_paths(runtime_root / vehicle_id)
+            _write_activations(bundle)
+            mapper = _SlowMapper()
+            publications: list[tuple[str, tuple[bytes, str] | None]] = []
+            vehicle = {
+                "id": vehicle_id,
+                "provider": "chase-sim",
+                "connection": {"ws_url": "ws://unused"},
+                "status": {
+                    "passive_capture": {
+                        "status": "available",
+                        "session_preservation": {
+                            "preserved": True,
+                            "changed_fields": [],
+                            "unknown_fields": [],
+                        },
+                    }
+                },
+            }
+
+            def accepted_frame(_path, **identity):
+                return {"frame_id": identity["frame_id"]}
+
+            def publish_view(*, stream_frame, frame_record, image):
+                publications.append((frame_record["frame_id"], image))
+                return True
+
+            with (
+                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
+                patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
+                patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
+                patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
+                patch(
+                    "cli.automa_cli.automation.publish_shadow_decision_frame",
+                    return_value=True,
+                ),
+                patch(
+                    "cli.automa_cli.automation._read_latest_decision_frame_for_view",
+                    side_effect=accepted_frame,
+                ),
+                patch(
+                    "cli.automa_cli.decision_view.DecisionView.publish",
+                    side_effect=publish_view,
+                ),
+            ):
+                result = run_vehicle_automation(
+                    vehicle_id=vehicle_id,
+                    interval_s=0.0,
+                    frames=12,
+                    take_control=False,
+                )
+
+            self.assertEqual(result.exit_code, 0, result.message)
+            self.assertTrue(publications)
+            first_frame_id, first_image = publications[0]
+            self.assertEqual(first_frame_id, mapper.frame_ids[0])
+            self.assertEqual(first_frame_id, "chase_frame_000100")
+            self.assertIsNotNone(first_image)
+            self.assertTrue(first_image[0])
+
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

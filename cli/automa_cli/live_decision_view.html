@@ -491,7 +491,11 @@
         const status = liveStatus(payload);
         setStatus(status.text, status.mode);
       } catch (error) {
-        setStatus(`Waiting: ${error.message}`, "error");
+        if (latest !== null && loadedImageUrl !== null) {
+          setStatus(`Frozen/stale snapshot | ${error.message}`, "stale");
+        } else {
+          setStatus(`Waiting: ${error.message}`, "error");
+        }
       } finally {
         refreshing = false;
       }
@@ -505,7 +509,9 @@
     pauseButton.addEventListener("click", () => {
       paused = !paused;
       pauseButton.textContent = paused ? "Resume updates" : "Pause updates";
-      setStatus(paused ? "Paused" : "Live", paused ? "" : "live");
+      const hasSnapshot = latest !== null && loadedImageUrl !== null;
+      const pausedStatus = hasSnapshot ? "Paused | frozen snapshot" : "Paused | waiting for snapshot";
+      setStatus(paused ? pausedStatus : "Live", paused && hasSnapshot ? "stale" : "live");
       if (!paused) refresh();
     });
     window.addEventListener("resize", drawOverlays);

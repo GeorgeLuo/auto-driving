@@ -310,6 +310,30 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         self.assertEqual(combined["status"], "warming")
         self.assertEqual(combined["url"], f"{self.server.url}decision?generation={generation}")
 
+    def test_stale_api_refusal_leaves_a_visibly_frozen_browser_snapshot(self) -> None:
+        stream_frame, _expected_image = self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        stale_now = (
+            stream_frame["published_at_ms"]
+            + decision_module.DECISION_STREAM_MAX_AGE_MS
+            + 1
+        )
+        with patch("cli.automa_cli.decision_view._now_ms", return_value=stale_now):
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(
+                    f"{self.server.url}api/decision/latest?generation={generation}",
+                    timeout=1.0,
+                )
+        self.assertEqual(caught.exception.code, 503)
+        error = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertEqual(error["reason"], "decision_stale")
+
+        with urlopen(f"{self.server.url}decision?generation={generation}", timeout=1.0) as response:
+            page = response.read().decode("utf-8")
+        self.assertIn("Frozen/stale snapshot", page)
+        self.assertIn("Paused | frozen snapshot", page)
+
     def test_old_session_is_unavailable_after_public_activation_restaging(self) -> None:
         self._publish_exact_transaction()
         old_generation = self.server.decision.generation_id

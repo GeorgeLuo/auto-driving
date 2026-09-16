@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
@@ -25,6 +26,7 @@ from cli.automa_cli.decision import (
     strict_decode_apply_observation,
     update_vehicle_decision,
 )
+from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.decision.catalog import create_shadow_proposals_engine
 
@@ -223,6 +225,80 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
             payload = json.loads(response.read().decode("utf-8"))
         self.assertEqual(payload["current_image"]["frame_id"], latest["frame_id"])
         self.assertEqual(payload["decision"]["frame_id"], latest["frame_id"])
+
+    def test_slow_image_response_does_not_hold_decision_view_lock(self) -> None:
+        """A delayed public image response cannot block the next publication."""
+
+        _stream_frame, expected_image = self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        payload = self.server.decision.latest_payload(generation=generation)
+        image_url = f"{self.server.url.rstrip('/')}{payload['current_image']['url']}"
+
+        send_started = threading.Event()
+        release_send = threading.Event()
+        publish_done = threading.Event()
+        reader_result: dict[str, object] = {}
+        publish_errors: list[BaseException] = []
+        original_send = LoopbackHTTPRequestHandler._send
+
+        def delayed_send(
+            handler,
+            status: int,
+            body: bytes,
+            content_type: str,
+            *,
+            include_body: bool = True,
+        ) -> None:
+            if urlparse(handler.path).path == "/api/decision/image":
+                send_started.set()
+                if not release_send.wait(timeout=2.0):
+                    raise AssertionError("test did not release the deliberately slow reader")
+            original_send(
+                handler,
+                status,
+                body,
+                content_type,
+                include_body=include_body,
+            )
+
+        def read_image() -> None:
+            try:
+                with urlopen(image_url, timeout=3.0) as response:
+                    reader_result["body"] = response.read()
+            except BaseException as exc:  # noqa: BLE001 - surface thread failures
+                reader_result["error"] = exc
+
+        def publish_next() -> None:
+            try:
+                self._publish_exact_transaction(
+                    image_name="decision-frame-next.png",
+                    image_color=(210, 40, 30),
+                )
+            except BaseException as exc:  # noqa: BLE001 - surface thread failures
+                publish_errors.append(exc)
+            finally:
+                publish_done.set()
+
+        reader = threading.Thread(target=read_image, daemon=True)
+        publisher = threading.Thread(target=publish_next, daemon=True)
+        try:
+            with patch.object(LoopbackHTTPRequestHandler, "_send", new=delayed_send):
+                reader.start()
+                self.assertTrue(send_started.wait(timeout=1.0))
+                publisher.start()
+                self.assertTrue(
+                    publish_done.wait(timeout=1.0),
+                    "publication blocked behind the delayed HTTP response",
+                )
+        finally:
+            release_send.set()
+            reader.join(timeout=2.0)
+            publisher.join(timeout=2.0)
+
+        self.assertFalse(publish_errors, publish_errors)
+        self.assertNotIn("error", reader_result)
+        self.assertEqual(reader_result.get("body"), expected_image)
 
     def test_info_reports_generation_url_while_warming(self) -> None:
         generation = self.server.decision.generation_id

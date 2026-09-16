@@ -650,7 +650,7 @@ def run_vehicle_automation(
                         )
                 view_server.perception.publish_perception(frame_record=frame_record)
                 update_view_state(view_server.health_payload())
-            except (OSError, TypeError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001 - view publication is observational
                 update_view_state(
                     {
                         **view_server.describe(),
@@ -962,7 +962,7 @@ def run_vehicle_automation(
                 try:
                     view_server.perception.publish_frame(frame_path=front_path, frame_record=capture_record)
                     update_view_state(view_server.health_payload())
-                except (OSError, TypeError, ValueError) as exc:
+                except Exception as exc:  # noqa: BLE001 - view publication is observational
                     update_view_state(
                         {
                             **view_server.describe(),

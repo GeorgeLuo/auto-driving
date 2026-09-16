@@ -198,6 +198,70 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 [],
             )
 
+    def test_decision_view_publication_failure_does_not_stop_automation(self) -> None:
+        """A view failure cannot change the completed cycle's authority result."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            bundle = controller_bundle_paths(runtime_root / vehicle_id)
+            _write_activations(bundle)
+            mapper = _SlowMapper()
+            vehicle = {
+                "id": vehicle_id,
+                "provider": "chase-sim",
+                "connection": {"ws_url": "ws://unused"},
+                "status": {
+                    "passive_capture": {
+                        "status": "available",
+                        "session_preservation": {
+                            "preserved": True,
+                            "changed_fields": [],
+                            "unknown_fields": [],
+                        },
+                    }
+                },
+            }
+
+            with (
+                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
+                patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
+                patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
+                patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
+                patch(
+                    "cli.automa_cli.automation.publish_shadow_decision_frame",
+                    return_value=True,
+                ),
+                patch(
+                    "cli.automa_cli.automation._read_latest_decision_frame_for_view",
+                    return_value={"frame_id": "view-publication-frame"},
+                ),
+                patch(
+                    "cli.automa_cli.decision_view.DecisionView.publish",
+                    side_effect=RuntimeError("decision view unavailable"),
+                ),
+            ):
+                result = run_vehicle_automation(
+                    vehicle_id=vehicle_id,
+                    interval_s=0.0,
+                    frames=1,
+                    take_control=False,
+                )
+
+            self.assertEqual(result.exit_code, 0, result.message)
+            automation_dir = Path(bundle["runtime_dir"]) / "automation"
+            state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "completed")
+            self.assertEqual(state["frames_captured"], 1)
+            self.assertEqual(state["frames_processed"], 1)
+            latest = json.loads(
+                (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(latest["control"]["steering"], 0.0)
+            self.assertEqual(latest["control"]["throttle"], 0.0)
+            self.assertFalse(latest["control"]["applied"])
+
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

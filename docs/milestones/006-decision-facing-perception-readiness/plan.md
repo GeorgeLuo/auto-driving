@@ -81,6 +81,22 @@ for simulator and physical vehicles.
 - Prerequisite: Automa shadow decision surfaces accepted (M006-05) with stage/info/apply/stream/view and deterministic replay
 - Milestone-level non-goal: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims
 
+### Parallel Frontiers
+
+#### Frontier: D2 live decision view
+
+- Workflow state: implementation_in_review
+- Proposal branch: `m006/live-decision-view-proposal`
+- Implementation branch: `m006/live-decision-view`
+- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/live-decision-view.md`
+- Accepted proposal: [#216](https://github.com/GeorgeLuo/auto-driving/pull/216) at `8b27553bb722bad23477e3c5744c76a321e1c99a` (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`)
+- Review kind: Behavioral feature slice
+- Review question: Does `RuntimeViewServer` host a generation-bound `/decision` page in the same CLI loopback class as `/perception` and `/memory`, with the cycle's actual image as the primary object?
+- Acceptance owner: `RuntimeViewServer` decision-view boundary
+- Exit criteria affected: M006-08
+- Prerequisite: Current A remains canonically `implementation_in_review`; accepted M006-05 decision surfaces and PR #207's `RuntimeViewServer` are available
+- Non-goals: Change M006-06/M006-07 ownership or status, complete #202 evidence, apply movement, or close M006
+
 ### Frontier Map
 
 - Path: none
@@ -114,6 +130,9 @@ for simulator and physical vehicles.
 | Cross-environment shadow proposal evidence | proposal_in_review | Started m006/shadow-proposal-evidence-proposal. |
 | Cross-environment shadow proposal evidence | ready_for_implementation | Proposal PR #201 accepted at 9e2a353c736a04fed22c1ce5d456c6115fbfbddc (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`). |
 | Cross-environment shadow proposal evidence | implementation_in_review | Started m006/shadow-proposal-evidence. |
+| D2 live decision view | proposal_in_review | Started m006/live-decision-view-proposal. |
+| D2 live decision view | ready_for_implementation | Proposal PR #216 accepted at 8b27553bb722bad23477e3c5744c76a321e1c99a (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`). |
+| D2 live decision view | implementation_in_review | Started m006/live-decision-view. |
 
 ## Accepted Review Units
 

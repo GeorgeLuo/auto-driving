@@ -28,6 +28,7 @@ class PerceptionView:
         self._frame_bytes: bytes | None = None
         self._frame_content_type = "application/octet-stream"
         self._frames: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
+        self._retained_frame_ids: set[str] = set()
         self._latest_frame: dict[str, Any] | None = None
         self._latest_perception_record: dict[str, Any] | None = None
         self._latest_frame_id: str | None = None
@@ -51,12 +52,22 @@ class PerceptionView:
             height_px=height_px,
         )
         with self._lock:
+            if frame_id not in self._frames and len(self._frames) >= MAX_BUFFERED_FRAMES:
+                evictable = next(
+                    (
+                        retained_id
+                        for retained_id in self._frames
+                        if retained_id not in self._retained_frame_ids
+                    ),
+                    None,
+                )
+                if evictable is None:
+                    raise RuntimeError("perception frame capacity is retained in flight")
+                del self._frames[evictable]
             self._frame_bytes = frame_bytes
             self._frame_content_type = content_type
             self._frames[frame_id] = (frame_bytes, content_type)
             self._frames.move_to_end(frame_id)
-            while len(self._frames) > MAX_BUFFERED_FRAMES:
-                self._frames.popitem(last=False)
             self._latest_frame = frame
             self._latest_frame_id = frame_id
             self._frame_published_at_ms = published_at_ms
@@ -98,6 +109,21 @@ class PerceptionView:
             if self._frame_bytes is None:
                 return None
             return self._frame_bytes, self._frame_content_type
+
+    def retain_frame(self, frame_id: str) -> bool:
+        """Keep one buffered capture available while its queued cycle runs."""
+
+        with self._lock:
+            if frame_id not in self._frames:
+                return False
+            self._retained_frame_ids.add(frame_id)
+            return True
+
+    def release_frame(self, frame_id: str) -> None:
+        """Release a queued capture without changing the bounded cache size."""
+
+        with self._lock:
+            self._retained_frame_ids.discard(frame_id)
 
 
 def get_perception_view_status(

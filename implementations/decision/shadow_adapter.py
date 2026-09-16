@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from autonomy.decision.decision_data import ComponentEnvelope
+from autonomy.decision.decision_data import ComponentEnvelope, omit_forbidden_channel_keys
 from autonomy.decision.memory import MemorySnapshot
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON, authorized_idle_control
@@ -182,8 +182,12 @@ class ShadowProposalsAutonomyEngine:
         observation: Observation | dict[str, Any] | None
         if snapshot.observation is None:
             observation = None
-        elif isinstance(snapshot.observation, (Observation, dict)):
-            observation = snapshot.observation
+        elif isinstance(snapshot.observation, Observation):
+            observation = Observation.from_dict(
+                omit_forbidden_channel_keys(snapshot.observation.to_dict())
+            )
+        elif isinstance(snapshot.observation, dict):
+            observation = omit_forbidden_channel_keys(snapshot.observation)
         else:
             observation = None
 

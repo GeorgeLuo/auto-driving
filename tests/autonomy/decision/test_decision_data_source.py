@@ -9,6 +9,7 @@ from autonomy.decision.decision_data import (
     DecisionDataSource,
     build_decision_data_source,
     memory_envelope_from_snapshot,
+    omit_forbidden_channel_keys,
     ready_envelope,
     unavailable_envelope,
 )
@@ -225,6 +226,34 @@ class DecisionDataSourceTests(unittest.TestCase):
                 timestamp_ms=1,
                 capabilities=ready_envelope(LiveClient(), updated_at_ms=1),
             )
+
+    def test_omitting_evaluator_keys_makes_a_live_capture_admissible(self) -> None:
+        dirty = {
+            "readings": {
+                "front_camera": {
+                    "metadata": {
+                        "content_type": "image/png",
+                        "evaluator_reference": {"status": "available"},
+                    }
+                }
+            }
+        }
+        cleaned = omit_forbidden_channel_keys(dirty)
+        self.assertNotIn(
+            "evaluator_reference",
+            cleaned["readings"]["front_camera"]["metadata"],
+        )
+        self.assertEqual(
+            cleaned["readings"]["front_camera"]["metadata"]["content_type"],
+            "image/png",
+        )
+        source = build_decision_data_source(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            observation={"observation_id": "obs", "created_at_ms": 1, "sensor_snapshot": cleaned, "things": [], "signals": [], "summary": [], "artifacts": {}, "metadata": {}, "schema": "decision_observation_v1"},
+        )
+        self.assertEqual(source.observation.status, "ready")
 
     def test_rejects_evaluator_and_map_metadata(self) -> None:
         from autonomy.decision.memory import canonical_json_bytes

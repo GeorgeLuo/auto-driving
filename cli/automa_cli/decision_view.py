@@ -253,8 +253,6 @@ class DecisionView:
             frame_id = stream_frame.get("frame_id")
             if frame_record.get("frame_id") != frame_id:
                 return False
-            if frame_record.get("frame_index") != stream_frame.get("frame_index"):
-                return False
             if frame_record.get("run_id") != self.identity["run_id"]:
                 return False
             if frame_record.get("worker_pid") != self.identity["worker_pid"]:

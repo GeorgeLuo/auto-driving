@@ -599,6 +599,25 @@ class ParallelFrontierTests(unittest.TestCase):
             (PARALLEL_FRONTIER, "proposal_in_review"),
         )
 
+    def test_parallel_opening_ignores_superseded_historical_frontiers(self) -> None:
+        plan = parallel_proposal_review_plan_text().replace(
+            f"| {PARALLEL_FRONTIER} | proposal_in_review | "
+            "Parallel proposal published on the milestone. |",
+            "| Superseded evidence policy | ready_for_proposal | "
+            "Superseded before the parallel proposal. |\n"
+            f"| {PARALLEL_FRONTIER} | proposal_in_review | "
+            "Parallel proposal published on the milestone. |",
+            1,
+        )
+
+        state = validate_plan_text(plan)
+
+        self.assertEqual(
+            [(frontier.name, frontier.fields["workflow state"])
+             for frontier in state.parallel_frontiers],
+            [(PARALLEL_FRONTIER, "proposal_in_review")],
+        )
+
     def test_parallel_completion_preserves_current_frontier(self) -> None:
         updated = apply_handoff(
             parallel_implementation_review_plan_text(),

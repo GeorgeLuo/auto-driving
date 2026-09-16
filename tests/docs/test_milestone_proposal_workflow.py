@@ -1091,6 +1091,26 @@ class ReviewUnitTransitionTests(unittest.TestCase):
         )
         self.assertEqual(transition, "proposal")
 
+    def test_explicit_frontier_selector_does_not_fall_back_to_branch(self) -> None:
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "active frontier 'stale frontier' was not found",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body(),
+                frontier_name="stale frontier",
+            )
+
     def test_opening_proposal_can_edit_current_before_contract_receipt(self) -> None:
         changed = self.proposal_head.replace(
             "Does repeated evidence follow one deterministic contract?",
@@ -2642,6 +2662,19 @@ Exercise the normal inspection path against published evidence.
                 ),
                 "proposal",
             )
+            with self.assertRaisesRegex(
+                PlanContractError,
+                "active frontier 'stale frontier' was not found",
+            ):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=parallel_branch,
+                    base_sha=base_sha,
+                    head_sha=parallel_head,
+                    frontier_name="stale frontier",
+                    pr_body=_review_unit_body("Behavioral feature slice"),
+                    repo_root=root,
+                )
             with self.assertRaisesRegex(PlanContractError, "implementation PR must use"):
                 validate_review_unit_git_diff(
                     base_ref=MILESTONE_BRANCH,

@@ -2154,7 +2154,7 @@ def _resolve_active_frontier(
     """Resolve an operation target, allowing inference only when unambiguous."""
 
     active = state.active_frontiers
-    if frontier_name:
+    if frontier_name is not None:
         matches = [frontier for frontier in active if frontier.name == frontier_name]
         if len(matches) == 1:
             return matches[0]
@@ -4711,6 +4711,31 @@ def _added_parallel_frontiers(
     )
 
 
+def _opening_frontier_name(base: PlanState, head: PlanState) -> str | None:
+    """Return the only frontier name that may be absent from the base.
+
+    Normal review validation must resolve an explicit selector against the
+    canonical base plan. The one exception is a proposal that introduces a
+    new Current or one new parallel frontier; that name is necessarily absent
+    from the base and must be checked against the head artifact instead.
+    """
+
+    if (
+        base.status == "Active"
+        and base.current.is_empty
+        and not head.current.is_empty
+        and _workflow_state(head.current) == "proposal_in_review"
+    ):
+        return head.current.name
+    added = _added_parallel_frontiers(base, head)
+    if (
+        len(added) == 1
+        and _workflow_state(added[0]) == "proposal_in_review"
+    ):
+        return added[0].name
+    return None
+
+
 def _validate_opening_parallel_proposal_transition(
     base: PlanState,
     head: PlanState,
@@ -5003,6 +5028,11 @@ def validate_review_unit_transition(
             base, frontier_name=frontier_name, branch=head_branch
         )
     except PlanContractError:
+        if (
+            frontier_name is not None
+            and frontier_name != _opening_frontier_name(base, head)
+        ):
+            raise
         target = None
     if (
         target is not None
@@ -5546,6 +5576,11 @@ def validate_review_unit_git_diff(
             base, frontier_name=frontier_name, branch=head_ref
         )
     except PlanContractError:
+        if (
+            frontier_name is not None
+            and frontier_name != _opening_frontier_name(base, head)
+        ):
+            raise
         base_target = None
     proposal_text: str | None = None
     proposal_amendment_text: str | None = None

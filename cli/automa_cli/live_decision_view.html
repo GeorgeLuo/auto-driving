@@ -306,6 +306,59 @@
       return `steer ${command.steering} / throttle ${command.throttle}`;
     }
 
+    function serializedHostValue(value) {
+      try {
+        const serialized = JSON.stringify(value);
+        return serialized === undefined ? "—" : serialized;
+      } catch (_error) {
+        return "—";
+      }
+    }
+
+    function hostApplicationView(envelope, decisionFrameId) {
+      const unavailable = (reason, value = "—") => ({
+        status: "unavailable",
+        reason,
+        value,
+        frame: decisionFrameId ? `${decisionFrameId} (decision cycle)` : "unknown",
+      });
+      if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+        return unavailable("host_observation_malformed");
+      }
+      const status = envelope.status;
+      if (!["ready", "unavailable", "error"].includes(status)) {
+        return unavailable("host_observation_malformed");
+      }
+      if (status !== "ready") {
+        if (envelope.value !== null || typeof envelope.reason !== "string" || !envelope.reason) {
+          return unavailable("host_observation_malformed");
+        }
+        return {
+          status,
+          reason: envelope.reason,
+          value: "—",
+          frame: decisionFrameId ? `${decisionFrameId} (decision cycle)` : "unknown",
+        };
+      }
+      const observed = serializedHostValue(envelope.value);
+      if (envelope.value == null || envelope.reason !== "" || observed === "—") {
+        return unavailable("host_observation_malformed", observed);
+      }
+      let frame = decisionFrameId ? `${decisionFrameId} (decision cycle)` : "unknown";
+      if (typeof envelope.value === "object" && !Array.isArray(envelope.value) &&
+          Object.hasOwn(envelope.value, "frame_id")) {
+        const reportedFrame = envelope.value.frame_id;
+        if (typeof reportedFrame !== "string" || !reportedFrame) {
+          return unavailable("host_observation_malformed", observed);
+        }
+        if (decisionFrameId && reportedFrame !== decisionFrameId) {
+          return unavailable("host_frame_mismatch", observed);
+        }
+        frame = `${reportedFrame} (host reported)`;
+      }
+      return { status: "ready", reason: "—", value: observed, frame };
+    }
+
     function selectedCandidate() {
       const plan = latest?.decision?.plan_summary || {};
       const selected = plan.selected_proposal_id;
@@ -401,7 +454,14 @@
       appendMetric(authorityMetrics, "Proposed", commandText(authority.proposed || candidate?.command));
       appendMetric(authorityMetrics, "Authorized", commandText(authority.authorized_output));
       appendMetric(authorityMetrics, "Applied", authority.proposed_applied ? "true" : "false");
-      appendMetric(authorityMetrics, "Host", authority.host_application?.status || "—");
+      const host = hostApplicationView(
+        authority.host_application,
+        latest.current_image?.frame_id,
+      );
+      appendMetric(authorityMetrics, "Host status", host.status);
+      appendMetric(authorityMetrics, "Host reason", host.reason);
+      appendMetric(authorityMetrics, "Host frame", host.frame);
+      appendMetric(authorityMetrics, "Host observed", host.value);
 
       const candidates = document.getElementById("candidates");
       candidates.replaceChildren();

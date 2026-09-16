@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from autonomy.decision import ComponentEnvelope
 from cli.automa_cli import decision as decision_module
 from cli.automa_cli.automation import _read_latest_decision_frame_for_view
 from cli.automa_cli.decision import (
@@ -70,7 +71,13 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         ).start()
         self.addCleanup(self.server.stop)
 
-    def _accepted_frame(self, *, run_id: str = "run-live", raw: dict | None = None) -> dict:
+    def _accepted_frame(
+        self,
+        *,
+        run_id: str = "run-live",
+        raw: dict | None = None,
+        host_application: ComponentEnvelope | None = None,
+    ) -> dict:
         if raw is None:
             raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
         cycle, _control = create_shadow_proposals_engine().run_cycle(
@@ -79,6 +86,7 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
             timestamp_ms=raw["timestamp_ms"],
             observation=strict_decode_apply_observation(raw["observation"]),
             memory=strict_decode_apply_memory(raw["memory"]),
+            host_application=host_application,
         )
         return build_decision_stream_frame(
             cycle,
@@ -203,6 +211,62 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
             payload["freshness"]["captured_at_ms"],
             payload["freshness"]["published_at_ms"],
         )
+
+    def test_page_keeps_host_observations_separate_and_attributable(self) -> None:
+        raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
+        frame_id = raw["frame_id"]
+        cases = (
+            ("absent", None, "unavailable", None),
+            (
+                "malformed-frame",
+                ComponentEnvelope(status="ready", value={"frame_id": 7, "steering": 0.4}),
+                "ready",
+                0.4,
+            ),
+            (
+                "wrong-frame",
+                ComponentEnvelope(
+                    status="ready",
+                    value={"frame_id": "older-frame", "steering": -0.6},
+                ),
+                "ready",
+                -0.6,
+            ),
+            (
+                "nonzero",
+                ComponentEnvelope(
+                    status="ready",
+                    value={"frame_id": frame_id, "steering": 0.5, "throttle": 0.2},
+                ),
+                "ready",
+                0.5,
+            ),
+        )
+        for index, (name, host_application, expected_status, steering) in enumerate(cases):
+            with self.subTest(name=name):
+                stream_frame = self._accepted_frame(
+                    raw=raw,
+                    host_application=host_application,
+                )
+                self._publish_exact_transaction(
+                    stream_frame=stream_frame,
+                    image_name=f"host-{index}.png",
+                )
+                host = self._latest_payload()["authority"]["host_application"]
+                self.assertEqual(host["status"], expected_status)
+                if steering is None:
+                    self.assertIsNone(host["value"])
+                else:
+                    self.assertEqual(host["value"]["steering"], steering)
+
+        generation = self.server.decision.generation_id
+        with urlopen(f"{self.server.url}decision?generation={generation}", timeout=1.0) as response:
+            page = response.read().decode("utf-8")
+        self.assertIn("function hostApplicationView(envelope, decisionFrameId)", page)
+        self.assertIn('return unavailable("host_observation_malformed"', page)
+        self.assertIn('return unavailable("host_frame_mismatch", observed)', page)
+        self.assertIn('appendMetric(authorityMetrics, "Host observed", host.value)', page)
+        self.assertNotIn('appendMetric(authorityMetrics, "Host",', page)
 
     def test_shadow_publish_joins_the_exact_buffered_capture(self) -> None:
         raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]

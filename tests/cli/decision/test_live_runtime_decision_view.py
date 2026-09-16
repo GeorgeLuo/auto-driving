@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 from unittest.mock import patch
 
@@ -67,7 +67,7 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         ).start()
         self.addCleanup(self.server.stop)
 
-    def _accepted_frame(self) -> dict:
+    def _accepted_frame(self, *, run_id: str = "run-live") -> dict:
         raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
         cycle, _control = create_shadow_proposals_engine().run_cycle(
             frame_id=raw["frame_id"],
@@ -79,38 +79,50 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         return build_decision_stream_frame(
             cycle,
             vehicle_id="chase-sim-chaser",
-            run_id="run-live",
+            run_id=run_id,
             worker_pid=os.getpid(),
             activation_engine_id=ENGINE_ID,
             activation_activated_at_ms=self.activation["activated_at_ms"],
         )
 
-    def _publish_exact_transaction(self) -> tuple[dict, bytes]:
-        stream_frame = self._accepted_frame()
-        frame_path = Path(self._temporary.name) / "decision-frame.png"
-        Image.new("RGB", (40, 30), (20, 80, 150)).save(frame_path)
+    def _publish_exact_transaction(
+        self,
+        *,
+        server: RuntimeViewServer | None = None,
+        run_id: str = "run-live",
+        image_name: str = "decision-frame.png",
+        image_color: tuple[int, int, int] = (20, 80, 150),
+    ) -> tuple[dict, bytes]:
+        target = self.server if server is None else server
+        stream_frame = self._accepted_frame(run_id=run_id)
+        frame_path = Path(self._temporary.name) / image_name
+        Image.new("RGB", (40, 30), image_color).save(frame_path)
         frame_record = {
             "frame_id": stream_frame["frame_id"],
             "frame_index": stream_frame["frame_index"],
             "captured_at_ms": stream_frame["timestamp_ms"],
-            "run_id": "run-live",
+            "run_id": run_id,
             "worker_pid": os.getpid(),
             "sensor_snapshot": {"readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}},
         }
-        self.server.perception.publish_frame(frame_path=frame_path, frame_record=frame_record)
+        target.perception.publish_frame(frame_path=frame_path, frame_record=frame_record)
 
         # A newer camera capture becomes perception's default frame first. The
         # decision must still select the exact buffered frame above by ID.
-        newer_path = Path(self._temporary.name) / "later-frame.png"
+        newer_path = Path(self._temporary.name) / f"{image_name}.later.png"
         Image.new("RGB", (40, 30), (210, 40, 30)).save(newer_path)
-        self.server.perception.publish_frame(
+        target.perception.publish_frame(
             frame_path=newer_path,
-            frame_record={**frame_record, "frame_id": "frame_later", "frame_index": frame_record["frame_index"] + 1},
+            frame_record={
+                **frame_record,
+                "frame_id": f"{run_id}-later",
+                "frame_index": frame_record["frame_index"] + 1,
+            },
         )
-        exact_image = self.server.perception.frame(stream_frame["frame_id"])
+        exact_image = target.perception.frame(stream_frame["frame_id"])
         self.assertIsNotNone(exact_image)
         self.assertTrue(
-            self.server.decision.publish(
+            target.decision.publish(
                 stream_frame=stream_frame,
                 frame_record=frame_record,
                 image=exact_image,
@@ -222,12 +234,99 @@ class LiveRuntimeDecisionViewTests(unittest.TestCase):
         self.assertEqual(combined["status"], "warming")
         self.assertEqual(combined["url"], f"{self.server.url}decision?generation={generation}")
 
-    def test_refuses_mismatched_generation_and_write_method(self) -> None:
+    def test_old_session_is_unavailable_after_public_activation_restaging(self) -> None:
         self._publish_exact_transaction()
-        with self.assertRaises(HTTPError) as mismatch:
-            urlopen(f"{self.server.url}api/decision/latest?generation={'0' * 64}", timeout=1.0)
-        self.assertEqual(mismatch.exception.code, 409)
-        self.assertEqual(json.loads(mismatch.exception.read().decode("utf-8"))["reason"], "generation_mismatch")
+        old_generation = self.server.decision.generation_id
+        self.assertIsNotNone(old_generation)
+        old_latest_url = f"{self.server.url}api/decision/latest?generation={old_generation}"
+        with urlopen(old_latest_url, timeout=1.0) as response:
+            old_payload = json.loads(response.read().decode("utf-8"))
+        old_image_url = f"{self.server.url.rstrip('/')}{old_payload['current_image']['url']}"
+
+        # Use the public update command to replace the active decision
+        # generation while the old producer is still serving its URL.
+        restage = update_vehicle_decision(
+            vehicle_id="chase-sim-chaser",
+            engine_id="idle",
+            json_output=True,
+        )
+        self.assertEqual(restage.exit_code, 0, restage.message)
+        current_activation = json.loads(self.activation_path.read_text(encoding="utf-8"))
+        self.assertEqual(current_activation["decision"]["engine_id"], "idle")
+        self.assertNotEqual(current_activation, self.activation)
+
+        for old_url in (old_latest_url, old_image_url):
+            with self.subTest(old_url=old_url):
+                with self.assertRaises(HTTPError) as rejected:
+                    urlopen(old_url, timeout=1.0)
+                self.assertEqual(rejected.exception.code, 503)
+                error = json.loads(rejected.exception.read().decode("utf-8"))
+                self.assertEqual(error["status"], "unavailable")
+                self.assertEqual(error["reason"], "activation_mismatch")
+                self.assertNotIn("transaction_id", error)
+                self.assertNotIn("current_image", error)
+
+    def test_old_session_cannot_attach_to_same_port_replacement(self) -> None:
+        self._publish_exact_transaction()
+        old_url = self.server.url
+        old_generation = self.server.decision.generation_id
+        self.assertIsNotNone(old_url)
+        self.assertIsNotNone(old_generation)
+        old_latest_url = f"{old_url}api/decision/latest?generation={old_generation}"
+        with urlopen(old_latest_url, timeout=1.0) as response:
+            old_payload = json.loads(response.read().decode("utf-8"))
+        old_image_url = f"{old_url.rstrip('/')}{old_payload['current_image']['url']}"
+        old_port = urlparse(old_url).port
+        self.assertIsNotNone(old_port)
+
+        self.server.stop()
+        replacement = RuntimeViewServer(
+            vehicle_id="chase-sim-chaser",
+            automation_dir=self.automation_dir,
+            port=old_port,
+            run_id="run-replacement",
+            worker_pid=os.getpid(),
+            decision_activation=self.activation,
+            decision_activation_path=self.activation_path,
+        ).start()
+        self.addCleanup(replacement.stop)
+        replacement_frame, replacement_image = self._publish_exact_transaction(
+            server=replacement,
+            run_id="run-replacement",
+            image_name="replacement-frame.png",
+            image_color=(210, 40, 30),
+        )
+        new_generation = replacement.decision.generation_id
+        self.assertIsNotNone(new_generation)
+        self.assertNotEqual(old_generation, new_generation)
+
+        new_latest_url = f"{replacement.url}api/decision/latest?generation={new_generation}"
+        with urlopen(new_latest_url, timeout=1.0) as response:
+            replacement_payload = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(replacement_payload["decision"]["run_id"], "run-replacement")
+        self.assertEqual(replacement_payload["decision"]["frame_id"], replacement_frame["frame_id"])
+        with urlopen(
+            f"{replacement.url.rstrip('/')}{replacement_payload['current_image']['url']}",
+            timeout=1.0,
+        ) as response:
+            self.assertEqual(response.read(), replacement_image)
+
+        for old_session_url in (old_latest_url, old_image_url):
+            with self.subTest(old_session_url=old_session_url):
+                with self.assertRaises(HTTPError) as rejected:
+                    urlopen(old_session_url, timeout=1.0)
+                self.assertEqual(rejected.exception.code, 409)
+                body = rejected.exception.read().decode("utf-8")
+                error = json.loads(body)
+                self.assertEqual(error["status"], "unavailable")
+                self.assertEqual(error["reason"], "generation_mismatch")
+                self.assertNotIn("transaction_id", error)
+                self.assertNotIn("current_image", error)
+                self.assertNotIn(replacement_payload["transaction_id"], body)
+                self.assertNotIn(replacement_payload["current_image"]["sha256"], body)
+
+    def test_rejects_write_method_without_decision_dispatch(self) -> None:
+        self._publish_exact_transaction()
 
         with patch.object(
             self.server.decision,

@@ -13,10 +13,20 @@ from .decision import (
     accept_physical_decision_publication,
     physical_decision_view_frame,
 )
+from .decision_view import (
+    build_decision_host_telemetry_capture,
+    project_decision_with_host_telemetry,
+    unavailable_host_telemetry_panel,
+)
 from .physical_observation import (
     fetch_decision_publication,
     fetch_observation_frame,
     frame_id_from_headers,
+    HostTelemetryError,
+    fetch_host_telemetry_capture,
+    fetch_host_telemetry_latest,
+    join_host_telemetry_to_decision,
+    normalize_host_telemetry_record,
     physical_observation_dir,
     picar_base_url,
 )
@@ -203,8 +213,15 @@ class PhysicalDecisionViewAdapter:
         image: tuple[bytes, str],
     ) -> bool:
         frame_record = _frame_record(normalized)
+        stream_frame = physical_decision_view_frame(normalized)
+        frame_record["host_telemetry"] = read_host_telemetry_panel(
+            self.base_url,
+            normalized_decision=stream_frame,
+            vehicle_id=self.vehicle_id,
+            timeout_s=self.timeout_s,
+        )
         published = self.view_server.decision.publish_provider_transaction(
-            stream_frame=physical_decision_view_frame(normalized),
+            stream_frame=stream_frame,
             frame_record=frame_record,
             image=image,
         )
@@ -309,3 +326,78 @@ def run_live_decision_monitor(
     finally:
         if server is not None:
             server.stop()
+
+
+def read_host_telemetry_panel(
+    base_url: str,
+    *,
+    normalized_decision: dict[str, Any],
+    vehicle_id: str,
+    timeout_s: float = 3.0,
+    now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Fetch the PiCar record and join it to the exact decision identity."""
+
+    effective_now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    try:
+        raw = fetch_host_telemetry_latest(base_url, timeout_s=timeout_s)
+        point = normalize_host_telemetry_record(
+            raw,
+            now_ms=effective_now_ms,
+            vehicle_id=vehicle_id,
+        )
+        return join_host_telemetry_to_decision(
+            point,
+            normalized_decision,
+            vehicle_id=vehicle_id,
+        )
+    except HostTelemetryError as exc:
+        return unavailable_host_telemetry_panel(exc.reason, message=exc.message_text)
+    except (ConnectionError, OSError, TypeError, ValueError) as exc:
+        return unavailable_host_telemetry_panel(
+            "publisher_missing",
+            message=f"Host telemetry is unavailable: {type(exc).__name__}: {exc}",
+        )
+
+
+def read_host_telemetry_capture(
+    base_url: str,
+    *,
+    normalized_decision: dict[str, Any],
+    vehicle_id: str,
+    after_sequence: int = 0,
+    limit: int = 128,
+    timeout_s: float = 3.0,
+    now_ms: int | None = None,
+) -> dict[str, Any]:
+    return fetch_host_telemetry_capture(
+        base_url,
+        normalized_decision=normalized_decision,
+        vehicle_id=vehicle_id,
+        after_sequence=after_sequence,
+        limit=limit,
+        now_ms=now_ms,
+        timeout_s=timeout_s,
+    )
+
+
+def project_live_decision_payload(
+    decision_payload: dict[str, Any],
+    host_telemetry_panel: dict[str, Any],
+) -> dict[str, Any]:
+    return project_decision_with_host_telemetry(decision_payload, host_telemetry_panel)
+
+
+def build_live_decision_capture(
+    *,
+    decision_payload: dict[str, Any],
+    host_telemetry_panel: dict[str, Any],
+    records_result: dict[str, Any] | None = None,
+    vehicle_id: str | None = None,
+) -> dict[str, Any]:
+    return build_decision_host_telemetry_capture(
+        decision_payload=decision_payload,
+        panel=host_telemetry_panel,
+        records_result=records_result,
+        vehicle_id=vehicle_id,
+    )

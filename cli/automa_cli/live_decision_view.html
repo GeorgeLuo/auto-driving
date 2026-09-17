@@ -245,6 +245,12 @@
         <dl class="metrics" id="authorityMetrics"></dl>
       </section>
 
+      <section class="panel" id="host_telemetry" aria-label="Host telemetry separate observation">
+        <h2>Host telemetry · separate observation</h2>
+        <div class="secondary" id="hostTelemetryStatus">unavailable</div>
+        <pre id="hostTelemetryData">No host telemetry has been joined.</pre>
+      </section>
+
       <section class="panel">
         <h2>Candidates</h2>
         <div class="run-list" id="candidates"></div>
@@ -437,6 +443,7 @@
       const cycle = decision.cycle || {};
       const plan = decision.plan_summary || {};
       const authority = latest.authority || {};
+      const hostTelemetry = latest.host_telemetry || null;
       const candidate = selectedCandidate();
       const primary = primaryRecordIds();
       vehicleEl.textContent = identity.vehicle_id || "unknown vehicle";
@@ -463,6 +470,13 @@
       appendMetric(authorityMetrics, "Host reason", host.reason);
       appendMetric(authorityMetrics, "Host frame", host.frame);
       appendMetric(authorityMetrics, "Host observed", host.value);
+
+      document.getElementById("hostTelemetryStatus").textContent = hostTelemetry
+        ? `${hostTelemetry.status || "unavailable"} · ${hostTelemetry.reason || ""}`
+        : "unavailable";
+      document.getElementById("hostTelemetryData").textContent = hostTelemetry
+        ? JSON.stringify(hostTelemetry, null, 2)
+        : "No host telemetry has been joined.";
 
       const candidates = document.getElementById("candidates");
       candidates.replaceChildren();

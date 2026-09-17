@@ -9,6 +9,7 @@ runs an engine, reads an image path, or follows a URL supplied by a client.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import math
 import threading
@@ -23,6 +24,11 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .decision import DECISION_STREAM_MAX_AGE_MS, accept_decision_stream_frame
 from .perception_view import VIEW_RECORD_NAME
+from .physical_observation import (
+    HOST_TELEMETRY_PANEL_SCHEMA,
+    build_host_telemetry_capture,
+    host_telemetry_failure,
+)
 
 
 DECISION_VIEW_SCHEMA = "automa_live_decision_view_v1"
@@ -658,6 +664,9 @@ class DecisionView:
             },
             "evidence": evidence,
             "authority": _json_copy(authority) if isinstance(authority, dict) else None,
+            "host_telemetry": _json_copy(transaction.frame_record.get("host_telemetry"))
+            if isinstance(transaction.frame_record.get("host_telemetry"), dict)
+            else None,
         }
 
     def image_response(self, *, generation: str, transaction_id: str) -> tuple[bytes, str]:
@@ -787,3 +796,112 @@ def _unavailable_status(reason: str) -> dict[str, Any]:
         "api_url": None,
         "url": None,
     }
+
+
+def project_host_telemetry_panel(
+    panel: object,
+    *,
+    decision_frame_id: str | None = None,
+) -> dict[str, Any]:
+    """Return a safe additive telemetry panel for the live decision view."""
+
+    if not isinstance(panel, dict):
+        return host_telemetry_failure(
+            "schema_invalid",
+            message="Host telemetry panel is not an object.",
+        )
+    if panel.get("schema") != HOST_TELEMETRY_PANEL_SCHEMA:
+        return host_telemetry_failure(
+            "schema_invalid",
+            message="Host telemetry panel schema is invalid.",
+        )
+    if "authority" in panel or "host_application" in panel:
+        return host_telemetry_failure(
+            "field_invalid",
+            message="Host telemetry panel cannot contain decision authority fields.",
+        )
+    if decision_frame_id is not None:
+        decision = panel.get("decision")
+        if isinstance(decision, dict) and decision.get("frame_id") != decision_frame_id:
+            return host_telemetry_failure(
+                "identity_mismatch",
+                message="Host telemetry panel frame does not match the decision frame.",
+            )
+    try:
+        copied = _json_copy(panel)
+    except (TypeError, ValueError):
+        return host_telemetry_failure(
+            "field_invalid",
+            message="Host telemetry panel is not strict JSON.",
+        )
+    return copied if isinstance(copied, dict) else host_telemetry_failure("schema_invalid")
+
+
+def project_decision_with_host_telemetry(
+    decision_payload: object,
+    panel: object,
+    *,
+    decision_frame_id: str | None = None,
+) -> dict[str, Any]:
+    """Add telemetry as a sibling while preserving decision authority bytes."""
+
+    if not isinstance(decision_payload, dict):
+        raise ValueError("Decision view payload is not an object.")
+    copied = _json_copy(decision_payload)
+    if not isinstance(copied, dict):
+        raise ValueError("Decision view payload is not an object.")
+    frame_id = decision_frame_id
+    if frame_id is None:
+        frame_id = copied.get("frame_id")
+        if frame_id is None and isinstance(copied.get("decision"), dict):
+            frame_id = copied["decision"].get("frame_id")
+    copied["host_telemetry"] = project_host_telemetry_panel(
+        panel,
+        decision_frame_id=frame_id if isinstance(frame_id, str) else None,
+    )
+    return copied
+
+
+def build_decision_host_telemetry_capture(
+    *,
+    decision_payload: object,
+    panel: object,
+    records_result: dict[str, Any] | None = None,
+    vehicle_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a capture envelope with decision and telemetry as siblings."""
+
+    if not isinstance(decision_payload, dict):
+        raise ValueError("Decision capture payload is not an object.")
+    safe_panel = project_host_telemetry_panel(panel)
+    capture = build_host_telemetry_capture(
+        joined_point=safe_panel,
+        records_result=records_result,
+        vehicle_id=vehicle_id,
+    )
+    return {
+        "schema": "automa_physical_decision_capture_v0",
+        "decision": _json_copy(decision_payload),
+        "host_telemetry": capture,
+    }
+
+
+def render_host_telemetry_panel_html(panel: object) -> str:
+    """Render the additive telemetry panel used by static/live consumers."""
+
+    safe_panel = project_host_telemetry_panel(panel)
+    serialized = html.escape(json.dumps(safe_panel, indent=2, sort_keys=True), quote=True)
+    return (
+        '<section id="host_telemetry" aria-label="Host telemetry separate observation">'
+        "<h2>Host telemetry · separate observation</h2>"
+        f"<pre>{serialized}</pre>"
+        "</section>"
+    )
+
+
+def unavailable_host_telemetry_panel(
+    reason: str = "publisher_missing",
+    *,
+    message: str | None = None,
+) -> dict[str, Any]:
+    return host_telemetry_failure(reason, message=message)

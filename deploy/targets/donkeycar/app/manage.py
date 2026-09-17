@@ -27,6 +27,7 @@ except:
 
 
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -448,6 +449,10 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     # Optional generic autonomy engine. It writes the standard Donkey pilot
     # outputs so existing user/local_angle/local mode switching still applies.
     #
+    # The host telemetry publisher is optional and diagnostic. It is attached
+    # to the same final DriveMode seam as the vehicle output, but never enters
+    # command selection or performs I/O in the drive loop.
+    host_telemetry_publisher = None
     if getattr(cfg, "AUTONOMY_ENABLED", True):
         autonomy_controller = getattr(V, "web_controller", None)
         autonomy_manager = getattr(autonomy_controller, "autonomy_manager", None)
@@ -467,9 +472,61 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         DEFAULT_OBSERVATION_INTERVAL_S,
                         AutonomyPilotPart,
                     )
+                    from implementations.runtime.donkeycar.host_telemetry import (
+                        DriveModeTelemetryAdapter,
+                        HostTelemetryStore,
+                    )
 
                     activation = read_decision_activation(activation_path)
                     apply_decision_activation(autonomy_manager, activation)
+
+                    telemetry_store = None
+                    try:
+                        activation_payload = activation.payload
+                        if not isinstance(activation_payload, dict):
+                            raise ValueError("decision activation payload is not an object")
+                        vehicle_id = activation_payload.get("vehicle_id")
+                        activated_at_ms = activation_payload.get("activated_at_ms")
+                        if type(vehicle_id) is not str or not vehicle_id:
+                            raise ValueError(
+                                "decision activation is missing runtime vehicle_id"
+                            )
+                        if type(activated_at_ms) is not int or activated_at_ms < 0:
+                            raise ValueError(
+                                "decision activation is missing runtime activated_at_ms"
+                            )
+                        source_id = activation_payload.get("source_id")
+                        if source_id is None:
+                            source_id = f"donkeycar:{vehicle_id}"
+                        generation_id = activation_payload.get("generation_id")
+                        if generation_id is None:
+                            generation_id = f"{activation.engine_id}:{activated_at_ms}"
+                        run_id = activation_payload.get("run_id")
+                        if run_id is None:
+                            run_id = (
+                                f"donkey-run-{os.getpid()}-{activated_at_ms}-"
+                                f"{secrets.token_hex(8)}"
+                            )
+                        telemetry_store = HostTelemetryStore(
+                            vehicle_id=vehicle_id,
+                            source_id=source_id,
+                            run_id=run_id,
+                            generation_id=generation_id,
+                            activation_engine_id=activation.engine_id,
+                            activation_activated_at_ms=activated_at_ms,
+                            activation_engine_config=activation.engine_config,
+                        )
+                        host_telemetry_publisher = DriveModeTelemetryAdapter(
+                            telemetry_store
+                        )
+                    except (TypeError, ValueError, OverflowError) as exc:
+                        # Existing observation/DriveMode behavior remains
+                        # available when an older activation cannot provide the
+                        # producer-owned identity required by this contract.
+                        logger.error(
+                            "Host telemetry unavailable; runtime identity is incomplete: %s",
+                            exc,
+                        )
                     perception_stage = None
                     memory_stage = None
                     perception_algorithm = None
@@ -540,7 +597,18 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         host=AutonomyCycleHost(manager=autonomy_manager, stages=stages),
                         min_interval_s=observation_interval_s,
                         algorithm=perception_algorithm,
+                        host_telemetry=host_telemetry_publisher,
                     )
+                    observation_publisher = autonomy_part
+                    if telemetry_store is not None:
+                        autonomy_manager.register_status_provider(
+                            "host_telemetry",
+                            telemetry_store.status,
+                        )
+                        if autonomy_controller is not None:
+                            autonomy_controller.host_telemetry_publisher = (
+                                host_telemetry_publisher
+                            )
                     autonomy_manager.register_status_provider(
                         "observation",
                         autonomy_part.observation_status,
@@ -548,7 +616,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     # HTTP publication handlers read this publisher without
                     # re-entering AutonomyManager.status.
                     if autonomy_controller is not None:
-                        autonomy_controller.observation_publisher = autonomy_part
+                        autonomy_controller.observation_publisher = observation_publisher
                     V.add(
                         autonomy_part,
                         inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],
@@ -576,7 +644,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     # Decide what inputs should change the car's steering and throttle
     # based on the choice of user or autopilot drive mode
     #
-    V.add(DriveMode(cfg.AI_THROTTLE_MULT),
+    V.add(DriveMode(cfg.AI_THROTTLE_MULT, host_telemetry=host_telemetry_publisher),
           inputs=['user/mode', 'user/angle', 'user/throttle',
                   'pilot/angle', 'pilot/throttle'],
           outputs=['steering', 'throttle'])
@@ -764,11 +832,12 @@ class ToggleRecording:
 
 
 class DriveMode:
-    def __init__(self, ai_throttle_mult=1.0):
+    def __init__(self, ai_throttle_mult=1.0, host_telemetry=None):
         """
         :param ai_throttle_mult: scale throttle in autopilot mode
         """
         self.ai_throttle_mult = ai_throttle_mult
+        self.host_telemetry = host_telemetry
 
     def run(self, mode,
             user_steering, user_throttle,
@@ -784,11 +853,46 @@ class DriveMode:
                  scaled by ai_throttle_mult in autopilot mode
         """
         if mode == 'user':
-            return user_steering, user_throttle
+            selected = (user_steering, user_throttle)
         elif mode == 'local_angle':
-            return pilot_steering if pilot_steering else 0.0, user_throttle
-        return (pilot_steering if pilot_steering else 0.0,
-               pilot_throttle * self.ai_throttle_mult if pilot_throttle else 0.0)
+            selected = (pilot_steering if pilot_steering else 0.0, user_throttle)
+        else:
+            selected = (
+                pilot_steering if pilot_steering else 0.0,
+                pilot_throttle * self.ai_throttle_mult if pilot_throttle else 0.0,
+            )
+
+        observer = self.host_telemetry
+        begin_tick = getattr(observer, "begin_tick", None)
+        complete_tick = getattr(observer, "complete_tick", None)
+        if callable(begin_tick) and callable(complete_tick):
+            try:
+                # DriveMode has already selected the values. The observer is
+                # handed copies and cannot alter this returned tuple.
+                begin_tick(
+                    mode=mode,
+                    user_input={"steering": user_steering, "throttle": user_throttle},
+                    pilot_output={"steering": pilot_steering, "throttle": pilot_throttle},
+                    source_frame=None,
+                )
+                complete_tick(
+                    {"steering": selected[0], "throttle": selected[1]}
+                )
+            except Exception:
+                # Host telemetry is diagnostic only; an observer failure must
+                # never change the DriveMode/drivetrain values.
+                logger.exception("Host telemetry observer failed at DriveMode seam")
+        return selected
+
+    def shutdown(self):
+        """Stop the diagnostic publisher when the Donkey part is shut down."""
+
+        stop = getattr(self.host_telemetry, "stop", None)
+        if callable(stop):
+            try:
+                stop()
+            except Exception:
+                logger.exception("Unable to stop host telemetry publisher")
 
 
 class UserPilotCondition:

@@ -140,6 +140,7 @@ class AutonomyPilotPart:
         min_interval_s: float = DEFAULT_OBSERVATION_INTERVAL_S,
         monotonic: Callable[[], float] | None = None,
         algorithm: str | None = None,
+        host_telemetry: Any | None = None,
     ) -> None:
         if min_interval_s < 0:
             raise ValueError("min_interval_s must be >= 0")
@@ -157,6 +158,10 @@ class AutonomyPilotPart:
         self._last_pilot_steering = 0.0
         self._last_pilot_throttle = 0.0
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
+        # Optional final-boundary observer.  It receives only detached source
+        # identity from this runtime owner; DriveMode remains responsible for
+        # observing the actual user/pilot/selected values.
+        self.host_telemetry = host_telemetry
         manager = getattr(self.host, "manager", None)
         self._last_engine = getattr(manager, "engine_spec", None)
         self._last_cycle: dict[str, Any] | None = None
@@ -367,6 +372,7 @@ class AutonomyPilotPart:
             with self._lock:
                 self.skipped_count += 1
                 self._skips_since_previous += 1
+            self._publish_host_source_frame()
             self.last_status = self.status()
             return self._held_outputs(mode_name)
 
@@ -456,6 +462,7 @@ class AutonomyPilotPart:
             self._skips_since_previous = 0
             self.frame_index += 1
             self.processed_count += 1
+        self._publish_host_source_frame()
         self.last_status = self.status()
         return (
             pilot_steering,
@@ -472,6 +479,37 @@ class AutonomyPilotPart:
         if mode_name == "user":
             return 0.0, 0.0
         return float(control.steering), float(control.throttle)
+
+    def _publish_host_source_frame(self) -> None:
+        """Hand off the latest completed source frame to the final observer.
+
+        This is a bounded in-process identity handoff.  The source frame is
+        copied from the runtime-owned observation snapshot and is never
+        created by the DriveMode observer.  A held cadence tick therefore
+        repeats the same source identity instead of becoming a new frame.
+        """
+
+        observer = self.host_telemetry
+        setter = getattr(observer, "set_source_frame", None)
+        if not callable(setter):
+            return
+        with self._lock:
+            snapshot = self.latest_snapshot
+            source_frame = (
+                None
+                if snapshot is None
+                else {
+                    "frame_id": snapshot.frame_id,
+                    "frame_index": snapshot.frame_index,
+                    "captured_at_ms": snapshot.captured_at_ms,
+                    "completed_at_ms": snapshot.completed_at_ms,
+                }
+            )
+        try:
+            setter(source_frame)
+        except Exception:
+            # Telemetry is diagnostic only and must never change host outputs.
+            return
 
     def _held_outputs(self, mode_name: str):
         if mode_name == "user":

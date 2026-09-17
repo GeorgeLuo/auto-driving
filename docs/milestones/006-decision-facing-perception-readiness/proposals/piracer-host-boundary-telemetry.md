@@ -292,10 +292,6 @@ not a successful zero-control observation.
     "M006-05": {
       "status": "Met",
       "evidence": "The accepted M006-05 decision surfaces remain intact; this telemetry capability is an additive supporting operator-surface contract and does not replace the accepted baseline."
-    },
-    "M006-07": {
-      "status": "Unmet",
-      "evidence": "The telemetry capability is a supporting prerequisite for the #202 Chase/PiRacer evidence; no criterion is marked Met by deterministic or prototype checks."
     }
   },
   "risk_remove": [],

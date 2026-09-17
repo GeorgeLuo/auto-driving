@@ -227,11 +227,20 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             return
         if route in pages:
             try:
-                body = pages[route].read_bytes()
+                html = pages[route].read_text(encoding="utf-8")
+                html = html.replace(
+                    "__DECISION_URL__",
+                    self.server.publisher.decision.page_url() or "/",
+                )
             except OSError as exc:
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
-            self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
+            self._send(
+                200,
+                html.encode("utf-8"),
+                "text/html; charset=utf-8",
+                include_body=include_body,
+            )
             return
         if route == "/api/decision/latest":
             try:

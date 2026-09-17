@@ -155,7 +155,7 @@ contract's authority.
 | Telemetry schema validation and decision join | Physical observation/decision consumer |
 | Host-observed panel and capture serialization | Existing physical decision view/capture adapter, additive only |
 | M006-06 proposal evidence and final #202 acceptance | Current cross-environment evidence frontier and its review owner; unchanged |
-| M006-07 criterion judgment | This capability plus later Chase/PiRacer evidence; this proposal does not mark it Met |
+| M006-07 criterion judgment | Current #202 evidence frontier; this capability is a supporting dependency only and does not mark it Met |
 
 ## Affected Paths
 
@@ -237,8 +237,9 @@ and any amendment cycle are complete.
 ## Validation Plan
 
 - Validate the proposal and plan with the milestone workflow checker and
-  verify the new frontier owns M006-07 without overlapping the active #202 or
-  D2 frontiers.
+  verify the new frontier is a supporting M006-05 capability without
+  overlapping the active #202 or D2 frontiers; #202 retains M006-06/M006-07
+  ownership.
 - In the prototype, exercise an in-process Donkey loop through the real
   `DriveMode` boundary. Assert that the observer sees the input/pilot/final
   values, preserves exact source identity, and never changes the returned
@@ -288,9 +289,13 @@ not a successful zero-control observation.
   "result": "Accepted",
   "durable_evidence": "Host-boundary telemetry contract accepted in PR #{pr}; producer, consumer, identity, freshness, coverage, and authority-separation checks passed.",
   "criterion_updates": {
+    "M006-05": {
+      "status": "Met",
+      "evidence": "The accepted M006-05 decision surfaces remain intact; this telemetry capability is an additive supporting operator-surface contract and does not replace the accepted baseline."
+    },
     "M006-07": {
       "status": "Unmet",
-      "evidence": "The telemetry capability is accepted as a prerequisite for later Chase/PiRacer evidence; no criterion is marked Met by deterministic or prototype checks."
+      "evidence": "The telemetry capability is a supporting prerequisite for the #202 Chase/PiRacer evidence; no criterion is marked Met by deterministic or prototype checks."
     }
   },
   "risk_remove": [],

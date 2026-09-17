@@ -77,7 +77,7 @@ for simulator and physical vehicles.
 - Review kind: Live or external evidence
 - Review question: Does the staged `avoid_recent_obstruction` path produce provenance-complete shadow action plans and the same correlated visual explanation on Chase and stationary PiRacer inputs while applied control remains zero and privileged simulator state stays outside controller inputs?
 - Acceptance owner: Tracked exact-frame Chase and stationary PiRacer shadow evidence packages using the accepted Automa decision surfaces
-- Exit criteria affected: M006-06
+- Exit criteria affected: M006-06, M006-07
 - Prerequisite: Automa shadow decision surfaces accepted (M006-05) with stage/info/apply/stream/view and deterministic replay
 - Milestone-level non-goal: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims
 
@@ -92,9 +92,9 @@ for simulator and physical vehicles.
 - Review kind: Deterministic invariant closure
 - Review question: Can the physical telemetry boundary prove, for each shadow cycle, which user and pilot values and final pre-drivetrain command the Donkey host actually observed, with exact source identity and fail-closed consumer joins, without treating engine authority as host output?
 - Acceptance owner: Donkey `DriveMode` output boundary and the physical telemetry consumer
-- Exit criteria affected: M006-07
+- Exit criteria affected: M006-05
 - Prerequisite: PR #202's D1/D2 implementation head, accepted M006-05 decision surfaces, and the accepted #201 evidence procedure are available for the later capture workflow
-- Non-goals: Changing #201 or #202's accepted proposal, marking M006-07 Met, changing decision authority, claiming actuator feedback, applying movement, or closing M006
+- Non-goals: Changing #201 or #202's accepted proposal, changing #202's M006-06/M006-07 ownership or marking M006-07 Met, changing decision authority, claiming actuator feedback, applying movement, or closing M006
 
 #### Frontier: D2 live decision view
 
@@ -143,7 +143,7 @@ for simulator and physical vehicles.
 | Cross-environment shadow proposal evidence | proposal_in_review | Started m006/shadow-proposal-evidence-proposal. |
 | Cross-environment shadow proposal evidence | ready_for_implementation | Proposal PR #201 accepted at 9e2a353c736a04fed22c1ce5d456c6115fbfbddc (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`). |
 | Cross-environment shadow proposal evidence | implementation_in_review | Started m006/shadow-proposal-evidence. |
-| PiRacer host-boundary telemetry | proposal_in_review | Started m006/piracer-host-boundary-telemetry-proposal; plan-only ownership split leaves #202 responsible for M006-06 and assigns the host-boundary capability for M006-07 here. |
+| PiRacer host-boundary telemetry | proposal_in_review | Started m006/piracer-host-boundary-telemetry-proposal; supporting host-boundary capability is contracted against the accepted M006-05 operator surface while #202 retains M006-06/M006-07 ownership. |
 | D2 live decision view | proposal_in_review | Started m006/live-decision-view-proposal. |
 | D2 live decision view | ready_for_implementation | Proposal PR #216 accepted at 8b27553bb722bad23477e3c5744c76a321e1c99a (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`). |
 | D2 live decision view | implementation_in_review | Started m006/live-decision-view. |

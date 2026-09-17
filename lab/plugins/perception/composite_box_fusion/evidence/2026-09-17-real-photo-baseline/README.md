@@ -14,7 +14,7 @@ record.
 - [`results.json`](results.json): compact per-frame results and selected boxes.
 - [`findings/`](findings/): sanitized full structured findings for the three
   recorded runs, including raw CV candidates, clusters, hypotheses, and Jev
-  responses. Local cache paths are removed.
+  responses. Local cache and absolute source paths are removed or normalized.
 - [`stitches/`](stitches/): pair-only visual comparisons with all CV cues next
   to the Jev aggregate.
 

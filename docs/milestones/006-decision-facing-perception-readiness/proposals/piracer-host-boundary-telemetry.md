@@ -310,3 +310,9 @@ and permits the implementation branch to start. It does not approve or merge
 must reconcile this proposal and every later accepted amendment, and the #202
 evidence owner must refresh its exact-head capture package before M006-07 can
 be reviewed.
+
+## Repair Cycle Ledger
+
+| Cycle | Review receipt | Classification | Highest severity | Repair revision | Contract impact |
+| --- | --- | --- | --- | --- | --- |
+| none | none | none | none | none | none |

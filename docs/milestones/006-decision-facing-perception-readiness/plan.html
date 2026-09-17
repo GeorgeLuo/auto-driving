@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="aface4ef36d05100cbf2e462fe5d8e618f508594e242fdf6f8c09febc3567ed3">
+  <meta name="source-sha256" content="ec05221152fbfca9ebb4175e6ac9e24d2c2a51759ce42c10660d89687a4aa0ca">
   <base target="_blank">
   <title>Milestone plan — 006-decision-facing-perception-readiness</title>
   <style>
@@ -286,10 +286,11 @@ for simulator and physical vehicles.</p>
 <h3>Parallel Frontiers</h3>
 <h4>Frontier: PiRacer host-boundary telemetry</h4>
 <ul>
-<li>Workflow state: proposal_in_review</li>
+<li>Workflow state: ready_for_implementation</li>
 <li>Proposal branch: <code>m006/piracer-host-boundary-telemetry-proposal</code></li>
 <li>Implementation branch: <code>m006/piracer-host-boundary-telemetry</code></li>
 <li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/piracer-host-boundary-telemetry.md</code></li>
+<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/223">#223</a> at <code>27e9a5cc04c5882d896e417b86541fd0c040e81e</code> (reviewed head <code>86efed577d719f59aab3983b7cab96721adbbb9d</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-17T22:54:01Z</code>)</li>
 <li>Review kind: Deterministic invariant closure</li>
 <li>Review question: Can the physical telemetry boundary prove, for each shadow cycle, which user and pilot values and final pre-drivetrain command the Donkey host actually observed, with exact source identity and fail-closed consumer joins, without treating engine authority as host output?</li>
 <li>Acceptance owner: Donkey <code>DriveMode</code> output boundary and the physical telemetry consumer</li>
@@ -436,6 +437,11 @@ for simulator and physical vehicles.</p>
 <td>PiRacer host-boundary telemetry</td>
 <td>proposal_in_review</td>
 <td>Started m006/piracer-host-boundary-telemetry-proposal; supporting host-boundary capability is contracted against the accepted M006-05 operator surface while #202 retains M006-06/M006-07 ownership.</td>
+</tr>
+<tr>
+<td>PiRacer host-boundary telemetry</td>
+<td>ready_for_implementation</td>
+<td>Proposal PR #223 accepted at 27e9a5cc04c5882d896e417b86541fd0c040e81e (reviewed head <code>86efed577d719f59aab3983b7cab96721adbbb9d</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-17T22:54:01Z</code>).</td>
 </tr>
 </tbody>
 </table>

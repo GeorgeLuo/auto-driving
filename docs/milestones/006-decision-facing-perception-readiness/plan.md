@@ -85,10 +85,11 @@ for simulator and physical vehicles.
 
 #### Frontier: PiRacer host-boundary telemetry
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m006/piracer-host-boundary-telemetry-proposal`
 - Implementation branch: `m006/piracer-host-boundary-telemetry`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/piracer-host-boundary-telemetry.md`
+- Accepted proposal: [#223](https://github.com/GeorgeLuo/auto-driving/pull/223) at `27e9a5cc04c5882d896e417b86541fd0c040e81e` (reviewed head `86efed577d719f59aab3983b7cab96721adbbb9d` by `GeorgeLuo` as `OWNER` at `2026-09-17T22:54:01Z`)
 - Review kind: Deterministic invariant closure
 - Review question: Can the physical telemetry boundary prove, for each shadow cycle, which user and pilot values and final pre-drivetrain command the Donkey host actually observed, with exact source identity and fail-closed consumer joins, without treating engine authority as host output?
 - Acceptance owner: Donkey `DriveMode` output boundary and the physical telemetry consumer
@@ -147,6 +148,7 @@ for simulator and physical vehicles.
 | D2 live decision view | ready_for_implementation | Proposal PR #216 accepted at 8b27553bb722bad23477e3c5744c76a321e1c99a (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`). |
 | D2 live decision view | implementation_in_review | Started m006/live-decision-view. |
 | PiRacer host-boundary telemetry | proposal_in_review | Started m006/piracer-host-boundary-telemetry-proposal; supporting host-boundary capability is contracted against the accepted M006-05 operator surface while #202 retains M006-06/M006-07 ownership. |
+| PiRacer host-boundary telemetry | ready_for_implementation | Proposal PR #223 accepted at 27e9a5cc04c5882d896e417b86541fd0c040e81e (reviewed head `86efed577d719f59aab3983b7cab96721adbbb9d` by `GeorgeLuo` as `OWNER` at `2026-09-17T22:54:01Z`). |
 
 ## Accepted Review Units
 

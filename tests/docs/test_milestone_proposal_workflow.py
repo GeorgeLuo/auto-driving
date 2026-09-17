@@ -870,6 +870,10 @@ class RepairMetadataFetchTests(unittest.TestCase):
                         "author": {"login": metadata.pull_request_author},
                         "commits": {
                             "totalCount": len(metadata.commits),
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
                             "nodes": [
                                 {"commit": {"oid": oid}} for oid in metadata.commits
                             ],

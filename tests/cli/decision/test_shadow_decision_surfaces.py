@@ -18,6 +18,7 @@ from urllib.request import urlopen
 from unittest.mock import patch
 
 import numpy as np
+from PIL import Image
 
 from autonomy.decision.memory import (
     MemoryBounds,
@@ -33,6 +34,7 @@ from autonomy.perception import ViewLocation
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.manager import AutonomyManager
 from cli.automa_cli.automation import _record_decision_publish_skip
+from cli.automa_cli.decision_live import PhysicalDecisionViewAdapter
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
     DECISION_ENGINES,
@@ -382,6 +384,60 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             timeout=1.0,
         ) as response:
             self.assertEqual(response.read(), b"physical-fixture-jpeg")
+
+    def test_physical_live_adapter_keeps_all_views_in_one_session(self) -> None:
+        now_ms = int(time.time() * 1000)
+        normalized = accept_physical_decision_publication(
+            self._physical_publication(published_at_ms=now_ms),
+            vehicle_id="piracer",
+            now_ms=now_ms,
+        )
+        server = RuntimeViewServer(
+            vehicle_id="piracer",
+            automation_dir=self.runtime_root / "piracer" / "physical_observation",
+            port=0,
+            run_id=normalized["run_id"],
+            decision_provider_identity={
+                "vehicle_id": normalized["vehicle_id"],
+                "source_id": normalized["source_id"],
+                "run_id": normalized["run_id"],
+                "activation_engine_id": normalized["activation_engine_id"],
+                "activation_activated_at_ms": normalized["activation_activated_at_ms"],
+                "producer_generation_id": normalized["generation_id"],
+            },
+        ).start()
+        self.addCleanup(server.stop)
+
+        image_buffer = io.BytesIO()
+        Image.new("RGB", (40, 30), (20, 80, 150)).save(image_buffer, format="JPEG")
+        with patch(
+            "cli.automa_cli.decision_live._accepted_pair",
+            return_value=(normalized, (image_buffer.getvalue(), "image/jpeg")),
+        ):
+            adapter = PhysicalDecisionViewAdapter(
+                vehicle_id="piracer",
+                base_url="http://piracer.invalid:8887",
+                view_server=server,
+                timeout_s=0.1,
+            )
+            self.assertTrue(adapter.refresh())
+
+        generation = server.decision.generation_id
+        self.assertIsNotNone(generation)
+        assert server.url is not None
+        with urlopen(f"{server.url.rstrip('/')}/api/latest", timeout=1.0) as response:
+            perception_payload = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(perception_payload["frame"]["frame_id"], "frame_001")
+        self.assertEqual(perception_payload["memory"]["record_count"], 1)
+        self.assertIsNotNone(perception_payload["perception"])
+
+        with urlopen(f"{server.url.rstrip('/')}/perception", timeout=1.0) as response:
+            perception_page = response.read().decode("utf-8")
+        with urlopen(f"{server.url.rstrip('/')}/memory", timeout=1.0) as response:
+            memory_page = response.read().decode("utf-8")
+        decision_link = f"/decision?generation={generation}"
+        self.assertIn(f'href="{decision_link}"', perception_page)
+        self.assertIn(f'href="{decision_link}"', memory_page)
 
     def test_physical_source_to_public_cli_http_fixture_and_expiry(self) -> None:
         vehicle_id = "piracer-fixture"

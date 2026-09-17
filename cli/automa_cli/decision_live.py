@@ -79,18 +79,72 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
     cycle = normalized["decision"]["cycle"]
     source = cycle.get("source") if isinstance(cycle, dict) else None
     observation = source.get("observation") if isinstance(source, dict) else None
-    observation_value = observation.get("value") if isinstance(observation, dict) else None
+    observation_value = (
+        observation.get("value")
+        if isinstance(observation, dict) and observation.get("status") == "ready"
+        else None
+    )
+    observation_value = observation_value if isinstance(observation_value, dict) else None
+    memory = source.get("memory") if isinstance(source, dict) else None
+    memory_value = (
+        memory.get("value")
+        if isinstance(memory, dict) and memory.get("status") == "ready"
+        else None
+    )
+    memory_value = memory_value if isinstance(memory_value, dict) else None
     sensor_snapshot = (
         observation_value.get("sensor_snapshot")
         if isinstance(observation_value, dict)
         else None
     )
+    summary = observation_value.get("summary") if isinstance(observation_value, dict) else None
+    summary = [str(item) for item in summary] if isinstance(summary, list) else []
+    perception = None
+    if observation_value is not None:
+        metadata = observation_value.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        limits = metadata.get("limits")
+        perception = {
+            "schema": observation_value.get("perception_schema") or "perception_text_v2",
+            "status": "ok",
+            "text": "\n".join(summary),
+            "lines": summary,
+            "signals": observation_value.get("signals")
+            if isinstance(observation_value.get("signals"), list)
+            else [],
+            "things": observation_value.get("things")
+            if isinstance(observation_value.get("things"), list)
+            else [],
+            "artifacts": observation_value.get("artifacts")
+            if isinstance(observation_value.get("artifacts"), dict)
+            else {},
+            "plugin_id": observation_value.get("perception_plugin_id"),
+            "plugin_runs": [],
+            "measurements": {},
+            "limits": limits if isinstance(limits, list) else [],
+        }
     return {
         "frame_id": normalized["frame_id"],
         "frame_index": normalized["frame_index"],
         "captured_at_ms": normalized["timestamp_ms"],
         "run_id": normalized["run_id"],
         "sensor_snapshot": sensor_snapshot,
+        "perception_completed_at_ms": (
+            observation_value.get("created_at_ms")
+            if isinstance(observation_value, dict)
+            else None
+        ),
+        "perception": perception,
+        "observation": observation_value,
+        "memory": memory_value,
+        "algorithm": (
+            observation_value.get("perception_plugin_id")
+            if isinstance(observation_value, dict)
+            else None
+        ),
+        "action_policy": "observe_only",
+        "control_source": "physical_onboard",
+        "control_application": "donkey_drive_mode",
     }
 
 
@@ -143,20 +197,45 @@ class PhysicalDecisionViewAdapter:
         self.view_server = view_server
         self.timeout_s = timeout_s
 
+    def publish_snapshot(
+        self,
+        normalized: dict[str, Any],
+        image: tuple[bytes, str],
+    ) -> bool:
+        frame_record = _frame_record(normalized)
+        published = self.view_server.decision.publish_provider_transaction(
+            stream_frame=physical_decision_view_frame(normalized),
+            frame_record=frame_record,
+            image=image,
+        )
+        if not published:
+            self.view_server.decision.invalidate_latest()
+            return False
+
+        # Keep the physical decision, perception, and memory pages on one
+        # RuntimeViewServer session. The decision image is already the exact
+        # matched image, so do not fetch a second potentially different frame.
+        try:
+            image_bytes, content_type = image
+            suffix = ".png" if content_type == "image/png" else ".jpg"
+            frame_path = self.view_server.automation_dir / f"latest_frame{suffix}"
+            frame_path.write_bytes(image_bytes)
+            self.view_server.perception.publish_frame(
+                frame_path=frame_path,
+                frame_record=frame_record,
+            )
+            self.view_server.perception.publish_perception(frame_record=frame_record)
+        except Exception:  # noqa: BLE001 - side view publication is nonfatal
+            pass
+        return published
+
     def refresh(self) -> bool:
         normalized, image = _accepted_pair(
             self.base_url,
             vehicle_id=self.vehicle_id,
             timeout_s=self.timeout_s,
         )
-        published = self.view_server.decision.publish_provider_transaction(
-            stream_frame=physical_decision_view_frame(normalized),
-            frame_record=_frame_record(normalized),
-            image=image,
-        )
-        if not published:
-            self.view_server.decision.invalidate_latest()
-        return published
+        return self.publish_snapshot(normalized, image)
 
 
 def run_live_decision_monitor(
@@ -201,11 +280,7 @@ def run_live_decision_monitor(
             view_server=server,
             timeout_s=max(0.1, float(timeout_s)),
         )
-        if not server.decision.publish_provider_transaction(
-            stream_frame=physical_decision_view_frame(normalized),
-            frame_record=_frame_record(normalized),
-            image=image,
-        ):
+        if not adapter.publish_snapshot(normalized, image):
             return CommandResult(2, "physical decision transaction was rejected")
         page_path = server.decision.page_url()
         if page_path is None or server.url is None:

@@ -16,6 +16,8 @@ record.
   deterministic selectors against the recorded Jev choices.
 - [`marginal_value_report.json`](marginal_value_report.json): the same results
   with per-frame matches, source diversity, and hypothesis-kind details.
+- [`selector_visuals/`](selector_visuals/): readable per-frame comparisons of
+  the reference envelopes, all raw CV cues, deterministic selectors, and Jev.
 - [`findings/`](findings/): sanitized full structured findings for the three
   recorded runs, including raw CV candidates, clusters, hypotheses, and Jev
   responses. Local cache and absolute source paths are removed or normalized.
@@ -77,6 +79,12 @@ are fragments, while aggregate hypotheses recover object-sized extents. Jev
 also accepted two single-source raw boundaries in `IMG_1002`, despite the
 multi-source instruction. The next useful step is a larger labeled adversarial
 set, not more detector permutations on these three frames.
+
+The rendered visual comparisons are:
+
+- [`IMG_1001 selector comparison`](selector_visuals/IMG_1001_selector_comparison.jpg)
+- [`IMG_1002 selector comparison`](selector_visuals/IMG_1002_selector_comparison.jpg)
+- [`IMG_1003 selector comparison`](selector_visuals/IMG_1003_selector_comparison.jpg)
 
 ## Reproduction
 

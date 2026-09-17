@@ -80,3 +80,14 @@ comparing raw confidence, covering-union, robust-extent, the existing
 handwritten heuristic, and Jev's stored choice. The pilot labels are approximate
 manual visible-object envelopes and should be expanded with adversarial frames
 before any performance claim is made.
+
+Render the visual comparison panels after making or changing labels:
+
+```sh
+python3 lab/experiments/issue-219/render_selector_comparison.py \
+  --image-dir /path/to/local/stills \
+  --findings-dir lab/plugins/perception/composite_box_fusion/evidence/2026-09-17-real-photo-baseline/findings \
+  --labels lab/experiments/issue-219/pilot_labels.json \
+  --report lab/plugins/perception/composite_box_fusion/evidence/2026-09-17-real-photo-baseline/marginal_value_report.json \
+  --output-dir lab/plugins/perception/composite_box_fusion/evidence/2026-09-17-real-photo-baseline/selector_visuals
+```

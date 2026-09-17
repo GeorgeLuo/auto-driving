@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa decision · host telemetry</title>
+  <style>
+    body { font-family: ui-monospace, monospace; margin: 1.5rem; background: #111; color: #eee; }
+    section { margin-bottom: 1rem; border: 1px solid #333; padding: .8rem; }
+    h1, h2 { margin-top: 0; }
+    .emph { color: #f5a623; font-weight: bold; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1 id="decision-combined-v0">decision-combined-v0</h1>
+  <section id="authority">
+    <h2>Authority</h2>
+    <p class="emph">proposed_applied=false</p>
+    <pre id="authority-data">Waiting for decision data.</pre>
+  </section>
+  <section id="host_telemetry" aria-label="Host telemetry separate observation">
+    <h2>Host telemetry · separate observation</h2>
+    <p id="host-telemetry-status">unavailable</p>
+    <pre id="host-telemetry-data">No host telemetry has been joined.</pre>
+  </section>
+  <section id="non-claims">
+    <h2>Non-claims</h2>
+    <p>Host telemetry is an observed pre-drivetrain boundary, not actuator feedback or decision authority.</p>
+  </section>
+  <script>
+    // The canonical base supplies this additive view template to a later live
+    // decision adapter. It never derives host output from authority fields.
+    window.renderDecisionSnapshot = function (payload) {
+      const authority = payload && payload.authority ? payload.authority : {};
+      const telemetry = payload && payload.host_telemetry ? payload.host_telemetry : null;
+      document.getElementById("authority-data").textContent = JSON.stringify(authority, null, 2);
+      document.getElementById("host-telemetry-status").textContent = telemetry ?
+        `${telemetry.status || "unavailable"} · ${telemetry.reason || ""}` : "unavailable";
+      document.getElementById("host-telemetry-data").textContent = telemetry ?
+        JSON.stringify(telemetry, null, 2) : "No host telemetry has been joined.";
+    };
+  </script>
+</body>
+</html>

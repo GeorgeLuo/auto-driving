@@ -3008,6 +3008,7 @@ def render_decision_exact_frame_html(
     frame_id: str,
     cycle_result: Any,
     source_image_rel: str | None,
+    host_telemetry: dict[str, Any] | None = None,
 ) -> str:
     cycle = cycle_result.to_dict() if hasattr(cycle_result, "to_dict") else dict(cycle_result)
     plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else None
@@ -3050,6 +3051,13 @@ def render_decision_exact_frame_html(
     records_html = "".join(
         f"<li>{esc(item)}</li>" for item in (mem.get("records") or [])
     )
+    host_telemetry_block = ""
+    if host_telemetry is not None:
+        host_telemetry_block = f"""
+  <section id=\"host_telemetry\">
+    <h2>Host telemetry · separate observation</h2>
+    <pre>{esc(json.dumps(host_telemetry, indent=2, sort_keys=True))}</pre>
+  </section>"""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3098,7 +3106,7 @@ def render_decision_exact_frame_html(
     <p>authorized_output={esc(authority.get('authorized_output'))}</p>
     <p class="emph">proposed_applied=false</p>
     <p>host_application={esc(authority.get('host_application'))}</p>
-  </section>
+  </section>{host_telemetry_block}
   <section id="non-claims">
     <h2>Non-claims</h2>
     <p>no object identity; shadow-only; not navigation certification.</p>

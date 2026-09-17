@@ -254,7 +254,7 @@ index 8af4669..232d5df 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +137,29 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +137,31 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
@@ -262,6 +262,7 @@ index 8af4669..232d5df 100644
 +        self.autonomy_manager = AutonomyManager() if AutonomyManager is not None else None
 +        # Set by manage.py after AutonomyPilotPart is constructed.
 +        self.observation_publisher = None
++        self.host_telemetry_publisher = None
  
  
          handlers = [
@@ -274,6 +275,8 @@ index 8af4669..232d5df 100644
 +            (r"/autonomy/observation/latest", AutonomyObservationLatestAPI),
 +            (r"/autonomy/observation/latest/frame.jpg", AutonomyObservationLatestFrameAPI),
 +            (r"/autonomy/decision/latest", AutonomyDecisionLatestAPI),
++            (r"/autonomy/telemetry/latest", AutonomyTelemetryLatestAPI),
++            (r"/autonomy/telemetry/records", AutonomyTelemetryRecordsAPI),
 +            (r"/autonomy/memory/reset", AutonomyMemoryResetAPI),
              (r"/wsDrive", WebSocketDriveAPI),
              (r"/wsCalibrate", WebSocketCalibrateAPI),
@@ -284,7 +287,7 @@ index 8af4669..232d5df 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +272,284 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +272,389 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -566,10 +569,139 @@ index 8af4669..232d5df 100644
 +        self.write_json(payload, status=status_code)
 +
 +
++class AutonomyTelemetryLatestAPI(AutonomyAPIBase):
++    """Read the immutable latest post-DriveMode host tick."""
++
++    def _query_is_empty(self):
++        return not self.request.query_arguments
++
++    def get(self):
++        publisher = getattr(self.application, "host_telemetry_publisher", None)
++        latest = None if publisher is None else getattr(publisher, "latest", None)
++        if not callable(latest):
++            self.write_json(
++                {
++                    "schema": "automa_host_boundary_telemetry_v0",
++                    "ok": False,
++                    "status": "unavailable",
++                    "reason": "publisher_missing",
++                    "record": None,
++                },
++                status=503,
++            )
++            return
++        if not self._query_is_empty():
++            self.write_json(
++                {
++                    "schema": "automa_host_boundary_telemetry_v0",
++                    "ok": False,
++                    "status": "error",
++                    "reason": "query_invalid",
++                    "record": None,
++                },
++                status=400,
++            )
++            return
++        try:
++            payload = latest()
++            if not isinstance(payload, dict):
++                raise TypeError("host telemetry latest publication is not an object")
++        except Exception:
++            logger.exception("Unable to read host telemetry latest publication")
++            self.write_json(
++                {
++                    "schema": "automa_host_boundary_telemetry_v0",
++                    "ok": False,
++                    "status": "error",
++                    "reason": "observer_error",
++                    "record": None,
++                },
++                status=500,
++            )
++            return
++        self.write_json(payload, status=200 if payload.get("ok") else 503)
++
++    def head(self):
++        self.get()
++
++
++class AutonomyTelemetryRecordsAPI(AutonomyAPIBase):
++    """Read a strictly bounded sequence of host ticks without side effects."""
++
++    def _query(self):
++        query = {}
++        for key, values in self.request.query_arguments.items():
++            if len(values) != 1:
++                return None
++            try:
++                query[key] = values[0].decode("ascii", errors="strict")
++            except UnicodeDecodeError:
++                return None
++        if set(query) != {"after_sequence", "limit"}:
++            return None
++        return query
++
++    def get(self):
++        publisher = getattr(self.application, "host_telemetry_publisher", None)
++        records = None if publisher is None else getattr(publisher, "records", None)
++        query = self._query()
++        if not callable(records):
++            self.write_json(
++                {
++                    "schema": "automa_host_boundary_telemetry_v0",
++                    "ok": False,
++                    "status": "unavailable",
++                    "reason": "publisher_missing",
++                    "records": [],
++                },
++                status=503,
++            )
++            return
++        if query is None:
++            self.write_json(
++                {
++                    "schema": "automa_host_boundary_telemetry_v0",
++                    "ok": False,
++                    "status": "error",
++                    "reason": "query_invalid",
++                    "records": [],
++                },
++                status=400,
++            )
++            return
++        try:
++            payload = records(
++                after_sequence=query["after_sequence"],
++                limit=query["limit"],
++            )
++            if not isinstance(payload, dict):
++                raise TypeError("host telemetry history publication is not an object")
++        except Exception:
++            logger.exception("Unable to read host telemetry history")
++            self.write_json(
++                {
++                    "schema": "automa_host_boundary_telemetry_v0",
++                    "ok": False,
++                    "status": "error",
++                    "reason": "observer_error",
++                    "records": [],
++                },
++                status=500,
++            )
++            return
++        status = 200 if payload.get("ok") else 503
++        if payload.get("reason") == "query_invalid":
++            status = 400
++        self.write_json(payload, status=status)
++
++    def head(self):
++        self.get()
++
++
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +671,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +689,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -622,7 +754,7 @@ index 8af4669..232d5df 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +766,3 @@ class WebFpv(Application):
+@@ -440,5 +784,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

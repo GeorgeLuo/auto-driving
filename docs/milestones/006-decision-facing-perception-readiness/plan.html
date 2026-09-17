@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="55c7da87e04a53c2d39232a4e46dc7a775a7a33719bc7cad05839066c6d8e104">
+  <meta name="source-sha256" content="aface4ef36d05100cbf2e462fe5d8e618f508594e242fdf6f8c09febc3567ed3">
   <base target="_blank">
   <title>Milestone plan — 006-decision-facing-perception-readiness</title>
   <style>
@@ -284,6 +284,19 @@ for simulator and physical vehicles.</p>
 <li>Milestone-level non-goal: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims</li>
 </ul>
 <h3>Parallel Frontiers</h3>
+<h4>Frontier: PiRacer host-boundary telemetry</h4>
+<ul>
+<li>Workflow state: proposal_in_review</li>
+<li>Proposal branch: <code>m006/piracer-host-boundary-telemetry-proposal</code></li>
+<li>Implementation branch: <code>m006/piracer-host-boundary-telemetry</code></li>
+<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/piracer-host-boundary-telemetry.md</code></li>
+<li>Review kind: Deterministic invariant closure</li>
+<li>Review question: Can the physical telemetry boundary prove, for each shadow cycle, which user and pilot values and final pre-drivetrain command the Donkey host actually observed, with exact source identity and fail-closed consumer joins, without treating engine authority as host output?</li>
+<li>Acceptance owner: Donkey <code>DriveMode</code> output boundary and the physical telemetry consumer</li>
+<li>Exit criteria affected: M006-05</li>
+<li>Prerequisite: PR #202's D1/D2 implementation head, accepted M006-05 decision surfaces, and the accepted #201 evidence procedure are available for the later capture workflow</li>
+<li>Non-goals: Changing #201 or #202's accepted proposal, changing #202's M006-06/M006-07 ownership or marking M006-07 Met, changing decision authority, claiming actuator feedback, applying movement, or closing M006</li>
+</ul>
 <h4>Frontier: D2 live decision view</h4>
 <ul>
 <li>Workflow state: implementation_in_review</li>
@@ -418,6 +431,11 @@ for simulator and physical vehicles.</p>
 <td>D2 live decision view</td>
 <td>implementation_in_review</td>
 <td>Started m006/live-decision-view.</td>
+</tr>
+<tr>
+<td>PiRacer host-boundary telemetry</td>
+<td>proposal_in_review</td>
+<td>Started m006/piracer-host-boundary-telemetry-proposal; supporting host-boundary capability is contracted against the accepted M006-05 operator surface while #202 retains M006-06/M006-07 ownership.</td>
 </tr>
 </tbody>
 </table>

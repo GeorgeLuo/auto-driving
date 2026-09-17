@@ -1,0 +1,27 @@
+{
+  "schema": "issue_219_input_manifest_v1",
+  "source_files_are_local_only": true,
+  "frames": [
+    {
+      "frame": "IMG_1001.JPG",
+      "role": "optimized",
+      "width_px": 4032,
+      "height_px": 3024,
+      "sha256": "588bd1371553db2cfa6062edac92b36546d77c7169e451249cf2925a09137b12"
+    },
+    {
+      "frame": "IMG_1002.JPG",
+      "role": "generalization_test",
+      "width_px": 4032,
+      "height_px": 3024,
+      "sha256": "376e6519de74eed13ee8c29bd5ee0857d2eec298ec902da9188e84e651addc14"
+    },
+    {
+      "frame": "IMG_1003.JPG",
+      "role": "generalization_test",
+      "width_px": 4032,
+      "height_px": 3024,
+      "sha256": "40ad43c57e44766743d3fec7f2835343bdabcbac530d8ea1b9cda4f963623476"
+    }
+  ]
+}

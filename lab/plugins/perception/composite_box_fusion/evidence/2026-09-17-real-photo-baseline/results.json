@@ -1,0 +1,287 @@
+{
+  "created_at": "2026-09-17",
+  "experiment": "issue-219-real-photo-baseline",
+  "frames": [
+    {
+      "cluster_count": 9,
+      "fusion_eligible_candidates": 100,
+      "jev_boundary_count": 4,
+      "jev_latency_ms": 411.044,
+      "jev_status": "live",
+      "name": "IMG_1001",
+      "raw_cv_candidates": 120,
+      "role": "optimized",
+      "run_id": "apply-IMG_1001-20260917-014629-919677-69bdc598",
+      "selected_boundaries": [
+        {
+          "bbox_xyxy_norm": [
+            0.533626006603241,
+            0.17868999695777893,
+            0.8967619791030884,
+            0.5612779870033264
+          ],
+          "cluster_id": "cluster_01",
+          "confidence": 0.67,
+          "kind": "robust_extent",
+          "probability": 0.74,
+          "source_names": [
+            "canny_morph",
+            "classical_regions",
+            "partial_contour",
+            "photometric_windows",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.03664899921417236,
+            0.46931099450588226,
+            0.20933299505710604,
+            0.6015500023365021
+          ],
+          "cluster_id": "cluster_02",
+          "confidence": 0.25,
+          "kind": "robust_extent",
+          "probability": 0.44,
+          "source_names": [
+            "canny_morph",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.16773000216484069,
+            0.30917999005317687,
+            0.42151999616622926,
+            0.5981100215911865
+          ],
+          "cluster_id": "cluster_03",
+          "confidence": 0.45,
+          "kind": "robust_extent",
+          "probability": 0.59,
+          "source_names": [
+            "classical_regions",
+            "partial_contour",
+            "photometric_windows",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.33187700366973877,
+            0.3277200148105621,
+            0.4920570030212402,
+            0.43537499153614045
+          ],
+          "cluster_id": "cluster_04",
+          "confidence": 0.43,
+          "kind": "robust_extent",
+          "probability": 0.57,
+          "source_names": [
+            "classical_regions",
+            "partial_contour",
+            "quad_rectangularity"
+          ]
+        }
+      ],
+      "sha256": "588bd1371553db2cfa6062edac92b36546d77c7169e451249cf2925a09137b12"
+    },
+    {
+      "cluster_count": 11,
+      "fusion_eligible_candidates": 100,
+      "jev_boundary_count": 5,
+      "jev_latency_ms": 435.483,
+      "jev_status": "live",
+      "name": "IMG_1002",
+      "raw_cv_candidates": 120,
+      "role": "generalization_test",
+      "run_id": "apply-IMG_1002-20260917-015408-079971-d35ff4e3",
+      "selected_boundaries": [
+        {
+          "bbox_xyxy_norm": [
+            0.1657399967908859,
+            0.3568600103855133,
+            0.5657200231552124,
+            0.7702900185585022
+          ],
+          "cluster_id": "cluster_00",
+          "confidence": 0.71,
+          "kind": "robust_extent",
+          "probability": 0.79,
+          "source_names": [
+            "canny_morph",
+            "classical_regions",
+            "partial_contour",
+            "photometric_windows",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.5405879960060119,
+            0.32479401087760923,
+            0.7539099886417389,
+            0.5611520185470581
+          ],
+          "cluster_id": "cluster_01",
+          "confidence": 0.51,
+          "kind": "robust_extent",
+          "probability": 0.63,
+          "source_names": [
+            "canny_morph",
+            "classical_regions",
+            "partial_contour",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.91063,
+            0.71391,
+            0.96624,
+            0.77483
+          ],
+          "cluster_id": "cluster_02",
+          "confidence": 0.2,
+          "kind": "raw",
+          "probability": 0.6,
+          "source_names": [
+            "canny_morph"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.72592,
+            0.61987,
+            0.79047,
+            0.67947
+          ],
+          "cluster_id": "cluster_03",
+          "confidence": 0.17,
+          "kind": "raw",
+          "probability": 0.59,
+          "source_names": [
+            "canny_morph"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.5693190202713012,
+            0.6323590085506439,
+            0.6947329893112183,
+            0.7706839933395386
+          ],
+          "cluster_id": "cluster_05",
+          "confidence": 0.47,
+          "kind": "robust_extent",
+          "probability": 0.6,
+          "source_names": [
+            "canny_morph",
+            "partial_contour"
+          ]
+        }
+      ],
+      "sha256": "376e6519de74eed13ee8c29bd5ee0857d2eec298ec902da9188e84e651addc14"
+    },
+    {
+      "cluster_count": 12,
+      "fusion_eligible_candidates": 100,
+      "jev_boundary_count": 5,
+      "jev_latency_ms": 485.515,
+      "jev_status": "live",
+      "name": "IMG_1003",
+      "raw_cv_candidates": 120,
+      "role": "generalization_test",
+      "run_id": "apply-IMG_1003-20260917-015408-080220-842a1884",
+      "selected_boundaries": [
+        {
+          "bbox_xyxy_norm": [
+            0.6980199799537659,
+            0.5083880052566528,
+            0.7929479970932007,
+            0.7083020224571228
+          ],
+          "cluster_id": "cluster_01",
+          "confidence": 0.66,
+          "kind": "robust_extent",
+          "probability": 0.75,
+          "source_names": [
+            "canny_morph",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.37274300014972683,
+            0.6128319725990296,
+            0.5203560098409653,
+            0.8467139735221862
+          ],
+          "cluster_id": "cluster_02",
+          "confidence": 0.49,
+          "kind": "robust_extent",
+          "probability": 0.62,
+          "source_names": [
+            "canny_morph",
+            "classical_regions",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.07140000021457672,
+            0.4662160084247589,
+            0.41275400662422185,
+            0.6351920142173767
+          ],
+          "cluster_id": "cluster_03",
+          "confidence": 0.33,
+          "kind": "robust_extent",
+          "probability": 0.5,
+          "source_names": [
+            "canny_morph",
+            "classical_regions"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.44776999807357787,
+            0.24825000619888304,
+            0.7260199799537659,
+            0.6908199801445007
+          ],
+          "cluster_id": "cluster_05",
+          "confidence": 0.58,
+          "kind": "robust_extent",
+          "probability": 0.68,
+          "source_names": [
+            "classical_regions",
+            "partial_contour",
+            "photometric_windows",
+            "quad_rectangularity"
+          ]
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.14796,
+            0.21722,
+            0.41212,
+            0.49669
+          ],
+          "cluster_id": "cluster_07",
+          "confidence": 0.37,
+          "kind": "covering_union",
+          "probability": 0.53,
+          "source_names": [
+            "classical_regions",
+            "partial_contour",
+            "photometric_windows"
+          ]
+        }
+      ],
+      "sha256": "40ad43c57e44766743d3fec7f2835343bdabcbac530d8ea1b9cda4f963623476"
+    }
+  ],
+  "ground_truth_available": false,
+  "schema": "issue_219_results_v1"
+}

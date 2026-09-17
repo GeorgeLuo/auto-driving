@@ -1,0 +1,10 @@
+Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support. Do not combine genuinely separated object-sized modes with a union. However, partial detector boxes can be complementary: when a compact multi-source cluster places fragments on different sides or faces of one object, its covering_union is the intended outer boundary even when no individual fragment covers the whole object. Use weighted_median only when the members are alternative noisy proposals for the same already-complete boundary; a median can incorrectly shrink a tiled set of partial fragments. When a fragment cluster has a few spatial outliers, robust_extent (the 10th-to-90th coordinate envelope with small padding) is preferred over both an untrimmed union and a shrinking median, provided it remains compact and has multi-detector support. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. Prefer a multi-detector robust_extent or covering_union when its extent is compact and its member fragments are spatially coherent; do not let one high-confidence fragment beat that object-sized outer extent.
+
+Per-cluster usability question:
+
+Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?
+
+Task context:
+
+Fuse noisy image-space CV cues into bounded object-boundary hypotheses.
+The image is not available to Jev; it receives normalized CV evidence, detector source/kind/confidence, cluster membership, and candidate hypotheses.

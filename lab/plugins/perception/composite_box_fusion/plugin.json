@@ -1,0 +1,70 @@
+{
+  "schema": "automa_lab_perception_plugin_v0",
+  "id": "composite_box_fusion",
+  "name": "Composite CV box fusion",
+  "description": "Local composite box experiment combining current CV cues and optional Jev selection.",
+  "plugin": {
+    "entrypoint": "lab.plugins.perception.composite_box_fusion.src.plugin:CompositeBoxFusionPlugin",
+    "config": {
+      "detectors": [
+        "classical_regions",
+        "edge_rectangles",
+        "hsv_components"
+      ],
+      "fusion_exclude_detectors": [],
+      "fusion_mode": "both",
+      "working_width": 320,
+      "max_raw_boxes": 36,
+      "max_clusters": 8,
+      "max_hypotheses_per_cluster": 10,
+      "cluster_iou_threshold": 0.12,
+      "cluster_center_distance": 0.08,
+      "min_box_area_fraction": 0.001,
+      "max_box_area_fraction": 0.20,
+      "max_fusion_area_fraction": 0.20,
+      "edge_max_boxes": 12,
+      "edge_min_height_fraction": 0.04,
+      "edge_blur_kernel": 3,
+      "edge_close_kernel": 3,
+      "edge_close_iterations": 0,
+      "contour_working_width": 1008,
+      "contour_max_boxes": 24,
+      "adaptive_max_boxes": 28,
+      "corner_working_width": 1008,
+      "corner_max_boxes": 32,
+      "photometric_working_width": 1008,
+      "photometric_max_boxes": 18,
+      "hough_working_width": 1008,
+      "hough_max_boxes": 32,
+      "hsv_hue_min": 5,
+      "hsv_hue_max": 35,
+      "hsv_saturation_min": 50,
+      "hsv_value_max": 220,
+      "hsv_open_iterations": 1,
+      "hsv_close_iterations": 0,
+      "hsv_max_boxes": 16,
+      "jev_model": "jev-latest",
+      "jev_api_url": "https://api.typesafe.ai/v1/systemone",
+      "jev_timeout_s": 30.0,
+      "jev_min_confidence": 0.0,
+      "jev_min_usable": 0.45,
+      "cache_responses": true
+    }
+  },
+  "inputs": [
+    {
+      "name": "frame",
+      "component_id": "camera.rgb:front_camera",
+      "provider_spec": "implementations.perception.components.camera:provide_camera_frame"
+    }
+  ],
+  "runtime": {
+    "python": "core"
+  },
+  "output": {
+    "schema": "perception_text_v2",
+    "kind": "composite_box_fusion",
+    "semantic_labels": false,
+    "depth": false
+  }
+}

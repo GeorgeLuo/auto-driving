@@ -63,3 +63,20 @@ local run directory for `IMG_1001.JPG`; no credential is written there.
 
 `sim_color_targets` is intentionally not an input. It is a simulator-only
 reference signal and would make the real/simulation comparison unfair.
+
+For the Issue #219 marginal-value pilot, compare selectors without making a
+new Jev request:
+
+```sh
+python3 lab/experiments/issue-219/evaluate_marginal_value.py \
+  --findings-dir lab/plugins/perception/composite_box_fusion/evidence/2026-09-17-real-photo-baseline/findings \
+  --labels lab/experiments/issue-219/pilot_labels.json \
+  --output lab/plugins/perception/composite_box_fusion/evidence/2026-09-17-real-photo-baseline/marginal_value_report.json \
+  --markdown-output lab/plugins/perception/composite_box_fusion/evidence/2026-09-17-real-photo-baseline/marginal_value_report.md
+```
+
+The evaluator holds the recorded clusters and candidate geometry fixed while
+comparing raw confidence, covering-union, robust-extent, the existing
+handwritten heuristic, and Jev's stored choice. The pilot labels are approximate
+manual visible-object envelopes and should be expanded with adversarial frames
+before any performance claim is made.

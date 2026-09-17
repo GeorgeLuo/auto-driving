@@ -12,6 +12,10 @@ record.
 - [`input_manifest.json`](input_manifest.json): source image names, dimensions,
   hashes, and local-only provenance.
 - [`results.json`](results.json): compact per-frame results and selected boxes.
+- [`marginal_value_report.md`](marginal_value_report.md): pilot comparison of
+  deterministic selectors against the recorded Jev choices.
+- [`marginal_value_report.json`](marginal_value_report.json): the same results
+  with per-frame matches, source diversity, and hypothesis-kind details.
 - [`findings/`](findings/): sanitized full structured findings for the three
   recorded runs, including raw CV candidates, clusters, hypotheses, and Jev
   responses. Local cache and absolute source paths are removed or normalized.
@@ -48,6 +52,31 @@ feasibility evidence rather than an IoU, precision, or recall benchmark. The
 main positive result is that complementary partial cues produced useful
 object-sized aggregate hypotheses. The main failure is that Jev still accepts
 nuisance clusters and `robust_extent` can trim a legitimate extreme.
+
+## Marginal-value pilot
+
+The follow-up pilot adds approximate manual envelopes for the six visible boxes
+in these three stills. The labels are local, exploratory annotations, stored in
+[`pilot_labels.json`](../../../../../experiments/issue-219/pilot_labels.json),
+not acceptance ground truth. The evaluator is
+[`evaluate_marginal_value.py`](../../../../../experiments/issue-219/evaluate_marginal_value.py).
+
+At IoU `0.50`, the same recorded clusters and hypotheses produced:
+
+| selector | predictions | matched objects | precision | recall | F1 | unmatched predictions |
+|---|---:|---:|---:|---:|---:|---:|
+| raw highest-confidence proposal per cluster | 32 | 0/6 | 0.000 | 0.000 | 0.000 | 32 |
+| covering-union hypothesis | 12 | 6/6 | 0.500 | 1.000 | 0.667 | 6 |
+| robust-extent hypothesis | 12 | 5/6 | 0.417 | 0.833 | 0.556 | 7 |
+| existing handwritten heuristic | 32 | 5/6 | 0.156 | 0.833 | 0.263 | 27 |
+| Jev recorded choice | 14 | 5/6 | 0.357 | 0.833 | 0.500 | 9 |
+
+This small set does not show a Jev advantage over the deterministic aggregate
+baselines. It does show the intended qualitative distinction: raw cues alone
+are fragments, while aggregate hypotheses recover object-sized extents. Jev
+also accepted two single-source raw boundaries in `IMG_1002`, despite the
+multi-source instruction. The next useful step is a larger labeled adversarial
+set, not more detector permutations on these three frames.
 
 ## Reproduction
 

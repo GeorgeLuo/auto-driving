@@ -1,0 +1,57 @@
+{
+  "schema": "issue_219_pilot_labels_v1",
+  "annotation_type": "manual_visual_visible_object_envelopes",
+  "description": "Approximate normalized envelopes for the two visible cardboard boxes in each real still. These are pilot labels for selector comparison, not production ground truth.",
+  "frames": [
+    {
+      "frame": "IMG_1001.JPG",
+      "role": "optimized",
+      "objects": [
+        {
+          "object_id": "box_left",
+          "label": "left cardboard box visible extent",
+          "bbox_xyxy_norm": [0.06, 0.25, 0.44, 0.62],
+          "notes": "Includes the open side panel and front carton body."
+        },
+        {
+          "object_id": "box_right",
+          "label": "right cardboard box visible extent",
+          "bbox_xyxy_norm": [0.53, 0.15, 0.91, 0.59]
+        }
+      ]
+    },
+    {
+      "frame": "IMG_1002.JPG",
+      "role": "generalization_test",
+      "objects": [
+        {
+          "object_id": "box_foreground",
+          "label": "foreground cardboard box visible extent",
+          "bbox_xyxy_norm": [0.16, 0.34, 0.57, 0.80]
+        },
+        {
+          "object_id": "box_right",
+          "label": "right cardboard box visible extent",
+          "bbox_xyxy_norm": [0.53, 0.30, 0.78, 0.59]
+        }
+      ]
+    },
+    {
+      "frame": "IMG_1003.JPG",
+      "role": "generalization_test",
+      "objects": [
+        {
+          "object_id": "box_rear_left",
+          "label": "rear-left cardboard box visible extent",
+          "bbox_xyxy_norm": [0.14, 0.20, 0.43, 0.52]
+        },
+        {
+          "object_id": "box_foreground",
+          "label": "foreground cardboard box visible extent",
+          "bbox_xyxy_norm": [0.40, 0.20, 0.84, 0.85],
+          "notes": "The right flap is part of the visible object envelope; Jev's recorded result clips this side and lower extent."
+        }
+      ]
+    }
+  ]
+}

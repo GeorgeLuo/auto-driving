@@ -53,7 +53,8 @@ the meanings and required fields remain unchanged.
   "generation_id": "...",
   "activation": {
     "engine_id": "shadow-proposals",
-    "activated_at_ms": 0
+    "activated_at_ms": 0,
+    "generation_id": "shadow-proposals:0"
   },
   "source_frame": {
     "frame_id": "donkey_frame_000001",
@@ -66,8 +67,8 @@ the meanings and required fields remain unchanged.
     "observed_at_ms": 0,
     "published_at_ms": 0,
     "source_age_ms": 0,
-    "gap_since_previous_ms": 0,
-    "skipped_since_previous": 0
+    "gap_since_previous_ms": null,
+    "skipped_since_previous": null
   },
   "mode": "user",
   "user_input": {"steering": 0.0, "throttle": 0.0},
@@ -76,6 +77,12 @@ the meanings and required fields remain unchanged.
   "application": {
     "boundary": "post_drive_mode_pre_drivetrain",
     "actuator_feedback": "unavailable"
+  },
+  "limits": {
+    "max_source_age_ms": 1500,
+    "max_publication_age_ms": 1500,
+    "max_gap_ms": 1000,
+    "future_skew_tolerance_ms": 250
   }
 }
 ```
@@ -118,6 +125,115 @@ The consumer may expose the normalized telemetry as a separate host-observed
 panel in the existing physical decision view and capture path, but it must not
 rewrite the accepted decision schema or conflate `proposed`, `authorized`,
 `proposed_applied=false`, and `host_selected_output`.
+
+## Draft Contract Amendment (discovery revision 2)
+
+The following details are part of the still-open proposal and supersede any
+earlier underspecified wording. They were added after the read-only contract
+and dependency audits of PR #202's exact head. This is not an accepted-proposal
+amendment and does not authorize canonical implementation.
+
+### Identity, numeric values, and clock
+
+The producer copies one runtime-owned identity tuple into every healthy record;
+the consumer validates it and never fills a missing member:
+
+```text
+I = (
+  vehicle_id,
+  source_id,
+  run_id,
+  generation_id,
+  activation.engine_id,
+  activation.activated_at_ms,
+  activation.generation_id,
+  source_frame.frame_id,
+  source_frame.frame_index,
+  source_frame.captured_at_ms,
+  source_frame.completed_at_ms
+)
+```
+
+`activation.generation_id` must equal the outer `generation_id`. The decision
+publication and telemetry record must use the same source-frame identity; the
+consumer compares the complete tuple, including both source-frame timestamps,
+and rejects a tuple that the decision publication cannot expose exactly. A held
+source frame may be repeated while it remains fresh, but repetition is not a
+new source frame or a new decision cycle. `host_tick.sequence` is ordering and
+coverage only; it is not an identity substitute.
+
+All serialized times are non-negative, non-boolean integer Unix epoch
+milliseconds from the Donkey host's one wall-clock domain. The producer sets
+`observed_at_ms` immediately after `DriveMode` returns and `published_at_ms`
+after the complete immutable record becomes visible. It copies source-frame
+timestamps without rewriting them. For a healthy record:
+
+- `source_age_ms = observed_at_ms - source_frame.completed_at_ms`;
+- for sequence `n > 1`, `gap_since_previous_ms` is the difference between the
+  current and prior observed times;
+- for sequence `n > 1`, `skipped_since_previous = sequence[n] - sequence[n-1] - 1`;
+- the first record in a run has sequence `1` and null gap/skipped fields, so it
+  is a baseline and does not prove a prior covered interval.
+
+Negative ages or gaps, clock regression, invalid numeric values, or a
+publication more than `future_skew_tolerance_ms` in the future are not
+healthy. `steering` and `throttle` values are finite non-boolean numbers in
+the host's normalized `[-1.0, 1.0]` range. The recorded `mode` must be one of
+`user`, `local_angle`, or `local`; an unknown mode is recorded only as an
+error/unavailable observation and does not change the existing `DriveMode`
+behavior.
+
+The `limits` object is required and uses these immutable frontier defaults:
+`max_source_age_ms=1500`, `max_publication_age_ms=1500`, `max_gap_ms=1000`,
+and `future_skew_tolerance_ms=250`. The producer and consumer use the same
+declared values; neither infers them from `min_interval_s` or the decision
+publication's stale bound. A later limit change is a proposal amendment.
+
+### Status, reason, and interval coverage
+
+Producer status meanings are fixed: `warming` means no complete first record;
+`healthy` means all record and clock checks pass; `stale` means source or
+publication age exceeds its limit; `stopped` is terminal after producer stop;
+`unavailable` means identity/source/publisher cannot provide a record; and
+`error` means observer, serialization, clock, or field failure. Consumer-only
+`mismatched` is used for a complete record whose identity tuple does not join
+the requested decision publication. The normalized consumer reason is one of
+these stable codes, with the listed precedence:
+
+```text
+publisher_missing, warming, producer_stopped, schema_invalid,
+field_invalid, identity_mismatch, future_dated, source_stale,
+publication_stale, sequence_regressed, sequence_duplicate, sequence_gap,
+coverage_gap, observer_error, method_not_allowed, query_invalid,
+redirect_rejected
+```
+
+The bounded history route is part of the same read-only publication seam:
+`GET /autonomy/telemetry/records?after_sequence=<n>&limit=<n>` and `HEAD`
+with the same availability semantics. `after_sequence` is a non-negative
+integer and `limit` is an integer from 1 through 128; no other query key,
+redirect, path component, method, or request target is accepted. The producer
+retains at least the latest 256 complete records in an atomic in-memory ring.
+If the requested sequence was evicted, the response is explicitly incomplete
+with `coverage_reason=history_evicted`; it does not silently return a shorter
+successful interval. The latest route remains useful for a point observation,
+but a capture package may claim an interval only from a contiguous records
+response (or an explicitly declared baseline) with no regression, duplicate,
+sequence gap, skipped tick, source-age breach, publication-age breach, or
+identity mismatch. A gap, stop, invalid record, or source-frame mismatch closes
+the affected interval; a new baseline must be declared before another interval
+can be accepted.
+
+### UI and promotion boundary
+
+The live decision view and evidence capture add a separate `host_telemetry`
+panel/record. They must not populate or reinterpret the existing
+`authority.host_application` envelope as host output. The prototype and
+implementation prove deterministic capability only. Because PR #202 remains a
+draft implementation-in-review, its D1/D2 code is an initial prototype base,
+not an accepted dependency: canonical promotion must revalidate the telemetry
+delta against the milestone branch and must not import #202 evidence or claim
+that telemetry acceptance makes #202 or M006-06/M006-07 accepted.
 
 While this proposal is open, the operator-authorized prototype may implement
 the contract in an isolated worktree rooted at PR #202's exact head. Prototype

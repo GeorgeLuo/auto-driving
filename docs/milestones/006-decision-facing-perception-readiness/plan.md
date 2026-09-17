@@ -143,10 +143,10 @@ for simulator and physical vehicles.
 | Cross-environment shadow proposal evidence | proposal_in_review | Started m006/shadow-proposal-evidence-proposal. |
 | Cross-environment shadow proposal evidence | ready_for_implementation | Proposal PR #201 accepted at 9e2a353c736a04fed22c1ce5d456c6115fbfbddc (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`). |
 | Cross-environment shadow proposal evidence | implementation_in_review | Started m006/shadow-proposal-evidence. |
-| PiRacer host-boundary telemetry | proposal_in_review | Started m006/piracer-host-boundary-telemetry-proposal; supporting host-boundary capability is contracted against the accepted M006-05 operator surface while #202 retains M006-06/M006-07 ownership. |
 | D2 live decision view | proposal_in_review | Started m006/live-decision-view-proposal. |
 | D2 live decision view | ready_for_implementation | Proposal PR #216 accepted at 8b27553bb722bad23477e3c5744c76a321e1c99a (reviewed head `cff47a76f487434985a5b531984546a6f3748771` by `GeorgeLuo` as `OWNER` at `2026-09-16T01:22:55Z`). |
 | D2 live decision view | implementation_in_review | Started m006/live-decision-view. |
+| PiRacer host-boundary telemetry | proposal_in_review | Started m006/piracer-host-boundary-telemetry-proposal; supporting host-boundary capability is contracted against the accepted M006-05 operator surface while #202 retains M006-06/M006-07 ownership. |
 
 ## Accepted Review Units
 

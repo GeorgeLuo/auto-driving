@@ -129,6 +129,51 @@ scratch files, creates no canonical evidence, and contributes no product code
 to this proposal PR. If it shows the question or authority boundary is wrong,
 the proposal remains in review until corrected.
 
+### Prototype record (exploratory, 2026-09-16)
+
+The operator projection was exercised against the real M006 workbench runner
+and the real `floor_continuity` perception plugin. The prototype is stored in a
+separate worktree so PR202 remains isolated:
+
+- Branch: `codex/m006-workbench-prototype`
+- Prototype commit: `d4b9fc1a361b3e2b935d9856d1a7f2b96cdb4392`
+- Prototype base: PR202 head `ccb4e1ae47ad4b6f895cc9541215a087c62cd0e8`
+- Stored artifact: [`lab/prototypes/decision-workbench/README.md`](../../../../lab/prototypes/decision-workbench/README.md)
+- Input: the 14-frame startup-check image directory from the PR202 worktree;
+  the capture is external to the prototype branch and is not canonical
+  evidence.
+- Plugin boundary: explicit `lab/plugins/perception` root with
+  `floor_continuity` selected.
+- Run mode: fixed-cadence, indefinitely looping, observation-only replay.
+
+The run completed through the existing image replay boundary with healthy
+memory and successful perception output. The Decision window rendered the
+server-owned cycle for the selected frame. On frames where the plugin emitted
+accepted `floor_boundary` evidence, the existing `avoid_recent_obstruction`
+proposal selected steering values of `+0.35` or `-0.35`; every observed cycle
+reported `proposed_applied=false`. The timeline and frame detail retained the
+exact frame identity, proposal selection, source references, and shadow-only
+authority state. No synthetic mapper, live producer, vehicle command, or
+second decision authority was used in this run.
+
+The prototype rules in a viable operator projection: image/frame navigation
+can remain primary while a floating Decision window exposes status, selected
+proposal, proposed command, authority, source references, and candidates. It
+does not settle the final playback input boundary. The tested capture was an
+image directory without a decision sequence bundle, so the choice between a
+lossless `automa_decision_apply_sequence_v0` input, an equivalent recorded run,
+and a minimal image-bearing adapter remains an implementation question. The
+explicit plugin directory and packaged shadow-engine defaults are sufficient
+for this exploratory composition, but the final implementation must still
+freeze and expose its recorded configuration identity as required by the
+contract.
+
+Prototype conclusion: no contract change is required from this experiment;
+the source-bundle and frozen-configuration decisions remain open until the
+implementation design is finalized. This run is usability evidence only, not
+physical readiness, canonical acceptance evidence, or proof that the current
+startup-check capture represents a live Chase or PiRacer session.
+
 ## Ownership
 
 | Concern | Owner |

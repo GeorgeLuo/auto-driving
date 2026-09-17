@@ -4031,7 +4031,8 @@ def _fetch_pr_repair_review_metadata(
 query(
   $owner: String!,
   $name: String!,
-  $number: Int!
+  $number: Int!,
+  $commitsCursor: String
 ) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
@@ -4040,8 +4041,9 @@ query(
       headRefOid
       mergedAt
       author { login }
-      commits(first: 100) {
+      commits(first: 100, after: $commitsCursor) {
         totalCount
+        pageInfo { hasNextPage endCursor }
         nodes { commit { oid committedDate } }
       }
       reviews(first: 100) {
@@ -4082,26 +4084,6 @@ query(
         if not isinstance(name_with_owner, str) or "/" not in name_with_owner:
             raise PlanContractError("GitHub CLI returned invalid repository metadata")
         owner, name = name_with_owner.split("/", 1)
-        result = subprocess.run(
-            [
-                "gh",
-                "api",
-                "graphql",
-                "-F",
-                f"owner={owner}",
-                "-F",
-                f"name={name}",
-                "-F",
-                f"number={pr_number}",
-                "-f",
-                f"query={query}",
-            ],
-            cwd=repo_root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        response = json.loads(result.stdout)
     except FileNotFoundError as exc:
         raise PlanContractError(
             "GitHub CLI `gh` is required to verify repair receipts"
@@ -4111,20 +4093,119 @@ query(
         raise PlanContractError(f"cannot fetch repair review evidence: {detail}") from exc
     except json.JSONDecodeError as exc:
         raise PlanContractError("GitHub CLI returned invalid repair metadata") from exc
-    try:
-        pull_request = response["data"]["repository"]["pullRequest"]
-        reviews_connection = pull_request["reviews"]
-        commits_connection = pull_request["commits"]
-        reviews = reviews_connection["nodes"]
-        review_count = reviews_connection["totalCount"]
-        commit_nodes = commits_connection["nodes"]
-        commit_count = commits_connection["totalCount"]
-    except (KeyError, TypeError) as exc:
-        raise PlanContractError(
-            "GitHub CLI returned incomplete repair review metadata"
-        ) from exc
-    if not isinstance(pull_request, dict):
+
+    # GitHub GraphQL limits each connection page to 100 nodes. Commit order is
+    # used to bind repair findings to revisions, so fetch every commit page
+    # instead of treating that API page size as a workflow verification limit.
+    commits_cursor: str | None = None
+    pull_request: dict[str, Any] | None = None
+    reviews_connection: Any = None
+    commit_nodes: list[Any] = []
+    commit_count: int | None = None
+    while True:
+        command = [
+            "gh",
+            "api",
+            "graphql",
+            "-F",
+            f"owner={owner}",
+            "-F",
+            f"name={name}",
+            "-F",
+            f"number={pr_number}",
+            "-f",
+            f"query={query}",
+        ]
+        if commits_cursor is not None:
+            command.extend(["-F", f"commitsCursor={commits_cursor}"])
+        try:
+            result = subprocess.run(
+                command,
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            response = json.loads(result.stdout)
+        except FileNotFoundError as exc:
+            raise PlanContractError(
+                "GitHub CLI `gh` is required to verify repair receipts"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+            raise PlanContractError(
+                f"cannot fetch repair review evidence: {detail}"
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise PlanContractError(
+                "GitHub CLI returned invalid repair metadata"
+            ) from exc
+
+        try:
+            page_pull_request = response["data"]["repository"]["pullRequest"]
+            page_reviews_connection = page_pull_request["reviews"]
+            page_commits_connection = page_pull_request["commits"]
+            page_commit_nodes = page_commits_connection["nodes"]
+            page_commit_count = page_commits_connection["totalCount"]
+            page_info = page_commits_connection["pageInfo"]
+        except (KeyError, TypeError) as exc:
+            raise PlanContractError(
+                "GitHub CLI returned incomplete repair review metadata"
+            ) from exc
+        if not isinstance(page_pull_request, dict):
+            raise PlanContractError(
+                "GitHub pull request repair metadata is incomplete"
+            )
+        if pull_request is None:
+            pull_request = page_pull_request
+            reviews_connection = page_reviews_connection
+        elif page_pull_request.get("headRefOid") != pull_request.get("headRefOid"):
+            raise PlanContractError(
+                "GitHub pull request changed while fetching its commit history"
+            )
+        if (
+            not isinstance(page_commit_nodes, list)
+            or not isinstance(page_commit_count, int)
+            or not isinstance(page_info, dict)
+        ):
+            raise PlanContractError(
+                "GitHub pull request commit history is incomplete"
+            )
+        if commit_count is None:
+            commit_count = page_commit_count
+        elif page_commit_count != commit_count:
+            raise PlanContractError(
+                "GitHub pull request commit count changed while fetching its history"
+            )
+        commit_nodes.extend(page_commit_nodes)
+        has_next_page = page_info.get("hasNextPage")
+        next_cursor = page_info.get("endCursor")
+        if not isinstance(has_next_page, bool) or (
+            next_cursor is not None and not isinstance(next_cursor, str)
+        ):
+            raise PlanContractError(
+                "GitHub pull request commit pagination metadata is malformed"
+            )
+        if not has_next_page:
+            break
+        if not isinstance(next_cursor, str) or not next_cursor:
+            raise PlanContractError(
+                "GitHub pull request commit pagination ended without a cursor"
+            )
+        if next_cursor == commits_cursor:
+            raise PlanContractError(
+                "GitHub pull request commit pagination repeated its cursor"
+            )
+        commits_cursor = next_cursor
+
+    if (
+        pull_request is None
+        or not isinstance(reviews_connection, dict)
+        or not isinstance(commit_count, int)
+    ):
         raise PlanContractError("GitHub pull request repair metadata is incomplete")
+    reviews = reviews_connection.get("nodes")
+    review_count = reviews_connection.get("totalCount")
     if (
         not isinstance(reviews, list)
         or not isinstance(review_count, int)
@@ -4138,12 +4219,11 @@ query(
     if (
         not isinstance(commit_nodes, list)
         or not isinstance(commit_count, int)
-        or commit_count > 100
         or len(commit_nodes) != commit_count
     ):
         raise PlanContractError(
-            "repair validation refuses a commit history larger than or inconsistent "
-            "with the 100-commit verification window"
+            "repair validation refuses an incomplete or inconsistent "
+            "paginated commit history"
         )
     commits: list[str] = []
     head_committed_at: str | None = None

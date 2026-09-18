@@ -4,10 +4,11 @@ Status: **captured for review; canonical acceptance not complete**.
 
 This directory is the stable per-frontier evidence root required by the
 accepted M006 proposal. It contains the frozen procedure plus bounded live
-Chase and post-stop stationary PiRacer captures. The final PiRacer receipt
-proves the shared decision surface, a selected fresh proposal, exact source
-imagery, zero authorized/proposed-applied control, a contiguous eight-record
-host interval, Chase session preservation, and the PiRacer host-telemetry join.
+Chase and post-stop stationary PiRacer captures. The final PiRacer receipts
+prove the shared decision surface, selected fresh left- and right-side
+proposals, exact source imagery, zero authorized/proposed-applied control,
+contiguous eight-record host intervals, Chase session preservation, and the
+PiRacer host-telemetry join.
 One operator-authorized low-throttle user-mode pulse was used as setup before
 the final stationary interval; it is disclosed and excluded from that interval.
 The package does not claim that every C1-C7 case passed; the unresolved cases
@@ -60,7 +61,7 @@ does not edit the accepted proposal.
 | Receipt | Status | Observation | Impact |
 | --- | --- | --- | --- |
 | Proposal/workflow identity | verified | Plan reports `ready_for_implementation`; PR #201 acceptance is recorded at merge `9e2a353c` from reviewed head `f9705785`. | Preparation may continue. |
-| D1 physical shadow-cycle publication/liveness | verified for bounded interval | PiRacer `/autonomy/decision/latest` and `/autonomy/telemetry/latest` expose the live generation, run, source frame, sequence, mode, pilot output, and zero selected output; the local `vehicles decision live --id piracer` view joined the final exact frame and a complete eight-record interval (sequences `58931`–`58938`). | The older six-point capture remains point-only; right-side, lifecycle, absent, and replay cases remain open. |
+| D1 physical shadow-cycle publication/liveness | verified for bounded intervals | PiRacer `/autonomy/decision/latest` and `/autonomy/telemetry/latest` expose the live generation, run, source frame, sequence, mode, pilot output, and zero selected output; the local `vehicles decision live --id piracer` view joined exact left/right frames and complete eight-record intervals (`58931`–`58938` and `65722`–`65729`). | The older six-point capture remains point-only; lifecycle, absent, and replay cases remain open. |
 | D2 live decision URL/retained-evidence overlay | verified for capture | `vehicles decision live --id piracer` served a generation-bound `/decision` page; headless Chromium rendered the actual PiRacer frame, proposal, authority, host-telemetry panel, and evidence findings. Chase supplied the same live API/page plus exact-frame replay HTML. | Visual availability is proven; the accepted lifecycle/side matrix is not complete. |
 | Operator capture authorization | recorded | The operator explicitly authorized active vehicle control. One short low-throttle user-mode pulse was issued for repositioning, followed immediately by an explicit stop; the final interval was captured afterward with zero user, pilot, and host-selected output. | Human acceptance of the remaining evidence gaps and the disclosed setup action is still required before M006 closeout. |
 
@@ -204,7 +205,7 @@ references, and host authority observation.
 | Case | Required evidence |
 | --- | --- |
 | C1 | Matching environment, vehicle/run/activation/frame identity; same engine/plugin/selector; host output zero. |
-| C2 | Left and right fresh active intent with expected sign, throttle zero, gear hold, and complete source references. The current package has only the left witness even after the disclosed PiCar reposition. |
+| C2 | Left and right fresh active intent with expected sign, throttle zero, gear hold, and complete source references. A stationary PiRacer right witness is now captured (`mid_right`, steer `-0.35`); the per-environment left/right matrix is still incomplete. |
 | C3 | One no-reset fresh, retained, stale command-null/idle, inactive sequence with real timestamps and retained images. |
 | C4 | Empty/expired evidence yields inactive, no selection, and no invented source or movement intent. |
 | C5 | Mismatch, stale generation, missing host observation, or stopped worker is rejected and retained as a failure/gap. |

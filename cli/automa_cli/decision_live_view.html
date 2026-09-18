@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa · Live decision</title>
+  <style>
+    :root { color-scheme: dark; --bg: #101315; --panel: #1a1f22; --line: #364148;
+      --muted: #a6b1b7; --text: #f2f5f6; --cyan: #43d9e6; --green: #63e6a2;
+      --amber: #ffd166; --red: #ff7777; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+    main { width: min(1100px, calc(100% - 32px)); margin: 24px auto 48px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+    h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+    .eyebrow, .label { color: var(--muted); text-transform: uppercase; letter-spacing: .11em; font-size: 11px; }
+    .status { color: var(--green); font-size: 13px; }
+    .status.bad { color: var(--red); }
+    .hero { margin: 22px 0 16px; padding: 22px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+    .decision { font-size: clamp(42px, 8vw, 82px); line-height: 1; font-weight: 800; letter-spacing: -.04em; margin: 9px 0 10px; }
+    .decision.right { color: var(--cyan); } .decision.left { color: var(--amber); } .decision.hold { color: var(--muted); }
+    .subline { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+    .card h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+    .stage { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 8px; background: #080a0b; }
+    .stage img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .stage text { font-family: system-ui, sans-serif; paint-order: stroke; stroke: #000; stroke-width: .006px; }
+    .box { fill: none; stroke-width: .006; } .box.other { stroke: var(--cyan); } .box.selected { stroke: var(--red); stroke-width: .009; }
+    .box-label.other { fill: var(--cyan); } .box-label.selected { fill: var(--red); font-weight: 700; }
+    .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
+    .meta { display: grid; grid-template-columns: max-content 1fr; gap: 5px 12px; margin-top: 12px; }
+    .meta dt { color: var(--muted); } .meta dd { margin: 0; overflow-wrap: anywhere; }
+    .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .transition { margin-top: 12px; padding: 9px 10px; border-left: 3px solid var(--cyan); background: #20272a; }
+    .signal { padding: 11px 0; border-top: 1px solid var(--line); }
+    .signal:first-of-type { border-top: 0; padding-top: 0; }
+    .signal strong { display: block; font-size: 18px; margin: 3px 0; }
+    .muted { color: var(--muted); }
+    .evidence-list { margin-top: 12px; color: var(--muted); font-size: 13px; }
+    .evidence-list div { padding: 3px 0; }
+    footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } header { display: block; } .status { margin-top: 5px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Automa · live decision</h1>
+    <div id="status" class="status">connecting…</div>
+  </header>
+
+  <section class="hero" aria-live="polite">
+    <div class="eyebrow">Black-box proposal · shadow only</div>
+    <div id="decision" class="decision hold">CONNECTING</div>
+    <div id="reason" class="subline">Reading the Pi publication…</div>
+    <div id="transition" class="transition">No decision transition observed yet.</div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Live camera and published evidence</h2>
+      <div class="stage">
+        <img id="camera" alt="Matched current Pi camera frame" hidden>
+        <svg id="overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div id="empty" class="empty">Waiting for a matched image…</div>
+      </div>
+      <div id="evidence" class="evidence-list">No image-relative evidence yet.</div>
+    </div>
+
+    <div class="card">
+      <h2>Signals</h2>
+      <div class="signal">
+        <div class="label">Proposal</div>
+        <strong id="proposal">—</strong>
+        <div id="proposalMeta" class="muted">—</div>
+      </div>
+      <div class="signal">
+        <div class="label">Authorized output</div>
+        <strong id="authorized">—</strong>
+        <div id="authorityMeta" class="muted">—</div>
+      </div>
+      <dl class="meta">
+        <dt>Frame</dt><dd id="frame" class="value">—</dd>
+        <dt>Evidence</dt><dd id="evidenceSide">—</dd>
+        <dt>Freshness</dt><dd id="freshness">—</dd>
+        <dt>Generation</dt><dd id="generation" class="value">—</dd>
+        <dt>Run</dt><dd id="run" class="value">—</dd>
+      </dl>
+    </div>
+  </section>
+
+  <footer>This page only reads the D1 publication. Proposed intent is never sent to the vehicle; authorized output should remain idle.</footer>
+</main>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  let previousDirection = null;
+  let previousFrame = null;
+  let currentImageFrame = null;
+
+  const text = (node, value) => { node.textContent = value == null ? "—" : String(value); };
+  const commandText = command => {
+    const steering = Number(command && command.steering);
+    if (Number.isFinite(steering) && steering > 0) return "STEER RIGHT";
+    if (Number.isFinite(steering) && steering < 0) return "STEER LEFT";
+    return "HOLD";
+  };
+  const directionClass = direction => direction === "STEER RIGHT" ? "right" : direction === "STEER LEFT" ? "left" : "hold";
+  const fmtCommand = command => {
+    if (!command) return "none";
+    return `${commandText(command)} · steering=${Number(command.steering).toFixed(2)} · throttle=${Number(command.throttle).toFixed(2)}`;
+  };
+
+  function clearOverlay() {
+    el("overlay").replaceChildren();
+  }
+
+  function drawEvidence(items) {
+    clearOverlay();
+    const list = el("evidence");
+    list.replaceChildren();
+    if (!Array.isArray(items) || items.length === 0) {
+      text(list, "No current image-relative evidence.");
+      return;
+    }
+    const ns = "http://www.w3.org/2000/svg";
+    items.forEach(item => {
+      const box = item.bbox_xyxy_norm;
+      if (!Array.isArray(box) || box.length !== 4) return;
+      const selected = item.selected === true;
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("x", box[0]); rect.setAttribute("y", box[1]);
+      rect.setAttribute("width", box[2] - box[0]); rect.setAttribute("height", box[3] - box[1]);
+      rect.setAttribute("class", `box ${selected ? "selected" : "other"}`);
+      el("overlay").appendChild(rect);
+      const label = document.createElementNS(ns, "text");
+      label.setAttribute("x", box[0] + .006); label.setAttribute("y", Math.max(.026, box[1] - .006));
+      label.setAttribute("font-size", ".028");
+      label.setAttribute("class", `box-label ${selected ? "selected" : "other"}`);
+      label.textContent = `${item.zone || "unknown"}${selected ? " · selected" : ""}`;
+      el("overlay").appendChild(label);
+
+      const line = document.createElement("div");
+      line.textContent = `${item.kind || "evidence"} · ${item.zone || "unknown"} · confidence=${item.confidence ?? "—"}${selected ? " · selected" : ""}`;
+      list.appendChild(line);
+    });
+  }
+
+  function renderUnavailable(data) {
+    const status = el("status");
+    status.className = "status bad";
+    text(status, `unavailable · ${data.reason || "unknown"}`);
+    const decision = el("decision");
+    decision.className = "decision hold";
+    text(decision, "UNAVAILABLE");
+    text(el("reason"), data.message || "The live publication is unavailable.");
+    text(el("proposal"), "—"); text(el("proposalMeta"), "—");
+    text(el("authorized"), "—"); text(el("authorityMeta"), "—");
+    text(el("frame"), "—"); text(el("evidenceSide"), "—"); text(el("freshness"), "—");
+    text(el("generation"), "—"); text(el("run"), "—");
+    el("camera").hidden = true; el("camera").removeAttribute("src");
+    el("empty").hidden = false; text(el("empty"), "Waiting for a matched image…");
+    clearOverlay(); text(el("evidence"), "No image-relative evidence.");
+  }
+
+  function render(data) {
+    if (!data || data.ok !== true) { renderUnavailable(data || {}); return; }
+    const publication = data.publication || {};
+    const decision = publication.decision || {};
+    const cycle = decision.cycle || {};
+    const signals = data.signals || {};
+    const plan = signals.plan || {};
+    const candidate = plan.candidate || {};
+    const authority = signals.authority || {};
+    const proposal = authority.proposed || candidate.command || null;
+    const authorized = authority.authorized_output || null;
+    const direction = commandText(proposal);
+    const status = el("status");
+    status.className = "status";
+    text(status, `live · age ${data.freshness?.result_age_ms ?? "—"} ms`);
+    const decisionNode = el("decision");
+    decisionNode.className = `decision ${directionClass(direction)}`;
+    text(decisionNode, direction);
+    text(el("reason"), candidate.reason || (direction === "HOLD" ? "No active proposal." : "Proposal selected."));
+    text(el("proposal"), direction);
+    text(el("proposalMeta"), `${candidate.lifecycle || "—"} · ${candidate.freshness || "—"} · ${fmtCommand(proposal)}`);
+    text(el("authorized"), commandText(authorized));
+    text(el("authorityMeta"), `proposed_applied=${authority.proposed_applied === true} · reason=${authorized?.reason || "—"}`);
+    text(el("frame"), signals.frame_id || decision.frame_id);
+    const sides = Array.isArray(data.evidence) ? data.evidence.filter(item => item.zone).map(item => item.zone) : [];
+    text(el("evidenceSide"), sides.length ? sides.join(", ") : "none");
+    text(el("freshness"), `${data.freshness?.result_age_ms ?? "—"} / ${data.freshness?.stale_after_ms ?? "—"} ms`);
+    text(el("generation"), signals.generation_id || "—");
+    text(el("run"), signals.run_id || "—");
+    if (previousDirection !== null && previousDirection !== direction) {
+      text(el("transition"), `Changed: ${previousDirection} → ${direction} at frame ${signals.frame_id || decision.frame_id || "—"}`);
+    }
+    previousDirection = direction;
+    previousFrame = signals.frame_id || decision.frame_id || previousFrame;
+    drawEvidence(data.evidence);
+    const image = data.image || {};
+    if (image.jpeg_base64 && image.frame_id === (signals.frame_id || decision.frame_id)) {
+      if (currentImageFrame !== image.frame_id) {
+        el("camera").src = `data:image/jpeg;base64,${image.jpeg_base64}`;
+        currentImageFrame = image.frame_id;
+      }
+      el("camera").hidden = false; el("empty").hidden = true;
+    } else {
+      el("camera").hidden = true; el("empty").hidden = false;
+      text(el("empty"), image.error || "Waiting for an image matched to this decision frame…");
+    }
+  }
+
+  async function poll() {
+    try {
+      const response = await fetch(`/api/live?frame=${encodeURIComponent(previousFrame || "")}`, { cache: "no-store" });
+      render(await response.json());
+    } catch (error) {
+      renderUnavailable({ reason: "monitor_error", message: String(error) });
+    } finally {
+      window.setTimeout(poll, 350);
+    }
+  }
+  poll();
+})();
+</script>
+</body>
+</html>

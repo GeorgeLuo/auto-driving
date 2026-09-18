@@ -1,0 +1,47 @@
+{
+  "all_healthy": true,
+  "all_host_selected_zero": true,
+  "all_joined": true,
+  "all_pilot_output_zero": true,
+  "all_proposed_applied_false": true,
+  "all_user_input_zero": true,
+  "all_user_mode": true,
+  "coverage_reasons": [
+    ""
+  ],
+  "coverage_sequences": {
+    "first": 58931,
+    "last": 58938,
+    "record_count": 8
+  },
+  "coverage_statuses": [
+    "complete"
+  ],
+  "frame_ids": [
+    "donkey_frame_012243"
+  ],
+  "generation_ids": [
+    "shadow-proposals:1789691707752"
+  ],
+  "interval_covered_flags": [
+    true
+  ],
+  "run_ids": [
+    "donkey-run-532122-1789691707752-f47dddf6e9dae753"
+  ],
+  "sample_count": 1,
+  "schema": "automa_piracer_shadow_interval_summary_v0",
+  "selected": {
+    "plugin_id": "avoid_recent_obstruction",
+    "reason": "steer_away_left_obstruction",
+    "steering": 0.35,
+    "throttle": 0.0
+  },
+  "source_frames": [
+    {
+      "decision": "donkey_frame_012243",
+      "host": "donkey_frame_012243"
+    }
+  ],
+  "vehicle_id": "piracer"
+}

@@ -1,27 +1,124 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>decision-combined-v0</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa · Decision inspector</title>
   <style>
-    body { font-family: ui-monospace, monospace; margin: 1.5rem; background: #111; color: #eee; }
-    h1 { font-size: 1.1rem; }
-    .emph { color: #f5a623; font-weight: bold; }
-    section { margin-bottom: 1rem; border-bottom: 1px solid #333; padding-bottom: 0.75rem; }
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background: #101419; color: #e8edf2; line-height: 1.45; }
+    main { max-width: 880px; margin: auto; padding: 2rem 1rem; }
+    header, section { margin-bottom: 1rem; padding: 1rem; background: #141a20; border: 1px solid #303a45; border-radius: .45rem; }
+    header { border-left: .35rem solid #e7a83b; }
+    h1 { margin: 0; font-size: 1.8rem; }
+    h2 { font-size: 1rem; margin: 0 0 .7rem; }
+    p { margin: .35rem 0; }
+    .eyebrow { color: #9fb2c4; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
+    .subtle, .decision-context { color: #afbdc9; }
+    label { display: grid; gap: .3rem; font-size: .9rem; }
+    select { font: inherit; color: inherit; background: #171d24; border: 1px solid #66788a; border-radius: .3rem; padding: .5rem; }
+    #decision-overview { border-color: #65c18c; margin-top: 1rem; padding: 1.5rem; }
+    .decision-direction { font-size: clamp(2.8rem, 9vw, 5rem); font-weight: 750; letter-spacing: -.04em; color: #a1e9ba; }
+    details { border: 1px solid #303a45; border-radius: .35rem; padding: .8rem; margin-top: .8rem; }
+    summary { cursor: pointer; font-weight: 600; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+    #preview-status { color: #ffb4b4; }
+    [hidden] { display: none !important; }
+    @media (max-width: 560px) { main { padding: .65rem; } }
   </style>
 </head>
 <body>
-  <h1 id="decision-combined-v0">decision-combined-v0</h1>
-  <p>Correlated shadow decision view template. Exact-frame HTML is produced by
-     <code>vehicles decision apply --record</code>; live stream uses the same field set.</p>
-  <section>
-    <h2>Authority</h2>
-    <p class="emph">proposed_applied=false</p>
-    <p>authorized_output is always idle with reason shadow-only-idle.</p>
-  </section>
-  <section>
-    <h2>Non-claims</h2>
-    <p>no object identity; shadow-only; not navigation certification.</p>
-  </section>
+  <main>
+    <header>
+      <p class="eyebrow">Automa · Decision inspector</p>
+      <h1 id="decision-combined-v0">Obstruction decision</h1>
+      <p class="subtle">Saved input · shadow scenarios · no vehicle commands sent.</p>
+      <p id="input-label" class="subtle"></p>
+    </header>
+    <section>
+      <h2>Choose an obstruction side</h2>
+      <label for="preview-memory">Obstruction position
+        <select id="preview-memory" disabled>
+          <option value="left">Left obstruction</option>
+          <option value="right">Right obstruction</option>
+        </select>
+      </label>
+      <p id="preview-status" role="status">Loading decisions…</p>
+      <section id="decision-overview" aria-live="polite" hidden>
+        <h2>Black-box decision</h2>
+        <p class="decision-direction"></p>
+        <p class="decision-context"></p>
+      </section>
+      <div id="preview-output" hidden>
+        <details data-disclosure-key="selected-shadow-artifact">
+          <summary>Decision details</summary>
+          <p id="decision-reason"></p>
+          <details data-disclosure-key="input">
+            <summary>Decision input</summary>
+            <pre id="decision-input"></pre>
+          </details>
+          <details data-disclosure-key="preview-canonical-plan-authority">
+            <summary>Plan and authority</summary>
+            <pre id="decision-output"></pre>
+          </details>
+          <details data-disclosure-key="source">
+            <summary>Selected scenario and configuration</summary>
+            <p class="subtle">The saved file and engine settings are shared by both sides.</p>
+            <pre id="inspection-source"></pre>
+          </details>
+        </details>
+      </div>
+    </section>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+      const select = document.querySelector("#preview-memory");
+      const status = document.querySelector("#preview-status");
+      let inspection;
+
+      function showSelected() {
+        const scenario = inspection.scenarios[select.value];
+        const cycle = scenario.cycle;
+        document.querySelector(".decision-direction").textContent = scenario.steering_direction;
+        document.querySelector(".decision-context").textContent = "Obstruction on the " + scenario.obstruction_side;
+        const selected = cycle.plan?.candidates?.find(candidate => candidate.proposal_id === cycle.plan.selected_proposal_id);
+        document.querySelector("#decision-reason").textContent = selected?.reason || cycle.reason || cycle.plan?.status || "";
+        document.querySelector("#decision-input").textContent = JSON.stringify(cycle.source, null, 2);
+        document.querySelector("#decision-output").textContent = JSON.stringify({plan: cycle.plan, authority: cycle.authority}, null, 2);
+        document.querySelector("#inspection-source").textContent = JSON.stringify({
+          selected_scenario: {
+            obstruction_side: scenario.obstruction_side,
+            steering_direction: scenario.steering_direction,
+            changed_record_ids: scenario.changed_record_ids
+          },
+          saved_input: inspection.input,
+          engine_id: inspection.engine_id, engine_config: inspection.engine_config,
+          config_source: inspection.config_source
+        }, null, 2);
+        document.querySelector("#decision-overview").hidden = false;
+        document.querySelector("#preview-output").hidden = false;
+      }
+
+      select.addEventListener("change", showSelected);
+      async function load() {
+        try {
+          const response = await fetch("/api/inspection", {cache: "no-store", signal: AbortSignal.timeout(10000)});
+          if (!response.ok) throw new Error("Could not load inspection (" + response.status + ").");
+          inspection = await response.json();
+          if (inspection.schema !== "automa_decision_inspection_v1" || !inspection.scenarios?.left || !inspection.scenarios?.right) {
+            throw new Error("Invalid inspection artifact.");
+          }
+          document.querySelector("#input-label").textContent = inspection.input.name + " · frame " + (inspection.input.frame_position + 1) + " of " + inspection.input.frame_count;
+          showSelected();
+          select.disabled = false;
+          status.hidden = true;
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      }
+      load();
+    })();
+  </script>
 </body>
 </html>

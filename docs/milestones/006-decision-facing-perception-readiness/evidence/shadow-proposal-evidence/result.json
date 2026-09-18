@@ -1,0 +1,249 @@
+{
+  "schema": "m006_shadow_proposal_evidence_v1",
+  "status": "captured",
+  "canonical_capture_ready": true,
+  "operator_capture_authorized": true,
+  "milestone": "006",
+  "frontier": "Cross-environment shadow proposal evidence",
+  "criteria": {
+    "M006-06": {
+      "status": "Review",
+      "evidence": "Live Chase and stationary PiRacer packages show the shared shadow decision view, exact source imagery, fresh selected intent, zero proposed-applied control, and healthy eight-record host intervals. The PiRacer right witness is now captured with mid_right provenance and steer=-0.35; the per-environment left/right matrix and no-reset freshness lifecycle cases remain incomplete."
+    },
+    "M006-07": {
+      "status": "Review",
+      "evidence": "Chase passive capture preserved the session and kept evaluator reference data separate; the PiRacer left and right receipts each have a joined, complete eight-record interval in user mode with zero user, pilot, and host-selected output. The manual pulse is disclosed as setup and excluded from those stationary intervals; Chase still lacks a physical host interval."
+    }
+  },
+  "identity": {
+    "repository": "GeorgeLuo/auto-driving",
+    "implementation_branch": "codex/m006-shadow-evidence-capture",
+    "base": "1acdf8672b166f28d2c2053106b226775de95a25",
+    "head": "codex/m006-shadow-evidence-capture local capture commit (not pushed)",
+    "proposal_pr": 201,
+    "proposal_reviewed_head": "f9705785e62ba6c7d193cee8dcd86d0052ed6508",
+    "proposal_merge": "9e2a353c736a04fed22c1ce5d456c6115fbfbddc",
+    "policy_commit": "c8ee3515719ebbde4540d9d1ee04f9d04385ddc"
+  },
+  "readiness_receipts": {
+    "proposal_acceptance": {
+      "status": "verified",
+      "source": "docs/milestones/006-decision-facing-perception-readiness/plan.md",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/201#pullrequestreview-5149775116",
+      "observation": "Initial workflow status reported ready_for_implementation with the accepted proposal merge/reviewed-head pair; the preserved remote implementation start now records implementation_in_review."
+    },
+    "procedure_and_checks": {
+      "status": "frozen_for_operator_review",
+      "source": "README.md",
+      "observation": "C1-C7 mapping, lossless replay projection, bounds, rendering checks, and fail-closed gate are recorded."
+    },
+    "D1": {
+      "status": "verified_for_capture",
+      "owner": "PiRacer Donkey physical publication/control boundary plus Automa decision-view adapter",
+      "minimum_capability": "genuine physical shadow-cycle publication with run, activation, frame, sequence, liveness, mode, and pilot observations",
+      "observation": "PiRacer endpoints and the local decision view returned generation-joined physical frames and healthy host telemetry; the left and right receipts each retain an exact decision frame plus a contiguous eight-record host interval (sequences 58931-58938 and 65722-65729).",
+      "impact": "The telemetry consumer now exposes complete interval coverage separately from the exact joined point; the older six-point capture remains point/coverage_gap. The right-side proposal traverses the same CLI/viewer telemetry path with mid_right provenance.",
+      "next": "Use the two receipts for bounded left/right interval claims, but do not infer the missing lifecycle, absent, or replay cases."
+    },
+    "D2": {
+      "status": "verified_for_capture",
+      "owner": "Automa decision live-view boundary",
+      "minimum_capability": "generation-bound live decision URL with exact image, proposal, authority, and separate host-telemetry panel",
+      "observation": "The local CLI live view served /decision for PiRacer and rendered through headless Chromium; Chase supplied a live API/page and exact-frame replay page.",
+      "impact": "Visual availability is no longer the blocker; remaining gaps are evidence cases and interval completeness.",
+      "next": "Review the captured images and keep the unresolved case outcomes below."
+    },
+    "operator_capture_authorization": {
+      "status": "recorded",
+      "observation": "The operator explicitly authorized vehicle control. One short low-throttle user-mode PiCar pulse was issued to reposition the camera, followed immediately by an explicit stop; all final evidence below was captured after the stop and reports zero user, pilot, and host-selected output.",
+      "required_after": ["human review of the remaining C2/C3/C4/C7 gaps", "explicit acceptance or completion of the missing evidence"]
+    }
+  },
+  "case_outcomes": {
+    "C1": {"status": "review", "evidence": "Chase and PiRacer both use shadow-proposals, avoid_recent_obstruction, deterministic_first_active, and separate proposed versus authorized output; run and frame identities are environment-specific. See chase/live/capture-summary.json and piracer/live/interval-summary.json."},
+    "C2": {"status": "review", "evidence": "The existing left witness selects fresh mid-left evidence with steer=0.35 and throttle=0. The new stationary PiRacer receipt selects fresh mid_right evidence with steer=-0.35, throttle=0, gear=hold, complete source references, and a complete host interval (frame donkey_frame_013821; sequences 65722-65729). The proposal path therefore traverses the right-side case, but the accepted contract requires a left/right pair in each environment and that matrix is not complete."},
+    "C3": {"status": "blocked", "evidence": "No single no-reset live sequence records fresh, retained, stale, and inactive decision cycles with real timestamps and source images. Existing bounded-memory checks are supporting implementation evidence only."},
+    "C4": {"status": "blocked", "evidence": "No canonical absent/expired decision witness was captured in both environments."},
+    "C5": {"status": "review", "evidence": "Chase terminal status records the observe-only worker stopped with no control application and preserved session; PiRacer local view was stopped after capture. Chase host telemetry is not a physical-host claim; the final PiCar receipt has exact identity and complete host coverage, while the earlier point-only samples remain disclosed."},
+    "C6": {"status": "review", "evidence": "Chase replay with the actual source image produced equal two-pass digest 4b7f8c92e446c4f0596ef9eac6f39dda5184013786f134a3cdf85d49d83468ca and was rendered by headless Chromium. A PiRacer replay sequence was not captured."},
+    "C7": {"status": "review", "evidence": "Chase passive capture preserved the simulation epoch, control source, and zero human input while mutation_attempted=false. After the disclosed setup pulse and explicit stop, the PiCar final interval is stationary in user mode with zero user/pilot/host-selected output and complete sequences 58931-58938; the interval does not claim the preceding setup period."}
+  },
+  "preparatory_checks": {
+    "chase_passive_status": {
+      "status": "passed_live_capture",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "observation": "Metrics UI Chase session was reachable; passive capture reported evaluator_reference available, mutation_attempted=false, and preserved session identity before/during/after the observe-only worker.",
+      "next_action": "Review the remaining missing side/lifecycle cases; do not infer them from this point capture."
+    },
+    "decision_info": {
+      "status": "passed_live_probe",
+      "command": "AUTOMA_RUNTIME_ROOT=<temporary> ./cli/automa vehicles update decision --id chase-sim-chaser --engine shadow-proposals --json && ./cli/automa vehicles info decision --id chase-sim-chaser --json",
+      "observation": "Engine config, plugin, selector, shadow authority, generation-bound live view, and exact source image were available for the recorded Chase run; the PiRacer CLI live view was independently verified.",
+      "live_capture_eligible": true
+    },
+    "offline_public_door": {
+      "status": "passed_preparatory_only",
+      "record": "preparatory/public-door-result.json",
+      "fixture_sha256": "bc5bcc2164f2c8b198163d3ed6e61648b787a62d82904ed56855270e07a39c76",
+      "digest_sha256": "63369a158af3198a44e145ed11aa71dbb62097e46a39e3e458909fe08a53e54b",
+      "proposed_steering": 0.35,
+      "authorized_steering": 0.0,
+      "authorized_throttle": 0.0,
+      "proposed_applied": false,
+      "source_image": null,
+      "limitation": "offline fixture remains preparatory only; live evidence is recorded separately under chase/ and piracer/"
+    }
+  },
+  "validation": {
+    "packet_verifier": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 verify_packet.py --record result.json --html result.html --check-html",
+      "status": "passed",
+      "result": "captured packet shape and declared artifact paths verified"
+    },
+    "packet_regression_tests": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q test_verify_packet.py",
+      "status": "passed",
+      "summary": "12 passed"
+    },
+    "focused_decision_surfaces": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 pytest -q tests/cli/decision/test_commands.py tests/cli/decision/test_shadow_decision_surfaces.py",
+      "status": "passed",
+      "summary": "33 passed"
+    },
+    "host_telemetry_consumer": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.cli.decision.test_host_telemetry_consumer -v",
+      "status": "passed",
+      "summary": "14 tests passed, including bounded history and provider-clock-skew retries"
+    },
+    "workflow_and_docs": {
+      "commands": [
+        "PYTHONDONTWRITEBYTECODE=1 python3 docs/milestones/workflow.py status --plan docs/milestones/006-decision-facing-perception-readiness/plan.md",
+        "PYTHONDONTWRITEBYTECODE=1 python3 docs/milestones/workflow.py validate docs/milestones/006-decision-facing-perception-readiness/plan.md",
+        "python3 docs/render_markdown.py --check",
+        "git diff --check"
+      ],
+      "status": "passed",
+      "summary": "plan remains valid; evidence package and derived page rendered; milestone status remains implementation_in_review because M006-06/M006-07 are not yet Met"
+    },
+    "broader_deterministic_suite": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 pytest -q",
+      "status": "incomplete_with_unrelated_failures",
+      "summary": "1048 passed, 2 skipped, 4 failed",
+      "failures": [
+        "tests/milestones/test_cli_journey_coverage.py::RootAndEnvironmentTests::test_hook_sanitizes_environment_and_generates_contained_effective_config",
+        "tests/milestones/test_cli_journey_coverage.py::RootAndEnvironmentTests::test_interpreter_symlink_alias_is_normalized_to_python_token",
+        "tests/milestones/test_cli_journey_coverage.py::RootAndEnvironmentTests::test_runner_precondition_preserves_manifest_template_before_substitution",
+        "tests/milestones/test_cli_surface_audit.py::CliSurfaceAuditTests::test_historical_audit_ignores_current_app_source_drift"
+      ],
+      "limitation": "Failures are outside the changed docs/evidence paths; the exact base checkout reproduces the historical-audit failure and passes the three PATH-sensitive tests when selected individually. The full suite is not green and the implementation PR remains draft."
+    }
+  },
+  "environment_packages": {
+    "chase": {
+      "status": "review",
+      "path": "chase/",
+      "artifacts": [
+        {"path": "live/capture-summary.json", "role": "live shadow view summary"},
+        {"path": "live/decision-api.json", "role": "generation-bound live decision API"},
+        {"path": "live/decision-view.html", "role": "live decision page"},
+        {"path": "raw/stop-receipt.md", "role": "worker stop receipt"},
+        {"path": "raw/automation-state-terminal.json", "role": "stopped worker and session receipt"},
+        {"path": "raw/automation-status-terminal.json", "role": "CLI terminal status"},
+        {"path": "raw/latest-decision-live.json", "role": "full live decision cycle"},
+        {"path": "raw/decision-activation-live.json", "role": "decision activation"},
+        {"path": "raw/memory-activation-live.json", "role": "memory activation"},
+        {"path": "sequence.json", "role": "lossless replay sequence projection"},
+        {"path": "frames/chase_frame_3073455.png", "role": "exact source frame"},
+        {"path": "replay-with-image/result.json", "role": "two-pass replay result"},
+        {"path": "replay-with-image/frames/chase_frame_3073455.html", "role": "exact-frame replay page"},
+        {"path": "replay-with-image/chase-frame-3073455-headless.png", "role": "headless Chromium visual receipt"}
+      ]
+    },
+    "piracer": {
+      "status": "review",
+      "path": "piracer/",
+      "artifacts": [
+        {"path": "live/decision-api.json", "role": "generation-bound live decision API"},
+        {"path": "live/decision-view.html", "role": "CLI live decision page"},
+        {"path": "live/decision-view-headless.png", "role": "headless Chromium visual receipt"},
+        {"path": "live/interval-summary.json", "role": "six-point host-telemetry summary"},
+        {"path": "live/post-reposition-final-api.json", "role": "generation-bound live API with joined host interval"},
+        {"path": "live/post-reposition-final-interval-summary.json", "role": "post-stop complete host-telemetry interval summary"},
+        {"path": "live/post-reposition-final-exact-frame.html", "role": "exact-frame combined review page"},
+        {"path": "live/post-reposition-final-exact-frame-headless.png", "role": "headless Chromium exact-frame receipt"},
+        {"path": "live/right-witness-api.json", "role": "generation-bound right-side live API with joined host interval"},
+        {"path": "live/right-witness-exact-frame.html", "role": "right-side exact-frame combined review page"},
+        {"path": "live/right-witness-exact-frame-headless.png", "role": "headless Chromium right-side exact-frame receipt"},
+        {"path": "live/capture-manifest.json", "role": "capture identity"},
+        {"path": "live/stop-receipt.md", "role": "read-only view stop receipt"},
+        {"path": "raw/status-000.json", "role": "physical status sample"},
+        {"path": "raw/status-005.json", "role": "physical status sample"},
+        {"path": "raw/decision-000.json", "role": "physical decision sample"},
+        {"path": "raw/decision-005.json", "role": "physical decision sample"},
+        {"path": "raw/telemetry-000.json", "role": "physical host telemetry sample"},
+        {"path": "raw/telemetry-005.json", "role": "physical host telemetry sample"},
+        {"path": "raw/status-post-reposition-final.json", "role": "post-stop physical status receipt"},
+        {"path": "raw/decision-post-reposition-final.json", "role": "post-stop physical decision receipt"},
+        {"path": "raw/telemetry-latest-post-reposition-final.json", "role": "post-stop latest host telemetry receipt"},
+        {"path": "raw/telemetry-interval-post-reposition-final.json", "role": "post-stop raw contiguous host interval"},
+        {"path": "raw/status-right-witness.json", "role": "right-side physical status receipt"},
+        {"path": "raw/decision-right-witness.json", "role": "right-side physical decision receipt"},
+        {"path": "raw/telemetry-latest-right-witness.json", "role": "right-side latest host telemetry receipt"},
+        {"path": "raw/telemetry-interval-right-witness.json", "role": "right-side raw contiguous host interval"},
+        {"path": "frames/donkey_frame_005767.jpg", "role": "exact physical source frame"},
+        {"path": "frames/post-reposition-final.jpg", "role": "post-stop exact physical source frame"},
+        {"path": "frames/right-witness.jpg", "role": "right-side exact physical source frame"}
+      ]
+    }
+  },
+  "interval_coverage": {
+    "chase": {
+      "status": "review",
+      "accepted_intervals": 0,
+      "uncovered_intervals": "latest-frame evidence only; no physical host interval",
+      "evidence": "chase/raw/automation-state-terminal.json and chase/live/decision-api.json"
+    },
+    "piracer": {
+      "status": "review",
+      "accepted_intervals": 2,
+      "uncovered_intervals": "older six-point samples remain point/coverage_gap; setup pulse is outside the accepted stationary intervals",
+      "evidence": "piracer/live/post-reposition-final-interval-summary.json, piracer/raw/telemetry-interval-post-reposition-final.json, piracer/live/right-witness-api.json, and piracer/raw/telemetry-interval-right-witness.json"
+    }
+  },
+  "reviews": {
+    "visual": {
+      "status": "review",
+      "evidence": "Headless Chromium rendered chase/replay-with-image/chase-frame-3073455-headless.png, piracer/live/post-reposition-final-exact-frame-headless.png, and piracer/live/right-witness-exact-frame-headless.png; the right receipt shows the actual PiCar image, mid_right source, steer_away_right_obstruction proposal, separate authority, healthy joined telemetry, and complete eight-record coverage."
+    },
+    "operator": {
+      "status": "review",
+      "evidence": "Human confirmation is required to accept the incomplete per-environment left/right matrix, no-reset lifecycle, absent, and continuous-interval cases as a scope exception or to authorize further capture."
+    }
+  },
+  "cleanup": {
+    "live_worker_started": true,
+    "chase_worker_stopped": true,
+    "piracer_live_view_started": true,
+    "piracer_live_view_stopped": true,
+    "simulator_started_or_changed": false,
+    "vehicle_control_applied": true,
+    "pilot_output_observed": false,
+    "temporary_probe_runtime": "isolated /private/tmp/m006-shadow-evidence worktree; one operator-authorized low-throttle user-mode pulse was issued before the final stationary capture and was followed by an explicit stop"
+  },
+  "limits": {
+    "max_frames": 256,
+    "max_sequence_bytes": 33554432,
+    "max_record_bytes": 8388608,
+    "hashes_mean": "byte consistency only",
+    "non_claims": ["object identity", "trajectory", "self-motion", "prediction", "navigation", "movement safety", "physical readiness", "zero-control coverage during the setup pulse", "continuous zero-control coverage outside the recorded final interval"]
+  },
+  "artifacts": [
+    {"path": "README.md", "role": "frozen procedure and case map", "authoritative": true},
+    {"path": "result.json", "role": "readiness and outcome record", "authoritative": true},
+    {"path": "result.html", "role": "derived from result.json", "authoritative": false},
+    {"path": "chase/", "role": "bounded live Chase package", "authoritative": true},
+    {"path": "piracer/", "role": "bounded live PiRacer package", "authoritative": true},
+    {"path": "preparatory/public-door-result.json", "role": "offline public-door check", "authoritative": true, "live_evidence_eligible": false}
+  ],
+  "next": "Telemetry is now verified through the CLI viewer for both left and right PiCar witnesses, each with complete post-stop host intervals. M006 closeout still requires the per-environment left/right matrix, no-reset lifecycle, absent/expired, and PiRacer replay cases, plus a decision on whether the disclosed setup pulse is acceptable under the stationary evidence contract."
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "orchestration_state_v1",
+  "run_id": "2026-09-08-m006-frontier-implementation",
+  "policy": {
+    "path": "docs/guidance/orchestration/product-implementation/v1.md",
+    "commit": "c8ee3515719ebbde4540d9d1ee04f9d04385ddc",
+    "shared": "shared/v1"
+  },
+  "identity": {
+    "repository": "/Users/gluo/Projects/auto-driving",
+    "branch": "m006/shadow-proposal-evidence",
+    "base": "a8c4483dea577afdb78094caa36d650f47882a27",
+    "head": "a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c",
+    "preserved_remote_start": "af02f318010947612bf8ec9f25e42e01581288e1",
+    "audit_commit": "metadata receipt commit follows the implementation content commit",
+    "proposal_pr": 201,
+    "proposal_reviewed_head": "f9705785e62ba6c7d193cee8dcd86d0052ed6508",
+    "proposal_merge": "9e2a353c736a04fed22c1ce5d456c6115fbfbddc"
+  },
+  "workflow": {
+    "milestone": "006",
+    "frontier": "Cross-environment shadow proposal evidence",
+    "state": "implementation_in_review",
+    "criteria": ["M006-06", "M006-07"],
+    "current_pr": 202
+  },
+  "boundary": {
+    "status": "blocked_at_capture_gate",
+    "canonical_capture_ready": false,
+    "operator_capture_authorized": false,
+    "d1": "blocked: no supported physical shadow-cycle publication/liveness receipt",
+    "d2": "blocked: staged decision info exposes combined_view.url=null and only a local path template",
+    "next": "complete A2 preparation, then present frozen procedure and receipts for explicit operator authorization"
+  },
+  "units": {
+    "A1": "complete",
+    "A2": "complete"
+  },
+  "metrics": {
+    "model_calls": {"root": 1, "children": 0},
+    "child_launches": 0,
+    "requested_and_observed_model_effort": {
+      "root": "requested gpt-5.6-luna/max; observed runtime identity unavailable",
+      "worker": "requested gpt-5.6-luna/max; not dispatched"
+    },
+    "input_tokens": "unknown",
+    "cached_input_tokens": "unknown",
+    "output_tokens": "unknown",
+    "reasoning_output_tokens": "unknown",
+    "wait_status_activations": 0,
+    "poll_wait_turns": 0,
+    "duplicated_validation": 0,
+    "retries": 0,
+    "max_live_subordinates": 0,
+    "outcome": "escalated"
+  },
+  "unresolved": [
+    "D1 physical shadow-cycle publication/liveness availability",
+    "D2 live decision URL and retained-evidence overlay availability",
+    "operator capture authorization"
+  ],
+  "updated_at": "2026-09-08"
+}

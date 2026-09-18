@@ -1,0 +1,37 @@
+{
+  "activated_at_ms": 1789694952074,
+  "controller_bundle": {
+    "autonomy_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/autonomy",
+    "implementations_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/implementations",
+    "memory_runtime_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/memory",
+    "release": {
+      "archive": "runtime/vehicles/chase-sim-chaser/bundle/releases/autonomy-73b0a7100f08-1789694951576.tar.gz",
+      "archive_sha256": "8f3c568f9fdfeed723c6e510c30f1e8917633bb797f175119d58e9e9e0b99e49",
+      "bundle_kind": "autonomy-controller",
+      "created_at_ms": 1789694951576,
+      "file_count": 82,
+      "manifest": "runtime/vehicles/chase-sim-chaser/bundle/releases/autonomy-73b0a7100f08-1789694951576.manifest.json",
+      "schema": "automa_controller_bundle_manifest_v0",
+      "total_bytes": 550203,
+      "tree_sha256": "73b0a7100f08489ebbacf1c7a6ab3cdac52d0d99bfed94a90e1a8b974dc8624d"
+    },
+    "root_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle"
+  },
+  "memory": {
+    "description": "Bounded recency ledger of observation things and signals with provenance, age expiry, and oldest-first eviction. Does not claim semantic object identity or world truth.",
+    "implementation_config": {
+      "eviction_policy": "oldest_first",
+      "max_age_ms": 10000,
+      "max_property_bytes": 4096,
+      "max_records": 32,
+      "max_serialized_bytes": 262144,
+      "min_confidence": 0.0,
+      "retain_signals": true,
+      "retain_things": true
+    },
+    "implementation_id": "bounded_evidence",
+    "implementation_spec": "implementations.memory.bounded_evidence:BoundedEvidenceLedger"
+  },
+  "schema": "automa_memory_activation_v0",
+  "vehicle_id": "chase-sim-chaser"
+}

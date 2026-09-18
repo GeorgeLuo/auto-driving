@@ -7,9 +7,11 @@ import html
 import json
 import os
 import secrets
+import shlex
 import shutil
 import stat as stat_mod
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
@@ -63,6 +65,13 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .paths import ROOT, display_path, safe_path_part
+from .physical_observation import (
+    PhysicalDecisionPublicationError,
+    fetch_decision_publication,
+    normalize_physical_decision_publication,
+    picar_base_url,
+)
+from .vehicles import discover_active_vehicles, find_vehicle_by_id
 
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
@@ -663,10 +672,41 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
             },
         }
 
+    # D2 discovery is a short, read-only loopback probe. It never starts a
+    # worker or creates a capture; an unavailable producer remains explicit.
+    if engine_id != ENGINE_ID:
+        view_status = {
+            "available": False,
+            "status": "unavailable",
+            "reason": "wrong_engine",
+            "generation_id": None,
+            "identity": None,
+            "api_url": None,
+            "url": None,
+        }
+    else:
+        from .decision_view import get_decision_view_status
+
+        view_status = get_decision_view_status(
+            automation_dir=Path(bundle["runtime_dir"]) / "automation",
+            vehicle_id=vehicle_id,
+            activation=activation,
+        )
+
     combined_view = {
         "view_id": COMBINED_VIEW_ID,
-        "url": None,
         "path_template": f"cli/automa_cli/decision_view.html#{COMBINED_VIEW_ID}",
+        "launch_command": (
+            "./cli/automa vehicles decision inspect --id "
+            + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
+        ),
+        "available": view_status["available"],
+        "status": view_status["status"],
+        "reason": view_status["reason"],
+        "url": view_status["url"],
+        "api_url": view_status["api_url"],
+        "generation_id": view_status["generation_id"],
+        "identity": view_status["identity"],
     }
 
     payload = {
@@ -1062,6 +1102,127 @@ def accept_decision_stream_frame(
             "frame_id must equal cycle.frame_id.",
         )
     _require_stream_summaries_match_cycle(frame, cycle)
+
+
+def _accept_provider_neutral_decision_cycle(
+    decision: dict[str, Any],
+    *,
+    normalized: dict[str, Any],
+) -> None:
+    """Apply shared typed-cycle gates without Chase worker assumptions.
+
+    A PiCar publication carries its source-owned identity in the physical wire
+    envelope. It must not be relabeled as a Chase worker frame merely to reuse
+    local ``state.json`` or PID checks. The typed shadow cycle remains subject
+    to the same exact reconstruction and runner/activation checks.
+    """
+
+    cycle = decision.get("cycle")
+    if not isinstance(cycle, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Physical decision cycle must be an object.",
+        )
+    reconstructed_cycle = _require_exact_cycle_export(cycle)
+    engine_id = decision.get("activation_engine_id")
+    if engine_id != ENGINE_ID:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"Physical decision engine must be {ENGINE_ID!r}; got {engine_id!r}.",
+        )
+    activation = decision.get("activation")
+    engine_config = activation.get("engine_config") if isinstance(activation, dict) else None
+    if not isinstance(engine_config, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Physical decision activation engine_config must be an object.",
+        )
+    try:
+        shadow_config = validate_shadow_engine_config(engine_config)
+    except DecisionSurfaceError as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            exc.message_text,
+            details=exc.details,
+        ) from exc
+    _require_runner_plan_alignment(reconstructed_cycle, shadow_config)
+
+    if decision.get("activation_engine_id") != activation.get("engine_id"):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Physical decision activation engine identity does not match its envelope.",
+        )
+    if (
+        decision.get("activation_activated_at_ms") != activation.get("activated_at_ms")
+        or decision.get("generation_id") != activation.get("generation_id")
+    ):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Physical decision activation generation does not match its envelope.",
+        )
+    if reconstructed_cycle.frame_id != decision.get("frame_id"):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Physical decision cycle frame_id does not match its envelope.",
+        )
+    source = reconstructed_cycle.source
+    if source is None:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Physical decision cycle has no source identity.",
+        )
+    if (
+        source.frame_index != normalized["frame_index"]
+        or source.timestamp_ms != normalized["timestamp_ms"]
+    ):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Physical decision source timing does not match its envelope.",
+        )
+
+
+def accept_physical_decision_publication(
+    publication: object,
+    *,
+    vehicle_id: str,
+    now_ms: int,
+    max_age_ms: int | None = None,
+) -> dict[str, Any]:
+    """Normalize and accept a physical decision without fabricating local state."""
+
+    try:
+        normalized = normalize_physical_decision_publication(
+            publication,
+            vehicle_id=vehicle_id,
+            now_ms=now_ms,
+            max_age_ms=max_age_ms,
+        )
+    except PhysicalDecisionPublicationError as exc:
+        raise DecisionSurfaceError(
+            "physical_decision_unavailable",
+            exc.message_text,
+            vehicle_id=vehicle_id,
+            details={"reason": exc.reason, **exc.details},
+        ) from exc
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "physical_decision_unavailable",
+            f"Physical decision publication is invalid: {exc}",
+            vehicle_id=vehicle_id,
+            details={"reason": "incomplete"},
+        ) from exc
+
+    decision = normalized["decision"]
+    try:
+        _accept_provider_neutral_decision_cycle(decision, normalized=normalized)
+    except DecisionSurfaceError as exc:
+        raise DecisionSurfaceError(
+            "physical_decision_unavailable",
+            f"Physical decision publication is invalid: {exc.message_text}",
+            vehicle_id=vehicle_id,
+            details={"reason": "mismatched", "source_error": exc.error, **exc.details},
+        ) from exc
+    return normalized
 
 
 def _require_non_bool_int(value: object, *, field: str) -> int:
@@ -2041,6 +2202,163 @@ def publish_shadow_decision_frame(
     return True
 
 
+def _physical_decision_output(
+    normalized: dict[str, Any],
+    *,
+    provider: str = "picar",
+) -> dict[str, Any]:
+    """Return a JSON-safe physical result while retaining the source payload."""
+
+    publication = deepcopy(normalized["publication"])
+    publication["provider"] = provider
+    publication["accepted"] = True
+    publication["freshness"] = {
+        "age_ms": normalized["result_age_ms"],
+        "max_age_ms": normalized["max_age_ms"],
+    }
+    return publication
+
+
+def physical_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Adapt one accepted physical cycle to the provider-neutral decision view."""
+
+    decision = normalized["decision"]
+    cycle = decision["cycle"]
+    source = cycle.get("source") if isinstance(cycle, dict) else None
+    return {
+        "schema": "provider_decision_stream_frame_v0",
+        "vehicle_id": decision["vehicle_id"],
+        "source_id": decision["source_id"],
+        "run_id": decision["run_id"],
+        "activation_engine_id": decision["activation_engine_id"],
+        "activation_activated_at_ms": decision["activation_activated_at_ms"],
+        "producer_generation_id": decision["generation_id"],
+        "frame_id": decision["frame_id"],
+        "frame_index": decision["frame_index"],
+        "timestamp_ms": decision["timestamp_ms"],
+        "published_at_ms": decision["published_at_ms"],
+        "cycle": deepcopy(cycle),
+        "observation_summary": _observation_summary(source),
+        "memory_summary": _memory_summary(source),
+        "plan_summary": _plan_summary(cycle.get("plan")),
+        "authority_summary": _authority_summary(cycle.get("authority", {}), cycle),
+    }
+
+
+def _format_physical_decision(normalized: dict[str, Any]) -> str:
+    decision = normalized["decision"]
+    cycle = decision.get("cycle") if isinstance(decision.get("cycle"), dict) else {}
+    frame = physical_decision_view_frame(normalized)
+    lines = [
+        f"Decision stream: {decision.get('vehicle_id')} frame={decision.get('frame_id')} provider=picar",
+        f"Source: {decision.get('source_id')}  run={decision.get('run_id')} "
+        f"generation={decision.get('generation_id')}",
+        f"Activation: {decision.get('activation_engine_id')} "
+        f"at={decision.get('activation_activated_at_ms')}",
+        f"Freshness: age_ms={normalized.get('result_age_ms')} "
+        f"max_age_ms={normalized.get('max_age_ms')}",
+    ]
+    stream_text = _format_stream_frame(frame)
+    lines.extend(stream_text.splitlines()[2:])
+    return "\n".join(lines)
+
+
+def _stream_physical_decision(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    refresh_s: float,
+    once: bool,
+    no_clear: bool,
+    json_output: bool,
+    output: TextIO | None,
+    timeout_s: float,
+) -> CommandResult:
+    base_url = picar_base_url(vehicle)
+    if base_url is None:
+        exc = DecisionSurfaceError(
+            "physical_decision_unavailable",
+            f"Vehicle {vehicle_id!r} has no physical base URL.",
+            vehicle_id=vehicle_id,
+            details={"reason": "missing"},
+        )
+        return _error_result(exc, json_output=json_output)
+
+    def _accept_once() -> dict[str, Any]:
+        try:
+            publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
+        except (ConnectionError, OSError) as exc:
+            raise DecisionSurfaceError(
+                "physical_decision_unavailable",
+                f"Could not read physical decision publication: {exc}",
+                vehicle_id=vehicle_id,
+                details={"reason": "missing", "transport": str(exc)},
+            ) from exc
+        normalized = accept_physical_decision_publication(
+            publication,
+            vehicle_id=vehicle_id,
+            now_ms=int(time.time() * 1000),
+        )
+        return {
+            "publication": _physical_decision_output(normalized),
+            "normalized": normalized,
+        }
+
+    if once:
+        try:
+            accepted = _accept_once()
+        except DecisionSurfaceError as exc:
+            return _error_result(exc, json_output=json_output)
+        if json_output:
+            return CommandResult(
+                0,
+                json.dumps(accepted["publication"], indent=2, sort_keys=True),
+            )
+        return CommandResult(0, _format_physical_decision(accepted["normalized"]))
+
+    stream = output
+    last_error: str | None = None
+    try:
+        while True:
+            try:
+                accepted = _accept_once()
+                last_error = None
+                text = (
+                    json.dumps(accepted["publication"], sort_keys=True)
+                    if json_output
+                    else _format_physical_decision(accepted["normalized"])
+                )
+                if stream is not None:
+                    if not no_clear and not json_output:
+                        stream.write("\033[2J\033[H")
+                    stream.write(text + "\n")
+                    stream.flush()
+            except DecisionSurfaceError as exc:
+                last_error = exc.message_text
+                if stream is not None and not json_output:
+                    if not no_clear:
+                        stream.write("\033[2J\033[H")
+                    stream.write(last_error + "\n")
+                    stream.flush()
+                elif stream is not None and json_output:
+                    stream.write(
+                        json.dumps(
+                            decision_error_payload(
+                                error=exc.error,
+                                message=exc.message_text,
+                                vehicle_id=vehicle_id,
+                                details=exc.details,
+                            ),
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                    stream.flush()
+            time.sleep(max(0.05, float(refresh_s)))
+    except KeyboardInterrupt:
+        return CommandResult(130, last_error or "")
+
+
 def stream_vehicle_decision(
     *,
     vehicle_id: str,
@@ -2049,12 +2367,40 @@ def stream_vehicle_decision(
     no_clear: bool = False,
     json_output: bool = False,
     output: TextIO | None = None,
+    timeout_s: float = 3.0,
 ) -> CommandResult:
     """Read and accept latest_decision.json under the production predicate."""
 
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
+
+    # Chase keeps its generation-scoped local state files. Physical targets are
+    # discovered through the existing read-only vehicle registry and consumed
+    # through their onboard publication endpoint; no local PID/run state is
+    # fabricated for them.
+    if not vehicle_id.startswith("chase-sim"):
+        try:
+            discovery = discover_active_vehicles(
+                timeout_s=max(0.1, float(timeout_s)),
+                include_picar=True,
+                include_chase_sim=True,
+            )
+            vehicle, _ = find_vehicle_by_id(discovery, vehicle_id)
+        except (OSError, TypeError, ValueError):
+            vehicle = None
+        if isinstance(vehicle, dict) and vehicle.get("provider") == "picar":
+            return _stream_physical_decision(
+                vehicle_id=vehicle_id,
+                vehicle=vehicle,
+                refresh_s=refresh_s,
+                once=once,
+                no_clear=no_clear,
+                json_output=json_output,
+                output=output,
+                timeout_s=max(0.1, float(timeout_s)),
+            )
+
     state_path = Path(bundle["runtime_dir"]) / "automation" / "state.json"
     frame_path = latest_decision_path(vehicle_runtime_dir)
 
@@ -3008,6 +3354,7 @@ def render_decision_exact_frame_html(
     frame_id: str,
     cycle_result: Any,
     source_image_rel: str | None,
+    host_telemetry: dict[str, Any] | None = None,
 ) -> str:
     cycle = cycle_result.to_dict() if hasattr(cycle_result, "to_dict") else dict(cycle_result)
     plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else None
@@ -3050,6 +3397,13 @@ def render_decision_exact_frame_html(
     records_html = "".join(
         f"<li>{esc(item)}</li>" for item in (mem.get("records") or [])
     )
+    host_telemetry_block = ""
+    if host_telemetry is not None:
+        host_telemetry_block = f"""
+  <section id=\"host_telemetry\">
+    <h2>Host telemetry · separate observation</h2>
+    <pre>{esc(json.dumps(host_telemetry, indent=2, sort_keys=True))}</pre>
+  </section>"""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3098,7 +3452,7 @@ def render_decision_exact_frame_html(
     <p>authorized_output={esc(authority.get('authorized_output'))}</p>
     <p class="emph">proposed_applied=false</p>
     <p>host_application={esc(authority.get('host_application'))}</p>
-  </section>
+  </section>{host_telemetry_block}
   <section id="non-claims">
     <h2>Non-claims</h2>
     <p>no object identity; shadow-only; not navigation certification.</p>
@@ -3213,11 +3567,16 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
             ]
         )
     combined = payload.get("combined_view") if isinstance(payload.get("combined_view"), dict) else {}
+    live_view = (
+        f"status={combined.get('status')} url={combined.get('url')} "
+        f"reason={combined.get('reason')}"
+    )
     lines.extend(
         [
             "",
             f"Combined view: id={combined.get('view_id')} "
-            f"url={combined.get('url')} path_template={combined.get('path_template')}",
+            f"{live_view} path_template={combined.get('path_template')}",
+            f"Open saved input: {combined.get('launch_command')}",
         ]
     )
     return "\n".join(lines)

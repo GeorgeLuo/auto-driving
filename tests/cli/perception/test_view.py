@@ -11,13 +11,44 @@ from PIL import Image
 
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.perception_view import (
+    MAX_BUFFERED_FRAMES,
     PUBLICATION_SCHEMA,
+    PerceptionView,
     VIEW_SCHEMA,
     get_perception_view_status,
 )
 
 
 class PerceptionViewTests(unittest.TestCase):
+    def test_retained_in_flight_frame_survives_bounded_cache_turnover(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frame_path = root / "frame.png"
+            Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
+            view = PerceptionView(vehicle_id="test-vehicle")
+
+            for index in range(MAX_BUFFERED_FRAMES):
+                record = _frame_record()
+                record["frame_id"] = f"frame_{index:06d}"
+                record["frame_index"] = index
+                view.publish_frame(frame_path=frame_path, frame_record=record)
+                if index == 0:
+                    self.assertTrue(view.retain_frame(record["frame_id"]))
+
+            overflow = _frame_record()
+            overflow["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES:06d}"
+            overflow["frame_index"] = MAX_BUFFERED_FRAMES
+            view.publish_frame(frame_path=frame_path, frame_record=overflow)
+            self.assertIsNotNone(view.frame("frame_000000"))
+            self.assertIsNone(view.frame("frame_000001"))
+
+            view.release_frame("frame_000000")
+            next_frame = _frame_record()
+            next_frame["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES + 1:06d}"
+            next_frame["frame_index"] = MAX_BUFFERED_FRAMES + 1
+            view.publish_frame(frame_path=frame_path, frame_record=next_frame)
+            self.assertIsNone(view.frame("frame_000000"))
+
     def test_view_serves_live_frame_with_independently_updated_perception(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

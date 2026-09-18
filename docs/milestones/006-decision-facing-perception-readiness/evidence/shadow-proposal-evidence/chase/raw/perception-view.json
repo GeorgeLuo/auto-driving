@@ -1,0 +1,14 @@
+{
+  "available": false,
+  "host": "127.0.0.1",
+  "pid": 66799,
+  "port": 8898,
+  "record_path": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/perception_view.json",
+  "run_id": "automation-20260917-183256-49210ca5882a",
+  "schema": "automa_perception_view_v1",
+  "started_at_ms": 1789695176956,
+  "status": "stopped",
+  "url": "http://127.0.0.1:8898/",
+  "vehicle_id": "chase-sim-chaser",
+  "worker_pid": 66799
+}

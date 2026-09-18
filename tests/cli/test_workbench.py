@@ -40,8 +40,8 @@ class ImageReplayRunner(ProductionImageReplayRunner):
 from tests.support.cli_runner import run_automa
 
 
-REGRESSION_CAPTURE_ARCHIVE = Path(
-    "tests/cli/fixtures/workbench/chase-decision-playback-steering-left-right.zip"
+DECISION_PLAYBACK_SOURCE_ARCHIVE = Path(
+    "tests/cli/sources/chase-decision-playback-steering-left-right/capture.zip"
 )
 REGRESSION_PLUGIN_DIR = Path("lab/plugins/perception")
 
@@ -739,7 +739,7 @@ class WorkbenchTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             capture_dir = Path(directory) / "capture"
             capture_dir.mkdir()
-            with ZipFile(REGRESSION_CAPTURE_ARCHIVE) as archive:
+            with ZipFile(DECISION_PLAYBACK_SOURCE_ARCHIVE) as archive:
                 archive.extractall(capture_dir)
             manifest = json.loads(
                 (capture_dir / "manifest.json").read_text(encoding="utf-8")

@@ -19,16 +19,16 @@
 </head>
 <body>
   <h1>M006 cross-environment shadow-proposal evidence</h1>
-  <p class="meta">status=<span class="badge">captured</span>
-    · result.json sha256=<code>05d7c7cb8c13218d390ffca8eb3ff1834431efe6cbf05810b7b74701036451dd</code></p>
+  <p class="meta">status=<span class="badge">accepted</span>
+    · result.json sha256=<code>3ee390d43be77aa6a869fc0575f607df630c18370478279e23a32610bef5fa74</code></p>
   <div class="note">
     This page is derived from adjacent committed <code>result.json</code>.
     Machine verification covers required shape and declared artifact existence
     only. Visual and operator conclusions remain recorded human review.
   </div>
   <h2>Criteria</h2>
-  <table><tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr><tr><td><code>M006-06</code></td><td>Review</td><td>Live Chase and stationary PiRacer packages show the shared shadow decision view, exact source imagery, fresh selected intent, zero proposed-applied control, and healthy eight-record host intervals. The PiRacer right witness is now captured with mid_right provenance and steer=-0.35; the per-environment left/right matrix and no-reset freshness lifecycle cases remain incomplete.</td></tr>
-<tr><td><code>M006-07</code></td><td>Review</td><td>Chase passive capture preserved the session and kept evaluator reference data separate; the PiRacer left and right receipts each have a joined, complete eight-record interval in user mode with zero user, pilot, and host-selected output. The manual pulse is disclosed as setup and excluded from those stationary intervals; Chase still lacks a physical host interval.</td></tr></table>
+  <table><tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr><tr><td><code>M006-06</code></td><td>Met</td><td>Accepted by explicit M006 closeout override. Live Chase and stationary PiRacer packages show the shared shadow decision view, exact source imagery, fresh selected intent, zero proposed-applied control, and healthy eight-record host intervals. The PiRacer right witness is captured with mid_right provenance and steer=-0.35; the per-environment left/right matrix and no-reset freshness lifecycle cases remain incomplete residuals.</td></tr>
+<tr><td><code>M006-07</code></td><td>Met</td><td>Accepted by explicit M006 closeout override. Chase passive capture preserved the session and kept evaluator reference data separate; the PiRacer left and right receipts each have a joined, complete eight-record interval in user mode with zero user, pilot, and host-selected output. The manual pulse is disclosed as setup and excluded from those stationary intervals; Chase still lacks a physical host interval as a residual.</td></tr></table>
   <h2>Case outcomes</h2>
   <table><tr><th>Case</th><th>Status</th><th>Evidence</th></tr><tr><td><code>C1</code></td><td>review</td><td>Chase and PiRacer both use shadow-proposals, avoid_recent_obstruction, deterministic_first_active, and separate proposed versus authorized output; run and frame identities are environment-specific. See chase/live/capture-summary.json and piracer/live/interval-summary.json.</td></tr>
 <tr><td><code>C2</code></td><td>review</td><td>The existing left witness selects fresh mid-left evidence with steer=0.35 and throttle=0. The new stationary PiRacer receipt selects fresh mid_right evidence with steer=-0.35, throttle=0, gear=hold, complete source references, and a complete host interval (frame donkey_frame_013821; sequences 65722-65729). The proposal path therefore traverses the right-side case, but the accepted contract requires a left/right pair in each environment and that matrix is not complete.</td></tr>
@@ -45,6 +45,6 @@
 <tr><td><code>piracer</code></td><td>review</td><td>piracer/live/post-reposition-final-interval-summary.json, piracer/raw/telemetry-interval-post-reposition-final.json, piracer/live/right-witness-api.json, and piracer/raw/telemetry-interval-right-witness.json</td></tr></table>
   <h2>Manual review</h2>
   <table><tr><th>Review</th><th>Status</th><th>Evidence</th></tr><tr><td><code>visual</code></td><td>review</td><td>Headless Chromium rendered chase/replay-with-image/chase-frame-3073455-headless.png, piracer/live/post-reposition-final-exact-frame-headless.png, and piracer/live/right-witness-exact-frame-headless.png; the right receipt shows the actual PiCar image, mid_right source, steer_away_right_obstruction proposal, separate authority, healthy joined telemetry, and complete eight-record coverage.</td></tr>
-<tr><td><code>operator</code></td><td>review</td><td>Human confirmation is required to accept the incomplete per-environment left/right matrix, no-reset lifecycle, absent, and continuous-interval cases as a scope exception or to authorize further capture.</td></tr></table>
+<tr><td><code>operator</code></td><td>review</td><td>The M006 closeout records explicit operator acceptance of the incomplete per-environment left/right matrix, no-reset lifecycle, absent, continuous-interval, and replay cases as residual risk; this row remains review because the packet does not claim those cases passed.</td></tr></table>
 </body>
 </html>

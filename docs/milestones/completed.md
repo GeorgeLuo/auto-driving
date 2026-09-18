@@ -234,3 +234,19 @@ accepted at head `2953e431e589ccbb591d8002890b152007f1f642` and merged into
 2026-09-04. Tag `milestone-008` points to that mainline merge. This appended
 record completes the retained Phase A packet above; M008 has no remaining
 in-milestone work.
+
+## 006 - Decision-Facing Perception Readiness
+
+M006 was closed by explicit operator override on 2026-09-18 through cumulative
+PR [#70](https://github.com/GeorgeLuo/auto-driving/pull/70). The merged
+delivery includes the modular shadow proposal path, deterministic selector and
+shadow authority, Chase/PiRacer decision surfaces, generation-bound live view,
+and PiRacer host-boundary telemetry with exact identity and bounded interval
+coverage.
+
+The closeout accepts the remaining live evidence breadth as residual risk:
+the full per-environment side matrix, universal live lifecycle/absent coverage,
+and PiRacer replay were not all captured. They remain explicitly documented in
+[closeout.md](006-decision-facing-perception-readiness/closeout.md); no claim is
+made that those cases passed. No successor milestone or movement/prediction
+pre-plan is activated.

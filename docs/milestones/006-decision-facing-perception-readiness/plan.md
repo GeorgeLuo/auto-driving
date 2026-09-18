@@ -2,10 +2,10 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active |
+| Status | closed |
 | Milestone branch | `milestone/006-decision-facing-perception-readiness` |
-| Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (draft until whole-milestone closeout) |
-| Current frontier | Cross-environment shadow proposal evidence |
+| Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (operator-accepted closeout) |
+| Current frontier | None (closed) |
 | Started | 2026-07-28 |
 | Action policy | Proposals may contain movement intent; applied vehicle control remains zero for the entire milestone |
 
@@ -59,33 +59,24 @@ for simulator and physical vehicles.
 | M006-03 | One deterministic selector/mixer consumes the complete proposal set and emits an inspectable action plan with selected proposal or contributions, while a separate runtime authority result proves proposed and applied control cannot be confused | Met | deterministic_first_active ActionPlan; ShadowAuthorityResult proposed vs authorized_output vs proposed_applied=false vs host_application; cycle ok/engine_error envelope in PR #74 |
 | M006-04 | One packaged `avoid_recent_obstruction` proposal demonstrates left/right active steering, retained-fresh continuity, stale-to-inactive fallback, incompatible input, missing input, and plugin-error behavior without claiming navigation safety or semantic identity | Met | avoid_recent_obstruction fresh-before-stale selection and lifecycle matrix including obstruction_evidence kind in PR #74 |
 | M006-05 | Automa can stage, inspect, replay, and stream the decision path with concise default output, complete `--json` output, deterministic replay, latest-frame replacement, a combined frame/evidence/proposal/authority view, an opt-in exact-frame HTML artifact, and no default disk writes | Met | Decision stage/info/apply/stream/view with concise default, --json, adapter-backed automation publication, byte-equal apply digests, freshness-gated latest-frame stream, combined view with source_refs, opt-in --record HTML, no default disk writes, no invented applied_control in PR #80 |
-| M006-06 | Tracked Chase and physical evidence exercise the same proposal contract and combined review view, showing exact source provenance, freshness transitions, proposal selection, proposed movement intent, and zero applied control | Unmet | Next-frontier: cross-environment evidence (after surfaces) |
-| M006-07 | Chase evaluator/shadow state remains outside controller inputs, and PiRacer remains in user mode with zero pilot output throughout all milestone evidence | Unmet | Next-frontier: cross-environment evidence (after surfaces) |
-| M006-08 | Closeout states whether the evidence justifies a later bounded movement or prediction milestone and preserves unresolved perception, identity, self-motion, command-model, and safety limits | Unmet | Closeout only |
+| M006-06 | Tracked Chase and physical evidence exercise the same proposal contract and combined review view, showing exact source provenance, freshness transitions, proposal selection, proposed movement intent, and zero applied control | Met | Accepted by explicit operator override at closeout. The captured package proves the shared view, exact provenance, fresh left/right PiRacer witnesses, and zero applied control; the unrun live lifecycle/absent/replay breadth remains an acknowledged residual rather than a blocker. |
+| M006-07 | Chase evaluator/shadow state remains outside controller inputs, and PiRacer remains in user mode with zero pilot output throughout all milestone evidence | Met | Accepted by explicit operator override at closeout. Chase evaluator isolation and bounded stationary PiRacer zero-output intervals are retained; universal every-environment temporal coverage remains unclaimed. |
+| M006-08 | Closeout states whether the evidence justifies a later bounded movement or prediction milestone and preserves unresolved perception, identity, self-motion, command-model, and safety limits | Met | [closeout.md](closeout.md) records the operator override, residual risks, shadow-only boundary, and no successor activation. |
 
 ## Current Delivery
 
 ### Current Frontier
 
-**Cross-environment shadow proposal evidence**
+**None**
 
-- Workflow state: implementation_in_review
-- Proposal branch: `m006/shadow-proposal-evidence-proposal`
-- Implementation branch: `m006/shadow-proposal-evidence`
-- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
-- Accepted proposal: [#201](https://github.com/GeorgeLuo/auto-driving/pull/201) at `9e2a353c736a04fed22c1ce5d456c6115fbfbddc` (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`)
-- Review kind: Live or external evidence
-- Review question: Does the staged `avoid_recent_obstruction` path produce provenance-complete shadow action plans and the same correlated visual explanation on Chase and stationary PiRacer inputs while applied control remains zero and privileged simulator state stays outside controller inputs?
-- Acceptance owner: Tracked exact-frame Chase and stationary PiRacer shadow evidence packages using the accepted Automa decision surfaces
-- Exit criteria affected: M006-06, M006-07
-- Prerequisite: Automa shadow decision surfaces accepted (M006-05) with stage/info/apply/stream/view and deterministic replay
-- Milestone-level non-goal: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims
+- Reason: Milestone closed by explicit operator override after all contracted implementation findings were absorbed into the cumulative branch.
+- Revisit when: No in-milestone work remains.
 
-### Parallel Frontiers
+### Archived Frontiers
 
-#### Frontier: PiRacer host-boundary telemetry
+#### Closed Frontier: PiRacer host-boundary telemetry
 
-- Workflow state: implementation_in_review
+- Workflow state: accepted
 - Proposal branch: `m006/piracer-host-boundary-telemetry-proposal`
 - Implementation branch: `m006/piracer-host-boundary-telemetry`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/piracer-host-boundary-telemetry.md`
@@ -97,9 +88,9 @@ for simulator and physical vehicles.
 - Prerequisite: PR #202's D1/D2 implementation head, accepted M006-05 decision surfaces, and the accepted #201 evidence procedure are available for the later capture workflow
 - Non-goals: Changing #201 or #202's accepted proposal, changing #202's M006-06/M006-07 ownership or marking M006-07 Met, changing decision authority, claiming actuator feedback, applying movement, or closing M006
 
-#### Frontier: D2 live decision view
+#### Closed Frontier: D2 live decision view
 
-- Workflow state: implementation_in_review
+- Workflow state: accepted
 - Proposal branch: `m006/live-decision-view-proposal`
 - Implementation branch: `m006/live-decision-view`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/live-decision-view.md`
@@ -150,6 +141,13 @@ for simulator and physical vehicles.
 | PiRacer host-boundary telemetry | proposal_in_review | Started m006/piracer-host-boundary-telemetry-proposal; supporting host-boundary capability is contracted against the accepted M006-05 operator surface while #202 retains M006-06/M006-07 ownership. |
 | PiRacer host-boundary telemetry | ready_for_implementation | Proposal PR #223 accepted at 27e9a5cc04c5882d896e417b86541fd0c040e81e (reviewed head `86efed577d719f59aab3983b7cab96721adbbb9d` by `GeorgeLuo` as `OWNER` at `2026-09-17T22:54:01Z`). |
 | PiRacer host-boundary telemetry | implementation_in_review | Started m006/piracer-host-boundary-telemetry. |
+| Cross-environment shadow proposal evidence | accepted | Merged into the cumulative M006 branch with captured Chase/PiRacer evidence; remaining live breadth accepted as residual risk by operator override. |
+| D2 live decision view | accepted | RuntimeViewServer implementation and exact-frame viewer evidence are merged into the cumulative M006 branch. |
+| PiRacer host-boundary telemetry | accepted | Producer/consumer implementation findings and coverage-aware consumer fix are merged into the cumulative M006 branch; no applied-control authority was introduced. |
+| Milestone 006 closeout | proposal_in_review | Started the closeout review surface after the operator directed M006 to close with residual evidence risk explicitly recorded. |
+| Milestone 006 closeout | ready_for_implementation | Closeout judgment accepted by the operator; implementation is the closed plan, closeout packet, and completed ledger entry. |
+| Milestone 006 closeout | implementation_in_review | Started the cumulative M006 closeout on the milestone branch. |
+| Milestone 006 closeout | accepted | Operator override accepted the remaining evidence residuals, closed all frontiers, and completed M006 closeout. |
 
 ## Accepted Review Units
 
@@ -157,6 +155,10 @@ for simulator and physical vehicles.
 | --- | --- | --- | --- | --- |
 | #74 | Can independent action-proposal plugins consume one immutable, cycle-aligned decision data source and produce attributable, replayable action plans while runtime authority guarantees that no proposed command is applied? | Accepted | M006-01, M006-02, M006-03, M006-04 | DecisionDataSource, ActionProposal/Plan, ShadowAuthorityResult (proposed_applied=false), ShadowDecisionCycleResult, and avoid_recent_obstruction matrix in PR #74 |
 | #80 | Can Automa stage, inspect, replay, and stream the accepted `shadow-proposals` decision path with concise default output, complete `--json` output, deterministic offline replay, latest-frame replacement, one combined frame/evidence/proposal/authority view, and an opt-in exact-frame HTML artifact with no default disk writes while applied control remains zero? | Accepted | M006-05 | Automa decision stage/info/apply/stream/view for shadow-proposals; AutonomyManager adapter over run_cycle with no stale last_cycle_result; generation-scoped latest_decision publication; --id apply with canonical_json_utf8 digest equality; strict apply pre-validation; combined decision view with source_refs; opt-in --record exact-frame HTML; proposed_applied=false and authorized idle output in PR #80 |
+| #202 | Does the staged shadow proposal path provide a shared evidence/view surface across Chase and PiRacer? | Accepted | M006-06, M006-07 | Merged shadow proposal evidence, live decision view, exact-frame artifacts, and zero-applied-control authority surface |
+| #203 | Does the RuntimeViewServer provide the generation-bound live decision view? | Accepted | M006-08 | RuntimeViewServer decision view implementation merged into the M006 evidence branch |
+| #224 findings | Do the PiRacer host-boundary telemetry producer/consumer and coverage joins expose the physical observation boundary? | Accepted by operator override | M006-05, M006-07 | Telemetry implementation findings, bounded interval consumer coverage, and validation tests merged into the cumulative M006 branch; the original implementation PR was closed, but its findings are retained here |
+| #70 | Is M006 complete as a whole, with residual evidence risk explicitly accepted and no successor activated? | Accepted | M006-08 | `closeout.md`, completed ledger entry, closed plan, and cumulative merge |
 
 ## Open Risks And Unverified Assumptions
 
@@ -184,14 +186,10 @@ for simulator and physical vehicles.
 
 ## Closeout
 
-Blocked until every exit criterion is `Met`.
+M006 is closed by explicit operator override. The closeout accepts the
+implemented shadow-proposal, live-view, and host-telemetry boundaries while
+retaining unrun live lifecycle/absent/replay breadth as residual risk. No
+successor milestone or movement/prediction pre-plan is activated.
 
-Closeout will produce:
-
-- `closeout.md`;
-- a completed-milestone ledger entry;
-- tracked simulator and physical shadow-proposal evidence;
-- a residual-risk statement covering perception uncertainty, identity, temporal
-  history, self-motion, command conversion, and movement safety;
-- a decision to activate, revise, or abandon one bounded movement or prediction
-  pre-plan.
+See [closeout.md](closeout.md) for the whole-milestone judgment, residual-risk
+statement, validation record, and cumulative merge identity.

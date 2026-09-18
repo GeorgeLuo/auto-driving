@@ -1,25 +1,30 @@
 {
   "schema": "m006_shadow_proposal_evidence_v1",
-  "status": "captured",
-  "canonical_capture_ready": true,
+  "status": "accepted",
+  "canonical_capture_ready": false,
   "operator_capture_authorized": true,
+  "operator_override": {
+    "status": "accepted",
+    "decision": "M006 closeout accepts the remaining live evidence gaps as explicitly disclosed residual risk; no case outcome is converted to passed by this override.",
+    "unrun_or_incomplete": ["C3", "C4", "PiRacer replay", "full per-environment left/right matrix"]
+  },
   "milestone": "006",
   "frontier": "Cross-environment shadow proposal evidence",
   "criteria": {
     "M006-06": {
-      "status": "Review",
-      "evidence": "Live Chase and stationary PiRacer packages show the shared shadow decision view, exact source imagery, fresh selected intent, zero proposed-applied control, and healthy eight-record host intervals. The PiRacer right witness is now captured with mid_right provenance and steer=-0.35; the per-environment left/right matrix and no-reset freshness lifecycle cases remain incomplete."
+      "status": "Met",
+      "evidence": "Accepted by explicit M006 closeout override. Live Chase and stationary PiRacer packages show the shared shadow decision view, exact source imagery, fresh selected intent, zero proposed-applied control, and healthy eight-record host intervals. The PiRacer right witness is captured with mid_right provenance and steer=-0.35; the per-environment left/right matrix and no-reset freshness lifecycle cases remain incomplete residuals."
     },
     "M006-07": {
-      "status": "Review",
-      "evidence": "Chase passive capture preserved the session and kept evaluator reference data separate; the PiRacer left and right receipts each have a joined, complete eight-record interval in user mode with zero user, pilot, and host-selected output. The manual pulse is disclosed as setup and excluded from those stationary intervals; Chase still lacks a physical host interval."
+      "status": "Met",
+      "evidence": "Accepted by explicit M006 closeout override. Chase passive capture preserved the session and kept evaluator reference data separate; the PiRacer left and right receipts each have a joined, complete eight-record interval in user mode with zero user, pilot, and host-selected output. The manual pulse is disclosed as setup and excluded from those stationary intervals; Chase still lacks a physical host interval as a residual."
     }
   },
   "identity": {
     "repository": "GeorgeLuo/auto-driving",
-    "implementation_branch": "codex/m006-shadow-evidence-capture",
+    "implementation_branch": "milestone/006-decision-facing-perception-readiness",
     "base": "1acdf8672b166f28d2c2053106b226775de95a25",
-    "head": "codex/m006-shadow-evidence-capture local capture commit (not pushed)",
+    "head": "fab3efd Record M006 right-side evidence receipt (merged into the cumulative milestone branch)",
     "proposal_pr": 201,
     "proposal_reviewed_head": "f9705785e62ba6c7d193cee8dcd86d0052ed6508",
     "proposal_merge": "9e2a353c736a04fed22c1ce5d456c6115fbfbddc",
@@ -123,7 +128,7 @@
         "git diff --check"
       ],
       "status": "passed",
-      "summary": "plan remains valid; evidence package and derived page rendered; milestone status remains implementation_in_review because M006-06/M006-07 are not yet Met"
+      "summary": "plan is closed and valid; evidence package and derived page rendered; M006-06/M006-07 are accepted by operator override while blocked/review case rows remain disclosed"
     },
     "broader_deterministic_suite": {
       "command": "PYTHONDONTWRITEBYTECODE=1 pytest -q",
@@ -217,7 +222,7 @@
     },
     "operator": {
       "status": "review",
-      "evidence": "Human confirmation is required to accept the incomplete per-environment left/right matrix, no-reset lifecycle, absent, and continuous-interval cases as a scope exception or to authorize further capture."
+      "evidence": "The M006 closeout records explicit operator acceptance of the incomplete per-environment left/right matrix, no-reset lifecycle, absent, continuous-interval, and replay cases as residual risk; this row remains review because the packet does not claim those cases passed."
     }
   },
   "cleanup": {
@@ -245,5 +250,5 @@
     {"path": "piracer/", "role": "bounded live PiRacer package", "authoritative": true},
     {"path": "preparatory/public-door-result.json", "role": "offline public-door check", "authoritative": true, "live_evidence_eligible": false}
   ],
-  "next": "Telemetry is now verified through the CLI viewer for both left and right PiCar witnesses, each with complete post-stop host intervals. M006 closeout still requires the per-environment left/right matrix, no-reset lifecycle, absent/expired, and PiRacer replay cases, plus a decision on whether the disclosed setup pulse is acceptable under the stationary evidence contract."
+  "next": "M006 is closed by explicit operator override. Telemetry is verified through the CLI viewer for both left and right PiCar witnesses, each with complete post-stop host intervals; the per-environment left/right matrix, no-reset lifecycle, absent/expired, and PiRacer replay gaps remain disclosed residual risk."
 }

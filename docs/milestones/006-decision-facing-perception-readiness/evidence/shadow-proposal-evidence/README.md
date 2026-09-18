@@ -1,6 +1,6 @@
 # M006 cross-environment shadow-proposal evidence
 
-Status: **captured for review; canonical acceptance not complete**.
+Status: **accepted by M006 closeout override; residual case gaps retained**.
 
 This directory is the stable per-frontier evidence root required by the
 accepted M006 proposal. It contains the frozen procedure plus bounded live
@@ -12,7 +12,7 @@ PiRacer host-telemetry join.
 One operator-authorized low-throttle user-mode pulse was used as setup before
 the final stationary interval; it is disclosed and excluded from that interval.
 The package does not claim that every C1-C7 case passed; the unresolved cases
-remain visible in `result.json` and keep M006-06/M006-07 unmet.
+remain visible in `result.json` as residual risk accepted by the M006 closeout.
 
 ## Authority and scope
 
@@ -51,10 +51,11 @@ Canonical capture is allowed only when all of the following are recorded:
    capture after reviewing those receipts.
 
 The recorded capture passed the D1/D2 availability checks and was performed
-after the operator directed the evidence work to proceed. The current result
-is blocked after capture, at case acceptance. D1 and D2 remain capability
-receipts, not a claim that M006-06/M006-07 are complete. This evidence unit
-does not edit the accepted proposal.
+after the operator directed the evidence work to proceed. The result is
+accepted by the M006 closeout override at case acceptance; D1 and D2 remain
+capability receipts, and the blocked/review case rows remain visible rather
+than being converted into passes. This evidence unit does not edit the
+accepted proposal.
 
 ### Current receipts
 
@@ -63,7 +64,7 @@ does not edit the accepted proposal.
 | Proposal/workflow identity | verified | Plan reports `ready_for_implementation`; PR #201 acceptance is recorded at merge `9e2a353c` from reviewed head `f9705785`. | Preparation may continue. |
 | D1 physical shadow-cycle publication/liveness | verified for bounded intervals | PiRacer `/autonomy/decision/latest` and `/autonomy/telemetry/latest` expose the live generation, run, source frame, sequence, mode, pilot output, and zero selected output; the local `vehicles decision live --id piracer` view joined exact left/right frames and complete eight-record intervals (`58931`–`58938` and `65722`–`65729`). | The older six-point capture remains point-only; lifecycle, absent, and replay cases remain open. |
 | D2 live decision URL/retained-evidence overlay | verified for capture | `vehicles decision live --id piracer` served a generation-bound `/decision` page; headless Chromium rendered the actual PiRacer frame, proposal, authority, host-telemetry panel, and evidence findings. Chase supplied the same live API/page plus exact-frame replay HTML. | Visual availability is proven; the accepted lifecycle/side matrix is not complete. |
-| Operator capture authorization | recorded | The operator explicitly authorized active vehicle control. One short low-throttle user-mode pulse was issued for repositioning, followed immediately by an explicit stop; the final interval was captured afterward with zero user, pilot, and host-selected output. | Human acceptance of the remaining evidence gaps and the disclosed setup action is still required before M006 closeout. |
+| Operator capture authorization | recorded | The operator explicitly authorized active vehicle control. One short low-throttle user-mode pulse was issued for repositioning, followed immediately by an explicit stop; the final interval was captured afterward with zero user, pilot, and host-selected output. | The M006 closeout explicitly accepts the remaining evidence gaps and the disclosed setup action as residual risk. |
 
 The exact machine-readable disposition is in [result.json](result.json), with
 the derived review page in [result.html](result.html). The JSON record is
@@ -96,8 +97,9 @@ python3 report_packet.py --record result.json --html result.html
 
 The report prints `PASS`, `FAIL`, `BLOCKED`, and `REVIEW` rows. `FAIL` and
 `BLOCKED` produce a nonzero exit status; `REVIEW` remains a manual action and
-does not become a machine-certified pass. This record is captured but remains
-unaccepted while the case gaps listed in `result.json` are unresolved.
+does not become a machine-certified pass. This record is accepted as a
+closeout receipt while the case gaps listed in `result.json` remain unresolved
+and explicitly disclosed.
 
 ## Frozen capture procedure (when the gate is satisfied)
 
@@ -213,8 +215,9 @@ references, and host authority observation.
 | C7 | Chase evaluator state is outside controller inputs; after the disclosed setup pulse and explicit stop, Pi is stationary in `user` mode with zero pilot output throughout the accepted interval. The setup pulse itself is not part of that claim. |
 
 No case is marked passed until the authoritative observation and all required
-interval coverage are present. M006-06 and M006-07 remain `Unmet` in this
-implementation unit.
+interval coverage are present. M006-06 and M006-07 are accepted at the
+milestone level by explicit operator override; the incomplete case rows remain
+visible in this implementation unit.
 
 ## Bounds and non-claims
 

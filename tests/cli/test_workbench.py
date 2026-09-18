@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zipfile import ZipFile
 
 from PIL import Image
 
@@ -39,8 +40,8 @@ class ImageReplayRunner(ProductionImageReplayRunner):
 from tests.support.cli_runner import run_automa
 
 
-REGRESSION_CAPTURE_DIR = Path(
-    "tests/cli/fixtures/workbench/chase-decision-playback-steering-left-right"
+REGRESSION_CAPTURE_ARCHIVE = Path(
+    "tests/cli/fixtures/workbench/chase-decision-playback-steering-left-right.zip"
 )
 REGRESSION_PLUGIN_DIR = Path("lab/plugins/perception")
 
@@ -723,9 +724,6 @@ class WorkbenchTests(unittest.TestCase):
         )
 
     def test_recorded_steering_capture_replays_both_decision_changes(self) -> None:
-        manifest = json.loads(
-            (REGRESSION_CAPTURE_DIR / "manifest.json").read_text(encoding="utf-8")
-        )
         expected_phases = [
             "baseline-center",
             "steer-left-forward",
@@ -737,23 +735,32 @@ class WorkbenchTests(unittest.TestCase):
             "reverse-to-start-from-right",
             "return-to-center",
         ]
-        self.assertEqual(
-            [item["name"] for item in manifest["capture"]["control_sequence"]],
-            expected_phases,
-        )
 
-        runner = ImageReplayRunner(
-            REGRESSION_CAPTURE_DIR,
-            plugin_dir=REGRESSION_PLUGIN_DIR,
-            active_plugin_ids=["floor_continuity_capture"],
-            cadence_ms=0,
-            max_frames=128,
-        )
-        started = runner.start()
-        try:
-            state = runner.wait(30) if started["phase"] == "running" else started
-        finally:
-            runner.close()
+        with TemporaryDirectory() as directory:
+            capture_dir = Path(directory) / "capture"
+            capture_dir.mkdir()
+            with ZipFile(REGRESSION_CAPTURE_ARCHIVE) as archive:
+                archive.extractall(capture_dir)
+            manifest = json.loads(
+                (capture_dir / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                [item["name"] for item in manifest["capture"]["control_sequence"]],
+                expected_phases,
+            )
+
+            runner = ImageReplayRunner(
+                capture_dir,
+                plugin_dir=REGRESSION_PLUGIN_DIR,
+                active_plugin_ids=["floor_continuity_capture"],
+                cadence_ms=0,
+                max_frames=128,
+            )
+            started = runner.start()
+            try:
+                state = runner.wait(30) if started["phase"] == "running" else started
+            finally:
+                runner.close()
 
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(state["progress"], {"completed": 102, "total": 102, "percent": 100.0})

@@ -1,0 +1,66 @@
+{
+  "activated_at_ms": 1789694873877,
+  "controller_bundle": {
+    "autonomy_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/autonomy",
+    "decision_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/implementations/decision",
+    "decision_runtime_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/decision",
+    "implementations_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/implementations",
+    "release": {
+      "archive": "runtime/vehicles/chase-sim-chaser/bundle/releases/autonomy-73b0a7100f08-1789694875322.tar.gz",
+      "archive_sha256": "0e00cdd5043ff9811933136bcd5fe551cde8efdb85b0f8410ab05c0cf6a76577",
+      "bundle_kind": "autonomy-controller",
+      "created_at_ms": 1789694875322,
+      "file_count": 82,
+      "manifest": "runtime/vehicles/chase-sim-chaser/bundle/releases/autonomy-73b0a7100f08-1789694875322.manifest.json",
+      "schema": "automa_controller_bundle_manifest_v0",
+      "total_bytes": 550203,
+      "tree_sha256": "73b0a7100f08489ebbacf1c7a6ab3cdac52d0d99bfed94a90e1a8b974dc8624d"
+    },
+    "root_dir": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle"
+  },
+  "decision": {
+    "description": "Shadow-only proposals engine (PR #74). Authorized output is idle; proposed_applied=false; reason=shadow-only-idle.",
+    "engine_config": {
+      "accepted_kinds": [
+        "floor_boundary",
+        "obstacle",
+        "obstruction_evidence"
+      ],
+      "enabled_plugins": [
+        "avoid_recent_obstruction"
+      ],
+      "retained_max_age_ms": 1000,
+      "steer_magnitude": 0.35
+    },
+    "engine_id": "shadow-proposals",
+    "engine_schema": {
+      "engine_id": "shadow-proposals",
+      "engine_spec": "implementations.decision.shadow_adapter:ShadowProposalsAutonomyEngine",
+      "inputs": [
+        "sensor_snapshot",
+        "perception",
+        "observation",
+        "memory",
+        "cycle",
+        "mode",
+        "user_steering",
+        "user_throttle"
+      ],
+      "output": {
+        "movement": "always idle",
+        "type": "AutonomyControl"
+      },
+      "purpose": "Shadow-only decision engine: proposals may be nonzero while authorized AutonomyControl remains idle (shadow-only-idle).",
+      "schema": "autonomy_engine_schema_v0",
+      "stages": {
+        "action": "shadow_proposals_run_cycle",
+        "memory": "inspectable_snapshot",
+        "patterns": null,
+        "projections": null
+      }
+    },
+    "engine_spec": "implementations.decision.shadow_adapter:ShadowProposalsAutonomyEngine"
+  },
+  "schema": "automa_decision_activation_v0",
+  "vehicle_id": "chase-sim-chaser"
+}

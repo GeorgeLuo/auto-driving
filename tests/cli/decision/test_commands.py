@@ -63,6 +63,51 @@ class DecisionCommandTests(unittest.TestCase):
             self.assertTrue(payload["dry_run"])
             self.assertFalse(activation.exists())
 
+    def test_shadow_info_probe_is_read_only_without_a_runtime_producer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            update = run_automa(
+                "vehicles",
+                "update",
+                "decision",
+                "--id",
+                "chase-sim-chaser",
+                "--engine",
+                "shadow-proposals",
+                "--json",
+                runtime_root=runtime_root,
+            )
+            self.assertEqual(update.returncode, 0, update.stderr + update.stdout)
+
+            def snapshot_files() -> dict[Path, bytes]:
+                return {
+                    path.relative_to(runtime_root): path.read_bytes()
+                    for path in runtime_root.rglob("*")
+                    if path.is_file()
+                }
+
+            before_info = snapshot_files()
+            info = run_automa(
+                "vehicles",
+                "info",
+                "decision",
+                "--id",
+                "chase-sim-chaser",
+                "--json",
+                runtime_root=runtime_root,
+            )
+            self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
+            payload = json.loads(info.stdout)
+            self.assertEqual(payload["schema"], "vehicle_decision_info_v0")
+            self.assertEqual(payload["activation"]["engine_id"], "shadow-proposals")
+            combined = payload["combined_view"]
+            self.assertFalse(combined["available"])
+            self.assertEqual(combined["status"], "unavailable")
+            self.assertTrue(combined["reason"])
+            self.assertIsNone(combined["url"])
+            self.assertIsNone(combined["api_url"])
+            self.assertEqual(before_info, snapshot_files())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

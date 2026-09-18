@@ -1,0 +1,19 @@
+{
+  "bounds": {
+    "max_frames": 256,
+    "max_record_bytes": 8388608
+  },
+  "frame_count": 1,
+  "frames": [
+    {
+      "frame_id": "chase_frame_3073455",
+      "html": "frames/chase_frame_3073455.html",
+      "source_image": "source_frames/chase_frame_3073455.png"
+    }
+  ],
+  "note": "proposed_applied=false; authorized output is shadow-only idle",
+  "proposed_applied": false,
+  "schema": "decision_exact_frame_review_v0",
+  "vehicle_id": "chase-sim-chaser",
+  "view_id": "decision-combined-v0"
+}

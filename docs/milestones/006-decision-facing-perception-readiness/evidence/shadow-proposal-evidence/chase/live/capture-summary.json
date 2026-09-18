@@ -1,0 +1,37 @@
+{
+  "schema": "automa_chase_shadow_capture_summary_v0",
+  "vehicle_id": "chase-sim-chaser",
+  "run_id": "automation-20260917-183351-5489b37dc8a3",
+  "generation_id": "2e9d151d851dafdb2428181d026cd9d869affabcd51d5904dd16e9890a888f88",
+  "frame_id": "chase_frame_3073455",
+  "activation_engine_id": "shadow-proposals",
+  "selected_proposal_id": "avoid_recent_obstruction:chase_frame_3073455",
+  "lifecycle": "fresh",
+  "freshness": "fresh",
+  "proposed": {
+    "gear": "hold",
+    "normalized": true,
+    "schema": "proposed_vehicle_command_v0",
+    "steering": 0.35,
+    "throttle": 0
+  },
+  "authorized": {
+    "confidence": 1,
+    "reason": "shadow-only-idle",
+    "steering": 0,
+    "throttle": 0
+  },
+  "proposed_applied": false,
+  "host_telemetry_status": "not_available_for_chase",
+  "passive_capture_required_separation": "evaluator_reference_available_but_not_in_controller_input",
+  "exact_image": {
+    "byte_length": 176990,
+    "captured_at_ms": 1789695267617,
+    "content_type": "image/png",
+    "frame_id": "chase_frame_3073455",
+    "frame_index": 3073455,
+    "sha256": "0d306eaaff866f82f7b63677fb95dd895e397c32b10b4ba782f4db05cb7a9ccd",
+    "status": "available",
+    "url": "/api/decision/image?generation=2e9d151d851dafdb2428181d026cd9d869affabcd51d5904dd16e9890a888f88&id=6f857578b23b0bd1139af43c6f11e757b7bceb1d938d83d9605aec066ef2eeda"
+  }
+}

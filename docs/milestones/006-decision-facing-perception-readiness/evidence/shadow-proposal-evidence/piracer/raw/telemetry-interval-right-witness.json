@@ -1,0 +1,418 @@
+{
+  "coverage": "complete",
+  "ok": true,
+  "read_at_ms": 1789699963300,
+  "reason": "",
+  "records": [
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 50,
+        "observed_at_ms": 1789699961972,
+        "published_at_ms": 1789699961973,
+        "sequence": 65722,
+        "skipped_since_previous": 0,
+        "source_age_ms": 112
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699961486,
+        "completed_at_ms": 1789699961860,
+        "frame_id": "donkey_frame_013819",
+        "frame_index": 13819
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 451,
+        "observed_at_ms": 1789699962423,
+        "published_at_ms": 1789699962423,
+        "sequence": 65723,
+        "skipped_since_previous": 0,
+        "source_age_ms": 16
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962022,
+        "completed_at_ms": 1789699962407,
+        "frame_id": "donkey_frame_013820",
+        "frame_index": 13820
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 1,
+        "observed_at_ms": 1789699962424,
+        "published_at_ms": 1789699962424,
+        "sequence": 65724,
+        "skipped_since_previous": 0,
+        "source_age_ms": 17
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962022,
+        "completed_at_ms": 1789699962407,
+        "frame_id": "donkey_frame_013820",
+        "frame_index": 13820
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 50,
+        "observed_at_ms": 1789699962474,
+        "published_at_ms": 1789699962474,
+        "sequence": 65725,
+        "skipped_since_previous": 0,
+        "source_age_ms": 67
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962022,
+        "completed_at_ms": 1789699962407,
+        "frame_id": "donkey_frame_013820",
+        "frame_index": 13820
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 427,
+        "observed_at_ms": 1789699962901,
+        "published_at_ms": 1789699962902,
+        "sequence": 65726,
+        "skipped_since_previous": 0,
+        "source_age_ms": 7
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962524,
+        "completed_at_ms": 1789699962894,
+        "frame_id": "donkey_frame_013821",
+        "frame_index": 13821
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 1,
+        "observed_at_ms": 1789699962902,
+        "published_at_ms": 1789699962902,
+        "sequence": 65727,
+        "skipped_since_previous": 0,
+        "source_age_ms": 8
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962524,
+        "completed_at_ms": 1789699962894,
+        "frame_id": "donkey_frame_013821",
+        "frame_index": 13821
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 50,
+        "observed_at_ms": 1789699962952,
+        "published_at_ms": 1789699962952,
+        "sequence": 65728,
+        "skipped_since_previous": 0,
+        "source_age_ms": 58
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962524,
+        "completed_at_ms": 1789699962894,
+        "frame_id": "donkey_frame_013821",
+        "frame_index": 13821
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 52,
+        "observed_at_ms": 1789699963004,
+        "published_at_ms": 1789699963004,
+        "sequence": 65729,
+        "skipped_since_previous": 0,
+        "source_age_ms": 110
+      },
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "reason": "",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962524,
+        "completed_at_ms": 1789699962894,
+        "frame_id": "donkey_frame_013821",
+        "frame_index": 13821
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    }
+  ],
+  "schema": "automa_host_boundary_telemetry_v0",
+  "status": "healthy"
+}

@@ -1,0 +1,80 @@
+{
+  "artifacts": {
+    "floor_mask": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/runs/automation-20260917-183256-49210ca5882a/perception/chase_frame_3068888/floor-plane-v0/floor_mask.png",
+    "floor_overlay": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/runs/automation-20260917-183256-49210ca5882a/perception/chase_frame_3068888/floor-plane-v0/overlay.png",
+    "occupancy": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/runs/automation-20260917-183256-49210ca5882a/perception/chase_frame_3068888/floor-plane-v0/occupancy.png",
+    "topdown_rgb": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/runs/automation-20260917-183256-49210ca5882a/perception/chase_frame_3068888/floor-plane-v0/topdown_rgb.jpg"
+  },
+  "boundaries": [
+    {
+      "bbox_xyxy_norm": [
+        0.3537,
+        0.4718,
+        0.4757,
+        0.5031
+      ],
+      "confidence": 1.0,
+      "hit_pixel_count": 447,
+      "width_fraction": 0.12344
+    },
+    {
+      "bbox_xyxy_norm": [
+        0.6448,
+        0.4823,
+        0.7121,
+        0.499
+      ],
+      "confidence": 0.77969,
+      "hit_pixel_count": 236,
+      "width_fraction": 0.06875
+    }
+  ],
+  "boundary_hit_fraction_columns": 0.1921875,
+  "config": {
+    "boundary_dilate_radius": 2,
+    "brightness_weight": 0.55,
+    "far_width_ratio": 0.34,
+    "floor_model": {
+      "feature_center": [
+        0.36473000049591064,
+        0.33840999007225037,
+        0.2969299852848053,
+        0.43362998962402344
+      ],
+      "feature_spread": [
+        0.02500000037252903,
+        0.02500000037252903,
+        0.02500000037252903,
+        0.03999999910593033
+      ],
+      "seed_rect": [
+        160,
+        345,
+        480,
+        460
+      ]
+    },
+    "floor_threshold": 3.8,
+    "horizon_ratio": 0.4,
+    "min_boundary_width_ratio": 0.02,
+    "min_floor_support": 12,
+    "morph_radius": 2,
+    "morph_threshold": 0.42,
+    "near_width_ratio": 1.0,
+    "obstacle_run_length": 12,
+    "seed_x0_ratio": 0.25,
+    "seed_x1_ratio": 0.75,
+    "seed_y0_ratio": 0.72,
+    "seed_y1_ratio": 0.96,
+    "topdown_far_width_ratio": 0.96,
+    "topdown_height": 420,
+    "topdown_margin": 18,
+    "topdown_near_width_ratio": 0.1,
+    "topdown_width": 320
+  },
+  "floor_fraction_roi": 0.9425889756944444,
+  "height": 480,
+  "image": "/private/tmp/m006-shadow-evidence/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/runs/automation-20260917-183256-49210ca5882a/frames/chase_frame_3068888_front_camera.png",
+  "occupied_fraction_roi": 0.05741102430555556,
+  "width": 640
+}

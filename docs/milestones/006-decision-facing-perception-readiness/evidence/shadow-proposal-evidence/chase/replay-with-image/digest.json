@@ -1,0 +1,32 @@
+{
+  "frame_count": 1,
+  "frames": [
+    {
+      "authorized_output": {
+        "confidence": 1.0,
+        "reason": "shadow-only-idle",
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "candidates": [
+        {
+          "confidence": 1.0,
+          "lifecycle": "fresh",
+          "plugin_id": "avoid_recent_obstruction",
+          "reason": "steer_away_left_obstruction"
+        }
+      ],
+      "cycle_reason": "",
+      "cycle_status": "ok",
+      "frame_id": "chase_frame_3073455",
+      "plan_status": "selected",
+      "proposed": {
+        "steering": 0.35,
+        "throttle": 0.0
+      },
+      "proposed_applied": false,
+      "selected_proposal_id": "avoid_recent_obstruction:chase_frame_3073455"
+    }
+  ],
+  "schema": "vehicle_decision_apply_digest_v0"
+}

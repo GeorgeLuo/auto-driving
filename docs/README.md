@@ -10,9 +10,13 @@ Canonical status, frontier, and next action live in each
 `docs/milestones/<number>-<slug>/plan.md`. This page is navigation only. Do not
 copy those fields here.
 
+On this branch the active milestone is
+[006-decision-facing-perception-readiness](milestones/006-decision-facing-perception-readiness/)
+(`plan.md` · `plan.html`). M008 is closed on `main`; see the closed ledger.
+
 ```sh
 python3 docs/milestones/workflow.py status \
-  --plan docs/milestones/<number>-<slug>/plan.md
+  --plan docs/milestones/006-decision-facing-perception-readiness/plan.md
 ```
 
 Plans: [milestones/](milestones/). Closed ledger:

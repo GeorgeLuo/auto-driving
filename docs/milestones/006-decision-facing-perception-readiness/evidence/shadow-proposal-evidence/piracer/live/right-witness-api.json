@@ -1,0 +1,2163 @@
+{
+  "authority": {
+    "authorized_output": {
+      "confidence": 1.0,
+      "reason": "shadow-only-idle",
+      "steering": 0.0,
+      "throttle": 0.0
+    },
+    "cycle_reason": "",
+    "cycle_status": "ok",
+    "host_application": {
+      "reason": "host_did_not_report_application",
+      "status": "unavailable",
+      "updated_at_ms": 0,
+      "value": null
+    },
+    "proposed": {
+      "gear": "hold",
+      "normalized": true,
+      "schema": "proposed_vehicle_command_v0",
+      "steering": -0.35,
+      "throttle": 0.0
+    },
+    "proposed_applied": false,
+    "proposed_equals_authorized": false
+  },
+  "current_image": {
+    "byte_length": 62519,
+    "captured_at_ms": 1789699962524,
+    "content_type": "image/jpeg",
+    "frame_id": "donkey_frame_013821",
+    "frame_index": 13821,
+    "sha256": "a7365401c1dde26d3b3036a7347d77fd0f2fca385ff72a144f663934dfc43281",
+    "status": "available",
+    "url": "/api/decision/image?generation=bcb0f79426f89a5c6a90541f46dae3cdbfb2fe325a4e02cf8b936c814699bee9&id=d6002e95f1d5573c2559159d37f8f1d94b396bd062b91d09ccaa7c9b7b43ecc6"
+  },
+  "decision": {
+    "activation_activated_at_ms": 1789691707752,
+    "activation_engine_id": "shadow-proposals",
+    "authority_summary": {
+      "authorized_output": {
+        "confidence": 1.0,
+        "reason": "shadow-only-idle",
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "cycle_reason": "",
+      "cycle_status": "ok",
+      "host_application": {
+        "reason": "host_did_not_report_application",
+        "status": "unavailable",
+        "updated_at_ms": 0,
+        "value": null
+      },
+      "proposed": {
+        "gear": "hold",
+        "normalized": true,
+        "schema": "proposed_vehicle_command_v0",
+        "steering": -0.35,
+        "throttle": 0.0
+      },
+      "proposed_applied": false,
+      "proposed_equals_authorized": false
+    },
+    "cycle": {
+      "authority": {
+        "authority_mode": "shadow_only",
+        "authorized_output": {
+          "confidence": 1.0,
+          "reason": "shadow-only-idle",
+          "steering": 0.0,
+          "throttle": 0.0
+        },
+        "cycle_reason": "",
+        "cycle_status": "ok",
+        "drive_mode_gate": "user",
+        "frame_id": "donkey_frame_013821",
+        "host_application": {
+          "reason": "host_did_not_report_application",
+          "status": "unavailable",
+          "updated_at_ms": 0,
+          "value": null
+        },
+        "proposed": {
+          "gear": "hold",
+          "normalized": true,
+          "schema": "proposed_vehicle_command_v0",
+          "steering": -0.35,
+          "throttle": 0.0
+        },
+        "proposed_applied": false,
+        "proposed_equals_authorized": false,
+        "schema": "shadow_authority_result_v0"
+      },
+      "frame_id": "donkey_frame_013821",
+      "plan": {
+        "candidates": [
+          {
+            "assumptions": [
+              "no_object_identity",
+              "image_relative_only",
+              "shadow_only",
+              "single_primary_record"
+            ],
+            "available": true,
+            "command": {
+              "gear": "hold",
+              "normalized": true,
+              "schema": "proposed_vehicle_command_v0",
+              "steering": -0.35,
+              "throttle": 0.0
+            },
+            "confidence": 0.76016,
+            "frame_id": "donkey_frame_013821",
+            "freshness": "fresh",
+            "lifecycle": "fresh",
+            "metadata": {},
+            "plugin_id": "avoid_recent_obstruction",
+            "proposal_id": "avoid_recent_obstruction:donkey_frame_013821",
+            "reason": "steer_away_right_obstruction",
+            "schema": "action_proposal_v0",
+            "source_refs": [
+              {
+                "frame_id": "donkey_frame_013821",
+                "id": "thing:1:14:floor-plane-v0:18:floor_boundary_000",
+                "kind": "memory_record",
+                "note": "primary_obstruction",
+                "observation_id": "donkey_frame_013821",
+                "plugin_id": "floor-plane-v0"
+              }
+            ]
+          }
+        ],
+        "contributions": [
+          {
+            "plugin_id": "avoid_recent_obstruction",
+            "proposal_id": "avoid_recent_obstruction:donkey_frame_013821",
+            "role": "selected",
+            "weight": 1.0
+          }
+        ],
+        "frame_id": "donkey_frame_013821",
+        "metadata": {},
+        "plan_id": "action-plan:donkey_frame_013821",
+        "schema": "action_plan_v0",
+        "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_013821",
+        "selector_id": "deterministic_first_active",
+        "status": "selected",
+        "timestamp_ms": 1789699962524
+      },
+      "reason": "",
+      "schema": "shadow_decision_cycle_result_v0",
+      "source": {
+        "capabilities": {
+          "reason": "",
+          "status": "ready",
+          "updated_at_ms": 1789699962524,
+          "value": {
+            "allows_reverse": true,
+            "coordinate_frame": "image",
+            "max_abs_steering": 1.0,
+            "max_abs_throttle": 1.0
+          }
+        },
+        "frame_id": "donkey_frame_013821",
+        "frame_index": 13821,
+        "memory": {
+          "reason": "",
+          "status": "ready",
+          "updated_at_ms": 1789699962524,
+          "value": {
+            "bounds": {
+              "eviction_policy": "oldest_first",
+              "max_age_ms": 10000,
+              "max_property_bytes": 4096,
+              "max_records": 32,
+              "max_serialized_bytes": 262144
+            },
+            "created_at_ms": 1789699962524,
+            "epoch_id": "epoch-2",
+            "error": null,
+            "health": "healthy",
+            "implementation_id": "bounded_evidence",
+            "memory_id": "memory-donkey_frame_013821",
+            "metadata": {
+              "capacity_eviction_count": 0,
+              "claims_identity": false,
+              "conflict_count": 0,
+              "conflict_policy": "bounded_evidence_structural_v1",
+              "last_update_conflict_count": 0,
+              "observation_id": "donkey_frame_013821",
+              "policy": "bounded_evidence_recency"
+            },
+            "record_count": 13,
+            "records": [
+              {
+                "confidence": 1.0,
+                "kind": "signal",
+                "label": "floor_visible",
+                "location": null,
+                "properties": {
+                  "floor_fraction_roi": 0.80672,
+                  "value": true
+                },
+                "provenance": {
+                  "coordinate_frame": "observation",
+                  "evidence_id": "floor_visible",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "signal:1:14:floor-plane-v0:13:floor_visible"
+              },
+              {
+                "confidence": 0.6592433333333333,
+                "kind": "signal",
+                "label": "floor_boundary_available",
+                "location": null,
+                "properties": {
+                  "boundary_count": 3,
+                  "hit_fraction_columns": 0.35781,
+                  "value": true
+                },
+                "provenance": {
+                  "coordinate_frame": "observation",
+                  "evidence_id": "floor_boundary_available",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "signal:1:14:floor-plane-v0:24:floor_boundary_available"
+              },
+              {
+                "confidence": 1.0,
+                "kind": "signal",
+                "label": "front_camera_available",
+                "location": null,
+                "properties": {
+                  "value": true
+                },
+                "provenance": {
+                  "coordinate_frame": "observation",
+                  "evidence_id": "front_camera_available",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "frame-observation-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "signal:1:20:frame-observation-v0:22:front_camera_available"
+              },
+              {
+                "confidence": 1.0,
+                "kind": "surface",
+                "label": "traversable floor estimate",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.0,
+                    0.0,
+                    1.0,
+                    1.0
+                  ],
+                  "frame": "topdown_fov",
+                  "polygon_xy_norm": null,
+                  "zone": "visible_floor"
+                },
+                "properties": {
+                  "boundary_hit_fraction_columns": 0.35781,
+                  "evidence": "color_floor_model",
+                  "floor_fraction_roi": 0.80672,
+                  "occupied_fraction_roi": 0.19328
+                },
+                "provenance": {
+                  "coordinate_frame": "topdown_fov",
+                  "evidence_id": "traversable_floor",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "thing:1:14:floor-plane-v0:17:traversable_floor"
+              },
+              {
+                "confidence": 0.76016,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.5681,
+                    0.4718,
+                    0.6322,
+                    0.4927
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_right"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80672,
+                  "hit_pixel_count": 265,
+                  "width_fraction": 0.06563
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_000",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000"
+              },
+              {
+                "confidence": 0.6332,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.3224,
+                    0.4196,
+                    0.3662,
+                    0.4342
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_left"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80672,
+                  "hit_pixel_count": 166,
+                  "width_fraction": 0.04531
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_001",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_001"
+              },
+              {
+                "confidence": 0.58437,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.6526,
+                    0.4864,
+                    0.6886,
+                    0.5031
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_right"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80672,
+                  "hit_pixel_count": 148,
+                  "width_fraction": 0.0375
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_002",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_002"
+              },
+              {
+                "confidence": 1.0,
+                "kind": "sensor_frame",
+                "label": "front camera frame",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.0,
+                    0.0,
+                    1.0,
+                    1.0
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "full_frame"
+                },
+                "properties": {
+                  "brightness_mean": 47.002,
+                  "contrast_std": 29.746,
+                  "height_px": 480,
+                  "width_px": 640
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "front_camera_frame",
+                  "frame_id": "donkey_frame_013821",
+                  "observation_id": "donkey_frame_013821",
+                  "observed_at_ms": 1789699962847,
+                  "source_plugin_id": "frame-observation-v0",
+                  "updated_at_ms": 1789699962524
+                },
+                "record_id": "thing:1:20:frame-observation-v0:18:front_camera_frame"
+              },
+              {
+                "confidence": 0.61367,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.6307,
+                    0.4718,
+                    0.6714,
+                    0.4969
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_right"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80394,
+                  "hit_pixel_count": 202,
+                  "width_fraction": 0.04219
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_003",
+                  "frame_id": "donkey_frame_013820",
+                  "observation_id": "donkey_frame_013820",
+                  "observed_at_ms": 1789699962342,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962022
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_003"
+              },
+              {
+                "confidence": 0.60391,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.6667,
+                    0.4906,
+                    0.7058,
+                    0.5094
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_right"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80394,
+                  "hit_pixel_count": 154,
+                  "width_fraction": 0.04063
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_004",
+                  "frame_id": "donkey_frame_013820",
+                  "observation_id": "donkey_frame_013820",
+                  "observed_at_ms": 1789699962342,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962022
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_004"
+              },
+              {
+                "confidence": 0.57461,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.0986,
+                    0.929,
+                    0.133,
+                    0.9499
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "near_left"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80394,
+                  "hit_pixel_count": 166,
+                  "width_fraction": 0.03594
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_005",
+                  "frame_id": "donkey_frame_013820",
+                  "observation_id": "donkey_frame_013820",
+                  "observed_at_ms": 1789699962342,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962022
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_005"
+              },
+              {
+                "confidence": 0.51602,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.0782,
+                    0.8977,
+                    0.1033,
+                    0.9102
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "near_left"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80394,
+                  "hit_pixel_count": 90,
+                  "width_fraction": 0.02656
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_006",
+                  "frame_id": "donkey_frame_013820",
+                  "observation_id": "donkey_frame_013820",
+                  "observed_at_ms": 1789699962342,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962022
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_006"
+              },
+              {
+                "confidence": 0.48672,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.5493,
+                    0.4196,
+                    0.5696,
+                    0.428
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_right"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80394,
+                  "hit_pixel_count": 70,
+                  "width_fraction": 0.02187
+                },
+                "provenance": {
+                  "coordinate_frame": "image",
+                  "evidence_id": "floor_boundary_007",
+                  "frame_id": "donkey_frame_013820",
+                  "observation_id": "donkey_frame_013820",
+                  "observed_at_ms": 1789699962342,
+                  "source_plugin_id": "floor-plane-v0",
+                  "updated_at_ms": 1789699962022
+                },
+                "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_007"
+              }
+            ],
+            "schema": "decision_memory_snapshot_v0",
+            "summary": [
+              "retained_count=13",
+              "epoch_id=epoch-2",
+              "kinds=floor_boundary,sensor_frame,signal,surface",
+              "policy=bounded_evidence_recency"
+            ]
+          }
+        },
+        "metadata": {},
+        "observation": {
+          "reason": "",
+          "status": "ready",
+          "updated_at_ms": 1789699962524,
+          "value": {
+            "artifacts": {},
+            "created_at_ms": 1789699962847,
+            "metadata": {
+              "limits": [
+                "floor color is seeded independently from each current frame",
+                "boundaries may be objects, walls, shadows, or floor-color discontinuities",
+                "topdown_fov is approximate and uncalibrated"
+              ],
+              "source": "default_observe_stage"
+            },
+            "observation_id": "donkey_frame_013821",
+            "perception_plugin_id": "autonomy.perception.plugin-runner-v0",
+            "perception_schema": "perception_text_v2",
+            "schema": "decision_observation_v1",
+            "sensor_snapshot": {
+              "completed_at_ms": 1789699962524,
+              "metadata": {
+                "runtime": "donkeycar"
+              },
+              "read_id": "donkey_frame_013821",
+              "readings": {
+                "front_camera": {
+                  "captured_at_ms": 1789699962524,
+                  "has_value": true,
+                  "metadata": {
+                    "source": "donkeycar_vehicle_memory"
+                  },
+                  "path": null,
+                  "sensor_id": "front_camera",
+                  "sensor_kind": "camera"
+                }
+              },
+              "request": {},
+              "started_at_ms": 1789699962524
+            },
+            "signals": [
+              {
+                "confidence": 1.0,
+                "properties": {},
+                "signal_id": "front_camera_available",
+                "source_plugin_id": "frame-observation-v0",
+                "value": true
+              },
+              {
+                "confidence": 1.0,
+                "properties": {
+                  "floor_fraction_roi": 0.80672
+                },
+                "signal_id": "floor_visible",
+                "source_plugin_id": "floor-plane-v0",
+                "value": true
+              },
+              {
+                "confidence": 0.6592433333333333,
+                "properties": {
+                  "boundary_count": 3,
+                  "hit_fraction_columns": 0.35781
+                },
+                "signal_id": "floor_boundary_available",
+                "source_plugin_id": "floor-plane-v0",
+                "value": true
+              }
+            ],
+            "summary": [
+              "schema=perception_text_v2",
+              "plugin=autonomy.perception.plugin-runner-v0",
+              "plugins=frame,floor_plane",
+              "plugin_run id=frame-observation-v0 status=ok duration_ms=6.778 signals=1 things=1 artifacts=0",
+              "signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000",
+              "thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=47.002 contrast_std=29.746 height_px=480 width_px=640",
+              "plugin_run id=floor-plane-v0 status=ok duration_ms=314.601 signals=2 things=4 artifacts=0",
+              "signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.80672",
+              "signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.659 boundary_count=3 hit_fraction_columns=0.35781",
+              "thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.35781 evidence=color_floor_model floor_fraction_roi=0.80672 occupied_fraction_roi=0.19328",
+              "thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_right frame=image bbox_xyxy_norm=0.5681,0.4718,0.6322,0.4927 confidence=0.760 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.80672 hit_pixel_count=265 width_fraction=0.06563",
+              "thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3224,0.4196,0.3662,0.4342 confidence=0.633 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.80672 hit_pixel_count=166 width_fraction=0.04531"
+            ],
+            "things": [
+              {
+                "confidence": 1.0,
+                "kind": "sensor_frame",
+                "label": "front camera frame",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.0,
+                    0.0,
+                    1.0,
+                    1.0
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "full_frame"
+                },
+                "properties": {
+                  "brightness_mean": 47.002,
+                  "contrast_std": 29.746,
+                  "height_px": 480,
+                  "width_px": 640
+                },
+                "source_plugin_id": "frame-observation-v0",
+                "thing_id": "front_camera_frame"
+              },
+              {
+                "confidence": 1.0,
+                "kind": "surface",
+                "label": "traversable floor estimate",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.0,
+                    0.0,
+                    1.0,
+                    1.0
+                  ],
+                  "frame": "topdown_fov",
+                  "polygon_xy_norm": null,
+                  "zone": "visible_floor"
+                },
+                "properties": {
+                  "boundary_hit_fraction_columns": 0.35781,
+                  "evidence": "color_floor_model",
+                  "floor_fraction_roi": 0.80672,
+                  "occupied_fraction_roi": 0.19328
+                },
+                "source_plugin_id": "floor-plane-v0",
+                "thing_id": "traversable_floor"
+              },
+              {
+                "confidence": 0.76016,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.5681,
+                    0.4718,
+                    0.6322,
+                    0.4927
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_right"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80672,
+                  "hit_pixel_count": 265,
+                  "width_fraction": 0.06563
+                },
+                "source_plugin_id": "floor-plane-v0",
+                "thing_id": "floor_boundary_000"
+              },
+              {
+                "confidence": 0.6332,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.3224,
+                    0.4196,
+                    0.3662,
+                    0.4342
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_left"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80672,
+                  "hit_pixel_count": 166,
+                  "width_fraction": 0.04531
+                },
+                "source_plugin_id": "floor-plane-v0",
+                "thing_id": "floor_boundary_001"
+              },
+              {
+                "confidence": 0.58437,
+                "kind": "floor_boundary",
+                "label": "first sustained non-floor boundary after visible floor",
+                "location": {
+                  "bbox_xyxy_norm": [
+                    0.6526,
+                    0.4864,
+                    0.6886,
+                    0.5031
+                  ],
+                  "frame": "image",
+                  "polygon_xy_norm": null,
+                  "zone": "mid_right"
+                },
+                "properties": {
+                  "evidence": "first_non_floor_after_visible_floor",
+                  "floor_fraction_roi": 0.80672,
+                  "hit_pixel_count": 148,
+                  "width_fraction": 0.0375
+                },
+                "source_plugin_id": "floor-plane-v0",
+                "thing_id": "floor_boundary_002"
+              }
+            ]
+          }
+        },
+        "patterns": {
+          "reason": "stage_not_configured",
+          "status": "unavailable",
+          "updated_at_ms": 1789699962524,
+          "value": null
+        },
+        "prior_host_applied_command": {
+          "reason": "host_did_not_report_applied_command",
+          "status": "unavailable",
+          "updated_at_ms": 1789699962524,
+          "value": null
+        },
+        "projections": {
+          "reason": "stage_not_configured",
+          "status": "unavailable",
+          "updated_at_ms": 1789699962524,
+          "value": null
+        },
+        "schema": "decision_data_source_v0",
+        "source_id": "decision-data:donkey_frame_013821",
+        "timestamp_ms": 1789699962524
+      },
+      "status": "ok"
+    },
+    "frame_id": "donkey_frame_013821",
+    "frame_index": 13821,
+    "memory_summary": {
+      "health": "healthy",
+      "record_count": 13,
+      "records": [
+        {
+          "confidence": 1.0,
+          "frame_id": "donkey_frame_013821",
+          "kind": "signal",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "signal:1:14:floor-plane-v0:13:floor_visible"
+        },
+        {
+          "confidence": 0.6592433333333333,
+          "frame_id": "donkey_frame_013821",
+          "kind": "signal",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "signal:1:14:floor-plane-v0:24:floor_boundary_available"
+        },
+        {
+          "confidence": 1.0,
+          "frame_id": "donkey_frame_013821",
+          "kind": "signal",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "signal:1:20:frame-observation-v0:22:front_camera_available"
+        },
+        {
+          "confidence": 1.0,
+          "frame_id": "donkey_frame_013821",
+          "kind": "surface",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "thing:1:14:floor-plane-v0:17:traversable_floor"
+        },
+        {
+          "confidence": 0.76016,
+          "frame_id": "donkey_frame_013821",
+          "kind": "floor_boundary",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000"
+        },
+        {
+          "confidence": 0.6332,
+          "frame_id": "donkey_frame_013821",
+          "kind": "floor_boundary",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_001"
+        },
+        {
+          "confidence": 0.58437,
+          "frame_id": "donkey_frame_013821",
+          "kind": "floor_boundary",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_002"
+        },
+        {
+          "confidence": 1.0,
+          "frame_id": "donkey_frame_013821",
+          "kind": "sensor_frame",
+          "observation_id": "donkey_frame_013821",
+          "record_id": "thing:1:20:frame-observation-v0:18:front_camera_frame"
+        },
+        {
+          "confidence": 0.61367,
+          "frame_id": "donkey_frame_013820",
+          "kind": "floor_boundary",
+          "observation_id": "donkey_frame_013820",
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_003"
+        },
+        {
+          "confidence": 0.60391,
+          "frame_id": "donkey_frame_013820",
+          "kind": "floor_boundary",
+          "observation_id": "donkey_frame_013820",
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_004"
+        },
+        {
+          "confidence": 0.57461,
+          "frame_id": "donkey_frame_013820",
+          "kind": "floor_boundary",
+          "observation_id": "donkey_frame_013820",
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_005"
+        },
+        {
+          "confidence": 0.51602,
+          "frame_id": "donkey_frame_013820",
+          "kind": "floor_boundary",
+          "observation_id": "donkey_frame_013820",
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_006"
+        }
+      ],
+      "status": "ready"
+    },
+    "observation_summary": {
+      "frame_id": "donkey_frame_013821",
+      "reason": "",
+      "status": "ready"
+    },
+    "plan_summary": {
+      "candidates": [
+        {
+          "command": {
+            "steering": -0.35,
+            "throttle": 0.0
+          },
+          "confidence": 0.76016,
+          "freshness": "fresh",
+          "lifecycle": "fresh",
+          "plugin_id": "avoid_recent_obstruction",
+          "proposal_id": "avoid_recent_obstruction:donkey_frame_013821",
+          "reason": "steer_away_right_obstruction",
+          "source_refs": [
+            {
+              "frame_id": "donkey_frame_013821",
+              "id": "thing:1:14:floor-plane-v0:18:floor_boundary_000",
+              "kind": "memory_record",
+              "note": "primary_obstruction",
+              "observation_id": "donkey_frame_013821",
+              "plugin_id": "floor-plane-v0"
+            }
+          ]
+        }
+      ],
+      "contributions": [
+        {
+          "plugin_id": "avoid_recent_obstruction",
+          "proposal_id": "avoid_recent_obstruction:donkey_frame_013821",
+          "role": "selected",
+          "weight": 1.0
+        }
+      ],
+      "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_013821",
+      "status": "selected"
+    },
+    "producer_generation_id": "shadow-proposals:1789691707752",
+    "published_at_ms": 1789699962894,
+    "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+    "schema": "provider_decision_stream_frame_v0",
+    "source_id": "donkeycar:piracer",
+    "timestamp_ms": 1789699962524,
+    "vehicle_id": "piracer"
+  },
+  "evidence": {
+    "available_count": 4,
+    "frame_id": "donkey_frame_013821",
+    "reason": "evidence_association_partial",
+    "record_count": 13,
+    "records": [
+      {
+        "provenance": {
+          "coordinate_frame": "observation",
+          "evidence_id": "floor_visible",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "evidence_missing",
+        "record": null,
+        "record_id": "signal:1:14:floor-plane-v0:13:floor_visible",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "observation",
+          "evidence_id": "floor_boundary_available",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "evidence_missing",
+        "record": null,
+        "record_id": "signal:1:14:floor-plane-v0:24:floor_boundary_available",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "observation",
+          "evidence_id": "front_camera_available",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "frame-observation-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "evidence_missing",
+        "record": null,
+        "record_id": "signal:1:20:frame-observation-v0:22:front_camera_available",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "topdown_fov",
+          "evidence_id": "traversable_floor",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "provenance_mismatch",
+        "record": null,
+        "record_id": "thing:1:14:floor-plane-v0:17:traversable_floor",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_000",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "",
+        "record": {
+          "confidence": 0.76016,
+          "kind": "floor_boundary",
+          "label": "first sustained non-floor boundary after visible floor",
+          "location": {
+            "bbox_xyxy_norm": [
+              0.5681,
+              0.4718,
+              0.6322,
+              0.4927
+            ],
+            "frame": "image",
+            "polygon_xy_norm": null,
+            "zone": "mid_right"
+          },
+          "properties": {
+            "evidence": "first_non_floor_after_visible_floor",
+            "floor_fraction_roi": 0.80672,
+            "hit_pixel_count": 265,
+            "width_fraction": 0.06563
+          },
+          "provenance": {
+            "coordinate_frame": "image",
+            "evidence_id": "floor_boundary_000",
+            "frame_id": "donkey_frame_013821",
+            "observation_id": "donkey_frame_013821",
+            "observed_at_ms": 1789699962847,
+            "source_plugin_id": "floor-plane-v0",
+            "updated_at_ms": 1789699962524
+          },
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000"
+        },
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000",
+        "status": "available"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_001",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "",
+        "record": {
+          "confidence": 0.6332,
+          "kind": "floor_boundary",
+          "label": "first sustained non-floor boundary after visible floor",
+          "location": {
+            "bbox_xyxy_norm": [
+              0.3224,
+              0.4196,
+              0.3662,
+              0.4342
+            ],
+            "frame": "image",
+            "polygon_xy_norm": null,
+            "zone": "mid_left"
+          },
+          "properties": {
+            "evidence": "first_non_floor_after_visible_floor",
+            "floor_fraction_roi": 0.80672,
+            "hit_pixel_count": 166,
+            "width_fraction": 0.04531
+          },
+          "provenance": {
+            "coordinate_frame": "image",
+            "evidence_id": "floor_boundary_001",
+            "frame_id": "donkey_frame_013821",
+            "observation_id": "donkey_frame_013821",
+            "observed_at_ms": 1789699962847,
+            "source_plugin_id": "floor-plane-v0",
+            "updated_at_ms": 1789699962524
+          },
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_001"
+        },
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_001",
+        "status": "available"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_002",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "",
+        "record": {
+          "confidence": 0.58437,
+          "kind": "floor_boundary",
+          "label": "first sustained non-floor boundary after visible floor",
+          "location": {
+            "bbox_xyxy_norm": [
+              0.6526,
+              0.4864,
+              0.6886,
+              0.5031
+            ],
+            "frame": "image",
+            "polygon_xy_norm": null,
+            "zone": "mid_right"
+          },
+          "properties": {
+            "evidence": "first_non_floor_after_visible_floor",
+            "floor_fraction_roi": 0.80672,
+            "hit_pixel_count": 148,
+            "width_fraction": 0.0375
+          },
+          "provenance": {
+            "coordinate_frame": "image",
+            "evidence_id": "floor_boundary_002",
+            "frame_id": "donkey_frame_013821",
+            "observation_id": "donkey_frame_013821",
+            "observed_at_ms": 1789699962847,
+            "source_plugin_id": "floor-plane-v0",
+            "updated_at_ms": 1789699962524
+          },
+          "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_002"
+        },
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_002",
+        "status": "available"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "front_camera_frame",
+          "frame_id": "donkey_frame_013821",
+          "observation_id": "donkey_frame_013821",
+          "observed_at_ms": 1789699962847,
+          "source_plugin_id": "frame-observation-v0",
+          "updated_at_ms": 1789699962524
+        },
+        "reason": "",
+        "record": {
+          "confidence": 1.0,
+          "kind": "sensor_frame",
+          "label": "front camera frame",
+          "location": {
+            "bbox_xyxy_norm": [
+              0.0,
+              0.0,
+              1.0,
+              1.0
+            ],
+            "frame": "image",
+            "polygon_xy_norm": null,
+            "zone": "full_frame"
+          },
+          "properties": {
+            "brightness_mean": 47.002,
+            "contrast_std": 29.746,
+            "height_px": 480,
+            "width_px": 640
+          },
+          "provenance": {
+            "coordinate_frame": "image",
+            "evidence_id": "front_camera_frame",
+            "frame_id": "donkey_frame_013821",
+            "observation_id": "donkey_frame_013821",
+            "observed_at_ms": 1789699962847,
+            "source_plugin_id": "frame-observation-v0",
+            "updated_at_ms": 1789699962524
+          },
+          "record_id": "thing:1:20:frame-observation-v0:18:front_camera_frame"
+        },
+        "record_id": "thing:1:20:frame-observation-v0:18:front_camera_frame",
+        "status": "available"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_003",
+          "frame_id": "donkey_frame_013820",
+          "observation_id": "donkey_frame_013820",
+          "observed_at_ms": 1789699962342,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962022
+        },
+        "reason": "source_image_unavailable",
+        "record": null,
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_003",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_004",
+          "frame_id": "donkey_frame_013820",
+          "observation_id": "donkey_frame_013820",
+          "observed_at_ms": 1789699962342,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962022
+        },
+        "reason": "source_image_unavailable",
+        "record": null,
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_004",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_005",
+          "frame_id": "donkey_frame_013820",
+          "observation_id": "donkey_frame_013820",
+          "observed_at_ms": 1789699962342,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962022
+        },
+        "reason": "source_image_unavailable",
+        "record": null,
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_005",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_006",
+          "frame_id": "donkey_frame_013820",
+          "observation_id": "donkey_frame_013820",
+          "observed_at_ms": 1789699962342,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962022
+        },
+        "reason": "source_image_unavailable",
+        "record": null,
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_006",
+        "status": "unavailable"
+      },
+      {
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_007",
+          "frame_id": "donkey_frame_013820",
+          "observation_id": "donkey_frame_013820",
+          "observed_at_ms": 1789699962342,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1789699962022
+        },
+        "reason": "source_image_unavailable",
+        "record": null,
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_007",
+        "status": "unavailable"
+      }
+    ],
+    "status": "partial",
+    "transaction_id": "d6002e95f1d5573c2559159d37f8f1d94b396bd062b91d09ccaa7c9b7b43ecc6"
+  },
+  "freshness": {
+    "age_ms": 321,
+    "capture_age_ms": 691,
+    "captured_at_ms": 1789699962524,
+    "expires_at_ms": 1789699992894,
+    "max_age_ms": 30000,
+    "published_at_ms": 1789699962894
+  },
+  "generation_id": "bcb0f79426f89a5c6a90541f46dae3cdbfb2fe325a4e02cf8b936c814699bee9",
+  "host_telemetry": {
+    "application": {
+      "actuator_feedback": "unavailable",
+      "boundary": "post_drive_mode_pre_drivetrain"
+    },
+    "coverage": {
+      "coverage_reason": "",
+      "first_sequence": 65722,
+      "interval_covered": true,
+      "last_sequence": 65729,
+      "point_interval_covered": false,
+      "point_status": "point",
+      "reason": "",
+      "record_count": 8,
+      "sequence": 65729,
+      "status": "complete"
+    },
+    "decision": {
+      "frame_id": "donkey_frame_013821",
+      "frame_index": 13821
+    },
+    "details": {
+      "history_reason": "",
+      "history_status": "healthy",
+      "point_coverage": {
+        "interval_covered": false,
+        "reason": "coverage_gap",
+        "record_count": 1,
+        "sequence": 65729,
+        "status": "point"
+      }
+    },
+    "freshness": {
+      "future_skew_ms": 0,
+      "future_skew_tolerance_ms": 250,
+      "max_gap_ms": 1000,
+      "max_publication_age_ms": 1500,
+      "max_source_age_ms": 1500,
+      "observed_at_ms": 1789699963004,
+      "publication_age_ms": 123,
+      "published_at_ms": 1789699963004,
+      "source_age_ms": 110
+    },
+    "host_selected_output": {
+      "steering": 0.0,
+      "throttle": 0.0
+    },
+    "host_tick": {
+      "gap_since_previous_ms": 52,
+      "observed_at_ms": 1789699963004,
+      "published_at_ms": 1789699963004,
+      "sequence": 65729,
+      "skipped_since_previous": 0,
+      "source_age_ms": 110
+    },
+    "identity": {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "source_frame": {
+        "captured_at_ms": 1789699962524,
+        "completed_at_ms": 1789699962894,
+        "frame_id": "donkey_frame_013821",
+        "frame_index": 13821
+      },
+      "source_id": "donkeycar:piracer",
+      "vehicle_id": "piracer"
+    },
+    "joined": true,
+    "limits": {
+      "future_skew_tolerance_ms": 250,
+      "max_gap_ms": 1000,
+      "max_publication_age_ms": 1500,
+      "max_source_age_ms": 1500
+    },
+    "message": "",
+    "mode": "user",
+    "pilot_output": {
+      "steering": 0.0,
+      "throttle": 0.0
+    },
+    "reason": "",
+    "record": {
+      "activation": {
+        "activated_at_ms": 1789691707752,
+        "engine_id": "shadow-proposals",
+        "generation_id": "shadow-proposals:1789691707752"
+      },
+      "application": {
+        "actuator_feedback": "unavailable",
+        "boundary": "post_drive_mode_pre_drivetrain"
+      },
+      "generation_id": "shadow-proposals:1789691707752",
+      "host_selected_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "host_tick": {
+        "gap_since_previous_ms": 52,
+        "observed_at_ms": 1789699963004,
+        "published_at_ms": 1789699963004,
+        "sequence": 65729,
+        "skipped_since_previous": 0,
+        "source_age_ms": 110
+      },
+      "http_status": 200,
+      "limits": {
+        "future_skew_tolerance_ms": 250,
+        "max_gap_ms": 1000,
+        "max_publication_age_ms": 1500,
+        "max_source_age_ms": 1500
+      },
+      "mode": "user",
+      "ok": true,
+      "pilot_output": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "publication_age_ms": 189,
+      "read_at_ms": 1789699963193,
+      "reason": "",
+      "record": {
+        "activation": {
+          "activated_at_ms": 1789691707752,
+          "engine_id": "shadow-proposals",
+          "generation_id": "shadow-proposals:1789691707752"
+        },
+        "application": {
+          "actuator_feedback": "unavailable",
+          "boundary": "post_drive_mode_pre_drivetrain"
+        },
+        "generation_id": "shadow-proposals:1789691707752",
+        "host_selected_output": {
+          "steering": 0.0,
+          "throttle": 0.0
+        },
+        "host_tick": {
+          "gap_since_previous_ms": 52,
+          "observed_at_ms": 1789699963004,
+          "published_at_ms": 1789699963004,
+          "sequence": 65729,
+          "skipped_since_previous": 0,
+          "source_age_ms": 110
+        },
+        "limits": {
+          "future_skew_tolerance_ms": 250,
+          "max_gap_ms": 1000,
+          "max_publication_age_ms": 1500,
+          "max_source_age_ms": 1500
+        },
+        "mode": "user",
+        "pilot_output": {
+          "steering": 0.0,
+          "throttle": 0.0
+        },
+        "reason": "",
+        "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+        "schema": "automa_host_boundary_telemetry_v0",
+        "source_frame": {
+          "captured_at_ms": 1789699962524,
+          "completed_at_ms": 1789699962894,
+          "frame_id": "donkey_frame_013821",
+          "frame_index": 13821
+        },
+        "source_id": "donkeycar:piracer",
+        "status": "healthy",
+        "user_input": {
+          "steering": 0.0,
+          "throttle": 0.0
+        },
+        "vehicle_id": "piracer"
+      },
+      "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+      "schema": "automa_host_boundary_telemetry_v0",
+      "source_frame": {
+        "captured_at_ms": 1789699962524,
+        "completed_at_ms": 1789699962894,
+        "frame_id": "donkey_frame_013821",
+        "frame_index": 13821
+      },
+      "source_id": "donkeycar:piracer",
+      "status": "healthy",
+      "user_input": {
+        "steering": 0.0,
+        "throttle": 0.0
+      },
+      "vehicle_id": "piracer"
+    },
+    "schema": "automa_host_boundary_telemetry_panel_v0",
+    "source_frame": {
+      "captured_at_ms": 1789699962524,
+      "completed_at_ms": 1789699962894,
+      "frame_id": "donkey_frame_013821",
+      "frame_index": 13821
+    },
+    "status": "healthy",
+    "user_input": {
+      "steering": 0.0,
+      "throttle": 0.0
+    }
+  },
+  "identity": {
+    "activation_activated_at_ms": 1789691707752,
+    "activation_engine_id": "shadow-proposals",
+    "producer_generation_id": "shadow-proposals:1789691707752",
+    "run_id": "donkey-run-532122-1789691707752-f47dddf6e9dae753",
+    "source_id": "donkeycar:piracer",
+    "vehicle_id": "piracer"
+  },
+  "provenance": {
+    "memory": {
+      "reason": "",
+      "status": "ready",
+      "updated_at_ms": 1789699962524,
+      "value": {
+        "bounds": {
+          "eviction_policy": "oldest_first",
+          "max_age_ms": 10000,
+          "max_property_bytes": 4096,
+          "max_records": 32,
+          "max_serialized_bytes": 262144
+        },
+        "created_at_ms": 1789699962524,
+        "epoch_id": "epoch-2",
+        "error": null,
+        "health": "healthy",
+        "implementation_id": "bounded_evidence",
+        "memory_id": "memory-donkey_frame_013821",
+        "metadata": {
+          "capacity_eviction_count": 0,
+          "claims_identity": false,
+          "conflict_count": 0,
+          "conflict_policy": "bounded_evidence_structural_v1",
+          "last_update_conflict_count": 0,
+          "observation_id": "donkey_frame_013821",
+          "policy": "bounded_evidence_recency"
+        },
+        "record_count": 13,
+        "records": [
+          {
+            "confidence": 1.0,
+            "kind": "signal",
+            "label": "floor_visible",
+            "location": null,
+            "properties": {
+              "floor_fraction_roi": 0.80672,
+              "value": true
+            },
+            "provenance": {
+              "coordinate_frame": "observation",
+              "evidence_id": "floor_visible",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "signal:1:14:floor-plane-v0:13:floor_visible"
+          },
+          {
+            "confidence": 0.6592433333333333,
+            "kind": "signal",
+            "label": "floor_boundary_available",
+            "location": null,
+            "properties": {
+              "boundary_count": 3,
+              "hit_fraction_columns": 0.35781,
+              "value": true
+            },
+            "provenance": {
+              "coordinate_frame": "observation",
+              "evidence_id": "floor_boundary_available",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "signal:1:14:floor-plane-v0:24:floor_boundary_available"
+          },
+          {
+            "confidence": 1.0,
+            "kind": "signal",
+            "label": "front_camera_available",
+            "location": null,
+            "properties": {
+              "value": true
+            },
+            "provenance": {
+              "coordinate_frame": "observation",
+              "evidence_id": "front_camera_available",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "frame-observation-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "signal:1:20:frame-observation-v0:22:front_camera_available"
+          },
+          {
+            "confidence": 1.0,
+            "kind": "surface",
+            "label": "traversable floor estimate",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "frame": "topdown_fov",
+              "polygon_xy_norm": null,
+              "zone": "visible_floor"
+            },
+            "properties": {
+              "boundary_hit_fraction_columns": 0.35781,
+              "evidence": "color_floor_model",
+              "floor_fraction_roi": 0.80672,
+              "occupied_fraction_roi": 0.19328
+            },
+            "provenance": {
+              "coordinate_frame": "topdown_fov",
+              "evidence_id": "traversable_floor",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "thing:1:14:floor-plane-v0:17:traversable_floor"
+          },
+          {
+            "confidence": 0.76016,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.5681,
+                0.4718,
+                0.6322,
+                0.4927
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_right"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80672,
+              "hit_pixel_count": 265,
+              "width_fraction": 0.06563
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_000",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000"
+          },
+          {
+            "confidence": 0.6332,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.3224,
+                0.4196,
+                0.3662,
+                0.4342
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_left"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80672,
+              "hit_pixel_count": 166,
+              "width_fraction": 0.04531
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_001",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_001"
+          },
+          {
+            "confidence": 0.58437,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.6526,
+                0.4864,
+                0.6886,
+                0.5031
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_right"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80672,
+              "hit_pixel_count": 148,
+              "width_fraction": 0.0375
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_002",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_002"
+          },
+          {
+            "confidence": 1.0,
+            "kind": "sensor_frame",
+            "label": "front camera frame",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "full_frame"
+            },
+            "properties": {
+              "brightness_mean": 47.002,
+              "contrast_std": 29.746,
+              "height_px": 480,
+              "width_px": 640
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "front_camera_frame",
+              "frame_id": "donkey_frame_013821",
+              "observation_id": "donkey_frame_013821",
+              "observed_at_ms": 1789699962847,
+              "source_plugin_id": "frame-observation-v0",
+              "updated_at_ms": 1789699962524
+            },
+            "record_id": "thing:1:20:frame-observation-v0:18:front_camera_frame"
+          },
+          {
+            "confidence": 0.61367,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.6307,
+                0.4718,
+                0.6714,
+                0.4969
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_right"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80394,
+              "hit_pixel_count": 202,
+              "width_fraction": 0.04219
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_003",
+              "frame_id": "donkey_frame_013820",
+              "observation_id": "donkey_frame_013820",
+              "observed_at_ms": 1789699962342,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962022
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_003"
+          },
+          {
+            "confidence": 0.60391,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.6667,
+                0.4906,
+                0.7058,
+                0.5094
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_right"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80394,
+              "hit_pixel_count": 154,
+              "width_fraction": 0.04063
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_004",
+              "frame_id": "donkey_frame_013820",
+              "observation_id": "donkey_frame_013820",
+              "observed_at_ms": 1789699962342,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962022
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_004"
+          },
+          {
+            "confidence": 0.57461,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.0986,
+                0.929,
+                0.133,
+                0.9499
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "near_left"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80394,
+              "hit_pixel_count": 166,
+              "width_fraction": 0.03594
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_005",
+              "frame_id": "donkey_frame_013820",
+              "observation_id": "donkey_frame_013820",
+              "observed_at_ms": 1789699962342,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962022
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_005"
+          },
+          {
+            "confidence": 0.51602,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.0782,
+                0.8977,
+                0.1033,
+                0.9102
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "near_left"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80394,
+              "hit_pixel_count": 90,
+              "width_fraction": 0.02656
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_006",
+              "frame_id": "donkey_frame_013820",
+              "observation_id": "donkey_frame_013820",
+              "observed_at_ms": 1789699962342,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962022
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_006"
+          },
+          {
+            "confidence": 0.48672,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.5493,
+                0.4196,
+                0.5696,
+                0.428
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_right"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80394,
+              "hit_pixel_count": 70,
+              "width_fraction": 0.02187
+            },
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "floor_boundary_007",
+              "frame_id": "donkey_frame_013820",
+              "observation_id": "donkey_frame_013820",
+              "observed_at_ms": 1789699962342,
+              "source_plugin_id": "floor-plane-v0",
+              "updated_at_ms": 1789699962022
+            },
+            "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_007"
+          }
+        ],
+        "schema": "decision_memory_snapshot_v0",
+        "summary": [
+          "retained_count=13",
+          "epoch_id=epoch-2",
+          "kinds=floor_boundary,sensor_frame,signal,surface",
+          "policy=bounded_evidence_recency"
+        ]
+      }
+    },
+    "observation": {
+      "reason": "",
+      "status": "ready",
+      "updated_at_ms": 1789699962524,
+      "value": {
+        "artifacts": {},
+        "created_at_ms": 1789699962847,
+        "metadata": {
+          "limits": [
+            "floor color is seeded independently from each current frame",
+            "boundaries may be objects, walls, shadows, or floor-color discontinuities",
+            "topdown_fov is approximate and uncalibrated"
+          ],
+          "source": "default_observe_stage"
+        },
+        "observation_id": "donkey_frame_013821",
+        "perception_plugin_id": "autonomy.perception.plugin-runner-v0",
+        "perception_schema": "perception_text_v2",
+        "schema": "decision_observation_v1",
+        "sensor_snapshot": {
+          "completed_at_ms": 1789699962524,
+          "metadata": {
+            "runtime": "donkeycar"
+          },
+          "read_id": "donkey_frame_013821",
+          "readings": {
+            "front_camera": {
+              "captured_at_ms": 1789699962524,
+              "has_value": true,
+              "metadata": {
+                "source": "donkeycar_vehicle_memory"
+              },
+              "path": null,
+              "sensor_id": "front_camera",
+              "sensor_kind": "camera"
+            }
+          },
+          "request": {},
+          "started_at_ms": 1789699962524
+        },
+        "signals": [
+          {
+            "confidence": 1.0,
+            "properties": {},
+            "signal_id": "front_camera_available",
+            "source_plugin_id": "frame-observation-v0",
+            "value": true
+          },
+          {
+            "confidence": 1.0,
+            "properties": {
+              "floor_fraction_roi": 0.80672
+            },
+            "signal_id": "floor_visible",
+            "source_plugin_id": "floor-plane-v0",
+            "value": true
+          },
+          {
+            "confidence": 0.6592433333333333,
+            "properties": {
+              "boundary_count": 3,
+              "hit_fraction_columns": 0.35781
+            },
+            "signal_id": "floor_boundary_available",
+            "source_plugin_id": "floor-plane-v0",
+            "value": true
+          }
+        ],
+        "summary": [
+          "schema=perception_text_v2",
+          "plugin=autonomy.perception.plugin-runner-v0",
+          "plugins=frame,floor_plane",
+          "plugin_run id=frame-observation-v0 status=ok duration_ms=6.778 signals=1 things=1 artifacts=0",
+          "signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000",
+          "thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=47.002 contrast_std=29.746 height_px=480 width_px=640",
+          "plugin_run id=floor-plane-v0 status=ok duration_ms=314.601 signals=2 things=4 artifacts=0",
+          "signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.80672",
+          "signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.659 boundary_count=3 hit_fraction_columns=0.35781",
+          "thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.35781 evidence=color_floor_model floor_fraction_roi=0.80672 occupied_fraction_roi=0.19328",
+          "thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_right frame=image bbox_xyxy_norm=0.5681,0.4718,0.6322,0.4927 confidence=0.760 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.80672 hit_pixel_count=265 width_fraction=0.06563",
+          "thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3224,0.4196,0.3662,0.4342 confidence=0.633 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.80672 hit_pixel_count=166 width_fraction=0.04531"
+        ],
+        "things": [
+          {
+            "confidence": 1.0,
+            "kind": "sensor_frame",
+            "label": "front camera frame",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "full_frame"
+            },
+            "properties": {
+              "brightness_mean": 47.002,
+              "contrast_std": 29.746,
+              "height_px": 480,
+              "width_px": 640
+            },
+            "source_plugin_id": "frame-observation-v0",
+            "thing_id": "front_camera_frame"
+          },
+          {
+            "confidence": 1.0,
+            "kind": "surface",
+            "label": "traversable floor estimate",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "frame": "topdown_fov",
+              "polygon_xy_norm": null,
+              "zone": "visible_floor"
+            },
+            "properties": {
+              "boundary_hit_fraction_columns": 0.35781,
+              "evidence": "color_floor_model",
+              "floor_fraction_roi": 0.80672,
+              "occupied_fraction_roi": 0.19328
+            },
+            "source_plugin_id": "floor-plane-v0",
+            "thing_id": "traversable_floor"
+          },
+          {
+            "confidence": 0.76016,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.5681,
+                0.4718,
+                0.6322,
+                0.4927
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_right"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80672,
+              "hit_pixel_count": 265,
+              "width_fraction": 0.06563
+            },
+            "source_plugin_id": "floor-plane-v0",
+            "thing_id": "floor_boundary_000"
+          },
+          {
+            "confidence": 0.6332,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.3224,
+                0.4196,
+                0.3662,
+                0.4342
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_left"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80672,
+              "hit_pixel_count": 166,
+              "width_fraction": 0.04531
+            },
+            "source_plugin_id": "floor-plane-v0",
+            "thing_id": "floor_boundary_001"
+          },
+          {
+            "confidence": 0.58437,
+            "kind": "floor_boundary",
+            "label": "first sustained non-floor boundary after visible floor",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.6526,
+                0.4864,
+                0.6886,
+                0.5031
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "mid_right"
+            },
+            "properties": {
+              "evidence": "first_non_floor_after_visible_floor",
+              "floor_fraction_roi": 0.80672,
+              "hit_pixel_count": 148,
+              "width_fraction": 0.0375
+            },
+            "source_plugin_id": "floor-plane-v0",
+            "thing_id": "floor_boundary_002"
+          }
+        ]
+      }
+    },
+    "sensor_snapshot": {
+      "completed_at_ms": 1789699962524,
+      "metadata": {
+        "runtime": "donkeycar"
+      },
+      "read_id": "donkey_frame_013821",
+      "readings": {
+        "front_camera": {
+          "captured_at_ms": 1789699962524,
+          "has_value": true,
+          "metadata": {
+            "source": "donkeycar_vehicle_memory"
+          },
+          "path": null,
+          "sensor_id": "front_camera",
+          "sensor_kind": "camera"
+        }
+      },
+      "request": {},
+      "started_at_ms": 1789699962524
+    }
+  },
+  "schema": "automa_live_decision_view_v1",
+  "served_at_ms": 1789699963215,
+  "status": "current",
+  "transaction_id": "d6002e95f1d5573c2559159d37f8f1d94b396bd062b91d09ccaa7c9b7b43ecc6",
+  "view_id": "decision-combined-v0"
+}

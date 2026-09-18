@@ -1,0 +1,12 @@
+schema=perception_text_v2
+plugin=autonomy.perception.plugin-runner-v0
+plugins=frame,floor_plane
+plugin_run id=frame-observation-v0 status=ok duration_ms=32.035 signals=1 things=1 artifacts=0
+signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000
+thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=189.681 contrast_std=32.409 height_px=480 width_px=640
+plugin_run id=floor-plane-v0 status=ok duration_ms=6252.194 signals=2 things=3 artifacts=5
+signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.94259
+signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.890 boundary_count=2 hit_fraction_columns=0.19219
+thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.19219 evidence=color_floor_model floor_fraction_roi=0.94259 occupied_fraction_roi=0.05741
+thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3537,0.4718,0.4757,0.5031 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.94259 hit_pixel_count=447 width_fraction=0.12344
+thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_right frame=image bbox_xyxy_norm=0.6448,0.4823,0.7121,0.4990 confidence=0.780 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.94259 hit_pixel_count=236 width_fraction=0.06875

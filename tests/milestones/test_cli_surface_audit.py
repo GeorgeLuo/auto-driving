@@ -1284,6 +1284,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 "simulators",
                 "vehicles",
                 "vehicles.automation",
+                "vehicles.decision",
                 "vehicles.memory",
                 "vehicles.operation",
                 "vehicles.perception",

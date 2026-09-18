@@ -1,0 +1,75 @@
+{
+  "frames": [
+    {
+      "frame_id": "frame_001",
+      "frame_index": 1,
+      "memory": {
+        "bounds": {
+          "eviction_policy": "oldest_first",
+          "max_age_ms": 10000,
+          "max_property_bytes": 4096,
+          "max_records": 16,
+          "max_serialized_bytes": 262144
+        },
+        "created_at_ms": 1000,
+        "epoch_id": "e1",
+        "error": null,
+        "health": "healthy",
+        "implementation_id": "bounded_evidence",
+        "memory_id": "m1",
+        "metadata": {},
+        "record_count": 1,
+        "records": [
+          {
+            "confidence": 0.8,
+            "kind": "floor_boundary",
+            "label": "floor_boundary",
+            "location": {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.2,
+                0.5
+              ],
+              "frame": "image",
+              "polygon_xy_norm": null,
+              "zone": "left"
+            },
+            "properties": {},
+            "provenance": {
+              "coordinate_frame": "image",
+              "evidence_id": "ev_001",
+              "frame_id": "frame_001",
+              "observation_id": "obs_001",
+              "observed_at_ms": 1000,
+              "source_plugin_id": "src",
+              "updated_at_ms": 1000
+            },
+            "record_id": "thing:1:a"
+          }
+        ],
+        "schema": "decision_memory_snapshot_v0",
+        "summary": [
+          "ok"
+        ]
+      },
+      "observation": {
+        "artifacts": {},
+        "created_at_ms": 1000,
+        "metadata": {},
+        "observation_id": "obs_001",
+        "perception_plugin_id": "lightweight_observer",
+        "perception_schema": "perception_text_v0",
+        "schema": "decision_observation_v1",
+        "sensor_snapshot": {},
+        "signals": [],
+        "summary": [
+          "line"
+        ],
+        "things": []
+      },
+      "timestamp_ms": 1000
+    }
+  ],
+  "schema": "automa_decision_apply_sequence_v0"
+}

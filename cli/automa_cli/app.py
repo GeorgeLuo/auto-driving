@@ -17,10 +17,14 @@ from .automation import (
 )
 from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision import (
+    apply_vehicle_decision,
     available_decision_engine_ids,
     get_vehicle_decision_info,
+    stream_vehicle_decision,
     update_vehicle_decision,
 )
+from .decision_inspector import run_decision_inspector
+from .decision_live import run_live_decision_monitor
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
 from .memory import (
     get_vehicle_memory_info,
@@ -506,6 +510,141 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable live memory snapshots (one JSON object per refresh).",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
+
+    decision_stream = stream_commands.add_parser(
+        "decision",
+        help="Show the latest shadow decision frame (generation-scoped latest replacement).",
+        description=(
+            "Read automation/latest_decision.json for the staged shadow-proposals engine. "
+            "Accepts only generation-matched frames from a running live worker within the "
+            "configured max age. No history is written. Use --once for a single accepted frame."
+        ),
+    )
+    decision_stream.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    decision_stream.add_argument(
+        "--refresh-s",
+        type=float,
+        default=0.5,
+        help="Refresh cadence for the replacing terminal view.",
+    )
+    decision_stream.add_argument(
+        "--once",
+        action="store_true",
+        help="Accept one frame and exit.",
+    )
+    decision_stream.add_argument(
+        "--no-clear",
+        action="store_true",
+        help="Do not clear the terminal before each render.",
+    )
+    decision_stream.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable decision stream frames (one JSON object per refresh).",
+    )
+    decision_stream.set_defaults(handler=_handle_vehicles_stream_decision)
+
+    decision_control = vehicle_commands.add_parser(
+        "decision",
+        help=(
+            "Inspect or operate vehicle decision "
+            "(offline inspect/replay or read-only live monitor)."
+        ),
+    )
+    decision_control.set_defaults(handler=_handle_vehicles_decision_help)
+    decision_control_commands = decision_control.add_subparsers(dest="decision_command")
+    decision_help = decision_control_commands.add_parser(
+        "help",
+        help="Show decision-level commands.",
+    )
+    decision_help.set_defaults(handler=_handle_vehicles_decision_help)
+    decision_inspect = decision_control_commands.add_parser(
+        "inspect", help="Open an offline decision inspector for a saved input sequence.",
+        description="Compute left/right shadow scenarios from one saved frame. No live worker or capture is needed.",
+    )
+    decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
+    decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
+    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged shadow configuration; otherwise use packaged defaults.")
+    decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
+    decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
+    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts and exit without starting a server.")
+    decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
+    decision_apply = decision_control_commands.add_parser(
+        "apply",
+        help="Replay a recorded decision sequence through staged shadow-proposals offline.",
+        description=(
+            "Feed a recorded observation+memory sequence through the vehicle's staged "
+            "shadow-proposals activation. Requires --id. Reports a deterministic digest "
+            "(canonical_json_utf8 byte equality across two passes). Writes no files unless "
+            "--record is passed for exact-frame HTML under lab/runs/decision-apply/."
+        ),
+    )
+    decision_apply.add_argument(
+        "--id",
+        required=False,
+        dest="vehicle_id",
+        help="Vehicle id used to resolve the staged decision activation.",
+    )
+    decision_apply.add_argument(
+        "--from-run",
+        required=True,
+        dest="from_run",
+        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v0).",
+    )
+    decision_apply.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable apply result (includes digest).",
+    )
+    decision_apply.add_argument(
+        "--record",
+        action="store_true",
+        help=(
+            "Opt-in: write a bounded exact-frame review directory with HTML, digest, and "
+            "manifest. Disabled by default."
+        ),
+    )
+    decision_apply.set_defaults(handler=_handle_vehicles_decision_apply)
+
+    decision_live = decision_control_commands.add_parser(
+        "live",
+        help="Open the shared read-only decision view for a live PiCar.",
+        description=(
+            "Adapt the PiCar decision publication into the same RuntimeViewServer "
+            "decision page used by Chase, with matched image-relative evidence and "
+            "proposed versus authorized shadow output. It sends no vehicle commands."
+        ),
+    )
+    decision_live.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="PiCar vehicle id from `automa vehicles active`.",
+    )
+    decision_live.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Preferred local loopback port (0 chooses an available port).",
+    )
+    decision_live.add_argument(
+        "--open",
+        action="store_true",
+        dest="open_browser",
+        help="Open the shared decision view in the default browser.",
+    )
+    decision_live.add_argument(
+        "--timeout-s",
+        type=float,
+        default=2.0,
+        help="Per-request Pi timeout.",
+    )
+    decision_live.set_defaults(handler=_handle_vehicles_decision_live)
 
     memory_control = vehicle_commands.add_parser(
         "memory",
@@ -1575,6 +1714,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (reset, replay, lifecycle check)",
+                "- decision     offline decision apply/replay (stage via update decision)",
                 "- workbench    replay images through perception and bounded memory",
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
@@ -1942,6 +2082,79 @@ def _handle_vehicles_stream_memory(args: argparse.Namespace) -> int:
         once=args.once,
         no_clear=args.no_clear,
         json_output=args.json,
+        output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_stream_decision(args: argparse.Namespace) -> int:
+    result = stream_vehicle_decision(
+        vehicle_id=args.vehicle_id,
+        refresh_s=args.refresh_s,
+        once=args.once,
+        no_clear=args.no_clear,
+        json_output=args.json,
+        output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
+    print(
+        "\n".join(
+            [
+                "automa vehicles decision commands",
+                "",
+                "- inspect offline browser inspector for saved decision input",
+                "- apply   offline replay of a recorded sequence; digest; optional --record",
+                "- live    read-only local browser monitor for a live PiCar publication",
+                "- help    show this summary",
+                "",
+                "Stage an engine with:  ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
+                "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
+                "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
+                "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
+                "",
+                "Detailed help:",
+                "- ./cli/automa vehicles decision <command> --help",
+            ]
+        )
+    )
+    return 0
+
+
+def _handle_vehicles_decision_inspect(args: argparse.Namespace) -> int:
+    result = run_decision_inspector(
+        args.from_run, frame_index=args.frame, vehicle_id=args.vehicle_id,
+        port=args.port, open_browser=args.open_browser, json_output=args.json, output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_decision_apply(args: argparse.Namespace) -> int:
+    result = apply_vehicle_decision(
+        vehicle_id=args.vehicle_id,
+        from_run=args.from_run,
+        json_output=args.json,
+        record=args.record,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_decision_live(args: argparse.Namespace) -> int:
+    result = run_live_decision_monitor(
+        vehicle_id=args.vehicle_id,
+        port=args.port,
+        open_browser=args.open_browser,
+        timeout_s=args.timeout_s,
         output=sys.stdout,
     )
     if result.message:

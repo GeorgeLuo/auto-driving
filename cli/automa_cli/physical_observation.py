@@ -1475,11 +1475,11 @@ def join_host_telemetry_to_decision(
             "schema_invalid",
             "Host telemetry join requires a normalized telemetry point.",
         )
-    if telemetry.get("status") not in {"healthy", "limited"}:
+    if telemetry.get("status") != "healthy":
         reason = telemetry.get("reason")
         raise _host_telemetry_error(
             reason if reason in HOST_TELEMETRY_REASONS else "field_invalid",
-            "Host telemetry point is not consumable.",
+            "Host telemetry point is not healthy enough to join.",
         )
     decision_identity = physical_decision_identity(normalized_decision)
     telemetry_identity = telemetry.get("identity")

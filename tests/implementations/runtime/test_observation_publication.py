@@ -192,6 +192,15 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["frame_id"], part.latest_snapshot.frame_id)
         self.assertEqual(published["frame_index"], part.latest_snapshot.frame_index)
         self.assertEqual(published["timestamp_ms"], part.latest_snapshot.captured_at_ms)
+        self.assertEqual(
+            published["source_frame"],
+            {
+                "frame_id": part.latest_snapshot.frame_id,
+                "frame_index": part.latest_snapshot.frame_index,
+                "captured_at_ms": part.latest_snapshot.captured_at_ms,
+                "completed_at_ms": part.latest_snapshot.completed_at_ms,
+            },
+        )
         self.assertEqual(published["cycle"]["frame_id"], published["frame_id"])
         self.assertEqual(
             published["cycle"]["source"]["frame_index"],

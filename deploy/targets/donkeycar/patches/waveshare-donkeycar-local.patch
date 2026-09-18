@@ -254,7 +254,7 @@ index 8af4669..232d5df 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +137,31 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +137,32 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
@@ -287,7 +287,7 @@ index 8af4669..232d5df 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +272,389 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +272,413 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  

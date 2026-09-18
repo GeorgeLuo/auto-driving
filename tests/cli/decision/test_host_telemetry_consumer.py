@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import copy
 import math
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
+from cli.automa_cli.decision_live import (
+    PhysicalDecisionViewAdapter,
+    read_host_telemetry_panel,
+)
 from cli.automa_cli.decision import render_decision_exact_frame_html
 from cli.automa_cli.physical_observation import (
     DECISION_PUBLICATION_SCHEMA,
@@ -146,6 +153,93 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(normalized["result_age_ms"], 500)
         self.assertEqual(physical_decision_identity(normalized)["source_frame"]["frame_id"], "frame-1")
 
+    def test_live_view_adapter_joins_against_physical_publication(self) -> None:
+        normalized = normalize_physical_decision_publication(
+            _physical_publication(),
+            vehicle_id="piracer",
+            now_ms=NOW_MS,
+        )
+
+        class FakeDecisionView:
+            def __init__(self) -> None:
+                self.kwargs = None
+
+            def publish_provider_transaction(self, **kwargs):
+                self.kwargs = kwargs
+                return True
+
+        class FakePerceptionView:
+            def publish_frame(self, **_kwargs) -> None:
+                return None
+
+            def publish_perception(self, **_kwargs) -> None:
+                return None
+
+        class FakeRuntimeView:
+            def __init__(self, automation_dir: Path) -> None:
+                self.automation_dir = automation_dir
+                self.decision = FakeDecisionView()
+                self.perception = FakePerceptionView()
+
+        joined = join_host_telemetry_to_decision(
+            normalize_host_telemetry_record(_record(), now_ms=NOW_MS),
+            _decision(),
+        )
+        with TemporaryDirectory() as temporary:
+            view = FakeRuntimeView(Path(temporary))
+            with patch(
+                "cli.automa_cli.decision_live.read_host_telemetry_panel",
+                return_value=joined,
+            ) as read_panel:
+                adapter = PhysicalDecisionViewAdapter(
+                    vehicle_id="piracer",
+                    base_url="http://piracer.local:8887",
+                    view_server=view,
+                    timeout_s=1.0,
+                )
+                self.assertTrue(adapter.publish_snapshot(normalized, (b"jpeg", "image/jpeg")))
+
+        read_panel.assert_called_once()
+        self.assertIs(read_panel.call_args.kwargs["normalized_decision"], normalized)
+        self.assertEqual(view.decision.kwargs["frame_record"]["host_telemetry"], joined)
+
+    def test_live_view_uses_matching_history_when_latest_frame_has_advanced(self) -> None:
+        normalized = normalize_physical_decision_publication(
+            _physical_publication(),
+            vehicle_id="piracer",
+            now_ms=NOW_MS,
+        )
+        latest = _record(
+            sequence=2,
+            frame_id="frame-2",
+            frame_index=2,
+            gap_since_previous_ms=50,
+            skipped_since_previous=0,
+        )
+        matching = _record(sequence=1)
+        with patch(
+            "cli.automa_cli.decision_live.fetch_host_telemetry_latest",
+            return_value=latest,
+        ), patch(
+            "cli.automa_cli.decision_live.fetch_host_telemetry_records",
+            return_value={
+                "schema": "automa_host_boundary_telemetry_records_v0",
+                "status": "healthy",
+                "records": [matching],
+            },
+        ) as records:
+            panel = read_host_telemetry_panel(
+                "http://piracer.local:8887",
+                normalized_decision=normalized,
+                vehicle_id="piracer",
+                timeout_s=1.0,
+                now_ms=NOW_MS,
+            )
+
+        self.assertTrue(panel["joined"])
+        self.assertEqual(panel["source_frame"]["frame_id"], "frame-1")
+        self.assertEqual(records.call_args.kwargs["after_sequence"], 0)
+
     def test_normalizes_point_with_exact_identity_and_freshness(self) -> None:
         normalized = normalize_host_telemetry_record(
             _record(), now_ms=NOW_MS, vehicle_id="piracer"
@@ -183,6 +277,34 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly match") as raised:
             join_host_telemetry_to_decision(mismatched_point, _decision())
         self.assertEqual(raised.exception.reason, "identity_mismatch")
+
+    def test_skipped_or_unavailable_point_fails_closed_before_join(self) -> None:
+        skipped = _record(
+            sequence=2,
+            gap_since_previous_ms=100,
+            skipped_since_previous=1,
+        )
+        skipped_point = normalize_host_telemetry_record(
+            skipped,
+            now_ms=NOW_MS,
+            vehicle_id="piracer",
+        )
+        self.assertEqual(skipped_point["status"], "limited")
+        self.assertEqual(skipped_point["reason"], "sequence_gap")
+        with self.assertRaises(ValueError) as skipped_error:
+            join_host_telemetry_to_decision(skipped_point, _decision())
+        self.assertEqual(skipped_error.exception.reason, "sequence_gap")
+
+        unavailable = copy.deepcopy(normalize_host_telemetry_record(
+            _record(),
+            now_ms=NOW_MS,
+            vehicle_id="piracer",
+        ))
+        unavailable["status"] = "unavailable"
+        unavailable["reason"] = "observer_error"
+        with self.assertRaises(ValueError) as unavailable_error:
+            join_host_telemetry_to_decision(unavailable, _decision())
+        self.assertEqual(unavailable_error.exception.reason, "observer_error")
 
     def test_freshness_and_future_skew_rules_are_deterministic(self) -> None:
         within_skew = _record(published_at_ms=10_100, observed_at_ms=9_000)

@@ -509,6 +509,12 @@ class AutonomyPilotPart:
             "frame_index": frame_index,
             "timestamp_ms": timestamp_ms_value,
             "published_at_ms": published_at_ms,
+            "source_frame": {
+                "frame_id": frame_id,
+                "frame_index": frame_index,
+                "captured_at_ms": timestamp_ms_value,
+                "completed_at_ms": published_at_ms,
+            },
             "activation": {
                 "engine_id": self.activation_engine_id,
                 "activated_at_ms": self.activation_activated_at_ms,

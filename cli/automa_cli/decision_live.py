@@ -25,8 +25,10 @@ from .physical_observation import (
     HostTelemetryError,
     fetch_host_telemetry_capture,
     fetch_host_telemetry_latest,
+    fetch_host_telemetry_records,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
+    physical_decision_identity,
     physical_observation_dir,
     picar_base_url,
 )
@@ -216,7 +218,7 @@ class PhysicalDecisionViewAdapter:
         stream_frame = physical_decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,
-            normalized_decision=stream_frame,
+            normalized_decision=normalized,
             vehicle_id=self.vehicle_id,
             timeout_s=self.timeout_s,
         )
@@ -346,11 +348,42 @@ def read_host_telemetry_panel(
             now_ms=effective_now_ms,
             vehicle_id=vehicle_id,
         )
-        return join_host_telemetry_to_decision(
-            point,
-            normalized_decision,
-            vehicle_id=vehicle_id,
-        )
+        try:
+            return join_host_telemetry_to_decision(
+                point,
+                normalized_decision,
+                vehicle_id=vehicle_id,
+            )
+        except HostTelemetryError as latest_error:
+            if latest_error.reason != "identity_mismatch":
+                raise
+            decision_identity = physical_decision_identity(normalized_decision)
+            sequence = (raw.get("host_tick") or {}).get("sequence")
+            if type(sequence) is not int or sequence < 1:
+                raise latest_error
+            history = fetch_host_telemetry_records(
+                base_url,
+                after_sequence=max(0, sequence - 128),
+                limit=128,
+                timeout_s=timeout_s,
+            )
+            raw_records = history.get("records")
+            if not isinstance(raw_records, list):
+                raise latest_error
+            for raw_record in reversed(raw_records):
+                if not _host_record_matches_identity(raw_record, decision_identity):
+                    continue
+                candidate = normalize_host_telemetry_record(
+                    raw_record,
+                    now_ms=effective_now_ms,
+                    vehicle_id=vehicle_id,
+                )
+                return join_host_telemetry_to_decision(
+                    candidate,
+                    normalized_decision,
+                    vehicle_id=vehicle_id,
+                )
+            raise latest_error
     except HostTelemetryError as exc:
         return unavailable_host_telemetry_panel(exc.reason, message=exc.message_text)
     except (ConnectionError, OSError, TypeError, ValueError) as exc:
@@ -358,6 +391,35 @@ def read_host_telemetry_panel(
             "publisher_missing",
             message=f"Host telemetry is unavailable: {type(exc).__name__}: {exc}",
         )
+
+
+def _host_record_matches_identity(
+    record: object,
+    decision_identity: dict[str, Any],
+) -> bool:
+    if not isinstance(record, dict):
+        return False
+    activation = record.get("activation")
+    source_frame = record.get("source_frame")
+    if not isinstance(activation, dict) or not isinstance(source_frame, dict):
+        return False
+    return {
+        "vehicle_id": record.get("vehicle_id"),
+        "source_id": record.get("source_id"),
+        "run_id": record.get("run_id"),
+        "generation_id": record.get("generation_id"),
+        "activation": {
+            "engine_id": activation.get("engine_id"),
+            "activated_at_ms": activation.get("activated_at_ms"),
+            "generation_id": activation.get("generation_id"),
+        },
+        "source_frame": {
+            "frame_id": source_frame.get("frame_id"),
+            "frame_index": source_frame.get("frame_index"),
+            "captured_at_ms": source_frame.get("captured_at_ms"),
+            "completed_at_ms": source_frame.get("completed_at_ms"),
+        },
+    } == decision_identity
 
 
 def read_host_telemetry_capture(

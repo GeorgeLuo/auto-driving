@@ -481,6 +481,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     apply_decision_activation(autonomy_manager, activation)
 
                     telemetry_store = None
+                    source_id = None
+                    generation_id = None
+                    run_id = None
                     try:
                         activation_payload = activation.payload
                         if not isinstance(activation_payload, dict):
@@ -598,11 +601,14 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         min_interval_s=observation_interval_s,
                         algorithm=perception_algorithm,
                         vehicle_id=activation.payload.get("vehicle_id"),
+                        source_id=source_id if telemetry_store is not None else None,
                         activation_engine_id=activation.engine_id,
                         activation_activated_at_ms=activation.payload.get(
                             "activated_at_ms"
                         ),
                         activation_engine_config=activation.engine_config,
+                        generation_id=generation_id if telemetry_store is not None else None,
+                        run_id=run_id if telemetry_store is not None else None,
                         host_telemetry=host_telemetry_publisher,
                     )
                     observation_publisher = autonomy_part

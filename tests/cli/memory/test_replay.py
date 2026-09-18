@@ -19,10 +19,9 @@ from cli.automa_cli.memory import (
 )
 from tests.support.cli_runner import run_automa
 
-FIXTURE = Path(__file__).resolve().parent / "fixtures" / "recurrence_sequence.json"
-CONFLICT_FIXTURE = (
-    Path(__file__).resolve().parent / "fixtures" / "conflict_sequence.json"
-)
+SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
+RECURRENCE_SOURCE = SOURCES / "recurrence_sequence" / "sequence.json"
+CONFLICT_SOURCE = SOURCES / "conflict_sequence" / "sequence.json"
 
 
 class MemoryReplayTests(unittest.TestCase):
@@ -36,8 +35,8 @@ class MemoryReplayTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--record", result.stdout)
 
-    def test_load_sequence_fixture(self) -> None:
-        frames = load_memory_observation_sequence(FIXTURE)
+    def test_load_sequence_source(self) -> None:
+        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
         self.assertEqual(len(frames), 3)
         self.assertEqual(frames[0]["frame_id"], "frame_000")
         self.assertEqual(frames[1]["observation"]["observation_id"], "obs_001")
@@ -45,14 +44,14 @@ class MemoryReplayTests(unittest.TestCase):
     def test_replay_is_deterministic_with_ephemeral_implementation(self) -> None:
         first = replay_vehicle_memory(
             vehicle_id="chase-sim-chaser",
-            sequence=FIXTURE,
+            sequence=RECURRENCE_SOURCE,
             implementation_id="bounded_evidence",
             json_output=True,
             verify_twice=True,
         )
         second = replay_vehicle_memory(
             vehicle_id="chase-sim-chaser",
-            sequence=FIXTURE,
+            sequence=RECURRENCE_SOURCE,
             implementation_id="bounded_evidence",
             json_output=True,
             verify_twice=True,
@@ -79,7 +78,7 @@ class MemoryReplayTests(unittest.TestCase):
             "vehicles",
             "memory",
             "replay",
-            str(FIXTURE),
+            str(RECURRENCE_SOURCE),
             "--id",
             "chase-sim-chaser",
             "--implementation",
@@ -110,7 +109,7 @@ class MemoryReplayTests(unittest.TestCase):
                 "vehicles",
                 "memory",
                 "replay",
-                str(FIXTURE),
+                str(RECURRENCE_SOURCE),
                 "--id",
                 "chase-sim-chaser",
                 "--json",
@@ -133,7 +132,7 @@ class MemoryReplayTests(unittest.TestCase):
     def test_directory_sequence_loader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "sequence.json").write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+            (root / "sequence.json").write_text(RECURRENCE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
             frames = load_memory_observation_sequence(root)
             self.assertEqual(len(frames), 3)
 
@@ -142,7 +141,7 @@ class MemoryReplayTests(unittest.TestCase):
             output_root = Path(tmp) / "memory-replay"
             result = replay_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
-                sequence=FIXTURE,
+                sequence=RECURRENCE_SOURCE,
                 implementation_id="bounded_evidence",
                 json_output=True,
                 record=False,
@@ -159,7 +158,7 @@ class MemoryReplayTests(unittest.TestCase):
             output_root = Path(tmp) / "memory-replay"
             result = replay_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
-                sequence=FIXTURE,
+                sequence=RECURRENCE_SOURCE,
                 implementation_id="bounded_evidence",
                 json_output=True,
                 record=True,
@@ -218,7 +217,7 @@ class MemoryReplayTests(unittest.TestCase):
                     "vehicles",
                     "memory",
                     "replay",
-                    str(FIXTURE),
+                    str(RECURRENCE_SOURCE),
                     "--id",
                     "chase-sim-chaser",
                     "--implementation",
@@ -461,7 +460,7 @@ class MemoryReplayTests(unittest.TestCase):
                     _directory_byte_size(root)
 
     def test_record_aborts_when_artifact_cannot_be_measured(self) -> None:
-        frames = load_memory_observation_sequence(FIXTURE)
+        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
         payload = {
             "schema": "vehicle_memory_replay_v0",
             "vehicle_id": "chase-sim-chaser",
@@ -483,7 +482,7 @@ class MemoryReplayTests(unittest.TestCase):
                 with self.assertRaisesRegex(OSError, "could not measure"):
                     write_memory_replay_record(
                         vehicle_id="chase-sim-chaser",
-                        sequence_path=FIXTURE,
+                        sequence_path=RECURRENCE_SOURCE,
                         frames=frames,
                         payload=payload,
                         output_root=output_root,
@@ -567,14 +566,14 @@ class MemoryReplayTests(unittest.TestCase):
         }
 
     def test_record_enforces_total_byte_ceiling(self) -> None:
-        frames = load_memory_observation_sequence(FIXTURE)
+        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
         payload = self._record_payload(frames)
         with tempfile.TemporaryDirectory() as tmp:
             output_root = Path(tmp) / "memory-replay"
             with self.assertRaisesRegex(ValueError, "max_record_bytes"):
                 write_memory_replay_record(
                     vehicle_id="chase-sim-chaser",
-                    sequence_path=FIXTURE,
+                    sequence_path=RECURRENCE_SOURCE,
                     frames=frames,
                     payload=payload,
                     output_root=output_root,
@@ -587,7 +586,7 @@ class MemoryReplayTests(unittest.TestCase):
     def test_record_byte_ceiling_below_exact_and_above(self) -> None:
         """Configured max_record_bytes is the acceptance boundary (no fixed reservation)."""
 
-        frames = load_memory_observation_sequence(FIXTURE)
+        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
         payload = self._record_payload(frames)
         frozen_stamp = "20200101-000000"
         frozen_time = 1_577_836_800.0
@@ -600,7 +599,7 @@ class MemoryReplayTests(unittest.TestCase):
         def write_with(root: Path, ceiling: int) -> dict:
             return write_memory_replay_record(
                 vehicle_id="chase-sim-chaser",
-                sequence_path=FIXTURE,
+                sequence_path=RECURRENCE_SOURCE,
                 frames=frames,
                 payload=payload,
                 output_root=root,
@@ -644,7 +643,7 @@ class MemoryReplayTests(unittest.TestCase):
                 self.assertFalse(output_root.exists() and any(output_root.iterdir()))
 
     def test_record_stabilizes_bytes_in_record_on_disk(self) -> None:
-        frames = load_memory_observation_sequence(FIXTURE)
+        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
         payload = {
             "schema": "vehicle_memory_replay_v0",
             "vehicle_id": "chase-sim-chaser",
@@ -673,7 +672,7 @@ class MemoryReplayTests(unittest.TestCase):
             output_root = Path(tmp) / "memory-replay"
             written = write_memory_replay_record(
                 vehicle_id="chase-sim-chaser",
-                sequence_path=FIXTURE,
+                sequence_path=RECURRENCE_SOURCE,
                 frames=frames,
                 payload=payload,
                 output_root=output_root,
@@ -699,7 +698,7 @@ class MemoryReplayTests(unittest.TestCase):
         fixture (no schema widening).
         """
 
-        full = json.loads(CONFLICT_FIXTURE.read_text(encoding="utf-8"))
+        full = json.loads(CONFLICT_SOURCE.read_text(encoding="utf-8"))
         frames = full["frames"]
         self.assertEqual(len(frames), 4)
 

@@ -41,9 +41,9 @@ from tests.support.cli_runner import run_automa
 
 
 DECISION_PLAYBACK_SOURCE_ARCHIVE = Path(
-    "tests/cli/sources/chase-decision-playback-steering-left-right/capture.zip"
+    "tests/cli/sources/images/chase-decision-playback-steering-left-right/capture.zip"
 )
-REGRESSION_PLUGIN_DIR = Path("lab/plugins/perception")
+WORKBENCH_PLUGIN_DIR = Path("lab/plugins/perception")
 
 
 class FixtureMapper:
@@ -751,7 +751,7 @@ class WorkbenchTests(unittest.TestCase):
 
             runner = ImageReplayRunner(
                 capture_dir,
-                plugin_dir=REGRESSION_PLUGIN_DIR,
+                plugin_dir=WORKBENCH_PLUGIN_DIR,
                 active_plugin_ids=["floor_continuity_capture"],
                 cadence_ms=0,
                 max_frames=128,

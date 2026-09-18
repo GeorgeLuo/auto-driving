@@ -39,6 +39,12 @@ class ImageReplayRunner(ProductionImageReplayRunner):
 from tests.support.cli_runner import run_automa
 
 
+REGRESSION_CAPTURE_DIR = Path(
+    "tests/cli/fixtures/workbench/chase-decision-playback-steering-left-right"
+)
+REGRESSION_PLUGIN_DIR = Path("lab/plugins/perception")
+
+
 class FixtureMapper:
     plugin_id = "fixture_mapper"
 
@@ -714,6 +720,75 @@ class WorkbenchTests(unittest.TestCase):
             state["machine_detail"]["pipeline"]["decision_config"][
                 "proposed_applied"
             ]
+        )
+
+    def test_recorded_steering_capture_replays_both_decision_changes(self) -> None:
+        manifest = json.loads(
+            (REGRESSION_CAPTURE_DIR / "manifest.json").read_text(encoding="utf-8")
+        )
+        expected_phases = [
+            "baseline-center",
+            "steer-left-forward",
+            "left-turn-settle",
+            "reverse-to-start-from-left",
+            "center-between-turns",
+            "steer-right-forward",
+            "right-turn-settle",
+            "reverse-to-start-from-right",
+            "return-to-center",
+        ]
+        self.assertEqual(
+            [item["name"] for item in manifest["capture"]["control_sequence"]],
+            expected_phases,
+        )
+
+        runner = ImageReplayRunner(
+            REGRESSION_CAPTURE_DIR,
+            plugin_dir=REGRESSION_PLUGIN_DIR,
+            active_plugin_ids=["floor_continuity_capture"],
+            cadence_ms=0,
+            max_frames=128,
+        )
+        started = runner.start()
+        try:
+            state = runner.wait(30) if started["phase"] == "running" else started
+        finally:
+            runner.close()
+
+        self.assertEqual(state["phase"], "completed")
+        self.assertEqual(state["progress"], {"completed": 102, "total": 102, "percent": 100.0})
+        self.assertEqual(state["source"]["source_id"], manifest["source_id"])
+        self.assertEqual(state["summary"]["perception_status"], "ok")
+        self.assertEqual(state["summary"]["memory_health"], "healthy")
+
+        timeline_by_frame_id = {
+            item["frame"]["frame_id"]: item for item in state["timeline"]
+        }
+        phase_by_frame_id = {
+            item["frame_id"]: item["annotation"]["control_phase"]
+            for item in manifest["frames"]
+        }
+        left_proposals = [
+            item["decision"]["proposed_steering"]
+            for frame_id, item in timeline_by_frame_id.items()
+            if phase_by_frame_id[frame_id]
+            in {"steer-left-forward", "reverse-to-start-from-left"}
+            and item["decision"]["proposed_steering"] is not None
+        ]
+        right_proposals = [
+            item["decision"]["proposed_steering"]
+            for frame_id, item in timeline_by_frame_id.items()
+            if phase_by_frame_id[frame_id]
+            in {"steer-right-forward", "reverse-to-start-from-right"}
+            and item["decision"]["proposed_steering"] is not None
+        ]
+        self.assertTrue(any(value < 0 for value in left_proposals))
+        self.assertTrue(any(value > 0 for value in right_proposals))
+        self.assertTrue(
+            all(
+                not item["decision"]["proposed_applied"]
+                for item in state["timeline"]
+            )
         )
 
     def test_absence_does_not_invoke_perception_or_fabricate_image(self) -> None:

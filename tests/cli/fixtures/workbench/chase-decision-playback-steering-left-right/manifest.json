@@ -1,0 +1,2602 @@
+{
+  "schema": "automa_workbench_capture_manifest_v1",
+  "source_id": "chase-decision-playback-20260918T195346",
+  "adapter": "metrics-ui-play-camera-stream",
+  "capture": {
+    "scenario_id": "chaser-empty-map",
+    "control_source": "ws",
+    "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+    "actor_id": "chaser",
+    "camera_id": "front_camera",
+    "image_format": "image/jpeg",
+    "width_px": 320,
+    "height_px": 240,
+    "quality": 0.75,
+    "max_rate_hz": 30,
+    "timestamp_source": "metrics_ui_sourceTimestampUs",
+    "timestamp_unit": "microseconds",
+    "source_timestamp_first_us": 103748128600,
+    "source_timestamp_last_us": 103753172400,
+    "source_span_s": 5.044,
+    "received_frame_count": 102,
+    "source_sample_fps": 20.223,
+    "control_sequence": [
+      {
+        "name": "baseline-center",
+        "input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        },
+        "duration_ms": 800
+      },
+      {
+        "name": "steer-left-forward",
+        "input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        },
+        "duration_ms": 550
+      },
+      {
+        "name": "left-turn-settle",
+        "input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        },
+        "duration_ms": 250
+      },
+      {
+        "name": "reverse-to-start-from-left",
+        "input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        },
+        "duration_ms": 550
+      },
+      {
+        "name": "center-between-turns",
+        "input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        },
+        "duration_ms": 500
+      },
+      {
+        "name": "steer-right-forward",
+        "input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        },
+        "duration_ms": 550
+      },
+      {
+        "name": "right-turn-settle",
+        "input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        },
+        "duration_ms": 250
+      },
+      {
+        "name": "reverse-to-start-from-right",
+        "input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        },
+        "duration_ms": 550
+      },
+      {
+        "name": "return-to-center",
+        "input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        },
+        "duration_ms": 1000
+      }
+    ],
+    "session_identity": {
+      "preserved": true,
+      "fields": [
+        "gameId",
+        "scenarioId",
+        "simulationEpoch",
+        "actorId",
+        "cameraId"
+      ],
+      "before": {
+        "gameId": "chase",
+        "scenarioId": "chaser-empty-map",
+        "simulationEpoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "playback": {
+          "frameIndex": 5,
+          "phase": "running",
+          "pendingAction": false
+        },
+        "controlSource": "ws",
+        "controlInput": {
+          "source": "ws",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        },
+        "actorId": "chaser",
+        "cameraId": "front_camera"
+      },
+      "after": {
+        "gameId": "chase",
+        "scenarioId": "chaser-empty-map",
+        "simulationEpoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "actorId": "chaser",
+        "cameraId": "front_camera"
+      }
+    }
+  },
+  "frames": [
+    {
+      "frame_id": "decision-playback:frame_5",
+      "frame_index": 5,
+      "timestamp_ms": 0,
+      "image_path": "frames/chase_frame_000005_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748128600,
+        "dropped_frame_count": 0,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_10",
+      "frame_index": 10,
+      "timestamp_ms": 46,
+      "image_path": "frames/chase_frame_000010_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748174100,
+        "dropped_frame_count": 2,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_13",
+      "frame_index": 13,
+      "timestamp_ms": 96,
+      "image_path": "frames/chase_frame_000013_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748224500,
+        "dropped_frame_count": 4,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_16",
+      "frame_index": 16,
+      "timestamp_ms": 144,
+      "image_path": "frames/chase_frame_000016_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748272200,
+        "dropped_frame_count": 6,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_19",
+      "frame_index": 19,
+      "timestamp_ms": 192,
+      "image_path": "frames/chase_frame_000019_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748320900,
+        "dropped_frame_count": 8,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_22",
+      "frame_index": 22,
+      "timestamp_ms": 244,
+      "image_path": "frames/chase_frame_000022_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748372600,
+        "dropped_frame_count": 10,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_25",
+      "frame_index": 25,
+      "timestamp_ms": 294,
+      "image_path": "frames/chase_frame_000025_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748422400,
+        "dropped_frame_count": 12,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_28",
+      "frame_index": 28,
+      "timestamp_ms": 347,
+      "image_path": "frames/chase_frame_000028_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748475900,
+        "dropped_frame_count": 14,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_31",
+      "frame_index": 31,
+      "timestamp_ms": 395,
+      "image_path": "frames/chase_frame_000031_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748523500,
+        "dropped_frame_count": 16,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_34",
+      "frame_index": 34,
+      "timestamp_ms": 446,
+      "image_path": "frames/chase_frame_000034_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748574600,
+        "dropped_frame_count": 18,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_37",
+      "frame_index": 37,
+      "timestamp_ms": 498,
+      "image_path": "frames/chase_frame_000037_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748626400,
+        "dropped_frame_count": 20,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_40",
+      "frame_index": 40,
+      "timestamp_ms": 544,
+      "image_path": "frames/chase_frame_000040_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748672700,
+        "dropped_frame_count": 22,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_43",
+      "frame_index": 43,
+      "timestamp_ms": 592,
+      "image_path": "frames/chase_frame_000043_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748720400,
+        "dropped_frame_count": 24,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_46",
+      "frame_index": 46,
+      "timestamp_ms": 643,
+      "image_path": "frames/chase_frame_000046_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748771600,
+        "dropped_frame_count": 26,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_49",
+      "frame_index": 49,
+      "timestamp_ms": 694,
+      "image_path": "frames/chase_frame_000049_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748823000,
+        "dropped_frame_count": 28,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_52",
+      "frame_index": 52,
+      "timestamp_ms": 747,
+      "image_path": "frames/chase_frame_000052_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748875300,
+        "dropped_frame_count": 30,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_55",
+      "frame_index": 55,
+      "timestamp_ms": 797,
+      "image_path": "frames/chase_frame_000055_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748926000,
+        "dropped_frame_count": 32,
+        "control_phase": "baseline-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_58",
+      "frame_index": 58,
+      "timestamp_ms": 846,
+      "image_path": "frames/chase_frame_000058_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103748974800,
+        "dropped_frame_count": 34,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_61",
+      "frame_index": 61,
+      "timestamp_ms": 897,
+      "image_path": "frames/chase_frame_000061_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749025100,
+        "dropped_frame_count": 36,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_64",
+      "frame_index": 64,
+      "timestamp_ms": 943,
+      "image_path": "frames/chase_frame_000064_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749071600,
+        "dropped_frame_count": 38,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_67",
+      "frame_index": 67,
+      "timestamp_ms": 993,
+      "image_path": "frames/chase_frame_000067_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749121100,
+        "dropped_frame_count": 40,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_70",
+      "frame_index": 70,
+      "timestamp_ms": 1043,
+      "image_path": "frames/chase_frame_000070_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749171600,
+        "dropped_frame_count": 42,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_73",
+      "frame_index": 73,
+      "timestamp_ms": 1093,
+      "image_path": "frames/chase_frame_000073_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749221300,
+        "dropped_frame_count": 44,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_76",
+      "frame_index": 76,
+      "timestamp_ms": 1143,
+      "image_path": "frames/chase_frame_000076_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749271900,
+        "dropped_frame_count": 46,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_79",
+      "frame_index": 79,
+      "timestamp_ms": 1193,
+      "image_path": "frames/chase_frame_000079_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749321700,
+        "dropped_frame_count": 48,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_82",
+      "frame_index": 82,
+      "timestamp_ms": 1243,
+      "image_path": "frames/chase_frame_000082_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749371500,
+        "dropped_frame_count": 50,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_85",
+      "frame_index": 85,
+      "timestamp_ms": 1292,
+      "image_path": "frames/chase_frame_000085_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749421000,
+        "dropped_frame_count": 52,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_88",
+      "frame_index": 88,
+      "timestamp_ms": 1343,
+      "image_path": "frames/chase_frame_000088_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749472000,
+        "dropped_frame_count": 54,
+        "control_phase": "steer-left-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_91",
+      "frame_index": 91,
+      "timestamp_ms": 1394,
+      "image_path": "frames/chase_frame_000091_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749522100,
+        "dropped_frame_count": 56,
+        "control_phase": "left-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_94",
+      "frame_index": 94,
+      "timestamp_ms": 1444,
+      "image_path": "frames/chase_frame_000094_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749572800,
+        "dropped_frame_count": 58,
+        "control_phase": "left-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_97",
+      "frame_index": 97,
+      "timestamp_ms": 1495,
+      "image_path": "frames/chase_frame_000097_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749623300,
+        "dropped_frame_count": 60,
+        "control_phase": "left-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_100",
+      "frame_index": 100,
+      "timestamp_ms": 1549,
+      "image_path": "frames/chase_frame_000100_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749677200,
+        "dropped_frame_count": 62,
+        "control_phase": "left-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_103",
+      "frame_index": 103,
+      "timestamp_ms": 1593,
+      "image_path": "frames/chase_frame_000103_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749721900,
+        "dropped_frame_count": 64,
+        "control_phase": "left-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_106",
+      "frame_index": 106,
+      "timestamp_ms": 1643,
+      "image_path": "frames/chase_frame_000106_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749771900,
+        "dropped_frame_count": 66,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_109",
+      "frame_index": 109,
+      "timestamp_ms": 1693,
+      "image_path": "frames/chase_frame_000109_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749821800,
+        "dropped_frame_count": 68,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_112",
+      "frame_index": 112,
+      "timestamp_ms": 1745,
+      "image_path": "frames/chase_frame_000112_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749873100,
+        "dropped_frame_count": 70,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_115",
+      "frame_index": 115,
+      "timestamp_ms": 1794,
+      "image_path": "frames/chase_frame_000115_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749922300,
+        "dropped_frame_count": 72,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_118",
+      "frame_index": 118,
+      "timestamp_ms": 1845,
+      "image_path": "frames/chase_frame_000118_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103749973400,
+        "dropped_frame_count": 74,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_121",
+      "frame_index": 121,
+      "timestamp_ms": 1895,
+      "image_path": "frames/chase_frame_000121_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750023100,
+        "dropped_frame_count": 76,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_124",
+      "frame_index": 124,
+      "timestamp_ms": 1945,
+      "image_path": "frames/chase_frame_000124_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750073600,
+        "dropped_frame_count": 78,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_127",
+      "frame_index": 127,
+      "timestamp_ms": 1996,
+      "image_path": "frames/chase_frame_000127_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750124100,
+        "dropped_frame_count": 80,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_130",
+      "frame_index": 130,
+      "timestamp_ms": 2045,
+      "image_path": "frames/chase_frame_000130_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750173500,
+        "dropped_frame_count": 82,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_133",
+      "frame_index": 133,
+      "timestamp_ms": 2096,
+      "image_path": "frames/chase_frame_000133_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750224600,
+        "dropped_frame_count": 84,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_136",
+      "frame_index": 136,
+      "timestamp_ms": 2148,
+      "image_path": "frames/chase_frame_000136_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750276400,
+        "dropped_frame_count": 86,
+        "control_phase": "reverse-to-start-from-left",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": 0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_139",
+      "frame_index": 139,
+      "timestamp_ms": 2196,
+      "image_path": "frames/chase_frame_000139_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750324600,
+        "dropped_frame_count": 87,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_142",
+      "frame_index": 142,
+      "timestamp_ms": 2245,
+      "image_path": "frames/chase_frame_000142_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750373800,
+        "dropped_frame_count": 89,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_145",
+      "frame_index": 145,
+      "timestamp_ms": 2296,
+      "image_path": "frames/chase_frame_000145_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750424300,
+        "dropped_frame_count": 91,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_148",
+      "frame_index": 148,
+      "timestamp_ms": 2345,
+      "image_path": "frames/chase_frame_000148_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750473100,
+        "dropped_frame_count": 93,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_151",
+      "frame_index": 151,
+      "timestamp_ms": 2395,
+      "image_path": "frames/chase_frame_000151_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750523900,
+        "dropped_frame_count": 95,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_154",
+      "frame_index": 154,
+      "timestamp_ms": 2446,
+      "image_path": "frames/chase_frame_000154_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750574900,
+        "dropped_frame_count": 97,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_157",
+      "frame_index": 157,
+      "timestamp_ms": 2497,
+      "image_path": "frames/chase_frame_000157_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750625600,
+        "dropped_frame_count": 99,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_160",
+      "frame_index": 160,
+      "timestamp_ms": 2546,
+      "image_path": "frames/chase_frame_000160_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750674400,
+        "dropped_frame_count": 101,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_163",
+      "frame_index": 163,
+      "timestamp_ms": 2594,
+      "image_path": "frames/chase_frame_000163_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750722400,
+        "dropped_frame_count": 103,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_166",
+      "frame_index": 166,
+      "timestamp_ms": 2645,
+      "image_path": "frames/chase_frame_000166_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750773300,
+        "dropped_frame_count": 105,
+        "control_phase": "center-between-turns",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_169",
+      "frame_index": 169,
+      "timestamp_ms": 2695,
+      "image_path": "frames/chase_frame_000169_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750823600,
+        "dropped_frame_count": 107,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_172",
+      "frame_index": 172,
+      "timestamp_ms": 2746,
+      "image_path": "frames/chase_frame_000172_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750874900,
+        "dropped_frame_count": 109,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_175",
+      "frame_index": 175,
+      "timestamp_ms": 2796,
+      "image_path": "frames/chase_frame_000175_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750924100,
+        "dropped_frame_count": 111,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_178",
+      "frame_index": 178,
+      "timestamp_ms": 2846,
+      "image_path": "frames/chase_frame_000178_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103750974900,
+        "dropped_frame_count": 113,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_181",
+      "frame_index": 181,
+      "timestamp_ms": 2899,
+      "image_path": "frames/chase_frame_000181_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751027300,
+        "dropped_frame_count": 115,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_184",
+      "frame_index": 184,
+      "timestamp_ms": 2948,
+      "image_path": "frames/chase_frame_000184_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751076600,
+        "dropped_frame_count": 117,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_187",
+      "frame_index": 187,
+      "timestamp_ms": 3000,
+      "image_path": "frames/chase_frame_000187_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751128900,
+        "dropped_frame_count": 118,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_190",
+      "frame_index": 190,
+      "timestamp_ms": 3047,
+      "image_path": "frames/chase_frame_000190_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751175300,
+        "dropped_frame_count": 120,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_193",
+      "frame_index": 193,
+      "timestamp_ms": 3096,
+      "image_path": "frames/chase_frame_000193_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751225000,
+        "dropped_frame_count": 122,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_196",
+      "frame_index": 196,
+      "timestamp_ms": 3146,
+      "image_path": "frames/chase_frame_000196_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751274100,
+        "dropped_frame_count": 124,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_199",
+      "frame_index": 199,
+      "timestamp_ms": 3195,
+      "image_path": "frames/chase_frame_000199_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751323800,
+        "dropped_frame_count": 126,
+        "control_phase": "steer-right-forward",
+        "control_input": {
+          "motion": "forward",
+          "forward": true,
+          "reverse": false,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_202",
+      "frame_index": 202,
+      "timestamp_ms": 3245,
+      "image_path": "frames/chase_frame_000202_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751373700,
+        "dropped_frame_count": 128,
+        "control_phase": "right-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_205",
+      "frame_index": 205,
+      "timestamp_ms": 3297,
+      "image_path": "frames/chase_frame_000205_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751425200,
+        "dropped_frame_count": 130,
+        "control_phase": "right-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_208",
+      "frame_index": 208,
+      "timestamp_ms": 3344,
+      "image_path": "frames/chase_frame_000208_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751472700,
+        "dropped_frame_count": 132,
+        "control_phase": "right-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_211",
+      "frame_index": 211,
+      "timestamp_ms": 3394,
+      "image_path": "frames/chase_frame_000211_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751523000,
+        "dropped_frame_count": 134,
+        "control_phase": "right-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_214",
+      "frame_index": 214,
+      "timestamp_ms": 3446,
+      "image_path": "frames/chase_frame_000214_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751574500,
+        "dropped_frame_count": 136,
+        "control_phase": "right-turn-settle",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_218",
+      "frame_index": 218,
+      "timestamp_ms": 3501,
+      "image_path": "frames/chase_frame_000218_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751629900,
+        "dropped_frame_count": 138,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_220",
+      "frame_index": 220,
+      "timestamp_ms": 3544,
+      "image_path": "frames/chase_frame_000220_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751672400,
+        "dropped_frame_count": 139,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_223",
+      "frame_index": 223,
+      "timestamp_ms": 3593,
+      "image_path": "frames/chase_frame_000223_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751721300,
+        "dropped_frame_count": 141,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_226",
+      "frame_index": 226,
+      "timestamp_ms": 3643,
+      "image_path": "frames/chase_frame_000226_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751771600,
+        "dropped_frame_count": 143,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_229",
+      "frame_index": 229,
+      "timestamp_ms": 3694,
+      "image_path": "frames/chase_frame_000229_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751822100,
+        "dropped_frame_count": 145,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_232",
+      "frame_index": 232,
+      "timestamp_ms": 3744,
+      "image_path": "frames/chase_frame_000232_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751872100,
+        "dropped_frame_count": 147,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_235",
+      "frame_index": 235,
+      "timestamp_ms": 3797,
+      "image_path": "frames/chase_frame_000235_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751925500,
+        "dropped_frame_count": 148,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_238",
+      "frame_index": 238,
+      "timestamp_ms": 3843,
+      "image_path": "frames/chase_frame_000238_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103751972000,
+        "dropped_frame_count": 150,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_241",
+      "frame_index": 241,
+      "timestamp_ms": 3894,
+      "image_path": "frames/chase_frame_000241_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752022600,
+        "dropped_frame_count": 152,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_244",
+      "frame_index": 244,
+      "timestamp_ms": 3943,
+      "image_path": "frames/chase_frame_000244_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752071900,
+        "dropped_frame_count": 154,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_247",
+      "frame_index": 247,
+      "timestamp_ms": 3993,
+      "image_path": "frames/chase_frame_000247_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752121500,
+        "dropped_frame_count": 156,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_250",
+      "frame_index": 250,
+      "timestamp_ms": 4043,
+      "image_path": "frames/chase_frame_000250_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752171800,
+        "dropped_frame_count": 158,
+        "control_phase": "reverse-to-start-from-right",
+        "control_input": {
+          "motion": "reverse",
+          "forward": false,
+          "reverse": true,
+          "steering": -0.75
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_253",
+      "frame_index": 253,
+      "timestamp_ms": 4094,
+      "image_path": "frames/chase_frame_000253_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752222300,
+        "dropped_frame_count": 160,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_256",
+      "frame_index": 256,
+      "timestamp_ms": 4147,
+      "image_path": "frames/chase_frame_000256_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752275600,
+        "dropped_frame_count": 162,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_259",
+      "frame_index": 259,
+      "timestamp_ms": 4199,
+      "image_path": "frames/chase_frame_000259_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752328000,
+        "dropped_frame_count": 164,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_262",
+      "frame_index": 262,
+      "timestamp_ms": 4246,
+      "image_path": "frames/chase_frame_000262_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752374400,
+        "dropped_frame_count": 166,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_265",
+      "frame_index": 265,
+      "timestamp_ms": 4294,
+      "image_path": "frames/chase_frame_000265_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752422100,
+        "dropped_frame_count": 168,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_268",
+      "frame_index": 268,
+      "timestamp_ms": 4347,
+      "image_path": "frames/chase_frame_000268_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752475700,
+        "dropped_frame_count": 169,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_271",
+      "frame_index": 271,
+      "timestamp_ms": 4397,
+      "image_path": "frames/chase_frame_000271_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752525600,
+        "dropped_frame_count": 171,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_274",
+      "frame_index": 274,
+      "timestamp_ms": 4446,
+      "image_path": "frames/chase_frame_000274_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752574300,
+        "dropped_frame_count": 173,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_277",
+      "frame_index": 277,
+      "timestamp_ms": 4494,
+      "image_path": "frames/chase_frame_000277_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752622400,
+        "dropped_frame_count": 175,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_280",
+      "frame_index": 280,
+      "timestamp_ms": 4546,
+      "image_path": "frames/chase_frame_000280_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752674300,
+        "dropped_frame_count": 177,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_283",
+      "frame_index": 283,
+      "timestamp_ms": 4594,
+      "image_path": "frames/chase_frame_000283_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752722100,
+        "dropped_frame_count": 178,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_286",
+      "frame_index": 286,
+      "timestamp_ms": 4644,
+      "image_path": "frames/chase_frame_000286_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752772700,
+        "dropped_frame_count": 180,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_289",
+      "frame_index": 289,
+      "timestamp_ms": 4694,
+      "image_path": "frames/chase_frame_000289_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752822900,
+        "dropped_frame_count": 182,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_292",
+      "frame_index": 292,
+      "timestamp_ms": 4743,
+      "image_path": "frames/chase_frame_000292_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752871500,
+        "dropped_frame_count": 184,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_295",
+      "frame_index": 295,
+      "timestamp_ms": 4794,
+      "image_path": "frames/chase_frame_000295_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752922500,
+        "dropped_frame_count": 186,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_298",
+      "frame_index": 298,
+      "timestamp_ms": 4845,
+      "image_path": "frames/chase_frame_000298_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103752973700,
+        "dropped_frame_count": 188,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_301",
+      "frame_index": 301,
+      "timestamp_ms": 4893,
+      "image_path": "frames/chase_frame_000301_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103753021900,
+        "dropped_frame_count": 190,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_304",
+      "frame_index": 304,
+      "timestamp_ms": 4942,
+      "image_path": "frames/chase_frame_000304_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103753070200,
+        "dropped_frame_count": 192,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_307",
+      "frame_index": 307,
+      "timestamp_ms": 4993,
+      "image_path": "frames/chase_frame_000307_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103753121100,
+        "dropped_frame_count": 194,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    },
+    {
+      "frame_id": "decision-playback:frame_310",
+      "frame_index": 310,
+      "timestamp_ms": 5044,
+      "image_path": "frames/chase_frame_000310_front_camera.jpg",
+      "annotation": {
+        "actor_id": "chaser",
+        "camera_id": "front_camera",
+        "image_content_type": "image/jpeg",
+        "image_format": "image/jpeg",
+        "image_width": 320,
+        "image_height": 240,
+        "simulation_epoch": "chase-run:dc3795ea-8e2e-49ef-bbf2-f6f7dd271c2d",
+        "source_timestamp_us": 103753172400,
+        "dropped_frame_count": 196,
+        "control_phase": "return-to-center",
+        "control_input": {
+          "motion": "none",
+          "forward": false,
+          "reverse": false,
+          "steering": 0
+        }
+      }
+    }
+  ]
+}

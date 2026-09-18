@@ -60,10 +60,10 @@ from implementations.decision.shadow_adapter import ShadowProposalsAutonomyEngin
 from implementations.runtime.donkeycar import AutonomyPilotPart
 from tests.support.cli_runner import run_automa
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-ACTIVE_RUN = FIXTURES / "apply_active_left"
-NO_MEM_RUN = FIXTURES / "apply_no_memory"
-TWO_FRAME_RUN = FIXTURES / "apply_two_frames"
+SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
+ACTIVE_RUN = SOURCES / "apply_active_left"
+NO_MEM_RUN = SOURCES / "apply_no_memory"
+TWO_FRAME_RUN = SOURCES / "apply_two_frames"
 
 
 def _stage_shadow(runtime_root: Path, vehicle_id: str = "chase-sim-chaser") -> None:

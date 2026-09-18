@@ -1,9 +1,9 @@
-"""Loopback perception-memory workbench for deterministic image replays.
+"""Loopback decision playback workbench for deterministic image replays.
 
 The workbench is deliberately a thin presentation and lifecycle boundary. It
 normalizes one ordered image-directory source, feeds it through the existing
-perception, observation, and memory seams, and exposes the resulting state to
-both the CLI and a small loopback HTTP page.
+perception, observation, memory, and shadow decision seams, and exposes the
+resulting state to both the CLI and a small loopback HTTP page.
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def _format_workbench_status(
     active_plugins = state.get("run_active_plugin_ids") or state.get("active_plugin_ids") or []
     active_plugins_text = ", ".join(str(item) for item in active_plugins) or "(none)"
     lines = [
-        "automa perception-memory workbench",
+        "automa decision playback workbench",
         f"phase: {state.get('phase')}",
         f"sequence: {state.get('sequence_id')}",
         f"run_id: {state.get('run_id') or '(none)'}",

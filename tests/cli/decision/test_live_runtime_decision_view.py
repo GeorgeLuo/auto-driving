@@ -33,8 +33,8 @@ from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.decision.catalog import create_shadow_proposals_engine
 
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-ACTIVE_RUN = FIXTURES / "apply_active_left"
+SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
+ACTIVE_RUN = SOURCES / "apply_active_left"
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):

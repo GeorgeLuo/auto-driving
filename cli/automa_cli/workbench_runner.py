@@ -20,6 +20,7 @@ from autonomy.decision import (
     observation_from_perception,
 )
 from autonomy.decision.activation import bounds_from_config
+from autonomy.decision.shadow_runner import ENGINE_ID
 from autonomy.perception import (
     PerceptionMapper,
     PerceptionText,
@@ -27,6 +28,7 @@ from autonomy.perception import (
 )
 from autonomy.perception.activation import instantiate_perception_mapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from implementations.decision.catalog import create_shadow_proposals_engine
 from implementations.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     build_memory_activation_payload,
@@ -168,6 +170,7 @@ class ImageReplayRunner:
         self._feed: ImageFeed | None = None
         self._mapper: Any = None
         self._memory_stage: Any = None
+        self._decision_engine: Any = None
         self._history: dict[str, dict[str, Any]] = {}
         self._generation = 0
         self._cadence_ms = self._validate_cadence(cadence_ms)
@@ -375,6 +378,7 @@ class ImageReplayRunner:
                 self._feed = None
                 self._mapper = None
                 self._memory_stage = None
+                self._decision_engine = None
                 self._history.clear()
                 self._state = self._fresh_run_state(run_id)
                 self._apply_plugin_configuration_locked()
@@ -392,6 +396,7 @@ class ImageReplayRunner:
                     )
                     mapper = self._build_mapper_for_selection(selected_plugin_ids)
                     memory_stage = self.memory_stage_factory()
+                    decision_engine = create_shadow_proposals_engine()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "startup"),
@@ -404,6 +409,7 @@ class ImageReplayRunner:
                 self.source_dir = str(feed.source_path)
                 self._mapper = mapper
                 self._memory_stage = memory_stage
+                self._decision_engine = decision_engine
                 self._state["active_plugin_ids"] = list(selected_plugin_ids)
                 self._state["plugin_order"] = list(selected_plugin_ids)
                 self._state["run_plugin_dir"] = self.plugin_dir
@@ -879,6 +885,7 @@ class ImageReplayRunner:
         self._state["perception"] = copy.deepcopy(cached.get("perception"))
         self._state["observation"] = copy.deepcopy(cached.get("observation"))
         self._state["memory"] = copy.deepcopy(cached.get("memory"))
+        self._state["decision"] = copy.deepcopy(cached.get("decision"))
         completed = frame.position + 1
         total = len(self._feed.frames) if self._feed is not None else completed
         self._state["progress"]["completed"] = completed
@@ -1019,6 +1026,7 @@ class ImageReplayRunner:
                     return
                 mapper = self._mapper
                 memory_stage = self._memory_stage
+                decision_engine = self._decision_engine
             try:
                 snapshot = _snapshot_for_frame(frame)
                 context = DecisionFrameContext(
@@ -1078,6 +1086,16 @@ class ImageReplayRunner:
                     ),
                     idle_reason="workbench-observation-only",
                 ).run(context)
+                decision_result, _authorized_control = decision_engine.run_cycle(
+                    frame_id=frame.frame_id,
+                    frame_index=frame.frame_index,
+                    timestamp_ms=frame.timestamp_ms,
+                    observation=result.observation,
+                    observation_error=None,
+                    memory=result.memory,
+                    host_application=None,
+                )
+                decision_payload = decision_result.to_dict()
                 perception_payload = (
                     result.perception.to_dict() if result.perception else None
                 )
@@ -1091,6 +1109,7 @@ class ImageReplayRunner:
                     self._state["perception"] = perception_payload
                     self._state["observation"] = observation_payload
                     self._state["memory"] = memory_payload
+                    self._state["decision"] = copy.deepcopy(decision_payload)
                     self._state["progress"]["completed"] = frame.position + 1
                     self._state["progress"]["percent"] = (
                         round(
@@ -1111,6 +1130,7 @@ class ImageReplayRunner:
                         result=result,
                         previous_memory=previous_memory,
                     )
+                    detail["decision"] = copy.deepcopy(decision_payload)
                     self._history[frame.frame_id] = detail
                     self._upsert_timeline_locked(detail)
                     if not refresh_current:
@@ -1145,6 +1165,7 @@ class ImageReplayRunner:
                     self._state["perception"] = None
                     self._state["observation"] = None
                     self._state["memory"] = None
+                    self._state["decision"] = None
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
                         message=f"{type(exc).__name__}: {exc}",
@@ -1206,6 +1227,7 @@ class ImageReplayRunner:
         }
         self._mapper = None
         self._memory_stage = None
+        self._decision_engine = None
         return cleanup
 
     def _check_run_id_locked(self, action: str, run_id: str | None) -> None:
@@ -1305,6 +1327,7 @@ class ImageReplayRunner:
             "perception": None,
             "observation": None,
             "memory": None,
+            "decision": None,
             "timeline": [],
             "failure": None,
             "failure_boundary": None,
@@ -1381,6 +1404,8 @@ class ImageReplayRunner:
                 "memory_implementation": DEFAULT_MEMORY_IMPLEMENTATION,
                 "observation_adapter": "autonomy.decision.observation.observation_from_perception",
                 "decision_cycle": "autonomy.decision.cycle.DecisionCycle",
+                "decision_engine": ENGINE_ID,
+                "decision_config": self._decision_configuration(),
                 "active_plugin_ids": active_ids,
                 "catalog_digest": (
                     self._plugin_catalog.digest
@@ -1462,8 +1487,7 @@ class ImageReplayRunner:
                 return
         timeline.append(item)
 
-    @staticmethod
-    def _timeline_item(detail: dict[str, Any]) -> dict[str, Any]:
+    def _timeline_item(self, detail: dict[str, Any]) -> dict[str, Any]:
         frame = detail["frame"]
         return {
             "frame": {
@@ -1477,7 +1501,47 @@ class ImageReplayRunner:
             "perception_status": detail["perception_status"],
             "memory_record_count": detail["memory_record_count"],
             "memory_effect": copy.deepcopy(detail["memory_effect"]),
+            "decision": self._decision_timeline_item(detail.get("decision")),
             "duration_ms": detail["duration_ms"],
+        }
+
+    def _decision_configuration(self) -> dict[str, Any]:
+        config = getattr(self._decision_engine, "config", None)
+        return {
+            "engine_id": ENGINE_ID,
+            "enabled_plugins": list(
+                getattr(config, "enabled_plugins", ("avoid_recent_obstruction",))
+            ),
+            "accepted_kinds": list(
+                getattr(
+                    config,
+                    "accepted_kinds",
+                    ("floor_boundary", "obstacle", "obstruction_evidence"),
+                )
+            ),
+            "retained_max_age_ms": getattr(config, "retained_max_age_ms", 1000),
+            "steer_magnitude": getattr(config, "steer_magnitude", 0.35),
+            "authority_mode": "shadow_only",
+            "proposed_applied": False,
+        }
+
+    @staticmethod
+    def _decision_timeline_item(decision: Any) -> dict[str, Any]:
+        cycle = decision if isinstance(decision, dict) else {}
+        plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else {}
+        authority = (
+            cycle.get("authority")
+            if isinstance(cycle.get("authority"), dict)
+            else {}
+        )
+        proposed = authority.get("proposed")
+        return {
+            "status": cycle.get("status"),
+            "selected_proposal_id": plan.get("selected_proposal_id"),
+            "proposed_steering": (
+                proposed.get("steering") if isinstance(proposed, dict) else None
+            ),
+            "proposed_applied": authority.get("proposed_applied", False),
         }
 
     @staticmethod

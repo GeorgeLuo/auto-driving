@@ -1,8 +1,7 @@
 # Orchestration Policies
 
-Operator-selected execution policies. They do not replace the canonical
-[Milestone Planning And Delivery Contract](../../milestones/README.md) and do
-not authorize a phase transition that recorded workflow state forbids.
+Operator-selected execution policies. They organize how work is delegated and
+synchronized. They are usable on their own.
 
 ## Invocation
 
@@ -17,20 +16,20 @@ Follow orchestration policy review-repair/v2 for PR #<number> through final revi
 ```
 
 ```text
-Follow orchestration policy product-implementation/v1 to implement
-<accepted proposal> on <milestone branch>. Deliver ready for independent review.
+Follow orchestration policy product-implementation/v1 for this change.
+Deliver ready for independent review.
 ```
 
-Load that version in addition to role/task guidance from
+Load that version in addition to role guidance from
 [agent-surface.md](../agent-surface.md).
 
 ## Current policies
 
 | Policy | Current version | Shared pin | Use when |
 | --- | --- | --- | --- |
-| `product-implementation` | [v1](product-implementation/v1.md) | [v2](shared/v2.md) | Implement one accepted frontier proposal; experimental, ready-for-review delivery. |
-| `ad-hoc-implementation` | [v4](ad-hoc-implementation/v4.md) | [v2](shared/v2.md) | Bounded implementation, no accepted proposal, existing authority is enough. |
+| `ad-hoc-implementation` | [v4](ad-hoc-implementation/v4.md) | [v2](shared/v2.md) | Bounded implementation; existing authority is enough. |
 | `review-repair` | [v2](review-repair/v2.md) | [v2](shared/v2.md) | Existing implementation, one frozen review question, remove blockers. |
+| `product-implementation` | [v1](product-implementation/v1.md) | [v2](shared/v2.md) | Larger implementation with ready-for-review delivery. |
 
 ## Archived policies
 
@@ -70,12 +69,10 @@ semantic definitions.
 | [v2](shared/v2.md) | current | New policies; terminal receipt with liveness wait. |
 
 Substantive changes to shared execution rules require a new shared version.
-
-Policy-specific invariants win over the pinned shared defaults. The canonical
-milestone contract wins over both.
+Policy-specific invariants win over the pinned shared defaults.
 
 ## Experiment evidence
 
-The [frontier-policy input notes](../../synthesis/artifacts/orchestration/2026-09-08-policy-inputs/README.md)
+The [policy input notes](../../synthesis/artifacts/orchestration/2026-09-08-policy-inputs/README.md)
 retain the handoff snapshots and limits behind `product-implementation/v1`.
-They are historical evidence, not policy authority or a completed frontier trial.
+They are historical evidence, not policy authority.

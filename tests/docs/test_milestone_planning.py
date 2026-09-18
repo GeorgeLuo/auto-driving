@@ -5,7 +5,7 @@ import re
 import unittest
 from pathlib import Path
 
-from docs.milestones.workflow import (
+from docs.deprecated.milestones.workflow import (
     apply_handoff,
     parse_table,
     validate_plan_path,
@@ -22,7 +22,7 @@ from tests.docs.milestone_workflow_fixtures import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
-MILESTONES = DOCS / "milestones"
+MILESTONES = DOCS / "deprecated" / "milestones"
 CONTRACT_SOURCE = MILESTONES / "README.md"
 CONTRACT_RENDER = MILESTONES / "planning-contract.html"
 GUIDE = DOCS / "README.md"
@@ -31,18 +31,20 @@ STALE_MILESTONE_STATUS = re.compile(
     r"(?im)is the (active|queued) .+ milestone"
 )
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
-PROPOSAL_PR_TEMPLATE = (
-    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
+DEPRECATED_PR_TEMPLATES = DOCS / "deprecated" / "pull-request-templates"
+REVIEW_UNIT_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "review-unit.md"
+PROPOSAL_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "proposal.md"
+PROPOSAL_GUIDANCE = (
+    DOCS / "deprecated" / "guidance" / "proposal-vs-implementation.md"
 )
-PROPOSAL_GUIDANCE = DOCS / "guidance" / "proposal-vs-implementation.md"
 PROPOSAL_AMENDMENT_PR_TEMPLATE = (
-    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal-amendment.md"
+    DEPRECATED_PR_TEMPLATES / "proposal-amendment.md"
 )
 IMPLEMENTATION_ADJUNCT_PR_TEMPLATE = (
-    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "implementation-adjunct.md"
+    DEPRECATED_PR_TEMPLATES / "implementation-adjunct.md"
 )
-MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
-REPAIR_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "repair.md"
+MILESTONE_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "milestone.md"
+REPAIR_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "repair.md"
 TEST_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
@@ -191,8 +193,8 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_docs_guide_is_navigation_only_for_progress(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
-        self.assertIn("workflow.py status", guide)
-        self.assertIn("completed.md", guide)
+        self.assertIn("deprecated/", guide)
+        self.assertIn("Do not use", guide)
         self.assertNotIn("## Active Milestone", guide)
         self.assertNotIn("## Immediate Pre-Plan", guide)
         lowered = guide.lower()
@@ -209,7 +211,6 @@ class MilestonePlanningTests(unittest.TestCase):
     def test_docs_guide_does_not_name_an_active_or_none_milestone(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
         self.assertNotIn("**None.**", guide)
-        self.assertIn("plan.md", guide)
         self.assertIsNone(STALE_MILESTONE_STATUS.search(guide))
         paths = _active_plan_paths()
         if paths is None:
@@ -223,11 +224,17 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIsNone(STALE_MILESTONE_STATUS.search(readme))
         self.assertNotIn("## Active Milestone", readme)
         self.assertIn("docs/README.md", readme)
-        self.assertIn("completed.md", readme)
+        self.assertIn("docs/deprecated/", readme)
+
+    def test_deprecated_tree_warns_first(self) -> None:
+        warning = (DOCS / "deprecated" / "README.md").read_text(encoding="utf-8")
+        self.assertTrue(warning.lower().startswith("# deprecated"))
+        self.assertIn("Do not load it", warning)
+        self.assertFalse((DOCS / "milestones").exists())
 
     def test_review_unit_pr_template_has_required_headings(self) -> None:
-        self.assertTrue(PR_TEMPLATE.is_file())
-        text = PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertTrue(REVIEW_UNIT_PR_TEMPLATE.is_file())
+        text = REVIEW_UNIT_PR_TEMPLATE.read_text(encoding="utf-8")
         for heading in (
             "## Milestone Context",
             "## Accepted Proposal",
@@ -240,6 +247,15 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertNotIn("## Repair Escalation", text)
         self.assertNotIn("## Repair Continuation Audit", text)
         self.assertIn("matching the canonical milestone plan", text)
+
+    def test_default_pr_template_is_generic(self) -> None:
+        self.assertTrue(PR_TEMPLATE.is_file())
+        text = PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Summary", text)
+        self.assertIn("## Validation", text)
+        self.assertIn("## Risks and follow-up", text)
+        self.assertNotIn("## Milestone Context", text)
+        self.assertNotIn("## Repair Cycle Ledger", text)
 
     def test_proposal_pr_template_forbids_implementation(self) -> None:
         self.assertTrue(PROPOSAL_PR_TEMPLATE.is_file())
@@ -335,7 +351,7 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_review_unit_template_repair_receipt_defaults_are_valid(self) -> None:
         for path in (
-            PR_TEMPLATE,
+            REVIEW_UNIT_PR_TEMPLATE,
             PROPOSAL_PR_TEMPLATE,
             PROPOSAL_AMENDMENT_PR_TEMPLATE,
             IMPLEMENTATION_ADJUNCT_PR_TEMPLATE,
@@ -350,28 +366,18 @@ class MilestonePlanningTests(unittest.TestCase):
                     0,
                 )
 
-    def test_pr_body_edits_revalidate_repair_receipts(self) -> None:
+    def test_delivery_gates_are_parked_in_ci(self) -> None:
         text = TEST_WORKFLOW.read_text(encoding="utf-8")
-        self.assertRegex(text, r"types:.*\bedited\b")
-        self.assertIn("pull-requests: read", text)
-        self.assertIn("GH_TOKEN:", text)
-
-    def test_pr_body_edits_rerun_review_kind_validation(self) -> None:
-        text = TEST_WORKFLOW.read_text(encoding="utf-8")
-        self.assertRegex(
+        self.assertIn("python3 docs/render_markdown.py --check", text)
+        self.assertIn("python3 -m coverage run tests/run.py", text)
+        self.assertIn("Parked delivery gates", text)
+        self.assertNotIn("workflow.py validate-pr", text)
+        self.assertNotIn("GH_TOKEN:", text)
+        self.assertNotIn("pull_request_review:", text)
+        self.assertNotRegex(
             text,
             r"pull_request:\s*\n\s+types: \[[^\]]*edited[^\]]*\]",
         )
-
-    def test_review_events_rerun_receipt_validation(self) -> None:
-        text = TEST_WORKFLOW.read_text(encoding="utf-8")
-        self.assertRegex(
-            text,
-            r"pull_request_review:\s*\n\s+types: \[[^\]]*submitted[^\]]*\]",
-        )
-        self.assertIn("dismissed", text)
-        self.assertIn("github.event.pull_request.head.ref", text)
-        self.assertIn("github.event_name == 'pull_request_review'", text)
 
     def test_contract_defines_work_unit_terms_and_branch_model(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
@@ -487,7 +493,7 @@ class MilestonePlanningTests(unittest.TestCase):
                 "non-goals",
             ):
                 self.assertTrue(frontier.fields[field], f"missing frontier field {field}")
-        from docs.milestones.workflow import WORKFLOW_STATES
+        from docs.deprecated.milestones.workflow import WORKFLOW_STATES
 
         if state.current.is_empty:
             self.assertTrue(state.current.fields.get("reason"))

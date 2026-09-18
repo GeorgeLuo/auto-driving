@@ -1,17 +1,19 @@
 # Repository Agent Entry Point
 
 This file is the automatic entrypoint for repository-aware agents. It is a
-router, not the process contract.
+router, not a task specification.
 
 For every new or resumed request:
 
 1. Read `docs/guidance/agent-surface.md`.
 2. Classify the requested operation using its role-routing table.
-3. Load only the selected role and task guidance.
-4. Read current workflow state from the active milestone plan and tooling.
+3. Load only the selected role guidance.
+4. Inspect the current repository state and the files, tests, and tooling
+   relevant to the request.
 
-Do not rely on accumulated conversation history for durable process rules. Do
-not silently cross proposal, implementation, review, or closeout phases.
+Use the latest user request as the scope. Do not invent extra deliverables,
+planning artifacts, or handoffs. Keep unrelated working-tree changes intact.
 
-The canonical authority is `docs/milestones/README.md`. It wins over this file
-and every file under `docs/guidance/`.
+If the operator names an orchestration policy, load that exact file from
+`docs/guidance/orchestration/`. Do not infer one. QCA (`python3 -m qca`) is
+available for change inspection and is not a merge gate.

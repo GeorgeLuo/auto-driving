@@ -3,7 +3,7 @@
   "path": ".",
   "config": {
     "include_roots": ["cli", "autonomy", "implementations", "tests", "scripts", "lab/plugins/perception"],
-    "excluded_globs": ["docs/milestones/008-cli-decision-workbench/evidence/**"]
+    "excluded_globs": ["docs/deprecated/milestones/008-cli-decision-workbench/evidence/**"]
   },
   "experiment": {
     "hypothesis": "Factor-specific source measurements will identify concrete simplifications while independent behavior checks reject metric improvements that remove required behavior.",

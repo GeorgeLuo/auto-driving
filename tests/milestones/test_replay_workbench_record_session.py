@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RECORDER_PATH = (
     ROOT
-    / "docs/milestones/008-cli-decision-workbench/evidence"
+    / "docs/deprecated/milestones/008-cli-decision-workbench/evidence"
     / "replay-workbench-acceptance/record_session.py"
 )
 

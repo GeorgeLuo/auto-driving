@@ -10,7 +10,7 @@
       "scripts"
     ],
     "excluded_globs": [
-      "docs/milestones/008-cli-decision-workbench/evidence/**"
+      "docs/deprecated/milestones/008-cli-decision-workbench/evidence/**"
     ]
   },
   "experiment": {

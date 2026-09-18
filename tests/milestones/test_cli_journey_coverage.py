@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOL = (
     ROOT
     / "docs"
+    / "deprecated"
     / "milestones"
     / "007-cli-operator-usability"
     / "tools"
@@ -89,7 +90,7 @@ def _synthetic_raw_lineage() -> dict[str, object]:
 
 def _synthetic_expected_contract(commands: list[dict[str, object]]) -> dict[str, object]:
     catalog_root = (
-        "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/"
+        "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/"
         "catalogs"
     )
     catalogs = [
@@ -106,7 +107,7 @@ def _synthetic_expected_contract(commands: list[dict[str, object]]) -> dict[str,
     ]
     expanded = {
         "manifest_path": (
-            "docs/milestones/007-cli-operator-usability/tools/"
+            "docs/deprecated/milestones/007-cli-operator-usability/tools/"
             "cli-journey-coverage/manifest.json"
         ),
         "manifest_sha256": "e" * 64,
@@ -432,11 +433,11 @@ def _synthetic_pass_report() -> dict[str, object]:
         "numeric_gate": False,
     }
     manifest_path = (
-        "docs/milestones/007-cli-operator-usability/tools/"
+        "docs/deprecated/milestones/007-cli-operator-usability/tools/"
         "cli-journey-coverage/manifest.json"
     )
     catalog_root = (
-        "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/"
+        "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/"
         "catalogs"
     )
     catalog_records = [

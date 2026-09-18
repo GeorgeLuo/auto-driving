@@ -59,9 +59,9 @@ directory:
    test ownership, focused module runs, and the explicit simulator and Pi
    boundaries.
 4. Use [`docs/README.md`](docs/README.md) for documentation navigation,
-   architecture references, completed milestone context, and research notes.
-   Current milestone status comes from `plan.md` and
-   `python3 docs/milestones/workflow.py status --plan <plan>`.
+   architecture references, and research notes. Optional change inspection:
+   `python3 -m qca`. Historical delivery files are under `docs/deprecated/`;
+   do not use them.
 5. Treat `runtime/` and `lab/` as generated state. Start from tracked source and
    the CLI rather than using files in those directories as an API.
 
@@ -484,13 +484,13 @@ and is prepared through `./cli/automa simulators ensure`.
 ## Architecture and Planning
 
 - [`docs/README.md`](docs/README.md) is documentation navigation and the
-  reading order. It is not the milestone status authority.
+  reading order.
 - [`docs/reference/onboard-autonomy-flow.html`](docs/reference/onboard-autonomy-flow.html) explains
   the onboard perception, decision, and action flow.
 - [`docs/reference/donkey-server-functionality.html`](docs/reference/donkey-server-functionality.html)
   describes the physical Donkey server boundary.
-- [`docs/milestones/completed.md`](docs/milestones/completed.md) is the concise
-  append-only history of closed work.
+- [`docs/deprecated/`](docs/deprecated/) is historical delivery record. Do not
+  use it.
 
 Dependency direction is intentional:
 

@@ -231,6 +231,7 @@ spec.loader.exec_module(module)
 from cli.automa_cli.app import build_parser
 
 try:
+    repo_root = module._reloc.wrap(repo_root)
     result = module._run_audit_with_parser(repo_root=repo_root, parser=build_parser())
 except module.AuditError as exc:
     sys.stderr.write(str(exc))

@@ -24,12 +24,26 @@ from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping
+import importlib.util as _importlib_util
+
+def _relocated():
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "relocated.py"
+        if candidate.is_file():
+            spec = _importlib_util.spec_from_file_location("_deprecated_relocated", candidate)
+            assert spec is not None and spec.loader is not None
+            mod = _importlib_util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("relocated.py is missing")
+
+_reloc = _relocated()
 
 from coverage import __version__ as COVERAGE_VERSION
 from coverage.parser import PythonParser
 
 
-ROOT = Path(__file__).resolve().parents[5]
+ROOT = _reloc.wrap(_reloc.repo_root(Path(__file__)))
 M007 = ROOT / "docs" / "milestones" / "007-cli-operator-usability"
 TOOL_DIR = M007 / "tools" / "capability-disposition"
 EVIDENCE_DIR = M007 / "evidence" / "capability-disposition"
@@ -311,7 +325,7 @@ def sha256_bytes(value: bytes) -> str:
 
 
 def sha256_file(path: Path) -> str:
-    return sha256_bytes(path.read_bytes())
+    return sha256_bytes(_reloc.prefer(Path(path)).read_bytes())
 
 
 def write_canonical(path: Path, value: Any) -> None:
@@ -340,6 +354,7 @@ def _exact_keys(value: Any, expected: Iterable[str], where: str) -> None:
 
 
 def _load_json(path: Path) -> Any:
+    path = _reloc.prefer(Path(path))
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -347,6 +362,7 @@ def _load_json(path: Path) -> Any:
 
 
 def load_canonical_json(path: Path) -> Any:
+    path = _reloc.prefer(Path(path))
     try:
         raw = path.read_bytes()
     except OSError as exc:
@@ -670,6 +686,7 @@ def load_sealed_report(
     *,
     source_reader: FrozenGitSource | None = None,
 ) -> dict[str, Any]:
+    repo_root = _reloc.wrap(repo_root)
     path = repo_root / REPORT_REL
     report = load_canonical_json(path)
     if not isinstance(report, dict) or report.get("schema") != "m007_cli_journey_coverage_v1":
@@ -867,6 +884,7 @@ def _owner_values(value: Any) -> set[str]:
 
 
 def load_m007_08_authority(repo_root: Path = ROOT) -> dict[str, Any]:
+    repo_root = _reloc.wrap(repo_root)
     documents: dict[str, Any] = {}
     owners_by_path: dict[str, set[str]] = {}
     for entry in FROZEN_M007_08_MANIFEST:
@@ -1296,10 +1314,10 @@ def assemble_record(
     candidates = _derive_candidates(sealed, artifact)
     validate_grouping(
         grouping,
-        repo_root=sealed["report_path"].parents[5],
+        repo_root=_reloc.repo_root(sealed["report_path"]),
         source_paths=sealed["source_paths"],
         candidate_paths=set(candidates),
-        authority=load_m007_08_authority(sealed["report_path"].parents[5]),
+        authority=load_m007_08_authority(_reloc.repo_root(sealed["report_path"])),
     )
     assigned = sorted(
         path for group in grouping["groups"] for path in group["member_paths"]
@@ -2880,6 +2898,7 @@ def validate_dashboard_html(
     sealed: Mapping[str, Any],
     authority: Mapping[str, Any] | None = None,
 ) -> None:
+    path = _reloc.prefer(Path(path))
     try:
         source = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -2948,6 +2967,7 @@ def _build_context(
     *,
     source_reader: FrozenGitSource | None = None,
 ) -> dict[str, Any]:
+    repo_root = _reloc.wrap(repo_root)
     sealed = load_sealed_report(repo_root, source_reader=source_reader)
     source_analysis_path = repo_root / SOURCE_ANALYSIS_REL
     artifact = load_canonical_json(source_analysis_path)
@@ -3021,6 +3041,7 @@ def build_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
 
 
 def validate_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
+    repo_root = _reloc.wrap(repo_root)
     context = _build_context(repo_root)
     expected = assemble_record(
         sealed=context["sealed"],

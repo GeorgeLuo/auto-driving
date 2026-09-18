@@ -62,7 +62,21 @@ SCHEMA = "live_cli_session_result_v0"
 FINDING_SCHEMA = "live_cli_session_finding_v0"
 CATALOG_SCHEMA = "live_cli_session_catalog_v0"
 
-REPO_ROOT_DEFAULT = Path(__file__).resolve().parents[5]
+import importlib.util as _importlib_util
+
+def _relocated():
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "relocated.py"
+        if candidate.is_file():
+            spec = _importlib_util.spec_from_file_location("_deprecated_relocated", candidate)
+            assert spec is not None and spec.loader is not None
+            mod = _importlib_util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("relocated.py is missing")
+
+_reloc = _relocated()
+REPO_ROOT_DEFAULT = _reloc.wrap(_reloc.repo_root(Path(__file__)))
 TOOL_DIR = Path(__file__).resolve().parent
 CATALOGS_DIR = TOOL_DIR / "catalogs"
 

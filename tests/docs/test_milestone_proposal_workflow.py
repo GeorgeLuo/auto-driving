@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-from docs.milestones.workflow import (
+from docs.deprecated.milestones.workflow import (
     ContractReviewReceipt,
     Frontier,
     FrontierMap,
@@ -903,7 +903,7 @@ class RepairMetadataFetchTests(unittest.TestCase):
             ),
         ]
         with mock.patch(
-            "docs.milestones.workflow.subprocess.run",
+            "docs.deprecated.milestones.workflow.subprocess.run",
             side_effect=completed,
         ):
             metadata = _fetch_pr_repair_review_metadata(60)
@@ -934,7 +934,7 @@ class RepairMetadataFetchTests(unittest.TestCase):
             ),
         ]
         with mock.patch(
-            "docs.milestones.workflow.subprocess.run",
+            "docs.deprecated.milestones.workflow.subprocess.run",
             side_effect=completed,
         ):
             with self.assertRaisesRegex(PlanContractError, "100-review"):
@@ -2084,7 +2084,7 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
             ),
         ]
         with mock.patch(
-            "docs.milestones.workflow.subprocess.run",
+            "docs.deprecated.milestones.workflow.subprocess.run",
             side_effect=completed,
         ):
             with self.assertRaisesRegex(PlanContractError, "100-review"):
@@ -3574,11 +3574,11 @@ class ValidatePrCommandTests(unittest.TestCase):
             event_path.write_text(json.dumps(payload), encoding="utf-8")
             with (
                 mock.patch(
-                    "docs.milestones.workflow._fetch_pr_repair_review_metadata",
+                    "docs.deprecated.milestones.workflow._fetch_pr_repair_review_metadata",
                     return_value=metadata,
                 ) as fetch_metadata,
                 mock.patch(
-                    "docs.milestones.workflow.validate_review_unit_git_diff",
+                    "docs.deprecated.milestones.workflow.validate_review_unit_git_diff",
                     return_value="proposal",
                 ) as validate_diff,
             ):
@@ -3623,11 +3623,11 @@ class ValidatePrCommandTests(unittest.TestCase):
                     event_path.write_text(json.dumps(payload), encoding="utf-8")
                     with (
                         mock.patch(
-                            "docs.milestones.workflow._fetch_pr_repair_review_metadata",
+                            "docs.deprecated.milestones.workflow._fetch_pr_repair_review_metadata",
                             return_value=metadata,
                         ),
                         mock.patch(
-                            "docs.milestones.workflow.validate_review_unit_git_diff",
+                            "docs.deprecated.milestones.workflow.validate_review_unit_git_diff",
                             return_value=transition,
                         ),
                     ):
@@ -3664,11 +3664,11 @@ class ValidatePrCommandTests(unittest.TestCase):
             event_path.write_text(json.dumps(payload), encoding="utf-8")
             with (
                 mock.patch(
-                    "docs.milestones.workflow._fetch_pr_repair_review_metadata",
+                    "docs.deprecated.milestones.workflow._fetch_pr_repair_review_metadata",
                     return_value=metadata,
                 ),
                 mock.patch(
-                    "docs.milestones.workflow.validate_review_unit_git_diff",
+                    "docs.deprecated.milestones.workflow.validate_review_unit_git_diff",
                     return_value="implementation",
                 ),
             ):

@@ -22,13 +22,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping, Sequence
+import importlib.util as _importlib_util
+
+def _relocated():
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "relocated.py"
+        if candidate.is_file():
+            spec = _importlib_util.spec_from_file_location("_deprecated_relocated", candidate)
+            assert spec is not None and spec.loader is not None
+            mod = _importlib_util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("relocated.py is missing")
+
+_reloc = _relocated()
 
 import yaml
 from coverage import Coverage
 
 
 TOOL_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TOOL_DIR.parents[4]
+REPO_ROOT = _reloc.wrap(_reloc.repo_root(TOOL_DIR))
 MANIFEST_PATH = TOOL_DIR / "manifest.json"
 RUNNER_DIR = TOOL_DIR.parent / "live-cli-session-runner"
 RUNNER_PATH = RUNNER_DIR / "session_runner.py"

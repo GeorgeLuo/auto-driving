@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from docs.milestones.workflow import (
+from docs.deprecated.milestones.workflow import (
     PlanContractError,
     RepairReviewMetadata,
     complete_implementation,
@@ -197,6 +197,7 @@ class CompleteImplementationTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[2]
             / "docs"
+            / "deprecated"
             / "milestones"
             / "workflow.py"
         )

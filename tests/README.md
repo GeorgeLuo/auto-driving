@@ -23,10 +23,9 @@ It does not launch a simulator, contact a Pi, or record runtime artifacts.
   implementations.
 - `live/` contains named, bounded checks that require explicit opt-in.
 
-For new or materially changed tests, use the canonical
-[testing purpose and regression value](../docs/milestones/README.md#testing-purpose-and-regression-value)
-rule to name the protected regression and purpose. Keep tests with their
-existing owner above.
+For new or materially changed tests, name a concrete regression and the
+observable behavior that would catch it. Keep tests with their existing owner
+above.
 
 ## Support Contract
 

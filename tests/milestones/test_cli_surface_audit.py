@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOL = (
     ROOT
     / "docs"
+    / "deprecated"
     / "milestones"
     / "007-cli-operator-usability"
     / "tools"
@@ -203,7 +204,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
             )
             staged_m007.parent.mkdir(parents=True)
             source_m007 = (
-                ROOT / "docs" / "milestones" / "007-cli-operator-usability"
+                ROOT / "docs" / "deprecated" / "milestones" / "007-cli-operator-usability"
             )
             staged_tool = staged_m007 / "tools" / "cli-surface-audit"
             staged_tool.parent.mkdir(parents=True)
@@ -211,6 +212,10 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 source_m007 / "tools" / "cli-surface-audit",
                 staged_tool,
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+            shutil.copyfile(
+                ROOT / "docs" / "deprecated" / "milestones" / "relocated.py",
+                staged_tool / "relocated.py",
             )
             for relative in (
                 "evidence/cli-scenario-continuity/result.json",
@@ -436,7 +441,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
         claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
         # Mutating the claim map away from frozen authority must fail closed.
         bad_path = (
-            "docs/milestones/007-cli-operator-usability/evidence/"
+            "docs/deprecated/milestones/007-cli-operator-usability/evidence/"
             "cli-scenario-continuity/machine-only-session/result.json"
         )
         import hashlib
@@ -645,7 +650,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
         abs_path = str(
             (
                 ROOT
-                / "docs/milestones/007-cli-operator-usability/evidence/"
+                / "docs/deprecated/milestones/007-cli-operator-usability/evidence/"
                 "live-cli-acceptance/result.json"
             ).resolve()
         )
@@ -1046,7 +1051,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
     def test_us01_help_predicates_fail_when_help_steps_removed(self) -> None:
         result_path = (
             ROOT
-            / "docs/milestones/007-cli-operator-usability/evidence/"
+            / "docs/deprecated/milestones/007-cli-operator-usability/evidence/"
             "live-cli-acceptance/result.json"
         )
         parsed = json.loads(result_path.read_text(encoding="utf-8"))
@@ -1071,7 +1076,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
         claim = claim_map["claims"]["us02_passive_journey"]
         result_path = (
             ROOT
-            / "docs/milestones/007-cli-operator-usability/evidence/"
+            / "docs/deprecated/milestones/007-cli-operator-usability/evidence/"
             "live-cli-acceptance/result.json"
         )
         parsed = json.loads(result_path.read_text(encoding="utf-8"))
@@ -1188,7 +1193,9 @@ class CliSurfaceAuditTests(unittest.TestCase):
             "docs/milestones/007-cli-operator-usability/evidence/"
             "cli-scenario-continuity/result.json"
         )
-        result_path = ROOT / result_rel
+        result_path = ROOT / result_rel.replace(
+            "docs/milestones/", "docs/deprecated/milestones/", 1
+        )
         claim = claim_map["claims"]["continuity_offline_perception"]
         row = next(row for row in sequences["sequences"] if row["id"] == "US-03")
         row["disposition"] = "passed"
@@ -1235,7 +1242,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
     def test_cite_digest_frozen_against_registry_resign(self) -> None:
         result_path = (
             ROOT
-            / "docs/milestones/007-cli-operator-usability/evidence/"
+            / "docs/deprecated/milestones/007-cli-operator-usability/evidence/"
             "live-cli-acceptance/result.json"
         )
         original = result_path.read_text(encoding="utf-8")
@@ -1251,7 +1258,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
 
             digest = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
             rel = (
-                "docs/milestones/007-cli-operator-usability/evidence/"
+                "docs/deprecated/milestones/007-cli-operator-usability/evidence/"
                 "live-cli-acceptance/result.json"
             )
             for row in sequences["sequences"]:

@@ -15,7 +15,7 @@ import importlib.util
 
 _CC_PATH = (
     Path(__file__).resolve().parents[2]
-    / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/continuity_contract.py"
+    / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/continuity_contract.py"
 )
 _spec = importlib.util.spec_from_file_location("continuity_contract_under_test", _CC_PATH)
 assert _spec and _spec.loader
@@ -54,7 +54,7 @@ def _identity_fixture(
         (root / "autonomy").symlink_to(autonomy_symlink_target, target_is_directory=True)
 
     tool_dir = root / (
-        "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
+        "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
     )
     catalog_path = tool_dir / "catalogs/m007-continuity.yaml"
     catalog_path.parent.mkdir(parents=True, exist_ok=True)
@@ -602,14 +602,14 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
                 (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
             cat = (
                 root
-                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
+                / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
             )
             cat.mkdir(parents=True)
             catalog_path = cat / "m007-continuity.yaml"
             catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
             runner = (
                 root
-                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+                / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
             )
             runner.parent.mkdir(parents=True, exist_ok=True)
             runner.write_text("# runner\n", encoding="utf-8")
@@ -659,7 +659,7 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
                 changed.parent.mkdir(parents=True, exist_ok=True)
                 changed.write_text("baseline\n", encoding="utf-8")
                 tool_dir = root / (
-                    "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
+                    "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
                 )
                 catalog_path = tool_dir / "catalogs/m007-continuity.yaml"
                 catalog_path.parent.mkdir(parents=True, exist_ok=True)
@@ -969,14 +969,14 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
                 (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
             cat = (
                 root
-                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
+                / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
             )
             cat.mkdir(parents=True)
             catalog_path = cat / "m007-continuity.yaml"
             catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
             runner = (
                 root
-                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+                / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
             )
             runner.parent.mkdir(parents=True, exist_ok=True)
             runner.write_text("# runner\n", encoding="utf-8")
@@ -1407,7 +1407,7 @@ class FinalizerRequiredKeysAndMetricsTests(unittest.TestCase):
             cat.write_text("id: x\n", encoding="utf-8")
             runner = (
                 root
-                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+                / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
             )
             runner.parent.mkdir(parents=True, exist_ok=True)
             runner.write_text("# r\n", encoding="utf-8")
@@ -1469,14 +1469,14 @@ class FinalizerRequiredKeysAndMetricsTests(unittest.TestCase):
                 (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
             cat = (
                 root
-                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
+                / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
             )
             cat.mkdir(parents=True)
             catalog_path = cat / "m007-continuity.yaml"
             catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
             runner = (
                 root
-                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+                / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
             )
             runner.parent.mkdir(parents=True, exist_ok=True)
             runner.write_text("# runner\n", encoding="utf-8")
@@ -1626,7 +1626,7 @@ class SharedGitIdentityCollectorTests(unittest.TestCase):
 
         runner_path = (
             Path(__file__).resolve().parents[2]
-            / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+            / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
         )
         # Source-level: _git_identity must call collect_git_identity, not reimplement.
         src = runner_path.read_text(encoding="utf-8")
@@ -1642,7 +1642,7 @@ class SharedGitIdentityCollectorTests(unittest.TestCase):
 
         runner_path = (
             Path(__file__).resolve().parents[2]
-            / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+            / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
         )
         name = "live_cli_session_runner_identity"
         import sys

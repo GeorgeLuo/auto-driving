@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from docs.milestones.workflow import (
+from docs.deprecated.milestones.workflow import (
     PlanContractError,
     render_plan_text,
     validate_plan_path,
@@ -26,7 +26,7 @@ except ImportError as exc:  # pragma: no cover
         "Markdown rendering requires `python3 -m pip install -r docs/requirements.txt`."
     ) from exc
 
-MILESTONES = ROOT / "docs" / "milestones"
+MILESTONES = ROOT / "docs" / "deprecated" / "milestones"
 
 
 @dataclass(frozen=True)

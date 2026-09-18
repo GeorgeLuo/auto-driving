@@ -10,6 +10,20 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import importlib.util as _importlib_util
+
+def _relocated():
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "relocated.py"
+        if candidate.is_file():
+            spec = _importlib_util.spec_from_file_location("_deprecated_relocated", candidate)
+            assert spec is not None and spec.loader is not None
+            mod = _importlib_util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("relocated.py is missing")
+
+_reloc = _relocated()
 
 try:
     from .argv_validate import (
@@ -72,7 +86,7 @@ except ImportError:  # script / path execution
         walk_leaves,
     )
 
-ROOT = Path(__file__).resolve().parents[5]
+ROOT = _reloc.wrap(_reloc.repo_root(Path(__file__)))
 TOOL_DIR = Path(__file__).resolve().parent
 M007 = ROOT / "docs" / "milestones" / "007-cli-operator-usability"
 EVIDENCE_DIR = M007 / "evidence" / "cli-surface-audit"
@@ -1607,7 +1621,7 @@ def validate_semantic_cite(
             raise AuditError(f"{us_id} evidence.digests is required for every cite path")
         path_digests: list[dict[str, str]] = []
         parsed: dict[str, Any] = {}
-        repo_root = repo_root.resolve()
+        repo_root = _reloc.wrap(Path(repo_root).resolve())
         for rel in paths:
             if not isinstance(rel, str) or not rel.strip():
                 raise AuditError(f"{us_id} claim path must be a non-empty string")
@@ -2004,6 +2018,7 @@ def _run_audit_with_parser(
     repo_root: Path,
     parser: argparse.ArgumentParser,
 ) -> dict[str, Any]:
+    repo_root = _reloc.wrap(Path(repo_root).resolve())
     catalog_path = repo_root / CATALOG_PATH.relative_to(ROOT)
     catalog = load_catalog(
         catalog_path,
@@ -2126,7 +2141,7 @@ def run_audit(
 ) -> dict[str, Any]:
     """Validate current M007 evidence against its historical parser authority."""
 
-    repo_root = Path(repo_root).resolve()
+    repo_root = _reloc.wrap(Path(repo_root).resolve())
     try:
         return run_frozen_parser_audit(
             repo_root=repo_root,

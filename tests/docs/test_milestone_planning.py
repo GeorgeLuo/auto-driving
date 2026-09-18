@@ -5,7 +5,7 @@ import re
 import unittest
 from pathlib import Path
 
-from docs.milestones.workflow import (
+from docs.deprecated.milestones.workflow import (
     apply_handoff,
     parse_table,
     validate_plan_path,
@@ -22,7 +22,7 @@ from tests.docs.milestone_workflow_fixtures import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
-MILESTONES = DOCS / "milestones"
+MILESTONES = DOCS / "deprecated" / "milestones"
 CONTRACT_SOURCE = MILESTONES / "README.md"
 CONTRACT_RENDER = MILESTONES / "planning-contract.html"
 GUIDE = DOCS / "README.md"
@@ -31,21 +31,20 @@ STALE_MILESTONE_STATUS = re.compile(
     r"(?im)is the (active|queued) .+ milestone"
 )
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
-REVIEW_UNIT_PR_TEMPLATE = (
-    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "review-unit.md"
+DEPRECATED_PR_TEMPLATES = DOCS / "deprecated" / "pull-request-templates"
+REVIEW_UNIT_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "review-unit.md"
+PROPOSAL_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "proposal.md"
+PROPOSAL_GUIDANCE = (
+    DOCS / "deprecated" / "guidance" / "proposal-vs-implementation.md"
 )
-PROPOSAL_PR_TEMPLATE = (
-    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
-)
-PROPOSAL_GUIDANCE = DOCS / "guidance" / "proposal-vs-implementation.md"
 PROPOSAL_AMENDMENT_PR_TEMPLATE = (
-    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal-amendment.md"
+    DEPRECATED_PR_TEMPLATES / "proposal-amendment.md"
 )
 IMPLEMENTATION_ADJUNCT_PR_TEMPLATE = (
-    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "implementation-adjunct.md"
+    DEPRECATED_PR_TEMPLATES / "implementation-adjunct.md"
 )
-MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
-REPAIR_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "repair.md"
+MILESTONE_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "milestone.md"
+REPAIR_PR_TEMPLATE = DEPRECATED_PR_TEMPLATES / "repair.md"
 TEST_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
@@ -194,8 +193,8 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_docs_guide_is_navigation_only_for_progress(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
-        self.assertIn("workflow.py status", guide)
-        self.assertIn("completed.md", guide)
+        self.assertIn("deprecated/", guide)
+        self.assertIn("Do not use", guide)
         self.assertNotIn("## Active Milestone", guide)
         self.assertNotIn("## Immediate Pre-Plan", guide)
         lowered = guide.lower()
@@ -212,7 +211,6 @@ class MilestonePlanningTests(unittest.TestCase):
     def test_docs_guide_does_not_name_an_active_or_none_milestone(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
         self.assertNotIn("**None.**", guide)
-        self.assertIn("plan.md", guide)
         self.assertIsNone(STALE_MILESTONE_STATUS.search(guide))
         paths = _active_plan_paths()
         if paths is None:
@@ -226,7 +224,13 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIsNone(STALE_MILESTONE_STATUS.search(readme))
         self.assertNotIn("## Active Milestone", readme)
         self.assertIn("docs/README.md", readme)
-        self.assertIn("completed.md", readme)
+        self.assertIn("docs/deprecated/", readme)
+
+    def test_deprecated_tree_warns_first(self) -> None:
+        warning = (DOCS / "deprecated" / "README.md").read_text(encoding="utf-8")
+        self.assertTrue(warning.lower().startswith("# deprecated"))
+        self.assertIn("Do not load it", warning)
+        self.assertFalse((DOCS / "milestones").exists())
 
     def test_review_unit_pr_template_has_required_headings(self) -> None:
         self.assertTrue(REVIEW_UNIT_PR_TEMPLATE.is_file())
@@ -489,7 +493,7 @@ class MilestonePlanningTests(unittest.TestCase):
                 "non-goals",
             ):
                 self.assertTrue(frontier.fields[field], f"missing frontier field {field}")
-        from docs.milestones.workflow import WORKFLOW_STATES
+        from docs.deprecated.milestones.workflow import WORKFLOW_STATES
 
         if state.current.is_empty:
             self.assertTrue(state.current.fields.get("reason"))

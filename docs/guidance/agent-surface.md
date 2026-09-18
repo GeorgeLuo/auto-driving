@@ -45,5 +45,4 @@ Use ordinary version-control and hosting mechanics when the user asks for a
 branch or pull request. They are delivery tools, not a reason to add extra
 artifacts or delay an otherwise complete task.
 
-Do not load the parked files listed in [README.md](README.md) unless the
-operator explicitly asks to restore that process.
+Do not use `docs/deprecated/`.

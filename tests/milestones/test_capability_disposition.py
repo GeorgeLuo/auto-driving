@@ -13,11 +13,22 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOL = (
     ROOT
     / "docs"
+    / "deprecated"
     / "milestones"
     / "007-cli-operator-usability"
     / "tools"
     / "capability-disposition"
 )
+
+
+def _live(relative: str) -> Path:
+    path = ROOT / relative
+    if path.exists():
+        return path
+    alt = ROOT / relative.replace(
+        "docs/milestones/", "docs/deprecated/milestones/", 1
+    )
+    return alt if alt.exists() else path
 MODULE_PATH = TOOL / "capability_disposition.py"
 SPEC = importlib.util.spec_from_file_location("m007_capability_disposition", MODULE_PATH)
 assert SPEC and SPEC.loader
@@ -49,7 +60,7 @@ class CapabilityDispositionTests(unittest.TestCase):
         for relative in (cd.REPORT_REL, cd.MANIFEST_REL):
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes((ROOT / relative).read_bytes())
+            destination.write_bytes(_live(relative).read_bytes())
         return root / cd.MANIFEST_REL
 
     def test_sealed_manifest_drift_fails_closed(self) -> None:
@@ -591,7 +602,7 @@ class CapabilityDispositionTests(unittest.TestCase):
             },
         )
         cd.validate_dashboard_html(
-            ROOT / cd.DASHBOARD_REL,
+            _live(cd.DASHBOARD_REL),
             self.record,
             self.sealed,
             self.context["authority"],
@@ -741,7 +752,7 @@ class CapabilityDispositionTests(unittest.TestCase):
                 cd.validate_dashboard_html(path, self.record, self.sealed)
 
     def test_canonical_grouping_is_committed(self) -> None:
-        grouping_path = ROOT / cd.GROUPING_REL
+        grouping_path = _live(cd.GROUPING_REL)
         raw = grouping_path.read_bytes()
         self.assertEqual(cd.canonical_file_bytes(self.grouping), raw)
 

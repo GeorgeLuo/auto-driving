@@ -400,7 +400,7 @@
         "path": "docs/",
         "category": "documentation",
         "commit_policy": "source",
-        "responsibility": "Documentation entrypoint, living reference material, and milestone planning history.",
+        "responsibility": "Documentation entrypoint, living reference material, and parked historical delivery records.",
         "children": [
           {
             "path": "docs/reference/",
@@ -409,10 +409,10 @@
             "responsibility": "Living source of truth for current architecture diagrams and stable contracts."
           },
           {
-            "path": "docs/milestones/",
+            "path": "docs/deprecated/",
             "category": "documentation",
             "commit_policy": "source",
-            "responsibility": "Shared milestone planning contract, numbered planning records, frozen closeouts, and the append-only completed-milestone ledger."
+            "responsibility": "Deprecated historical delivery records. Do not use."
           }
         ]
       },

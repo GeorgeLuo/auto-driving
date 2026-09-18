@@ -16,6 +16,20 @@ import stat as statmod
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+import importlib.util as _importlib_util
+
+def _relocated():
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "relocated.py"
+        if candidate.is_file():
+            spec = _importlib_util.spec_from_file_location("_deprecated_relocated", candidate)
+            assert spec is not None and spec.loader is not None
+            mod = _importlib_util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise RuntimeError("relocated.py is missing")
+
+_reloc = _relocated()
 
 CONTINUITY_TRACK = "continuity"
 
@@ -296,7 +310,7 @@ def _parse_argv_against_cli(rest: Sequence[str]) -> tuple[bool, str]:
     try:
         repo_candidates = [
             Path.cwd(),
-            Path(__file__).resolve().parents[5],
+            _reloc.repo_root(Path(__file__)),
         ]
         for root in repo_candidates:
             if (root / "cli" / "automa_cli" / "app.py").is_file():
@@ -1423,6 +1437,7 @@ def collect_identity_bundle(
 ) -> dict[str, Any]:
     """Collect digests for evidence freshness finalizer."""
 
+    repo_root = _reloc.wrap(repo_root)
     runner = runner_path or (
         repo_root
         / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"

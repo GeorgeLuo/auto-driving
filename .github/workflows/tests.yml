@@ -55,8 +55,8 @@ jobs:
         run: python3 docs/render_markdown.py --check
 
       # Parked delivery gates (workflow.py validate / validate-pr). Restore
-      # from docs/milestones/workflow.py if that process is brought back.
-      # They are not part of the default path.
+      # from docs/deprecated/milestones/workflow.py only if that process is
+      # brought back. They are not part of the default path.
 
       - name: Run deterministic tests with coverage
         run: |

@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from docs.milestones.workflow import (
+from docs.deprecated.milestones.workflow import (
     Frontier,
     FrontierMap,
     PlanContractError,

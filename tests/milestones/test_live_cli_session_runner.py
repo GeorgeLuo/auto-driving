@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNNER_PATH = (
     ROOT
     / "docs"
+    / "deprecated"
     / "milestones"
     / "007-cli-operator-usability"
     / "tools"
@@ -2161,7 +2162,7 @@ class ContinuityRunnerUs04TransactionTests(unittest.TestCase):
         # Runner + continuity_contract at expected relative paths (identity digests)
         tool = (
             root
-            / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
+            / "docs/deprecated/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
         )
         tool.mkdir(parents=True, exist_ok=True)
         real_tool = RUNNER_PATH.parent

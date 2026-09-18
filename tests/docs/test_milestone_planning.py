@@ -31,6 +31,9 @@ STALE_MILESTONE_STATUS = re.compile(
     r"(?im)is the (active|queued) .+ milestone"
 )
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
+REVIEW_UNIT_PR_TEMPLATE = (
+    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "review-unit.md"
+)
 PROPOSAL_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
 )
@@ -226,8 +229,8 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("completed.md", readme)
 
     def test_review_unit_pr_template_has_required_headings(self) -> None:
-        self.assertTrue(PR_TEMPLATE.is_file())
-        text = PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertTrue(REVIEW_UNIT_PR_TEMPLATE.is_file())
+        text = REVIEW_UNIT_PR_TEMPLATE.read_text(encoding="utf-8")
         for heading in (
             "## Milestone Context",
             "## Accepted Proposal",
@@ -240,6 +243,15 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertNotIn("## Repair Escalation", text)
         self.assertNotIn("## Repair Continuation Audit", text)
         self.assertIn("matching the canonical milestone plan", text)
+
+    def test_default_pr_template_is_generic(self) -> None:
+        self.assertTrue(PR_TEMPLATE.is_file())
+        text = PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Summary", text)
+        self.assertIn("## Validation", text)
+        self.assertIn("## Risks and follow-up", text)
+        self.assertNotIn("## Milestone Context", text)
+        self.assertNotIn("## Repair Cycle Ledger", text)
 
     def test_proposal_pr_template_forbids_implementation(self) -> None:
         self.assertTrue(PROPOSAL_PR_TEMPLATE.is_file())
@@ -335,7 +347,7 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_review_unit_template_repair_receipt_defaults_are_valid(self) -> None:
         for path in (
-            PR_TEMPLATE,
+            REVIEW_UNIT_PR_TEMPLATE,
             PROPOSAL_PR_TEMPLATE,
             PROPOSAL_AMENDMENT_PR_TEMPLATE,
             IMPLEMENTATION_ADJUNCT_PR_TEMPLATE,
@@ -350,28 +362,18 @@ class MilestonePlanningTests(unittest.TestCase):
                     0,
                 )
 
-    def test_pr_body_edits_revalidate_repair_receipts(self) -> None:
+    def test_delivery_gates_are_parked_in_ci(self) -> None:
         text = TEST_WORKFLOW.read_text(encoding="utf-8")
-        self.assertRegex(text, r"types:.*\bedited\b")
-        self.assertIn("pull-requests: read", text)
-        self.assertIn("GH_TOKEN:", text)
-
-    def test_pr_body_edits_rerun_review_kind_validation(self) -> None:
-        text = TEST_WORKFLOW.read_text(encoding="utf-8")
-        self.assertRegex(
+        self.assertIn("python3 docs/render_markdown.py --check", text)
+        self.assertIn("python3 -m coverage run tests/run.py", text)
+        self.assertIn("Parked delivery gates", text)
+        self.assertNotIn("workflow.py validate-pr", text)
+        self.assertNotIn("GH_TOKEN:", text)
+        self.assertNotIn("pull_request_review:", text)
+        self.assertNotRegex(
             text,
             r"pull_request:\s*\n\s+types: \[[^\]]*edited[^\]]*\]",
         )
-
-    def test_review_events_rerun_receipt_validation(self) -> None:
-        text = TEST_WORKFLOW.read_text(encoding="utf-8")
-        self.assertRegex(
-            text,
-            r"pull_request_review:\s*\n\s+types: \[[^\]]*submitted[^\]]*\]",
-        )
-        self.assertIn("dismissed", text)
-        self.assertIn("github.event.pull_request.head.ref", text)
-        self.assertIn("github.event_name == 'pull_request_review'", text)
 
     def test_contract_defines_work_unit_terms_and_branch_model(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")

@@ -59,9 +59,8 @@ directory:
    test ownership, focused module runs, and the explicit simulator and Pi
    boundaries.
 4. Use [`docs/README.md`](docs/README.md) for documentation navigation,
-   architecture references, completed milestone context, and research notes.
-   Current milestone status comes from `plan.md` and
-   `python3 docs/milestones/workflow.py status --plan <plan>`.
+   architecture references, research notes, and completed.md historical
+   context. Optional change inspection: `python3 -m qca`.
 5. Treat `runtime/` and `lab/` as generated state. Start from tracked source and
    the CLI rather than using files in those directories as an API.
 

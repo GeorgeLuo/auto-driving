@@ -1,37 +1,39 @@
 # Agent Guidance
 
-**When to load:** When choosing which process guidance applies to a task or
-maintaining this directory.
+This directory contains small, task-focused guides for repository work.
 
-**Authority:** These files are derived from the canonical
-[Milestone Planning And Delivery Contract](../milestones/README.md). The
-contract wins if any wording conflicts.
-
-This directory is the short operating surface for agents. It reduces repeated
-context loading without replacing the full contract.
-
-## Selection
+## Default path
 
 | File | Load for |
 | --- | --- |
 | [agent-surface.md](agent-surface.md) | Every new or resumed work session |
-| [proposal-vs-implementation.md](proposal-vs-implementation.md) | Proposal authoring, implementation handoff, or phase questions |
-| [review-unit.md](review-unit.md) | Scoping or reviewing a PR-sized unit, including closeout and cumulative-PR assessment |
-| [repair-cycle.md](repair-cycle.md) | Addressing findings or re-reviewing repairs |
-| [validation.md](validation.md) | Planning, running, or reporting validation |
-| [adversarial-matrix.md](adversarial-matrix.md) | Universal claims, boundary audits, and fresh adversarial review |
-| [roles/meta-manager.md](roles/meta-manager.md) | Planning, review, workflow, handoff, and closeout operations |
-| [roles/implementer.md](roles/implementer.md) | Proposal authoring, implementation, and repair operations |
+| [roles/engineer.md](roles/engineer.md) | Making a requested repository change |
+| [roles/reviewer.md](roles/reviewer.md) | Reviewing, diagnosing, assessing, or explaining |
+| [orchestration/README.md](orchestration/README.md) | Only when the operator names a policy |
+
+Read another guide only when the current request clearly needs it. Keep startup
+guidance short and independent of any particular delivery history or branch
+layout.
 
 ## Maintenance
 
-- Keep each file narrow enough to load independently.
-- Summarize existing contract rules; do not create new ones here.
-- Keep milestone, branch, PR, finding, and validation state out of this
-  directory.
-- Keep automatic operation routing in the root `AGENTS.md` entrypoint and this
-  directory; do not require conversation preambles.
-- Link to the relevant contract section when a summary cannot preserve an
-  important condition.
-- Review this surface when the contract changes, removing stale or duplicated
-  wording instead of accumulating compatibility guidance.
+- Keep each default guide narrow enough to load independently.
+- Keep current task state out of reusable guidance.
+- Keep automatic operation routing in `AGENTS.md` and `agent-surface.md`.
+- Remove stale instructions instead of layering compatibility text onto them.
+
+## Parked delivery guidance
+
+These files remain in the tree so the older delivery process can be restored.
+Do not load them for new work unless the operator asks to restore that process.
+
+| File | Historical use |
+| --- | --- |
+| [roles/implementer.md](roles/implementer.md) | Proposal/implementation role |
+| [roles/meta-manager.md](roles/meta-manager.md) | Review/closeout role |
+| [proposal-vs-implementation.md](proposal-vs-implementation.md) | Phase split |
+| [review-unit.md](review-unit.md) | PR-sized review contract |
+| [repair-cycle.md](repair-cycle.md) | Review-repair ledger |
+| [validation.md](validation.md) | Contracted validation sequence |
+| [adversarial-matrix.md](adversarial-matrix.md) | Universal-claim matrices |
+| [hitl-implementation-adjunct.md](hitl-implementation-adjunct.md) | Hands-on adjunct PRs |

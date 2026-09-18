@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Automa Perception-memory Workbench</title>
+  <title>Automa Decision Playback Workbench</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
@@ -648,6 +648,7 @@
       <div class="workspace-tools">
         <button type="button" class="text-action" data-recall="memoryFrame">Memory</button>
         <button type="button" class="text-action" data-recall="evidenceFrame">Evidence</button>
+        <button type="button" class="text-action" data-recall="decisionFrame">Decision</button>
       </div>
       <section class="viewer-panel">
         <div class="viewer" id="viewerStage">
@@ -766,6 +767,41 @@
               <pre id="evidenceText">No perception output yet.</pre>
             </div>
           </article>
+          <article class="float-frame" id="decisionFrame" data-frame-anchor="tl" data-frame-width="330" data-frame-height="300">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Decision</strong>
+                <span id="decisionSummary" class="muted">no cycle</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Decision" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Decision" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <dl class="kv">
+                <dt>Frame</dt><dd id="decisionFrameIdentity">—</dd>
+                <dt>Status</dt><dd id="decisionStatus">—</dd>
+                <dt>Selected</dt><dd id="decisionSelected">—</dd>
+                <dt>Proposed</dt><dd id="decisionProposed">—</dd>
+                <dt>Authority</dt><dd id="decisionAuthority">—</dd>
+                <dt>Reason</dt><dd id="decisionReason">—</dd>
+              </dl>
+              <details class="help-details">
+                <summary>Source references</summary>
+                <pre id="decisionSource">No decision cycle yet.</pre>
+              </details>
+              <details class="help-details">
+                <summary>Candidate proposals</summary>
+                <pre id="decisionCandidates">No decision cycle yet.</pre>
+              </details>
+            </div>
+          </article>
   </div>
 
   <span id="notice" class="notice" role="status"></span>
@@ -808,7 +844,8 @@
         "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
         "memoryCount", "memoryPolicy", "memorySearch", "memoryRecords", "failurePanel", "failureText",
-        "memorySelected"
+        "memorySelected", "decisionSummary", "decisionFrameIdentity", "decisionStatus", "decisionSelected",
+        "decisionProposed", "decisionAuthority", "decisionReason", "decisionSource", "decisionCandidates"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
       var noticeTimer = null;
       var selectedRecordId = null;
@@ -1575,6 +1612,53 @@
           ? perception.lines.join("\n") : "Structured perception output has no text lines.";
       }
 
+      function renderDecision() {
+        var cycle = currentPayload("decision");
+        var frame = currentFrame();
+        if (!cycle) {
+          setText("decisionSummary", "no cycle");
+          setText("decisionFrameIdentity", frame ? frame.frame_id : null);
+          setText("decisionStatus", null);
+          setText("decisionSelected", null);
+          setText("decisionProposed", null);
+          setText("decisionAuthority", null);
+          setText("decisionReason", null);
+          elements.decisionSource.textContent = "No decision cycle yet.";
+          elements.decisionCandidates.textContent = "No decision cycle yet.";
+          return;
+        }
+        var plan = cycle.plan || {};
+        var authority = cycle.authority || {};
+        var proposed = authority.proposed || {};
+        var selected = plan.selected_proposal_id || "none";
+        var candidates = Array.isArray(plan.candidates) ? plan.candidates : [];
+        setText("decisionSummary", text(cycle.status, "unknown") + " · " + selected);
+        setText("decisionFrameIdentity", frame ? frame.frame_id : cycle.frame_id);
+        setText("decisionStatus", text(cycle.status, "unknown") + " / " + text(plan.status, "no plan"));
+        setText("decisionSelected", selected);
+        setText("decisionProposed", proposed && Object.keys(proposed).length
+          ? "steering=" + text(proposed.steering, "—") + " throttle=" + text(proposed.throttle, "—")
+          : "none");
+        setText("decisionAuthority", authority.proposed_applied === false
+          ? "shadow idle · applied=false" : "unavailable");
+        setText("decisionReason", cycle.reason || (plan.reason || "—"));
+        var sourceRefs = [];
+        candidates.forEach(function (candidate) {
+          (candidate.source_refs || []).forEach(function (source) { sourceRefs.push(source); });
+        });
+        elements.decisionSource.textContent = sourceRefs.length
+          ? JSON.stringify(sourceRefs, null, 2) : "No source references.";
+        elements.decisionCandidates.textContent = candidates.length
+          ? candidates.map(function (candidate) {
+            return [
+              text(candidate.plugin_id, "unknown"),
+              "lifecycle=" + text(candidate.lifecycle, "—"),
+              "reason=" + text(candidate.reason, "—"),
+              "command=" + JSON.stringify(candidate.command || null)
+            ].join("\n");
+          }).join("\n\n") : "No candidate proposals.";
+      }
+
       function memorySearchPattern() {
         var term = String(elements.memorySearch.value || "").trim().toLowerCase();
         if (!term) return null;
@@ -1798,6 +1882,7 @@
           }
           renderEvidence();
           renderMemory();
+          renderDecision();
           renderFailure();
         }
         renderControls();
@@ -1833,7 +1918,7 @@
         pollTimer = window.setTimeout(poll, delay);
       }
 
-      ["memoryFrame", "evidenceFrame"].forEach(function (id) {
+      ["memoryFrame", "evidenceFrame", "decisionFrame"].forEach(function (id) {
         bindFloatingFrame(document.getElementById(id));
       });
       Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {

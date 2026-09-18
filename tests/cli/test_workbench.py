@@ -85,6 +85,34 @@ class FixtureMapper:
         )
 
 
+class DecisionFixtureMapper(FixtureMapper):
+    def perceive(self, request) -> PerceptionText:
+        reading = request.sensor("front_camera")
+        path = reading.path if reading is not None else ""
+        self.calls.append(str(path))
+        return PerceptionText(
+            schema=PERCEPTION_TEXT_SCHEMA,
+            plugin_id=self.plugin_id,
+            status="ok",
+            lines=("decision evidence",),
+            signals=(),
+            things=(
+                PerceivedThing(
+                    thing_id="obstruction",
+                    kind="floor_boundary",
+                    label="floor boundary",
+                    location=ViewLocation(
+                        frame="image",
+                        zone="left",
+                        bbox_xyxy_norm=(0.1, 0.1, 0.3, 0.4),
+                    ),
+                    confidence=0.9,
+                    source_plugin_id=self.plugin_id,
+                ),
+            ),
+        )
+
+
 class ErrorStatusMapper(FixtureMapper):
     def perceive(self, request) -> PerceptionText:
         self.calls.append("error")
@@ -143,6 +171,14 @@ def _wait_until(predicate, timeout: float = 3.0) -> None:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_workbench_exposes_decision_playback_projection(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+        self.assertIn('data-recall="decisionFrame"', html)
+        self.assertIn('id="decisionFrame"', html)
+        self.assertIn("function renderDecision() {", html)
+        self.assertIn("authority.proposed_applied === false", html)
+        self.assertIn("renderDecision();", html)
+
     def test_workbench_keeps_plugin_checkbox_nodes_stable_between_state_polls(self) -> None:
         html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
         render_plugins = html.split("function renderPlugins() {", 1)[1].split(
@@ -636,6 +672,50 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
 
+    def test_runner_persists_frame_correlated_shadow_decision_playback(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            mapper = DecisionFixtureMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: mapper,
+            )
+            runner.start()
+            state = runner.wait(5)
+            frame_id = state["timeline"][0]["frame"]["frame_id"]
+            detail = runner.frame_detail(frame_id, run_id=state["run_id"])
+
+        decision = state["decision"]
+        first_decision = detail["decision"]
+        self.assertEqual(state["phase"], "completed")
+        self.assertEqual(decision["frame_id"], state["current_frame"]["frame_id"])
+        self.assertEqual(decision["plan"]["status"], "selected")
+        self.assertTrue(
+            decision["plan"]["selected_proposal_id"].startswith(
+                "avoid_recent_obstruction:"
+            )
+        )
+        self.assertEqual(decision["authority"]["proposed"]["steering"], 0.35)
+        self.assertFalse(decision["authority"]["proposed_applied"])
+        self.assertEqual(
+            state["timeline"][0]["decision"]["selected_proposal_id"],
+            first_decision["plan"]["selected_proposal_id"],
+        )
+        self.assertFalse(state["timeline"][0]["decision"]["proposed_applied"])
+        self.assertEqual(first_decision["frame_id"], frame_id)
+        self.assertFalse(first_decision["authority"]["proposed_applied"])
+        self.assertEqual(
+            state["machine_detail"]["pipeline"]["decision_engine"],
+            "shadow-proposals",
+        )
+        self.assertFalse(
+            state["machine_detail"]["pipeline"]["decision_config"][
+                "proposed_applied"
+            ]
+        )
+
     def test_absence_does_not_invoke_perception_or_fabricate_image(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -746,6 +826,10 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(sought["position"], 3)
             self.assertEqual(len(mapper.calls), calls_after_first + 1)
             self.assertEqual(
+                sought["decision"]["frame_id"],
+                sought["current_frame"]["frame_id"],
+            )
+            self.assertEqual(
                 sought["current_frame"]["frame_id"],
                 sought["timeline"][-1]["frame"]["frame_id"],
             )
@@ -754,6 +838,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["phase"], "paused")
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
+            self.assertEqual(cached["decision"]["frame_id"], first_id)
             self.assertEqual(len(mapper.calls), calls_after_first + 1)
 
             with self.assertRaises(ReplayActionError):
@@ -1214,6 +1299,11 @@ class WorkbenchTests(unittest.TestCase):
             payload["machine_detail"]["pipeline"]["perception_algorithm"],
             "lightweight_observer",
         )
+        self.assertEqual(
+            payload["decision"]["frame_id"],
+            payload["current_frame"]["frame_id"],
+        )
+        self.assertFalse(payload["decision"]["authority"]["proposed_applied"])
         self.assertNotIn("argv", payload)
 
     def test_cli_replay_accepts_realtime_pace(self) -> None:

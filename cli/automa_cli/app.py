@@ -812,7 +812,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     workbench = vehicle_commands.add_parser(
         "workbench",
-        help="Replay images through the perception-memory workbench.",
+        help="Replay images through the decision playback workbench.",
     )
     workbench.set_defaults(handler=_handle_vehicles_workbench_help)
     workbench_commands = workbench.add_subparsers(
@@ -826,11 +826,15 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_help.set_defaults(handler=_handle_vehicles_workbench_help)
     workbench_replay = workbench_commands.add_parser(
         "replay",
-        help="Replay an ordered image directory through perception and memory.",
+        help=(
+            "Replay an ordered image directory through perception, memory, and "
+            "decisions."
+        ),
         description=(
-            "Run the bounded M008 perception-memory workbench against an ordered "
+            "Run the bounded decision playback workbench against an ordered "
             "local image directory. The server owns source ordering, perception, "
-            "observation, bounded memory, and any selected manifest-backed plugins. "
+            "observation, bounded memory, shadow decision state, and any selected "
+            "manifest-backed plugins. "
             "Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
             "pause, step, reset, and another run."
@@ -1715,7 +1719,10 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (reset, replay, lifecycle check)",
                 "- decision     offline decision apply/replay (stage via update decision)",
-                "- workbench    replay images through perception and bounded memory",
+                (
+                    "- workbench    replay images through perception, memory, and "
+                    "decisions"
+                ),
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
@@ -2234,7 +2241,10 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles workbench commands",
                 "",
-                "- replay  replay an ordered image directory through perception and memory",
+                (
+                    "- replay  replay an ordered image directory through perception, "
+                    "memory, and decisions"
+                ),
                 "- help    show this summary",
                 "",
                 "Detailed help:",

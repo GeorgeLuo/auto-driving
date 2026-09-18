@@ -238,6 +238,28 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(p.lifecycle, "inactive")
         self.assertIsNone(p.command)
 
+    def test_chase_compound_zone_with_bbox_is_active(self) -> None:
+        """Live floor_continuity zones are mid_left/near_right, not exact left/right."""
+
+        p = propose(
+            _source(
+                (
+                    _record(
+                        kind="floor_boundary",
+                        zone="mid_right",
+                        bbox=(0.6432, 0.4739, 0.7027, 0.4823),
+                        frame_id="frame_001",
+                    ),
+                )
+            )
+        )
+        self.assertEqual(p.lifecycle, "fresh")
+        self.assertTrue(p.available)
+        self.assertIsNotNone(p.command)
+        assert p.command is not None
+        self.assertLess(p.command.steering, 0.0)
+        self.assertEqual(p.reason, "steer_away_right_obstruction")
+
     def test_uppercase_zone_is_not_exact_lateral_cue(self) -> None:
         p = propose(
             _source(

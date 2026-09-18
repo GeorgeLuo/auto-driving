@@ -69,6 +69,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
+MAX_DECISION_FILE_BYTES = 8 * 1024 * 1024
 # Observe-only continuous runs allow playback/input to evolve; identity and
 # control authority must stay fixed until stop.
 PASSIVE_RUN_STABLE_FIELDS = (
@@ -295,6 +296,12 @@ def run_vehicle_automation(
             automation_dir=automation_dir,
             run_id=run_id,
             worker_pid=os.getpid(),
+            decision_activation=(
+                decision_activation
+                if decision_config.get("engine_id") == "shadow-proposals"
+                else None
+            ),
+            decision_activation_path=Path(bundle["decision_runtime_dir"]) / "active.json",
         ).start()
         published_view = view_server.describe()
     except (OSError, RuntimeError, ValueError) as exc:
@@ -498,9 +505,9 @@ def run_vehicle_automation(
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
         cycle_result = cycle_host.run(context)
-        # Publish generation-scoped shadow decision frame when gates pass.
-        # Non-fatal: log/count skips; never invent a partial shadow frame.
-        # Live activation is re-read inside publish_shadow_decision_frame.
+        # Publish the accepted shadow frame first. The server-owned decision
+        # transaction is joined only after the full frame record exists below.
+        published = False
         try:
             engine = cycle_host.manager.engine
             last_cycle = getattr(engine, "last_cycle_result", None)
@@ -618,9 +625,33 @@ def run_vehicle_automation(
             }
         if view_server is not None:
             try:
+                if published:
+                    latest_decision = _read_latest_decision_frame_for_view(
+                        automation_dir / "latest_decision.json",
+                        frame_id=context.frame_id,
+                        run_id=str(state.get("run_id") or run_id),
+                        worker_pid=int(state.get("pid") or os.getpid()),
+                        activation_activated_at_ms=decision_activation.get("activated_at_ms"),
+                    )
+                    if latest_decision is None:
+                        view_server.decision.invalidate_latest()
+                        decision_view_skip = True
+                    else:
+                        decision_view_skip = not view_server.decision.publish(
+                            stream_frame=latest_decision,
+                            frame_record=frame_record,
+                            image=view_server.perception.frame(context.frame_id),
+                        )
+                    if decision_view_skip:
+                        _record_decision_publish_skip(
+                            state,
+                            state_path,
+                            state_lock,
+                            reason="decision_view_exact_transaction_unavailable",
+                        )
                 view_server.perception.publish_perception(frame_record=frame_record)
                 update_view_state(view_server.health_payload())
-            except (OSError, TypeError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001 - view publication is observational
                 update_view_state(
                     {
                         **view_server.describe(),
@@ -722,6 +753,8 @@ def run_vehicle_automation(
                     worker_errors.append(exc)
                     worker_failed.set()
             finally:
+                if isinstance(item, _PendingAutomationFrame) and view_server is not None:
+                    view_server.perception.release_frame(item.context.frame_id)
                 if isinstance(item, _PendingAutomationFrame) and not record:
                     item.front_path.unlink(missing_ok=True)
                 pending_frames.task_done()
@@ -744,6 +777,8 @@ def run_vehicle_automation(
                     continue
                 if isinstance(dropped, _PendingAutomationFrame) and not record:
                     dropped.front_path.unlink(missing_ok=True)
+                if isinstance(dropped, _PendingAutomationFrame) and view_server is not None:
+                    view_server.perception.release_frame(dropped.context.frame_id)
                 pending_frames.task_done()
                 with state_lock:
                     state["frames_dropped"] = int(state["frames_dropped"]) + 1
@@ -755,6 +790,8 @@ def run_vehicle_automation(
             except queue.Empty:
                 dropped = None
             if isinstance(dropped, _PendingAutomationFrame):
+                if view_server is not None:
+                    view_server.perception.release_frame(dropped.context.frame_id)
                 if not record:
                     dropped.front_path.unlink(missing_ok=True)
                 with state_lock:
@@ -932,7 +969,7 @@ def run_vehicle_automation(
                 try:
                     view_server.perception.publish_frame(frame_path=front_path, frame_record=capture_record)
                     update_view_state(view_server.health_payload())
-                except (OSError, TypeError, ValueError) as exc:
+                except Exception as exc:  # noqa: BLE001 - view publication is observational
                     update_view_state(
                         {
                             **view_server.describe(),
@@ -960,6 +997,8 @@ def run_vehicle_automation(
                     "control_application": "stop_only_safety_gate" if take_control else "not_applied",
                 },
             )
+            if view_server is not None:
+                view_server.perception.retain_frame(frame_id)
             enqueue_latest(
                 _PendingAutomationFrame(
                     context=context,
@@ -2392,6 +2431,36 @@ def _record_decision_publish_skip(
                 pass
     except Exception:  # noqa: BLE001 - counter path must never raise
         pass
+
+
+def _read_latest_decision_frame_for_view(
+    path: Path,
+    *,
+    frame_id: str,
+    run_id: str,
+    worker_pid: int,
+    activation_activated_at_ms: Any,
+) -> dict[str, Any] | None:
+    """Read only the bounded frame just accepted by this worker generation."""
+
+    try:
+        payload = Path(path).read_bytes()
+        if len(payload) > MAX_DECISION_FILE_BYTES:
+            return None
+        frame = json.loads(payload.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(frame, dict):
+        return None
+    if (
+        frame.get("frame_id") != frame_id
+        or frame.get("run_id") != run_id
+        or frame.get("worker_pid") != worker_pid
+        or frame.get("activation_engine_id") != "shadow-proposals"
+        or frame.get("activation_activated_at_ms") != activation_activated_at_ms
+    ):
+        return None
+    return frame
 
 
 def _stop_perception_view(view_server: RuntimeViewServer | None) -> dict[str, Any]:

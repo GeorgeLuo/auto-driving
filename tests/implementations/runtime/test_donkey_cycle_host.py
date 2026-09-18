@@ -251,8 +251,11 @@ class RuntimeCycleHostTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         marker = "autonomy_part = AutonomyPilotPart("
         self.assertIn(marker, source)
-        snippet = source[source.index(marker) : source.index(marker) + 900]
+        snippet = source[source.index(marker) : source.index(marker) + 1600]
         self.assertIn("min_interval_s=observation_interval_s", snippet)
+        self.assertIn("source_id=source_id if telemetry_store is not None else None", snippet)
+        self.assertIn("generation_id=generation_id if telemetry_store is not None else None", snippet)
+        self.assertIn("run_id=run_id if telemetry_store is not None else None", snippet)
         self.assertIn("observation_publisher = autonomy_part", snippet)
         self.assertNotIn("run_condition", snippet)
         self.assertIn("AUTONOMY_OBSERVATION_INTERVAL_S", source)

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>decision-combined-v0 chase_frame_3073455</title>
+  <style>
+    body { font-family: ui-monospace, monospace; margin: 1.5rem; }
+    section { margin-bottom: 1.25rem; }
+    h1, h2 { margin: 0 0 0.5rem 0; }
+    .emph { color: #a40; font-weight: bold; }
+    img { max-width: 480px; border: 1px solid #444; }
+  </style>
+</head>
+<body>
+  <h1>decision-combined-v0</h1>
+  <p>vehicle=chase-sim-chaser frame_id=chase_frame_3073455</p>
+  <section id="observation">
+    <h2>Observation / camera</h2>
+    <img src="../source_frames/chase_frame_3073455.png" alt="frame chase_frame_3073455" />
+  </section>
+  <section id="memory">
+    <h2>Retained evidence</h2>
+    <p>status=ready health=healthy
+       records=7</p>
+    <ul><li>{&#x27;record_id&#x27;: &#x27;signal:1:14:floor-plane-v0:13:floor_visible&#x27;, &#x27;kind&#x27;: &#x27;signal&#x27;, &#x27;confidence&#x27;: 1.0, &#x27;frame_id&#x27;: &#x27;chase_frame_3073455&#x27;, &#x27;observation_id&#x27;: &#x27;chase_frame_3073455&#x27;}</li><li>{&#x27;record_id&#x27;: &#x27;signal:1:14:floor-plane-v0:24:floor_boundary_available&#x27;, &#x27;kind&#x27;: &#x27;signal&#x27;, &#x27;confidence&#x27;: 0.889845, &#x27;frame_id&#x27;: &#x27;chase_frame_3073455&#x27;, &#x27;observation_id&#x27;: &#x27;chase_frame_3073455&#x27;}</li><li>{&#x27;record_id&#x27;: &#x27;signal:1:20:frame-observation-v0:22:front_camera_available&#x27;, &#x27;kind&#x27;: &#x27;signal&#x27;, &#x27;confidence&#x27;: 1.0, &#x27;frame_id&#x27;: &#x27;chase_frame_3073455&#x27;, &#x27;observation_id&#x27;: &#x27;chase_frame_3073455&#x27;}</li><li>{&#x27;record_id&#x27;: &#x27;thing:1:14:floor-plane-v0:17:traversable_floor&#x27;, &#x27;kind&#x27;: &#x27;surface&#x27;, &#x27;confidence&#x27;: 1.0, &#x27;frame_id&#x27;: &#x27;chase_frame_3073455&#x27;, &#x27;observation_id&#x27;: &#x27;chase_frame_3073455&#x27;}</li><li>{&#x27;record_id&#x27;: &#x27;thing:1:14:floor-plane-v0:18:floor_boundary_000&#x27;, &#x27;kind&#x27;: &#x27;floor_boundary&#x27;, &#x27;confidence&#x27;: 1.0, &#x27;frame_id&#x27;: &#x27;chase_frame_3073455&#x27;, &#x27;observation_id&#x27;: &#x27;chase_frame_3073455&#x27;}</li><li>{&#x27;record_id&#x27;: &#x27;thing:1:14:floor-plane-v0:18:floor_boundary_001&#x27;, &#x27;kind&#x27;: &#x27;floor_boundary&#x27;, &#x27;confidence&#x27;: 0.77969, &#x27;frame_id&#x27;: &#x27;chase_frame_3073455&#x27;, &#x27;observation_id&#x27;: &#x27;chase_frame_3073455&#x27;}</li><li>{&#x27;record_id&#x27;: &#x27;thing:1:20:frame-observation-v0:18:front_camera_frame&#x27;, &#x27;kind&#x27;: &#x27;sensor_frame&#x27;, &#x27;confidence&#x27;: 1.0, &#x27;frame_id&#x27;: &#x27;chase_frame_3073455&#x27;, &#x27;observation_id&#x27;: &#x27;chase_frame_3073455&#x27;}</li></ul>
+  </section>
+  <section id="proposals">
+    <h2>Proposals</h2>
+    <ul><li>plugin=avoid_recent_obstruction lifecycle=fresh freshness=fresh conf=1.0 reason=steer_away_left_obstruction command={&#x27;steering&#x27;: 0.35, &#x27;throttle&#x27;: 0.0} source_refs=[{&quot;frame_id&quot;: &quot;chase_frame_3073455&quot;, &quot;id&quot;: &quot;thing:1:14:floor-plane-v0:18:floor_boundary_000&quot;, &quot;kind&quot;: &quot;memory_record&quot;, &quot;note&quot;: &quot;primary_obstruction&quot;, &quot;observation_id&quot;: &quot;chase_frame_3073455&quot;, &quot;plugin_id&quot;: &quot;floor-plane-v0&quot;}]</li></ul>
+  </section>
+  <section id="selection">
+    <h2>Selection</h2>
+    <p>status=selected
+       selected_proposal_id=avoid_recent_obstruction:chase_frame_3073455</p>
+    <p>contribution_plugins=avoid_recent_obstruction</p>
+  </section>
+  <section id="source_refs">
+    <h2>source_refs</h2>
+    <pre>[
+  {
+    &quot;frame_id&quot;: &quot;chase_frame_3073455&quot;,
+    &quot;id&quot;: &quot;thing:1:14:floor-plane-v0:18:floor_boundary_000&quot;,
+    &quot;kind&quot;: &quot;memory_record&quot;,
+    &quot;note&quot;: &quot;primary_obstruction&quot;,
+    &quot;observation_id&quot;: &quot;chase_frame_3073455&quot;,
+    &quot;plugin_id&quot;: &quot;floor-plane-v0&quot;
+  }
+]</pre>
+  </section>
+  <section id="authority">
+    <h2>Authority</h2>
+    <p>proposed={&#x27;schema&#x27;: &#x27;proposed_vehicle_command_v0&#x27;, &#x27;steering&#x27;: 0.35, &#x27;throttle&#x27;: 0.0, &#x27;gear&#x27;: &#x27;hold&#x27;, &#x27;normalized&#x27;: True}</p>
+    <p>authorized_output={&#x27;steering&#x27;: 0.0, &#x27;throttle&#x27;: 0.0, &#x27;confidence&#x27;: 1.0, &#x27;reason&#x27;: &#x27;shadow-only-idle&#x27;}</p>
+    <p class="emph">proposed_applied=false</p>
+    <p>host_application={&#x27;status&#x27;: &#x27;unavailable&#x27;, &#x27;value&#x27;: None, &#x27;reason&#x27;: &#x27;host_did_not_report_application&#x27;, &#x27;updated_at_ms&#x27;: 0}</p>
+  </section>
+  <section id="non-claims">
+    <h2>Non-claims</h2>
+    <p>no object identity; shadow-only; not navigation certification.</p>
+  </section>
+</body>
+</html>

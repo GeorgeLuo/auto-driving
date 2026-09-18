@@ -1,0 +1,45 @@
+{
+  "activation": "runtime/vehicles/chase-sim-chaser/bundle/runtime/decision/active.json",
+  "deterministic": true,
+  "digest": {
+    "frame_count": 1,
+    "frames": [
+      {
+        "authorized_output": {
+          "confidence": 1.0,
+          "reason": "shadow-only-idle",
+          "steering": 0.0,
+          "throttle": 0.0
+        },
+        "candidates": [
+          {
+            "confidence": 1.0,
+            "lifecycle": "fresh",
+            "plugin_id": "avoid_recent_obstruction",
+            "reason": "steer_away_left_obstruction"
+          }
+        ],
+        "cycle_reason": "",
+        "cycle_status": "ok",
+        "frame_id": "chase_frame_3073455",
+        "plan_status": "selected",
+        "proposed": {
+          "steering": 0.35,
+          "throttle": 0.0
+        },
+        "proposed_applied": false,
+        "selected_proposal_id": "avoid_recent_obstruction:chase_frame_3073455"
+      }
+    ],
+    "schema": "vehicle_decision_apply_digest_v0"
+  },
+  "digest_sha256": "4b7f8c92e446c4f0596ef9eac6f39dda5184013786f134a3cdf85d49d83468ca",
+  "engine_id": "shadow-proposals",
+  "frame_count": 1,
+  "from_run": "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/chase",
+  "record_dir": "lab/runs/decision-apply/chase-sim-chaser-20260918T013655Z-211656",
+  "recorded": true,
+  "schema": "vehicle_decision_apply_result_v0",
+  "second_pass_digest_sha256": "4b7f8c92e446c4f0596ef9eac6f39dda5184013786f134a3cdf85d49d83468ca",
+  "vehicle_id": "chase-sim-chaser"
+}

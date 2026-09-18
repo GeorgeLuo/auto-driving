@@ -1,13 +1,14 @@
 # M006 cross-environment shadow-proposal evidence
 
-Status: **incomplete; canonical capture not ready**.
+Status: **captured for review; canonical acceptance not complete**.
 
 This directory is the stable per-frontier evidence root required by the
-accepted M006 proposal. The committed material currently contains the frozen
-procedure, fail-closed readiness result, and one explicitly preparatory offline
-public-door check. It does not contain a successful Chase or PiRacer package.
-No live worker, simulator, vehicle, or physical control was started by this
-run.
+accepted M006 proposal. It contains the frozen procedure plus bounded live
+Chase and stationary PiRacer captures. The captures prove the shared decision
+surface, a selected fresh proposal, exact source imagery, zero authorized/applied
+control, Chase session preservation, and the PiRacer host-telemetry join. They
+do not claim that every C1-C7 case passed; the unresolved cases remain visible
+in `result.json` and keep M006-06/M006-07 unmet.
 
 ## Authority and scope
 
@@ -44,18 +45,20 @@ Canonical capture is allowed only when all of the following are recorded:
 5. The operator explicitly authorizes the bounded Chase and stationary PiRacer
    capture after reviewing those receipts.
 
-The current result is blocked before step 5. D1 and D2 are provisional
-candidate conditions, not implementation permission. This evidence unit does
-not implement either capability or edit the accepted proposal.
+The recorded capture passed the D1/D2 availability checks and was performed
+after the operator directed the evidence work to proceed. The current result
+is blocked after capture, at case acceptance. D1 and D2 remain capability
+receipts, not a claim that M006-06/M006-07 are complete. This evidence unit
+does not edit the accepted proposal.
 
 ### Current receipts
 
 | Receipt | Status | Observation | Impact |
 | --- | --- | --- | --- |
 | Proposal/workflow identity | verified | Plan reports `ready_for_implementation`; PR #201 acceptance is recorded at merge `9e2a353c` from reviewed head `f9705785`. | Preparation may continue. |
-| D1 physical shadow-cycle publication/liveness | blocked | `cli/automa_cli/automation.py` discovers with `include_picar=False` and rejects every provider other than `chase-sim`; the documented automation worker therefore has no PiRacer shadow-cycle publication route. | M006-07 physical live capture cannot be claimed. |
-| D2 live decision URL/retained-evidence overlay | blocked | Staged decision `info` returns `combined_view.url: null` and only `cli/automa_cli/decision_view.html#decision-combined-v0`; the CLI exposes offline `apply` and terminal `stream`, not a live decision-view command. | The live visual-correlation claim cannot be claimed. |
-| Operator capture authorization | pending | No authorization is valid while D1/D2 receipts are blocked. | Do not start canonical capture. |
+| D1 physical shadow-cycle publication/liveness | verified for capture | PiRacer `/autonomy/decision/latest` and `/autonomy/telemetry/latest` expose the live generation, run, source frame, sequence, mode, pilot output, and zero selected output; the local `vehicles decision live --id piracer` view joined six bounded samples. | Point joins are captured; the viewer still reports `interval_covered=false` for the sampled view. |
+| D2 live decision URL/retained-evidence overlay | verified for capture | `vehicles decision live --id piracer` served a generation-bound `/decision` page; headless Chromium rendered the actual PiRacer frame, proposal, authority, host-telemetry panel, and evidence findings. Chase supplied the same live API/page plus exact-frame replay HTML. | Visual availability is proven; the accepted lifecycle/side matrix is not complete. |
+| Operator capture authorization | recorded | Capture proceeded under the operator direction to continue the work; no control command was issued. | Human acceptance of the remaining evidence gaps is still required before M006 closeout. |
 
 The exact machine-readable disposition is in [result.json](result.json), with
 the derived review page in [result.html](result.html). The JSON record is
@@ -88,8 +91,8 @@ python3 report_packet.py --record result.json --html result.html
 
 The report prints `PASS`, `FAIL`, `BLOCKED`, and `REVIEW` rows. `FAIL` and
 `BLOCKED` produce a nonzero exit status; `REVIEW` remains a manual action and
-does not become a machine-certified pass. The committed record remains the
-incomplete preparation packet until real evidence is captured.
+does not become a machine-certified pass. This record is captured but remains
+unaccepted while the case gaps listed in `result.json` are unresolved.
 
 ## Frozen capture procedure (when the gate is satisfied)
 

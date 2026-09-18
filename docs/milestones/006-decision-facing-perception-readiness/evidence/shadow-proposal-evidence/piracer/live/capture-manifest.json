@@ -1,0 +1,9 @@
+{
+  "schema": "automa_piracer_shadow_capture_v0",
+  "generation_id": "bcb0f79426f89a5c6a90541f46dae3cdbfb2fe325a4e02cf8b936c814699bee9",
+  "frame_id": "donkey_frame_005767",
+  "image_url": "/api/decision/image?generation=bcb0f79426f89a5c6a90541f46dae3cdbfb2fe325a4e02cf8b936c814699bee9&id=35b77a44bf6261da3a41d85b14581e6d3e9489fd8bf3ec68f7959c70e0ec3abe",
+  "samples": 6,
+  "source": "live PiRacer + local decision view",
+  "control_applied": false
+}

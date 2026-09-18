@@ -1,0 +1,44 @@
+{
+  "command": [
+    "/Library/Frameworks/Python.framework/Versions/3.10/bin/python3",
+    "/private/tmp/m006-shadow-evidence/cli/automa",
+    "vehicles",
+    "automation",
+    "run",
+    "--id",
+    "chase-sim-chaser",
+    "--timeout-s",
+    "5.0",
+    "--interval-s",
+    "3.5",
+    "--frames",
+    "0",
+    "--foreground",
+    "--observe-only",
+    "--record"
+  ],
+  "latest_perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
+  "log_path": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/automation.log",
+  "log_to_disk": true,
+  "pid": 67056,
+  "schema": "automa_automation_process_v0",
+  "started_at_ms": 1789695229520,
+  "startup": {
+    "phases": {
+      "capture": {
+        "status": "complete"
+      },
+      "perception": {
+        "status": "complete"
+      },
+      "view": {
+        "status": "incomplete"
+      }
+    },
+    "reason": "worker is still running but did not publish one correlated camera/perception frame and current-generation view within 20.0s",
+    "status": "failed"
+  },
+  "state_path": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json",
+  "stream_command": "./cli/automa vehicles stream perception --id chase-sim-chaser",
+  "vehicle_id": "chase-sim-chaser"
+}

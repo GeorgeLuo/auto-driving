@@ -1,95 +1,42 @@
 # Agent Operating Surface
 
-**When to load:** At the start or resumption of every planning, implementation,
-review, repair, or closeout session.
+**When to load:** At the start or resumption of every repository task.
 
-**Authority:** This is a derived router for the canonical
-[Milestone Planning And Delivery Contract](../milestones/README.md). The
-contract wins if any wording conflicts.
+This is a lightweight task router. It keeps startup guidance separate from
+product documentation and asks an agent to load only what the current request
+needs.
 
 ## Start
 
-1. Read [docs/README.md](../README.md) for repository documentation navigation.
-2. If the latest operator request explicitly names a versioned orchestration
-   policy, load that exact policy from [orchestration/](orchestration/README.md)
-   in addition to the normal role/task guidance. Do not infer a policy when the
-   operator did not select one.
-3. Classify the requested operation using the role routing below.
-4. Load the selected role guidance.
-5. Identify the active milestone plan and run its documented workflow status
-   command when milestone work is involved.
-6. Load only the task guidance selected below.
-7. Read current task data: the active plan, accepted proposal, relevant diff,
-   findings, and latest validation evidence.
-8. Load the full contract only when this surface directs it, workflow meaning
-   is ambiguous, or the workflow itself is being changed.
+1. Classify the latest user request.
+2. Load only the selected role guidance below.
+3. Inspect the current repository state and the relevant source, tests,
+   documentation, configuration, and tooling.
+4. Make the smallest complete change that answers the request.
+5. Run focused validation and report the result, remaining uncertainty, and
+   any requested follow-up.
 
-A selected orchestration policy organizes execution only. It does not authorize
-a phase transition, override the canonical contract, or replace role/task
-guidance.
+An explicit operation in the latest request wins. A short continuation such as
+`proceed` keeps the current role when the next action is clear; otherwise use
+the repository state and the request to classify it.
 
 ## Role Routing
 
 | Requested operation | Role guidance |
 | --- | --- |
-| Review, re-review, audit, assess, plan, workflow, handoff, closeout, or determine what comes next | [roles/meta-manager.md](roles/meta-manager.md) |
-| Author a proposal, implement, fix, build, or address findings | [roles/implementer.md](roles/implementer.md) |
+| Change, fix, build, or update code, configuration, or documentation | [roles/engineer.md](roles/engineer.md) |
+| Review, audit, diagnose, assess, explain, or investigate | [roles/reviewer.md](roles/reviewer.md) |
 
-An explicit operation in the latest request wins. A continuation such as
-`proceed` retains the established role only when the requested next action is
-clear. Otherwise, inspect the active workflow state and current PR before
-classifying; ask only if the operation remains ambiguous.
+Do not preload every guide. Read repository documentation only when it is
+relevant to the requested behavior or interface.
 
-Role classification does not authorize a phase transition. The recorded
-workflow state determines whether proposal, implementation, review, handoff, or
-closeout work is permitted.
+## Scope
 
-## Task Loading
+Keep the repository's normal callers and public paths as the compatibility
+surface. Prefer a focused implementation and a focused check over speculative
+frameworks, broad cleanup, or hypothetical consumers. Preserve unrelated
+working-tree changes.
 
-| Current work | Additional guidance |
-| --- | --- |
-| Scope or author a proposal | [proposal-vs-implementation.md](proposal-vs-implementation.md), [review-unit.md](review-unit.md) |
-| Implement an accepted proposal | [proposal-vs-implementation.md](proposal-vs-implementation.md), [validation.md](validation.md) |
-| Review a proposal or implementation | [review-unit.md](review-unit.md), [adversarial-matrix.md](adversarial-matrix.md) |
-| Review closeout or assess/merge a cumulative milestone PR | [review-unit.md](review-unit.md) closeout section and [roles/meta-manager.md](roles/meta-manager.md) |
-| Repair or re-review findings | [repair-cycle.md](repair-cycle.md), [validation.md](validation.md), and relevant adversarial rows |
-| Human-requested change discovered during implementation | [hitl-implementation-adjunct.md](hitl-implementation-adjunct.md), [review-unit.md](review-unit.md), and [validation.md](validation.md) |
-| Prepare a handoff | [proposal-vs-implementation.md](proposal-vs-implementation.md) |
-| Change process or milestone mechanics | Full canonical contract |
-
-Do not preload every role or task guidance file.
-
-Keep the repository's documented callers and regular paths as the primary
-compatibility surface. Apply the selected review or validation guidance to the
-happy path first; reject unsupported usage explicitly rather than creating
-work for hypothetical callers unless the accepted question or a safety or
-integrity contract requires it.
-
-## External Capability Gaps
-
-When work depends on a separately owned repository—especially Metrics UI—do
-not silently work around a missing capability or assume the dependency cannot
-change. Inspect the available interface, identify the owning boundary, and
-surface the smallest external flag, query, capability, or structured failure
-contract that would unblock the operator journey. With explicit operator
-authorization, create or update the external issue and link it from the current
-proposal, PR, evidence, or risk record.
-
-Follow the canonical
-[externally owned capability gap contract](../milestones/README.md#externally-owned-capability-gaps)
-for required evidence, issue content, authorization, and non-hacky boundaries.
-
-## Conversation State
-
-Use long-running conversations for immediate continuity only. Preserve a short
-checkpoint containing:
-
-- repository, branch, PR, base, and head;
-- workflow state and current review question;
-- unresolved findings or decisions;
-- latest validation evidence;
-- next permitted action.
-
-Reload durable rules from this directory rather than relying on accumulated
-chat history. Reload current milestone state from its plan rather than copying
-it into guidance.
+Use ordinary version-control and hosting mechanics when the user asks for a
+branch or pull request. They are delivery tools, not a reason to add extra
+artifacts or delay an otherwise complete task.

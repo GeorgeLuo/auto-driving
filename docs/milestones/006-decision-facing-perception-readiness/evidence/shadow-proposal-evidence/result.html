@@ -20,31 +20,31 @@
 <body>
   <h1>M006 cross-environment shadow-proposal evidence</h1>
   <p class="meta">status=<span class="badge">captured</span>
-    · result.json sha256=<code>0d6603c6473e4ecaec9a0311a4dccead535e8829520bb1f3bb1fc55c77a339b3</code></p>
+    · result.json sha256=<code>c2ee4df0c15f6e843c6ebc65ca14c6aec7c4d88e8aff95e35c643aae2861340a</code></p>
   <div class="note">
     This page is derived from adjacent committed <code>result.json</code>.
     Machine verification covers required shape and declared artifact existence
     only. Visual and operator conclusions remain recorded human review.
   </div>
   <h2>Criteria</h2>
-  <table><tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr><tr><td><code>M006-06</code></td><td>Review</td><td>Live Chase and stationary PiRacer packages show the shared shadow decision view, exact source imagery, fresh selected intent, and zero proposed-applied control. The accepted right-side and no-reset freshness lifecycle cases are not captured.</td></tr>
-<tr><td><code>M006-07</code></td><td>Review</td><td>Chase passive capture preserved the session and kept evaluator reference data separate; six PiRacer point joins were healthy in user mode with zero user, pilot, and host-selected output. The viewer reports point coverage rather than a continuous interval.</td></tr></table>
+  <table><tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr><tr><td><code>M006-06</code></td><td>Review</td><td>Live Chase and stationary post-reposition PiRacer packages show the shared shadow decision view, exact source imagery, fresh selected intent, zero proposed-applied control, and a healthy eight-record host interval. The accepted right-side and no-reset freshness lifecycle cases are not captured.</td></tr>
+<tr><td><code>M006-07</code></td><td>Review</td><td>Chase passive capture preserved the session and kept evaluator reference data separate; the post-reposition PiRacer capture has one joined, complete eight-record interval in user mode with zero user, pilot, and host-selected output. The manual pulse is disclosed as setup and excluded from that stationary interval; Chase still lacks a physical host interval.</td></tr></table>
   <h2>Case outcomes</h2>
   <table><tr><th>Case</th><th>Status</th><th>Evidence</th></tr><tr><td><code>C1</code></td><td>review</td><td>Chase and PiRacer both use shadow-proposals, avoid_recent_obstruction, deterministic_first_active, and separate proposed versus authorized output; run and frame identities are environment-specific. See chase/live/capture-summary.json and piracer/live/interval-summary.json.</td></tr>
-<tr><td><code>C2</code></td><td>blocked</td><td>The live captures select fresh mid-left evidence with steer=0.35 and throttle=0. No supported right-side selected witness was captured, and PiRacer was not physically repositioned during this run.</td></tr>
+<tr><td><code>C2</code></td><td>blocked</td><td>The live captures select fresh mid-left evidence with steer=0.35 and throttle=0. The PiCar was repositioned under explicit operator authorization, but no supported right-side selected witness was captured.</td></tr>
 <tr><td><code>C3</code></td><td>blocked</td><td>No single no-reset live sequence records fresh, retained, stale, and inactive decision cycles with real timestamps and source images. Existing bounded-memory checks are supporting implementation evidence only.</td></tr>
 <tr><td><code>C4</code></td><td>blocked</td><td>No canonical absent/expired decision witness was captured in both environments.</td></tr>
-<tr><td><code>C5</code></td><td>review</td><td>Chase terminal status records the observe-only worker stopped with no control application and preserved session; PiRacer local view was stopped after capture. Chase host telemetry is not a physical-host claim, and PiRacer coverage remains point-only.</td></tr>
+<tr><td><code>C5</code></td><td>review</td><td>Chase terminal status records the observe-only worker stopped with no control application and preserved session; PiRacer local view was stopped after capture. Chase host telemetry is not a physical-host claim; the final PiCar receipt has exact identity and complete host coverage, while the earlier point-only samples remain disclosed.</td></tr>
 <tr><td><code>C6</code></td><td>review</td><td>Chase replay with the actual source image produced equal two-pass digest 4b7f8c92e446c4f0596ef9eac6f39dda5184013786f134a3cdf85d49d83468ca and was rendered by headless Chromium. A PiRacer replay sequence was not captured.</td></tr>
-<tr><td><code>C7</code></td><td>review</td><td>Chase passive capture preserved the simulation epoch, control source, and zero human input while mutation_attempted=false. PiRacer six-point samples were user mode with zero user/pilot/host-selected output, but interval_covered=false.</td></tr></table>
+<tr><td><code>C7</code></td><td>review</td><td>Chase passive capture preserved the simulation epoch, control source, and zero human input while mutation_attempted=false. After the disclosed setup pulse and explicit stop, the PiCar final interval is stationary in user mode with zero user/pilot/host-selected output and complete sequences 58931-58938; the interval does not claim the preceding setup period.</td></tr></table>
   <h2>Environment packages</h2>
   <table><tr><th>Environment</th><th>Status</th><th>Path</th></tr><tr><td><code>chase</code></td><td>review</td><td>chase/</td></tr>
 <tr><td><code>piracer</code></td><td>review</td><td>piracer/</td></tr></table>
   <h2>Interval coverage</h2>
   <table><tr><th>Environment</th><th>Status</th><th>Evidence</th></tr><tr><td><code>chase</code></td><td>review</td><td>chase/raw/automation-state-terminal.json and chase/live/decision-api.json</td></tr>
-<tr><td><code>piracer</code></td><td>review</td><td>piracer/live/interval-summary.json</td></tr></table>
+<tr><td><code>piracer</code></td><td>review</td><td>piracer/live/post-reposition-final-interval-summary.json and piracer/raw/telemetry-interval-post-reposition-final.json</td></tr></table>
   <h2>Manual review</h2>
-  <table><tr><th>Review</th><th>Status</th><th>Evidence</th></tr><tr><td><code>visual</code></td><td>review</td><td>Headless Chromium rendered chase/replay-with-image/chase-frame-3073455-headless.png and piracer/live/decision-view-headless.png; both show the actual camera image, proposal, authority, and separate telemetry presentation.</td></tr>
+  <table><tr><th>Review</th><th>Status</th><th>Evidence</th></tr><tr><td><code>visual</code></td><td>review</td><td>Headless Chromium rendered chase/replay-with-image/chase-frame-3073455-headless.png and piracer/live/post-reposition-final-exact-frame-headless.png; the latter shows the actual PiCar image, proposal, separate authority, healthy joined telemetry, and complete eight-record coverage.</td></tr>
 <tr><td><code>operator</code></td><td>review</td><td>Human confirmation is required to accept the missing right-side, no-reset lifecycle, absent, and continuous-interval cases as a scope exception or to authorize further physical capture.</td></tr></table>
 </body>
 </html>

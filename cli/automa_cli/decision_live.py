@@ -10,6 +10,7 @@ from typing import Any, TextIO
 
 from .decision import (
     CommandResult,
+    DecisionSurfaceError,
     accept_physical_decision_publication,
     physical_decision_view_frame,
 )
@@ -28,6 +29,7 @@ from .physical_observation import (
     fetch_host_telemetry_records,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
+    normalize_host_telemetry_records,
     physical_decision_identity,
     physical_observation_dir,
     picar_base_url,
@@ -174,11 +176,21 @@ def _accepted_pair(
         image_bytes, image_headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
         image_frame_id = frame_id_from_headers(image_headers)
         publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
-        normalized = accept_physical_decision_publication(
-            publication,
-            vehicle_id=vehicle_id,
-            now_ms=int(time.time() * 1000),
-        )
+        try:
+            normalized = accept_physical_decision_publication(
+                publication,
+                vehicle_id=vehicle_id,
+                now_ms=int(time.time() * 1000),
+            )
+        except DecisionSurfaceError as exc:
+            # PiCar and the CLI may have a few milliseconds of clock skew.
+            # Keep the future-dated rejection fail-closed, but retry the
+            # read-only pair while the published cycle becomes current.
+            if exc.details.get("reason") != "future_dated":
+                raise
+            last_error = exc.message_text
+            time.sleep(0.04)
+            continue
         if image_frame_id != normalized["frame_id"]:
             last_error = (
                 f"image frame {image_frame_id!r} did not match decision frame "
@@ -349,10 +361,18 @@ def read_host_telemetry_panel(
             vehicle_id=vehicle_id,
         )
         try:
-            return join_host_telemetry_to_decision(
+            panel = join_host_telemetry_to_decision(
                 point,
                 normalized_decision,
                 vehicle_id=vehicle_id,
+            )
+            return _with_host_telemetry_interval_coverage(
+                panel,
+                base_url,
+                vehicle_id=vehicle_id,
+                point_sequence=point["host_tick"]["sequence"],
+                timeout_s=timeout_s,
+                now_ms=effective_now_ms,
             )
         except HostTelemetryError as latest_error:
             if latest_error.reason != "identity_mismatch":
@@ -378,12 +398,22 @@ def read_host_telemetry_panel(
                     now_ms=effective_now_ms,
                     vehicle_id=vehicle_id,
                 )
-                return join_host_telemetry_to_decision(
+                panel = join_host_telemetry_to_decision(
                     candidate,
                     normalized_decision,
                     vehicle_id=vehicle_id,
                 )
-            raise latest_error
+                return _with_host_telemetry_interval_coverage(
+                    panel,
+                    base_url,
+                    vehicle_id=vehicle_id,
+                    point_sequence=candidate["host_tick"]["sequence"],
+                    timeout_s=timeout_s,
+                    now_ms=effective_now_ms,
+                    initial_history=history,
+                )
+            else:
+                raise latest_error
     except HostTelemetryError as exc:
         return unavailable_host_telemetry_panel(exc.reason, message=exc.message_text)
     except (ConnectionError, OSError, TypeError, ValueError) as exc:
@@ -391,6 +421,137 @@ def read_host_telemetry_panel(
             "publisher_missing",
             message=f"Host telemetry is unavailable: {type(exc).__name__}: {exc}",
         )
+
+
+def _with_host_telemetry_interval_coverage(
+    panel: dict[str, Any],
+    base_url: str,
+    *,
+    vehicle_id: str,
+    point_sequence: int,
+    timeout_s: float,
+    now_ms: int,
+    initial_history: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Add bounded history coverage without changing the joined point.
+
+    The live panel is attached to one exact decision frame, but a point alone
+    cannot prove temporal coverage.  Read a short history window around that
+    point and replace only the panel's coverage summary with the normalized
+    result.  The original point coverage remains in ``details`` for review.
+    Any history failure is retained as an explicit limited/unavailable
+    coverage result; it never turns the joined point into a synthetic success.
+    """
+
+    point_coverage = panel.get("coverage")
+    point_coverage = point_coverage if isinstance(point_coverage, dict) else {}
+    records_result: dict[str, Any]
+    try:
+        window = 8
+        after_sequence = max(0, point_sequence - window)
+        if initial_history is None:
+            payload = fetch_host_telemetry_records(
+                base_url,
+                after_sequence=after_sequence,
+                limit=window,
+                timeout_s=timeout_s,
+            )
+        else:
+            raw_records = initial_history.get("records")
+            raw_records = raw_records if isinstance(raw_records, list) else []
+            bounded_records = [
+                record
+                for record in raw_records
+                if isinstance(record, dict)
+                and isinstance(record.get("host_tick"), dict)
+                and type(record["host_tick"].get("sequence")) is int
+                and after_sequence < record["host_tick"]["sequence"] <= point_sequence
+            ]
+            payload = {
+                **initial_history,
+                "records": bounded_records,
+            }
+        records_result = normalize_host_telemetry_records(
+            payload,
+            now_ms=now_ms,
+            after_sequence=after_sequence,
+            limit=window,
+            vehicle_id=vehicle_id,
+        )
+
+        # The latest endpoint and the history endpoint are independent reads.
+        # A live producer can publish the joined point between those reads, so
+        # give the bounded history route one short retry before reporting an
+        # honest coverage gap.  This only applies to the normal latest-point
+        # path; the identity-matching fallback already has a history snapshot.
+        point_present = any(
+            isinstance(record, dict)
+            and isinstance(record.get("host_tick"), dict)
+            and record["host_tick"].get("sequence") == point_sequence
+            for record in records_result.get("records", [])
+        )
+        if initial_history is None and not point_present:
+            time.sleep(min(0.05, max(0.0, timeout_s / 20)))
+            try:
+                retry_payload = fetch_host_telemetry_records(
+                    base_url,
+                    after_sequence=after_sequence,
+                    limit=window,
+                    timeout_s=timeout_s,
+                )
+                records_result = normalize_host_telemetry_records(
+                    retry_payload,
+                    now_ms=now_ms,
+                    after_sequence=after_sequence,
+                    limit=window,
+                    vehicle_id=vehicle_id,
+                )
+            except (HostTelemetryError, ConnectionError, OSError, TypeError, ValueError):
+                pass
+    except (HostTelemetryError, ConnectionError, OSError, TypeError, ValueError) as exc:
+        reason = exc.reason if isinstance(exc, HostTelemetryError) else "publisher_missing"
+        records_result = {
+            "status": "unavailable" if reason == "publisher_missing" else "limited",
+            "reason": reason,
+            "records": [],
+            "coverage": {
+                "status": "unavailable",
+                "reason": reason,
+                "interval_covered": False,
+                "record_count": 0,
+            },
+        }
+
+    coverage = records_result.get("coverage")
+    coverage = coverage if isinstance(coverage, dict) else {}
+    sequences = {
+        item.get("host_tick", {}).get("sequence")
+        for item in records_result.get("records", [])
+        if isinstance(item, dict) and isinstance(item.get("host_tick"), dict)
+    }
+    if point_sequence not in sequences:
+        coverage = {
+            **coverage,
+            "status": "limited",
+            "reason": "coverage_gap",
+            "interval_covered": False,
+            "coverage_reason": "joined_point_outside_history",
+        }
+
+    enriched = dict(panel)
+    enriched["coverage"] = {
+        **coverage,
+        "sequence": point_sequence,
+        "point_status": point_coverage.get("status"),
+        "point_interval_covered": point_coverage.get("interval_covered") is True,
+    }
+    details = panel.get("details")
+    details = dict(details) if isinstance(details, dict) else {}
+    details["point_coverage"] = point_coverage
+    details["history_status"] = records_result.get("status")
+    details["history_reason"] = records_result.get("reason", "")
+    enriched["details"] = details
+    return enriched
 
 
 def _host_record_matches_identity(

@@ -11,8 +11,10 @@ from unittest.mock import patch
 
 from cli.automa_cli.decision_live import (
     PhysicalDecisionViewAdapter,
+    _accepted_pair,
     read_host_telemetry_panel,
 )
+from cli.automa_cli.decision import DecisionSurfaceError
 from cli.automa_cli.decision import render_decision_exact_frame_html
 from cli.automa_cli.physical_observation import (
     DECISION_PUBLICATION_SCHEMA,
@@ -239,6 +241,120 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertTrue(panel["joined"])
         self.assertEqual(panel["source_frame"]["frame_id"], "frame-1")
         self.assertEqual(records.call_args.kwargs["after_sequence"], 0)
+
+    def test_live_view_exposes_contiguous_history_coverage_separately(self) -> None:
+        normalized = normalize_physical_decision_publication(
+            _physical_publication(),
+            vehicle_id="piracer",
+            now_ms=NOW_MS,
+        )
+        second = _record(
+            sequence=2,
+            frame_id="frame-2",
+            frame_index=2,
+            captured_at_ms=8_800,
+            completed_at_ms=9_000,
+            observed_at_ms=9_500,
+            published_at_ms=9_600,
+            gap_since_previous_ms=500,
+            skipped_since_previous=0,
+        )
+        with patch(
+            "cli.automa_cli.decision_live.fetch_host_telemetry_latest",
+            return_value=_record(),
+        ), patch(
+            "cli.automa_cli.decision_live.fetch_host_telemetry_records",
+            return_value={
+                "schema": "automa_host_boundary_telemetry_records_v0",
+                "status": "healthy",
+                "records": [_record(), second],
+                "coverage": {"complete": True},
+            },
+        ) as records:
+            panel = read_host_telemetry_panel(
+                "http://piracer.local:8887",
+                normalized_decision=normalized,
+                vehicle_id="piracer",
+                timeout_s=1.0,
+                now_ms=NOW_MS,
+            )
+
+        self.assertTrue(panel["joined"])
+        self.assertTrue(panel["coverage"]["interval_covered"])
+        self.assertEqual(panel["coverage"]["first_sequence"], 1)
+        self.assertEqual(panel["coverage"]["last_sequence"], 2)
+        self.assertEqual(panel["coverage"]["sequence"], 1)
+        self.assertEqual(panel["details"]["point_coverage"]["status"], "point")
+        self.assertEqual(records.call_args.kwargs["after_sequence"], 0)
+
+    def test_live_view_retries_history_when_latest_point_has_not_arrived(self) -> None:
+        normalized = normalize_physical_decision_publication(
+            _physical_publication(),
+            vehicle_id="piracer",
+            now_ms=NOW_MS,
+        )
+        with patch(
+            "cli.automa_cli.decision_live.fetch_host_telemetry_latest",
+            return_value=_record(),
+        ), patch(
+            "cli.automa_cli.decision_live.fetch_host_telemetry_records",
+            side_effect=[
+                {
+                    "schema": "automa_host_boundary_telemetry_records_v0",
+                    "status": "healthy",
+                    "records": [],
+                    "coverage": {"complete": True},
+                },
+                {
+                    "schema": "automa_host_boundary_telemetry_records_v0",
+                    "status": "healthy",
+                    "records": [_record()],
+                    "coverage": {"complete": True},
+                },
+            ],
+        ) as records:
+            panel = read_host_telemetry_panel(
+                "http://piracer.local:8887",
+                normalized_decision=normalized,
+                vehicle_id="piracer",
+                timeout_s=1.0,
+                now_ms=NOW_MS,
+            )
+
+        self.assertTrue(panel["joined"])
+        self.assertTrue(panel["coverage"]["interval_covered"])
+        self.assertEqual(records.call_count, 2)
+
+    def test_live_view_retries_a_small_provider_clock_skew(self) -> None:
+        future_error = DecisionSurfaceError(
+            "physical_decision_unavailable",
+            "future",
+            details={"reason": "future_dated"},
+        )
+        normalized = {"frame_id": "frame-1"}
+        with patch(
+            "cli.automa_cli.decision_live.fetch_observation_frame",
+            return_value=(b"jpeg", {"x-frame-id": "frame-1", "content-type": "image/jpeg"}),
+        ), patch(
+            "cli.automa_cli.decision_live.fetch_decision_publication",
+            side_effect=[{}, {}],
+        ), patch(
+            "cli.automa_cli.decision_live.accept_physical_decision_publication",
+            side_effect=[future_error, normalized],
+        ), patch(
+            "cli.automa_cli.decision_live.time.time",
+            return_value=10.0,
+        ), patch(
+            "cli.automa_cli.decision_live.time.sleep",
+        ) as sleep:
+            normalized, _ = _accepted_pair(
+                "http://piracer.local:8887",
+                vehicle_id="piracer",
+                timeout_s=1.0,
+            )
+
+        self.assertEqual(normalized["frame_id"], "frame-1")
+        sleep.assert_called_once_with(0.04)
 
     def test_normalizes_point_with_exact_identity_and_freshness(self) -> None:
         normalized = normalize_host_telemetry_record(

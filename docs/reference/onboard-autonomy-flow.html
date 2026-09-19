@@ -365,8 +365,9 @@
         The automation engine treats each vehicle as a sensor-and-control
         boundary. A shared, no-op-friendly cycle can perceive, observe, retain
         state, and select an action without requiring every stage to be
-        implemented. The only current decision engine is deliberately idle, so
-        the framework can be validated without autonomous movement.
+        implemented. The default decision engine is deliberately idle, while
+        the explicit PiCar obstacle-avoidance engine provides the first bounded
+        live-control path.
       </p>
       <p class="source-line">
         Source points: <code>autonomy/decision/cycle.py</code>,

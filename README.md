@@ -1,10 +1,11 @@
 # Automa Vehicle Automation Workspace
 
 This repository is the local source of truth for a vehicle-agnostic automation
-engine, a PiRacer/DonkeyCar target, and a Chase simulator adapter. The current
+engine, a PiRacer/DonkeyCar target, and a Chase simulator adapter. The default
 decision engine is intentionally idle: the framework can capture sensors, run
-perception, produce an inspectable cycle, and select a controller without yet
-implementing autonomous navigation.
+perception, produce an inspectable cycle, and select a controller without
+requiring autonomous navigation. An explicit PiCar obstacle-avoidance engine
+is available for the first bounded live-control path.
 
 ## Setup
 
@@ -418,6 +419,35 @@ Decision and memory selection are local until the next autonomy deployment:
 `vehicles info perception|decision|memory --id piracer` inspects staged
 activation and release metadata. Local staging does not require the Pi to be
 online; the subsequent autonomy deploy does.
+
+### PiCar Happy-Path Motion
+
+The existing `avoid_recent_obstruction` proposal can be run as a bounded live
+controller. It drives forward at normalized throttle `0.60` and uses maximum
+normalized steering magnitude (`1.0`) away from one fresh or recently retained
+left/right obstruction: left evidence produces rightward steering and right
+evidence produces leftward steering. With no qualifying lateral evidence it
+returns zero steering and throttle. The
+default engine remains idle, and the vehicle remains stopped until the operator
+explicitly selects autonomy mode.
+
+Raise the wheels or clear the path before trying it:
+
+```sh
+./cli/automa vehicles update decision --id piracer --engine obstacle-avoidance
+./cli/automa vehicles update autonomy --id piracer --restart
+curl -sS -X POST http://piracer.local:8887/autonomy/mode \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"autonomy"}'
+```
+
+Return to manual stopped mode with:
+
+```sh
+curl -sS -X POST http://piracer.local:8887/autonomy/mode \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"manual"}'
+```
 
 ## Bounded Startup Check
 

@@ -41,7 +41,7 @@ ENGINE_ID = "shadow-proposals"
 DEFAULT_ENABLED_PLUGINS = ("avoid_recent_obstruction",)
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
 DEFAULT_RETAINED_MAX_AGE_MS = 1000
-DEFAULT_STEER_MAGNITUDE = 0.35
+DEFAULT_STEER_MAGNITUDE = 1.0
 
 
 class ProposalPlugin(Protocol):

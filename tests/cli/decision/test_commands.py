@@ -63,6 +63,30 @@ class DecisionCommandTests(unittest.TestCase):
             self.assertTrue(payload["dry_run"])
             self.assertFalse(activation.exists())
 
+    def test_obstacle_avoidance_engine_can_be_staged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            result = run_automa(
+                "vehicles",
+                "update",
+                "decision",
+                "--id",
+                "piracer",
+                "--engine",
+                "obstacle-avoidance",
+                "--json",
+                runtime_root=runtime_root,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        payload = json.loads(result.stdout)
+        decision = payload["manifest"]["decision"]
+        self.assertEqual(decision["engine_id"], "obstacle-avoidance")
+        self.assertEqual(
+            decision["engine_spec"],
+            "implementations.decision.live_adapter:ObstacleAvoidanceAutonomyEngine",
+        )
+
     def test_shadow_info_probe_is_read_only_without_a_runtime_producer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

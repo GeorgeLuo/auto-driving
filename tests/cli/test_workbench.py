@@ -704,7 +704,7 @@ class WorkbenchTests(unittest.TestCase):
                 "avoid_recent_obstruction:"
             )
         )
-        self.assertEqual(decision["authority"]["proposed"]["steering"], 0.35)
+        self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
         self.assertFalse(decision["authority"]["proposed_applied"])
         self.assertEqual(
             state["timeline"][0]["decision"]["selected_proposal_id"],

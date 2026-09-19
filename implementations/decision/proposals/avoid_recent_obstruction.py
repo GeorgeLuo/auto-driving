@@ -17,7 +17,8 @@ from autonomy.decision.memory import MemorySnapshot, RetainedEvidence
 PLUGIN_ID = "avoid_recent_obstruction"
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
 DEFAULT_RETAINED_MAX_AGE_MS = 1000
-DEFAULT_STEER_MAGNITUDE = 0.35
+DEFAULT_STEER_MAGNITUDE = 1.0
+DEFAULT_FORWARD_THROTTLE = 0.60
 BASE_ASSUMPTIONS = (
     "no_object_identity",
     "image_relative_only",
@@ -395,7 +396,9 @@ def propose(
         lifecycle = pool_lifecycle or "retained"
 
         command = ProposedVehicleCommand(
-            steering=steering, throttle=0.0, gear="hold"
+            steering=steering,
+            throttle=DEFAULT_FORWARD_THROTTLE,
+            gear="forward",
         )
         return ActionProposal(
             plugin_id=PLUGIN_ID,

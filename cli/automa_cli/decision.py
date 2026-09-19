@@ -58,6 +58,10 @@ from implementations.decision.catalog import (
     create_shadow_proposals_engine,
 )
 from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
+from implementations.decision.live_adapter import (
+    ADAPTER_ENGINE_SPEC as LIVE_ADAPTER_ENGINE_SPEC,
+    ENGINE_ID as LIVE_ENGINE_ID,
+)
 
 from .bundles import (
     controller_bundle_paths,
@@ -301,6 +305,7 @@ DEFAULT_SHADOW_ENGINE_CONFIG: dict[str, Any] = {
     "retained_max_age_ms": DEFAULT_RETAINED_MAX_AGE_MS,
     "steer_magnitude": DEFAULT_STEER_MAGNITUDE,
 }
+PROPOSAL_ENGINE_IDS = frozenset({ENGINE_ID, LIVE_ENGINE_ID})
 
 DECISION_ENGINES: dict[str, dict[str, Any]] = {
     "idle": {
@@ -314,6 +319,15 @@ DECISION_ENGINES: dict[str, dict[str, Any]] = {
             f"proposed_applied=false; reason={AUTHORIZED_IDLE_REASON}."
         ),
         "engine_spec": ADAPTER_ENGINE_SPEC,
+        "engine_config": dict(DEFAULT_SHADOW_ENGINE_CONFIG),
+    },
+    LIVE_ENGINE_ID: {
+        "description": (
+            "Explicit-autonomy PiCar obstacle avoidance using the existing "
+            "avoid_recent_obstruction proposal; clear or unusable evidence "
+            "returns idle."
+        ),
+        "engine_spec": LIVE_ADAPTER_ENGINE_SPEC,
         "engine_config": dict(DEFAULT_SHADOW_ENGINE_CONFIG),
     },
 }
@@ -406,13 +420,17 @@ def _error_result(
     return CommandResult(exc.exit_code, exc.message_text)
 
 
-def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowProposalsConfig:
-    """Fail closed before activation write when shadow config is invalid."""
+def _validate_proposal_engine_config(
+    engine_config: dict[str, Any],
+    *,
+    engine_label: str,
+) -> ShadowProposalsConfig:
+    """Validate shared proposal configuration for one public engine id."""
 
     if not isinstance(engine_config, dict):
         raise DecisionSurfaceError(
             "invalid_engine_config",
-            "shadow-proposals engine_config must be a JSON object.",
+            f"{engine_label} engine_config must be a JSON object.",
         )
     allowed = {
         "enabled_plugins",
@@ -424,14 +442,14 @@ def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowPropos
     if unknown:
         raise DecisionSurfaceError(
             "invalid_engine_config",
-            f"shadow-proposals engine_config has unknown keys: {sorted(unknown)}.",
+            f"{engine_label} engine_config has unknown keys: {sorted(unknown)}.",
         )
     try:
         cfg = ShadowProposalsConfig(**engine_config) if engine_config else ShadowProposalsConfig()
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "invalid_engine_config",
-            f"Invalid shadow-proposals engine_config: {exc}",
+            f"Invalid {engine_label} engine_config: {exc}",
         ) from exc
     for plugin_id in cfg.enabled_plugins:
         if plugin_id not in KNOWN_PROPOSAL_PLUGIN_IDS:
@@ -441,6 +459,24 @@ def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowPropos
                 f"Known: {', '.join(sorted(KNOWN_PROPOSAL_PLUGIN_IDS))}.",
             )
     return cfg
+
+
+def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowProposalsConfig:
+    """Fail closed before activation write when shadow config is invalid."""
+
+    return _validate_proposal_engine_config(
+        engine_config,
+        engine_label="shadow-proposals",
+    )
+
+
+def validate_live_engine_config(engine_config: dict[str, Any]) -> ShadowProposalsConfig:
+    """Fail closed before activation write when live config is invalid."""
+
+    return _validate_proposal_engine_config(
+        engine_config,
+        engine_label=LIVE_ENGINE_ID,
+    )
 
 
 def _read_surface_activation(
@@ -461,20 +497,30 @@ def _read_surface_activation(
             vehicle_id=vehicle_id,
         ) from exc
 
-    if decoded.engine_id == ENGINE_ID:
-        if decoded.engine_spec != ADAPTER_ENGINE_SPEC:
+    if decoded.engine_id in PROPOSAL_ENGINE_IDS:
+        expected_spec = (
+            ADAPTER_ENGINE_SPEC
+            if decoded.engine_id == ENGINE_ID
+            else LIVE_ADAPTER_ENGINE_SPEC
+        )
+        if decoded.engine_spec != expected_spec:
             raise DecisionSurfaceError(
                 "activation_invalid",
-                f"shadow-proposals engine_spec must be {ADAPTER_ENGINE_SPEC!r}; "
+                f"{decoded.engine_id} engine_spec must be {expected_spec!r}; "
                 f"got {decoded.engine_spec!r}.",
                 vehicle_id=vehicle_id,
                 details={
-                    "expected_engine_spec": ADAPTER_ENGINE_SPEC,
+                    "expected_engine_spec": expected_spec,
                     "got_engine_spec": decoded.engine_spec,
                 },
             )
         try:
-            validate_shadow_engine_config(decoded.engine_config)
+            validator = (
+                validate_shadow_engine_config
+                if decoded.engine_id == ENGINE_ID
+                else validate_live_engine_config
+            )
+            validator(decoded.engine_config)
         except DecisionSurfaceError as exc:
             raise DecisionSurfaceError(
                 "activation_invalid",
@@ -506,9 +552,14 @@ def update_vehicle_decision(
 
     engine_entry = DECISION_ENGINES[engine_id]
     engine_config = dict(engine_entry["engine_config"])
-    if engine_id == ENGINE_ID:
+    if engine_id in PROPOSAL_ENGINE_IDS:
         try:
-            validate_shadow_engine_config(engine_config)
+            validator = (
+                validate_shadow_engine_config
+                if engine_id == ENGINE_ID
+                else validate_live_engine_config
+            )
+            validator(engine_config)
         except DecisionSurfaceError as exc:
             return _error_result(
                 DecisionSurfaceError(
@@ -1125,10 +1176,11 @@ def _accept_provider_neutral_decision_cycle(
         )
     reconstructed_cycle = _require_exact_cycle_export(cycle)
     engine_id = decision.get("activation_engine_id")
-    if engine_id != ENGINE_ID:
+    if engine_id not in PROPOSAL_ENGINE_IDS:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"Physical decision engine must be {ENGINE_ID!r}; got {engine_id!r}.",
+            f"Physical decision engine must be one of {sorted(PROPOSAL_ENGINE_IDS)!r}; "
+            f"got {engine_id!r}.",
         )
     activation = decision.get("activation")
     engine_config = activation.get("engine_config") if isinstance(activation, dict) else None
@@ -1138,7 +1190,12 @@ def _accept_provider_neutral_decision_cycle(
             "Physical decision activation engine_config must be an object.",
         )
     try:
-        shadow_config = validate_shadow_engine_config(engine_config)
+        validator = (
+            validate_shadow_engine_config
+            if engine_id == ENGINE_ID
+            else validate_live_engine_config
+        )
+        shadow_config = validator(engine_config)
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",

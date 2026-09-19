@@ -279,7 +279,7 @@ class _TreeReader:
             return ""
 
     def _load_ref_contents(self) -> dict[str, str]:
-        """Batch-read one revision so historical backtests avoid one process per file."""
+        """Batch-read one revision so Git diffs avoid one process per file."""
 
         scope = [] if self.tree.scope_rel in {"", "."} else [self.tree.scope_rel]
         archive = _git_bytes(
@@ -1105,7 +1105,7 @@ def diff_production_test_split(file_changes: list[dict[str, Any]]) -> dict[str, 
 
 
 def production_test_split_summary(split: dict[str, Any]) -> str:
-    """One-line production vs tests observation for Markdown and backtests."""
+    """One-line production vs tests observation for Markdown reports."""
 
     python = split["python"]
     all_lines = split["all_lines"]

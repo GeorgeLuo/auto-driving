@@ -70,9 +70,3 @@ semantic definitions.
 
 Substantive changes to shared execution rules require a new shared version.
 Policy-specific invariants win over the pinned shared defaults.
-
-## Experiment evidence
-
-The [policy input notes](../../synthesis/artifacts/orchestration/2026-09-08-policy-inputs/README.md)
-retain the handoff snapshots and limits behind `product-implementation/v1`.
-They are historical evidence, not policy authority.

@@ -439,6 +439,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 host_telemetry=adapter,
             )
             part.run(image_array=object(), mode="user")
+            part.wait_for_cycle()
             selected = _drive_mode_class()(host_telemetry=adapter).run(
                 "user",
                 0.42,
@@ -481,6 +482,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 host_telemetry=adapter,
             )
             part.run(image_array=object(), mode="user")
+            part.wait_for_cycle()
             drive_mode = _drive_mode_class()(host_telemetry=adapter)
             drive_mode.run("user", 0.1, 0.2, 0.0, 0.0)
             monotonic.now_ms = 200

@@ -20,6 +20,9 @@ DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 DEFAULT_OBSERVATION_INTERVAL_S = 0.5
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 LATEST_JSON_PATH = "/autonomy/observation/latest"
+CAMERA_LATEST_FRAME_PATH = "/autonomy/camera/latest/frame.jpg"
+CAMERA_LATEST_JSON_PATH = "/autonomy/camera/latest"
+CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication_v0"
 DECISION_LATEST_PATH = "/autonomy/decision/latest"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
@@ -130,13 +133,25 @@ class LatestObservationSnapshot:
         }
 
 
+@dataclass
+class LatestCameraFrame:
+    """One camera sample published without waiting for a perception cycle."""
+
+    frame_id: str
+    frame_index: int
+    captured_at_ms: int
+    image: Any
+
+
 class AutonomyPilotPart:
     """Adapt Donkey image memory to the shared cycle with always-on observation.
 
-    Intended to run on every Donkey loop tick. Full decision cycles execute only
-    at a bounded cadence and always consume the newest available frame. Manual
-    ``user`` mode remains the movement authority: this part emits zero pilot
-    outputs while mode is manual, regardless of engine output.
+    Every drive-loop tick publishes the newest camera sample. A perception cycle
+    runs in the background at ``min_interval_s`` and does not stall that loop.
+    Samples that arrive while a cycle is running stay available as camera frames
+    and are not given their own perception result. Manual ``user`` mode remains
+    the movement authority: this part emits zero pilot outputs while mode is
+    manual, regardless of engine output.
     """
 
     def __init__(
@@ -163,11 +178,17 @@ class AutonomyPilotPart:
         self._monotonic = monotonic or time.monotonic
         self._lock = threading.RLock()
         self.frame_index = 0
+        self._camera_index = 0
+        self.camera_frame_count = 0
         self.processed_count = 0
         self.skipped_count = 0
         self._skips_since_previous = 0
         self._last_run_monotonic: float | None = None
+        self._cycle_inflight = False
+        self._inflight_frame_id: str | None = None
+        self._cycle_thread: threading.Thread | None = None
         self.latest_snapshot: LatestObservationSnapshot | None = None
+        self.latest_camera_frame: LatestCameraFrame | None = None
         self._last_pilot_steering = 0.0
         self._last_pilot_throttle = 0.0
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
@@ -218,14 +239,20 @@ class AutonomyPilotPart:
                 if self.latest_snapshot is None
                 else self.latest_snapshot.to_status_dict()
             )
+            camera = self.latest_camera_frame
             return {
                 "min_interval_s": self.min_interval_s,
                 "processed_count": self.processed_count,
                 "skipped_count": self.skipped_count,
+                "camera_frame_count": self.camera_frame_count,
+                "perception_inflight": self._cycle_inflight,
                 "algorithm": self.algorithm,
                 "latest": latest,
+                "latest_camera_frame_id": None if camera is None else camera.frame_id,
                 "latest_json_path": LATEST_JSON_PATH,
                 "latest_frame_path": LATEST_FRAME_PATH,
+                "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
+                "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
             }
 
     def status(self) -> dict[str, Any]:
@@ -319,6 +346,150 @@ class AutonomyPilotPart:
             publication["error"] = f"{type(exc).__name__}: {exc}"
             return None, publication
         return jpeg, publication
+
+    def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
+        """Return the newest camera sample, whether or not perception has finished."""
+        read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
+        with self._lock:
+            return self._camera_publication_from_locked_state(read_at_ms=read_at_ms)
+
+    def publish_latest_camera_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:
+        """Return the JPEG for the newest camera sample, paired with its metadata."""
+        read_at_ms = timestamp_ms()
+        with self._lock:
+            camera = self.latest_camera_frame
+            publication = self._camera_publication_from_locked_state(read_at_ms=read_at_ms)
+            image = None if camera is None else camera.image
+        if image is None:
+            return None, publication
+        try:
+            jpeg = encode_jpeg(image)
+        except Exception as exc:
+            publication = dict(publication)
+            publication["health"] = PUBLICATION_HEALTH_ERROR
+            publication["ok"] = False
+            publication["error"] = f"{type(exc).__name__}: {exc}"
+            return None, publication
+        return jpeg, publication
+
+    def wait_for_cycle(self, timeout_s: float = 5.0) -> None:
+        """Block until the background perception cycle finishes, if one is running."""
+        with self._lock:
+            thread = self._cycle_thread
+        if thread is None:
+            return
+        thread.join(timeout_s)
+        if thread.is_alive():
+            raise TimeoutError("observation cycle did not finish")
+
+    def completed_outputs(
+        self, mode: str = "user"
+    ) -> tuple[float, float, dict[str, Any], Any, dict[str, Any] | None]:
+        """Return the pilot tuple from the last finished cycle, under the given mode."""
+        with self._lock:
+            steering, throttle = self._pilot_outputs(
+                mode,
+                AutonomyControl(
+                    steering=self._last_pilot_steering,
+                    throttle=self._last_pilot_throttle,
+                ),
+            )
+            return (
+                steering,
+                throttle,
+                deepcopy(self._last_control),
+                self._last_engine,
+                None if self._last_cycle is None else deepcopy(self._last_cycle),
+            )
+
+    def _camera_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
+        camera = self.latest_camera_frame
+        threshold_ms = stale_after_ms(self.min_interval_s)
+        observation = self.latest_snapshot
+        perception_frame_id = None if observation is None else observation.frame_id
+        if camera is None:
+            health = PUBLICATION_HEALTH_WARMING if self.camera_frame_count == 0 else PUBLICATION_HEALTH_ABSENT
+            perception_state = "pending" if self._cycle_inflight else "absent"
+            return {
+                "schema": CAMERA_PUBLICATION_SCHEMA,
+                "ok": False,
+                "health": health,
+                "read_at_ms": read_at_ms,
+                "result_age_ms": None,
+                "stale_after_ms": threshold_ms,
+                "frame": None,
+                "camera_frame_count": self.camera_frame_count,
+                "perception_state": perception_state,
+                "perception_frame_id": perception_frame_id,
+                "perception_inflight": self._cycle_inflight,
+                "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
+                "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
+            }
+        age_ms = max(0, read_at_ms - int(camera.captured_at_ms))
+        if camera.image is None:
+            health = PUBLICATION_HEALTH_UNAVAILABLE
+        elif age_ms > threshold_ms:
+            health = PUBLICATION_HEALTH_STALE
+        else:
+            health = PUBLICATION_HEALTH_HEALTHY
+        if self._cycle_inflight:
+            perception_state = "pending"
+        elif perception_frame_id == camera.frame_id:
+            perception_state = "matched"
+        elif perception_frame_id is None:
+            perception_state = "absent"
+        else:
+            perception_state = "behind"
+        return {
+            "schema": CAMERA_PUBLICATION_SCHEMA,
+            "ok": health in {PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE},
+            "health": health,
+            "read_at_ms": read_at_ms,
+            "result_age_ms": age_ms,
+            "stale_after_ms": threshold_ms,
+            "frame": {
+                "frame_id": camera.frame_id,
+                "frame_index": camera.frame_index,
+                "captured_at_ms": camera.captured_at_ms,
+                "has_image": camera.image is not None,
+                "frame_path": CAMERA_LATEST_FRAME_PATH,
+            },
+            "camera_frame_count": self.camera_frame_count,
+            "perception_state": perception_state,
+            "perception_frame_id": perception_frame_id,
+            "perception_inflight": self._cycle_inflight,
+            "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
+            "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
+        }
+
+    def _store_camera_frame_locked(self, image: Any, captured_at_ms: int) -> LatestCameraFrame:
+        frame = LatestCameraFrame(
+            frame_id=f"donkey_frame_{self._camera_index:06d}",
+            frame_index=self._camera_index,
+            captured_at_ms=captured_at_ms,
+            image=image,
+        )
+        self.latest_camera_frame = frame
+        self._camera_index += 1
+        self.camera_frame_count += 1
+        return frame
+
+    def _claim_cycle_locked(self) -> tuple[bool, str, int, int]:
+        now = self._monotonic()
+        if self._cycle_inflight or (
+            self._last_run_monotonic is not None
+            and (now - self._last_run_monotonic) < self.min_interval_s
+        ):
+            self.skipped_count += 1
+            self._skips_since_previous += 1
+            return False, "", 0, 0
+        camera = self.latest_camera_frame
+        if camera is None:
+            return False, "", 0, 0
+        self._last_run_monotonic = now
+        self._cycle_inflight = True
+        self._inflight_frame_id = camera.frame_id
+        return True, camera.frame_id, camera.frame_index, self._skips_since_previous
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         """Build a publication from the currently locked snapshot/counters."""
@@ -612,22 +783,50 @@ class AutonomyPilotPart:
         user_throttle: float = 0.0,
     ):
         mode_name = mode or "user"
-        now = self._monotonic()
-        if (
-            self._last_run_monotonic is not None
-            and (now - self._last_run_monotonic) < self.min_interval_s
-        ):
-            with self._lock:
-                self.skipped_count += 1
-                self._skips_since_previous += 1
+        captured_at_ms = timestamp_ms()
+        detached = detach_image(image_array)
+        with self._lock:
+            self._store_camera_frame_locked(detached, captured_at_ms)
+            start, frame_id, frame_index, skips = self._claim_cycle_locked()
+        if not start:
             self._publish_host_source_frame()
             self.last_status = self.status()
             return self._held_outputs(mode_name)
 
-        self._last_run_monotonic = now
-        captured_at_ms = timestamp_ms()
-        frame_id = f"donkey_frame_{self.frame_index:06d}"
-        detached = detach_image(image_array)
+        thread = threading.Thread(
+            target=self._cycle_job,
+            kwargs={
+                "image": detached,
+                "mode_name": mode_name,
+                "user_steering": float(user_steering or 0.0),
+                "user_throttle": float(user_throttle or 0.0),
+                "captured_at_ms": captured_at_ms,
+                "frame_id": frame_id,
+                "frame_index": frame_index,
+                "skips_at_start": skips,
+            },
+            name="autonomy-observation-cycle",
+            daemon=True,
+        )
+        with self._lock:
+            self._cycle_thread = thread
+        thread.start()
+        self.last_status = self.status()
+        return self._held_outputs(mode_name)
+
+    def _cycle_job(
+        self,
+        *,
+        image: Any,
+        mode_name: str,
+        user_steering: float,
+        user_throttle: float,
+        captured_at_ms: int,
+        frame_id: str,
+        frame_index: int,
+        skips_at_start: int,
+    ) -> None:
+        detached = image
         sensor_snapshot = SensorSnapshot(
             read_id=frame_id,
             readings={
@@ -645,90 +844,94 @@ class AutonomyPilotPart:
         )
 
         try:
-            cycle_result = self.host.run(
-                DecisionFrameContext(
-                    frame_id=frame_id,
-                    frame_index=self.frame_index,
-                    timestamp_ms=captured_at_ms,
-                    sensor_snapshot=sensor_snapshot,
-                    mode=mode_name,
-                    user_steering=float(user_steering or 0.0),
-                    user_throttle=float(user_throttle or 0.0),
-                    metadata={
-                        "runtime": "donkeycar",
-                        "control_application": "donkey_drive_mode",
-                        "observation_cadence_s": self.min_interval_s,
-                    },
+            try:
+                cycle_result = self.host.run(
+                    DecisionFrameContext(
+                        frame_id=frame_id,
+                        frame_index=frame_index,
+                        timestamp_ms=captured_at_ms,
+                        sensor_snapshot=sensor_snapshot,
+                        mode=mode_name,
+                        user_steering=float(user_steering or 0.0),
+                        user_throttle=float(user_throttle or 0.0),
+                        metadata={
+                            "runtime": "donkeycar",
+                            "control_application": "donkey_drive_mode",
+                            "observation_cadence_s": self.min_interval_s,
+                        },
+                    )
                 )
+                control = cycle_result.control
+                cycle_dict = cycle_result.to_dict()
+                completed_at_ms = cycle_result.completed_at_ms
+                duration_ms = cycle_result.duration_ms
+                status = "ok"
+                error = None
+            except Exception as exc:
+                control = AutonomyControl(reason="observation-cycle-error")
+                cycle_dict = None
+                completed_at_ms = timestamp_ms()
+                duration_ms = max(0, completed_at_ms - captured_at_ms)
+                status = "error"
+                error = f"{type(exc).__name__}: {exc}"
+
+            decision_publication, decision_error = self._capture_decision_publication(
+                frame_id=frame_id,
+                frame_index=frame_index,
+                timestamp_ms_value=captured_at_ms,
+                published_at_ms=completed_at_ms,
+                status=status,
             )
-            control = cycle_result.control
-            cycle_dict = cycle_result.to_dict()
-            completed_at_ms = cycle_result.completed_at_ms
-            duration_ms = cycle_result.duration_ms
-            status = "ok"
-            error = None
-        except Exception as exc:
-            control = AutonomyControl(reason="observation-cycle-error")
-            cycle_dict = None
-            completed_at_ms = timestamp_ms()
-            duration_ms = max(0, completed_at_ms - captured_at_ms)
-            status = "error"
-            error = f"{type(exc).__name__}: {exc}"
 
-        decision_publication, decision_error = self._capture_decision_publication(
-            frame_id=frame_id,
-            frame_index=self.frame_index,
-            timestamp_ms_value=captured_at_ms,
-            published_at_ms=completed_at_ms,
-            status=status,
-        )
-
-        pilot_steering, pilot_throttle = self._pilot_outputs(mode_name, control)
-        self._last_pilot_steering = pilot_steering
-        self._last_pilot_throttle = pilot_throttle
-        self._last_control = control.to_dict()
-        manager = getattr(self.host, "manager", None)
-        self._last_engine = getattr(manager, "engine_spec", self._last_engine)
-        if self._last_engine is None:
-            host_status = getattr(self.host, "status", None)
-            if callable(host_status):
-                engine_info = host_status().get("engine")
-                if isinstance(engine_info, dict):
-                    self._last_engine = engine_info.get("engine")
-                elif isinstance(engine_info, str):
-                    self._last_engine = engine_info
-        self._last_cycle = cycle_dict
-        snapshot = LatestObservationSnapshot(
-            frame_id=frame_id,
-            frame_index=self.frame_index,
-            captured_at_ms=captured_at_ms,
-            completed_at_ms=completed_at_ms,
-            mode=mode_name,
-            status=status,
-            image=detached,
-            control=deepcopy(self._last_control),
-            cycle=cycle_dict,
-            error=error,
-            duration_ms=duration_ms,
-            skipped_since_previous=self._skips_since_previous,
-            algorithm=self.algorithm,
-            decision_publication=decision_publication,
-            decision_error=decision_error,
-        )
-        with self._lock:
-            self.latest_snapshot = snapshot
-            self._skips_since_previous = 0
-            self.frame_index += 1
-            self.processed_count += 1
+            pilot_steering, pilot_throttle = self._pilot_outputs(mode_name, control)
+            control_dict = control.to_dict()
+            manager = getattr(self.host, "manager", None)
+            engine = getattr(manager, "engine_spec", None)
+            if engine is None:
+                host_status = getattr(self.host, "status", None)
+                if callable(host_status):
+                    engine_info = host_status().get("engine")
+                    if isinstance(engine_info, dict):
+                        engine = engine_info.get("engine")
+                    elif isinstance(engine_info, str):
+                        engine = engine_info
+            snapshot = LatestObservationSnapshot(
+                frame_id=frame_id,
+                frame_index=frame_index,
+                captured_at_ms=captured_at_ms,
+                completed_at_ms=completed_at_ms,
+                mode=mode_name,
+                status=status,
+                image=detached,
+                control=deepcopy(control_dict),
+                cycle=cycle_dict,
+                error=error,
+                duration_ms=duration_ms,
+                skipped_since_previous=skips_at_start,
+                algorithm=self.algorithm,
+                decision_publication=decision_publication,
+                decision_error=decision_error,
+            )
+            with self._lock:
+                self._last_pilot_steering = pilot_steering
+                self._last_pilot_throttle = pilot_throttle
+                self._last_control = control_dict
+                if engine is not None:
+                    self._last_engine = engine
+                self._last_cycle = cycle_dict
+                self.latest_snapshot = snapshot
+                self._skips_since_previous = max(0, self._skips_since_previous - skips_at_start)
+                self.frame_index = frame_index + 1
+                self.processed_count += 1
+        finally:
+            with self._lock:
+                if self._inflight_frame_id == frame_id:
+                    self._cycle_inflight = False
+                    self._inflight_frame_id = None
+                if self._cycle_thread is threading.current_thread():
+                    self._cycle_thread = None
         self._publish_host_source_frame()
         self.last_status = self.status()
-        return (
-            pilot_steering,
-            pilot_throttle,
-            self._last_control,
-            self._last_engine,
-            cycle_dict,
-        )
 
     def _pilot_outputs(self, mode_name: str, control: AutonomyControl) -> tuple[float, float]:
         # Manual mode keeps movement authority. Pilot memory stays zero so a
@@ -770,16 +973,14 @@ class AutonomyPilotPart:
             return
 
     def _held_outputs(self, mode_name: str):
-        if mode_name == "user":
-            steering = 0.0
-            throttle = 0.0
-        else:
-            steering = self._last_pilot_steering
-            throttle = self._last_pilot_throttle
-        return (
-            steering,
-            throttle,
-            self._last_control,
-            self._last_engine,
-            self._last_cycle,
-        )
+        with self._lock:
+            if mode_name == "user":
+                steering = 0.0
+                throttle = 0.0
+            else:
+                steering = self._last_pilot_steering
+                throttle = self._last_pilot_throttle
+            control = deepcopy(self._last_control)
+            engine = self._last_engine
+            cycle = None if self._last_cycle is None else deepcopy(self._last_cycle)
+        return (steering, throttle, control, engine, cycle)

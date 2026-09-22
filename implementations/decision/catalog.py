@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from autonomy.decision.action_proposal import ActionProposal
 from autonomy.decision.decision_data import DecisionDataSource
 from autonomy.decision.shadow_runner import (
@@ -9,7 +12,11 @@ from autonomy.decision.shadow_runner import (
     ShadowProposalsConfig,
     ShadowProposalsEngine,
 )
-from implementations.decision.config import ObstacleAvoidanceConfig
+from implementations.decision.config import (
+    ObstacleAvoidanceConfig,
+    engine_config_document,
+    parse_engine_config,
+)
 from implementations.decision.proposals.avoid_recent_obstruction import (
     PLUGIN_ID,
     propose as avoid_propose,
@@ -19,10 +26,25 @@ from implementations.decision.proposals.avoid_recent_obstruction import (
 KNOWN_PROPOSAL_PLUGIN_IDS: frozenset[str] = frozenset({PLUGIN_ID})
 
 
+def validate_engine_config(
+    engine_config: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Return the packaged proposal document, or raise if it cannot be used."""
+
+    cfg = parse_engine_config(engine_config)
+    for plugin_id in cfg.enabled_plugins:
+        if plugin_id not in KNOWN_PROPOSAL_PLUGIN_IDS:
+            raise ValueError(
+                f"Unknown proposal plugin {plugin_id!r}. "
+                f"Known: {', '.join(sorted(KNOWN_PROPOSAL_PLUGIN_IDS))}."
+            )
+    return engine_config_document(cfg)
+
+
 def create_shadow_proposals_engine(
-    config: ObstacleAvoidanceConfig | None = None,
+    config: ObstacleAvoidanceConfig | Mapping[str, Any] | None = None,
 ) -> ShadowProposalsEngine:
-    cfg = config or ObstacleAvoidanceConfig()
+    cfg = parse_engine_config(config)
     # Reject unknown enabled ids at activation against this catalog (not a
     # caller-supplied known_plugins field).
     for plugin_id in cfg.enabled_plugins:
@@ -38,10 +60,12 @@ def create_shadow_proposals_engine(
         )
 
     plugins = {PLUGIN_ID: _bound}
-    return ShadowProposalsEngine.create(
+    engine = ShadowProposalsEngine.create(
         config=ShadowProposalsConfig(enabled_plugins=cfg.enabled_plugins),
         plugins=plugins,
     )
+    engine.reported_config = engine_config_document(cfg)
+    return engine
 
 
 KNOWN_ENGINES = {

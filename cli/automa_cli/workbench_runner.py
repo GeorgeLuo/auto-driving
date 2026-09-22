@@ -29,7 +29,6 @@ from autonomy.perception import (
 from autonomy.perception.activation import instantiate_perception_mapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision.catalog import create_shadow_proposals_engine
-from implementations.decision.config import ObstacleAvoidanceConfig
 from implementations.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     build_memory_activation_payload,
@@ -1507,24 +1506,11 @@ class ImageReplayRunner:
         }
 
     def _decision_configuration(self) -> dict[str, Any]:
-        config = getattr(self._decision_engine, "config", None)
-        # The core runner only keeps plugin ids. Avoidance tuning stays on the
-        # implementation config that the default engine is built with.
-        defaults = ObstacleAvoidanceConfig()
+        reported = getattr(self._decision_engine, "reported_config", None)
+        document = dict(reported) if isinstance(reported, dict) else {}
         return {
+            **document,
             "engine_id": ENGINE_ID,
-            "enabled_plugins": list(
-                getattr(config, "enabled_plugins", defaults.enabled_plugins)
-            ),
-            "accepted_kinds": list(
-                getattr(config, "accepted_kinds", defaults.accepted_kinds)
-            ),
-            "retained_max_age_ms": getattr(
-                config, "retained_max_age_ms", defaults.retained_max_age_ms
-            ),
-            "steer_magnitude": getattr(
-                config, "steer_magnitude", defaults.steer_magnitude
-            ),
             "authority_mode": "shadow_only",
             "proposed_applied": False,
         }

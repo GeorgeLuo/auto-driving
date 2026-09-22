@@ -11,6 +11,7 @@ import shlex
 import shutil
 import stat as stat_mod
 import time
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,23 +46,17 @@ from autonomy.decision.shadow_authority import (
 )
 from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
 from autonomy.decision.shadow_runner import ENGINE_ID
-from implementations.decision.config import (
-    ObstacleAvoidanceConfig,
-    DEFAULT_ACCEPTED_KINDS,
-    DEFAULT_ENABLED_PLUGINS,
-    DEFAULT_RETAINED_MAX_AGE_MS,
-    DEFAULT_STEER_MAGNITUDE,
-)
 from autonomy.runtime import AutonomyManager, read_decision_activation
 from implementations.decision.catalog import (
-    KNOWN_PROPOSAL_PLUGIN_IDS,
     create_shadow_proposals_engine,
+    validate_engine_config,
 )
-from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
+from implementations.decision.config import default_engine_config
 from implementations.decision.live_adapter import (
     ADAPTER_ENGINE_SPEC as LIVE_ADAPTER_ENGINE_SPEC,
     ENGINE_ID as LIVE_ENGINE_ID,
 )
+from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
 
 from .bundles import (
     controller_bundle_paths,
@@ -299,12 +294,6 @@ SHADOW_DECISION_INPUTS = (
     "prior_host_applied_command",
 )
 
-DEFAULT_SHADOW_ENGINE_CONFIG: dict[str, Any] = {
-    "enabled_plugins": list(DEFAULT_ENABLED_PLUGINS),
-    "accepted_kinds": list(DEFAULT_ACCEPTED_KINDS),
-    "retained_max_age_ms": DEFAULT_RETAINED_MAX_AGE_MS,
-    "steer_magnitude": DEFAULT_STEER_MAGNITUDE,
-}
 PROPOSAL_ENGINE_IDS = frozenset({ENGINE_ID, LIVE_ENGINE_ID})
 
 DECISION_ENGINES: dict[str, dict[str, Any]] = {
@@ -319,7 +308,7 @@ DECISION_ENGINES: dict[str, dict[str, Any]] = {
             f"proposed_applied=false; reason={AUTHORIZED_IDLE_REASON}."
         ),
         "engine_spec": ADAPTER_ENGINE_SPEC,
-        "engine_config": dict(DEFAULT_SHADOW_ENGINE_CONFIG),
+        "engine_config": default_engine_config(),
     },
     LIVE_ENGINE_ID: {
         "description": (
@@ -328,7 +317,7 @@ DECISION_ENGINES: dict[str, dict[str, Any]] = {
             "returns idle."
         ),
         "engine_spec": LIVE_ADAPTER_ENGINE_SPEC,
-        "engine_config": dict(DEFAULT_SHADOW_ENGINE_CONFIG),
+        "engine_config": default_engine_config(),
     },
 }
 
@@ -424,44 +413,24 @@ def _validate_proposal_engine_config(
     engine_config: dict[str, Any],
     *,
     engine_label: str,
-) -> ObstacleAvoidanceConfig:
-    """Validate shared proposal configuration for one public engine id."""
+) -> dict[str, Any]:
+    """Validate a proposal engine document without interpreting its fields."""
 
     if not isinstance(engine_config, dict):
         raise DecisionSurfaceError(
             "invalid_engine_config",
             f"{engine_label} engine_config must be a JSON object.",
         )
-    allowed = {
-        "enabled_plugins",
-        "accepted_kinds",
-        "retained_max_age_ms",
-        "steer_magnitude",
-    }
-    unknown = set(engine_config) - allowed
-    if unknown:
-        raise DecisionSurfaceError(
-            "invalid_engine_config",
-            f"{engine_label} engine_config has unknown keys: {sorted(unknown)}.",
-        )
     try:
-        cfg = ObstacleAvoidanceConfig(**engine_config) if engine_config else ObstacleAvoidanceConfig()
+        return validate_engine_config(engine_config)
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "invalid_engine_config",
             f"Invalid {engine_label} engine_config: {exc}",
         ) from exc
-    for plugin_id in cfg.enabled_plugins:
-        if plugin_id not in KNOWN_PROPOSAL_PLUGIN_IDS:
-            raise DecisionSurfaceError(
-                "invalid_engine_config",
-                f"Unknown proposal plugin {plugin_id!r}. "
-                f"Known: {', '.join(sorted(KNOWN_PROPOSAL_PLUGIN_IDS))}.",
-            )
-    return cfg
 
 
-def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ObstacleAvoidanceConfig:
+def validate_shadow_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
     """Fail closed before activation write when shadow config is invalid."""
 
     return _validate_proposal_engine_config(
@@ -470,7 +439,7 @@ def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ObstacleAvoi
     )
 
 
-def validate_live_engine_config(engine_config: dict[str, Any]) -> ObstacleAvoidanceConfig:
+def validate_live_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
     """Fail closed before activation write when live config is invalid."""
 
     return _validate_proposal_engine_config(
@@ -705,7 +674,7 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
     if engine_id == ENGINE_ID:
         plugins = engine_config.get("enabled_plugins")
         if not isinstance(plugins, list):
-            plugins = list(DEFAULT_ENABLED_PLUGINS)
+            plugins = list(default_engine_config()["enabled_plugins"])
         shadow = {
             "decision_inputs": list(SHADOW_DECISION_INPUTS),
             "enabled_plugins": list(plugins),
@@ -2032,7 +2001,7 @@ def _require_aggregate_cycle_alignment(
 
 def _require_runner_plan_alignment(
     cycle: ShadowDecisionCycleResult,
-    config: ObstacleAvoidanceConfig,
+    config: Mapping[str, Any],
 ) -> None:
     """Enforce runner-owned candidate membership and selector output."""
 
@@ -2052,7 +2021,7 @@ def _require_runner_plan_alignment(
             "ok cycle must include an action plan.",
             details={"field": "cycle.plan"},
         )
-    expected_plugins = tuple(sorted(config.enabled_plugins))
+    expected_plugins = tuple(sorted(config["enabled_plugins"]))
     actual_plugins = tuple(candidate.plugin_id for candidate in plan.candidates)
     if actual_plugins != expected_plugins:
         raise DecisionSurfaceError(
@@ -3145,7 +3114,7 @@ def _normalize_apply_frames(
 
 
 def _run_apply_pass(
-    cfg: ObstacleAvoidanceConfig,
+    cfg: Mapping[str, Any],
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
     engine = create_shadow_proposals_engine(cfg)
@@ -3207,7 +3176,7 @@ def _write_apply_record(
     from_run_dir: Path,
     frames: list[dict[str, Any]],
     payload: dict[str, Any],
-    engine_config: ObstacleAvoidanceConfig,
+    engine_config: Mapping[str, Any],
     output_root: Path,
 ) -> Path:
     output_root = Path(output_root)

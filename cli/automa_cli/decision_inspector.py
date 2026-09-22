@@ -6,14 +6,14 @@ import hashlib
 import json
 import threading
 import webbrowser
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from autonomy.decision import canonical_json_utf8
-from implementations.decision.config import ObstacleAvoidanceConfig
 from implementations.decision.catalog import create_shadow_proposals_engine
+from implementations.decision.config import default_engine_config
+from implementations.decision.inspection import prepare_inspection_scenarios
 
 from .decision import (
     APPLY_SEQUENCE_SCHEMA,
@@ -66,7 +66,7 @@ def inspect_decision_sequence(
     if vehicle_id and "vehicle_id" in sequence and sequence["vehicle_id"] != vehicle_id:
         raise ValueError("Sequence vehicle_id does not match --id.")
     frame = _normalize_apply_frames([frames[frame_index]], vehicle_id=vehicle_id or "offline")[0]
-    config = ObstacleAvoidanceConfig()
+    config = default_engine_config()
     if vehicle_id:
         bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
         activation = _read_surface_activation(
@@ -79,35 +79,27 @@ def inspect_decision_sequence(
     if frame["memory"] is None:
         raise ValueError("Selected frame has no retained memory to reposition. Choose a frame with image evidence.")
 
+    prepared = prepare_inspection_scenarios(frame["memory"].to_dict(), config)
     scenarios = {}
-    for side in ("left", "right"):
-        memory = frame["memory"].to_dict()
-        changed = []
-        for record in memory["records"]:
-            location = record.get("location")
-            if location and location.get("frame") == "image" and record["kind"] in config.accepted_kinds:
-                location.update(zone=side, bbox_xyxy_norm=None, polygon_xy_norm=None)
-                changed.append(record["record_id"])
-        if not changed:
-            raise ValueError("Selected frame has no supported retained image evidence to reposition.")
+    for name, scenario in prepared.items():
         cycle, _ = create_shadow_proposals_engine(config).run_cycle(
             frame_id=frame["frame_id"], frame_index=frame["frame_index"],
             timestamp_ms=frame["timestamp_ms"], observation=frame["observation"],
             observation_error=frame["observation_error"],
-            memory=strict_decode_apply_memory(memory), host_application=None,
+            memory=strict_decode_apply_memory(scenario["memory"]), host_application=None,
         )
         command = cycle.authority.proposed
         steering = command.steering if command is not None else 0
-        scenarios[side] = {
-            "obstruction_side": side,
-            "steering_direction": "steer left" if steering < 0 else "steer right" if steering > 0 else "hold",
-            "changed_record_ids": changed,
-            "cycle": cycle.to_dict(),
-        }
+        published = {key: value for key, value in scenario.items() if key != "memory"}
+        published["steering_direction"] = (
+            "steer left" if steering < 0 else "steer right" if steering > 0 else "hold"
+        )
+        published["cycle"] = cycle.to_dict()
+        scenarios[name] = published
     return {
         "schema": "automa_decision_inspection_v1",
         "engine_id": ENGINE_ID,
-        "engine_config": asdict(config),
+        "engine_config": dict(config),
         "config_source": "staged" if vehicle_id else "packaged defaults",
         "input": {
             "name": path.name, "sha256": hashlib.sha256(raw).hexdigest(),

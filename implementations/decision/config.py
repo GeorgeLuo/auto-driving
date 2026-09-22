@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from autonomy.decision.shadow_runner import ShadowProposalsConfig
 from autonomy.decision.shadow_ids import require_ascii_id
@@ -51,4 +53,35 @@ class ObstacleAvoidanceConfig(ShadowProposalsConfig):
             raise ValueError("steer_magnitude must satisfy 0 < value <= 1")
         object.__setattr__(self, "steer_magnitude", magnitude)
         object.__setattr__(self, "accepted_kinds", kinds)
+
+
+def engine_config_document(config: ObstacleAvoidanceConfig) -> dict[str, Any]:
+    """JSON-ready copy of one packaged proposal configuration."""
+
+    return {
+        "enabled_plugins": list(config.enabled_plugins),
+        "accepted_kinds": list(config.accepted_kinds),
+        "retained_max_age_ms": config.retained_max_age_ms,
+        "steer_magnitude": config.steer_magnitude,
+    }
+
+
+def default_engine_config() -> dict[str, Any]:
+    """Named defaults for the packaged proposal engines."""
+
+    return engine_config_document(ObstacleAvoidanceConfig())
+
+
+def parse_engine_config(
+    engine_config: ObstacleAvoidanceConfig | Mapping[str, Any] | None,
+) -> ObstacleAvoidanceConfig:
+    """Accept a mapping or return the named defaults when nothing is supplied."""
+
+    if isinstance(engine_config, ObstacleAvoidanceConfig):
+        return engine_config
+    if not engine_config:
+        return ObstacleAvoidanceConfig()
+    if not isinstance(engine_config, Mapping):
+        raise TypeError("engine_config must be a mapping")
+    return ObstacleAvoidanceConfig(**dict(engine_config))
 

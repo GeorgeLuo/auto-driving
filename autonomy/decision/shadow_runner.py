@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from autonomy.decision.action_plan import select_action_plan
@@ -127,6 +127,8 @@ class ShadowProposalsEngine:
 
     config: ShadowProposalsConfig
     plugins: dict[str, Callable[[DecisionDataSource], ActionProposal]]
+    # Activation document supplied by the implementation. The runner does not read it.
+    reported_config: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Activation membership is the plugins map (catalog), not a self-declared set.

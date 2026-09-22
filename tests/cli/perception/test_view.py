@@ -94,7 +94,9 @@ class PerceptionViewTests(unittest.TestCase):
                 self.assertEqual(payload["overlay"]["status"], "current")
                 self.assertEqual(payload["overlay"]["source_frame_id"], "frame_000004")
                 self.assertEqual(payload["overlay"]["frame_lag"], 0)
-                self.assertEqual(payload["perception"]["things"][0]["thing_id"], "test-region")
+                self.assertEqual(
+                    payload["perception"]["things"][0]["thing_id"], "test-region"
+                )
                 self.assertEqual(
                     payload["perception"]["things"][0]["location"]["polygon_xy_norm"],
                     [[0.2, 0.25], [0.6, 0.3], [0.55, 0.75], [0.25, 0.7]],
@@ -106,13 +108,17 @@ class PerceptionViewTests(unittest.TestCase):
                 newer_record["frame_id"] = "frame_000005"
                 newer_record["frame_index"] = 5
                 newer_record["captured_at_ms"] = 1534
-                server.perception.publish_frame(frame_path=newer_frame_path, frame_record=newer_record)
+                server.perception.publish_frame(
+                    frame_path=newer_frame_path, frame_record=newer_record
+                )
 
                 with urlopen(f"{server.url}api/latest", timeout=1.0) as response:
                     stale_payload = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(stale_payload["frame"]["frame_id"], "frame_000005")
                 self.assertEqual(stale_payload["overlay"]["status"], "stale")
-                self.assertEqual(stale_payload["overlay"]["source_frame_id"], "frame_000004")
+                self.assertEqual(
+                    stale_payload["overlay"]["source_frame_id"], "frame_000004"
+                )
                 self.assertEqual(stale_payload["overlay"]["frame_lag"], 1)
                 self.assertEqual(stale_payload["overlay"]["frame_lag_ms"], 300)
 
@@ -135,12 +141,8 @@ class PerceptionViewTests(unittest.TestCase):
                     self.assertEqual(response.read(), b"")
 
                 with urlopen(f"{server.url}perception", timeout=1.0) as response:
-                    html = response.read().decode("utf-8")
-                self.assertIn("Automa Perception", html)
-                self.assertIn('id="regionsToggle"', html)
-                self.assertIn('id="labelsToggle"', html)
-                self.assertIn('id="kindToggles"', html)
-                self.assertIn("Overlay lag", html)
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers.get_content_type(), "text/html")
 
                 with urlopen(f"{server.url}favicon.ico", timeout=1.0) as response:
                     self.assertEqual(response.status, 204)

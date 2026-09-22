@@ -281,12 +281,6 @@
             "responsibility": "Bounded live-system checks that are never enabled by the flagless runner."
           },
           {
-            "path": "tests/docs/",
-            "category": "verification",
-            "commit_policy": "source",
-            "responsibility": "Documentation source, generated-render synchronization, and active-plan contract tests."
-          },
-          {
             "path": "tests/support/",
             "category": "verification-support",
             "commit_policy": "source",

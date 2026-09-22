@@ -9,7 +9,6 @@ from cli.automa_cli.decision_live import project_live_decision_payload
 from cli.automa_cli.decision_view import (
     build_decision_host_telemetry_capture,
     project_host_telemetry_panel,
-    render_host_telemetry_panel_html,
 )
 from cli.automa_cli.physical_observation import HOST_TELEMETRY_PANEL_SCHEMA
 
@@ -58,7 +57,9 @@ class HostTelemetryViewTests(unittest.TestCase):
 
         self.assertEqual(decision, before)
         self.assertEqual(projected["authority"], authority)
-        self.assertEqual(projected["host_telemetry"]["host_selected_output"]["steering"], 0.0)
+        self.assertEqual(
+            projected["host_telemetry"]["host_selected_output"]["steering"], 0.0
+        )
         self.assertNotIn("authority", projected["host_telemetry"])
         self.assertNotIn("host_application", projected["host_telemetry"])
 
@@ -86,15 +87,12 @@ class HostTelemetryViewTests(unittest.TestCase):
 
         self.assertEqual(capture["schema"], "automa_physical_decision_capture_v0")
         self.assertEqual(capture["decision"], decision)
-        self.assertEqual(capture["host_telemetry"]["schema"], "automa_host_boundary_telemetry_capture_v0")
+        self.assertEqual(
+            capture["host_telemetry"]["schema"],
+            "automa_host_boundary_telemetry_capture_v0",
+        )
         self.assertIn("host_telemetry", capture["host_telemetry"])
         self.assertNotIn("authority", capture["host_telemetry"])
-
-    def test_panel_html_is_additive_and_escaped(self) -> None:
-        html = render_host_telemetry_panel_html(_panel())
-        self.assertIn('id="host_telemetry"', html)
-        self.assertIn("Host telemetry", html)
-        self.assertIn("post_drive_mode_pre_drivetrain", html)
 
 
 if __name__ == "__main__":

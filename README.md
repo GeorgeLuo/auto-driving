@@ -394,12 +394,15 @@ The first physical autonomy deployment creates the default
 `lightweight_observer` perception activation, `idle` decision activation, and
 `bounded_evidence` memory activation when none exist. The Pi loads those
 activations. The Donkey assembly runs the shared autonomy cycle independently of
-`run_pilot`, so manual `user` mode executes onboard perception at
-`AUTONOMY_OBSERVATION_INTERVAL_S` (default 0.5 s) using the newest camera frame.
-While mode remains `user`, pilot outputs stay zero and Donkey DriveMode keeps
-manual input authoritative. The Pi publishes the exact latest frame/result on
-`/autonomy/observation/latest` for Automa stream, guided check, and viability
-measurement.
+`run_pilot`. Each drive-loop tick publishes the newest camera sample on
+`/autonomy/camera/latest` and does not wait for perception, so a capture can
+record at the loop rate (`DRIVE_LOOP_HZ`, 20 Hz) instead of the perception
+cadence. Perception still runs at `AUTONOMY_OBSERVATION_INTERVAL_S` (default
+0.5 s), in the background, on the sample that started the cycle. Samples that
+arrive while that cycle is running stay available as camera frames and do not
+block the loop or the driving command. The matched perception result remains
+`/autonomy/observation/latest`. While mode remains `user`, pilot outputs stay
+zero and Donkey DriveMode keeps manual input authoritative.
 
 **Deploy split:** autonomy packages ship the controller tree and activation
 files (including `runtime/memory/active.json`). The code path that *loads*

@@ -61,6 +61,7 @@ class ObservationPublicationTests(unittest.TestCase):
         image = np.zeros((8, 12, 3), dtype=np.uint8)
         image[:, :] = (10, 20, 30)
         part.run(image_array=image, mode="user")
+        part.wait_for_cycle()
 
         payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms + 10)
         self.assertEqual(payload["health"], "healthy")
@@ -125,6 +126,7 @@ class ObservationPublicationTests(unittest.TestCase):
         host = AutonomyCycleHost(stages=DecisionStages(remember=remember))
         part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
         self.assertIsNotNone(payload["memory"])
         self.assertEqual(payload["memory"]["health"], "healthy")
@@ -141,6 +143,7 @@ class ObservationPublicationTests(unittest.TestCase):
     def test_stale_and_error_health_states(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.5)
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
         completed = part.latest_snapshot.completed_at_ms
         stale = part.publish_latest(now_ms=completed + 5_000)
         self.assertEqual(stale["health"], "stale")
@@ -157,6 +160,7 @@ class ObservationPublicationTests(unittest.TestCase):
 
         failing = AutonomyPilotPart(host=Boom(), min_interval_s=0.0)  # type: ignore[arg-type]
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        failing.wait_for_cycle()
         errored = failing.publish_latest(now_ms=failing.latest_snapshot.completed_at_ms)
         self.assertEqual(errored["health"], "error")
         self.assertFalse(errored["ok"])
@@ -165,6 +169,7 @@ class ObservationPublicationTests(unittest.TestCase):
     def test_unavailable_when_image_missing(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
         part.run(image_array=None, mode="user")
+        part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
         self.assertEqual(payload["health"], "unavailable")
         jpeg, meta = part.publish_latest_frame_jpeg()
@@ -174,6 +179,7 @@ class ObservationPublicationTests(unittest.TestCase):
     def test_decision_publication_keeps_source_identity_and_cycle_atomic(self) -> None:
         part = self._shadow_part()
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
         assert part.latest_snapshot is not None
         completed_at_ms = part.latest_snapshot.completed_at_ms
 
@@ -268,6 +274,7 @@ class ObservationPublicationTests(unittest.TestCase):
         stop.set()
         for thread in threads:
             thread.join(timeout=1.0)
+        part.wait_for_cycle()
         self.assertEqual(errors, [])
         # Single atomic call still pairs metadata and image.
         jpeg, meta = part.publish_latest_frame_jpeg()
@@ -297,6 +304,10 @@ class ObservationPublicationTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('/autonomy/observation/latest', patch)
         self.assertIn('/autonomy/observation/latest/frame.jpg', patch)
+        self.assertIn('/autonomy/camera/latest', patch)
+        self.assertIn('/autonomy/camera/latest/frame.jpg', patch)
+        self.assertIn("class AutonomyCameraLatestAPI", patch)
+        self.assertIn("class AutonomyCameraLatestFrameAPI", patch)
         self.assertIn('/autonomy/memory/reset', patch)
         self.assertIn("class AutonomyObservationLatestAPI", patch)
         self.assertIn("class AutonomyObservationLatestFrameAPI", patch)

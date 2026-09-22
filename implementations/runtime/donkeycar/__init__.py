@@ -1,6 +1,9 @@
 """DonkeyCar runtime host implementation."""
 
 from .donkey_part import (
+    CAMERA_LATEST_FRAME_PATH,
+    CAMERA_LATEST_JSON_PATH,
+    CAMERA_PUBLICATION_SCHEMA,
     DEFAULT_OBSERVATION_INTERVAL_S,
     DECISION_LATEST_PATH,
     DECISION_PUBLICATION_SCHEMA,
@@ -8,17 +11,22 @@ from .donkey_part import (
     LATEST_JSON_PATH,
     OBSERVATION_PUBLICATION_SCHEMA,
     AutonomyPilotPart,
+    LatestCameraFrame,
     LatestObservationSnapshot,
     ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA,
 )
 
 __all__ = [
     "AutonomyPilotPart",
+    "CAMERA_LATEST_FRAME_PATH",
+    "CAMERA_LATEST_JSON_PATH",
+    "CAMERA_PUBLICATION_SCHEMA",
     "DEFAULT_OBSERVATION_INTERVAL_S",
     "DECISION_LATEST_PATH",
     "DECISION_PUBLICATION_SCHEMA",
     "LATEST_FRAME_PATH",
     "LATEST_JSON_PATH",
+    "LatestCameraFrame",
     "LatestObservationSnapshot",
     "OBSERVATION_PUBLICATION_SCHEMA",
     "ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA",

@@ -287,7 +287,16 @@ class WorkbenchTests(unittest.TestCase):
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
         self.assertEqual(
             [item.plugin_id for item in catalog.plugins],
-            ["classical_regions", "fastsam", "floor_continuity", "floor_continuity_capture"],
+            [
+                "classical_regions",
+                "composite_box_fusion",
+                "composite_box_fusion_object_separated",
+                "fastsam",
+                "floor_continuity",
+                "floor_continuity_capture",
+                "floor_continuity_temporal",
+                "multi_obstruction_tracks",
+            ],
         )
         self.assertTrue(catalog.valid)
         self.assertTrue(catalog.plugins[0].ready)
@@ -296,8 +305,12 @@ class WorkbenchTests(unittest.TestCase):
             catalog.plugins[0].output["schema"],
             "perception_text_v2",
         )
-        self.assertFalse(catalog.plugins[1].ready)
-        self.assertIn("isolated runtime", catalog.plugins[1].unavailable_reason or "")
+        plugins_by_id = {item.plugin_id: item for item in catalog.plugins}
+        self.assertFalse(plugins_by_id["fastsam"].ready)
+        self.assertIn(
+            "isolated runtime",
+            plugins_by_id["fastsam"].unavailable_reason or "",
+        )
         self.assertEqual(catalog.digest, discover_plugin_catalog(Path("lab/plugins/perception")).digest)
         self.assertEqual(
             catalog.normalize_selection(["floor_continuity", "classical_regions"]),
@@ -1112,7 +1125,16 @@ class WorkbenchTests(unittest.TestCase):
             catalog = inspected["state"]["plugin_catalog"]
             self.assertEqual(
                 [item["id"] for item in catalog["plugins"]],
-                ["classical_regions", "fastsam", "floor_continuity", "floor_continuity_capture"],
+                [
+                    "classical_regions",
+                    "composite_box_fusion",
+                    "composite_box_fusion_object_separated",
+                    "fastsam",
+                    "floor_continuity",
+                    "floor_continuity_capture",
+                    "floor_continuity_temporal",
+                    "multi_obstruction_tracks",
+                ],
             )
             raw_selected = post(
                 {"action": "select_plugins", "active_plugin_ids": []}

@@ -631,6 +631,20 @@ def _entrypoint_origin(root: Path, entrypoint: str) -> Path | None:
     # discovery must not execute unselected plugin code.
     module_parts = tuple(module_name.split("."))
     tail = module_parts[-3:] if len(module_parts) >= 3 else module_parts
+    suffix = Path(*tail)
+    suffix_candidates = (
+        root / suffix.with_suffix(".py"),
+        root / suffix / "__init__.py",
+    )
+    for candidate in suffix_candidates:
+        if candidate.is_file():
+            try:
+                return candidate.resolve()
+            except OSError:
+                return None
+
+    # Keep the recursive fallback for plugin layouts whose declared module
+    # suffix does not mirror their path below the selected plugin root.
     for candidate in sorted(root.rglob("*.py")):
         try:
             relative_parts = candidate.relative_to(root).parts

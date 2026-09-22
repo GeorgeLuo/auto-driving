@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from cli.automa_cli.workbench import ReplayActionError, WorkbenchServer
-from tests.cli.workbench_fixtures import (
+from tests.cli.test_workbench import (
     FixtureMapper,
     ImageReplayRunner,
     _make_images,

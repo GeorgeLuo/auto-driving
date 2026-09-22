@@ -165,10 +165,12 @@ class LiveAdapterTests(unittest.TestCase):
             min_interval_s=0.0,
         )
 
-        steering, throttle, control, _engine, _cycle = part.run(
+        part.run(
             image_array=object(),
             mode="local",
         )
+        part.wait_for_cycle()
+        steering, throttle, control, _engine, _cycle = part.completed_outputs("local")
 
         self.assertGreater(steering, 0.0)
         self.assertAlmostEqual(throttle, 0.60)

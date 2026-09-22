@@ -12,12 +12,29 @@ from autonomy.decision.shadow_authority import proposed_equals_authorized
 from autonomy.decision.shadow_ids import ShadowCycleInputError
 from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine
 from implementations.decision.catalog import create_shadow_proposals_engine
+from implementations.decision.config import ObstacleAvoidanceConfig
 from tests.autonomy.decision.action_proposal_plan_fixtures import (
     _active_proposal,
 )
 
 
 class ActionProposalMatrixTests(unittest.TestCase):
+    def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
+        engine = ShadowProposalsEngine(
+            config=ShadowProposalsConfig(enabled_plugins=("cruise",)),
+            plugins={
+                "cruise": lambda source: _active_proposal(
+                    plugin_id="cruise", frame_id=source.frame_id
+                )
+            },
+        )
+        result, control = engine.run_cycle(
+            frame_id="frame_001", frame_index=0, timestamp_ms=1000
+        )
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(result.plan.selected_candidate().plugin_id, "cruise")
+        self.assertEqual(control.throttle, 0.0)
+
     def test_rejects_fresh_with_stale_freshness(self) -> None:
         with self.assertRaises(ValueError):
             ActionProposal(
@@ -340,14 +357,6 @@ class RunnerBoundaryTests(unittest.TestCase):
 
     def test_invalid_activation_configs(self) -> None:
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(steer_magnitude=-0.1)
-        with self.assertRaises(ValueError):
-            ShadowProposalsConfig(steer_magnitude=1.1)
-        with self.assertRaises(ValueError):
-            ShadowProposalsConfig(steer_magnitude=0)
-        with self.assertRaises(ValueError):
-            ShadowProposalsConfig(steer_magnitude=float("nan"))
-        with self.assertRaises(ValueError):
             ShadowProposalsConfig(enabled_plugins=("a", "a"))
         with self.assertRaises(ValueError):
             ShadowProposalsConfig(
@@ -355,13 +364,11 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
         # String is not a list of ids (would otherwise char-iterate).
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(accepted_kinds="obstacle")  # type: ignore[arg-type]
-        with self.assertRaises(ValueError):
             ShadowProposalsConfig(enabled_plugins="avoid_recent_obstruction")  # type: ignore[arg-type]
         # Unknown id rejects at production catalog activation, not via self-declared known set.
         with self.assertRaises(ValueError):
             create_shadow_proposals_engine(
-                ShadowProposalsConfig(enabled_plugins=("ghost",))
+                ObstacleAvoidanceConfig(enabled_plugins=("ghost",))
             )
         with self.assertRaises(ValueError):
             ShadowProposalsEngine(

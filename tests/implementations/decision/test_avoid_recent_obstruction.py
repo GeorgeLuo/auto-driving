@@ -15,6 +15,7 @@ from autonomy.decision.memory import (
     unavailable_memory_snapshot,
 )
 from autonomy.perception import ViewLocation
+from implementations.decision.config import ObstacleAvoidanceConfig
 from implementations.decision.proposals.avoid_recent_obstruction import propose
 
 
@@ -90,6 +91,8 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertIsNotNone(p.command)
         assert p.command is not None
         self.assertGreater(p.command.steering, 0)
+        self.assertAlmostEqual(p.command.throttle, 0.60)
+        self.assertEqual(p.command.gear, "forward")
 
     def test_right_obstacle_retained(self) -> None:
         p = propose(
@@ -102,6 +105,8 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(p.lifecycle, "retained")
         assert p.command is not None
         self.assertLess(p.command.steering, 0)
+        self.assertAlmostEqual(p.command.throttle, 0.60)
+        self.assertEqual(p.command.gear, "forward")
 
     def test_obstruction_evidence_kind_accepted(self) -> None:
         p = propose(
@@ -475,7 +480,21 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         p = propose(source)
         self.assertEqual(p.lifecycle, "fresh")
         assert p.command is not None
-        self.assertAlmostEqual(p.command.steering, 0.35)
+        self.assertAlmostEqual(p.command.steering, 1.0)
+        self.assertAlmostEqual(p.command.throttle, 0.60)
+        self.assertEqual(p.command.gear, "forward")
+
+    def test_invalid_avoidance_configuration(self) -> None:
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=-0.1)
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=1.1)
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=0)
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=float("nan"))
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(accepted_kinds="obstacle")  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

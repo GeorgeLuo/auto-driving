@@ -11,6 +11,7 @@ import shlex
 import shutil
 import stat as stat_mod
 import time
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,7 +24,6 @@ from autonomy.decision import (
     SHADOW_AUTHORITY_RESULT_SCHEMA,
     SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     SELECTOR_ID,
-    ShadowProposalsConfig,
     canonical_json_utf8,
 )
 from autonomy.decision.action_plan import ActionPlan, PlanContribution, select_action_plan
@@ -45,17 +45,16 @@ from autonomy.decision.shadow_authority import (
     authorized_idle_output,
 )
 from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
-from autonomy.decision.shadow_runner import (
-    DEFAULT_ACCEPTED_KINDS,
-    DEFAULT_ENABLED_PLUGINS,
-    DEFAULT_RETAINED_MAX_AGE_MS,
-    DEFAULT_STEER_MAGNITUDE,
-    ENGINE_ID,
-)
+from autonomy.decision.shadow_runner import ENGINE_ID
 from autonomy.runtime import AutonomyManager, read_decision_activation
 from implementations.decision.catalog import (
-    KNOWN_PROPOSAL_PLUGIN_IDS,
     create_shadow_proposals_engine,
+    validate_engine_config,
+)
+from implementations.decision.config import default_engine_config
+from implementations.decision.live_adapter import (
+    ADAPTER_ENGINE_SPEC as LIVE_ADAPTER_ENGINE_SPEC,
+    ENGINE_ID as LIVE_ENGINE_ID,
 )
 from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
 
@@ -295,12 +294,7 @@ SHADOW_DECISION_INPUTS = (
     "prior_host_applied_command",
 )
 
-DEFAULT_SHADOW_ENGINE_CONFIG: dict[str, Any] = {
-    "enabled_plugins": list(DEFAULT_ENABLED_PLUGINS),
-    "accepted_kinds": list(DEFAULT_ACCEPTED_KINDS),
-    "retained_max_age_ms": DEFAULT_RETAINED_MAX_AGE_MS,
-    "steer_magnitude": DEFAULT_STEER_MAGNITUDE,
-}
+PROPOSAL_ENGINE_IDS = frozenset({ENGINE_ID, LIVE_ENGINE_ID})
 
 DECISION_ENGINES: dict[str, dict[str, Any]] = {
     "idle": {
@@ -314,7 +308,16 @@ DECISION_ENGINES: dict[str, dict[str, Any]] = {
             f"proposed_applied=false; reason={AUTHORIZED_IDLE_REASON}."
         ),
         "engine_spec": ADAPTER_ENGINE_SPEC,
-        "engine_config": dict(DEFAULT_SHADOW_ENGINE_CONFIG),
+        "engine_config": default_engine_config(),
+    },
+    LIVE_ENGINE_ID: {
+        "description": (
+            "Explicit-autonomy PiCar obstacle avoidance using the existing "
+            "avoid_recent_obstruction proposal; clear or unusable evidence "
+            "returns idle."
+        ),
+        "engine_spec": LIVE_ADAPTER_ENGINE_SPEC,
+        "engine_config": default_engine_config(),
     },
 }
 
@@ -406,41 +409,43 @@ def _error_result(
     return CommandResult(exc.exit_code, exc.message_text)
 
 
-def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowProposalsConfig:
-    """Fail closed before activation write when shadow config is invalid."""
+def _validate_proposal_engine_config(
+    engine_config: dict[str, Any],
+    *,
+    engine_label: str,
+) -> dict[str, Any]:
+    """Validate a proposal engine document without interpreting its fields."""
 
     if not isinstance(engine_config, dict):
         raise DecisionSurfaceError(
             "invalid_engine_config",
-            "shadow-proposals engine_config must be a JSON object.",
-        )
-    allowed = {
-        "enabled_plugins",
-        "accepted_kinds",
-        "retained_max_age_ms",
-        "steer_magnitude",
-    }
-    unknown = set(engine_config) - allowed
-    if unknown:
-        raise DecisionSurfaceError(
-            "invalid_engine_config",
-            f"shadow-proposals engine_config has unknown keys: {sorted(unknown)}.",
+            f"{engine_label} engine_config must be a JSON object.",
         )
     try:
-        cfg = ShadowProposalsConfig(**engine_config) if engine_config else ShadowProposalsConfig()
+        return validate_engine_config(engine_config)
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "invalid_engine_config",
-            f"Invalid shadow-proposals engine_config: {exc}",
+            f"Invalid {engine_label} engine_config: {exc}",
         ) from exc
-    for plugin_id in cfg.enabled_plugins:
-        if plugin_id not in KNOWN_PROPOSAL_PLUGIN_IDS:
-            raise DecisionSurfaceError(
-                "invalid_engine_config",
-                f"Unknown proposal plugin {plugin_id!r}. "
-                f"Known: {', '.join(sorted(KNOWN_PROPOSAL_PLUGIN_IDS))}.",
-            )
-    return cfg
+
+
+def validate_shadow_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed before activation write when shadow config is invalid."""
+
+    return _validate_proposal_engine_config(
+        engine_config,
+        engine_label="shadow-proposals",
+    )
+
+
+def validate_live_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed before activation write when live config is invalid."""
+
+    return _validate_proposal_engine_config(
+        engine_config,
+        engine_label=LIVE_ENGINE_ID,
+    )
 
 
 def _read_surface_activation(
@@ -461,20 +466,30 @@ def _read_surface_activation(
             vehicle_id=vehicle_id,
         ) from exc
 
-    if decoded.engine_id == ENGINE_ID:
-        if decoded.engine_spec != ADAPTER_ENGINE_SPEC:
+    if decoded.engine_id in PROPOSAL_ENGINE_IDS:
+        expected_spec = (
+            ADAPTER_ENGINE_SPEC
+            if decoded.engine_id == ENGINE_ID
+            else LIVE_ADAPTER_ENGINE_SPEC
+        )
+        if decoded.engine_spec != expected_spec:
             raise DecisionSurfaceError(
                 "activation_invalid",
-                f"shadow-proposals engine_spec must be {ADAPTER_ENGINE_SPEC!r}; "
+                f"{decoded.engine_id} engine_spec must be {expected_spec!r}; "
                 f"got {decoded.engine_spec!r}.",
                 vehicle_id=vehicle_id,
                 details={
-                    "expected_engine_spec": ADAPTER_ENGINE_SPEC,
+                    "expected_engine_spec": expected_spec,
                     "got_engine_spec": decoded.engine_spec,
                 },
             )
         try:
-            validate_shadow_engine_config(decoded.engine_config)
+            validator = (
+                validate_shadow_engine_config
+                if decoded.engine_id == ENGINE_ID
+                else validate_live_engine_config
+            )
+            validator(decoded.engine_config)
         except DecisionSurfaceError as exc:
             raise DecisionSurfaceError(
                 "activation_invalid",
@@ -506,9 +521,14 @@ def update_vehicle_decision(
 
     engine_entry = DECISION_ENGINES[engine_id]
     engine_config = dict(engine_entry["engine_config"])
-    if engine_id == ENGINE_ID:
+    if engine_id in PROPOSAL_ENGINE_IDS:
         try:
-            validate_shadow_engine_config(engine_config)
+            validator = (
+                validate_shadow_engine_config
+                if engine_id == ENGINE_ID
+                else validate_live_engine_config
+            )
+            validator(engine_config)
         except DecisionSurfaceError as exc:
             return _error_result(
                 DecisionSurfaceError(
@@ -654,7 +674,7 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
     if engine_id == ENGINE_ID:
         plugins = engine_config.get("enabled_plugins")
         if not isinstance(plugins, list):
-            plugins = list(DEFAULT_ENABLED_PLUGINS)
+            plugins = list(default_engine_config()["enabled_plugins"])
         shadow = {
             "decision_inputs": list(SHADOW_DECISION_INPUTS),
             "enabled_plugins": list(plugins),
@@ -1125,10 +1145,11 @@ def _accept_provider_neutral_decision_cycle(
         )
     reconstructed_cycle = _require_exact_cycle_export(cycle)
     engine_id = decision.get("activation_engine_id")
-    if engine_id != ENGINE_ID:
+    if engine_id not in PROPOSAL_ENGINE_IDS:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"Physical decision engine must be {ENGINE_ID!r}; got {engine_id!r}.",
+            f"Physical decision engine must be one of {sorted(PROPOSAL_ENGINE_IDS)!r}; "
+            f"got {engine_id!r}.",
         )
     activation = decision.get("activation")
     engine_config = activation.get("engine_config") if isinstance(activation, dict) else None
@@ -1138,7 +1159,12 @@ def _accept_provider_neutral_decision_cycle(
             "Physical decision activation engine_config must be an object.",
         )
     try:
-        shadow_config = validate_shadow_engine_config(engine_config)
+        validator = (
+            validate_shadow_engine_config
+            if engine_id == ENGINE_ID
+            else validate_live_engine_config
+        )
+        shadow_config = validator(engine_config)
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
@@ -1975,7 +2001,7 @@ def _require_aggregate_cycle_alignment(
 
 def _require_runner_plan_alignment(
     cycle: ShadowDecisionCycleResult,
-    config: ShadowProposalsConfig,
+    config: Mapping[str, Any],
 ) -> None:
     """Enforce runner-owned candidate membership and selector output."""
 
@@ -1995,7 +2021,7 @@ def _require_runner_plan_alignment(
             "ok cycle must include an action plan.",
             details={"field": "cycle.plan"},
         )
-    expected_plugins = tuple(sorted(config.enabled_plugins))
+    expected_plugins = tuple(sorted(config["enabled_plugins"]))
     actual_plugins = tuple(candidate.plugin_id for candidate in plan.candidates)
     if actual_plugins != expected_plugins:
         raise DecisionSurfaceError(
@@ -3088,7 +3114,7 @@ def _normalize_apply_frames(
 
 
 def _run_apply_pass(
-    cfg: ShadowProposalsConfig,
+    cfg: Mapping[str, Any],
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
     engine = create_shadow_proposals_engine(cfg)
@@ -3150,7 +3176,7 @@ def _write_apply_record(
     from_run_dir: Path,
     frames: list[dict[str, Any]],
     payload: dict[str, Any],
-    engine_config: ShadowProposalsConfig,
+    engine_config: Mapping[str, Any],
     output_root: Path,
 ) -> Path:
     output_root = Path(output_root)

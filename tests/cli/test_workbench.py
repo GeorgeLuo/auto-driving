@@ -276,7 +276,7 @@ class WorkbenchTests(unittest.TestCase):
                 "avoid_recent_obstruction:"
             )
         )
-        self.assertEqual(decision["authority"]["proposed"]["steering"], 0.35)
+        self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
         self.assertFalse(decision["authority"]["proposed_applied"])
         self.assertEqual(
             state["timeline"][0]["decision"]["selected_proposal_id"],
@@ -289,8 +289,12 @@ class WorkbenchTests(unittest.TestCase):
             state["machine_detail"]["pipeline"]["decision_engine"],
             "shadow-proposals",
         )
-        self.assertFalse(
-            state["machine_detail"]["pipeline"]["decision_config"]["proposed_applied"]
+        decision_config = state["machine_detail"]["pipeline"]["decision_config"]
+        self.assertFalse(decision_config["proposed_applied"])
+        self.assertEqual(decision_config["steer_magnitude"], 1.0)
+        self.assertEqual(
+            decision_config["accepted_kinds"],
+            ["floor_boundary", "obstacle", "obstruction_evidence"],
         )
 
     def test_recorded_steering_capture_replays_both_decision_changes(self) -> None:

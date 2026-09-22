@@ -688,7 +688,6 @@
           <span id="frameIndex" class="muted">—</span>
           <span id="frameTimestamp" class="muted">—</span>
           <span id="perceptionStatus" class="muted">—</span>
-          <span id="lookbackHud" class="muted">—</span>
         </div>
       </section>
 
@@ -873,7 +872,7 @@
         "memorySelected", "decisionSummary", "decisionFrameIdentity", "decisionStatus", "decisionSelected",
         "decisionProposed", "decisionAuthority", "decisionReason", "decisionSource", "decisionCandidates",
         "parameterEditor", "parameterEditorTitle", "editorNote", "parameterEditorForm",
-        "applyParameters", "editorStatus", "lookbackHud"
+        "applyParameters", "editorStatus"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
       var editorRenderKey = null;
       var noticeTimer = null;
@@ -1364,17 +1363,6 @@
         }
       }
 
-      function lookbackText() {
-        var lookback = state && state.lookback;
-        if (!lookback) return "Lookback appears once the first frame has been processed.";
-        var read = lookback.read || 0;
-        var wrote = lookback.wrote || 0;
-        if (read === 0) {
-          return "Lookback: no tracks remembered yet. This frame wrote " + wrote + ".";
-        }
-        return "Lookback: read " + read + " tracks from the previous frame, wrote " + wrote + ".";
-      }
-
       function renderParameterEditor() {
         var editor = state && state.parameter_editor;
         if (!elements.parameterEditor) return;
@@ -1382,7 +1370,6 @@
         if (!editor) return;
         setText("parameterEditorTitle", editor.title || "Plugin settings");
         setText("editorNote", editor.note || "");
-        setText("lookbackHud", lookbackText());
         setText("editorStatus", (state && state.editor_status) || "");
         var allowed = state && state.controls && state.controls.allowed_actions
           ? state.controls.allowed_actions : [];

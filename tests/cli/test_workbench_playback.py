@@ -15,17 +15,6 @@ from tests.cli.workbench_fixtures import (
 )
 
 
-class RecordingMapper(FixtureMapper):
-    def __init__(self) -> None:
-        super().__init__()
-        self.priors: list[object] = []
-
-    def perceive(self, request):
-        metadata = getattr(request, "metadata", {}) or {}
-        self.priors.append(metadata.get("prior_memory"))
-        return super().perceive(request)
-
-
 class WorkbenchTests(unittest.TestCase):
     def test_pause_resume_step_reset_and_stale_run_are_server_owned(self) -> None:
         with TemporaryDirectory() as directory:
@@ -61,11 +50,11 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
 
-    def test_ordered_replay_carries_memory_and_does_not_skip_ahead(self) -> None:
+    def test_ordered_replay_does_not_skip_ahead_and_applies_plugin_parameters(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             _make_images(root, 4)
-            mapper = RecordingMapper()
+            mapper = FixtureMapper()
             editor = {
                 "plugin_id": "fixture",
                 "title": "Fixture",
@@ -97,8 +86,6 @@ class WorkbenchTests(unittest.TestCase):
             sought = runner.dispatch("seek", run_id=run_id, position=2)
             self.assertEqual(sought["current_frame"]["position"], 2)
             self.assertGreaterEqual(len(mapper.calls), calls_after_first + 2)
-            self.assertIsNone(mapper.priors[0])
-            self.assertIsInstance(mapper.priors[1], dict)
             applied = runner.dispatch(
                 "apply_plugin_parameters",
                 run_id=run_id,

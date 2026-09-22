@@ -123,28 +123,6 @@ def _safe_status(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
-def _lookback_counts(perception: dict[str, Any] | None) -> dict[str, int] | None:
-    if not isinstance(perception, dict):
-        return None
-    sources: list[Any] = []
-    measurements = perception.get("measurements")
-    if isinstance(measurements, dict):
-        sources.extend(measurements.values())
-    signals = perception.get("signals")
-    if isinstance(signals, (list, tuple)):
-        for signal in signals:
-            if isinstance(signal, dict):
-                sources.append(signal.get("properties"))
-    for source in sources:
-        if not isinstance(source, dict) or "memory_tracks_read" not in source:
-            continue
-        return {
-            "read": int(source.get("memory_tracks_read") or 0),
-            "wrote": int(source.get("memory_tracks_written") or 0),
-        }
-    return None
-
-
 def _coerce_editor_value(field: dict[str, Any], raw: Any) -> Any:
     kind = str(field.get("kind") or "float")
     if kind == "choice":
@@ -1017,7 +995,6 @@ class ImageReplayRunner:
             self._state["memory"] = None
             self._state["perception"] = None
             self._state["observation"] = None
-            self._state["lookback"] = None
             self._state["position"] = 0
             self._state["progress"] = {
                 "completed": 0,
@@ -1294,15 +1271,12 @@ class ImageReplayRunner:
                 def perceive(current: DecisionFrameContext) -> PerceptionText | None:
                     if frame.absent or current.sensor_snapshot is None:
                         return None
-                    with self._lock:
-                        prior_memory = copy.deepcopy(self._state.get("memory"))
                     request = build_perception_request(
                         current.sensor_snapshot,
                         metadata={
                             "source": WORKBENCH_SEQUENCE_ID,
                             "source_id": frame.source_id,
                             "sequence_index": frame.position,
-                            "prior_memory": prior_memory,
                         },
                     )
                     return mapper.perceive(request)
@@ -1363,7 +1337,6 @@ class ImageReplayRunner:
                         return
                     previous_memory = self._state.get("memory")
                     self._state["current_frame"] = frame.to_dict()
-                    self._state["lookback"] = _lookback_counts(perception_payload)
                     self._state["perception"] = perception_payload
                     self._state["observation"] = observation_payload
                     self._state["memory"] = memory_payload
@@ -1585,7 +1558,6 @@ class ImageReplayRunner:
             "perception": None,
             "observation": None,
             "memory": None,
-            "lookback": None,
             "parameter_editor": copy.deepcopy(getattr(self, "_parameter_editor", None)),
             "editor_status": None,
             "decision": None,

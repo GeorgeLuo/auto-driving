@@ -1,0 +1,488 @@
+{
+  "attempts": 1,
+  "created_at_ms": 1789627256467,
+  "latency_ms": 281.086,
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "cluster_00_selected": {
+        "criteria": {
+          "cluster_00_classical_regions_000": "raw box from classical_regions; normalized bounds=[0.6489, 0.27197, 0.79937, 0.49791]; support=['classical_regions_000']",
+          "cluster_00_classical_regions_009": "raw box from classical_regions; normalized bounds=[0.57994, 0.22176, 0.76803, 0.35146]; support=['classical_regions_009']",
+          "cluster_00_edge_rectangles_000": "raw box from edge_rectangles; normalized bounds=[0.64577, 0.26778, 0.84326, 0.50209]; support=['edge_rectangles_000']",
+          "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_00_union": "union box from classical_regions, edge_rectangles; normalized bounds=[0.57994, 0.22176, 0.84326, 0.50209]; support=['classical_regions_000', 'classical_regions_009', 'edge_rectangles_000']",
+          "cluster_00_weighted_median": "weighted_median box from classical_regions, edge_rectangles; normalized bounds=[0.64577, 0.26778, 0.79937, 0.49791]; support=['classical_regions_000', 'classical_regions_009', 'edge_rectangles_000']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence.",
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      }
+    },
+    "state": {
+      "clusters": [
+        {
+          "cluster_id": "cluster_00",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.6489,
+                0.27197,
+                0.79937,
+                0.49791
+              ],
+              "confidence": 0.99184,
+              "hypothesis_id": "cluster_00_classical_regions_000",
+              "kind": "raw",
+              "source_ids": [
+                "classical_regions_000"
+              ],
+              "source_names": [
+                "classical_regions"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.57994,
+                0.22176,
+                0.76803,
+                0.35146
+              ],
+              "confidence": 0.80686,
+              "hypothesis_id": "cluster_00_classical_regions_009",
+              "kind": "raw",
+              "source_ids": [
+                "classical_regions_009"
+              ],
+              "source_names": [
+                "classical_regions"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.64577,
+                0.26778,
+                0.84326,
+                0.50209
+              ],
+              "confidence": 0.56979,
+              "hypothesis_id": "cluster_00_edge_rectangles_000",
+              "kind": "raw",
+              "source_ids": [
+                "edge_rectangles_000"
+              ],
+              "source_names": [
+                "edge_rectangles"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.64577,
+                0.26778,
+                0.79937,
+                0.49791
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_00_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "classical_regions_000",
+                "classical_regions_009",
+                "edge_rectangles_000"
+              ],
+              "source_names": [
+                "classical_regions",
+                "edge_rectangles"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.57994,
+                0.22176,
+                0.84326,
+                0.50209
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_00_union",
+              "kind": "union",
+              "source_ids": [
+                "classical_regions_000",
+                "classical_regions_009",
+                "edge_rectangles_000"
+              ],
+              "source_names": [
+                "classical_regions",
+                "edge_rectangles"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_00_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_00_classical_regions_000": "raw box from classical_regions; normalized bounds=[0.6489, 0.27197, 0.79937, 0.49791]; support=['classical_regions_000']",
+            "cluster_00_classical_regions_009": "raw box from classical_regions; normalized bounds=[0.57994, 0.22176, 0.76803, 0.35146]; support=['classical_regions_009']",
+            "cluster_00_edge_rectangles_000": "raw box from edge_rectangles; normalized bounds=[0.64577, 0.26778, 0.84326, 0.50209]; support=['edge_rectangles_000']",
+            "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_00_union": "union box from classical_regions, edge_rectangles; normalized bounds=[0.57994, 0.22176, 0.84326, 0.50209]; support=['classical_regions_000', 'classical_regions_009', 'edge_rectangles_000']",
+            "cluster_00_weighted_median": "weighted_median box from classical_regions, edge_rectangles; normalized bounds=[0.64577, 0.26778, 0.79937, 0.49791]; support=['classical_regions_000', 'classical_regions_009', 'edge_rectangles_000']"
+          }
+        }
+      ],
+      "detector_runs": [
+        {
+          "count": 4,
+          "detector": "classical_regions",
+          "duration_ms": 570.344,
+          "status": "ok"
+        },
+        {
+          "count": 1,
+          "detector": "edge_rectangles",
+          "duration_ms": 7.4,
+          "status": "ok"
+        }
+      ],
+      "frame": {
+        "height_px": 480,
+        "id": "frame_000000",
+        "sensor_id": "front_camera",
+        "width_px": 640
+      },
+      "image_is_not_available_to_jev": true,
+      "raw_boxes": [
+        {
+          "bbox_xyxy_norm": [
+            0.6489,
+            0.27197,
+            0.79937,
+            0.49791
+          ],
+          "candidate_id": "classical_regions_000",
+          "confidence": 0.99184,
+          "kind": "region_proposal",
+          "label": "coherent color region",
+          "properties": {
+            "area_fraction": 0.030794,
+            "centroid_xy_norm": [
+              0.72609,
+              0.39106
+            ],
+            "color_coherence": 0.98186,
+            "contour_xy_norm": [
+              [
+                0.79624,
+                0.27197
+              ],
+              [
+                0.6489,
+                0.30962
+              ],
+              [
+                0.6489,
+                0.48954
+              ],
+              [
+                0.79937,
+                0.49791
+              ]
+            ],
+            "evidence": "classical_color_component",
+            "solidity": 1.0,
+            "thing_id": "classical_region_000",
+            "touches_lower_image": false
+          },
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.76489,
+            0.11715,
+            1.0,
+            0.50209
+          ],
+          "candidate_id": "classical_regions_003",
+          "confidence": 0.95395,
+          "kind": "region_proposal",
+          "label": "coherent color region",
+          "properties": {
+            "area_fraction": 0.064753,
+            "centroid_xy_norm": [
+              0.91134,
+              0.30241
+            ],
+            "color_coherence": 0.98326,
+            "contour_xy_norm": [
+              [
+                0.9906,
+                0.12134
+              ],
+              [
+                0.92476,
+                0.11715
+              ],
+              [
+                0.76489,
+                0.20084
+              ],
+              [
+                0.76489,
+                0.26778
+              ],
+              [
+                0.80251,
+                0.2636
+              ],
+              [
+                0.84326,
+                0.2887
+              ],
+              [
+                0.84953,
+                0.50209
+              ],
+              [
+                1.0,
+                0.49372
+              ]
+            ],
+            "evidence": "classical_color_component",
+            "solidity": 0.88994,
+            "thing_id": "classical_region_003",
+            "touches_lower_image": false
+          },
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.23431,
+            0.61129,
+            0.48954
+          ],
+          "candidate_id": "classical_regions_004",
+          "confidence": 0.92404,
+          "kind": "region_proposal",
+          "label": "coherent color region",
+          "properties": {
+            "area_fraction": 0.107396,
+            "centroid_xy_norm": [
+              0.26538,
+              0.36778
+            ],
+            "color_coherence": 0.96046,
+            "contour_xy_norm": [
+              [
+                0.0,
+                0.23849
+              ],
+              [
+                0.0,
+                0.48954
+              ],
+              [
+                0.1348,
+                0.48117
+              ],
+              [
+                0.13793,
+                0.43933
+              ],
+              [
+                0.35423,
+                0.47699
+              ],
+              [
+                0.35423,
+                0.38075
+              ],
+              [
+                0.39498,
+                0.35146
+              ],
+              [
+                0.47649,
+                0.36402
+              ],
+              [
+                0.47649,
+                0.47699
+              ],
+              [
+                0.61129,
+                0.47699
+              ],
+              [
+                0.5674,
+                0.30126
+              ]
+            ],
+            "evidence": "classical_color_component",
+            "solidity": 0.83381,
+            "thing_id": "classical_region_004",
+            "touches_lower_image": false
+          },
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.57994,
+            0.22176,
+            0.76803,
+            0.35146
+          ],
+          "candidate_id": "classical_regions_009",
+          "confidence": 0.80686,
+          "kind": "region_proposal",
+          "label": "coherent color region",
+          "properties": {
+            "area_fraction": 0.010065,
+            "centroid_xy_norm": [
+              0.67002,
+              0.28195
+            ],
+            "color_coherence": 0.98841,
+            "contour_xy_norm": [
+              [
+                0.76803,
+                0.22176
+              ],
+              [
+                0.75549,
+                0.23013
+              ],
+              [
+                0.72414,
+                0.22176
+              ],
+              [
+                0.57994,
+                0.30126
+              ],
+              [
+                0.58934,
+                0.35146
+              ],
+              [
+                0.60188,
+                0.35146
+              ],
+              [
+                0.60502,
+                0.33891
+              ],
+              [
+                0.63009,
+                0.35146
+              ],
+              [
+                0.63323,
+                0.33473
+              ],
+              [
+                0.64577,
+                0.33473
+              ],
+              [
+                0.6489,
+                0.30126
+              ],
+              [
+                0.70533,
+                0.2887
+              ],
+              [
+                0.71473,
+                0.27197
+              ],
+              [
+                0.73354,
+                0.28033
+              ],
+              [
+                0.74608,
+                0.25523
+              ],
+              [
+                0.76176,
+                0.27197
+              ]
+            ],
+            "evidence": "classical_color_component",
+            "solidity": 0.79445,
+            "thing_id": "classical_region_009",
+            "touches_lower_image": false
+          },
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.64577,
+            0.26778,
+            0.84326,
+            0.50209
+          ],
+          "candidate_id": "edge_rectangles_000",
+          "confidence": 0.56979,
+          "kind": "edge_region",
+          "label": "closed-edge rectangle",
+          "properties": {
+            "area_fraction": 0.0475,
+            "edge_density": 0.24232,
+            "evidence": "canny_closed_contour",
+            "fill": 0.86513,
+            "thing_id": "edge_rectangle_000",
+            "working_height": 240,
+            "working_width": 320
+          },
+          "source": "edge_rectangles"
+        }
+      ],
+      "task": "Fuse noisy image-space CV cues into bounded object-boundary hypotheses."
+    }
+  },
+  "response": {
+    "answers": {
+      "cluster_00_selected": {
+        "choice": "cluster_00_weighted_median",
+        "confidence": 0.33,
+        "probabilities": {
+          "cluster_00_classical_regions_000": 0.37,
+          "cluster_00_classical_regions_009": 0.01,
+          "cluster_00_edge_rectangles_000": 0.03,
+          "cluster_00_none": 0.12,
+          "cluster_00_union": 0.02,
+          "cluster_00_weighted_median": 0.45
+        },
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "noul": 0.77,
+        "type": "noul"
+      }
+    },
+    "model": "jev-1.13.0",
+    "usage": {
+      "input_tokens": 4076,
+      "output_tokens": 142
+    }
+  },
+  "schema": "issue_219_jev_cache_v0"
+}

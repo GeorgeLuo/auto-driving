@@ -1,0 +1,462 @@
+{
+  "attempts": 1,
+  "created_at_ms": 1789627971302,
+  "latency_ms": 238.84,
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "cluster_00_selected": {
+        "criteria": {
+          "cluster_00_edge_rectangles_000": "raw box from edge_rectangles; normalized bounds=[0.1348, 0.44351, 0.24765, 0.49791]; support=['edge_rectangles_000']",
+          "cluster_00_hsv_components_002": "raw box from hsv_components; normalized bounds=[0.13793, 0.44351, 0.22884, 0.49372]; support=['hsv_components_002']",
+          "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence.",
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_01_selected": {
+        "criteria": {
+          "cluster_01_edge_rectangles_002": "raw box from edge_rectangles; normalized bounds=[0.64577, 0.26778, 0.84326, 0.50209]; support=['edge_rectangles_002']",
+          "cluster_01_hsv_components_000": "raw box from hsv_components; normalized bounds=[0.6489, 0.26778, 0.84013, 0.49791]; support=['hsv_components_000']",
+          "cluster_01_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence.",
+        "type": "choice"
+      },
+      "cluster_01_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_02_selected": {
+        "criteria": {
+          "cluster_02_edge_rectangles_001": "raw box from edge_rectangles; normalized bounds=[0.35423, 0.35565, 0.47649, 0.49791]; support=['edge_rectangles_001']",
+          "cluster_02_hsv_components_001": "raw box from hsv_components; normalized bounds=[0.35737, 0.35983, 0.47335, 0.49791]; support=['hsv_components_001']",
+          "cluster_02_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence.",
+        "type": "choice"
+      },
+      "cluster_02_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      }
+    },
+    "state": {
+      "clusters": [
+        {
+          "cluster_id": "cluster_00",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.1348,
+                0.44351,
+                0.24765,
+                0.49791
+              ],
+              "confidence": 0.8333,
+              "hypothesis_id": "cluster_00_edge_rectangles_000",
+              "kind": "raw",
+              "source_ids": [
+                "edge_rectangles_000"
+              ],
+              "source_names": [
+                "edge_rectangles"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.13793,
+                0.44351,
+                0.22884,
+                0.49372
+              ],
+              "confidence": 0.63477,
+              "hypothesis_id": "cluster_00_hsv_components_002",
+              "kind": "raw",
+              "source_ids": [
+                "hsv_components_002"
+              ],
+              "source_names": [
+                "hsv_components"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_00_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_00_edge_rectangles_000": "raw box from edge_rectangles; normalized bounds=[0.1348, 0.44351, 0.24765, 0.49791]; support=['edge_rectangles_000']",
+            "cluster_00_hsv_components_002": "raw box from hsv_components; normalized bounds=[0.13793, 0.44351, 0.22884, 0.49372]; support=['hsv_components_002']",
+            "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+          }
+        },
+        {
+          "cluster_id": "cluster_01",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.6489,
+                0.26778,
+                0.84013,
+                0.49791
+              ],
+              "confidence": 0.71439,
+              "hypothesis_id": "cluster_01_hsv_components_000",
+              "kind": "raw",
+              "source_ids": [
+                "hsv_components_000"
+              ],
+              "source_names": [
+                "hsv_components"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.64577,
+                0.26778,
+                0.84326,
+                0.50209
+              ],
+              "confidence": 0.56979,
+              "hypothesis_id": "cluster_01_edge_rectangles_002",
+              "kind": "raw",
+              "source_ids": [
+                "edge_rectangles_002"
+              ],
+              "source_names": [
+                "edge_rectangles"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_01_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_01_edge_rectangles_002": "raw box from edge_rectangles; normalized bounds=[0.64577, 0.26778, 0.84326, 0.50209]; support=['edge_rectangles_002']",
+            "cluster_01_hsv_components_000": "raw box from hsv_components; normalized bounds=[0.6489, 0.26778, 0.84013, 0.49791]; support=['hsv_components_000']",
+            "cluster_01_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+          }
+        },
+        {
+          "cluster_id": "cluster_02",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.35737,
+                0.35983,
+                0.47335,
+                0.49791
+              ],
+              "confidence": 0.7103,
+              "hypothesis_id": "cluster_02_hsv_components_001",
+              "kind": "raw",
+              "source_ids": [
+                "hsv_components_001"
+              ],
+              "source_names": [
+                "hsv_components"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.35423,
+                0.35565,
+                0.47649,
+                0.49791
+              ],
+              "confidence": 0.66132,
+              "hypothesis_id": "cluster_02_edge_rectangles_001",
+              "kind": "raw",
+              "source_ids": [
+                "edge_rectangles_001"
+              ],
+              "source_names": [
+                "edge_rectangles"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_02_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_02_edge_rectangles_001": "raw box from edge_rectangles; normalized bounds=[0.35423, 0.35565, 0.47649, 0.49791]; support=['edge_rectangles_001']",
+            "cluster_02_hsv_components_001": "raw box from hsv_components; normalized bounds=[0.35737, 0.35983, 0.47335, 0.49791]; support=['hsv_components_001']",
+            "cluster_02_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+          }
+        }
+      ],
+      "detector_runs": [
+        {
+          "count": 3,
+          "detector": "hsv_components",
+          "duration_ms": 24.436,
+          "status": "ok"
+        },
+        {
+          "count": 3,
+          "detector": "edge_rectangles",
+          "duration_ms": 9.892,
+          "status": "ok"
+        }
+      ],
+      "frame": {
+        "height_px": 480,
+        "id": "frame_000000",
+        "sensor_id": "front_camera",
+        "width_px": 640
+      },
+      "image_is_not_available_to_jev": true,
+      "raw_boxes": [
+        {
+          "bbox_xyxy_norm": [
+            0.1348,
+            0.44351,
+            0.24765,
+            0.49791
+          ],
+          "candidate_id": "edge_rectangles_000",
+          "confidence": 0.8333,
+          "kind": "edge_region",
+          "label": "closed-edge rectangle",
+          "properties": {
+            "area_fraction": 0.006745,
+            "edge_density": 0.75676,
+            "evidence": "canny_closed_contour",
+            "fill": 0.67085,
+            "thing_id": "edge_rectangle_000",
+            "working_height": 240,
+            "working_width": 320
+          },
+          "source": "edge_rectangles"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.6489,
+            0.26778,
+            0.84013,
+            0.49791
+          ],
+          "candidate_id": "hsv_components_000",
+          "confidence": 0.71439,
+          "kind": "color_component",
+          "label": "warm/dark HSV component",
+          "properties": {
+            "area_fraction": 0.041289,
+            "close_iterations": 1,
+            "evidence": "hsv_warm_dark_component",
+            "hue_range": [
+              5,
+              25
+            ],
+            "open_iterations": 0,
+            "saturation_min": 80,
+            "thing_id": "hsv_component_000",
+            "value_max": 200,
+            "working_height": 240,
+            "working_width": 320
+          },
+          "source": "hsv_components"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.35737,
+            0.35983,
+            0.47335,
+            0.49791
+          ],
+          "candidate_id": "hsv_components_001",
+          "confidence": 0.7103,
+          "kind": "color_component",
+          "label": "warm/dark HSV component",
+          "properties": {
+            "area_fraction": 0.015977,
+            "close_iterations": 1,
+            "evidence": "hsv_warm_dark_component",
+            "hue_range": [
+              5,
+              25
+            ],
+            "open_iterations": 0,
+            "saturation_min": 80,
+            "thing_id": "hsv_component_001",
+            "value_max": 200,
+            "working_height": 240,
+            "working_width": 320
+          },
+          "source": "hsv_components"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.35423,
+            0.35565,
+            0.47649,
+            0.49791
+          ],
+          "candidate_id": "edge_rectangles_001",
+          "confidence": 0.66132,
+          "kind": "edge_region",
+          "label": "closed-edge rectangle",
+          "properties": {
+            "area_fraction": 0.018229,
+            "edge_density": 0.41143,
+            "evidence": "canny_closed_contour",
+            "fill": 0.85036,
+            "thing_id": "edge_rectangle_001",
+            "working_height": 240,
+            "working_width": 320
+          },
+          "source": "edge_rectangles"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.13793,
+            0.44351,
+            0.22884,
+            0.49372
+          ],
+          "candidate_id": "hsv_components_002",
+          "confidence": 0.63477,
+          "kind": "color_component",
+          "label": "warm/dark HSV component",
+          "properties": {
+            "area_fraction": 0.004609,
+            "close_iterations": 1,
+            "evidence": "hsv_warm_dark_component",
+            "hue_range": [
+              5,
+              25
+            ],
+            "open_iterations": 0,
+            "saturation_min": 80,
+            "thing_id": "hsv_component_002",
+            "value_max": 200,
+            "working_height": 240,
+            "working_width": 320
+          },
+          "source": "hsv_components"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.64577,
+            0.26778,
+            0.84326,
+            0.50209
+          ],
+          "candidate_id": "edge_rectangles_002",
+          "confidence": 0.56979,
+          "kind": "edge_region",
+          "label": "closed-edge rectangle",
+          "properties": {
+            "area_fraction": 0.0475,
+            "edge_density": 0.24232,
+            "evidence": "canny_closed_contour",
+            "fill": 0.86513,
+            "thing_id": "edge_rectangle_002",
+            "working_height": 240,
+            "working_width": 320
+          },
+          "source": "edge_rectangles"
+        }
+      ],
+      "task": "Fuse noisy image-space CV cues into bounded object-boundary hypotheses."
+    }
+  },
+  "response": {
+    "answers": {
+      "cluster_00_selected": {
+        "choice": "cluster_00_edge_rectangles_000",
+        "confidence": 0.29,
+        "probabilities": {
+          "cluster_00_edge_rectangles_000": 0.52,
+          "cluster_00_hsv_components_002": 0.25,
+          "cluster_00_none": 0.23
+        },
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "noul": 0.58,
+        "type": "noul"
+      },
+      "cluster_01_selected": {
+        "choice": "cluster_01_hsv_components_000",
+        "confidence": 0.39,
+        "probabilities": {
+          "cluster_01_edge_rectangles_002": 0.22,
+          "cluster_01_hsv_components_000": 0.6,
+          "cluster_01_none": 0.18
+        },
+        "type": "choice"
+      },
+      "cluster_01_usable": {
+        "noul": 0.57,
+        "type": "noul"
+      },
+      "cluster_02_selected": {
+        "choice": "cluster_02_edge_rectangles_001",
+        "confidence": 0.45,
+        "probabilities": {
+          "cluster_02_edge_rectangles_001": 0.63,
+          "cluster_02_hsv_components_001": 0.22,
+          "cluster_02_none": 0.15
+        },
+        "type": "choice"
+      },
+      "cluster_02_usable": {
+        "noul": 0.56,
+        "type": "noul"
+      }
+    },
+    "model": "jev-1.13.0",
+    "usage": {
+      "input_tokens": 4583,
+      "output_tokens": 291
+    }
+  },
+  "schema": "issue_219_jev_cache_v0"
+}

@@ -25,18 +25,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Fetch sealed historical sources
-        run: |
-          git fetch --no-tags origin \
-            7931fa9a995af5626fabef818f9e28b98c73e299 \
-            a989324470e6fc04c9d9678e2337daf47828100b
-          git cat-file -e \
-            7931fa9a995af5626fabef818f9e28b98c73e299^{commit}
-          git cat-file -e \
-            a989324470e6fc04c9d9678e2337daf47828100b^{commit}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -53,10 +41,6 @@ jobs:
 
       - name: Check generated documentation
         run: python3 docs/render_markdown.py --check
-
-      # Parked delivery gates (workflow.py validate / validate-pr). Restore
-      # from docs/deprecated/milestones/workflow.py only if that process is
-      # brought back. They are not part of the default path.
 
       - name: Run deterministic tests with coverage
         run: |

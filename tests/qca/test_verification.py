@@ -233,7 +233,7 @@ def helper():
                 },
                 "ui_behavior": {
                     "status": "failed",
-                    "commands": ["python workbench_probe.py"],
+                    "commands": ["python -m unittest tests.cli.test_workbench"],
                     "results": [{"returncode": 1, "stderr": "toggle mismatch"}],
                     "browser": {"steps": ["toggle plugin", "inspect frame"]},
                     "expected": {"plugin_runs": ["classical_regions"]},

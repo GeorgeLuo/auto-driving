@@ -312,8 +312,8 @@ def build_observations(inventory, head, base, diff, verification, experimental):
 # -----------------------------
 
 def interpret(report, context_at_head, prior_report=None) -> QualitativeRecord:
-    # Context must be limited to what existed at the analyzed head. Supplying
-    # later review outcomes would turn a prospective backtest into hindsight.
+    # Context must be limited to what existed at the analyzed head. Later
+    # outcomes are not inputs.
     prompt = make_interpretation_prompt(
         proposal_or_amendment=context_at_head.proposal,
         implementation_diff=context_at_head.diff,
@@ -331,46 +331,6 @@ def interpret(report, context_at_head, prior_report=None) -> QualitativeRecord:
         require_uncertainty=True,
         force_workflow_decision_none=True,
     )
-
-
-# -----------------------------
-# Historical M008 backtest
-# -----------------------------
-
-def run_backtest(state_specs):
-    # State specs are selected from history and frozen before analysis begins;
-    # this is an experiment record, not a permanent workflow concept.
-    prospective = []
-    for state in state_specs:
-        report = run(
-            AnalysisRequest(
-                mode="diff",
-                base_ref=state.parent_sha,
-                head_ref=state.head_sha,
-                config=state.config,
-                coverage_json=state.coverage_artifact_available_at_head,
-                enable_experimental=False,
-            )
-        )
-        # Only proposal, implementation, and review context available at this
-        # historical state may be supplied to the qualitative layer.
-        qualitative = interpret(
-            report,
-            context_at_head=load_context_as_of(state.head_sha),
-        )
-        prospective.append(
-            BacktestRow(
-                state=state,
-                deterministic=report,
-                qualitative=qualitative,
-                future_history=None,
-            )
-        )
-
-    # Reveal later outcomes only after the prospective records are sealed. The
-    # operator then labels useful questions, noise, redundancy, and hindsight.
-    later_history = load_subsequent_history(state_specs)
-    return compare_prospective_readings_to_later_history(prospective, later_history)
 
 
 # -----------------------------
@@ -408,101 +368,27 @@ the issue's complete metric inventory:
    unchanged-input reproducibility.
 
 Do not add duplication, entropy/surprisal, coverage, an LLM, CI annotations, or
-workflow checks until this slice has been run on a tree and several historical
-M008 transitions.
+workflow checks until `analyze` and `diff` are useful on the current tree.
 
-## Prototype checkpoint — 2026-09-04
+## Live commands
 
-The first executable slice is now available under [`qca/`](../../qca/) and is
-being evaluated as a standalone experiment.  It exposes three documented
-commands:
+The executable slice lives under [`qca/`](../../qca/):
 
 ```sh
 python3 -m qca analyze .
 python3 -m qca diff --base <ref> --head <ref>
-python3 -m qca backtest --manifest qca/backtests/m008.json
+python3 -m qca render report.json --html report.html
 ```
 
-The M008 manifest samples seven immutable transitions labelled small, medium,
-or large.  The committed [JSON report](artifacts/m008-qca-backtest.json) is the
-machine-readable record and the [Markdown report](artifacts/m008-qca-backtest.md)
-is the operator-facing summary.  The run completed for all seven states with
-analyzer version `0.2.0`; the focused QCA suite covers classification, include
-root behavior, Git diff mapping, reproducibility, and manifest output.
+Historical clone reconstruction, backtest manifests, and committed derived
+reports are not kept. Re-run `analyze` or `diff` on the current tree when a
+reading is needed.
 
-The first readings support a bounded hypothesis rather than a quality score:
-
-- the narrow plugin-selection amendment, closeout, and cumulative-merge states
-  have little or no callable/dependency/public-surface signal, so their
-  semantically important documentation changes are visible primarily through
-  file/class churn;
-- the medium proposal states expose test/tooling/documentation spread and, in
-  the plugin-selection proposal, four additional decision-burden units and
-  seven import edges;
-- the large workbench implementation state exposes a +583 decision-burden
-  delta across 24 changed files, 101 new import edges, and 54 public-symbol
-  additions, giving a reviewer concrete places to inspect instead of only a
-  large line count;
-- the acceptance state is structurally distinct from implementation: most of
-  its 2,750 added lines are classified as documentation/evidence, while its
-  code-facing delta is comparatively small.
-
-Each diff also emits deterministic `review_targets` for changed callables,
-new import edges, public-surface changes, and head syntax errors.  These are
-inspection prompts for an operator or agent, not defect labels or gates.  The
-backtest adds evidence-linked operator questions while keeping qualitative
-interpretation and workflow decisions outside the analyzer.
-
-The run also exposed an implementation constraint: excluded files must remain
-classified for change attribution, but must not be tokenized as core metrics.
-The prototype now preserves that distinction, which keeps the full seven-state
-backtest repeatable while retaining documentation/evidence visibility.
-For now, Git renames are represented explicitly as a deletion plus an addition;
-stable moved-callable matching remains an open experiment question.
-
-### Research-pass synthesis
-
-Two independent passes compared the same immutable revisions with the same
-analyzer output.  Both confirmed the gradient and byte-level reproducibility,
-and both identified the same first-order repairs: align scoped paths, separate
-all-file churn from configured core churn, make rename/deletion handling
-explicit, and avoid presenting every standard-library import or simple added
-callable as a separate alert.  The orchestrator applied those repairs and
-restarted the run.
-
-The resulting report is more useful as a handoff because it pairs:
-
-1. raw observations and source-class attribution for the operator;
-2. historical outcomes revealed only after each reading; and
-3. deterministic review targets/questions that an agent can turn into an
-   inspection plan.
-
-The passes also establish a boundary for this experiment: the Python-first
-signals do not explain M008's browser-visible interaction discoveries by
-themselves.  That is a reason to evaluate an eventual qualitative/browser
-adapter separately, not a reason to turn static measurements into a quality
-gate.  No workflow, proposal, amendment, CI, or blocking behavior changes in
-this PR.
-
-## Open decisions made explicit by the pseudocode
+## Open decisions
 
 - What exactly counts as logical versus effective LOC?
 - Which ownership-zone map is authoritative for dependency observations?
 - How are renamed files and moved callables matched?
-- What comparable history defines a local baseline, if any?
-- Which coverage artifact provenance is sufficient to enrich a report?
-- How much proposal/review context can the qualitative layer consume without
-  leaking later outcomes?
-- Where should experimental reports live so they remain inspectable without
-  becoming workflow state?
 
-These are experiment questions, not hidden defaults. The implementation should
-record unresolved choices in the report configuration and decision log.
-
-## Adoption gate
-
-Keep #180 in the standalone experiment until the M008 backtest shows that the
-readings are deterministic, interpretable, and capable of producing concrete
-reviewer questions that would plausibly have improved visibility. Remove noisy
-or redundant metrics rather than promoting the entire initial list. A later
-workflow proposal is justified only after that isolated usefulness gate passes.
+These are experiment questions, not hidden defaults. Record unresolved choices
+in the report configuration rather than reconstructing past states.

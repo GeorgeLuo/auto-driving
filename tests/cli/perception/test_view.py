@@ -142,6 +142,11 @@ class PerceptionViewTests(unittest.TestCase):
                 self.assertIn('id="kindToggles"', html)
                 self.assertIn("Overlay lag", html)
 
+                with urlopen(f"{server.url}", timeout=1.0) as response:
+                    runtime_html = response.read().decode("utf-8")
+                self.assertIn("Decision view unavailable", runtime_html)
+                self.assertNotIn('href="/decision"', runtime_html)
+
                 with urlopen(f"{server.url}favicon.ico", timeout=1.0) as response:
                     self.assertEqual(response.status, 204)
                     self.assertEqual(response.read(), b"")

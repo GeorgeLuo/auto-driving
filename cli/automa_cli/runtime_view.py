@@ -136,6 +136,32 @@ class RuntimeViewServer:
             "decision": self.decision.health_payload(),
         }
 
+    def decision_navigation_html(self, *, compact: bool) -> str:
+        """Return a usable decision link or an explicit unavailable status."""
+
+        page_url = self.decision.page_url()
+        if page_url is not None:
+            if compact:
+                return (
+                    f'<a class="nav" href="{page_url}" '
+                    'style="color:inherit;text-decoration:none;border:1px solid var(--line);'
+                    'border-radius:4px;padding:6px 10px;font-weight:600;">Decision view</a>'
+                )
+            return (
+                f'<a href="{page_url}">Decision'
+                '<span>View the exact image and authority facts for the current accepted cycle.</span></a>'
+            )
+        if compact:
+            return (
+                '<span class="nav" title="Start the live decision monitor for this vehicle." '
+                'style="color:#6b7280;border:1px solid var(--line);border-radius:4px;'
+                'padding:6px 10px;font-weight:600;">Decision view unavailable</span>'
+            )
+        return (
+            '<span class="decision-unavailable">Decision view unavailable'
+            '<span>Start `automa vehicles decision live --id &lt;vehicle&gt;` to publish this view.</span></span>'
+        )
+
     def stop(self) -> None:
         httpd = self._httpd
         thread = self._thread
@@ -217,10 +243,10 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             except OSError as exc:
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
-            decision_url = self.server.publisher.decision.page_url() or "/decision"
+            decision_nav = self.server.publisher.decision_navigation_html(compact=False)
             self._send(
                 200,
-                html.replace("__DECISION_URL__", decision_url).encode("utf-8"),
+                html.replace("__DECISION_NAV__", decision_nav).encode("utf-8"),
                 "text/html; charset=utf-8",
                 include_body=include_body,
             )
@@ -229,8 +255,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             try:
                 html = pages[route].read_text(encoding="utf-8")
                 html = html.replace(
-                    "__DECISION_URL__",
-                    self.server.publisher.decision.page_url() or "/",
+                    "__DECISION_NAV__",
+                    self.server.publisher.decision_navigation_html(compact=True),
                 )
             except OSError as exc:
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)

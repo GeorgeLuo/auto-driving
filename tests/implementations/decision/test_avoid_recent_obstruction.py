@@ -480,6 +480,8 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(p.lifecycle, "fresh")
         assert p.command is not None
         self.assertAlmostEqual(p.command.steering, 1.0)
+        self.assertAlmostEqual(p.command.throttle, 0.60)
+        self.assertEqual(p.command.gear, "forward")
 
 
 if __name__ == "__main__":

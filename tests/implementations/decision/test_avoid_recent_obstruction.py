@@ -15,6 +15,7 @@ from autonomy.decision.memory import (
     unavailable_memory_snapshot,
 )
 from autonomy.perception import ViewLocation
+from implementations.decision.config import ObstacleAvoidanceConfig
 from implementations.decision.proposals.avoid_recent_obstruction import propose
 
 
@@ -482,6 +483,18 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertAlmostEqual(p.command.steering, 1.0)
         self.assertAlmostEqual(p.command.throttle, 0.60)
         self.assertEqual(p.command.gear, "forward")
+
+    def test_invalid_avoidance_configuration(self) -> None:
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=-0.1)
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=1.1)
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=0)
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(steer_magnitude=float("nan"))
+        with self.assertRaises(ValueError):
+            ObstacleAvoidanceConfig(accepted_kinds="obstacle")  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

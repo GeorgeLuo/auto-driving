@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import unittest
 from pathlib import Path
 
@@ -101,10 +102,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
 
-        steering, throttle, control, engine, cycle = part.run(
-            image_array=object(),
-            mode="local",
-        )
+        part.run(image_array=object(), mode="local")
+        part.wait_for_cycle()
+        steering, throttle, control, engine, cycle = part.completed_outputs("local")
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
@@ -121,12 +121,14 @@ class RuntimeCycleHostTests(unittest.TestCase):
             min_interval_s=0.0,
         )
 
-        steering, throttle, control, _engine, cycle = part.run(
+        part.run(
             image_array=np.zeros((4, 4, 3), dtype=np.uint8),
             mode="user",
             user_steering=0.2,
             user_throttle=0.1,
         )
+        part.wait_for_cycle()
+        steering, throttle, control, _engine, cycle = part.completed_outputs("user")
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
@@ -148,10 +150,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
             min_interval_s=0.0,
         )
 
-        steering, throttle, control, _engine, _cycle = part.run(
-            image_array=np.zeros((2, 2, 3), dtype=np.uint8),
-            mode="local",
-        )
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
+        part.wait_for_cycle()
+        steering, throttle, control, _engine, _cycle = part.completed_outputs("local")
 
         self.assertEqual(steering, 0.7)
         self.assertEqual(throttle, 0.4)
@@ -170,23 +171,37 @@ class RuntimeCycleHostTests(unittest.TestCase):
         third = np.full((2, 2, 3), 3, dtype=np.uint8)
 
         part.run(image_array=first, mode="user")
+        part.wait_for_cycle()
         self.assertEqual(part.processed_count, 1)
         self.assertEqual(part.skipped_count, 0)
         self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 1)
+        self.assertEqual(part.camera_frame_count, 1)
 
         clock.advance(0.2)
         part.run(image_array=second, mode="user")
         self.assertEqual(part.processed_count, 1)
         self.assertEqual(part.skipped_count, 1)
         self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 1)
+        self.assertEqual(part.camera_frame_count, 2)
+        self.assertEqual(part.latest_camera_frame.frame_id, "donkey_frame_000001")
+        self.assertEqual(int(part.latest_camera_frame.image[0, 0, 0]), 2)
+        camera_jpeg, camera_meta = part.publish_latest_camera_jpeg()
+        observation_jpeg, observation_meta = part.publish_latest_frame_jpeg()
+        self.assertTrue(camera_jpeg.startswith(b"\xff\xd8"))
+        self.assertEqual(camera_meta["frame"]["frame_id"], "donkey_frame_000001")
+        self.assertEqual(camera_meta["perception_state"], "behind")
+        self.assertEqual(observation_meta["frame"]["frame_id"], "donkey_frame_000000")
+        self.assertTrue(observation_jpeg.startswith(b"\xff\xd8"))
 
         clock.advance(0.4)
         part.run(image_array=third, mode="user")
+        part.wait_for_cycle()
         self.assertEqual(part.processed_count, 2)
         self.assertEqual(part.skipped_count, 1)
         self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 3)
         self.assertEqual(part.latest_snapshot.skipped_since_previous, 1)
-        self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000001")
+        self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000002")
+        self.assertEqual(part.camera_frame_count, 3)
         self.assertEqual(host.manager.status()["step_count"], 2)
 
     def test_detaches_image_from_vehicle_memory(self) -> None:
@@ -194,15 +209,16 @@ class RuntimeCycleHostTests(unittest.TestCase):
         image = np.zeros((3, 3, 3), dtype=np.uint8)
         part.run(image_array=image, mode="user")
         image[:] = 9
+        self.assertEqual(int(part.latest_camera_frame.image[0, 0, 0]), 0)
+        part.wait_for_cycle()
         self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 0)
 
     def test_cycle_failure_keeps_zero_controls_and_records_error_snapshot(self) -> None:
         part = AutonomyPilotPart(host=_ExplodingHost(), min_interval_s=0.0)  # type: ignore[arg-type]
 
-        steering, throttle, control, engine, cycle = part.run(
-            image_array=np.zeros((2, 2, 3), dtype=np.uint8),
-            mode="user",
-        )
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        steering, throttle, control, engine, cycle = part.completed_outputs("user")
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
@@ -221,6 +237,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
     def test_status_omits_raw_image_payload(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
         part.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
         latest = part.observation_status()["latest"]
         self.assertTrue(latest["has_image"])
         self.assertNotIn("image", latest)
@@ -233,12 +250,57 @@ class RuntimeCycleHostTests(unittest.TestCase):
         )
         manager.register_status_provider("observation", part.observation_status)
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
 
         status = manager.status()
         observation = status["components"]["observation"]
         self.assertEqual(observation["processed_count"], 1)
         self.assertEqual(observation["latest"]["frame_id"], "donkey_frame_000000")
         self.assertEqual(status["step_count"], 1)
+
+    def test_camera_frames_publish_while_perception_is_still_running(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+
+        class _BlockingHost:
+            def status(self) -> dict:
+                return {"engine": "blocking-host"}
+
+            def run(self, context: DecisionFrameContext):
+                del context
+                started.set()
+                if not release.wait(timeout=2.0):
+                    raise TimeoutError("perception was not released")
+
+                class _Result:
+                    control = AutonomyControl(reason="blocked-test")
+                    completed_at_ms = 1
+                    duration_ms = 1
+
+                    def to_dict(self) -> dict:
+                        return {"schema": "decision_cycle_result_v0", "status": "ok"}
+
+                return _Result()
+
+        part = AutonomyPilotPart(host=_BlockingHost(), min_interval_s=0.0)  # type: ignore[arg-type]
+        first = np.full((2, 2, 3), 4, dtype=np.uint8)
+        second = np.full((2, 2, 3), 5, dtype=np.uint8)
+        part.run(image_array=first, mode="user")
+        self.assertTrue(started.wait(timeout=1.0))
+        self.assertEqual(part.processed_count, 0)
+        steering, throttle, _control, _engine, _cycle = part.run(image_array=second, mode="user")
+        self.assertEqual((steering, throttle), (0.0, 0.0))
+        self.assertEqual(part.camera_frame_count, 2)
+        self.assertEqual(part.latest_camera_frame.frame_id, "donkey_frame_000001")
+        self.assertEqual(int(part.latest_camera_frame.image[0, 0, 0]), 5)
+        self.assertEqual(part.publish_latest_camera()["perception_state"], "pending")
+        self.assertIsNone(part.latest_snapshot)
+        release.set()
+        part.wait_for_cycle()
+        self.assertEqual(part.processed_count, 1)
+        self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000000")
+        self.assertEqual(part.publish_latest_camera()["perception_state"], "behind")
+        self.assertEqual(part.publish_latest_camera()["perception_frame_id"], "donkey_frame_000000")
 
     def test_manage_assembly_wires_always_on_observation(self) -> None:
         source = (

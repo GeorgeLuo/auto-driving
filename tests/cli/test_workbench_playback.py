@@ -15,6 +15,17 @@ from tests.cli.workbench_fixtures import (
 )
 
 
+class RecordingMapper(FixtureMapper):
+    def __init__(self) -> None:
+        super().__init__()
+        self.priors: list[object] = []
+
+    def perceive(self, request):
+        metadata = getattr(request, "metadata", {}) or {}
+        self.priors.append(metadata.get("prior_memory"))
+        return super().perceive(request)
+
+
 class WorkbenchTests(unittest.TestCase):
     def test_pause_resume_step_reset_and_stale_run_are_server_owned(self) -> None:
         with TemporaryDirectory() as directory:
@@ -49,6 +60,26 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(restarted["phase"], "running")
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
+
+    def test_sequential_replay_passes_previous_memory_to_perception(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            mapper = RecordingMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: mapper,
+            )
+
+            runner.start()
+            completed = runner.wait(5)
+
+        self.assertEqual(completed["phase"], "completed")
+        self.assertEqual(len(mapper.priors), 2)
+        self.assertIsNone(mapper.priors[0])
+        self.assertIsInstance(mapper.priors[1], dict)
+        self.assertIn("records", mapper.priors[1])
 
     def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
         with TemporaryDirectory() as directory:

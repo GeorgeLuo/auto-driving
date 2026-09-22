@@ -1045,12 +1045,15 @@ class ImageReplayRunner:
                 def perceive(current: DecisionFrameContext) -> PerceptionText | None:
                     if frame.absent or current.sensor_snapshot is None:
                         return None
+                    with self._lock:
+                        prior_memory = copy.deepcopy(self._state.get("memory"))
                     request = build_perception_request(
                         current.sensor_snapshot,
                         metadata={
                             "source": WORKBENCH_SEQUENCE_ID,
                             "source_id": frame.source_id,
                             "sequence_index": frame.position,
+                            "prior_memory": prior_memory,
                         },
                     )
                     return mapper.perceive(request)

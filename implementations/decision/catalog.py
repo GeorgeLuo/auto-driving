@@ -9,6 +9,7 @@ from autonomy.decision.shadow_runner import (
     ShadowProposalsConfig,
     ShadowProposalsEngine,
 )
+from implementations.decision.config import ObstacleAvoidanceConfig
 from implementations.decision.proposals.avoid_recent_obstruction import (
     PLUGIN_ID,
     propose as avoid_propose,
@@ -19,9 +20,9 @@ KNOWN_PROPOSAL_PLUGIN_IDS: frozenset[str] = frozenset({PLUGIN_ID})
 
 
 def create_shadow_proposals_engine(
-    config: ShadowProposalsConfig | None = None,
+    config: ObstacleAvoidanceConfig | None = None,
 ) -> ShadowProposalsEngine:
-    cfg = config or ShadowProposalsConfig()
+    cfg = config or ObstacleAvoidanceConfig()
     # Reject unknown enabled ids at activation against this catalog (not a
     # caller-supplied known_plugins field).
     for plugin_id in cfg.enabled_plugins:
@@ -38,7 +39,7 @@ def create_shadow_proposals_engine(
 
     plugins = {PLUGIN_ID: _bound}
     return ShadowProposalsEngine.create(
-        config=cfg,
+        config=ShadowProposalsConfig(enabled_plugins=cfg.enabled_plugins),
         plugins=plugins,
     )
 

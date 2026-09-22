@@ -14,9 +14,10 @@ from autonomy.decision.memory import MemorySnapshot
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON, authorized_idle_control
 from autonomy.decision.shadow_ids import ShadowCycleInputError
-from autonomy.decision.shadow_runner import ENGINE_ID, ShadowProposalsConfig
+from autonomy.decision.shadow_runner import ENGINE_ID
 from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
 from implementations.decision.catalog import create_shadow_proposals_engine
+from implementations.decision.config import ObstacleAvoidanceConfig
 
 ADAPTER_ENGINE_SPEC = (
     "implementations.decision.shadow_adapter:ShadowProposalsAutonomyEngine"
@@ -29,12 +30,12 @@ class ShadowProposalsAutonomyEngine:
     """Thin AutonomyManager-facing wrapper around ``ShadowProposalsEngine``."""
 
     def __init__(self, **engine_config: Any) -> None:
-        # engine_config is only ShadowProposalsConfig fields; missing → defaults.
+        # engine_config is only ObstacleAvoidanceConfig fields; missing → defaults.
         # Invalid values or unknown keys fail closed at construction.
         if engine_config:
-            self._config = ShadowProposalsConfig(**engine_config)
+            self._config = ObstacleAvoidanceConfig(**engine_config)
         else:
-            self._config = ShadowProposalsConfig()
+            self._config = ObstacleAvoidanceConfig()
         self._engine = create_shadow_proposals_engine(self._config)
         self.last_cycle_result = None
         self.last_cycle_error_reason: str | None = None

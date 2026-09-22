@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
@@ -38,10 +37,6 @@ from autonomy.decision.shadow_ids import (
 from autonomy.runtime.engine import AutonomyControl
 
 ENGINE_ID = "shadow-proposals"
-DEFAULT_ENABLED_PLUGINS = ("avoid_recent_obstruction",)
-DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
-DEFAULT_RETAINED_MAX_AGE_MS = 1000
-DEFAULT_STEER_MAGNITUDE = 1.0
 
 
 class ProposalPlugin(Protocol):
@@ -52,10 +47,7 @@ class ProposalPlugin(Protocol):
 class ShadowProposalsConfig:
     """Activation config. Catalog membership is owned by the engine factory / plugins map."""
 
-    enabled_plugins: tuple[str, ...] = DEFAULT_ENABLED_PLUGINS
-    accepted_kinds: tuple[str, ...] = DEFAULT_ACCEPTED_KINDS
-    retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS
-    steer_magnitude: float = DEFAULT_STEER_MAGNITUDE
+    enabled_plugins: tuple[str, ...]
 
     def __post_init__(self) -> None:
         # Require real sequences of ids — reject str (char-iter) and other coercible shapes.
@@ -68,30 +60,7 @@ class ShadowProposalsConfig:
             raise ValueError("enabled_plugins must be unique")
         for plugin_id in plugins:
             require_ascii_id(plugin_id, field_name="plugin_id")
-        if type(self.accepted_kinds) not in (list, tuple):
-            raise ValueError("accepted_kinds must be a list or tuple of kind ids")
-        kinds = tuple(self.accepted_kinds)
-        if not kinds or len(kinds) > 8:
-            raise ValueError("accepted_kinds must contain 1..8 entries")
-        if len(kinds) != len(set(kinds)):
-            raise ValueError("accepted_kinds must be unique")
-        for kind in kinds:
-            require_ascii_id(kind, field_name="accepted_kind")
-        if type(self.retained_max_age_ms) is not int:
-            raise ValueError("retained_max_age_ms must be a non-bool int")
-        age = self.retained_max_age_ms
-        if not 1 <= age <= 60_000:
-            raise ValueError("retained_max_age_ms must be in 1..60000")
-        object.__setattr__(self, "retained_max_age_ms", age)
-        try:
-            magnitude = float(self.steer_magnitude)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("steer_magnitude must be numeric") from exc
-        if not math.isfinite(magnitude) or not (0.0 < magnitude <= 1.0):
-            raise ValueError("steer_magnitude must satisfy 0 < value <= 1")
-        object.__setattr__(self, "steer_magnitude", magnitude)
         object.__setattr__(self, "enabled_plugins", plugins)
-        object.__setattr__(self, "accepted_kinds", kinds)
 
 
 def _admit_candidate(

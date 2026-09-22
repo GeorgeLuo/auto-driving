@@ -23,7 +23,6 @@ from autonomy.decision import (
     SHADOW_AUTHORITY_RESULT_SCHEMA,
     SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     SELECTOR_ID,
-    ShadowProposalsConfig,
     canonical_json_utf8,
 )
 from autonomy.decision.action_plan import ActionPlan, PlanContribution, select_action_plan
@@ -45,12 +44,13 @@ from autonomy.decision.shadow_authority import (
     authorized_idle_output,
 )
 from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
-from autonomy.decision.shadow_runner import (
+from autonomy.decision.shadow_runner import ENGINE_ID
+from implementations.decision.config import (
+    ObstacleAvoidanceConfig,
     DEFAULT_ACCEPTED_KINDS,
     DEFAULT_ENABLED_PLUGINS,
     DEFAULT_RETAINED_MAX_AGE_MS,
     DEFAULT_STEER_MAGNITUDE,
-    ENGINE_ID,
 )
 from autonomy.runtime import AutonomyManager, read_decision_activation
 from implementations.decision.catalog import (
@@ -424,7 +424,7 @@ def _validate_proposal_engine_config(
     engine_config: dict[str, Any],
     *,
     engine_label: str,
-) -> ShadowProposalsConfig:
+) -> ObstacleAvoidanceConfig:
     """Validate shared proposal configuration for one public engine id."""
 
     if not isinstance(engine_config, dict):
@@ -445,7 +445,7 @@ def _validate_proposal_engine_config(
             f"{engine_label} engine_config has unknown keys: {sorted(unknown)}.",
         )
     try:
-        cfg = ShadowProposalsConfig(**engine_config) if engine_config else ShadowProposalsConfig()
+        cfg = ObstacleAvoidanceConfig(**engine_config) if engine_config else ObstacleAvoidanceConfig()
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "invalid_engine_config",
@@ -461,7 +461,7 @@ def _validate_proposal_engine_config(
     return cfg
 
 
-def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowProposalsConfig:
+def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ObstacleAvoidanceConfig:
     """Fail closed before activation write when shadow config is invalid."""
 
     return _validate_proposal_engine_config(
@@ -470,7 +470,7 @@ def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowPropos
     )
 
 
-def validate_live_engine_config(engine_config: dict[str, Any]) -> ShadowProposalsConfig:
+def validate_live_engine_config(engine_config: dict[str, Any]) -> ObstacleAvoidanceConfig:
     """Fail closed before activation write when live config is invalid."""
 
     return _validate_proposal_engine_config(
@@ -2032,7 +2032,7 @@ def _require_aggregate_cycle_alignment(
 
 def _require_runner_plan_alignment(
     cycle: ShadowDecisionCycleResult,
-    config: ShadowProposalsConfig,
+    config: ObstacleAvoidanceConfig,
 ) -> None:
     """Enforce runner-owned candidate membership and selector output."""
 
@@ -3145,7 +3145,7 @@ def _normalize_apply_frames(
 
 
 def _run_apply_pass(
-    cfg: ShadowProposalsConfig,
+    cfg: ObstacleAvoidanceConfig,
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
     engine = create_shadow_proposals_engine(cfg)
@@ -3207,7 +3207,7 @@ def _write_apply_record(
     from_run_dir: Path,
     frames: list[dict[str, Any]],
     payload: dict[str, Any],
-    engine_config: ShadowProposalsConfig,
+    engine_config: ObstacleAvoidanceConfig,
     output_root: Path,
 ) -> Path:
     output_root = Path(output_root)

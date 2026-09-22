@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
-from autonomy.decision import ShadowProposalsConfig, canonical_json_utf8
+from autonomy.decision import canonical_json_utf8
+from implementations.decision.config import ObstacleAvoidanceConfig
 from implementations.decision.catalog import create_shadow_proposals_engine
 
 from .decision import (
@@ -65,7 +66,7 @@ def inspect_decision_sequence(
     if vehicle_id and "vehicle_id" in sequence and sequence["vehicle_id"] != vehicle_id:
         raise ValueError("Sequence vehicle_id does not match --id.")
     frame = _normalize_apply_frames([frames[frame_index]], vehicle_id=vehicle_id or "offline")[0]
-    config = ShadowProposalsConfig()
+    config = ObstacleAvoidanceConfig()
     if vehicle_id:
         bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
         activation = _read_surface_activation(

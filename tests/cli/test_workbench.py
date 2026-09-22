@@ -289,8 +289,12 @@ class WorkbenchTests(unittest.TestCase):
             state["machine_detail"]["pipeline"]["decision_engine"],
             "shadow-proposals",
         )
-        self.assertFalse(
-            state["machine_detail"]["pipeline"]["decision_config"]["proposed_applied"]
+        decision_config = state["machine_detail"]["pipeline"]["decision_config"]
+        self.assertFalse(decision_config["proposed_applied"])
+        self.assertEqual(decision_config["steer_magnitude"], 1.0)
+        self.assertEqual(
+            decision_config["accepted_kinds"],
+            ["floor_boundary", "obstacle", "obstruction_evidence"],
         )
 
     def test_recorded_steering_capture_replays_both_decision_changes(self) -> None:

@@ -9,6 +9,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 
 The flagless command includes unit, contract, CLI, and local integration tests.
 It does not launch a simulator, contact a Pi, or record runtime artifacts.
+It reports the ten slowest tests, including setup and cleanup. Use
+`python3 tests/run.py --durations 25` to inspect more hotspots, or
+`--durations 0` to suppress the report. CI runs this same suite with coverage.
 
 ## Ownership
 
@@ -27,13 +30,29 @@ For new or materially changed tests, name a concrete regression and the
 observable behavior that would catch it. Keep tests with their existing owner
 above.
 
+Prefer realistic state transitions and their emitted signals. Do not assert
+frontend source snippets, help-text paragraphs, or retired delivery-process
+artifacts. Keep happy paths and meaningful failure boundaries. Split large
+modules by behavior (aim below 700 lines), with only small, adjacent fixtures;
+do not introduce a shared testing framework. Include `__init__.py` in test
+directories so the repository runner discovers them.
+
 ## Support Contract
 
 Code under `tests/support/` may only provide test mechanics:
 
 - execute a public command as a subprocess;
 - write explicit fixture documents to a disposable filesystem;
-- emulate an external executable and record how it was called.
+- emulate an external executable and record how it was called;
+- isolate subprocess networking from real vehicle and simulator endpoints.
+
+The CLI helper uses a 30-second subprocess deadline and loads
+`support/offline/sitecustomize.py` for deterministic runs. It permits local
+fixture servers, rejects external DNS and the default live service ports
+(5050 and 8887), and leaves explicit live runs unrestricted. Protocol fixtures
+must bind an ephemeral port. Catalogue tests copy only the selected manifests
+and source files into a temporary directory; never scan local model caches,
+virtual environments, or recorded runs as test inputs.
 
 Support code must not call internal command handlers, calculate expected
 application outcomes, render operator output, or reproduce production decision

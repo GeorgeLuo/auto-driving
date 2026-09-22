@@ -20,7 +20,6 @@ python3 -m qca diff --base <base-ref> --head <head-ref> --python qca tests/qca
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --markdown report.md
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --html report.html
 python3 -m qca render report.json --html report.html
-python3 -m qca backtest --manifest qca/backtests/m008.json
 ```
 
 `analyze` and `diff` accept one or more files and directories, including
@@ -177,34 +176,3 @@ unchanged.
 Independent tests can call a detector predicate or `analyze(context)` without
 building a public report. New prototype indicators should follow the same
 module, registry, and evidence shape.
-
-## Reproduce the refined M008 experiment
-
-Install the repository test dependencies, then run from the repository root:
-
-```sh
-python3 -m qca.experiments.refine_m008 --output-dir /tmp/m008-refined
-```
-
-The runner measures seven historical merge transitions, including the whole
-milestone contribution to `main`. It then reconstructs candidate patches
-in disposable historical clones, runs consumer tests with line coverage, and
-compares replay probes with the baseline. Two original trials plus three later
-workbench samples are proposed simplifications; one original trial
-deliberately removes validation to check whether a lower static count is
-rejected by behavior checks. Product changes exist only in those temporary
-clones and the committed patch inputs. `--trials` selects candidate ids;
-`--skip-historical` reuses the committed state measurements.
-
-The runner writes `m008-report.json`, `.md`, and `.html` as regular per-analysis
-reports for the whole milestone, plus `experiment.json` / `experiment.md` for
-hypotheses, measured deltas, execution outcomes, and trial decisions. Runtime
-logs, probe traces, and line coverage stay in the output directory. The probe
-uses synthetic inputs; full browser acceptance and universal behavior
-equivalence are not claimed.
-
-Committed copies of the experiment record and the milestone Markdown report:
-
-- `docs/synthesis/artifacts/m008-qca-refined.json`
-- `docs/synthesis/artifacts/m008-qca-refined.md`
-- `docs/synthesis/artifacts/m008-qca-refined-report.md`

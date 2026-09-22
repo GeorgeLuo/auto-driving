@@ -15,7 +15,6 @@ from cli.automa_cli.decision_live import (
     read_host_telemetry_panel,
 )
 from cli.automa_cli.decision import DecisionSurfaceError
-from cli.automa_cli.decision import render_decision_exact_frame_html
 from cli.automa_cli.physical_observation import (
     DECISION_PUBLICATION_SCHEMA,
     HOST_TELEMETRY_SCHEMA,
@@ -94,7 +93,6 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         "completed_at_ms": 8_500,
     }
 
-
     return {
         "decision": {
             "vehicle_id": "piracer",
@@ -153,7 +151,10 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         self.assertEqual(normalized["frame_id"], "frame-1")
         self.assertEqual(normalized["result_age_ms"], 500)
-        self.assertEqual(physical_decision_identity(normalized)["source_frame"]["frame_id"], "frame-1")
+        self.assertEqual(
+            physical_decision_identity(normalized)["source_frame"]["frame_id"],
+            "frame-1",
+        )
 
     def test_live_view_adapter_joins_against_physical_publication(self) -> None:
         normalized = normalize_physical_decision_publication(
@@ -199,13 +200,17 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                     view_server=view,
                     timeout_s=1.0,
                 )
-                self.assertTrue(adapter.publish_snapshot(normalized, (b"jpeg", "image/jpeg")))
+                self.assertTrue(
+                    adapter.publish_snapshot(normalized, (b"jpeg", "image/jpeg"))
+                )
 
         read_panel.assert_called_once()
         self.assertIs(read_panel.call_args.kwargs["normalized_decision"], normalized)
         self.assertEqual(view.decision.kwargs["frame_record"]["host_telemetry"], joined)
 
-    def test_live_view_uses_matching_history_when_latest_frame_has_advanced(self) -> None:
+    def test_live_view_uses_matching_history_when_latest_frame_has_advanced(
+        self,
+    ) -> None:
         normalized = normalize_physical_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
@@ -334,7 +339,10 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         normalized = {"frame_id": "frame-1"}
         with patch(
             "cli.automa_cli.decision_live.fetch_observation_frame",
-            return_value=(b"jpeg", {"x-frame-id": "frame-1", "content-type": "image/jpeg"}),
+            return_value=(
+                b"jpeg",
+                {"x-frame-id": "frame-1", "content-type": "image/jpeg"},
+            ),
         ), patch(
             "cli.automa_cli.decision_live.fetch_decision_publication",
             side_effect=[{}, {}],
@@ -375,9 +383,13 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                 "completed_at_ms": 8_500,
             },
         )
-        self.assertEqual(normalized["host_selected_output"], {"steering": 0.0, "throttle": 0.0})
+        self.assertEqual(
+            normalized["host_selected_output"], {"steering": 0.0, "throttle": 0.0}
+        )
 
-    def test_join_requires_complete_composite_identity_and_keeps_authority_separate(self) -> None:
+    def test_join_requires_complete_composite_identity_and_keeps_authority_separate(
+        self,
+    ) -> None:
         point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
         joined = join_host_telemetry_to_decision(point, _decision())
 
@@ -411,11 +423,13 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             join_host_telemetry_to_decision(skipped_point, _decision())
         self.assertEqual(skipped_error.exception.reason, "sequence_gap")
 
-        unavailable = copy.deepcopy(normalize_host_telemetry_record(
-            _record(),
-            now_ms=NOW_MS,
-            vehicle_id="piracer",
-        ))
+        unavailable = copy.deepcopy(
+            normalize_host_telemetry_record(
+                _record(),
+                now_ms=NOW_MS,
+                vehicle_id="piracer",
+            )
+        )
         unavailable["status"] = "unavailable"
         unavailable["reason"] = "observer_error"
         with self.assertRaises(ValueError) as unavailable_error:
@@ -522,21 +536,31 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         gap_payload = copy.deepcopy(payload)
         gap_payload["records"] = [_record(), gap]
         limited = normalize_host_telemetry_records(
-            gap_payload, now_ms=NOW_MS, after_sequence=0, limit=128, vehicle_id="piracer"
+            gap_payload,
+            now_ms=NOW_MS,
+            after_sequence=0,
+            limit=128,
+            vehicle_id="piracer",
         )
         self.assertEqual(limited["status"], "limited")
         self.assertEqual(limited["reason"], "sequence_gap")
         self.assertFalse(limited["coverage"]["interval_covered"])
 
         evicted = copy.deepcopy(payload)
-        evicted["coverage"] = {"complete": False, "reason": "history_evicted", "baseline": True}
+        evicted["coverage"] = {
+            "complete": False,
+            "reason": "history_evicted",
+            "baseline": True,
+        }
         evicted_result = normalize_host_telemetry_records(
             evicted, now_ms=NOW_MS, after_sequence=0, limit=128, vehicle_id="piracer"
         )
         self.assertEqual(evicted_result["reason"], "coverage_gap")
-        self.assertEqual(evicted_result["coverage"]["coverage_reason"], "history_evicted")
+        self.assertEqual(
+            evicted_result["coverage"]["coverage_reason"], "history_evicted"
+        )
 
-    def test_capture_and_render_keep_telemetry_out_of_authority(self) -> None:
+    def test_capture_keeps_telemetry_out_of_authority(self) -> None:
         point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
         joined = join_host_telemetry_to_decision(point, _decision())
         records = normalize_host_telemetry_records(
@@ -558,25 +582,6 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertIn("host_telemetry", capture)
         self.assertNotIn("authority", capture)
         self.assertNotIn("host_application", capture["host_telemetry"])
-
-        cycle = {"frame_id": "frame-1", "status": "ok", "source": {}, "plan": None, "authority": {}}
-        existing_html = render_decision_exact_frame_html(
-            vehicle_id="piracer",
-            frame_id="frame-1",
-            cycle_result=cycle,
-            source_image_rel=None,
-        )
-        telemetry_html = render_decision_exact_frame_html(
-            vehicle_id="piracer",
-            frame_id="frame-1",
-            cycle_result=cycle,
-            source_image_rel=None,
-            host_telemetry=joined,
-        )
-        self.assertNotIn('id="host_telemetry"', existing_html)
-        self.assertIn('id="host_telemetry"', telemetry_html)
-        self.assertIn("Host telemetry", telemetry_html)
-        self.assertIn("host_application", telemetry_html)
 
 
 if __name__ == "__main__":

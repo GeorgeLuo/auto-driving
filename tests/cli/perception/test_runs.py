@@ -53,7 +53,7 @@ class FakeFrameCar:
 
 
 class PerceptionRunTests(unittest.TestCase):
-    def test_recorded_review_uses_a_view_selector_and_frame_player(self) -> None:
+    def test_recorded_review_escapes_untrusted_frame_and_run_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = []
@@ -96,42 +96,8 @@ class PerceptionRunTests(unittest.TestCase):
             path = write_review_html(root, report)
             page = path.read_text(encoding="utf-8")
 
-        self.assertIn('<select id="view-mode">', page)
-        self.assertIn('<option value="source">Source only</option>', page)
-        self.assertIn('<option value="processed">Processed only</option>', page)
-        self.assertIn('<option value="side-by-side">Source + processed</option>', page)
-        self.assertIn('id="play-toggle"', page)
-        self.assertIn('id="frame-scrubber" type="range" min="0" max="1"', page)
-        self.assertEqual(
-            page.count('<article class="frame" data-review-frame'),
-            2,
-        )
-        self.assertEqual(page.count('data-view-kind="source"'), 2)
-        self.assertEqual(page.count('data-view-kind="processed"'), 2)
-        self.assertIn("window.setInterval", page)
         self.assertIn("frame_000000&lt;unsafe&gt;", page)
-        self.assertNotIn('<script>alert(1)</script>', page)
-
-    def test_review_player_disables_motion_when_no_frames_exist(self) -> None:
-        report = {
-            "run_id": "empty",
-            "mapper": {"algorithm": "lightweight_observer"},
-            "summary": {
-                "frames": 0,
-                "failed_frames": 0,
-                "latency_ms": {"steady_median": 0.0},
-                "memory_mb": {"peak_rss": 0.0},
-                "representation_health": {},
-            },
-            "frames": [],
-        }
-        with tempfile.TemporaryDirectory() as tmp:
-            page = write_review_html(Path(tmp), report).read_text(encoding="utf-8")
-
-        self.assertIn('id="play-toggle" type="button" aria-pressed="false" disabled', page)
-        self.assertIn('id="frame-scrubber" type="range" min="0" max="0"', page)
-        self.assertIn("No recorded frames are available.", page)
-        self.assertIn(">0 / 0</output>", page)
+        self.assertNotIn("<script>alert(1)</script>", page)
 
     def test_apply_accepts_one_image_and_reports_candidate_overrides(self) -> None:
         class FakeCandidateMapper:
@@ -189,7 +155,9 @@ class PerceptionRunTests(unittest.TestCase):
             ("fixture", {"threshold": 0.7}),
         )
 
-    def test_named_runtime_refreshes_plugin_definition_but_custom_runtime_is_preserved(self) -> None:
+    def test_named_runtime_refreshes_plugin_definition_but_custom_runtime_is_preserved(
+        self,
+    ) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-test",
             "vehicle_kind": "chase-sim-ws",
@@ -207,19 +175,29 @@ class PerceptionRunTests(unittest.TestCase):
                 stale["perception"]["mapper_config"]["plugins"].append("vlm_prep")
                 activation_path.write_text(json.dumps(stale), encoding="utf-8")
 
-                refreshed = perception_module.ensure_local_perception_runtime(vehicle=vehicle)
-                refreshed_plugins = refreshed["manifest"]["perception"]["mapper_config"]["plugins"]
-                self.assertEqual(refreshed_plugins, ["frame", "floor_plane", "motion_tracks"])
+                refreshed = perception_module.ensure_local_perception_runtime(
+                    vehicle=vehicle
+                )
+                refreshed_plugins = refreshed["manifest"]["perception"][
+                    "mapper_config"
+                ]["plugins"]
+                self.assertEqual(
+                    refreshed_plugins, ["frame", "floor_plane", "motion_tracks"]
+                )
                 self.assertFalse(refreshed["refreshed"])
 
                 custom = refreshed["manifest"]
                 custom["perception"]["algorithm"] = "custom"
                 custom["perception"]["mapper_config"]["plugins"] = ["frame"]
                 activation_path.write_text(json.dumps(custom), encoding="utf-8")
-                preserved = perception_module.ensure_local_perception_runtime(vehicle=vehicle)
+                preserved = perception_module.ensure_local_perception_runtime(
+                    vehicle=vehicle
+                )
 
         self.assertEqual(preserved["manifest"]["perception"]["algorithm"], "custom")
-        self.assertEqual(preserved["manifest"]["perception"]["mapper_config"]["plugins"], ["frame"])
+        self.assertEqual(
+            preserved["manifest"]["perception"]["mapper_config"]["plugins"], ["frame"]
+        )
 
     def test_apply_manifest_falls_back_to_archived_frame_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -240,12 +218,18 @@ class PerceptionRunTests(unittest.TestCase):
 
         self.assertEqual(paths, [archived.resolve()])
 
-    def test_representation_health_rejects_malformed_boxes_without_crashing(self) -> None:
+    def test_representation_health_rejects_malformed_boxes_without_crashing(
+        self,
+    ) -> None:
         malformed = {
             "thing_id": "malformed",
             "kind": "region_proposal",
             "confidence": 0.8,
-            "location": {"frame": "image", "zone": "center", "bbox_xyxy_norm": (0.2, 0.3, 0.4)},
+            "location": {
+                "frame": "image",
+                "zone": "center",
+                "bbox_xyxy_norm": (0.2, 0.3, 0.4),
+            },
         }
 
         health = evaluate_perception_frames(
@@ -278,14 +262,20 @@ class PerceptionRunTests(unittest.TestCase):
 
             paths = _source_image_paths(root, manifest)
 
-        self.assertEqual([path.name for path in paths], ["00_before.png", "00_after.png"])
+        self.assertEqual(
+            [path.name for path in paths], ["00_before.png", "00_after.png"]
+        )
 
     def test_candidate_comparison_runs_every_ready_candidate(self) -> None:
         report = {
             "summary": {
                 "failed_frames": 0,
                 "thing_kinds": {"region_proposal": 2},
-                "latency_ms": {"cold_start": 10.0, "steady_median": 5.0, "steady_p95": 6.0},
+                "latency_ms": {
+                    "cold_start": 10.0,
+                    "steady_median": 5.0,
+                    "steady_p95": 6.0,
+                },
                 "memory_mb": {"peak_rss": 20.0},
                 "representation_health": {
                     "score": 0.8,
@@ -295,11 +285,20 @@ class PerceptionRunTests(unittest.TestCase):
             "run_dir": None,
             "review": None,
         }
-        candidates = [types.SimpleNamespace(candidate_id="one"), types.SimpleNamespace(candidate_id="two")]
+        candidates = [
+            types.SimpleNamespace(candidate_id="one"),
+            types.SimpleNamespace(candidate_id="two"),
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             with (
-                patch("cli.automa_cli.perception_runs.discover_candidates", return_value=candidates),
-                patch("cli.automa_cli.perception_runs.candidate_status", return_value={"ready": True}),
+                patch(
+                    "cli.automa_cli.perception_runs.discover_candidates",
+                    return_value=candidates,
+                ),
+                patch(
+                    "cli.automa_cli.perception_runs.candidate_status",
+                    return_value={"ready": True},
+                ),
                 patch(
                     "cli.automa_cli.perception_runs.apply_perception_experiment",
                     return_value=CommandResult(0, json.dumps(report)),
@@ -309,7 +308,9 @@ class PerceptionRunTests(unittest.TestCase):
 
         payload = json.loads(result.message)
         self.assertEqual(result.exit_code, 0)
-        self.assertEqual([item["candidate"] for item in payload["results"]], ["one", "two"])
+        self.assertEqual(
+            [item["candidate"] for item in payload["results"]], ["one", "two"]
+        )
         self.assertEqual(apply_mock.call_count, 2)
 
     def test_representation_health_accepts_in_memory_tuple_things(self) -> None:
@@ -317,7 +318,11 @@ class PerceptionRunTests(unittest.TestCase):
             "thing_id": "region",
             "kind": "region_proposal",
             "confidence": 0.8,
-            "location": {"frame": "image", "zone": "center", "bbox_xyxy_norm": (0.2, 0.2, 0.6, 0.6)},
+            "location": {
+                "frame": "image",
+                "zone": "center",
+                "bbox_xyxy_norm": (0.2, 0.2, 0.6, 0.6),
+            },
         }
         frames = [
             {"status": "ok", "perception": {"things": (thing,)}},
@@ -330,7 +335,9 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(health["continuity"]["mean_match_fraction"], 1.0)
         self.assertEqual(health["score"], 1.0)
 
-    def test_flagless_run_prefers_simulator_and_uses_vehicle_sensor_contract(self) -> None:
+    def test_flagless_run_prefers_simulator_and_uses_vehicle_sensor_contract(
+        self,
+    ) -> None:
         fake_car = FakeFrameCar()
         discovery = {
             "vehicles": [
@@ -363,9 +370,17 @@ class PerceptionRunTests(unittest.TestCase):
                 "refreshed": False,
             }
             with (
-                patch("cli.automa_cli.perception_runs.discover_active_vehicles", return_value=discovery),
-                patch("cli.automa_cli.perception_runs.ensure_local_perception_runtime", return_value=runtime),
-                patch("cli.automa_cli.perception_runs._load_mapper", return_value=mapper),
+                patch(
+                    "cli.automa_cli.perception_runs.discover_active_vehicles",
+                    return_value=discovery,
+                ),
+                patch(
+                    "cli.automa_cli.perception_runs.ensure_local_perception_runtime",
+                    return_value=runtime,
+                ),
+                patch(
+                    "cli.automa_cli.perception_runs._load_mapper", return_value=mapper
+                ),
                 patch(
                     "cli.automa_cli.perception_runs.create_vehicle_access",
                     return_value=VehicleAccess(
@@ -375,7 +390,9 @@ class PerceptionRunTests(unittest.TestCase):
                     ),
                 ),
             ):
-                result = run_perception_experiment(frames=2, interval_s=0, json_output=True)
+                result = run_perception_experiment(
+                    frames=2, interval_s=0, json_output=True
+                )
 
         payload = json.loads(result.message)
         self.assertEqual(result.exit_code, 0)

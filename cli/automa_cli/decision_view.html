@@ -31,17 +31,14 @@
   <main>
     <header>
       <p class="eyebrow">Automa · Decision inspector</p>
-      <h1 id="decision-combined-v0">Obstruction decision</h1>
+      <h1 id="decision-combined-v0">Decision inspector</h1>
       <p class="subtle">Saved input · shadow scenarios · no vehicle commands sent.</p>
       <p id="input-label" class="subtle"></p>
     </header>
     <section>
-      <h2>Choose an obstruction side</h2>
-      <label for="preview-memory">Obstruction position
-        <select id="preview-memory" disabled>
-          <option value="left">Left obstruction</option>
-          <option value="right">Right obstruction</option>
-        </select>
+      <h2>Choose a scenario</h2>
+      <label for="preview-memory">Scenario
+        <select id="preview-memory" disabled></select>
       </label>
       <p id="preview-status" role="status">Loading decisions…</p>
       <section id="decision-overview" aria-live="polite" hidden>
@@ -80,18 +77,16 @@
       function showSelected() {
         const scenario = inspection.scenarios[select.value];
         const cycle = scenario.cycle;
+        const selectedScenario = {...scenario};
+        delete selectedScenario.cycle;
         document.querySelector(".decision-direction").textContent = scenario.steering_direction;
-        document.querySelector(".decision-context").textContent = "Obstruction on the " + scenario.obstruction_side;
+        document.querySelector(".decision-context").textContent = scenario.context || "";
         const selected = cycle.plan?.candidates?.find(candidate => candidate.proposal_id === cycle.plan.selected_proposal_id);
         document.querySelector("#decision-reason").textContent = selected?.reason || cycle.reason || cycle.plan?.status || "";
         document.querySelector("#decision-input").textContent = JSON.stringify(cycle.source, null, 2);
         document.querySelector("#decision-output").textContent = JSON.stringify({plan: cycle.plan, authority: cycle.authority}, null, 2);
         document.querySelector("#inspection-source").textContent = JSON.stringify({
-          selected_scenario: {
-            obstruction_side: scenario.obstruction_side,
-            steering_direction: scenario.steering_direction,
-            changed_record_ids: scenario.changed_record_ids
-          },
+          selected_scenario: selectedScenario,
           saved_input: inspection.input,
           engine_id: inspection.engine_id, engine_config: inspection.engine_config,
           config_source: inspection.config_source
@@ -106,9 +101,16 @@
           const response = await fetch("/api/inspection", {cache: "no-store", signal: AbortSignal.timeout(10000)});
           if (!response.ok) throw new Error("Could not load inspection (" + response.status + ").");
           inspection = await response.json();
-          if (inspection.schema !== "automa_decision_inspection_v1" || !inspection.scenarios?.left || !inspection.scenarios?.right) {
+          const names = Object.keys(inspection.scenarios || {});
+          if (inspection.schema !== "automa_decision_inspection_v1" || names.length === 0) {
             throw new Error("Invalid inspection artifact.");
           }
+          select.replaceChildren(...names.map((name) => {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = inspection.scenarios[name].label || name;
+            return option;
+          }));
           document.querySelector("#input-label").textContent = inspection.input.name + " · frame " + (inspection.input.frame_position + 1) + " of " + inspection.input.frame_count;
           showSelected();
           select.disabled = false;

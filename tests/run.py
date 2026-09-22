@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -24,6 +25,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tests/run.py",
         description="Run the repository-owned deterministic test suite.",
+    )
+    parser.add_argument(
+        "--durations",
+        type=int,
+        default=10,
+        help="Report the slowest N tests, including setup and cleanup (default: 10).",
     )
     parser.add_argument(
         "--live-sim",
@@ -115,15 +122,19 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
     return True
 
 
+class TimedResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.timings = []
 
-def _iter_tests(suite: unittest.TestSuite):
-    """Yield individual TestCase instances from a possibly nested suite."""
+    def startTest(self, test):
+        super().startTest(test)
+        self.started = time.perf_counter()
 
-    for item in suite:
-        if isinstance(item, unittest.TestSuite):
-            yield from _iter_tests(item)
-        else:
-            yield item
+    def stopTest(self, test):
+        self.timings.append((time.perf_counter() - self.started, test.id()))
+        super().stopTest(test)
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
@@ -132,7 +143,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--pi-timeout-s must be greater than zero")
     if args.live_sim:
         print("Ensuring simulator is ready for live tests...", flush=True)
-        ensure_result = ensure_simulator(timeout_ms=args.sim_timeout_ms, json_output=False)
+        ensure_result = ensure_simulator(
+            timeout_ms=args.sim_timeout_ms, json_output=False
+        )
         if ensure_result.message:
             print(ensure_result.message, flush=True)
         if ensure_result.exit_code != 0:
@@ -150,20 +163,11 @@ def main(argv: list[str] | None = None) -> int:
         pattern="test_*.py",
         top_level_dir=str(ROOT),
     )
-    milestones_dir = TESTS_DIR / "milestones"
-    if milestones_dir.is_dir():
-        milestone_suite = loader.discover(
-            str(milestones_dir),
-            pattern="test_*.py",
-            top_level_dir=str(ROOT),
-        )
-        seen = {t.id() for t in _iter_tests(suite)}
-        for test in _iter_tests(milestone_suite):
-            tid = test.id()
-            if tid not in seen:
-                suite.addTest(test)
-                seen.add(tid)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(suite)
+    if args.durations > 0:
+        print("\nSlowest tests (including setup and cleanup):", file=sys.stderr)
+        for seconds, name in sorted(result.timings, reverse=True)[: args.durations]:
+            print(f"{seconds:7.3f}s {name}", file=sys.stderr)
     return 0 if result.wasSuccessful() else 1
 
 

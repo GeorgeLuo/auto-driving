@@ -1774,21 +1774,11 @@ class ImageReplayRunner:
         }
 
     def _decision_configuration(self) -> dict[str, Any]:
-        config = getattr(self._decision_engine, "config", None)
+        reported = getattr(self._decision_engine, "reported_config", None)
+        document = dict(reported) if isinstance(reported, dict) else {}
         return {
+            **document,
             "engine_id": ENGINE_ID,
-            "enabled_plugins": list(
-                getattr(config, "enabled_plugins", ("avoid_recent_obstruction",))
-            ),
-            "accepted_kinds": list(
-                getattr(
-                    config,
-                    "accepted_kinds",
-                    ("floor_boundary", "obstacle", "obstruction_evidence"),
-                )
-            ),
-            "retained_max_age_ms": getattr(config, "retained_max_age_ms", 1000),
-            "steer_magnitude": getattr(config, "steer_magnitude", 0.35),
             "authority_mode": "shadow_only",
             "proposed_applied": False,
         }

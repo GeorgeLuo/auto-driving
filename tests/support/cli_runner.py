@@ -25,6 +25,13 @@ def run_automa(
         env["AUTOMA_RUNTIME_ROOT"] = str(runtime_root)
     if extra_env is not None:
         env.update(extra_env)
+    if not any(
+        env.get(name) == "1" for name in ("AUTOMA_TEST_LIVE_SIM", "AUTOMA_TEST_LIVE_PI")
+    ):
+        offline_path = str(Path(__file__).parent / "offline")
+        env["PYTHONPATH"] = os.pathsep.join(
+            filter(None, (offline_path, env.get("PYTHONPATH")))
+        )
 
     result = subprocess.run(
         [sys.executable, str(AUTOMA_PATH), *args],
@@ -33,6 +40,7 @@ def run_automa(
         capture_output=True,
         text=True,
         check=False,
+        timeout=30,
     )
     if check and result.returncode != 0:
         raise AssertionError(

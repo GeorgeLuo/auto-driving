@@ -17,7 +17,6 @@ from qca import (
     render_markdown,
     report_to_dict,
 )
-from qca.backtest import render_backtest_markdown, run_manifest
 from qca.render import render_html
 
 
@@ -490,50 +489,6 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                 {(item["path"], item["qualified_name"]) for item in single["changed_callables"]},
                 {("café.py", "run"), ("café.py", "added")},
             )
-
-    def test_backtest_manifest_preserves_scale_and_questions(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self._git(root, "init", "-q")
-            self._git(root, "config", "user.email", "qca@example.test")
-            self._git(root, "config", "user.name", "QCA Tests")
-            (root / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
-            self._git(root, "add", ".")
-            self._git(root, "commit", "-qm", "base")
-            base = self._git(root, "rev-parse", "HEAD").strip()
-            (root / "app.py").write_text("def run():\n    if True:\n        return 1\n    return 0\n", encoding="utf-8")
-            self._git(root, "add", ".")
-            self._git(root, "commit", "-qm", "head")
-            head = self._git(root, "rev-parse", "HEAD").strip()
-            manifest = root / "manifest.json"
-            manifest.write_text(
-                json.dumps(
-                    {
-                        "schema": "qca/m008-backtest/v1",
-                        "path": str(root),
-                        "config": {"include_roots": ["."]},
-                        "experiment": {"hypothesis": "shape is inspectable"},
-                        "states": [
-                            {
-                                "id": "fixture",
-                                "scale": "small",
-                                "base": base,
-                                "head": head,
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            payload = run_manifest(manifest)
-            self.assertEqual(payload["schema"], "qca/m008-backtest-report/v1")
-            self.assertEqual(payload["experiment"]["hypothesis"], "shape is inspectable")
-            self.assertEqual(payload["states"][0]["scale"], "small")
-            self.assertTrue(payload["states"][0]["operator_questions"])
-            self.assertTrue(payload["states"][0]["diff"]["review_targets"])
-            self.assertTrue(payload["execution"]["all_revisions_resolved"])
-            self.assertIn("shape is inspectable", render_backtest_markdown(payload))
 
     def test_production_vs_tests_split_covers_code_and_excludes_docs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

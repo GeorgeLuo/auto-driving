@@ -168,10 +168,15 @@ class PluginCatalog:
         order = {item.plugin_id: index for index, item in enumerate(self.plugins)}
         return tuple(sorted(values, key=lambda value: order[value]))
 
-    def build_mapper(self, active_ids: Sequence[str]) -> PerceptionMapper:
+    def build_mapper(
+        self,
+        active_ids: Sequence[str],
+        config_overrides: dict[str, dict[str, Any]] | None = None,
+    ) -> PerceptionMapper:
         """Instantiate exactly the selected core-runtime manifest plugins."""
 
         selected = self.normalize_selection(active_ids, require_explicit_selection=False)
+        overrides = config_overrides or {}
         descriptors = {item.plugin_id: item for item in self.plugins}
         plugin_ids = list(selected)
         plugin_specs: dict[str, str] = {}
@@ -194,7 +199,11 @@ class PluginCatalog:
                 if not descriptor.entrypoint:
                     raise PluginCatalogError(f"plugin {plugin_id!r} has no entrypoint")
                 plugin_specs[plugin_id] = descriptor.entrypoint
-                plugin_configs[plugin_id] = dict(descriptor.config)
+                config = dict(descriptor.config)
+                override = overrides.get(plugin_id)
+                if isinstance(override, dict):
+                    config.update(override)
+                plugin_configs[plugin_id] = config
 
         if self.root is not None:
             with _import_root(self.root):

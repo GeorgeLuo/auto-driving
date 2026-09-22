@@ -12,6 +12,7 @@ import json
 import os
 import time
 import webbrowser
+from pathlib import Path
 from typing import Any, TextIO
 
 from .perception_runs import CommandResult
@@ -44,11 +45,75 @@ from .workbench_source import (
 )
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+BRIGHT_TRACKS_CAPTURE = (
+    _REPO_ROOT
+    / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121/frames"
+)
+BRIGHT_TRACKS_PLUGIN_DIR = _REPO_ROOT / "lab/plugins/perception"
+BRIGHT_TRACKS_SETTINGS = (
+    BRIGHT_TRACKS_PLUGIN_DIR
+    / "multi_obstruction_tracks/configs/bright-settings.json"
+)
+BRIGHT_TRACKS_PLUGIN_ID = "multi_obstruction_tracks"
+BRIGHT_TRACKS_FIELDS = (
+    {"key": "canny_low", "label": "Canny low", "kind": "int", "min": 1, "max": 200, "step": 1},
+    {"key": "canny_high", "label": "Canny high", "kind": "int", "min": 2, "max": 250, "step": 1},
+    {"key": "floor_cutoff_y", "label": "Floor cutoff", "kind": "float", "min": 0.35, "max": 0.95, "step": 0.01},
+    {"key": "minimum_output_confidence", "label": "Confidence floor", "kind": "float", "min": 0, "max": 1, "step": 0.01},
+    {"key": "output_bbox_shrink_y", "label": "Vertical shrink", "kind": "float", "min": 0.25, "max": 1, "step": 0.05},
+    {"key": "max_tracks", "label": "Max tracks", "kind": "int", "min": 1, "max": 4, "step": 1},
+    {"key": "minimum_object_height", "label": "Minimum height", "kind": "float", "min": 0.02, "max": 1, "step": 0.01},
+    {"key": "association_distance", "label": "Association distance", "kind": "float", "min": 0.05, "max": 1, "step": 0.01},
+    {"key": "smoothing_alpha", "label": "Smoothing", "kind": "float", "min": 0.05, "max": 1, "step": 0.05},
+    {"key": "max_missed_frames", "label": "Hold frames", "kind": "int", "min": 0, "max": 6, "step": 1},
+    {
+        "key": "contrast_normalization",
+        "label": "Contrast",
+        "kind": "choice",
+        "choices": ["none", "clahe", "stretch", "gamma"],
+    },
+)
+
+
+def bright_tracks_editor(config: dict[str, Any]) -> dict[str, Any]:
+    """Operator-facing controls for the bright obstruction-track profile."""
+
+    fields = []
+    for spec in BRIGHT_TRACKS_FIELDS:
+        field = dict(spec)
+        if spec["key"] in config:
+            field["value"] = config[spec["key"]]
+        fields.append(field)
+    return {
+        "plugin_id": BRIGHT_TRACKS_PLUGIN_ID,
+        "title": "Bright obstruction tracks",
+        "note": (
+            "This is the bright cardboard-box profile on the high-rate drive. "
+            "Play runs the frames in order. Changing a setting replays from the "
+            "first frame through the one you are on, and the tracks are carried "
+            "in memory from one frame to the next."
+        ),
+        "fields": fields,
+    }
+
+
+def load_bright_tracks_config() -> dict[str, Any]:
+    payload = json.loads(BRIGHT_TRACKS_SETTINGS.read_text(encoding="utf-8"))
+    config = payload.get("config")
+    if not isinstance(config, dict):
+        raise ValueError(f"{BRIGHT_TRACKS_SETTINGS} has no config object")
+    return dict(config)
+
+
 def run_workbench_replay(
     source_dir: str | os.PathLike[str],
     *,
     plugin_dir: str | os.PathLike[str] | None = None,
     active_plugin_ids: list[str] | tuple[str, ...] | None = None,
+    plugin_config: dict[str, dict[str, Any]] | None = None,
+    parameter_editor: dict[str, Any] | None = None,
+    ordered_replay: bool = False,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -56,6 +121,7 @@ def run_workbench_replay(
     port: int = 0,
     serve: bool = False,
     open_browser: bool = False,
+    loop: bool | None = None,
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
@@ -73,10 +139,13 @@ def run_workbench_replay(
             source_dir,
             plugin_dir=plugin_dir,
             active_plugin_ids=active_plugin_ids,
+            plugin_config=plugin_config,
+            parameter_editor=parameter_editor,
+            ordered_replay=ordered_replay,
             cadence_ms=cadence_ms,
             pace=pace,
             max_frames=max_frames,
-            loop=serve,
+            loop=serve if loop is None else loop,
         )
         if serve:
             server = WorkbenchServer(runner, host=host, port=port).start()

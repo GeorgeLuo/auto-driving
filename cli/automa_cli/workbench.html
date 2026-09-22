@@ -523,6 +523,19 @@
       min-height: 0;
       overflow: auto;
     }
+    .parameter-editor { display: grid; gap: 8px; }
+    .parameter-editor label { display: grid; gap: 2px; }
+    .parameter-editor input, .parameter-editor select {
+      width: 100%;
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 6px;
+    }
+    .parameter-editor button {
+      justify-self: start;
+    }
     .plugin-catalog, .record-list {
       display: grid;
       gap: 4px;
@@ -607,6 +620,18 @@
         <span class="kicker">SETUP</span>
       </div>
       <div class="sidebar-scroll">
+        <details id="parameterEditor" class="sidebar-group" hidden open>
+          <summary class="sidebar-group-label">
+            <span id="parameterEditorTitle">Bright tracks</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="sidebar-group-body">
+            <p id="editorNote" class="muted help"></p>
+            <form id="parameterEditorForm" class="parameter-editor"></form>
+            <button type="button" id="applyParameters">Replay with these settings</button>
+            <p id="editorStatus" class="muted help"></p>
+          </div>
+        </details>
         <details class="sidebar-group" open>
           <summary class="sidebar-group-label">
             <span>Setup</span>
@@ -663,6 +688,7 @@
           <span id="frameIndex" class="muted">—</span>
           <span id="frameTimestamp" class="muted">—</span>
           <span id="perceptionStatus" class="muted">—</span>
+          <span id="lookbackHud" class="muted">—</span>
         </div>
       </section>
 
@@ -845,8 +871,11 @@
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
         "memoryCount", "memoryPolicy", "memorySearch", "memoryRecords", "failurePanel", "failureText",
         "memorySelected", "decisionSummary", "decisionFrameIdentity", "decisionStatus", "decisionSelected",
-        "decisionProposed", "decisionAuthority", "decisionReason", "decisionSource", "decisionCandidates"
+        "decisionProposed", "decisionAuthority", "decisionReason", "decisionSource", "decisionCandidates",
+        "parameterEditor", "parameterEditorTitle", "editorNote", "parameterEditorForm",
+        "applyParameters", "editorStatus", "lookbackHud"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
+      var editorRenderKey = null;
       var noticeTimer = null;
       var selectedRecordId = null;
       var memoryListSignature = "";
@@ -1261,6 +1290,7 @@
             body: JSON.stringify(body)
           });
           var payload = await response.json();
+          if (action === "apply_plugin_parameters") editorRenderKey = null;
           if (payload.state && requestGeneration === stateRequestGeneration) {
             actionInFlight = false;
             render(payload.state, { skipViewer: skipViewer });
@@ -1281,6 +1311,10 @@
             if (action === "validate") setNotice("Source and plugin configuration validated.");
             if (action === "refresh_plugins") setNotice("Reloaded the plugin catalog from the plugin directory.");
             if (action === "select_plugins") setNotice("Plugin selection applied.");
+            if (action === "apply_plugin_parameters") {
+              editorRenderKey = null;
+              setNotice((payload.state && payload.state.editor_status) || "Replayed the frames in order with these settings.");
+            }
             if (action === "select_plugins") {
               clearFrameSelection();
               render(payload.state);
@@ -1328,6 +1362,81 @@
           elements.pluginDir.value = state.plugin_dir;
           remember(PLUGIN_DIR_KEY, state.plugin_dir);
         }
+      }
+
+      function lookbackText() {
+        var lookback = state && state.lookback;
+        if (!lookback) return "Lookback appears once the first frame has been processed.";
+        var read = lookback.read || 0;
+        var wrote = lookback.wrote || 0;
+        if (read === 0) {
+          return "Lookback: no tracks remembered yet. This frame wrote " + wrote + ".";
+        }
+        return "Lookback: read " + read + " tracks from the previous frame, wrote " + wrote + ".";
+      }
+
+      function renderParameterEditor() {
+        var editor = state && state.parameter_editor;
+        if (!elements.parameterEditor) return;
+        elements.parameterEditor.hidden = !editor;
+        if (!editor) return;
+        setText("parameterEditorTitle", editor.title || "Plugin settings");
+        setText("editorNote", editor.note || "");
+        setText("lookbackHud", lookbackText());
+        setText("editorStatus", (state && state.editor_status) || "");
+        var allowed = state && state.controls && state.controls.allowed_actions
+          ? state.controls.allowed_actions : [];
+        elements.applyParameters.disabled = actionInFlight || allowed.indexOf("apply_plugin_parameters") < 0;
+        elements.applyParameters.textContent = actionInFlight
+          ? "Replaying from the first frame…"
+          : "Replay with these settings";
+        var fields = Array.isArray(editor.fields) ? editor.fields : [];
+        var renderKey = fields.map(function (field) { return field.key; }).join(",");
+        var typing = elements.parameterEditorForm.contains(document.activeElement);
+        if (renderKey === editorRenderKey && typing) return;
+        if (renderKey === editorRenderKey && elements.parameterEditorForm.childElementCount) return;
+        editorRenderKey = renderKey;
+        elements.parameterEditorForm.textContent = "";
+        fields.forEach(function (field) {
+          var label = document.createElement("label");
+          var caption = document.createElement("span");
+          caption.className = "kicker";
+          caption.textContent = field.label || field.key;
+          label.appendChild(caption);
+          var input;
+          if (field.kind === "choice") {
+            input = document.createElement("select");
+            (field.choices || []).forEach(function (choice) {
+              var option = document.createElement("option");
+              option.value = choice;
+              option.textContent = choice;
+              option.selected = String(field.value) === String(choice);
+              input.appendChild(option);
+            });
+          } else {
+            input = document.createElement("input");
+            input.type = "number";
+            input.step = field.step != null ? String(field.step) : "any";
+            if (field.min != null) input.min = String(field.min);
+            if (field.max != null) input.max = String(field.max);
+            input.value = field.value != null ? String(field.value) : "";
+          }
+          input.setAttribute("data-parameter-key", field.key);
+          label.appendChild(input);
+          elements.parameterEditorForm.appendChild(label);
+        });
+      }
+
+      function collectPluginParameters() {
+        var parameters = {};
+        Array.prototype.forEach.call(
+          elements.parameterEditorForm.querySelectorAll("[data-parameter-key]"),
+          function (input) {
+            var key = input.getAttribute("data-parameter-key");
+            parameters[key] = input.tagName === "SELECT" ? input.value : Number(input.value);
+          }
+        );
+        return parameters;
       }
 
       function renderPlugins() {
@@ -1880,6 +1989,7 @@
           } else {
             renderFrame();
           }
+          renderParameterEditor();
           renderEvidence();
           renderMemory();
           renderDecision();
@@ -2095,6 +2205,11 @@
       });
       elements.loopToggle.addEventListener("click", function () {
         queueLoop(!loopEnabled());
+      });
+      elements.applyParameters.addEventListener("click", function () {
+        if (!state || !state.parameter_editor) return;
+        elements.applyParameters.textContent = "Replaying from the first frame…";
+        action("apply_plugin_parameters", { plugin_parameters: collectPluginParameters() });
       });
       elements.overlayToggle.addEventListener("click", function () {
         var next = elements.overlayToggle.value === "off" ? "on" : "off";

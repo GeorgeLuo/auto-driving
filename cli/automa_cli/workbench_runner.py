@@ -123,6 +123,71 @@ def _safe_status(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _lookback_counts(perception: dict[str, Any] | None) -> dict[str, int] | None:
+    if not isinstance(perception, dict):
+        return None
+    sources: list[Any] = []
+    measurements = perception.get("measurements")
+    if isinstance(measurements, dict):
+        sources.extend(measurements.values())
+    signals = perception.get("signals")
+    if isinstance(signals, (list, tuple)):
+        for signal in signals:
+            if isinstance(signal, dict):
+                sources.append(signal.get("properties"))
+    for source in sources:
+        if not isinstance(source, dict) or "memory_tracks_read" not in source:
+            continue
+        return {
+            "read": int(source.get("memory_tracks_read") or 0),
+            "wrote": int(source.get("memory_tracks_written") or 0),
+        }
+    return None
+
+
+def _coerce_editor_value(field: dict[str, Any], raw: Any) -> Any:
+    kind = str(field.get("kind") or "float")
+    if kind == "choice":
+        choices = [str(item) for item in field.get("choices") or []]
+        value = str(raw)
+        if value not in choices:
+            raise ReplayActionError(
+                f"{field.get('label') or field.get('key')} must be one of {', '.join(choices)}",
+                status_code=400,
+                boundary="input",
+            )
+        return value
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        raise ReplayActionError(
+            f"{field.get('label') or field.get('key')} must be a number",
+            status_code=400,
+            boundary="input",
+        )
+    try:
+        number = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ReplayActionError(
+            f"{field.get('label') or field.get('key')} must be a number",
+            status_code=400,
+            boundary="input",
+        ) from exc
+    if kind == "int":
+        if not number.is_integer():
+            raise ReplayActionError(
+                f"{field.get('label') or field.get('key')} must be a whole number",
+                status_code=400,
+                boundary="input",
+            )
+        number = int(number)
+    lower = field.get("min")
+    upper = field.get("max")
+    if lower is not None and number < float(lower):
+        number = int(lower) if kind == "int" else float(lower)
+    if upper is not None and number > float(upper):
+        number = int(upper) if kind == "int" else float(upper)
+    return number
+
+
 def _state_action_set(phase: str) -> list[str]:
     if phase == "idle":
         return ["validate", "refresh_plugins", "select_plugins", "start", "reset", "set_loop"]
@@ -152,6 +217,9 @@ class ImageReplayRunner:
         max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
         mapper_factory: Callable[[], PerceptionMapper] | None = None,
         memory_stage_factory: Callable[[], Any] | None = None,
+        plugin_config: dict[str, dict[str, Any]] | None = None,
+        parameter_editor: dict[str, Any] | None = None,
+        ordered_replay: bool = False,
     ) -> None:
         self.source_root = (
             Path(source_root).expanduser().resolve() if source_root else None
@@ -184,6 +252,15 @@ class ImageReplayRunner:
             else None
         )
         self._active_plugin_ids = self._initial_plugin_selection(active_plugin_ids)
+        self._plugin_config_overrides = {
+            str(plugin_id): dict(config)
+            for plugin_id, config in (plugin_config or {}).items()
+            if isinstance(config, dict)
+        }
+        self._parameter_editor = (
+            copy.deepcopy(parameter_editor) if isinstance(parameter_editor, dict) else None
+        )
+        self._ordered_replay = bool(ordered_replay)
         self._state = self._initial_state()
 
     @property
@@ -469,6 +546,7 @@ class ImageReplayRunner:
         active_plugin_ids: list[str] | tuple[str, ...] | None = None,
         position: int | None = None,
         loop: bool | None = None,
+        plugin_parameters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         action = str(action or "").strip()
         if action not in WORKBENCH_ACTIONS:
@@ -583,6 +661,8 @@ class ImageReplayRunner:
                 return self._cancel()
             if action == "reset":
                 return self._reset()
+            if action == "apply_plugin_parameters":
+                return self._apply_plugin_parameters(plugin_parameters)
         raise AssertionError(f"unhandled action {action}")
 
     def _configure_plugins_if_requested(
@@ -771,7 +851,10 @@ class ImageReplayRunner:
     ) -> Any:
         if self._mapper_factory_explicit:
             return self.mapper_factory()
-        return self._plugin_catalog.build_mapper(selected_plugin_ids)
+        return self._plugin_catalog.build_mapper(
+            selected_plugin_ids,
+            config_overrides=self._plugin_config_overrides,
+        )
 
     def _set_loop(self, loop: bool | None) -> dict[str, Any]:
         if not isinstance(loop, bool):
@@ -789,6 +872,13 @@ class ImageReplayRunner:
     def _wrap_or_complete_locked(self) -> None:
         feed = self._feed
         if feed is None or int(self._state["position"]) < len(feed.frames):
+            return
+        if self._ordered_replay:
+            if self._state["phase"] == "running":
+                self._state["phase"] = "paused"
+                self._state["editor_status"] = (
+                    "End of the drive. Change a setting to replay through this frame, or move back along the sequence."
+                )
             return
         if self._loop:
             if self._state["phase"] == "running":
@@ -863,6 +953,10 @@ class ImageReplayRunner:
             if self._state["phase"] == "running":
                 self._state["phase"] = "paused"
                 self._condition.notify_all()
+            if self._ordered_replay:
+                self._ordered_seek_locked(position)
+                self._record_action_locked("seek", position=position)
+                return copy.deepcopy(self._state)
             run_id = str(self._state["run_id"])
             generation = self._generation
             frame = self._feed.frames[position]
@@ -875,6 +969,154 @@ class ImageReplayRunner:
         with self._lock:
             self._record_action_locked("seek", position=position)
             return copy.deepcopy(self._state)
+
+    def _contiguous_prefix_locked(self) -> int:
+        feed = self._feed
+        if feed is None:
+            return 0
+        prefix = 0
+        for frame in feed.frames:
+            if frame.frame_id not in self._history:
+                break
+            prefix += 1
+        return prefix
+
+    def _ordered_seek_locked(self, position: int) -> None:
+        prefix = self._contiguous_prefix_locked()
+        if prefix > 0 and position == prefix - 1:
+            frame = self._feed.frames[position]
+            cached = self._history.get(frame.frame_id)
+            if cached is not None:
+                self._apply_cached_frame_locked(frame, cached)
+                self._state["editor_status"] = (
+                    "Showing this frame from the ordered replay already computed."
+                )
+                return
+        if position < prefix:
+            self._replay_range_locked(0, position, reset=True)
+            self._state["editor_status"] = (
+                f"Replayed {position + 1} frames in order so this frame's tracks are continuous."
+            )
+            return
+        self._replay_range_locked(prefix, position, reset=False)
+        self._state["editor_status"] = (
+            f"Continued the ordered replay through frame {position + 1}."
+        )
+
+    def _replay_range_locked(self, start: int, end: int, *, reset: bool) -> None:
+        feed = self._feed
+        if feed is None:
+            return
+        if reset:
+            if self._mapper is not None:
+                self._mapper.reset()
+            if self._memory_stage is not None:
+                self._memory_stage.reset()
+            self._history.clear()
+            self._state["timeline"] = []
+            self._state["memory"] = None
+            self._state["perception"] = None
+            self._state["observation"] = None
+            self._state["lookback"] = None
+            self._state["position"] = 0
+            self._state["progress"] = {
+                "completed": 0,
+                "total": len(feed.frames),
+                "percent": 0.0,
+            }
+        run_id = str(self._state["run_id"])
+        generation = self._generation
+        for index in range(start, end + 1):
+            self._state["editor_status"] = (
+                f"Replaying frame {index + 1} of {end + 1} so the tracks stay continuous."
+            )
+            frame = feed.frames[index]
+            self._lock.release()
+            try:
+                self._process_one(
+                    run_id,
+                    generation,
+                    frame,
+                    allow_paused=True,
+                )
+            finally:
+                self._lock.acquire()
+            if self._state.get("phase") == "failed":
+                break
+
+    def _apply_plugin_parameters(
+        self,
+        parameters: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        editor = self._parameter_editor
+        if not isinstance(editor, dict):
+            raise ReplayActionError(
+                "this workbench has no parameter editor",
+                status_code=404,
+                boundary="input",
+            )
+        if not isinstance(parameters, dict) or not parameters:
+            raise ReplayActionError(
+                "apply_plugin_parameters requires a parameters object",
+                status_code=400,
+                boundary="input",
+            )
+        plugin_id = str(editor.get("plugin_id") or "")
+        fields = {
+            str(field["key"]): field
+            for field in editor.get("fields") or []
+            if isinstance(field, dict) and field.get("key")
+        }
+        updated = dict(self._plugin_config_overrides.get(plugin_id) or {})
+        for key, raw in parameters.items():
+            if key not in fields:
+                raise ReplayActionError(
+                    f"unknown parameter {key}",
+                    status_code=400,
+                    boundary="input",
+                )
+            updated[key] = _coerce_editor_value(fields[key], raw)
+        with self._condition:
+            if self._state["phase"] not in {"running", "paused"} or self._feed is None:
+                raise ReplayActionError(
+                    "settings can only be applied while a replay is open",
+                    boundary="lifecycle",
+                    state=copy.deepcopy(self._state),
+                )
+            if self._state["phase"] == "running":
+                self._state["phase"] = "paused"
+                self._condition.notify_all()
+            self._plugin_config_overrides[plugin_id] = updated
+            for field in editor["fields"]:
+                key = field.get("key")
+                if key in updated:
+                    field["value"] = updated[key]
+            try:
+                self._mapper = self._build_mapper_for_selection(self._active_plugin_ids)
+            except Exception as exc:  # noqa: BLE001 - parameter boundary
+                raise ReplayActionError(
+                    str(exc),
+                    status_code=422,
+                    boundary="plugin_catalog",
+                    state=copy.deepcopy(self._state),
+                ) from exc
+            target = self._viewed_position_locked()
+            self._replay_range_locked(0, target, reset=True)
+            self._state["parameter_editor"] = copy.deepcopy(editor)
+            if self._state.get("phase") != "failed":
+                self._state["editor_status"] = (
+                    f"Replayed {target + 1} frames in order. The boxes on this frame use the new settings."
+                )
+            self._record_action_locked("apply_plugin_parameters")
+            return copy.deepcopy(self._state)
+
+    def _viewed_position_locked(self) -> int:
+        current = self._state.get("current_frame")
+        if isinstance(current, dict) and isinstance(current.get("position"), int):
+            return int(current["position"])
+        total = len(self._feed.frames) if self._feed is not None else 1
+        completed = int(self._state.get("progress", {}).get("completed") or 0)
+        return min(max(0, completed - 1), max(0, total - 1))
 
     def _apply_cached_frame_locked(
         self,
@@ -967,6 +1209,13 @@ class ImageReplayRunner:
                     self._complete_locked()
                     return
                 if position >= len(feed.frames):
+                    if self._ordered_replay:
+                        self._state["phase"] = "paused"
+                        self._state["editor_status"] = (
+                            "End of the drive. Change a setting to replay through this frame, or move back along the sequence."
+                        )
+                        self._condition.wait()
+                        continue
                     if self._loop:
                         self._state["position"] = 0
                         self._record_action_locked("loop")
@@ -1045,12 +1294,15 @@ class ImageReplayRunner:
                 def perceive(current: DecisionFrameContext) -> PerceptionText | None:
                     if frame.absent or current.sensor_snapshot is None:
                         return None
+                    with self._lock:
+                        prior_memory = copy.deepcopy(self._state.get("memory"))
                     request = build_perception_request(
                         current.sensor_snapshot,
                         metadata={
                             "source": WORKBENCH_SEQUENCE_ID,
                             "source_id": frame.source_id,
                             "sequence_index": frame.position,
+                            "prior_memory": prior_memory,
                         },
                     )
                     return mapper.perceive(request)
@@ -1104,8 +1356,14 @@ class ImageReplayRunner:
                 )
                 memory_payload = result.memory.to_dict() if result.memory else None
                 with self._condition:
+                    if (
+                        generation != self._generation
+                        or self._state["run_id"] != run_id
+                    ):
+                        return
                     previous_memory = self._state.get("memory")
                     self._state["current_frame"] = frame.to_dict()
+                    self._state["lookback"] = _lookback_counts(perception_payload)
                     self._state["perception"] = perception_payload
                     self._state["observation"] = observation_payload
                     self._state["memory"] = memory_payload
@@ -1327,6 +1585,9 @@ class ImageReplayRunner:
             "perception": None,
             "observation": None,
             "memory": None,
+            "lookback": None,
+            "parameter_editor": copy.deepcopy(getattr(self, "_parameter_editor", None)),
+            "editor_status": None,
             "decision": None,
             "timeline": [],
             "failure": None,
@@ -1339,11 +1600,18 @@ class ImageReplayRunner:
     def _controls(self, *, phase: str | None = None) -> dict[str, Any]:
         current_state = getattr(self, "_state", {})
         current_phase = phase or str(current_state.get("phase", "idle"))
+        allowed = _state_action_set(current_phase)
+        if (
+            getattr(self, "_parameter_editor", None) is not None
+            and current_phase in {"running", "paused"}
+            and "apply_plugin_parameters" not in allowed
+        ):
+            allowed.append("apply_plugin_parameters")
         return {
             "cadence_ms": self._cadence_ms,
             "pace": self._pace,
             "loop": bool(getattr(self, "_loop", WORKBENCH_DEFAULT_LOOP)),
-            "allowed_actions": _state_action_set(current_phase),
+            "allowed_actions": allowed,
         }
 
     def _summary(

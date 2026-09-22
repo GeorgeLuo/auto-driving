@@ -31,6 +31,7 @@ WORKBENCH_ACTIONS = (
     "reset",
     "set_cadence",
     "set_loop",
+    "apply_plugin_parameters",
 )
 
 

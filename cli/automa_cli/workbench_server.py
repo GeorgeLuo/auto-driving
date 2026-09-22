@@ -211,6 +211,13 @@ class WorkbenchServer:
                     status_code=400,
                     boundary="input",
                 )
+        plugin_parameters = payload.get("plugin_parameters")
+        if plugin_parameters is not None and not isinstance(plugin_parameters, dict):
+            raise ReplayActionError(
+                "plugin_parameters must be an object",
+                status_code=400,
+                boundary="input",
+            )
         position = payload.get("position")
         if position is not None and (
             isinstance(position, bool) or not isinstance(position, int)
@@ -238,6 +245,7 @@ class WorkbenchServer:
                 active_plugin_ids=active_plugin_ids,
                 position=position,
                 loop=loop,
+                plugin_parameters=plugin_parameters,
             )
         except SourceValidationError as exc:
             raise ReplayActionError(

@@ -54,7 +54,14 @@ from .perception_runs import (
     compare_perception_candidates,
     run_perception_experiment,
 )
-from .workbench import run_workbench_replay
+from .workbench import (
+    BRIGHT_TRACKS_CAPTURE,
+    BRIGHT_TRACKS_PLUGIN_DIR,
+    BRIGHT_TRACKS_PLUGIN_ID,
+    bright_tracks_editor,
+    load_bright_tracks_config,
+    run_workbench_replay,
+)
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_check import run_physical_perception_check
 from .physical_qualify import run_physical_strategy_qualification
@@ -894,6 +901,34 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Loopback port for --serve (default: choose a free port).",
     )
+    workbench_bright = workbench_commands.add_parser(
+        "bright",
+        help="Open the bright-track editor on the high-rate experiment 3 drive.",
+        description=(
+            "Open the workbench on the experiment 3 high-rate bright drive with "
+            "the bright obstruction-track profile already loaded. Playback runs "
+            "the frames in order. Edited settings replay from the first frame "
+            "through the frame on screen, and track continuity is read back from "
+            "memory."
+        ),
+    )
+    workbench_bright.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Loopback host (default: 127.0.0.1).",
+    )
+    workbench_bright.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Loopback port (default: choose a free port).",
+    )
+    workbench_bright.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Serve the page without opening a browser.",
+    )
+    workbench_bright.set_defaults(handler=_handle_vehicles_workbench_bright)
     workbench_replay.add_argument(
         "--serve",
         action="store_true",
@@ -2246,6 +2281,10 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
                     "- replay  replay an ordered image directory through perception, "
                     "memory, and decisions"
                 ),
+                (
+                    "- bright  open the bright-track editor on the high-rate "
+                    "experiment 3 drive"
+                ),
                 "- help    show this summary",
                 "",
                 "Detailed help:",
@@ -2254,6 +2293,37 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _handle_vehicles_workbench_bright(args: argparse.Namespace) -> int:
+    if not BRIGHT_TRACKS_CAPTURE.is_dir():
+        print(f"Bright high-rate capture is not available: {BRIGHT_TRACKS_CAPTURE}")
+        return 2
+    try:
+        config = load_bright_tracks_config()
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"Could not load the bright track profile: {exc}")
+        return 2
+    result = run_workbench_replay(
+        BRIGHT_TRACKS_CAPTURE,
+        plugin_dir=BRIGHT_TRACKS_PLUGIN_DIR,
+        active_plugin_ids=(BRIGHT_TRACKS_PLUGIN_ID,),
+        plugin_config={BRIGHT_TRACKS_PLUGIN_ID: config},
+        parameter_editor=bright_tracks_editor(config),
+        ordered_replay=True,
+        cadence_ms=80,
+        pace="fixed",
+        max_frames=400,
+        host=args.host,
+        port=args.port,
+        serve=True,
+        open_browser=not args.no_open,
+        loop=False,
+        output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
 
 
 def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:

@@ -7,7 +7,6 @@ import os
 import threading
 import time
 import uuid
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -1132,31 +1131,14 @@ class ImageReplayRunner:
                         created_at_ms=frame.timestamp_ms,
                     )
 
-                def remember(
-                    current: DecisionFrameContext,
-                    observation: Observation | None,
-                ) -> Any:
-                    snapshot = memory_stage(current, observation)
-                    current.memory["decision.snapshot"] = snapshot
-                    return snapshot
-
                 result = DecisionCycle(
                     DecisionStages(
                         perceive=perceive,
                         observe=observe,
-                        remember=remember,
+                        remember=memory_stage,
                     ),
                     idle_reason="workbench-observation-only",
                 ).run(context)
-                tracked = self._shared_memory.get("decision.observation")
-                if (
-                    tracked is not None
-                    and result.observation is not None
-                    and tracked.observation_id == result.observation.observation_id
-                    and result.memory is not None
-                    and result.memory.health != "error"
-                ):
-                    result = replace(result, observation=tracked)
                 decision_result, _authorized_control = decision_engine.run_cycle(
                     frame_id=frame.frame_id,
                     frame_index=frame.frame_index,

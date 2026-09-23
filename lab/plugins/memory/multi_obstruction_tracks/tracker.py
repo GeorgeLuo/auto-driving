@@ -43,6 +43,7 @@ def _track_from_lookback(item: Any) -> _Track | None:
             missed_frames=int(item.get("missed_frames") or 0),
             last_association_score=float(item.get("last_association_score") or 0.0),
             lost_age=int(item.get("lost_age") or 0),
+            points=np.asarray(item["points"], dtype=np.float32) if item.get("points") is not None else None,
         )
     except (TypeError, ValueError, KeyError):
         return None
@@ -85,41 +86,15 @@ class ObstructionTrackState:
         self._tracks: dict[int, _Track] = {}
         self._lost: dict[int, _Track] = {}
         self._next_track_id = 0
-        self._frame_index = 0
         self._previous_gray: np.ndarray | None = None
 
 
-    def _restore_from_prior_memory(self, prior_memory: Any) -> int:
-        """Replace track continuity with the lookback record stored last frame.
+    def _restore_from_history(self, history: Any) -> int:
+        """Replace track continuity with the previous frame's shared-map history."""
 
-        Absent memory leaves the in-process tracks alone. A present lookback
-        record, including an empty track list, is the continuity for this frame.
-        """
-
-        if not isinstance(prior_memory, dict):
-            return 0
-        records = prior_memory.get("records")
-        if not isinstance(records, list):
-            return 0
-        payload = None
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            provenance = record.get("provenance")
-            evidence_id = (
-                provenance.get("evidence_id") if isinstance(provenance, dict) else None
-            )
-            if evidence_id != "multi_obstruction_track_lookback":
-                continue
-            properties = record.get("properties")
-            if isinstance(properties, dict) and isinstance(properties.get("tracks"), list):
-                payload = properties["tracks"]
-                break
-        if payload is None:
-            return 0
         active: dict[int, _Track] = {}
         lost: dict[int, _Track] = {}
-        for item in payload:
+        for item in history if isinstance(history, (list, tuple)) else ():
             track = _track_from_lookback(item)
             if track is None:
                 continue
@@ -150,6 +125,7 @@ class ObstructionTrackState:
                         "missed_frames": int(track.missed_frames),
                         "last_association_score": float(track.last_association_score),
                         "lost_age": int(track.lost_age),
+                        "points": track.points.tolist() if track.points is not None else None,
                     }
                 )
         payload.sort(key=lambda item: (item["slot"], item["track_id"]))

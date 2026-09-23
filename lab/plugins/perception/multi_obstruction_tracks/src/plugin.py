@@ -156,7 +156,6 @@ class MultiObstructionTracksPlugin:
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)
         candidates, _gray, detector_summary = self._detect_candidates(frame.rgb)
-        history = inputs.memory.get("multi_obstruction_tracks.history", ()) if inputs.memory is not None else ()
         config = {name: getattr(self, name) for name in TRACKING_CONFIG_FIELDS}
         normalization = {name: getattr(self, name) for name in (
             "contrast_normalization", "contrast_clip_limit", "contrast_tile_size", "contrast_gamma",
@@ -168,8 +167,7 @@ class MultiObstructionTracksPlugin:
             signals=(PerceptionSignal("multi_obstruction_candidates", True, 1.0, {
                 "tracking_config": config, "normalization": normalization,
             }),),
-            measurements={"candidate_count": len(candidates), "detector": detector_summary,
-                          "memory_tracks_read": len(history)},
+            measurements={"candidate_count": len(candidates), "detector": detector_summary},
         )
 
     def _detect_candidates(

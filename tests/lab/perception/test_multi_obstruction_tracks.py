@@ -10,18 +10,6 @@ from lab.plugins.perception.multi_obstruction_tracks.src.plugin import (
 from lab.plugins.memory.multi_obstruction_tracks.tracker import ObstructionTrackState, _Track
 
 
-def _lookback_memory(tracks: list[dict]) -> dict:
-    return {
-        "records": [
-            {
-                "kind": "signal",
-                "provenance": {"evidence_id": "multi_obstruction_track_lookback"},
-                "properties": {"tracks": tracks},
-            }
-        ]
-    }
-
-
 def _region(
     thing_id: str,
     bbox: tuple[float, float, float, float],
@@ -49,7 +37,7 @@ def _region(
 
 
 class MultiObstructionTracksTests(unittest.TestCase):
-    def test_prior_memory_replaces_track_continuity(self) -> None:
+    def test_shared_history_replaces_track_continuity(self) -> None:
         plugin = ObstructionTrackState()
         plugin._tracks[7] = _Track(
             track_id=7,
@@ -59,30 +47,28 @@ class MultiObstructionTracksTests(unittest.TestCase):
             flow_support=0.0,
             age_frames=1,
         )
-        self.assertEqual(plugin._restore_from_prior_memory(None), 0)
-        self.assertIn(7, plugin._tracks)
-        restored = plugin._restore_from_prior_memory(
-            _lookback_memory(
-                [
-                    {
-                        "slot": "active",
-                        "track_id": 3,
-                        "bbox": [0.2, 0.2, 0.4, 0.5],
-                        "confidence": 0.8,
-                        "shape_support": 0.6,
-                        "flow_support": 0.1,
-                        "age_frames": 4,
-                        "missed_frames": 1,
-                        "last_association_score": 0.2,
-                        "lost_age": 0,
-                    }
-                ]
-            )
+        self.assertEqual(plugin._restore_from_history(None), 0)
+        self.assertEqual(plugin._tracks, {})
+        restored = plugin._restore_from_history(
+            [
+                {
+                    "slot": "active",
+                    "track_id": 3,
+                    "bbox": [0.2, 0.2, 0.4, 0.5],
+                    "confidence": 0.8,
+                    "shape_support": 0.6,
+                    "flow_support": 0.1,
+                    "age_frames": 4,
+                    "missed_frames": 1,
+                    "last_association_score": 0.2,
+                    "lost_age": 0,
+                }
+            ]
         )
         self.assertEqual(restored, 1)
         self.assertEqual(list(plugin._tracks), [3])
         self.assertEqual(plugin._lookback_tracks()[0]["track_id"], 3)
-        self.assertEqual(plugin._restore_from_prior_memory(_lookback_memory([])), 0)
+        self.assertEqual(plugin._restore_from_history([]), 0)
         self.assertEqual(plugin._tracks, {})
 
     def test_floor_like_lower_region_is_suppressed(self) -> None:

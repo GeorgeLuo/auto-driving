@@ -716,6 +716,7 @@ class ImageReplayRunner:
                 try:
                     next_mapper = self._build_mapper_for_selection(normalized)
                     next_memory_stage = self._build_memory_stage_for_selection(normalized)
+                    next_decision_engine = create_shadow_proposals_engine()
                     if previous_mapper is not None:
                         previous_mapper.reset()
                     if previous_memory_stage is not None:
@@ -740,9 +741,16 @@ class ImageReplayRunner:
                     ) from exc
                 self._mapper = next_mapper
                 self._memory_stage = next_memory_stage
+                self._decision_engine = next_decision_engine
                 self._shared_memory = {}
 
             selection_changed = normalized != self._active_plugin_ids
+            current = self._state.get("current_frame")
+            current_position = (
+                current.get("position")
+                if selection_changed and self._state["phase"] == "paused" and isinstance(current, dict)
+                else None
+            )
             self._active_plugin_ids = normalized
             self._apply_plugin_configuration_locked()
             if active_phase:
@@ -750,32 +758,38 @@ class ImageReplayRunner:
                 self._state["run_plugin_order"] = list(normalized)
                 pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
                 pipeline["run_active_plugin_ids"] = list(normalized)
+                pipeline["active_plugin_ids"] = list(normalized)
+                pipeline["memory_implementation"] = self._memory_implementation_id()
+            if active_phase and selection_changed:
+                self._history.clear()
+                self._state["timeline"] = []
+                self._state["position"] = 0
+                self._state["current_frame"] = None
+                self._state["perception"] = None
+                self._state["observation"] = None
+                self._state["memory"] = None
+                self._state["decision"] = None
+                self._state["progress"]["completed"] = 0
+                self._state["progress"]["percent"] = 0.0
+                self._state["summary"] = self._summary(frames_completed=0)
             self._state["failure"] = None
             self._state["failure_boundary"] = None
-            refresh_frame = None
+            replay_frames = ()
             run_id = None
             generation = None
             if (
-                selection_changed
-                and self._state["phase"] == "paused"
+                current_position is not None
                 and self._feed is not None
             ):
-                current = self._state.get("current_frame")
-                frame_id = current.get("frame_id") if isinstance(current, dict) else None
-                if frame_id:
-                    refresh_frame = self._frame_for_id_locked(str(frame_id))
-                    run_id = str(self._state["run_id"])
-                    generation = self._generation
+                replay_frames = self._feed.frames[:int(current_position) + 1]
+                run_id = str(self._state["run_id"])
+                generation = self._generation
             self._record_action_locked("select_plugins")
-            if refresh_frame is None:
+            self._condition.notify_all()
+            if not replay_frames:
                 return copy.deepcopy(self._state)
-        self._process_one(
-            run_id,
-            generation,
-            refresh_frame,
-            allow_paused=True,
-            refresh_current=True,
-        )
+        for frame in replay_frames:
+            self._process_one(run_id, generation, frame, allow_paused=True)
         with self._lock:
             return copy.deepcopy(self._state)
 
@@ -900,7 +914,14 @@ class ImageReplayRunner:
                 self._apply_cached_frame_locked(frame, cached)
                 self._record_action_locked("seek", position=position)
                 return copy.deepcopy(self._state)
-        self._process_one(run_id, generation, frame, allow_paused=True)
+            # A future seek must advance the live stages through every unseen
+            # source frame so their state matches the displayed result.
+            unseen = self._feed.frames[len(self._history):position + 1]
+        for next_frame in unseen:
+            self._process_one(run_id, generation, next_frame, allow_paused=True)
+            with self._lock:
+                if self._state["phase"] not in {"running", "paused"}:
+                    break
         with self._lock:
             self._record_action_locked("seek", position=position)
             return copy.deepcopy(self._state)
@@ -922,9 +943,8 @@ class ImageReplayRunner:
             round((completed / total) * 100.0, 2) if total else 100.0
         )
         self._state["position"] = completed
-        self._state["summary"] = self._summary(
-            frames_completed=completed,
-            frames_total=total,
+        self._state["summary"] = copy.deepcopy(cached.get("summary")) or self._summary(
+            frames_completed=completed, frames_total=total,
             duration_ms=cached.get("duration_ms"),
         )
         if completed >= total:
@@ -1005,7 +1025,8 @@ class ImageReplayRunner:
                     return
                 frame = feed.frames[position]
             processing_started = time.monotonic()
-            self._process_one(run_id, generation, frame)
+            if not self._process_one(run_id, generation, frame):
+                continue
             processing_elapsed = time.monotonic() - processing_started
             with self._condition:
                 if (
@@ -1043,17 +1064,24 @@ class ImageReplayRunner:
         frame: ReplayFrame,
         *,
         allow_paused: bool = False,
-        refresh_current: bool = False,
-    ) -> None:
+    ) -> bool:
         with self._action_lock:
-            with self._lock:
+            with self._condition:
                 if (
                     generation != self._generation
                     or self._state["run_id"] != run_id
                     or self._state["phase"]
                     not in ({"running", "paused"} if allow_paused else {"running"})
+                    or frame.position != int(self._state["position"])
                 ):
-                    return
+                    return False
+                cached = self._history.get(frame.frame_id)
+                if cached is not None:
+                    self._apply_cached_frame_locked(frame, cached)
+                    self._condition.notify_all()
+                    return True
+                if frame.position != len(self._history):
+                    raise RuntimeError("replay frame would skip uncached source frames")
                 mapper = self._mapper
                 memory_stage = self._memory_stage
                 decision_engine = self._decision_engine
@@ -1173,11 +1201,11 @@ class ImageReplayRunner:
                         result=result,
                         previous_memory=previous_memory,
                     )
+                    detail["summary"] = copy.deepcopy(self._state["summary"])
                     detail["decision"] = copy.deepcopy(decision_payload)
                     self._history[frame.frame_id] = detail
                     self._upsert_timeline_locked(detail)
-                    if not refresh_current:
-                        self._state["position"] = frame.position + 1
+                    self._state["position"] = frame.position + 1
                     if result.perception is not None and _safe_status(
                         result.perception.status
                     ) in {
@@ -1199,9 +1227,10 @@ class ImageReplayRunner:
                             or "memory stage returned an error",
                             recovery_action="start",
                         )
-                    elif not refresh_current:
+                    else:
                         self._wrap_or_complete_locked()
                     self._condition.notify_all()
+                return True
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
@@ -1215,6 +1244,7 @@ class ImageReplayRunner:
                         recovery_action="start",
                     )
                     self._condition.notify_all()
+                return False
 
     def _complete_locked(self) -> None:
         if self._state["phase"] in {"running", "paused"}:

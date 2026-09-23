@@ -226,7 +226,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(sought["phase"], "paused")
             self.assertEqual(sought["current_frame"]["position"], 2)
             self.assertEqual(sought["position"], 3)
-            self.assertEqual(len(mapper.calls), calls_after_first + 1)
+            self.assertEqual(len(mapper.calls), calls_after_first + 2)
             self.assertEqual(
                 sought["decision"]["frame_id"],
                 sought["current_frame"]["frame_id"],
@@ -241,7 +241,10 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
             self.assertEqual(cached["decision"]["frame_id"], first_id)
-            self.assertEqual(len(mapper.calls), calls_after_first + 1)
+            self.assertEqual(len(mapper.calls), calls_after_first + 2)
+            cached_next = runner.dispatch("step", run_id=run_id)
+            self.assertEqual(cached_next["current_frame"]["position"], 1)
+            self.assertEqual(len(mapper.calls), calls_after_first + 2)
 
             with self.assertRaises(ReplayActionError):
                 runner.dispatch("seek", run_id=run_id, position=99)
@@ -267,10 +270,13 @@ class WorkbenchTests(unittest.TestCase):
             started = runner.start()
             run_id = started["run_id"]
             self.assertTrue(started["controls"]["loop"])
-            _wait_until(lambda: len(mapper.calls) >= 3)
+            _wait_until(
+                lambda: runner.state()["machine_detail"]["last_transition"]["action"] == "loop"
+            )
             live = runner.state()
             self.assertEqual(live["phase"], "running")
             self.assertLessEqual(len(live["timeline"]), 2)
+            self.assertEqual(len(mapper.calls), 2)
             runner.dispatch("set_loop", run_id=run_id, loop=False)
             finished = runner.wait(5)
             self.assertEqual(finished["phase"], "completed")

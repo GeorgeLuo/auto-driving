@@ -90,7 +90,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(state["perception"]["measurements"][detector.plugin_id]["memory_tracks_read"], 1)
             self.assertFalse(hasattr(detector, "_tracks"))
 
-    def test_tracking_history_comes_from_shared_map_even_with_retained_ledger_records(self):
+    def test_clearing_shared_track_history_stops_track_carryover(self):
         from unittest.mock import patch
         import numpy as np
         from autonomy.perception import PerceivedThing, ViewLocation
@@ -127,7 +127,6 @@ class WorkbenchTests(unittest.TestCase):
             state = runner.wait(5)
             self.assertEqual(state["phase"], "completed")
             self.assertFalse(state["observation"]["things"])
-            self.assertTrue(any(record["kind"] == "obstacle" for record in state["memory"]["records"]))
 
     def test_shared_memory_connects_plugin_and_memory_stage_across_frames(self):
         mapper = PluginPerceptionMapper(

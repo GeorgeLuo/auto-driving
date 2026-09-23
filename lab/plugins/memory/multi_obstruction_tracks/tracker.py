@@ -43,6 +43,7 @@ def _track_from_lookback(item: Any) -> _Track | None:
             missed_frames=int(item.get("missed_frames") or 0),
             last_association_score=float(item.get("last_association_score") or 0.0),
             lost_age=int(item.get("lost_age") or 0),
+            points=np.asarray(item["points"], dtype=np.float32) if item.get("points") is not None else None,
         )
     except (TypeError, ValueError, KeyError):
         return None
@@ -85,7 +86,6 @@ class ObstructionTrackState:
         self._tracks: dict[int, _Track] = {}
         self._lost: dict[int, _Track] = {}
         self._next_track_id = 0
-        self._frame_index = 0
         self._previous_gray: np.ndarray | None = None
 
 
@@ -125,6 +125,7 @@ class ObstructionTrackState:
                         "missed_frames": int(track.missed_frames),
                         "last_association_score": float(track.last_association_score),
                         "lost_age": int(track.lost_age),
+                        "points": track.points.tolist() if track.points is not None else None,
                     }
                 )
         payload.sort(key=lambda item: (item["slot"], item["track_id"]))

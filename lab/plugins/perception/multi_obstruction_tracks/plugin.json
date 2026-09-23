@@ -3,6 +3,10 @@
   "id": "multi_obstruction_tracks",
   "name": "Multi-obstruction temporal tracks",
   "description": "Detect floor-suppressed obstruction candidates; Workbench tracking memory associates and retains tracks.",
+  "memory": {
+    "implementation_id": "multi_obstruction_tracks",
+    "implementation_spec": "lab.plugins.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory"
+  },
   "plugin": {
     "entrypoint": "lab.plugins.perception.multi_obstruction_tracks.src.plugin:MultiObstructionTracksPlugin",
     "config": {

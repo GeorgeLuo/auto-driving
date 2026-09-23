@@ -105,18 +105,20 @@ def _default_mapper() -> PerceptionMapper:
     )
 
 
-def _default_memory_stage() -> ActivatedMemoryStage:
+def _default_memory_stage(companion: dict[str, Any] | None = None) -> ActivatedMemoryStage:
     payload = build_memory_activation_payload(DEFAULT_MEMORY_IMPLEMENTATION)
     section = payload["memory"]
-    section["implementation_id"] = "multi_obstruction_tracks"
-    section["implementation_spec"] = "lab.plugins.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory"
+    if companion:
+        section["implementation_id"] = companion["implementation_id"]
+        section["implementation_spec"] = companion["implementation_spec"]
+        section["implementation_config"].update(companion.get("implementation_config", {}))
     config = copy.deepcopy(dict(section["implementation_config"]))
     activation = MemoryActivation(
         implementation_id=str(section["implementation_id"]),
         implementation_spec=str(section["implementation_spec"]),
         implementation_config=config,
         bounds=bounds_from_config(config),
-        source_path=Path("workbench-fixed-memory"),
+        source_path=Path("workbench-plugin-memory"),
         payload=payload,
     )
     return ActivatedMemoryStage(activation)
@@ -165,7 +167,7 @@ class ImageReplayRunner:
         self.max_image_bytes = int(max_image_bytes)
         self.mapper_factory = mapper_factory or _default_mapper
         self._mapper_factory_explicit = mapper_factory is not None
-        self.memory_stage_factory = memory_stage_factory or _default_memory_stage
+        self.memory_stage_factory = memory_stage_factory
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
         self._action_lock = threading.RLock()
@@ -400,7 +402,7 @@ class ImageReplayRunner:
                         max_image_bytes=self.max_image_bytes,
                     )
                     mapper = self._build_mapper_for_selection(selected_plugin_ids)
-                    memory_stage = self.memory_stage_factory()
+                    memory_stage = self._build_memory_stage_for_selection(selected_plugin_ids)
                     decision_engine = create_shadow_proposals_engine()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
@@ -708,11 +710,16 @@ class ImageReplayRunner:
                 normalized != self._active_plugin_ids or self._mapper is None
             ):
                 next_mapper = None
+                next_memory_stage = None
                 previous_mapper = self._mapper
+                previous_memory_stage = self._memory_stage
                 try:
                     next_mapper = self._build_mapper_for_selection(normalized)
+                    next_memory_stage = self._build_memory_stage_for_selection(normalized)
                     if previous_mapper is not None:
                         previous_mapper.reset()
+                    if previous_memory_stage is not None:
+                        previous_memory_stage.reset()
                 except Exception as exc:  # noqa: BLE001 - selection boundary
                     if next_mapper is not None:
                         try:
@@ -732,6 +739,8 @@ class ImageReplayRunner:
                         state=self.state(),
                     ) from exc
                 self._mapper = next_mapper
+                self._memory_stage = next_memory_stage
+                self._shared_memory = {}
 
             selection_changed = normalized != self._active_plugin_ids
             self._active_plugin_ids = normalized
@@ -777,6 +786,21 @@ class ImageReplayRunner:
         if self._mapper_factory_explicit:
             return self.mapper_factory()
         return self._plugin_catalog.build_mapper(selected_plugin_ids)
+
+    def _build_memory_stage_for_selection(self, selected_plugin_ids: tuple[str, ...]) -> Any:
+        if self.memory_stage_factory is not None:
+            return self.memory_stage_factory()
+        return _default_memory_stage(self._plugin_catalog.memory_for_selection(selected_plugin_ids))
+
+    def _memory_implementation_id(self) -> str:
+        activation = getattr(self._memory_stage, "activation", None)
+        if activation is not None:
+            return str(activation.implementation_id)
+        selected = set(self._active_plugin_ids)
+        for descriptor in self._plugin_catalog.plugins:
+            if descriptor.plugin_id in selected and descriptor.memory:
+                return str(descriptor.memory["implementation_id"])
+        return DEFAULT_MEMORY_IMPLEMENTATION
 
     def _set_loop(self, loop: bool | None) -> dict[str, Any]:
         if not isinstance(loop, bool):
@@ -1096,7 +1120,7 @@ class ImageReplayRunner:
                     ),
                     idle_reason="workbench-observation-only",
                 ).run(context)
-                tracked = self._shared_memory.get("multi_obstruction_tracks.observation")
+                tracked = self._shared_memory.get("decision.observation")
                 if (
                     tracked is not None
                     and result.observation is not None
@@ -1420,7 +1444,7 @@ class ImageReplayRunner:
                     if active_ids == ["frame", "floor_plane"]
                     else "manifest_plugin_selection"
                 ),
-                "memory_implementation": "multi_obstruction_tracks",
+                "memory_implementation": self._memory_implementation_id(),
                 "observation_adapter": "autonomy.decision.observation.observation_from_perception",
                 "decision_cycle": "autonomy.decision.cycle.DecisionCycle",
                 "decision_engine": ENGINE_ID,

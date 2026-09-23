@@ -34,7 +34,7 @@ class MultiObstructionMemory(BoundedEvidenceLedger):
         memory = context.memory
         if memory is None:
             raise ValueError("tracking memory requires a host shared-memory map")
-        memory.pop("multi_obstruction_tracks.observation", None)
+        memory.pop("decision.observation", None)
         marker = next((signal for signal in observation.signals
                        if signal.get("signal_id") == "multi_obstruction_candidates"), None) if observation else None
         if marker is None:
@@ -120,5 +120,5 @@ class MultiObstructionMemory(BoundedEvidenceLedger):
         )
         snapshot = super().update(context, tracked_observation)
         memory["multi_obstruction_tracks.history"] = lookback_tracks
-        memory["multi_obstruction_tracks.observation"] = tracked_observation
+        memory["decision.observation"] = tracked_observation
         return snapshot

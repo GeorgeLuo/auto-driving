@@ -72,6 +72,14 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             "lightweight_observer",
         )
 
+    def test_memory_companion_is_selected_from_manifest(self) -> None:
+        catalog = discover_plugin_catalog(
+            Path(__file__).resolve().parents[2] / "lab/plugins/perception"
+        )
+        companion = catalog.memory_for_selection(["multi_obstruction_tracks"])
+        self.assertEqual(companion["implementation_id"], "multi_obstruction_tracks")
+        self.assertIsNone(catalog.memory_for_selection(["classical_regions"]))
+
     def test_explicit_catalog_allows_raw_capture_and_live_replacement(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

@@ -67,7 +67,11 @@ class WorkbenchTests(unittest.TestCase):
         ):
             root = Path(directory)
             _make_images(root, 2)
-            runner = ImageReplayRunner(root, cadence_ms=0, mapper_factory=lambda: mapper)
+            runner = ImageReplayRunner(
+                root, cadence_ms=0, mapper_factory=lambda: mapper,
+                plugin_dir=Path(__file__).resolve().parents[2] / "lab/plugins/perception",
+                active_plugin_ids=["multi_obstruction_tracks"],
+            )
             runner.start()
             state = runner.wait(5)
             self.assertEqual(state["phase"], "completed")

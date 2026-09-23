@@ -8,8 +8,9 @@ This is a lightweight task router. Load only what the current request needs.
 
 1. Classify the latest user request.
 2. Load only the selected role guidance below.
-3. If the operator named an orchestration policy, load that exact file from
-   [orchestration/](orchestration/README.md). Do not infer a policy.
+3. If the operator names an orchestration policy, load that exact version via
+   [orchestration/](orchestration/README.md). If they name a workflow reference,
+   consult its reference entry there. Do not infer a policy from a reference.
 4. Inspect the current repository state and the relevant source, tests,
    documentation, configuration, and tooling.
 5. Make the smallest complete change that answers the request.
@@ -30,9 +31,10 @@ the repository state and the request to classify it.
 Do not preload every guide. Read repository documentation only when it is
 relevant to the requested behavior or interface.
 
-Orchestration policies organize execution when the operator names one. QCA
-(`python3 -m qca`) can focus inspection; it is observations, not a required
-gate.
+Orchestration policies organize execution when the operator names one.
+Workflow references can inform a requested task but do not establish policy,
+authority, or default behavior. QCA (`python3 -m qca`) can focus inspection; it
+is observations, not a required gate.
 
 ## Scope
 

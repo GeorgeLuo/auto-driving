@@ -31,6 +31,23 @@ Load that version in addition to role guidance from
 | `review-repair` | [v2](review-repair/v2.md) | [v2](shared/v2.md) | Existing implementation, one frozen review question, remove blockers. |
 | `product-implementation` | [v1](product-implementation/v1.md) | [v2](shared/v2.md) | Larger implementation with ready-for-review delivery. |
 
+## Reference workflows
+
+These informal references can help with a specifically requested workflow.
+They are not versioned policies and do not establish authority or default
+execution behavior.
+
+| Reference | Use when |
+| --- | --- |
+| [Planner-grader experiment](references/MULTI-AGENT-PLANNER-GRADER-INIT.md) | The operator asks to use this approach for solution-space exploration. |
+
+Example request:
+
+```text
+Use the planner-grader experiment reference to explore whether <approach> is
+viable under <conditions>.
+```
+
 ## Archived policies
 
 | Policy | Version | Shared pin | Use when |

@@ -9,7 +9,7 @@ This directory contains small, task-focused guides for repository work.
 | [agent-surface.md](agent-surface.md) | Every new or resumed work session |
 | [roles/engineer.md](roles/engineer.md) | Making a requested repository change |
 | [roles/reviewer.md](roles/reviewer.md) | Reviewing, diagnosing, assessing, or explaining |
-| [orchestration/README.md](orchestration/README.md) | Only when the operator names a policy |
+| [orchestration/README.md](orchestration/README.md) | When the operator names a policy or workflow reference |
 
 Read another guide only when the current request clearly needs it.
 

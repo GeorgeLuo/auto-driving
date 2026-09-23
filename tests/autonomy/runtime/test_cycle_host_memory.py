@@ -281,6 +281,33 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             self.assertNotEqual(reset_snapshot.epoch_id, prior_epoch)
             self.assertEqual(host.status()["memory"]["last_record_count"], 0)
 
+    def test_host_shares_context_and_delivers_memory_updated_observation(self) -> None:
+        from dataclasses import replace
+        from autonomy.decision import Observation, MemoryBounds, empty_memory_snapshot
+        seen = []
+
+        def observe(context, perception):
+            seen.append(context.memory.get("test.previous"))
+            return Observation(context.frame_id, context.timestamp_ms, {})
+
+        def remember(context, observation):
+            context.memory["test.previous"] = context.frame_id
+            context.memory["decision.observation"] = replace(observation, summary=("updated",))
+            return empty_memory_snapshot(
+                memory_id=context.frame_id, epoch_id="epoch-1",
+                bounds=MemoryBounds(max_records=4), created_at_ms=context.timestamp_ms,
+            )
+
+        manager = AutonomyManager()
+        manager.engine = _PushyEngine()
+        host = AutonomyCycleHost(manager=manager, stages=DecisionStages(observe=observe, remember=remember))
+        for index in range(2):
+            result = host.run(DecisionFrameContext(f"frame-{index}", index, index))
+            self.assertEqual(result.observation.summary, ("updated",))
+            self.assertEqual(manager.engine.last_snapshot.observation.summary, ("updated",))
+            self.assertIs(result.memory, host.shared_memory["decision.snapshot"])
+        self.assertEqual(seen, [None, "frame-0"])
+
     def test_host_reset_memory_without_stage_returns_none(self) -> None:
         host = AutonomyCycleHost()
         self.assertIsNone(host.reset_memory())

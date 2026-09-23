@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from autonomy.memory import SharedMemory
 from autonomy.decision.cycle import (
     DecisionCycle,
     DecisionCycleResult,
@@ -30,9 +31,14 @@ class AutonomyCycleHost:
         self.cycle = DecisionCycle(
             replace(configured_stages, choose_action=self._choose_action),
         )
+        self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
+        if context.memory is None:
+            context = replace(context, memory=self.shared_memory)
+        else:
+            self.shared_memory = context.memory
         result = self.cycle.run(context)
         self.last_result = result
         return result
@@ -55,11 +61,15 @@ class AutonomyCycleHost:
         """
         remember = self.cycle.stages.remember
         if remember is None:
+            self.shared_memory.clear()
             return None
         reset = getattr(remember, "reset", None)
         if not callable(reset):
             raise TypeError("configured memory stage does not support reset")
-        return reset()
+        snapshot = reset()
+        self.shared_memory.clear()
+        self.shared_memory["decision.snapshot"] = snapshot
+        return snapshot
 
     def _choose_action(
         self,

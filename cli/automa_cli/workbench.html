@@ -735,10 +735,6 @@
                 <dt>Records</dt><dd id="memoryCount">—</dd>
                 <dt>Policy</dt><dd id="memoryPolicy">—</dd>
               </dl>
-              <details id="memoryDrops" class="help-details" hidden>
-                <summary id="memoryDropsSummary">Dropped evidence</summary>
-                <pre id="memoryDropsText"></pre>
-              </details>
               <input id="memorySearch" class="inline-edit memory-search" type="search" autocomplete="off" placeholder="Search..." aria-label="Filter memory records">
               <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
               <details class="help-details">
@@ -847,8 +843,7 @@
         "startButton", "pauseButton", "resumeButton", "stepButton",
         "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
-        "memoryCount", "memoryPolicy", "memoryDrops", "memoryDropsSummary", "memoryDropsText",
-        "memorySearch", "memoryRecords", "failurePanel", "failureText",
+        "memoryCount", "memoryPolicy", "memorySearch", "memoryRecords", "failurePanel", "failureText",
         "memorySelected", "decisionSummary", "decisionFrameIdentity", "decisionStatus", "decisionSelected",
         "decisionProposed", "decisionAuthority", "decisionReason", "decisionSource", "decisionCandidates"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
@@ -1534,8 +1529,8 @@
         canvas.height = image.naturalHeight;
         var context = canvas.getContext("2d");
         context.clearRect(0, 0, canvas.width, canvas.height);
-        var observation = currentPayload("observation");
-        var things = observation && Array.isArray(observation.things) ? observation.things : [];
+        var perception = currentPayload("perception");
+        var things = perception && Array.isArray(perception.things) ? perception.things : [];
         var labels = [];
         context.strokeStyle = "rgba(57, 255, 20, .95)";
         context.fillStyle = "rgba(57, 255, 20, .12)";
@@ -1747,8 +1742,6 @@
           setText("memoryEpoch", null);
           setText("memoryCount", null);
           setText("memoryPolicy", null);
-          elements.memoryDrops.hidden = true;
-          elements.memoryDrops.open = false;
           setText("memorySelection", "no record selected");
           var noSnapshot = document.createElement("p");
           noSnapshot.className = "memory-empty muted help";
@@ -1757,24 +1750,10 @@
           elements.memorySelected.textContent = "Select a server-produced memory record to inspect its provenance.";
           return;
         }
-        var metadata = memory.metadata || {};
-        var dropCount = Number(metadata.last_update_drop_count) || 0;
-        var conflictCount = Number(metadata.conflict_count) || 0;
-        setText("memoryHealth", memory.health
-          + (conflictCount ? " · " + conflictCount + " conflicts total" : "")
-          + (dropCount ? " · " + dropCount + " dropped now" : ""));
+        setText("memoryHealth", memory.health);
         setText("memoryEpoch", memory.epoch_id);
         setText("memoryCount", memory.record_count);
-        setText("memoryPolicy", metadata.policy);
-        elements.memoryDrops.hidden = dropCount === 0;
-        if (dropCount) {
-          var drops = Array.isArray(metadata.last_update_drops) ? metadata.last_update_drops : [];
-          var omitted = Number(metadata.last_update_drops_omitted) || 0;
-          setText("memoryDropsSummary", dropCount + " dropped this frame");
-          elements.memoryDropsText.textContent = drops.map(function (drop) {
-            return drop.record_id + " · " + drop.reason + " · " + drop.action;
-          }).join("\n") + (omitted ? "\n" + omitted + " more omitted" : "");
-        }
+        setText("memoryPolicy", memory.metadata && memory.metadata.policy);
         var records = Array.isArray(memory.records) ? memory.records : [];
         var pattern = memorySearchPattern();
         var visible = records.filter(function (record) {

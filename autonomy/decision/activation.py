@@ -307,8 +307,8 @@ class ActivatedMemoryStage:
     ) -> MemorySnapshot:
         started = time.perf_counter()
         try:
-            # Observation evidence is separate from the host-owned shared map
-            # available through context.memory.
+            # Observations are frozen; deepcopy defensive metadata only if needed
+            # by refusing mutation contracts: never pass writable shared state.
             snapshot = self.implementation.update(context, observation)
             owned = self._accept_snapshot(snapshot, operation="update")
             self.last_error = None

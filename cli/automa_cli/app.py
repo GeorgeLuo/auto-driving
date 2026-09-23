@@ -55,7 +55,6 @@ from .perception_runs import (
     run_perception_experiment,
 )
 from .workbench import run_workbench_replay
-from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_check import run_physical_perception_check
 from .physical_qualify import run_physical_strategy_qualification
@@ -881,11 +880,8 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_replay.add_argument(
         "--max-frames",
         type=int,
-        default=WORKBENCH_DEFAULT_MAX_FRAMES,
-        help=(
-            "Maximum normalized frames accepted from the source "
-            f"(default: {WORKBENCH_DEFAULT_MAX_FRAMES})."
-        ),
+        default=256,
+        help="Maximum normalized frames accepted from the source (default: 256).",
     )
     workbench_replay.add_argument(
         "--host",

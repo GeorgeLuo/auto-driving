@@ -1,10 +1,4 @@
-"""Reference avoid_recent_obstruction proposal plugin (M006-04).
-
-Compatible with the Workbench ``multi_obstruction_tracks`` memory plugin: it
-reads retained image-located ``obstacle`` records, including the tracks that
-plugin produces. It accepts records by kind and location, regardless of which
-perception or memory implementation produced them.
-"""
+"""Reference avoid_recent_obstruction proposal plugin (M006-04)."""
 
 from __future__ import annotations
 

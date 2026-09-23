@@ -212,21 +212,26 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 selected["state"]["run_active_plugin_ids"], ["floor_continuity"]
             )
-            self.assertEqual(selected["state"]["timeline"], [])
             paused = post({"action": "pause", "run_id": run_id})
             self.assertEqual(paused["state"]["phase"], "paused")
             stepped = post({"action": "step", "run_id": run_id})
             first_id = stepped["state"]["timeline"][0]["frame"]["frame_id"]
+            second_id = stepped["state"]["timeline"][1]["frame"]["frame_id"]
             first_detail = runner.frame_detail(first_id, run_id=run_id)
+            second_detail = runner.frame_detail(second_id, run_id=run_id)
 
         self.assertEqual(
             [run["plugin_id"] for run in first_detail["perception"]["plugin_runs"]],
+            ["classical_regions"],
+        )
+        self.assertEqual(
+            [run["plugin_id"] for run in second_detail["perception"]["plugin_runs"]],
             ["floor_continuity"],
         )
         self.assertEqual(stepped["state"]["phase"], "paused")
         post({"action": "cancel", "run_id": run_id})
 
-    def test_running_empty_selection_starts_fresh_replay(self) -> None:
+    def test_running_empty_selection_keeps_current_frame_perception(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             _make_images(root, 3)
@@ -254,10 +259,15 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], [])
-            self.assertIsNone(selected["perception"])
-            self.assertEqual(selected["timeline"], [])
+            self.assertEqual(
+                [run["plugin_id"] for run in selected["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
             paused = runner.dispatch("pause", run_id=run_id)
-            self.assertIsNone(paused["perception"])
+            self.assertEqual(
+                [run["plugin_id"] for run in paused["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(list(stepped["perception"]["plugin_runs"] or ()), [])
             self.assertEqual(stepped["perception"]["status"], "empty")

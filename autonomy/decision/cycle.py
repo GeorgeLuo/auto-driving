@@ -5,7 +5,6 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Callable
 
-from autonomy.memory import SharedMemory
 from autonomy.perception import PerceptionText
 from autonomy.runtime.engine import AutonomyControl
 from autonomy.vehicle import SensorSnapshot
@@ -33,7 +32,6 @@ class DecisionFrameContext:
     user_steering: float = 0.0
     user_throttle: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
-    memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {

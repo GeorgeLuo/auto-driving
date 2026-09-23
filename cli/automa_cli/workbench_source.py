@@ -14,7 +14,7 @@ from typing import Any
 
 
 WORKBENCH_ADAPTER = "image_directory"
-WORKBENCH_DEFAULT_MAX_FRAMES = 512
+WORKBENCH_DEFAULT_MAX_FRAMES = 256
 WORKBENCH_DEFAULT_MAX_IMAGE_BYTES = 32 * 1024 * 1024
 WORKBENCH_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 WORKBENCH_UNSUPPORTED_IMAGE_EXTENSIONS = {
@@ -128,21 +128,6 @@ def normalize_image_directory(
     manifest_path, manifest = _read_manifest(source_path)
     if manifest is not None:
         entries = manifest.get("frames")
-        if entries is None and "camera_frames" in manifest:
-            camera_entries = manifest["camera_frames"]
-            if not isinstance(camera_entries, list):
-                raise SourceValidationError(
-                    f"manifest {manifest_path.name} camera_frames must be a list"
-                )
-            entries = []
-            for entry in camera_entries:
-                if not isinstance(entry, dict):
-                    entries.append(entry)
-                    continue
-                normalized_entry = dict(entry)
-                if "image_path" not in normalized_entry and "image" in normalized_entry:
-                    normalized_entry["image_path"] = normalized_entry["image"]
-                entries.append(normalized_entry)
         if not isinstance(entries, list):
             raise SourceValidationError(
                 f"manifest {manifest_path.name} frames must be a list"

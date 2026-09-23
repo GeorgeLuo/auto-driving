@@ -51,7 +51,6 @@ class PluginDescriptor:
     manifest_path: str | None
     entrypoint: str | None
     config: dict[str, Any]
-    memory: dict[str, Any]
     inputs: list[dict[str, Any]]
     output: dict[str, Any]
     model: dict[str, Any]
@@ -76,7 +75,6 @@ class PluginDescriptor:
             "manifest_path": self.manifest_path,
             "entrypoint": self.entrypoint,
             "config": _json_safe(self.config),
-            "memory": _json_safe(self.memory),
             "inputs": _json_safe(self.inputs),
             "output": _json_safe(self.output),
             "model": _json_safe(self.model),
@@ -226,15 +224,6 @@ class PluginCatalog:
             plugin.plugin_id = configured_id
         return mapper
 
-    def memory_for_selection(self, active_ids: Sequence[str]) -> dict[str, Any] | None:
-        """Return the memory companion declared by the selected plugins."""
-
-        selected = set(self.normalize_selection(active_ids))
-        companions = [item.memory for item in self.plugins if item.plugin_id in selected and item.memory]
-        if len(companions) > 1:
-            raise PluginCatalogError("selected plugins declare multiple memory companions")
-        return dict(companions[0]) if companions else None
-
 
 def packaged_plugin_catalog() -> PluginCatalog:
     """Return the backward-compatible packaged lightweight catalog."""
@@ -254,7 +243,6 @@ def packaged_plugin_catalog() -> PluginCatalog:
             manifest_path=None,
             entrypoint=PERCEPTION_PLUGIN_SPECS[plugin_id],
             config={},
-            memory={},
             output={
                 "schema": PERCEPTION_TEXT_SCHEMA,
                 "kind": "sensor_frame" if plugin_id == "frame" else "floor_boundary",
@@ -352,7 +340,6 @@ def _make_catalog(
             "manifest_relative_path": item.manifest_relative_path,
             "entrypoint": item.entrypoint,
             "config": _json_safe(item.config),
-            "memory": _json_safe(item.memory),
             "inputs": _json_safe(item.inputs),
             "output": _json_safe(item.output),
             "model": _json_safe(item.model),
@@ -422,7 +409,6 @@ def _read_descriptor(root: Path, manifest_path: Path) -> PluginDescriptor:
         "manifest_path": str(manifest_path),
         "entrypoint": None,
         "config": {},
-        "memory": {},
         "inputs": [],
         "output": {},
         "model": {},
@@ -472,27 +458,6 @@ def _read_descriptor(root: Path, manifest_path: Path) -> PluginDescriptor:
         if not isinstance(config, dict):
             raise ValueError("plugin.config must be an object")
         base["config"] = config
-        memory = payload.get("memory") or {}
-        if not isinstance(memory, dict):
-            raise ValueError("manifest memory must be an object")
-        if memory:
-            implementation_id = memory.get("implementation_id")
-            implementation_spec = memory.get("implementation_spec")
-            implementation_config = memory.get("implementation_config") or {}
-            if not isinstance(implementation_id, str) or not _SAFE_PLUGIN_ID.fullmatch(implementation_id):
-                raise ValueError("memory.implementation_id must be a safe id")
-            if not isinstance(implementation_spec, str) or implementation_spec.count(":") != 1:
-                raise ValueError("memory.implementation_spec must be module.path:ClassName")
-            module_name, _, class_name = implementation_spec.partition(":")
-            if not _SAFE_MODULE.fullmatch(module_name) or not _SAFE_SYMBOL.fullmatch(class_name):
-                raise ValueError("memory.implementation_spec contains an unsafe module or class name")
-            if not isinstance(implementation_config, dict):
-                raise ValueError("memory.implementation_config must be an object")
-            base["memory"] = {
-                "implementation_id": implementation_id,
-                "implementation_spec": implementation_spec,
-                "implementation_config": implementation_config,
-            }
         output = payload.get("output")
         if not isinstance(output, dict):
             raise ValueError("manifest lacks output contract")

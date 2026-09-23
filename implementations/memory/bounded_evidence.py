@@ -9,6 +9,9 @@ change between observations. Duplicate candidates within one observation must
 still agree (conflict policy ``bounded_evidence_structural_v2``). Record ids are
 namespaced by source plugin so two plugins cannot silently overwrite one
 another with the same local evidence id.
+
+The activated ledger reads the prior snapshot from shared memory. Its reducer
+uses mutable working data for one update and is then discarded.
 """
 
 from __future__ import annotations
@@ -32,6 +35,7 @@ from autonomy.decision import (
     serialized_mapping_bytes,
     serialized_memory_snapshot_bytes,
 )
+from autonomy.memory import SharedMemory
 from autonomy.perception import ViewLocation
 
 CONFLICT_POLICY = "bounded_evidence_structural_v2"
@@ -39,8 +43,8 @@ MAX_REPORTED_DROPS = 12
 MAX_REPORTED_ID_CHARS = 128
 
 
-class BoundedEvidenceLedger:
-    """Simple recency ledger used as the first packaged memory implementation."""
+class _BoundedEvidenceReducer:
+    """Temporary working state for one reduction, or a standalone algorithm test."""
 
     implementation_id = "bounded_evidence"
 
@@ -435,7 +439,7 @@ def reduce_evidence(
     **config: Any,
 ) -> MemorySnapshot:
     """Reduce one cycle from an explicit prior snapshot without retaining a reducer."""
-    reducer = BoundedEvidenceLedger(**config)
+    reducer = _BoundedEvidenceReducer(**config)
     reducer.implementation_id = implementation_id
     reducer._records = {record.record_id: record for record in previous.records}
     reducer._capacity_eviction_count = int(
@@ -451,6 +455,64 @@ def reduce_evidence(
             for item in snapshot.summary
         ),
     )
+
+
+class BoundedEvidenceLedger:
+    """Memory implementation whose retained evidence lives in the shared map."""
+
+    implementation_id = "bounded_evidence"
+
+    def __init__(self, **config: Any) -> None:
+        self.config = config
+        reducer = _BoundedEvidenceReducer(**config)
+        self.bounds = reducer.bounds
+        self._memory: SharedMemory | None = None
+        self._empty = reducer.snapshot()
+
+    def snapshot(self) -> MemorySnapshot:
+        current = (
+            self._memory.get("decision.snapshot") if self._memory is not None else None
+        )
+        return detach_memory_snapshot(current or self._empty)
+
+    def reset(self) -> MemorySnapshot:
+        if self._memory is not None:
+            previous = self.snapshot()
+            try:
+                next_epoch = int(previous.epoch_id.removeprefix("epoch-")) + 1
+            except ValueError:
+                next_epoch = 1
+            epoch = f"epoch-{next_epoch}"
+            self._memory["decision.snapshot"] = replace(
+                self._empty,
+                memory_id=f"memory-reset-{next_epoch}",
+                epoch_id=epoch,
+                summary=(
+                    "memory_empty=true",
+                    f"epoch_id={epoch}",
+                    "policy=bounded_evidence_recency",
+                ),
+            )
+        return self.snapshot()
+
+    def update(
+        self,
+        context: DecisionFrameContext,
+        observation: Observation | None,
+    ) -> MemorySnapshot:
+        if context.memory is None:
+            raise ValueError("bounded evidence requires a shared-memory map")
+        self._memory = context.memory
+        previous = self.snapshot()
+        snapshot = reduce_evidence(
+            previous,
+            context,
+            observation,
+            implementation_id=self.implementation_id,
+            **self.config,
+        )
+        context.memory["decision.snapshot"] = snapshot
+        return detach_memory_snapshot(snapshot)
 
 
 def namespaced_record_id(

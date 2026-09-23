@@ -554,4 +554,3 @@ def _iou(left: tuple[float, float, float, float], right: tuple[float, float, flo
 
 def _blend(old: float, new: float, alpha: float) -> float:
     return (1.0 - alpha) * float(old) + alpha * float(new)
-

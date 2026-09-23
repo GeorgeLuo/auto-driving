@@ -5,8 +5,9 @@ own their keys and include timing in values where needed. Writes are visible to
 subsequent consumers in execution order. Hosts own reset and synchronization;
 this mapping imposes no retention policy or domain-specific schema.
 
-Workbench publishes its existing MemorySnapshot at "decision.snapshot" after
-its memory stage. That entry is owned by the memory stage. Other producers may
+The decision cycle publishes its MemorySnapshot at "decision.snapshot" after
+its memory stage. A memory plugin may publish a current-cycle Observation at
+"decision.observation" for subsequent stages. Other producers may
 use their own keys; the existing evidence reducer does not evict those entries.
 """
 

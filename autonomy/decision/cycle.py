@@ -153,6 +153,17 @@ class DecisionCycle:
             raise TypeError(
                 "decision memory stage must return MemorySnapshot or None"
             )
+        if context.memory is not None:
+            context.memory["decision.snapshot"] = memory
+            updated_observation = context.memory.get("decision.observation")
+            if (
+                isinstance(updated_observation, Observation)
+                and observation is not None
+                and updated_observation.observation_id == observation.observation_id
+                and memory is not None
+                and memory.health != "error"
+            ):
+                observation = updated_observation
         patterns = (
             self.stages.update_patterns(context, observation, memory)
             if self.stages.update_patterns

@@ -20,6 +20,7 @@ from implementations.memory import (
     memory_implementation_spec,
 )
 from implementations.memory.catalog import build_memory_activation_payload
+from implementations.memory.bounded_evidence import reduce_evidence
 
 
 def _observation(
@@ -373,6 +374,62 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         )
         ids = {record.record_id for record in snapshot.records}
         self.assertEqual(ids, {"thing:1:14:floor-plane-v0:2:ok"})
+
+    def test_reduce_evidence_rehydrates_prior_snapshot(self) -> None:
+        config = {"max_records": 8, "max_age_ms": 5_000}
+        ledger = BoundedEvidenceLedger(**config)
+        first = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(_thing("a", zone="left"),)),
+        )
+        context = DecisionFrameContext("f2", 2, 200)
+        observation = _observation(
+            "o2", created_at_ms=190, things=(_thing("b", zone="right"),)
+        )
+
+        expected = ledger.update(context, observation)
+        actual = reduce_evidence(
+            first,
+            context,
+            observation,
+            implementation_id="bounded_evidence",
+            **config,
+        )
+
+        self.assertEqual(actual.to_dict(), expected.to_dict())
+        self.assertEqual(first.record_count, 1)
+        self.assertEqual(first.records[0].record_id, "thing:1:14:floor-plane-v0:1:a")
+
+    def test_reduce_evidence_does_not_retain_state_between_calls(self) -> None:
+        config = {"max_records": 8, "max_age_ms": 5_000}
+        seed = BoundedEvidenceLedger(**config)
+        previous = seed.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(_thing("a"),)),
+        )
+        context = DecisionFrameContext("f2", 2, 200)
+        observation = _observation("o2", created_at_ms=190, things=(_thing("b"),))
+
+        first = reduce_evidence(
+            previous,
+            context,
+            observation,
+            implementation_id="example_memory",
+            **config,
+        )
+        second = reduce_evidence(
+            previous,
+            context,
+            observation,
+            implementation_id="example_memory",
+            **config,
+        )
+
+        self.assertEqual(first.to_dict(), second.to_dict())
+        self.assertEqual(first.epoch_id, previous.epoch_id)
+        self.assertEqual(first.implementation_id, "example_memory")
+        self.assertEqual(previous.record_count, 1)
+        self.assertEqual(previous.records[0].record_id, "thing:1:14:floor-plane-v0:1:a")
 
 
 if __name__ == "__main__":

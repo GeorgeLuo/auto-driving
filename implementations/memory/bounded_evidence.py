@@ -434,15 +434,18 @@ def reduce_evidence(
     implementation_id: str,
     **config: Any,
 ) -> MemorySnapshot:
-    """Reduce explicit prior evidence for one cycle without retaining a reducer."""
+    """Reduce one cycle from an explicit prior snapshot without retaining a reducer."""
     reducer = BoundedEvidenceLedger(**config)
     reducer.implementation_id = implementation_id
     reducer._records = {record.record_id: record for record in previous.records}
-    reducer._capacity_eviction_count = int(previous.metadata.get("capacity_eviction_count", 0))
+    reducer._capacity_eviction_count = int(
+        previous.metadata.get("capacity_eviction_count", 0)
+    )
     reducer._conflict_count = int(previous.metadata.get("conflict_count", 0))
     snapshot = reducer.update(context, observation)
     return replace(
-        snapshot, epoch_id=previous.epoch_id,
+        snapshot,
+        epoch_id=previous.epoch_id,
         summary=tuple(
             f"epoch_id={previous.epoch_id}" if item.startswith("epoch_id=") else item
             for item in snapshot.summary

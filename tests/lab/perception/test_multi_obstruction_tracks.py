@@ -5,8 +5,9 @@ import unittest
 from autonomy.perception import PerceivedThing, ViewLocation
 from lab.plugins.perception.multi_obstruction_tracks.src.plugin import (
     MultiObstructionTracksPlugin,
-    _Track,
 )
+
+from lab.plugins.memory.multi_obstruction_tracks.tracker import ObstructionTrackState, _Track
 
 
 def _lookback_memory(tracks: list[dict]) -> dict:
@@ -49,7 +50,7 @@ def _region(
 
 class MultiObstructionTracksTests(unittest.TestCase):
     def test_prior_memory_replaces_track_continuity(self) -> None:
-        plugin = MultiObstructionTracksPlugin()
+        plugin = ObstructionTrackState()
         plugin._tracks[7] = _Track(
             track_id=7,
             bbox=(0.1, 0.1, 0.2, 0.2),
@@ -95,7 +96,7 @@ class MultiObstructionTracksTests(unittest.TestCase):
         self.assertEqual([thing.thing_id for thing in kept], ["box"])
 
     def test_two_tracks_are_preserved_and_associated(self) -> None:
-        plugin = MultiObstructionTracksPlugin(max_tracks=3)
+        plugin = ObstructionTrackState(max_tracks=3)
         first, events, _ = plugin._associate(
             [
                 _region("left", (0.18, 0.20, 0.38, 0.55)),
@@ -115,7 +116,7 @@ class MultiObstructionTracksTests(unittest.TestCase):
         self.assertEqual(set(events.values()), {"matched"})
 
     def test_lost_track_is_dropped_and_can_be_reacquired(self) -> None:
-        plugin = MultiObstructionTracksPlugin(max_missed_frames=0, reacquire_window_frames=2)
+        plugin = ObstructionTrackState(max_missed_frames=0, reacquire_window_frames=2)
         first, _, _ = plugin._associate([_region("left", (0.18, 0.20, 0.38, 0.55))])
         self.assertEqual([track.track_id for track in first], [0])
         dropped, events, _ = plugin._associate([])
@@ -126,7 +127,7 @@ class MultiObstructionTracksTests(unittest.TestCase):
         self.assertEqual(events[0], "reacquired")
 
     def test_lost_identity_expires_after_reacquire_window(self) -> None:
-        plugin = MultiObstructionTracksPlugin(max_missed_frames=0, reacquire_window_frames=1)
+        plugin = ObstructionTrackState(max_missed_frames=0, reacquire_window_frames=1)
         plugin._associate([_region("first", (0.18, 0.20, 0.38, 0.55))])
         dropped, events, _ = plugin._associate([])
         self.assertEqual(dropped, [])
@@ -139,7 +140,7 @@ class MultiObstructionTracksTests(unittest.TestCase):
         self.assertEqual(events[1], "new")
 
     def test_distant_same_area_region_does_not_inherit_identity(self) -> None:
-        plugin = MultiObstructionTracksPlugin(max_missed_frames=0, max_tracks=2)
+        plugin = ObstructionTrackState(max_missed_frames=0, max_tracks=2)
         plugin._associate([_region("first", (0.10, 0.20, 0.30, 0.50))])
         active, events, _ = plugin._associate(
             [_region("far", (0.72, 0.20, 0.92, 0.50))]
@@ -149,16 +150,16 @@ class MultiObstructionTracksTests(unittest.TestCase):
         self.assertEqual(events[1], "new")
 
     def test_contract_declares_multi_track_obstacle_output(self) -> None:
-        self.assertEqual(MultiObstructionTracksPlugin.contract.state_mode, "windowed")
+        self.assertEqual(MultiObstructionTracksPlugin.contract.state_mode, "stateless")
         self.assertTrue(
             any(
-                "multiple image-space obstacle records" in emission
+                "region proposals" in emission
                 for emission in MultiObstructionTracksPlugin.contract.emits
             )
         )
 
     def test_confidence_floor_only_suppresses_stale_events(self) -> None:
-        plugin = MultiObstructionTracksPlugin(minimum_output_confidence=0.43)
+        plugin = ObstructionTrackState(minimum_output_confidence=0.43)
         observed = _Track(0, (0.1, 0.2, 0.3, 0.5), 0.20, 0.8, 0.0, 3)
         stale = _Track(1, (0.1, 0.2, 0.3, 0.5), 0.20, 0.8, 0.0, 3)
         self.assertTrue(plugin._should_emit_track(observed, "matched"))

@@ -44,6 +44,42 @@ class SharedMemoryProbe:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_tracking_memory_owns_continuity_and_publishes_current_boxes(self):
+        from unittest.mock import patch
+        import numpy as np
+        from autonomy.perception import PerceivedThing, ViewLocation
+
+        mapper = PluginPerceptionMapper(
+            plugins=["tracks"],
+            plugin_specs={"tracks": "lab.plugins.perception.multi_obstruction_tracks.src.plugin:MultiObstructionTracksPlugin"},
+        )
+        detector = mapper.plugins[0]
+        candidate = PerceivedThing(
+            "candidate", "region_proposal", "box",
+            ViewLocation("image", "mid_left", (0.1, 0.2, 0.3, 0.5)), 0.8,
+        )
+        gray = np.zeros((10, 10), dtype=np.uint8)
+        with TemporaryDirectory() as directory, patch.object(
+            detector, "_detect_candidates",
+            side_effect=[([candidate], gray, {}), ([], gray, {})],
+        ):
+            root = Path(directory)
+            _make_images(root, 2)
+            runner = ImageReplayRunner(root, cadence_ms=0, mapper_factory=lambda: mapper)
+            runner.start()
+            state = runner.wait(5)
+            self.assertEqual(state["phase"], "completed")
+            self.assertEqual(state["memory"]["implementation_id"], "multi_obstruction_tracks")
+            self.assertFalse(state["perception"]["things"])
+            tracked = state["observation"]["things"][0]
+            self.assertEqual(tracked["thing_id"], "obstruction_track_000")
+            self.assertEqual(tracked["properties"]["track_event"], "held")
+            for actual, expected in zip(tracked["location"]["bbox_xyxy_norm"], candidate.location.bbox_xyxy_norm):
+                self.assertAlmostEqual(actual, expected)
+            self.assertEqual(runner._shared_memory["multi_obstruction_tracks.history"][0]["track_id"], 0)
+            self.assertEqual(state["perception"]["measurements"][detector.plugin_id]["memory_tracks_read"], 1)
+            self.assertFalse(hasattr(detector, "_tracks"))
+
     def test_shared_memory_connects_plugin_and_memory_stage_across_frames(self):
         mapper = PluginPerceptionMapper(
             plugins=["probe"],

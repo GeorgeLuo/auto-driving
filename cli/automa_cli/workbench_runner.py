@@ -7,6 +7,7 @@ import os
 import threading
 import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -107,6 +108,8 @@ def _default_mapper() -> PerceptionMapper:
 def _default_memory_stage() -> ActivatedMemoryStage:
     payload = build_memory_activation_payload(DEFAULT_MEMORY_IMPLEMENTATION)
     section = payload["memory"]
+    section["implementation_id"] = "multi_obstruction_tracks"
+    section["implementation_spec"] = "lab.plugins.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory"
     config = copy.deepcopy(dict(section["implementation_config"]))
     activation = MemoryActivation(
         implementation_id=str(section["implementation_id"]),
@@ -1096,6 +1099,15 @@ class ImageReplayRunner:
                     ),
                     idle_reason="workbench-observation-only",
                 ).run(context)
+                tracked = self._shared_memory.get("multi_obstruction_tracks.observation")
+                if (
+                    tracked is not None
+                    and result.observation is not None
+                    and tracked.observation_id == result.observation.observation_id
+                    and result.memory is not None
+                    and result.memory.health != "error"
+                ):
+                    result = replace(result, observation=tracked)
                 decision_result, _authorized_control = decision_engine.run_cycle(
                     frame_id=frame.frame_id,
                     frame_index=frame.frame_index,
@@ -1411,7 +1423,7 @@ class ImageReplayRunner:
                     if active_ids == ["frame", "floor_plane"]
                     else "manifest_plugin_selection"
                 ),
-                "memory_implementation": DEFAULT_MEMORY_IMPLEMENTATION,
+                "memory_implementation": "multi_obstruction_tracks",
                 "observation_adapter": "autonomy.decision.observation.observation_from_perception",
                 "decision_cycle": "autonomy.decision.cycle.DecisionCycle",
                 "decision_engine": ENGINE_ID,

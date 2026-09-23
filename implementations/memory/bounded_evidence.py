@@ -4,8 +4,9 @@ Retains attributed things and signals across cycles with finite capacity and
 age. Recurring evidence_ids update the same ledger slot within an epoch; that
 is recency bookkeeping, not semantic object identity or world truth.
 
-Same-slot updates follow structural compatibility and same-observation payload
-equality (conflict policy ``bounded_evidence_structural_v1``). Record ids are
+Same-slot updates preserve kind and location shape while allowing properties to
+change between observations. Duplicate candidates within one observation must
+still agree (conflict policy ``bounded_evidence_structural_v2``). Record ids are
 namespaced by source plugin so two plugins cannot silently overwrite one
 another with the same local evidence id.
 """
@@ -28,10 +29,13 @@ from autonomy.decision import (
     empty_memory_snapshot,
     ensure_strict_json_value,
     serialized_mapping_bytes,
+    serialized_memory_snapshot_bytes,
 )
 from autonomy.perception import ViewLocation
 
-CONFLICT_POLICY = "bounded_evidence_structural_v1"
+CONFLICT_POLICY = "bounded_evidence_structural_v2"
+MAX_REPORTED_DROPS = 12
+MAX_REPORTED_ID_CHARS = 128
 
 
 class BoundedEvidenceLedger:
@@ -74,6 +78,8 @@ class BoundedEvidenceLedger:
         self._capacity_eviction_count = 0
         self._conflict_count = 0
         self._last_update_conflict_count = 0
+        self._last_update_drops: list[dict[str, str]] = []
+        self._last_update_drop_count = 0
         self._records: dict[str, RetainedEvidence] = {}
         self._latest = self.reset()
 
@@ -83,6 +89,8 @@ class BoundedEvidenceLedger:
         observation: Observation | None,
     ) -> MemorySnapshot:
         now_ms = int(context.timestamp_ms)
+        self._last_update_drops = []
+        self._last_update_drop_count = 0
         candidates: list[RetainedEvidence] = []
         if observation is not None:
             candidates = self._extract_records(context, observation, now_ms=now_ms)
@@ -97,8 +105,11 @@ class BoundedEvidenceLedger:
 
         for record_id, group in groups.items():
             if _group_has_contradiction(group):
+                action = "rejected_current"
                 if record_id in self._records:
                     del self._records[record_id]
+                    action = "removed_prior_and_rejected_current"
+                self._report_drop(record_id, "contradictory_candidates", action)
                 update_conflicts += 1
                 continue
             # Payload-equal group collapses to one representative.
@@ -107,10 +118,12 @@ class BoundedEvidenceLedger:
             if retained is None:
                 self._records[record_id] = candidate
                 continue
-            if _structurally_compatible(retained, candidate):
+            reason = structural_conflict_reason(retained, candidate)
+            if reason is None:
                 self._records[record_id] = candidate
                 continue
             del self._records[record_id]
+            self._report_drop(record_id, reason, "removed_prior_and_rejected_current")
             update_conflicts += 1
 
         self._last_update_conflict_count = update_conflicts
@@ -121,6 +134,18 @@ class BoundedEvidenceLedger:
             created_at_ms=now_ms,
             observation=observation,
         )
+        limit = self.bounds.max_serialized_bytes
+        while (
+            limit is not None
+            and self._last_update_drops
+            and serialized_memory_snapshot_bytes(self._latest) > limit
+        ):
+            self._last_update_drops.pop()
+            self._latest = self._build_snapshot(
+                memory_id=f"memory-{context.frame_id}",
+                created_at_ms=now_ms,
+                observation=observation,
+            )
         return detach_memory_snapshot(self._latest)
 
     def reset(self) -> MemorySnapshot:
@@ -129,6 +154,8 @@ class BoundedEvidenceLedger:
         self._capacity_eviction_count = 0
         self._conflict_count = 0
         self._last_update_conflict_count = 0
+        self._last_update_drops = []
+        self._last_update_drop_count = 0
         self._latest = empty_memory_snapshot(
             memory_id=f"memory-reset-{self._epoch}",
             epoch_id=f"epoch-{self._epoch}",
@@ -157,7 +184,27 @@ class BoundedEvidenceLedger:
             "conflict_policy": CONFLICT_POLICY,
             "conflict_count": self._conflict_count,
             "last_update_conflict_count": self._last_update_conflict_count,
+            "last_update_drop_count": self._last_update_drop_count,
+            "last_update_drops": list(self._last_update_drops),
+            "last_update_drops_omitted": (
+                self._last_update_drop_count - len(self._last_update_drops)
+            ),
         }
+
+    def _report_drop(self, record_id: str, reason: str, action: str) -> None:
+        self._last_update_drop_count += 1
+        display_id = (
+            record_id
+            if len(record_id) <= MAX_REPORTED_ID_CHARS
+            else record_id[: MAX_REPORTED_ID_CHARS - 1] + "…"
+        )
+        event = {"record_id": display_id, "reason": reason, "action": action}
+        if reason in {"expired", "capacity"}:
+            if len(self._last_update_drops) < MAX_REPORTED_DROPS:
+                self._last_update_drops.append(event)
+        else:
+            self._last_update_drops.insert(0, event)
+            del self._last_update_drops[MAX_REPORTED_DROPS:]
 
     def _extract_records(
         self,
@@ -170,35 +217,39 @@ class BoundedEvidenceLedger:
         if self.retain_things:
             for thing in observation.things:
                 if not isinstance(thing, dict):
+                    self._report_drop("<thing>", "invalid_candidate", "not_admitted")
                     continue
                 confidence = float(thing.get("confidence") or 0.0)
                 if confidence < self.min_confidence:
                     continue
                 evidence_id = str(thing.get("thing_id") or "").strip()
                 if not evidence_id:
+                    self._report_drop("<thing>", "missing_evidence_id", "not_admitted")
                     continue
+                source_plugin = thing.get("source_plugin_id")
+                if source_plugin is None:
+                    source_plugin = observation.perception_plugin_id
+                record_id = namespaced_record_id("thing", evidence_id, source_plugin)
                 location = _location_from_payload(thing.get("location"))
                 coordinate_frame = (
                     location.frame if location is not None else "image"
                 )
-                source_plugin = thing.get("source_plugin_id")
-                if source_plugin is None:
-                    source_plugin = observation.perception_plugin_id
                 try:
                     properties = ensure_strict_json_value(
                         deepcopy(dict(thing.get("properties") or {}))
                     )
-                except ValueError:
+                except (TypeError, ValueError):
+                    self._report_drop(record_id, "invalid_properties", "not_admitted")
                     continue
                 if not isinstance(properties, dict):
+                    self._report_drop(record_id, "invalid_properties", "not_admitted")
                     continue
                 if not self._properties_within_bound(properties):
+                    self._report_drop(record_id, "properties_too_large", "not_admitted")
                     continue
                 records.append(
                     RetainedEvidence(
-                        record_id=namespaced_record_id(
-                            "thing", evidence_id, source_plugin
-                        ),
+                        record_id=record_id,
                         kind=str(thing.get("kind") or "thing"),
                         label=str(thing.get("label") or evidence_id),
                         confidence=confidence,
@@ -220,12 +271,14 @@ class BoundedEvidenceLedger:
         if self.retain_signals:
             for signal in observation.signals:
                 if not isinstance(signal, dict):
+                    self._report_drop("<signal>", "invalid_candidate", "not_admitted")
                     continue
                 confidence = float(signal.get("confidence") or 0.0)
                 if confidence < self.min_confidence:
                     continue
                 signal_id = str(signal.get("signal_id") or "").strip()
                 if not signal_id:
+                    self._report_drop("<signal>", "missing_evidence_id", "not_admitted")
                     continue
                 value = signal.get("value")
                 # Keep affirmative / present signals; skip explicit false.
@@ -234,29 +287,33 @@ class BoundedEvidenceLedger:
                 source_plugin = signal.get("source_plugin_id")
                 if source_plugin is None:
                     source_plugin = observation.perception_plugin_id
+                record_id = namespaced_record_id("signal", signal_id, source_plugin)
                 try:
                     properties = ensure_strict_json_value(
                         deepcopy(dict(signal.get("properties") or {}))
                     )
-                except ValueError:
+                except (TypeError, ValueError):
+                    self._report_drop(record_id, "invalid_properties", "not_admitted")
                     continue
                 if not isinstance(properties, dict):
+                    self._report_drop(record_id, "invalid_properties", "not_admitted")
                     continue
                 properties = dict(properties)
                 properties["value"] = value
                 try:
                     properties = ensure_strict_json_value(properties)
                 except ValueError:
+                    self._report_drop(record_id, "invalid_properties", "not_admitted")
                     continue
                 if not isinstance(properties, dict):
+                    self._report_drop(record_id, "invalid_properties", "not_admitted")
                     continue
                 if not self._properties_within_bound(properties):
+                    self._report_drop(record_id, "properties_too_large", "not_admitted")
                     continue
                 records.append(
                     RetainedEvidence(
-                        record_id=namespaced_record_id(
-                            "signal", signal_id, source_plugin
-                        ),
+                        record_id=record_id,
                         kind="signal",
                         label=signal_id,
                         confidence=confidence,
@@ -292,6 +349,8 @@ class BoundedEvidenceLedger:
             age = now_ms - int(record.provenance.updated_at_ms)
             if age <= max_age_ms:
                 keep[record_id] = record
+            else:
+                self._report_drop(record_id, "expired", "removed")
         self._records = keep
 
     def _enforce_capacity(self) -> None:
@@ -308,6 +367,7 @@ class BoundedEvidenceLedger:
         for record in ordered[:overflow]:
             self._records.pop(record.record_id, None)
             self._capacity_eviction_count += 1
+            self._report_drop(record.record_id, "capacity", "evicted")
 
     def _build_snapshot(
         self,
@@ -413,27 +473,6 @@ def location_geometry_signature(
     )
 
 
-def property_shape(value: Any) -> Any:
-    """Canonical recursive JSON type shape (proposal algorithm)."""
-
-    if value is None:
-        return "null"
-    if type(value) is bool:
-        return "boolean"
-    if isinstance(value, (int, float)) and type(value) is not bool:
-        return "number"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, list):
-        return ("array",) + tuple(property_shape(item) for item in value)
-    if isinstance(value, dict):
-        return (
-            "object",
-            tuple((key, property_shape(value[key])) for key in sorted(value)),
-        )
-    return ("unknown", type(value).__name__)
-
-
 def json_values_equal(left: Any, right: Any) -> bool:
     """Deep JSON value equality with exact int/float compare (no float())."""
 
@@ -478,23 +517,29 @@ def payload_equal(left: RetainedEvidence, right: RetainedEvidence) -> bool:
     return json_values_equal(left.properties, right.properties)
 
 
-def structurally_compatible(
+def structural_conflict_reason(
     retained: RetainedEvidence, candidate: RetainedEvidence
-) -> bool:
-    """Cross-observation structural compatibility."""
+) -> str | None:
+    """Report identity or location changes; properties are observation data."""
 
     if retained.kind != candidate.kind:
-        return False
+        return "kind_changed"
     if (retained.location is None) != (candidate.location is None):
-        return False
+        return "location_presence_changed"
     if retained.location is not None and candidate.location is not None:
         if retained.location.frame != candidate.location.frame:
-            return False
+            return "coordinate_frame_changed"
         if location_geometry_signature(retained.location) != location_geometry_signature(
             candidate.location
         ):
-            return False
-    return property_shape(retained.properties) == property_shape(candidate.properties)
+            return "geometry_changed"
+    return None
+
+
+def structurally_compatible(
+    retained: RetainedEvidence, candidate: RetainedEvidence
+) -> bool:
+    return structural_conflict_reason(retained, candidate) is None
 
 
 # Public aliases used by tests for table-driven coverage of pure helpers.

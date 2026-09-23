@@ -1,0 +1,49 @@
+{
+  "profile": "bright-settings",
+  "schema": "automa_lab_perception_parameter_profile_v0",
+  "candidate": "multi_obstruction_tracks",
+  "purpose": "Shared-plugin parameter profile for the brighter cardboard-box capture.",
+  "source_code_changed": true,
+  "implementation_revision": "revised-shared-detector-v2",
+  "source_code": "lab/plugins/perception/multi_obstruction_tracks/src/plugin.py",
+  "evidence_capture": "lab/runs/cv-synthesis-20260919/retry/frames",
+  "config": {
+    "max_tracks": 2,
+    "floor_cutoff_y": 0.55,
+    "minimum_object_height": 0.08,
+    "minimum_object_area_fraction": 0.02,
+    "maximum_object_area_fraction": 0.6,
+    "association_distance": 0.45,
+    "minimum_association_score": 0.0,
+    "smoothing_alpha": 0.3,
+    "max_missed_frames": 1,
+    "reacquire_window_frames": 4,
+    "minimum_feature_points": 4,
+    "canny_low": 30,
+    "canny_high": 45,
+    "minimum_contour_area_fraction": 0.0005,
+    "maximum_contour_area_fraction": 0.4,
+    "contour_merge_gap": 0.2,
+    "contrast_normalization": "none",
+    "contrast_clip_limit": 2.0,
+    "contrast_tile_size": 8,
+    "contrast_gamma": 1.0,
+    "preserve_separate_proposals": false,
+    "duplicate_suppression_iou": 0.08,
+    "output_bbox_shrink_x": 1.0,
+    "output_bbox_shrink_y": 0.7,
+    "minimum_output_confidence": 0.43
+  },
+  "manual_evaluation": {
+    "reference": "lab/runs/cv-synthesis-20260919/strict-freeze-20260920/bright-manual-boxes.json",
+    "gate": "lab/runs/cv-synthesis-20260919/strict-freeze-20260920/strict-baseline-result.json",
+    "strict_evaluator": "lab/runs/cv-synthesis-20260919/strict-freeze-20260920/strict_gate.py"
+  },
+  "selection_basis": {
+    "manual_observation": "Bright RGB frames show a labelled box moving left and a second box moving toward the camera. The profile keeps both regions through frame 11, removes low-confidence stale edge tracks after the labelled box leaves, and retains the near box through frames 17-19.",
+    "dark_profile": "lab/plugins/perception/multi_obstruction_tracks/configs/dark-settings.json",
+    "selected_run": "lab/plugins/perception/multi_obstruction_tracks/runs/apply-frames-20260920-181518-571693-de077474",
+    "selected_overlay": "lab/runs/cv-synthesis-20260919/retry/bright-profile-v4-overlay.png",
+    "confidence_floor_semantics": "minimum_output_confidence=0.43 suppresses predicted and held stale tracks while retaining matched near-obstacle observations through frames 17-19."
+  }
+}

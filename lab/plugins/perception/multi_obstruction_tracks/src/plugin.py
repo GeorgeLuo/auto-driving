@@ -1,3 +1,11 @@
+"""Perception member of the Workbench obstruction pipeline.
+
+Use with ``lab.plugins.memory.multi_obstruction_tracks.plugin``: this plugin
+emits current-frame region candidates, and that memory plugin associates them
+into tracked obstacles. The resulting memory records are accepted by the
+``avoid_recent_obstruction`` proposal plugin.
+"""
+
 from __future__ import annotations
 
 from typing import Any

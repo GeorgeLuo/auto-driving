@@ -1,9 +1,11 @@
-"""Workbench tracking memory: associate current candidates, then retain evidence.
+"""Memory member of the Workbench obstruction pipeline.
 
-The candidate signal supplies the selected detector's numerical tracking config.
-Optical flow reads the current camera frame using the same luminance transform.
-The ledger retains the existing lookback representation; shared memory exposes
-that history and the current tracked observation. Raw perception stays separate.
+Use with ``lab.plugins.perception.multi_obstruction_tracks.src.plugin``. Its
+candidate signal supplies the selected detector's numerical tracking config.
+This plugin associates candidates, retains obstacle records for the
+``avoid_recent_obstruction`` proposal plugin, and publishes the tracked
+observation used by Workbench. Optical flow reads the current camera frame
+using the same luminance transform.
 """
 from __future__ import annotations
 

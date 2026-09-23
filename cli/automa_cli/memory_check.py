@@ -1377,7 +1377,7 @@ def run_offline_memory_check(
         name = str(phase["name"])
         _emit(output, f"phase: {name}")
         if name == "reset":
-            snapshot = stage.reset()
+            snapshot = stage.reset(shared_memory)
             shared_memory.clear()
             shared_memory["decision.snapshot"] = snapshot
             final = snapshot.to_dict()

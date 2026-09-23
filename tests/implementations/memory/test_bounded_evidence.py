@@ -77,6 +77,15 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             "implementations.memory.bounded_evidence:BoundedEvidenceLedger",
         )
 
+    def test_reset_before_update_uses_explicit_shared_map(self) -> None:
+        ledger = BoundedEvidenceLedger()
+        with self.assertRaisesRegex(ValueError, "requires a shared-memory map"):
+            ledger.reset()
+        memory = {}
+        self.assertEqual(ledger.reset(memory).epoch_id, "epoch-2")
+        self.assertEqual(ledger.reset(memory).epoch_id, "epoch-3")
+        self.assertEqual(memory["decision.snapshot"].epoch_id, "epoch-3")
+
     def test_activated_ledger_uses_shared_snapshot_across_instances(self) -> None:
         memory = {}
         config = {"max_records": 8, "max_age_ms": 5_000}

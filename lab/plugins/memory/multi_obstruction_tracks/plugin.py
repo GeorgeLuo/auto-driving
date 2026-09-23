@@ -17,6 +17,7 @@ from autonomy.decision.cycle import DecisionFrameContext
 from autonomy.decision.activation import bounds_from_config
 from autonomy.decision.memory import MemorySnapshot, detach_memory_snapshot, empty_memory_snapshot
 from autonomy.decision.observation import Observation
+from autonomy.memory import SharedMemory
 
 from autonomy.perception import PerceivedThing, PerceptionSignal, build_perception_request
 from implementations.memory.bounded_evidence import reduce_evidence
@@ -48,14 +49,17 @@ class MultiObstructionMemory:
             snapshot = self._memory.get("decision.snapshot") or self._empty
         return detach_memory_snapshot(snapshot)
 
-    def reset(self) -> MemorySnapshot:
-        if self._memory is not None:
-            epoch = f"epoch-{uuid4().hex}"
-            for key in (*self.history_keys, "decision.observation"):
-                self._memory.pop(key, None)
-            self._memory["decision.snapshot"] = replace(
-                self._empty, memory_id=f"memory-reset-{epoch}", epoch_id=epoch,
-            )
+    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
+        if memory is not None:
+            self._memory = memory
+        if self._memory is None:
+            raise ValueError("tracking memory reset requires a shared-memory map")
+        epoch = f"epoch-{uuid4().hex}"
+        for key in (*self.history_keys, "decision.observation"):
+            self._memory.pop(key, None)
+        self._memory["decision.snapshot"] = replace(
+            self._empty, memory_id=f"memory-reset-{epoch}", epoch_id=epoch,
+        )
         return self.snapshot()
 
     def _retain_evidence(self, context, observation):

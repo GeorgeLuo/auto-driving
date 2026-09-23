@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 from autonomy.memory import SharedMemory
+from autonomy.decision.activation import ActivatedMemoryStage
 from autonomy.decision.cycle import (
     DecisionCycle,
     DecisionCycleResult,
@@ -66,7 +67,11 @@ class AutonomyCycleHost:
         reset = getattr(remember, "reset", None)
         if not callable(reset):
             raise TypeError("configured memory stage does not support reset")
-        snapshot = reset()
+        snapshot = (
+            reset(self.shared_memory)
+            if isinstance(remember, ActivatedMemoryStage)
+            else reset()
+        )
         self.shared_memory.clear()
         self.shared_memory["decision.snapshot"] = snapshot
         return snapshot

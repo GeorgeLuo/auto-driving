@@ -37,6 +37,14 @@ def step(plugin, memory, index, rgb, *, candidate=True):
 
 
 class SharedTrackingMemoryTests(unittest.TestCase):
+    def test_reset_before_first_update_uses_host_map(self):
+        plugin = MultiObstructionMemory()
+        memory = {}
+        initial_epoch = plugin.snapshot().epoch_id
+        reset = plugin.reset(memory)
+        self.assertNotEqual(reset.epoch_id, initial_epoch)
+        self.assertEqual(memory["decision.snapshot"], reset)
+
     def test_recreated_plugin_preserves_motion_evidence_and_next_identity(self):
         rgb = np.random.default_rng(1).integers(0, 256, (200, 200, 3), dtype=np.uint8)
         memory = {}

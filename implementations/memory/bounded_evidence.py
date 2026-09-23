@@ -476,25 +476,28 @@ class BoundedEvidenceLedger:
         )
         return detach_memory_snapshot(current or self._empty)
 
-    def reset(self) -> MemorySnapshot:
-        if self._memory is not None:
-            previous = self.snapshot()
-            next_epoch = max(
-                _numbered_epoch(previous.epoch_id),
-                self._memory.get(EPOCH_COUNTER_KEY, 1),
-            ) + 1
-            epoch = f"epoch-{next_epoch}"
-            self._memory[EPOCH_COUNTER_KEY] = next_epoch
-            self._memory["decision.snapshot"] = replace(
-                self._empty,
-                memory_id=f"memory-reset-{next_epoch}",
-                epoch_id=epoch,
-                summary=(
-                    "memory_empty=true",
-                    f"epoch_id={epoch}",
-                    "policy=bounded_evidence_recency",
-                ),
-            )
+    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
+        if memory is not None:
+            self._memory = memory
+        if self._memory is None:
+            raise ValueError("bounded evidence reset requires a shared-memory map")
+        previous = self.snapshot()
+        next_epoch = max(
+            _numbered_epoch(previous.epoch_id),
+            self._memory.get(EPOCH_COUNTER_KEY, 1),
+        ) + 1
+        epoch = f"epoch-{next_epoch}"
+        self._memory[EPOCH_COUNTER_KEY] = next_epoch
+        self._memory["decision.snapshot"] = replace(
+            self._empty,
+            memory_id=f"memory-reset-{next_epoch}",
+            epoch_id=epoch,
+            summary=(
+                "memory_empty=true",
+                f"epoch_id={epoch}",
+                "policy=bounded_evidence_recency",
+            ),
+        )
         return self.snapshot()
 
     def update(

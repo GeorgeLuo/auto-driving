@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from autonomy.memory import SharedMemory
+
 from .cycle import DecisionFrameContext
 from .memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
@@ -291,7 +293,9 @@ class ActivatedMemoryStage:
         self.update_count = 0
         self.reset_count = 0
         self.failure_count = 0
-        self.last_snapshot = self.reset()
+        # The host map is not available during construction; inspect the
+        # implementation's initial snapshot without counting a real reset.
+        self.last_snapshot = self.snapshot()
 
     def __call__(
         self,
@@ -322,10 +326,14 @@ class ActivatedMemoryStage:
             context.memory["decision.snapshot"] = owned
         return self._publish_snapshot(owned)
 
-    def reset(self) -> MemorySnapshot:
+    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
         started = time.perf_counter()
         try:
-            snapshot = self.implementation.reset()
+            snapshot = (
+                self.implementation.reset(memory)
+                if memory is not None
+                else self.implementation.reset()
+            )
             owned = self._accept_snapshot(snapshot, operation="reset")
             if owned.health not in {"empty", "unavailable"}:
                 raise ValueError(
@@ -349,6 +357,8 @@ class ActivatedMemoryStage:
             )
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
+        if memory is not None:
+            memory["decision.snapshot"] = owned
         return self._publish_snapshot(owned)
 
     def snapshot(self) -> MemorySnapshot:

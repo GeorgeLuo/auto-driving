@@ -41,6 +41,7 @@ from autonomy.perception import ViewLocation
 CONFLICT_POLICY = "bounded_evidence_structural_v2"
 MAX_REPORTED_DROPS = 12
 MAX_REPORTED_ID_CHARS = 128
+EPOCH_COUNTER_KEY = "bounded_evidence.epoch"
 
 
 class _BoundedEvidenceReducer:
@@ -478,11 +479,12 @@ class BoundedEvidenceLedger:
     def reset(self) -> MemorySnapshot:
         if self._memory is not None:
             previous = self.snapshot()
-            try:
-                next_epoch = int(previous.epoch_id.removeprefix("epoch-")) + 1
-            except ValueError:
-                next_epoch = 1
+            next_epoch = max(
+                _numbered_epoch(previous.epoch_id),
+                self._memory.get(EPOCH_COUNTER_KEY, 1),
+            ) + 1
             epoch = f"epoch-{next_epoch}"
+            self._memory[EPOCH_COUNTER_KEY] = next_epoch
             self._memory["decision.snapshot"] = replace(
                 self._empty,
                 memory_id=f"memory-reset-{next_epoch}",
@@ -504,6 +506,13 @@ class BoundedEvidenceLedger:
             raise ValueError("bounded evidence requires a shared-memory map")
         self._memory = context.memory
         previous = self.snapshot()
+        epoch_number = max(
+            _numbered_epoch(previous.epoch_id),
+            context.memory.get(EPOCH_COUNTER_KEY, 1),
+        )
+        context.memory[EPOCH_COUNTER_KEY] = epoch_number
+        if previous.health == "error":
+            previous = replace(self._empty, epoch_id=f"epoch-{epoch_number}")
         snapshot = reduce_evidence(
             previous,
             context,
@@ -513,6 +522,11 @@ class BoundedEvidenceLedger:
         )
         context.memory["decision.snapshot"] = snapshot
         return detach_memory_snapshot(snapshot)
+
+
+def _numbered_epoch(epoch_id: str) -> int:
+    number = epoch_id.removeprefix("epoch-") if epoch_id.startswith("epoch-") else ""
+    return max(1, int(number)) if number.isdecimal() else 1
 
 
 def namespaced_record_id(

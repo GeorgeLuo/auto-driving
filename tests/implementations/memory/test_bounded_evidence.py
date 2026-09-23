@@ -13,6 +13,7 @@ from autonomy.decision import (
     Observation,
     read_memory_activation,
 )
+from autonomy.decision.memory import error_memory_snapshot
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     BoundedEvidenceLedger,
@@ -106,6 +107,33 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             DecisionFrameContext("f3", 3, 300, memory=memory), None,
         )
         self.assertEqual(after_clear.record_count, 0)
+
+    def test_framework_error_does_not_reuse_or_propagate_error_epoch(self) -> None:
+        memory = {}
+        ledger = BoundedEvidenceLedger(max_records=8)
+        ledger.update(DecisionFrameContext("f1", 1, 100, memory=memory), None)
+        memory["decision.snapshot"] = error_memory_snapshot(
+            memory_id="memory-error-1",
+            epoch_id="epoch-error-1",
+            bounds=ledger.bounds,
+            created_at_ms=100,
+            error="framework failure",
+        )
+
+        reset = ledger.reset()
+        self.assertEqual(reset.epoch_id, "epoch-2")
+        self.assertEqual(memory["decision.snapshot"].epoch_id, "epoch-2")
+
+        memory["decision.snapshot"] = error_memory_snapshot(
+            memory_id="memory-error-2",
+            epoch_id="epoch-error-2",
+            bounds=ledger.bounds,
+            created_at_ms=200,
+            error="framework failure",
+        )
+        recovered = ledger.update(DecisionFrameContext("f2", 2, 300, memory=memory), None)
+        self.assertEqual(recovered.epoch_id, "epoch-2")
+        self.assertEqual(recovered.health, "empty")
 
     def test_retains_things_and_signals_with_provenance(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
@@ -229,6 +257,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             stage = ActivatedMemoryStage(read_memory_activation(path))
+            shared_memory = {}
             observation = _observation(
                 "obs_9",
                 created_at_ms=90,
@@ -239,13 +268,13 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                     observe=lambda context, perception: observation,
                     remember=stage,
                 )
-            ).run(DecisionFrameContext("frame_9", 9, 100))
+            ).run(DecisionFrameContext("frame_9", 9, 100, memory=shared_memory))
             self.assertEqual(result.memory.health, "healthy")
             self.assertEqual(result.memory.record_count, 1)
             self.assertEqual(result.memory.implementation_id, "bounded_evidence")
             self.assertEqual(stage.status()["implementation_id"], "bounded_evidence")
             self.assertEqual(
-                stage.shared_memory["decision.snapshot"].to_dict(),
+                shared_memory["decision.snapshot"].to_dict(),
                 result.memory.to_dict(),
             )
 

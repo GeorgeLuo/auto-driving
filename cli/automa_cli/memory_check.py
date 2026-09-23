@@ -1363,6 +1363,7 @@ def run_offline_memory_check(
     all_frames: list[dict[str, Any]] = []
     prior_epoch: str | None = None
     present_keys: set[str] = set()
+    shared_memory: dict[str, Any] = {}
 
     _emit(output, "Memory check (present → dropout → expiry → reset)")
     _emit(output, f"vehicle: {vehicle_id}")
@@ -1377,12 +1378,14 @@ def run_offline_memory_check(
         _emit(output, f"phase: {name}")
         if name == "reset":
             snapshot = stage.reset()
+            shared_memory.clear()
+            shared_memory["decision.snapshot"] = snapshot
             final = snapshot.to_dict()
             frames_for_phase: list[dict[str, Any]] = []
         else:
             frames_for_phase = list(phase.get("frames") or [])
             all_frames.extend(frames_for_phase)
-            final = _feed_frames(stage, frames_for_phase)
+            final = _feed_frames(stage, frames_for_phase, shared_memory)
 
         score = score_memory_check_phase(
             phase_name=name,
@@ -2810,7 +2813,11 @@ def _load_check_stage(
     return stage, f"ephemeral-check:{implementation_id}(max_age_ms={CHECK_MAX_AGE_MS})"
 
 
-def _feed_frames(stage: ActivatedMemoryStage, frames: list[dict[str, Any]]) -> dict[str, Any]:
+def _feed_frames(
+    stage: ActivatedMemoryStage,
+    frames: list[dict[str, Any]],
+    shared_memory: dict[str, Any],
+) -> dict[str, Any]:
     snapshot = stage.snapshot()
     for frame in frames:
         observation = Observation.from_dict(frame["observation"])
@@ -2818,6 +2825,7 @@ def _feed_frames(stage: ActivatedMemoryStage, frames: list[dict[str, Any]]) -> d
             frame_id=str(frame["frame_id"]),
             frame_index=int(frame["frame_index"]),
             timestamp_ms=int(frame["timestamp_ms"]),
+            memory=shared_memory,
         )
         snapshot = stage.update(context, observation)
     return snapshot.to_dict()

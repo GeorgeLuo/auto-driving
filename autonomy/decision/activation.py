@@ -6,11 +6,9 @@ import importlib
 import json
 import time
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-from autonomy.memory import SharedMemory
 
 from .cycle import DecisionFrameContext
 from .memory import (
@@ -287,9 +285,6 @@ class ActivatedMemoryStage:
     def __init__(self, activation: MemoryActivation) -> None:
         self.activation = activation
         self.implementation = load_memory_implementation(activation)
-        # Offline stage callers without a host map still need one shared source
-        # of truth across their sequence of updates.
-        self.shared_memory: SharedMemory = {}
         self.last_snapshot: MemorySnapshot | None = None
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
@@ -310,8 +305,6 @@ class ActivatedMemoryStage:
         context: DecisionFrameContext,
         observation: Observation | None,
     ) -> MemorySnapshot:
-        if context.memory is None:
-            context = replace(context, memory=self.shared_memory)
         started = time.perf_counter()
         try:
             # Observation evidence is separate from the host-owned shared map
@@ -325,7 +318,8 @@ class ActivatedMemoryStage:
             owned = self._error_snapshot(self.last_error)
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.update_count += 1
-        context.memory["decision.snapshot"] = owned
+        if context.memory is not None:
+            context.memory["decision.snapshot"] = owned
         return self._publish_snapshot(owned)
 
     def reset(self) -> MemorySnapshot:
@@ -355,8 +349,6 @@ class ActivatedMemoryStage:
             )
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
-        self.shared_memory.clear()
-        self.shared_memory["decision.snapshot"] = owned
         return self._publish_snapshot(owned)
 
     def snapshot(self) -> MemorySnapshot:

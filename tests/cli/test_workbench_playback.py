@@ -6,6 +6,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract, PerceptionSignal
+from autonomy.perception.mappers import PluginPerceptionMapper
+from cli.automa_cli.workbench_runner import _default_memory_stage
 from cli.automa_cli.workbench import ReplayActionError, WorkbenchServer
 from tests.cli.workbench_fixtures import (
     FixtureMapper,
@@ -26,7 +29,64 @@ class RecordingMapper(FixtureMapper):
         return super().perceive(request)
 
 
+class SharedMemoryProbe:
+    plugin_id = "shared-memory-probe"
+    contract = PerceptionPluginContract()
+
+    def __init__(self):
+        self.reads = []
+
+    def perceive(self, inputs):
+        memory = inputs.memory
+        self.reads.append((memory.get("decision.snapshot"), memory.get("test.stage")))
+        memory["test.perception"] = inputs.frame_id
+        return PerceptionEvidenceBatch(signals=(PerceptionSignal("probe_seen", True),))
+
+
 class WorkbenchTests(unittest.TestCase):
+    def test_shared_memory_connects_plugin_and_memory_stage_across_frames(self):
+        mapper = PluginPerceptionMapper(
+            plugins=["probe"],
+            plugin_specs={"probe": f"{__name__}:SharedMemoryProbe"},
+        )
+        stage_reads = []
+        snapshots = []
+
+        def memory_factory():
+            stage = _default_memory_stage()
+
+            class RecordingStage:
+                def __call__(self, context, observation):
+                    stage_reads.append(context.memory["test.perception"])
+                    context.memory["test.stage"] = context.frame_id
+                    snapshot = stage(context, observation)
+                    snapshots.append(snapshot)
+                    return snapshot
+
+                def reset(self):
+                    return stage.reset()
+
+            return RecordingStage()
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            runner = ImageReplayRunner(
+                root, cadence_ms=0, mapper_factory=lambda: mapper,
+                memory_stage_factory=memory_factory,
+            )
+            runner.start()
+            completed = runner.wait(5)
+            self.assertEqual(completed["phase"], "completed")
+            reads = mapper.plugins[0].reads
+            self.assertEqual(reads[0], (None, None))
+            self.assertIs(reads[1][0], snapshots[0])
+            self.assertEqual(reads[1][1], stage_reads[0])
+            self.assertEqual(completed["memory"], snapshots[-1].to_dict())
+            runner.start()
+            self.assertEqual(runner.wait(5)["phase"], "completed")
+            self.assertEqual(reads[2], (None, None))
+
     def test_pause_resume_step_reset_and_stale_run_are_server_owned(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

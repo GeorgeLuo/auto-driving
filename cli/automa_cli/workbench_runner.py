@@ -170,6 +170,7 @@ class ImageReplayRunner:
         self._feed: ImageFeed | None = None
         self._mapper: Any = None
         self._memory_stage: Any = None
+        self._shared_memory: dict[str, Any] = {}
         self._decision_engine: Any = None
         self._history: dict[str, dict[str, Any]] = {}
         self._generation = 0
@@ -380,6 +381,7 @@ class ImageReplayRunner:
                 self._memory_stage = None
                 self._decision_engine = None
                 self._history.clear()
+                self._shared_memory = {}
                 self._state = self._fresh_run_state(run_id)
                 self._apply_plugin_configuration_locked()
                 self._state["source"] = {"path": str(raw_source)}
@@ -920,6 +922,7 @@ class ImageReplayRunner:
             if self._state["phase"] in {"running", "paused"}:
                 self._state["phase"] = "cancelled"
             self._cleanup_locked()
+            self._shared_memory = {}
             feed = self._feed
             source_dir = self.source_dir
             source_state = copy.deepcopy(self._state.get("source"))
@@ -1035,6 +1038,7 @@ class ImageReplayRunner:
                     timestamp_ms=frame.timestamp_ms,
                     sensor_snapshot=snapshot,
                     mode="workbench_replay",
+                    memory=self._shared_memory,
                     metadata={
                         "source": WORKBENCH_SEQUENCE_ID,
                         "source_id": frame.source_id,
@@ -1049,6 +1053,7 @@ class ImageReplayRunner:
                         prior_memory = copy.deepcopy(self._state.get("memory"))
                     request = build_perception_request(
                         current.sensor_snapshot,
+                        memory=current.memory,
                         metadata={
                             "source": WORKBENCH_SEQUENCE_ID,
                             "source_id": frame.source_id,
@@ -1079,7 +1084,9 @@ class ImageReplayRunner:
                     current: DecisionFrameContext,
                     observation: Observation | None,
                 ) -> Any:
-                    return memory_stage(current, observation)
+                    snapshot = memory_stage(current, observation)
+                    current.memory["decision.snapshot"] = snapshot
+                    return snapshot
 
                 result = DecisionCycle(
                     DecisionStages(

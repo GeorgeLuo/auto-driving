@@ -264,6 +264,7 @@ class PluginPerceptionMapper:
                 components=components,
                 diagnostics=diagnostics,
                 metadata=request.metadata,
+                memory=request.memory,
             )
             batch = plugin.perceive(inputs)
             if not isinstance(batch, PerceptionEvidenceBatch):

@@ -115,6 +115,7 @@ class ActivatedPerceptionStage:
             self.last_output = self.mapper.perceive(
                 build_perception_request(
                     context.sensor_snapshot,
+                    memory=context.memory,
                     metadata={
                         "runtime": "onboard",
                         "algorithm": self.activation.algorithm,

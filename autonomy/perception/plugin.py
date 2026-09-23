@@ -7,6 +7,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Literal, Mapping, Protocol, TypeVar, runtime_checkable
 
+from autonomy.memory import SharedMemory
+
 from .evidence import PerceptionEvidenceBatch
 
 
@@ -186,6 +188,7 @@ class PerceptionPluginInputs:
     components: Mapping[str, Any]
     diagnostics: PerceptionDiagnosticSink
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "components", MappingProxyType(dict(self.components)))

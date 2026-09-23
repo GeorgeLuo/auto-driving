@@ -48,8 +48,9 @@ class MultiObstructionMemory(BoundedEvidenceLedger):
         if self.tracker is None or config != self.tracking_config:
             self.tracker = ObstructionTrackState(**config)
             self.tracking_config = config
-        # Preserve the existing lookback representation and its retention policy.
-        memory_tracks_read = self.tracker._restore_from_prior_memory(self.snapshot().to_dict())
+        memory_tracks_read = self.tracker._restore_from_history(
+            memory.get("multi_obstruction_tracks.history")
+        )
         frame = provide_camera_frame(build_perception_request(context.sensor_snapshot), FRONT_CAMERA_RGB_INPUT)
         gray = normalize_gray(frame.rgb, **properties["normalization"])
         source = marker.get("source_plugin_id")
@@ -80,16 +81,6 @@ class MultiObstructionMemory(BoundedEvidenceLedger):
                         str(track_id): event for track_id, event in events.items()
                     },
                     "floor_cutoff_y": self.tracker.floor_cutoff_y,
-                    "memory_tracks_read": memory_tracks_read,
-                    "memory_tracks_written": len(lookback_tracks),
-                },
-            ),
-            PerceptionSignal(
-                "multi_obstruction_track_lookback",
-                True,
-                _mean_confidence(things) if things else 1.0,
-                {
-                    "tracks": lookback_tracks,
                     "memory_tracks_read": memory_tracks_read,
                     "memory_tracks_written": len(lookback_tracks),
                 },

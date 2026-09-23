@@ -89,37 +89,12 @@ class ObstructionTrackState:
         self._previous_gray: np.ndarray | None = None
 
 
-    def _restore_from_prior_memory(self, prior_memory: Any) -> int:
-        """Replace track continuity with the lookback record stored last frame.
+    def _restore_from_history(self, history: Any) -> int:
+        """Replace track continuity with the previous frame's shared-map history."""
 
-        Absent memory leaves the in-process tracks alone. A present lookback
-        record, including an empty track list, is the continuity for this frame.
-        """
-
-        if not isinstance(prior_memory, dict):
-            return 0
-        records = prior_memory.get("records")
-        if not isinstance(records, list):
-            return 0
-        payload = None
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            provenance = record.get("provenance")
-            evidence_id = (
-                provenance.get("evidence_id") if isinstance(provenance, dict) else None
-            )
-            if evidence_id != "multi_obstruction_track_lookback":
-                continue
-            properties = record.get("properties")
-            if isinstance(properties, dict) and isinstance(properties.get("tracks"), list):
-                payload = properties["tracks"]
-                break
-        if payload is None:
-            return 0
         active: dict[int, _Track] = {}
         lost: dict[int, _Track] = {}
-        for item in payload:
+        for item in history if isinstance(history, (list, tuple)) else ():
             track = _track_from_lookback(item)
             if track is None:
                 continue

@@ -65,6 +65,27 @@ class WorkbenchTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             _make_images(root, 2)
+            (root / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "camera_frames": [
+                            {
+                                "frame_id": "camera-first",
+                                "frame_index": 10,
+                                "captured_at_ms": 1000,
+                                "image": "frame_00.png",
+                            },
+                            {
+                                "frame_id": "camera-next",
+                                "frame_index": 13,
+                                "captured_at_ms": 1080,
+                                "image": "frame_01.png",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
             mapper = RecordingMapper()
             runner = ImageReplayRunner(
                 root,

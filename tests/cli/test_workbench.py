@@ -22,6 +22,71 @@ WORKBENCH_PLUGIN_DIR = Path("lab/plugins/perception")
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_directory_adapter_loads_ordered_camera_frame_stream_manifest(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            frame_root = root / "frames"
+            frame_root.mkdir()
+            _make_images(frame_root, 2)
+            (root / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "camera_frames": [
+                            {
+                                "frame_id": "camera-10",
+                                "frame_index": 10,
+                                "captured_at_ms": 1000,
+                                "image": "frames/frame_00.png",
+                            },
+                            {
+                                "frame_id": "camera-13",
+                                "frame_index": 13,
+                                "captured_at_ms": 1080,
+                                "image": "frames/frame_01.png",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            feed = normalize_image_directory(root)
+
+        self.assertEqual(
+            [frame.frame_id for frame in feed.frames], ["camera-10", "camera-13"]
+        )
+        self.assertEqual([frame.frame_index for frame in feed.frames], [10, 13])
+        self.assertEqual([frame.timestamp_ms for frame in feed.frames], [1000, 1080])
+        self.assertEqual(
+            [frame.image_path.name for frame in feed.frames if frame.image_path],
+            ["frame_00.png", "frame_01.png"],
+        )
+
+    def test_default_frame_limit_accepts_a_high_rate_camera_capture(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            frame_root = root / "frames"
+            frame_root.mkdir()
+            _make_images(frame_root, 1)
+            camera_frames = [
+                {
+                    "frame_id": f"camera-{index}",
+                    "frame_index": index,
+                    "captured_at_ms": 1000 + index * 50,
+                    "image": "frames/frame_00.png",
+                }
+                for index in range(269)
+            ]
+            (root / "manifest.json").write_text(
+                json.dumps({"camera_frames": camera_frames}),
+                encoding="utf-8",
+            )
+
+            feed = normalize_image_directory(root)
+
+        self.assertEqual(len(feed.frames), 269)
+        self.assertEqual(feed.frames[-1].frame_id, "camera-268")
+
     def test_directory_adapter_honors_manifest_order_and_absence(self) -> None:
         with TemporaryDirectory() as directory:
             workspace = Path(directory)

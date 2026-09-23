@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract, PerceptionSignal
 from autonomy.perception.mappers import PluginPerceptionMapper
+from autonomy.decision.memory import MemorySnapshot
 from cli.automa_cli.workbench_runner import _default_memory_stage
 from cli.automa_cli.workbench import ReplayActionError, WorkbenchServer
 from tests.cli.workbench_fixtures import (
@@ -22,10 +23,11 @@ class RecordingMapper(FixtureMapper):
     def __init__(self) -> None:
         super().__init__()
         self.priors: list[object] = []
+        self.legacy_handoff: list[bool] = []
 
     def perceive(self, request):
-        metadata = getattr(request, "metadata", {}) or {}
-        self.priors.append(metadata.get("prior_memory"))
+        self.legacy_handoff.append("prior_memory" in request.metadata)
+        self.priors.append(request.memory.get("decision.snapshot"))
         return super().perceive(request)
 
 
@@ -157,7 +159,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
 
-    def test_sequential_replay_passes_previous_memory_to_perception(self) -> None:
+    def test_sequential_replay_uses_shared_memory_without_legacy_handoff(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             _make_images(root, 2)
@@ -195,8 +197,8 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed["phase"], "completed")
         self.assertEqual(len(mapper.priors), 2)
         self.assertIsNone(mapper.priors[0])
-        self.assertIsInstance(mapper.priors[1], dict)
-        self.assertIn("records", mapper.priors[1])
+        self.assertIsInstance(mapper.priors[1], MemorySnapshot)
+        self.assertEqual(mapper.legacy_handoff, [False, False])
 
     def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
         with TemporaryDirectory() as directory:

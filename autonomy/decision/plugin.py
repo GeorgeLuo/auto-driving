@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from autonomy.memory import SharedMemory
+
 from .cycle import DecisionFrameContext
 from .memory import MemorySnapshot
 from .observation import Observation
@@ -27,8 +29,8 @@ class MemoryImplementation(Protocol):
     ) -> MemorySnapshot:
         """Ingest one observation and return the detached retained state."""
 
-    def reset(self) -> MemorySnapshot:
-        """Begin a new lifecycle epoch and return an empty or cleared snapshot."""
+    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
+        """Begin a new epoch; map-backed reducers use the supplied host map."""
 
     def snapshot(self) -> MemorySnapshot:
-        """Return the latest detached state without applying a new observation."""
+        """Return the detached state, including the initial empty state."""

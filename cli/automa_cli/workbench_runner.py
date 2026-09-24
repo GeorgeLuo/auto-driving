@@ -719,7 +719,10 @@ class ImageReplayRunner:
                     if previous_mapper is not None:
                         previous_mapper.reset()
                     if previous_memory_stage is not None:
-                        previous_memory_stage.reset()
+                        if isinstance(previous_memory_stage, ActivatedMemoryStage):
+                            previous_memory_stage.reset(self._shared_memory)
+                        else:
+                            previous_memory_stage.reset()
                 except Exception as exc:  # noqa: BLE001 - selection boundary
                     if next_mapper is not None:
                         try:
@@ -1265,7 +1268,10 @@ class ImageReplayRunner:
                 mapper_status = f"error: {type(exc).__name__}: {exc}"
         if self._memory_stage is not None:
             try:
-                self._memory_stage.reset()
+                if isinstance(self._memory_stage, ActivatedMemoryStage):
+                    self._memory_stage.reset(self._shared_memory)
+                else:
+                    self._memory_stage.reset()
                 memory_status = "reset"
             except Exception as exc:  # noqa: BLE001 - cleanup boundary
                 memory_status = f"error: {type(exc).__name__}: {exc}"

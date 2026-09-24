@@ -13,6 +13,7 @@ from autonomy.decision import (
 )
 from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
 from autonomy.runtime.cycle_host import AutonomyCycleHost
+from implementations.memory.catalog import build_memory_activation_payload
 
 
 class _PushyEngine:
@@ -108,9 +109,10 @@ class _RecordingMemory:
         )
         return self._snapshot
 
-    def reset(self):
+    def reset(self, memory=None):
         from autonomy.decision import empty_memory_snapshot
 
+        del memory
         self.epoch += 1
         self._snapshot = empty_memory_snapshot(
             memory_id=f"mem-reset-{self.epoch}",
@@ -280,6 +282,20 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             self.assertEqual(reset_snapshot.record_count, 0)
             self.assertNotEqual(reset_snapshot.epoch_id, prior_epoch)
             self.assertEqual(host.status()["memory"]["last_record_count"], 0)
+
+    def test_host_reset_before_first_update_advances_shared_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            path.write_text(json.dumps(build_memory_activation_payload()))
+            stage = load_memory_stage_if_present(path)
+            self.assertIsNotNone(stage)
+            host = AutonomyCycleHost(stages=DecisionStages(remember=stage))
+            self.assertEqual(stage.snapshot().epoch_id, "epoch-1")
+            self.assertEqual(host.reset_memory().epoch_id, "epoch-2")
+            self.assertEqual(host.reset_memory().epoch_id, "epoch-3")
+            result = host.run(DecisionFrameContext("f1", 1, 100))
+            self.assertEqual(result.memory.epoch_id, "epoch-3")
+            self.assertEqual(host.shared_memory["decision.snapshot"].epoch_id, "epoch-3")
 
     def test_host_shares_context_and_delivers_memory_updated_observation(self) -> None:
         from dataclasses import replace

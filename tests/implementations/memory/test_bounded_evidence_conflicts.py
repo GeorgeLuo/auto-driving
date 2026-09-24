@@ -11,7 +11,7 @@ from autonomy.decision import (
 from autonomy.perception import ViewLocation
 from implementations.memory.bounded_evidence import (
     CONFLICT_POLICY,
-    BoundedEvidenceLedger,
+    _BoundedEvidenceReducer as BoundedEvidenceReducer,
     json_values_equal,
     location_geometry_signature,
     namespaced_record_id,
@@ -70,10 +70,10 @@ def _thing(
     return thing
 
 
-def _ledger(**kwargs) -> BoundedEvidenceLedger:
+def _ledger(**kwargs) -> BoundedEvidenceReducer:
     defaults = {"max_records": 8, "max_age_ms": 10_000}
     defaults.update(kwargs)
-    return BoundedEvidenceLedger(**defaults)
+    return BoundedEvidenceReducer(**defaults)
 
 
 def _ctx(frame: str, index: int, ts: int) -> DecisionFrameContext:

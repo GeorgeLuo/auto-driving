@@ -168,6 +168,18 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(shared_memory, {"test.plugin_write": "retained"})
         self.assertEqual(actions, [])
 
+    def test_unprintable_memory_error_keeps_memory_failure_boundary(self) -> None:
+        class UnprintableError(Exception):
+            def __str__(self):
+                raise RuntimeError("cannot format")
+
+        def remember(context, observation):
+            raise UnprintableError()
+
+        cycle = DecisionCycle(DecisionStages(remember=remember))
+        with self.assertRaisesRegex(MemoryUpdateError, "unprintable error"):
+            cycle.run(self.context())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

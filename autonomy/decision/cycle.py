@@ -163,7 +163,11 @@ class DecisionCycle:
         except MemoryUpdateError:
             raise
         except Exception as exc:
-            raise MemoryUpdateError(f"{type(exc).__name__}: {exc}") from exc
+            try:
+                detail = str(exc)
+            except Exception:
+                detail = "unprintable error"
+            raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
         if context.memory is not None:
             updated_observation = context.memory.get("decision.observation")
             if (

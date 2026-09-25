@@ -97,6 +97,7 @@ class WorkbenchTests(unittest.TestCase):
         )
         stage_reads = []
         snapshots = []
+        published = []
 
         def memory_factory():
             stage = _default_memory_stage()
@@ -107,6 +108,7 @@ class WorkbenchTests(unittest.TestCase):
                     context.memory["test.stage"] = context.frame_id
                     snapshot = stage(context, observation)
                     snapshots.append(snapshot)
+                    published.append(context.memory["decision.snapshot"])
                     return snapshot
 
                 def reset(self):
@@ -126,7 +128,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(completed["phase"], "completed")
             reads = mapper.plugins[0].reads
             self.assertEqual(reads[0], (None, None))
-            self.assertIs(reads[1][0], snapshots[0])
+            self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], stage_reads[0])
             self.assertEqual(completed["memory"], snapshots[-1].to_dict())
             runner.start()

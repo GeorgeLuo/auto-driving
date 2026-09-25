@@ -12,7 +12,7 @@ from typing import Any
 
 from autonomy.memory import SharedMemory
 
-from .cycle import DecisionFrameContext
+from .cycle import DecisionFrameContext, MemoryUpdateError
 from .memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
     DEFAULT_MAX_PROPERTY_BYTES,
@@ -278,10 +278,9 @@ def instantiate_memory_implementation(
 class ActivatedMemoryStage:
     """Decision-cycle memory stage backed by one activated implementation.
 
-    The framework owns load, reset, timing, status, and failure isolation.
+    The framework owns load, reset, timing, status, and validation.
     Implementations only express update/reset/snapshot policy. Source
-    observations are treated as read-only inputs; failures produce an error
-    snapshot with no retained claims and do not raise into the cycle.
+    observations are treated as read-only inputs; update failures stop the cycle.
     """
 
     def __init__(self, activation: MemoryActivation) -> None:
@@ -315,15 +314,16 @@ class ActivatedMemoryStage:
             # available through context.memory.
             snapshot = self.implementation.update(context, observation)
             owned = self._accept_snapshot(snapshot, operation="update")
+            if owned.health == "error":
+                raise MemoryUpdateError(owned.error or "memory stage returned an error snapshot")
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(format_exception_safely(exc))
-            owned = self._error_snapshot(self.last_error)
-        self.last_duration_ms = (time.perf_counter() - started) * 1000.0
-        self.update_count += 1
-        if context.memory is not None:
-            context.memory["decision.snapshot"] = owned
+            raise
+        finally:
+            self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+            self.update_count += 1
         return self._publish_snapshot(owned)
 
     def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:

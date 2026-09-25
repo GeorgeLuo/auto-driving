@@ -7,6 +7,7 @@ from autonomy.decision import (
     DecisionFrameContext,
     DecisionStages,
     MemoryBounds,
+    MemoryUpdateError,
     empty_memory_snapshot,
     Observation,
 )
@@ -138,8 +139,34 @@ class DecisionCycleTests(unittest.TestCase):
             DecisionStages(remember=lambda context, observation: {"records": []})
         )
 
-        with self.assertRaisesRegex(TypeError, "must return MemorySnapshot or None"):
+        with self.assertRaisesRegex(MemoryUpdateError, "must return MemorySnapshot or None"):
             cycle.run(self.context())
+
+    def test_failed_memory_update_stops_action_without_rewriting_plugin_memory(self) -> None:
+        shared_memory = {}
+        actions = []
+
+        def remember(context, observation):
+            context.memory["test.plugin_write"] = "retained"
+            raise RuntimeError("update failed")
+
+        cycle = DecisionCycle(
+            DecisionStages(
+                remember=remember,
+                choose_action=lambda *args: actions.append(args),
+            )
+        )
+        context = DecisionFrameContext(
+            frame_id="frame_001",
+            frame_index=1,
+            timestamp_ms=123,
+            memory=shared_memory,
+        )
+
+        with self.assertRaisesRegex(MemoryUpdateError, "update failed"):
+            cycle.run(context)
+        self.assertEqual(shared_memory, {"test.plugin_write": "retained"})
+        self.assertEqual(actions, [])
 
 
 if __name__ == "__main__":

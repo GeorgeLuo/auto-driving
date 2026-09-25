@@ -280,7 +280,9 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
-            self.assertEqual(memory_state["memory"]["health"], "error")
+            self.assertIsNone(memory_state["memory"])
+            self.assertIsNone(memory_state["decision"])
+            self.assertIn("injected memory failure", memory_state["failure"]["message"])
 
     def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
         with TemporaryDirectory() as directory:

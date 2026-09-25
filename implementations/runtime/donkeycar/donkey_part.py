@@ -8,7 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from autonomy.decision import DecisionFrameContext
+from autonomy.decision import DecisionFrameContext, MemoryUpdateError
 from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.engine import AutonomyControl
@@ -185,6 +185,7 @@ class AutonomyPilotPart:
         self._skips_since_previous = 0
         self._last_run_monotonic: float | None = None
         self._cycle_inflight = False
+        self._memory_update_halted = False
         self._inflight_frame_id: str | None = None
         self._cycle_thread: threading.Thread | None = None
         self.latest_snapshot: LatestObservationSnapshot | None = None
@@ -246,6 +247,7 @@ class AutonomyPilotPart:
                 "skipped_count": self.skipped_count,
                 "camera_frame_count": self.camera_frame_count,
                 "perception_inflight": self._cycle_inflight,
+                "memory_update_halted": self._memory_update_halted,
                 "algorithm": self.algorithm,
                 "latest": latest,
                 "latest_camera_frame_id": None if camera is None else camera.frame_id,
@@ -476,6 +478,8 @@ class AutonomyPilotPart:
 
     def _claim_cycle_locked(self) -> tuple[bool, str, int, int]:
         now = self._monotonic()
+        if self._memory_update_halted:
+            return False, "", 0, 0
         if self._cycle_inflight or (
             self._last_run_monotonic is not None
             and (now - self._last_run_monotonic) < self.min_interval_s
@@ -869,6 +873,13 @@ class AutonomyPilotPart:
                 error = None
             except Exception as exc:
                 control = AutonomyControl(reason="observation-cycle-error")
+                if isinstance(exc, MemoryUpdateError):
+                    with self._lock:
+                        self._memory_update_halted = True
+                        self._last_pilot_steering = 0.0
+                        self._last_pilot_throttle = 0.0
+                        self._last_control = control.to_dict()
+                        self._last_cycle = None
                 cycle_dict = None
                 completed_at_ms = timestamp_ms()
                 duration_ms = max(0, completed_at_ms - captured_at_ms)

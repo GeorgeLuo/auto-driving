@@ -8,6 +8,7 @@ from pathlib import Path
 from autonomy.decision import (
     DecisionFrameContext,
     DecisionStages,
+    MemoryUpdateError,
     load_memory_stage_if_present,
     read_memory_activation,
 )
@@ -229,7 +230,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             )
             self.assertEqual(stage.snapshot().health, "healthy")
 
-    def test_memory_failure_does_not_alter_engine_control(self) -> None:
+    def test_memory_failure_stops_before_engine_control(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             stage = load_memory_stage_if_present(
                 _write_activation(Path(tmp), fail_on_update=True)
@@ -240,15 +241,12 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
                 manager=manager,
                 stages=DecisionStages(remember=stage),
             )
-            result = host.run(
-                DecisionFrameContext(frame_id="frame_x", frame_index=0, timestamp_ms=1)
-            )
-            self.assertEqual(result.memory.health, "error")
-            self.assertEqual(result.control.reason, "pushy-test-engine")
-            self.assertEqual(result.control.steering, 0.7)
-            self.assertEqual(result.control.throttle, 0.4)
-            self.assertIsNotNone(manager.engine.last_snapshot.memory)
-            self.assertEqual(manager.engine.last_snapshot.memory.health, "error")
+            with self.assertRaisesRegex(MemoryUpdateError, "forced-memory-failure"):
+                host.run(
+                    DecisionFrameContext(frame_id="frame_x", frame_index=0, timestamp_ms=1)
+                )
+            self.assertFalse(hasattr(manager.engine, "last_snapshot"))
+            self.assertIsNone(host.last_result)
 
     def test_idle_engine_reports_has_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -309,10 +307,12 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
         def remember(context, observation):
             context.memory["test.previous"] = context.frame_id
             context.memory["decision.observation"] = replace(observation, summary=("updated",))
-            return empty_memory_snapshot(
+            snapshot = empty_memory_snapshot(
                 memory_id=context.frame_id, epoch_id="epoch-1",
                 bounds=MemoryBounds(max_records=4), created_at_ms=context.timestamp_ms,
             )
+            context.memory["decision.snapshot"] = snapshot
+            return snapshot
 
         manager = AutonomyManager()
         manager.engine = _PushyEngine()

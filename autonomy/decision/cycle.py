@@ -17,6 +17,12 @@ from .observation import Observation, observation_from_perception
 DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v0"
 
 
+class MemoryUpdateError(RuntimeError):
+    """A memory update failed, so this decision cycle cannot continue."""
+
+    boundary = "memory"
+
+
 def timestamp_ms() -> int:
     return int(time.time() * 1000)
 
@@ -148,13 +154,17 @@ class DecisionCycle:
             )
         else:
             observation = None
-        memory = self.stages.remember(context, observation) if self.stages.remember else None
-        if memory is not None and not isinstance(memory, MemorySnapshot):
-            raise TypeError(
-                "decision memory stage must return MemorySnapshot or None"
-            )
+        try:
+            memory = self.stages.remember(context, observation) if self.stages.remember else None
+            if memory is not None and not isinstance(memory, MemorySnapshot):
+                raise TypeError("decision memory stage must return MemorySnapshot or None")
+            if memory is not None and memory.health == "error":
+                raise MemoryUpdateError(memory.error or "memory stage returned an error snapshot")
+        except MemoryUpdateError:
+            raise
+        except Exception as exc:
+            raise MemoryUpdateError(f"{type(exc).__name__}: {exc}") from exc
         if context.memory is not None:
-            context.memory["decision.snapshot"] = memory
             updated_observation = context.memory.get("decision.observation")
             if (
                 isinstance(updated_observation, Observation)

@@ -67,23 +67,22 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertNotEqual(reset.epoch_id, "epoch-1")
             self.assertEqual(stage.snapshot().health, "empty")
 
-    def test_update_failures_become_error_snapshots_without_raising(self) -> None:
+    def test_update_failures_raise_and_record_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"]["implementation_config"]["fail_on_update"] = True
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            snapshot = stage.update(
-                DecisionFrameContext("frame_3", 3, 300),
-                Observation("obs_3", 290, {}),
-            )
-            self.assertEqual(snapshot.health, "error")
-            self.assertIn("forced-update-failure", snapshot.error or "")
-            self.assertEqual(snapshot.record_count, 0)
+            with self.assertRaisesRegex(RuntimeError, "forced-update-failure"):
+                stage.update(
+                    DecisionFrameContext("frame_3", 3, 300),
+                    Observation("obs_3", 290, {}),
+                )
             self.assertEqual(stage.failure_count, 1)
+            self.assertIn("forced-update-failure", stage.last_error or "")
 
-    def test_framework_rejects_over_capacity_snapshots_as_errors(self) -> None:
+    def test_framework_rejects_over_capacity_snapshots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"][
@@ -92,12 +91,11 @@ class MemoryActivationTests(unittest.TestCase):
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            snapshot = stage.update(
-                DecisionFrameContext("frame_4", 4, 400),
-                Observation("obs_4", 390, {}),
-            )
-            self.assertEqual(snapshot.health, "error")
-            self.assertIn("max_records", snapshot.error or "")
+            with self.assertRaisesRegex(ValueError, "max_records"):
+                stage.update(
+                    DecisionFrameContext("frame_4", 4, 400),
+                    Observation("obs_4", 390, {}),
+                )
 
     def test_framework_rejects_removed_max_age_as_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -108,12 +106,11 @@ class MemoryActivationTests(unittest.TestCase):
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            snapshot = stage.update(
-                DecisionFrameContext("frame_5", 5, 500),
-                Observation("obs_5", 490, {}),
-            )
-            self.assertEqual(snapshot.health, "error")
-            self.assertIn("max_age_ms", snapshot.error or "")
+            with self.assertRaisesRegex(ValueError, "max_age_ms"):
+                stage.update(
+                    DecisionFrameContext("frame_5", 5, 500),
+                    Observation("obs_5", 490, {}),
+                )
 
     def test_framework_detaches_returned_snapshots_from_implementation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

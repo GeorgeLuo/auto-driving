@@ -1202,16 +1202,6 @@ class ImageReplayRunner:
                             message=f"perception status is {result.perception.status}",
                             recovery_action="start",
                         )
-                    elif (
-                        result.memory is not None
-                        and _safe_status(result.memory.health) == "error"
-                    ):
-                        self._set_failure_locked(
-                            boundary="memory",
-                            message=result.memory.error
-                            or "memory stage returned an error",
-                            recovery_action="start",
-                        )
                     else:
                         self._wrap_or_complete_locked()
                     self._condition.notify_all()

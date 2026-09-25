@@ -1741,9 +1741,11 @@
         bindMemoryList();
         var memory = currentPayload("memory");
         if (!memory) {
+          var updateFailed = state && state.phase === "failed" &&
+            state.failure_boundary === "memory" && !selectedFrameDetail;
           memoryListSignature = "";
           elements.memoryRecords.textContent = "";
-          setText("memoryHealth", "no snapshot");
+          setText("memoryHealth", updateFailed ? "update failed" : "no snapshot");
           setText("memoryEpoch", null);
           setText("memoryCount", null);
           setText("memoryPolicy", null);
@@ -1752,7 +1754,9 @@
           setText("memorySelection", "no record selected");
           var noSnapshot = document.createElement("p");
           noSnapshot.className = "memory-empty muted help";
-          noSnapshot.textContent = "No retained evidence yet.";
+          noSnapshot.textContent = updateFailed
+            ? "Memory update stopped this replay. See Failure for details."
+            : "No retained evidence yet.";
           elements.memoryRecords.appendChild(noSnapshot);
           elements.memorySelected.textContent = "Select a server-produced memory record to inspect its provenance.";
           return;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import secrets
 import threading
 import time
@@ -13,6 +14,8 @@ from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.engine import AutonomyControl
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+
+logger = logging.getLogger(__name__)
 
 ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA = "automa_onboard_observation_snapshot_v0"
 OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
@@ -872,6 +875,7 @@ class AutonomyPilotPart:
                 status = "ok"
                 error = None
             except Exception as exc:
+                logger.exception("Autonomy decision cycle failed for frame %s", frame_id)
                 control = AutonomyControl(reason="observation-cycle-error")
                 if isinstance(exc, MemoryUpdateError):
                     with self._lock:

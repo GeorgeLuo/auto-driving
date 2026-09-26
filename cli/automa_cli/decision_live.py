@@ -99,6 +99,8 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         else None
     )
     observation_value = observation_value if isinstance(observation_value, dict) else None
+    # Serialized retained evidence from shared_memory["decision.snapshot"] in
+    # the published cycle source.
     memory = source.get("memory") if isinstance(source, dict) else None
     memory_value = (
         memory.get("value")

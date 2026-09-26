@@ -76,6 +76,7 @@ def inspect_decision_sequence(
         if decision.get("engine_id") != ENGINE_ID:
             raise ValueError(f"Inspector requires the {ENGINE_ID} engine.")
         config = validate_shadow_engine_config(decision["engine_config"])
+    # Recorded retained evidence originated at shared_memory["decision.snapshot"].
     if frame["memory"] is None:
         raise ValueError("Selected frame has no retained memory to reposition. Choose a frame with image evidence.")
 

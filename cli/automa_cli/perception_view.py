@@ -260,6 +260,8 @@ def _publication_payload(
     source = perception_record or {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
+    # Retained evidence from shared_memory["decision.snapshot"], carried on
+    # the frame record.
     memory = source.get("memory")
     memory = memory if isinstance(memory, dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)

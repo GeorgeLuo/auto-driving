@@ -13,7 +13,7 @@ def prepare_inspection_scenarios(
     memory: dict[str, Any],
     config: Mapping[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Place the proposal's image evidence on each side and name the scenarios."""
+    """Place image evidence from shared_memory["decision.snapshot"] on each side and name the scenarios."""
 
     cfg = parse_engine_config(config)
     scenarios: dict[str, dict[str, Any]] = {}

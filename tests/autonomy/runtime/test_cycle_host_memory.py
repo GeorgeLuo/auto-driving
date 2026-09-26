@@ -8,11 +8,13 @@ from pathlib import Path
 from autonomy.decision import (
     DecisionFrameContext,
     DecisionStages,
+    MemoryUpdateError,
     load_memory_stage_if_present,
     read_memory_activation,
 )
 from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
 from autonomy.runtime.cycle_host import AutonomyCycleHost
+from implementations.memory.catalog import build_memory_activation_payload
 
 
 class _PushyEngine:
@@ -108,9 +110,10 @@ class _RecordingMemory:
         )
         return self._snapshot
 
-    def reset(self):
+    def reset(self, memory=None):
         from autonomy.decision import empty_memory_snapshot
 
+        del memory
         self.epoch += 1
         self._snapshot = empty_memory_snapshot(
             memory_id=f"mem-reset-{self.epoch}",
@@ -227,7 +230,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             )
             self.assertEqual(stage.snapshot().health, "healthy")
 
-    def test_memory_failure_does_not_alter_engine_control(self) -> None:
+    def test_memory_failure_stops_before_engine_control(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             stage = load_memory_stage_if_present(
                 _write_activation(Path(tmp), fail_on_update=True)
@@ -238,15 +241,12 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
                 manager=manager,
                 stages=DecisionStages(remember=stage),
             )
-            result = host.run(
-                DecisionFrameContext(frame_id="frame_x", frame_index=0, timestamp_ms=1)
-            )
-            self.assertEqual(result.memory.health, "error")
-            self.assertEqual(result.control.reason, "pushy-test-engine")
-            self.assertEqual(result.control.steering, 0.7)
-            self.assertEqual(result.control.throttle, 0.4)
-            self.assertIsNotNone(manager.engine.last_snapshot.memory)
-            self.assertEqual(manager.engine.last_snapshot.memory.health, "error")
+            with self.assertRaisesRegex(MemoryUpdateError, "forced-memory-failure"):
+                host.run(
+                    DecisionFrameContext(frame_id="frame_x", frame_index=0, timestamp_ms=1)
+                )
+            self.assertFalse(hasattr(manager.engine, "last_snapshot"))
+            self.assertIsNone(host.last_result)
 
     def test_idle_engine_reports_has_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -280,6 +280,49 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             self.assertEqual(reset_snapshot.record_count, 0)
             self.assertNotEqual(reset_snapshot.epoch_id, prior_epoch)
             self.assertEqual(host.status()["memory"]["last_record_count"], 0)
+
+    def test_host_reset_before_first_update_advances_shared_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            path.write_text(json.dumps(build_memory_activation_payload()))
+            stage = load_memory_stage_if_present(path)
+            self.assertIsNotNone(stage)
+            host = AutonomyCycleHost(stages=DecisionStages(remember=stage))
+            self.assertEqual(stage.snapshot().epoch_id, "epoch-1")
+            self.assertEqual(host.reset_memory().epoch_id, "epoch-2")
+            self.assertEqual(host.reset_memory().epoch_id, "epoch-3")
+            result = host.run(DecisionFrameContext("f1", 1, 100))
+            self.assertEqual(result.memory.epoch_id, "epoch-3")
+            self.assertEqual(host.shared_memory["decision.snapshot"].epoch_id, "epoch-3")
+
+    def test_host_shares_context_and_delivers_memory_updated_observation(self) -> None:
+        from dataclasses import replace
+        from autonomy.decision import Observation, MemoryBounds, empty_memory_snapshot
+        seen = []
+
+        def observe(context, perception):
+            seen.append(context.memory.get("test.previous"))
+            return Observation(context.frame_id, context.timestamp_ms, {})
+
+        def remember(context, observation):
+            context.memory["test.previous"] = context.frame_id
+            context.memory["decision.observation"] = replace(observation, summary=("updated",))
+            snapshot = empty_memory_snapshot(
+                memory_id=context.frame_id, epoch_id="epoch-1",
+                bounds=MemoryBounds(max_records=4), created_at_ms=context.timestamp_ms,
+            )
+            context.memory["decision.snapshot"] = snapshot
+            return snapshot
+
+        manager = AutonomyManager()
+        manager.engine = _PushyEngine()
+        host = AutonomyCycleHost(manager=manager, stages=DecisionStages(observe=observe, remember=remember))
+        for index in range(2):
+            result = host.run(DecisionFrameContext(f"frame-{index}", index, index))
+            self.assertEqual(result.observation.summary, ("updated",))
+            self.assertEqual(manager.engine.last_snapshot.observation.summary, ("updated",))
+            self.assertIs(result.memory, host.shared_memory["decision.snapshot"])
+        self.assertEqual(seen, [None, "frame-0"])
 
     def test_host_reset_memory_without_stage_returns_none(self) -> None:
         host = AutonomyCycleHost()

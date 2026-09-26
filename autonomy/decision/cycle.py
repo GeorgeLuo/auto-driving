@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Callable
 
+from autonomy.memory import SharedMemory
 from autonomy.perception import PerceptionText
 from autonomy.runtime.engine import AutonomyControl
 from autonomy.vehicle import SensorSnapshot
@@ -14,6 +15,12 @@ from .observation import Observation, observation_from_perception
 
 
 DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v0"
+
+
+class MemoryUpdateError(RuntimeError):
+    """A memory update failed, so this decision cycle cannot continue."""
+
+    boundary = "memory"
 
 
 def timestamp_ms() -> int:
@@ -32,6 +39,7 @@ class DecisionFrameContext:
     user_steering: float = 0.0
     user_throttle: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -146,11 +154,30 @@ class DecisionCycle:
             )
         else:
             observation = None
-        memory = self.stages.remember(context, observation) if self.stages.remember else None
-        if memory is not None and not isinstance(memory, MemorySnapshot):
-            raise TypeError(
-                "decision memory stage must return MemorySnapshot or None"
-            )
+        try:
+            memory = self.stages.remember(context, observation) if self.stages.remember else None
+            if memory is not None and not isinstance(memory, MemorySnapshot):
+                raise TypeError("decision memory stage must return MemorySnapshot or None")
+            if memory is not None and memory.health == "error":
+                raise MemoryUpdateError(memory.error or "memory stage returned an error snapshot")
+        except MemoryUpdateError:
+            raise
+        except Exception as exc:
+            try:
+                detail = str(exc)
+            except Exception:
+                detail = "unprintable error"
+            raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
+        if context.memory is not None:
+            updated_observation = context.memory.get("decision.observation")
+            if (
+                isinstance(updated_observation, Observation)
+                and observation is not None
+                and updated_observation.observation_id == observation.observation_id
+                and memory is not None
+                and memory.health != "error"
+            ):
+                observation = updated_observation
         patterns = (
             self.stages.update_patterns(context, observation, memory)
             if self.stages.update_patterns

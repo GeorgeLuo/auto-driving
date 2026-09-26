@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .cycle import DecisionFrameContext
+from autonomy.memory import SharedMemory
+
+from .cycle import DecisionFrameContext, MemoryUpdateError
 from .memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
     DEFAULT_MAX_PROPERTY_BYTES,
@@ -276,10 +278,9 @@ def instantiate_memory_implementation(
 class ActivatedMemoryStage:
     """Decision-cycle memory stage backed by one activated implementation.
 
-    The framework owns load, reset, timing, status, and failure isolation.
+    The framework owns load, reset, timing, status, and validation.
     Implementations only express update/reset/snapshot policy. Source
-    observations are treated as read-only inputs; failures produce an error
-    snapshot with no retained claims and do not raise into the cycle.
+    observations are treated as read-only inputs; update failures stop the cycle.
     """
 
     def __init__(self, activation: MemoryActivation) -> None:
@@ -291,7 +292,9 @@ class ActivatedMemoryStage:
         self.update_count = 0
         self.reset_count = 0
         self.failure_count = 0
-        self.last_snapshot = self.reset()
+        # The host map is not available during construction; inspect the
+        # implementation's initial snapshot without counting a real reset.
+        self.last_snapshot = self.snapshot()
 
     def __call__(
         self,
@@ -307,23 +310,30 @@ class ActivatedMemoryStage:
     ) -> MemorySnapshot:
         started = time.perf_counter()
         try:
-            # Observations are frozen; deepcopy defensive metadata only if needed
-            # by refusing mutation contracts: never pass writable shared state.
+            # Observation evidence is separate from the host-owned shared map
+            # available through context.memory.
             snapshot = self.implementation.update(context, observation)
             owned = self._accept_snapshot(snapshot, operation="update")
+            if owned.health == "error":
+                raise MemoryUpdateError(owned.error or "memory stage returned an error snapshot")
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(format_exception_safely(exc))
-            owned = self._error_snapshot(self.last_error)
-        self.last_duration_ms = (time.perf_counter() - started) * 1000.0
-        self.update_count += 1
+            raise
+        finally:
+            self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+            self.update_count += 1
         return self._publish_snapshot(owned)
 
-    def reset(self) -> MemorySnapshot:
+    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
         started = time.perf_counter()
         try:
-            snapshot = self.implementation.reset()
+            snapshot = (
+                self.implementation.reset(memory)
+                if memory is not None
+                else self.implementation.reset()
+            )
             owned = self._accept_snapshot(snapshot, operation="reset")
             if owned.health not in {"empty", "unavailable"}:
                 raise ValueError(
@@ -347,6 +357,8 @@ class ActivatedMemoryStage:
             )
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
+        if memory is not None:
+            memory["decision.snapshot"] = owned
         return self._publish_snapshot(owned)
 
     def snapshot(self) -> MemorySnapshot:

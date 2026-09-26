@@ -1063,6 +1063,7 @@ def _run_memory_sequence(
 ) -> dict[str, Any]:
     # Fresh epoch for this pass (stage already reset on construction).
     per_frame: list[dict[str, Any]] = []
+    shared_memory: dict[str, Any] = {}
     final_snapshot = stage.snapshot()
     for frame in frames:
         observation = Observation.from_dict(frame["observation"])
@@ -1070,6 +1071,7 @@ def _run_memory_sequence(
             frame_id=str(frame["frame_id"]),
             frame_index=int(frame["frame_index"]),
             timestamp_ms=int(frame["timestamp_ms"]),
+            memory=shared_memory,
         )
         snapshot = stage.update(context, observation)
         final_snapshot = snapshot

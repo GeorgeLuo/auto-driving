@@ -36,10 +36,10 @@ class AutonomyCycleHost:
         self.last_result: DecisionCycleResult | None = None
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
-        if context.memory is None:
-            context = replace(context, memory=self.shared_memory)
+        if context.shared_memory is None:
+            context = replace(context, shared_memory=self.shared_memory)
         else:
-            self.shared_memory = context.memory
+            self.shared_memory = context.shared_memory
         result = self.cycle.run(context)
         self.last_result = result
         return result
@@ -85,6 +85,7 @@ class AutonomyCycleHost:
         patterns,
         projections,
     ):
+        # memory is retained evidence from shared_memory["decision.snapshot"].
         del patterns, projections
         return self.manager.step(
             AutonomySnapshot(

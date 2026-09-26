@@ -29,7 +29,7 @@ class MemoryImplementation(Protocol):
     ) -> MemorySnapshot:
         """Ingest one observation and return the detached retained state."""
 
-    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
+    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
         """Begin a new epoch; map-backed reducers use the supplied host map."""
 
     def snapshot(self) -> MemorySnapshot:

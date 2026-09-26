@@ -1071,7 +1071,7 @@ def _run_memory_sequence(
             frame_id=str(frame["frame_id"]),
             frame_index=int(frame["frame_index"]),
             timestamp_ms=int(frame["timestamp_ms"]),
-            memory=shared_memory,
+            shared_memory=shared_memory,
         )
         snapshot = stage.update(context, observation)
         final_snapshot = snapshot

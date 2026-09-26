@@ -14,7 +14,7 @@ def build_perception_request(
     *,
     output_dir: Path | None = None,
     metadata: dict[str, Any] | None = None,
-    memory: SharedMemory | None = None,
+    shared_memory: SharedMemory | None = None,
 ) -> PerceptionRequest:
     """Wrap a sensor snapshot without assuming which components plugins need."""
 
@@ -22,5 +22,5 @@ def build_perception_request(
         snapshot=snapshot,
         output_dir=output_dir,
         metadata=dict(metadata or {}),
-        memory=memory,
+        shared_memory=shared_memory,
     )

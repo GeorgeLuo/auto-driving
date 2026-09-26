@@ -113,7 +113,7 @@ class PerceptionRequest:
     metadata: dict[str, Any] = field(default_factory=dict)
     _components: dict[str, Any] = field(default_factory=dict, repr=False)
     _component_errors: dict[str, str] = field(default_factory=dict, repr=False)
-    memory: SharedMemory | None = field(default=None, repr=False, compare=False)
+    shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def sensor(self, sensor_id: str) -> SensorReading | None:
         return self.snapshot.readings.get(sensor_id)

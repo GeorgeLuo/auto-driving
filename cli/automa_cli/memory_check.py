@@ -2825,7 +2825,7 @@ def _feed_frames(
             frame_id=str(frame["frame_id"]),
             frame_index=int(frame["frame_index"]),
             timestamp_ms=int(frame["timestamp_ms"]),
-            memory=shared_memory,
+            shared_memory=shared_memory,
         )
         snapshot = stage.update(context, observation)
     return snapshot.to_dict()

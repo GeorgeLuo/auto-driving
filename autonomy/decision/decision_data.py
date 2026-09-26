@@ -446,6 +446,7 @@ class DecisionDataSource:
     frame_index: int
     timestamp_ms: int
     observation: ComponentEnvelope
+    # Retained evidence from shared_memory["decision.snapshot"].
     memory: ComponentEnvelope
     patterns: ComponentEnvelope
     projections: ComponentEnvelope
@@ -554,6 +555,7 @@ def build_decision_data_source(
     observation: Observation | dict[str, Any] | None = None,
     observation_configured: bool = False,
     observation_error: str | None = None,
+    # Retained evidence from shared_memory["decision.snapshot"].
     memory: MemorySnapshot | None = None,
     patterns: ComponentEnvelope | None = None,
     projections: ComponentEnvelope | None = None,

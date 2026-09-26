@@ -37,7 +37,7 @@ class MultiObstructionMemory:
     def __init__(self, **config):
         self.config = config
         self.bounds = bounds_from_config(config)
-        self._memory = None  # Reference to the host's map, never a private copy.
+        self._shared_memory = None  # Reference to the host's map, never a private copy.
         self._empty = empty_memory_snapshot(
             memory_id="memory-reset-1", epoch_id="epoch-1", bounds=self.bounds,
             created_at_ms=0, implementation_id=self.implementation_id,
@@ -45,19 +45,19 @@ class MultiObstructionMemory:
 
     def snapshot(self) -> MemorySnapshot:
         snapshot = self._empty
-        if self._memory is not None:
-            snapshot = self._memory.get("decision.snapshot") or self._empty
+        if self._shared_memory is not None:
+            snapshot = self._shared_memory.get("decision.snapshot") or self._empty
         return detach_memory_snapshot(snapshot)
 
-    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
-        if memory is not None:
-            self._memory = memory
-        if self._memory is None:
+    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
+        if shared_memory is not None:
+            self._shared_memory = shared_memory
+        if self._shared_memory is None:
             raise ValueError("tracking memory reset requires a shared-memory map")
         epoch = f"epoch-{uuid4().hex}"
         for key in (*self.history_keys, "decision.observation"):
-            self._memory.pop(key, None)
-        self._memory["decision.snapshot"] = replace(
+            self._shared_memory.pop(key, None)
+        self._shared_memory["decision.snapshot"] = replace(
             self._empty, memory_id=f"memory-reset-{epoch}", epoch_id=epoch,
         )
         return self.snapshot()
@@ -67,30 +67,32 @@ class MultiObstructionMemory:
             self.snapshot(), context, observation,
             implementation_id=self.implementation_id, **self.config,
         )
-        context.memory["decision.snapshot"] = snapshot
+        context.shared_memory["decision.snapshot"] = snapshot
         return snapshot
 
     def update(self, context: DecisionFrameContext, observation: Observation | None) -> MemorySnapshot:
-        memory = context.memory
-        if memory is None:
+        shared_memory = context.shared_memory
+        if shared_memory is None:
             raise ValueError("tracking memory requires a host shared-memory map")
-        self._memory = memory
-        memory.pop("decision.observation", None)
+        self._shared_memory = shared_memory
+        shared_memory.pop("decision.observation", None)
         marker = next((signal for signal in observation.signals
                        if signal.get("signal_id") == "multi_obstruction_candidates"), None) if observation else None
         if marker is None:
             for key in self.history_keys:
-                memory.pop(key, None)
+                shared_memory.pop(key, None)
             return self._retain_evidence(context, observation)
 
         properties = marker["properties"]
         config = properties["tracking_config"]
         tracker = ObstructionTrackState(**config)
         memory_tracks_read = tracker._restore_from_history(
-            memory.get("multi_obstruction_tracks.history")
+            shared_memory.get("multi_obstruction_tracks.history")
         )
-        tracker._previous_gray = memory.get("multi_obstruction_tracks.previous_gray")
-        tracker._next_track_id = memory.get("multi_obstruction_tracks.next_track_id", tracker._next_track_id)
+        tracker._previous_gray = shared_memory.get("multi_obstruction_tracks.previous_gray")
+        tracker._next_track_id = shared_memory.get(
+            "multi_obstruction_tracks.next_track_id", tracker._next_track_id
+        )
         frame = provide_camera_frame(build_perception_request(context.sensor_snapshot), FRONT_CAMERA_RGB_INPUT)
         gray = normalize_gray(frame.rgb, **properties["normalization"])
         source = marker.get("source_plugin_id")
@@ -148,8 +150,8 @@ class MultiObstructionMemory:
                       "tracking_implementation": self.implementation_id},
         )
         snapshot = self._retain_evidence(context, tracked_observation)
-        memory["multi_obstruction_tracks.history"] = lookback_tracks
-        memory["multi_obstruction_tracks.previous_gray"] = gray
-        memory["multi_obstruction_tracks.next_track_id"] = tracker._next_track_id
-        memory["decision.observation"] = tracked_observation
+        shared_memory["multi_obstruction_tracks.history"] = lookback_tracks
+        shared_memory["multi_obstruction_tracks.previous_gray"] = gray
+        shared_memory["multi_obstruction_tracks.next_track_id"] = tracker._next_track_id
+        shared_memory["decision.observation"] = tracked_observation
         return snapshot

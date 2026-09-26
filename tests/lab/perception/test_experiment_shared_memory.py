@@ -46,7 +46,7 @@ class ExperimentSharedMemoryTests(unittest.TestCase):
         mapper.plugins = (TemporalFloorContinuityPlugin(max_hold_frames=1),)
         memory = {}
         rgb = np.zeros((72, 96, 3), dtype=np.uint8)
-        request = lambda state: build_perception_request(_snapshot(_array_reading(rgb)), memory=state)
+        request = lambda state: build_perception_request(_snapshot(_array_reading(rgb)), shared_memory=state)
         boundary = _boundary("left", (0.18, 0.42, 0.36, 0.52), 0.8)
         with patch.object(FloorContinuityPlugin, "perceive", return_value=PerceptionEvidenceBatch(things=(boundary,))):
             mapper.perceive(request(memory))
@@ -73,17 +73,17 @@ class ExperimentSharedMemoryTests(unittest.TestCase):
                 snapshot = _snapshot(_array_reading(rgb))
                 region = _region("box", (0.1, 0.2, 0.3, 0.5))
 
-                def step(current_mapper, current_memory):
-                    perception = current_mapper.perceive(build_perception_request(snapshot, memory=current_memory))
+                def step(current_mapper, shared_memory):
+                    perception = current_mapper.perceive(build_perception_request(snapshot, shared_memory=shared_memory))
                     observation = observation_from_perception(
                         observation_id="frame", sensor_snapshot=snapshot, perception=perception,
                         created_at_ms=10,
                     )
                     MultiObstructionMemory().update(DecisionFrameContext(
                         frame_id="frame", frame_index=0, timestamp_ms=10,
-                        sensor_snapshot=snapshot, memory=current_memory,
+                        sensor_snapshot=snapshot, shared_memory=shared_memory,
                     ), observation)
-                    return current_memory["decision.observation"]
+                    return shared_memory["decision.observation"]
 
                 with patch.object(type(mapper.plugins[0]), "_detect_candidates", return_value=([region], rgb[:, :, 0], {})):
                     first = step(mapper, memory)

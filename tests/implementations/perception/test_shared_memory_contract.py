@@ -72,9 +72,9 @@ class SharedMemoryContractTests(unittest.TestCase):
         self.rgb = np.random.default_rng(7).integers(0, 256, (72, 96, 3), dtype=np.uint8)
         self.shifted = np.roll(self.rgb, 2, axis=1)
 
-    def request(self, rgb, memory, output_dir=None):
+    def request(self, rgb, shared_memory, output_dir=None):
         return build_perception_request(
-            _snapshot(_array_reading(rgb), "frame"), memory=memory, output_dir=output_dir,
+            _snapshot(_array_reading(rgb), "frame"), shared_memory=shared_memory, output_dir=output_dir,
         )
 
     def test_lab_inventory_is_covered(self):
@@ -121,7 +121,7 @@ class SharedMemoryContractTests(unittest.TestCase):
                 mapper.perceive(self.request(self.rgb, memory))
                 self.assertGreater(len(memory), 1)
                 missing = SensorSnapshot(read_id="absent", readings={}, started_at_ms=2, completed_at_ms=2)
-                self.assertEqual(mapper.perceive(build_perception_request(missing, memory=memory)).status, "unavailable")
+                self.assertEqual(mapper.perceive(build_perception_request(missing, shared_memory=memory)).status, "unavailable")
                 self.assertEqual(memory, {"other.plugin.history": 42})
                 restarted = mapper.perceive(self.request(self.rgb, memory))
                 self.assertEqual(restarted.status, "warming_up" if plugin_id == "motion_tracks" else "ok")

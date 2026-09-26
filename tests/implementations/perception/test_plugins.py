@@ -96,10 +96,10 @@ class PerceptionPluginTests(unittest.TestCase):
         )
 
         memory = {}
-        first = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "first"), memory=memory))
-        second = mapper.perceive(build_perception_request(_snapshot(_array_reading(shifted), "second"), memory=memory))
+        first = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "first"), shared_memory=memory))
+        second = mapper.perceive(build_perception_request(_snapshot(_array_reading(shifted), "second"), shared_memory=memory))
         mapper.reset(memory)
-        after_reset = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "third"), memory=memory))
+        after_reset = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "third"), shared_memory=memory))
 
         self.assertEqual(first.status, "warming_up")
         self.assertIn(second.status, {"ok", "empty"})
@@ -141,13 +141,13 @@ class PerceptionPluginTests(unittest.TestCase):
             output_dir = Path(tmp)
             memory = {}
             mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(rgb), "first"), output_dir=output_dir, memory=memory)
+                build_perception_request(_snapshot(_array_reading(rgb), "first"), output_dir=output_dir, shared_memory=memory)
             )
             result = mapper.perceive(
                 build_perception_request(
                     _snapshot(_array_reading(shifted), "second"),
                     output_dir=output_dir,
-                    memory=memory,
+                    shared_memory=memory,
                 )
             )
             key = "motion-tracks-v0/scene_tracks"

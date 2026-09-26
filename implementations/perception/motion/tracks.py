@@ -91,29 +91,29 @@ class MotionTracksPlugin:
         self._tracks: dict[int, _SceneTrack] = {}
         self._next_track_id = 1
 
-    def reset(self, memory=None) -> None:
-        if memory is not None:
-            memory.pop(self._memory_key, None)
+    def reset(self, shared_memory=None) -> None:
+        if shared_memory is not None:
+            shared_memory.pop(self._memory_key, None)
 
     @property
     def _memory_key(self) -> str:
         return f"perception.{self.plugin_id}.history"
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
-        if inputs.memory is None:
+        if inputs.shared_memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
         # Only this call owns the mutable algorithm workspace. Configuration
         # stays on the plugin; history is read from and committed to the map.
         step = copy(self)
         step._initialize_history()
-        for name, value in deepcopy(inputs.memory.get(self._memory_key, {})).items():
+        for name, value in deepcopy(inputs.shared_memory.get(self._memory_key, {})).items():
             setattr(step, name, value)
         try:
             batch = step._perceive_frame(inputs)
         except PerceptionPluginWarmingUp:
-            inputs.memory[self._memory_key] = step._history()
+            inputs.shared_memory[self._memory_key] = step._history()
             raise
-        inputs.memory[self._memory_key] = step._history()
+        inputs.shared_memory[self._memory_key] = step._history()
         return batch
 
     def _history(self) -> dict[str, Any]:

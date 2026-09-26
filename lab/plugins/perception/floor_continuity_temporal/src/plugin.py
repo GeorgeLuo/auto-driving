@@ -87,19 +87,19 @@ class TemporalFloorContinuityPlugin:
     def _memory_key(self) -> str:
         return f"perception.{self.plugin_id}.history"
 
-    def reset(self, memory=None) -> None:
-        if memory is not None:
-            memory.pop(self._memory_key, None)
+    def reset(self, shared_memory=None) -> None:
+        if shared_memory is not None:
+            shared_memory.pop(self._memory_key, None)
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
-        if inputs.memory is None:
+        if inputs.shared_memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
         step = copy(self)
         step._initialize_history()
-        for name, value in deepcopy(inputs.memory.get(self._memory_key, {})).items():
+        for name, value in deepcopy(inputs.shared_memory.get(self._memory_key, {})).items():
             setattr(step, name, value)
         batch = step._perceive_frame(inputs)
-        inputs.memory[self._memory_key] = {
+        inputs.shared_memory[self._memory_key] = {
             name: getattr(step, name)
             for name in ("_last_bbox", "_last_confidence", "_misses", "_age")
         }

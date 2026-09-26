@@ -107,22 +107,22 @@ class CandidateWorkerIntegrationTests(unittest.TestCase):
             memory = {"other.plugin": np.array([1, 2, 3])}
             with patch.object(lab_plugins, "LAB_PERCEPTION_ROOT", root):
                 with LabPerceptionMapper("motion", timeout_s=10) as mapper:
-                    mapper.perceive(build_perception_request(snapshot, memory=memory))
+                    mapper.perceive(build_perception_request(snapshot, shared_memory=memory))
                     copied = deepcopy(memory)
                     Image.fromarray(np.roll(rgb, 2, axis=1)).save(image_path)
-                    reused = mapper.perceive(build_perception_request(snapshot, memory=memory))
+                    reused = mapper.perceive(build_perception_request(snapshot, shared_memory=memory))
                 with LabPerceptionMapper("motion", timeout_s=10) as recreated:
-                    result = recreated.perceive(build_perception_request(snapshot, memory=copied))
+                    result = recreated.perceive(build_perception_request(snapshot, shared_memory=copied))
                     self.assertEqual(semantic(result), semantic(reused))
                     self.assertEqual(plain(memory), plain(copied))
                     self.assertIn("perception.motion-tracks-v0.history", memory)
                     recreated.reset(copied)
                     self.assertEqual(plain(copied), plain({"other.plugin": np.array([1, 2, 3])}))
-                    result = recreated.perceive(build_perception_request(snapshot, memory=copied))
+                    result = recreated.perceive(build_perception_request(snapshot, shared_memory=copied))
                     self.assertEqual(result.plugin_runs[-1].status, "warming_up")
                     absent = SensorSnapshot(read_id="absent", readings={}, started_at_ms=2, completed_at_ms=2)
                     with self.assertRaisesRegex(RuntimeError, "front camera unavailable"):
-                        recreated.perceive(build_perception_request(absent, memory=copied))
+                        recreated.perceive(build_perception_request(absent, shared_memory=copied))
                     self.assertNotIn("perception.motion-tracks-v0.history", copied)
 
 

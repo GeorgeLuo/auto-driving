@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy, deepcopy
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,7 @@ class TemporalFloorContinuityPlugin:
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="windowed",
+        memory_required=True,
         description=(
             "Associate one floor-continuity interruption across adjacent frames "
             "and smooth its image-space geometry before decision use."
@@ -74,15 +76,36 @@ class TemporalFloorContinuityPlugin:
         )
         self.max_hold_frames = max(0, int(max_hold_frames))
         self._base = FloorContinuityPlugin(**base_config)
-        self.reset()
 
-    def reset(self) -> None:
+    def _initialize_history(self) -> None:
         self._last_bbox: tuple[float, float, float, float] | None = None
         self._last_confidence = 0.0
         self._misses = 0
         self._age = 0
 
+    @property
+    def _memory_key(self) -> str:
+        return f"perception.{self.plugin_id}.history"
+
+    def reset(self, memory=None) -> None:
+        if memory is not None:
+            memory.pop(self._memory_key, None)
+
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        if inputs.memory is None:
+            raise ValueError(f"{self.plugin_id} requires host shared memory")
+        step = copy(self)
+        step._initialize_history()
+        for name, value in deepcopy(inputs.memory.get(self._memory_key, {})).items():
+            setattr(step, name, value)
+        batch = step._perceive_frame(inputs)
+        inputs.memory[self._memory_key] = {
+            name: getattr(step, name)
+            for name in ("_last_bbox", "_last_confidence", "_misses", "_age")
+        }
+        return batch
+
+    def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)
         base = self._base.perceive(inputs)
         raw = [thing for thing in base.things if thing.kind == "floor_boundary"]

@@ -10,7 +10,10 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.perception import PerceptionDiagnosticSink, PerceptionPluginInputs
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.perception import PerceptionDiagnosticSink, PerceptionPluginInputs, PerceivedThing
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from lab.plugins.memory.multi_obstruction_tracks.plugin import MultiObstructionMemory
 from implementations.perception.components import CameraFrame
 from lab.plugins.perception.multi_obstruction_tracks.src.plugin import MultiObstructionTracksPlugin
 
@@ -44,7 +47,9 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
     output_dir.mkdir(parents=True, exist_ok=False)
     (output_dir / "overlays").mkdir()
     capture_dir = manifest_path.parent
-    plugin = MultiObstructionTracksPlugin(**config)  # fresh state for each capture
+    plugin = MultiObstructionTracksPlugin(**config)
+    tracking = MultiObstructionMemory()
+    shared_memory: dict[str, Any] = {}  # Run-owned history, independent of plugin lifetime.
     diagnostics = _NoopDiagnostics()
     ledger: list[dict[str, Any]] = []
     detections_path = output_dir / "detections.jsonl"
@@ -58,19 +63,41 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
                      "image_sha256": sha256(image_path), "available": image_path.is_file()}
             ledger.append(entry)
             if not image_path.is_file():
+                tracking.reset(shared_memory)
                 failures.append({"frame_id": item["frame_id"], "reason": "missing_image"})
                 detections_file.write(json.dumps({**entry, "status": "unavailable", "things": []}, sort_keys=True) + "\n")
                 continue
             bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
             if bgr is None:
+                tracking.reset(shared_memory)
                 failures.append({"frame_id": item["frame_id"], "reason": "decode_failed"})
                 detections_file.write(json.dumps({**entry, "status": "error", "things": []}, sort_keys=True) + "\n")
                 continue
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             frame = CameraFrame("front_camera", int(item["captured_at_ms"]), np.ascontiguousarray(rgb), image_path, {"source_id": item["frame_id"]})
-            batch = plugin.perceive(PerceptionPluginInputs(item["frame_id"], int(item["captured_at_ms"]), {"frame": frame}, diagnostics, {"sequence_index": position}))
+            batch = plugin.perceive(PerceptionPluginInputs(
+                item["frame_id"], int(item["captured_at_ms"]), {"frame": frame},
+                diagnostics, {"sequence_index": position}, memory=shared_memory,
+            ))
+            sensors = SensorSnapshot(
+                read_id=item["frame_id"], readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
+                    sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
+                    captured_at_ms=frame.captured_at_ms, value=rgb,
+                    metadata={"color_space": "RGB"},
+                )}, started_at_ms=frame.captured_at_ms, completed_at_ms=frame.captured_at_ms,
+            )
+            tracking.update(DecisionFrameContext(
+                frame_id=item["frame_id"], frame_index=position,
+                timestamp_ms=frame.captured_at_ms, sensor_snapshot=sensors, memory=shared_memory,
+            ), Observation(
+                observation_id=item["frame_id"], created_at_ms=frame.captured_at_ms,
+                sensor_snapshot={}, things=tuple(thing.to_dict() for thing in batch.things),
+                signals=tuple(signal.to_dict() for signal in batch.signals),
+            ))
+            tracked = shared_memory["decision.observation"]
             things = []
-            for thing in batch.things:
+            for payload in tracked.things:
+                thing = PerceivedThing.from_dict(payload)
                 loc = thing.location
                 props = dict(thing.properties)
                 box = list(loc.bbox_xyxy_norm or [])
@@ -81,12 +108,14 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
                 cv2.rectangle(bgr, (x0, y0), (x1, y1), (0, 220, 0), 2)
                 cv2.putText(bgr, thing.thing_id, (x0, max(15, y0 - 4)), cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 220, 0), 1, cv2.LINE_AA)
             record = {**entry, "status": "ok", "width_px": int(bgr.shape[1]), "height_px": int(bgr.shape[0]), "things": things,
-                      "signal_count": len(batch.signals), "measurement": dict(batch.measurements)}
+                      "signal_count": len(tracked.signals), "measurement": {**batch.measurements, "tracking": tracked.metadata["tracking"]}}
             detections_file.write(json.dumps(record, sort_keys=True, default=str) + "\n")
             cv2.imwrite(str(output_dir / "overlays" / f"{position:04d}-{item['frame_id']}.jpg"), bgr)
     frozen = {"schema": "durable_obstacle_p1_baseline_v1", "manifest": str(manifest_path), "manifest_sha256": sha256(manifest_path),
               "config_path": str(config_path), "config_sha256": sha256(config_path), "source_code": "lab/plugins/perception/multi_obstruction_tracks/src/plugin.py",
               "source_code_sha256": sha256(Path("lab/plugins/perception/multi_obstruction_tracks/src/plugin.py")), "config": config,
+              "memory_source_code_sha256": sha256(Path("lab/plugins/memory/multi_obstruction_tracks/plugin.py")),
+              "tracker_source_code_sha256": sha256(Path("lab/plugins/memory/multi_obstruction_tracks/tracker.py")),
               "config_hash": _json_hash(config), "historical_max_tracks": historical_max, "effective_max_tracks": config["max_tracks"],
               "frame_count": len(frames), "processed_count": len(frames) - len(failures), "failures": failures,
               "frame_ledger_hash": _json_hash(ledger), "reset_temporal_state": True}

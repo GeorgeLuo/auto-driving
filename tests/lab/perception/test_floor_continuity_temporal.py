@@ -29,6 +29,7 @@ class TemporalFloorContinuityTests(unittest.TestCase):
             association_distance=0.25,
         )
 
+        plugin._initialize_history()  # One call-local association workspace.
         first, _ = plugin._select(
             [_boundary("left-0", (0.18, 0.42, 0.36, 0.52), 0.70)]
         )
@@ -47,6 +48,7 @@ class TemporalFloorContinuityTests(unittest.TestCase):
 
     def test_short_gap_holds_last_geometry_and_then_expires(self) -> None:
         plugin = TemporalFloorContinuityPlugin(max_hold_frames=1)
+        plugin._initialize_history()  # One call-local association workspace.
         first, _ = plugin._select(
             [_boundary("left-0", (0.18, 0.42, 0.36, 0.52), 0.80)]
         )

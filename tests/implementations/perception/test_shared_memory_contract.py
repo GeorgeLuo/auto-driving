@@ -22,6 +22,9 @@ from tests.implementations.perception.test_plugins import _snapshot, _array_read
 
 
 LAB_SPECS = {
+    "floor_continuity_temporal": "lab.plugins.perception.floor_continuity_temporal.src.plugin:TemporalFloorContinuityPlugin",
+    "composite_box_fusion": "lab.plugins.perception.composite_box_fusion.src.plugin:CompositeBoxFusionPlugin",
+    "composite_box_fusion_object_separated": "lab.plugins.perception.composite_box_fusion_object_separated.src.plugin:CompositeBoxFusionPlugin",
     "classical_regions": "lab.plugins.perception.classical_regions.src.plugin:ClassicalRegionPlugin",
     "floor_continuity": "lab.plugins.perception.floor_continuity.src.plugin:FloorContinuityPlugin",
     "floor_continuity_capture": "lab.plugins.perception.floor_continuity_capture.src.plugin:CaptureFloorContinuityPlugin",
@@ -30,6 +33,8 @@ LAB_SPECS = {
 }
 SPECS = {**PERCEPTION_PLUGIN_SPECS, **LAB_SPECS}
 CONFIGS = {
+    "composite_box_fusion": {"issue_working_width": 320, "classical_working_width": 160, "jev_enabled": False},
+    "composite_box_fusion_object_separated": {"issue_working_width": 320, "classical_working_width": 160, "jev_enabled": False},
     "motion_tracks": {"max_features": 30, "search_radius": 6, "min_group_size": 4},
     "fastsam": {"model_path": "unused-test-model.pt"},
 }
@@ -108,7 +113,7 @@ class SharedMemoryContractTests(unittest.TestCase):
                     self.assertEqual(plain(memory), plain(fresh_memory))
 
     def test_temporal_plugins_require_memory_and_reset_only_their_namespace(self):
-        for plugin_id in ("motion_tracks", "obstruction_tracks"):
+        for plugin_id in ("motion_tracks", "obstruction_tracks", "floor_continuity_temporal"):
             with self.subTest(plugin=plugin_id):
                 mapper = mapper_for(plugin_id)
                 self.assertEqual(mapper.perceive(self.request(self.rgb, None)).status, "error")

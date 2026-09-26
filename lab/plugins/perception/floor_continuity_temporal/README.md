@@ -15,3 +15,9 @@ Run it against the capture with:
   lab/runs/cv-synthesis-20260919/retry/frames \
   --candidate floor_continuity_temporal --record
 ```
+
+Temporal state (previous box/confidence, miss count, and age) lives under
+`perception.<plugin_id>.history` in the host map. The plugin reconstructs a
+call-local workspace, performs its existing smoothing/hold policy, and commits
+after successful output. It requires shared memory and clears only its own
+namespace on reset or unavailable input.

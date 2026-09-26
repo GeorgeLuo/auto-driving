@@ -66,8 +66,8 @@ class CompositeBoxFusionTests(unittest.TestCase):
         )
         self.assertTrue(any(proposal["rejection_reasons"] for proposal in raw_proposals))
         self.assertTrue(summary["support_proposals"])
-        self.assertEqual(plugin.contract.state_mode, "windowed")
-        self.assertTrue(any("multiple image-space obstacle records" in item for item in plugin.contract.emits))
+        self.assertEqual(plugin.contract.state_mode, "stateless")
+        self.assertTrue(any("multiple image-space region proposals" in item for item in plugin.contract.emits))
 
     def test_line_and_junction_cues_are_support_only(self) -> None:
         rgb = np.full((96, 128, 3), 120, dtype=np.uint8)

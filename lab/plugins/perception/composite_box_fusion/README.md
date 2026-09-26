@@ -14,3 +14,10 @@ The recovered issue-219 cue source is recorded in
 from commit `2e0a49d`. Step 3 enumerates bounded raw proposals, spatial
 clusters, raw/union/robust/median/intersection hypotheses, and deterministic
 selector choices before the inherited tracker receives a selected geometry.
+
+The detector now emits current-frame region proposals and a tracking-config
+marker. Its manifest selects `MultiObstructionMemory`, which owns temporal
+association, optical-flow history, lost tracks, and ID allocation in the host
+map. The object-separated variant uses the same companion. Diagnostic scratch
+is call-local; selector-response caches remain content-addressed experiment
+inputs rather than temporal tracking history.

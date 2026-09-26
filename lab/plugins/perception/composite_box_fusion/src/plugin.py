@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy
 from dataclasses import fields
 import hashlib
 import json
@@ -57,7 +58,8 @@ from .geometry import (
 class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
     """Fuse shared CV substrategies before the existing obstruction tracker.
 
-    The tracker and emitted ``obstacle`` records are inherited from
+    Detection emits candidates; the shared-memory companion produces obstacle
+    records. Detector configuration and candidate filtering are inherited from
     ``MultiObstructionTracksPlugin``.  Issue 219 contributes current-frame
     proposal generators only; line and junction detections remain supporting
     measurements and cannot create a standalone object cluster.
@@ -66,7 +68,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
     plugin_id = "composite-box-fusion-v1"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
-        state_mode="windowed",
+        state_mode="stateless",
         description=(
             "Combine edge, partial-face, photometric, floor, line, and junction "
             "evidence, then reuse multi-obstruction association and flow support."
@@ -77,8 +79,8 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             "raw RGB remains available for photometric and floor features",
         ),
         emits=(
-            "signal multi_obstruction_tracks_available",
-            "multiple image-space obstacle records with bounded temporal ids",
+            "signal multi_obstruction_candidates",
+            "multiple image-space region proposals with bounded temporal ids",
             "per-source composite proposal measurements",
         ),
         limitations=(
@@ -231,6 +233,10 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         super().__init__(**config)
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        # Diagnostic scratch belongs to this call, not the reusable detector.
+        return copy(self)._perceive_frame(inputs)
+
+    def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         self._current_frame_id = inputs.frame_id
         try:
             batch = super().perceive(inputs)

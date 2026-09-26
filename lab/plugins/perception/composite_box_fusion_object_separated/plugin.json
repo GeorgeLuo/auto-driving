@@ -101,8 +101,12 @@
   },
   "output": {
     "schema": "perception_text_v2",
-    "kind": "obstacle",
+    "kind": "region_proposal",
     "semantic_labels": false,
     "depth": false
+  },
+  "memory": {
+    "implementation_id": "multi_obstruction_tracks",
+    "implementation_spec": "lab.plugins.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory"
   }
 }

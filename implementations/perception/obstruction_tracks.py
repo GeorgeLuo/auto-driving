@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from copy import copy, deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,7 @@ class MultiObstructionTracksPlugin:
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="windowed",
+        memory_required=True,
         description=(
             "Suppress lower-frame floor-like regions and associate multiple "
             "generic image-space obstruction regions across adjacent frames."
@@ -112,16 +114,39 @@ class MultiObstructionTracksPlugin:
             1.0,
         )
         self.contour_merge_gap = _clamp(float(contour_merge_gap), 0.0, 0.5)
-        self.reset()
 
-    def reset(self) -> None:
+    def _initialize_history(self) -> None:
         self._tracks: dict[int, _Track] = {}
         self._lost: dict[int, _Track] = {}
         self._next_track_id = 0
         self._frame_index = 0
         self._previous_gray: np.ndarray | None = None
 
+    def reset(self, memory=None) -> None:
+        if memory is not None:
+            memory.pop(self._memory_key, None)
+
+    @property
+    def _memory_key(self) -> str:
+        return f"perception.{self.plugin_id}.history"
+
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        if inputs.memory is None:
+            raise ValueError(f"{self.plugin_id} requires host shared memory")
+        # Only this call owns the mutable algorithm workspace. Configuration
+        # stays on the plugin; history is read from and committed to the map.
+        step = copy(self)
+        step._initialize_history()
+        for name, value in deepcopy(inputs.memory.get(self._memory_key, {})).items():
+            setattr(step, name, value)
+        batch = step._perceive_frame(inputs)
+        inputs.memory[self._memory_key] = step._history()
+        return batch
+
+    def _history(self) -> dict[str, Any]:
+        return {name: getattr(self, name) for name in ('_tracks', '_lost', '_next_track_id', '_frame_index', '_previous_gray')}
+
+    def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)
         candidates, gray, detector_summary = self._detect_candidates(frame.rgb)
         active, events, association = self._associate(candidates, gray=gray)

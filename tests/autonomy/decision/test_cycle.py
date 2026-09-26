@@ -147,7 +147,7 @@ class DecisionCycleTests(unittest.TestCase):
         actions = []
 
         def remember(context, observation):
-            context.memory["test.plugin_write"] = "retained"
+            context.shared_memory["test.plugin_write"] = "retained"
             raise RuntimeError("update failed")
 
         cycle = DecisionCycle(
@@ -160,7 +160,7 @@ class DecisionCycleTests(unittest.TestCase):
             frame_id="frame_001",
             frame_index=1,
             timestamp_ms=123,
-            memory=shared_memory,
+            shared_memory=shared_memory,
         )
 
         with self.assertRaisesRegex(MemoryUpdateError, "update failed"):

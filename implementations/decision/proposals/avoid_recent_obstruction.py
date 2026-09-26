@@ -208,6 +208,7 @@ def propose(
             available=False,
         )
 
+    # Retained evidence from shared_memory["decision.snapshot"].
     memory = source.memory
     if memory.status != "ready":
         reason = (

@@ -110,10 +110,10 @@ class _RecordingMemory:
         )
         return self._snapshot
 
-    def reset(self, memory=None):
+    def reset(self, shared_memory=None):
         from autonomy.decision import empty_memory_snapshot
 
-        del memory
+        del shared_memory
         self.epoch += 1
         self._snapshot = empty_memory_snapshot(
             memory_id=f"mem-reset-{self.epoch}",
@@ -301,17 +301,17 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
         seen = []
 
         def observe(context, perception):
-            seen.append(context.memory.get("test.previous"))
+            seen.append(context.shared_memory.get("test.previous"))
             return Observation(context.frame_id, context.timestamp_ms, {})
 
         def remember(context, observation):
-            context.memory["test.previous"] = context.frame_id
-            context.memory["decision.observation"] = replace(observation, summary=("updated",))
+            context.shared_memory["test.previous"] = context.frame_id
+            context.shared_memory["decision.observation"] = replace(observation, summary=("updated",))
             snapshot = empty_memory_snapshot(
                 memory_id=context.frame_id, epoch_id="epoch-1",
                 bounds=MemoryBounds(max_records=4), created_at_ms=context.timestamp_ms,
             )
-            context.memory["decision.snapshot"] = snapshot
+            context.shared_memory["decision.snapshot"] = snapshot
             return snapshot
 
         manager = AutonomyManager()

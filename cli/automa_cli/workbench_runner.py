@@ -1095,7 +1095,7 @@ class ImageReplayRunner:
                     timestamp_ms=frame.timestamp_ms,
                     sensor_snapshot=snapshot,
                     mode="workbench_replay",
-                    memory=self._shared_memory,
+                    shared_memory=self._shared_memory,
                     metadata={
                         "source": WORKBENCH_SEQUENCE_ID,
                         "source_id": frame.source_id,
@@ -1105,11 +1105,11 @@ class ImageReplayRunner:
 
                 def perceive(current: DecisionFrameContext) -> PerceptionText | None:
                     if frame.absent or current.sensor_snapshot is None:
-                        mapper.reset(current.memory)
+                        mapper.reset(current.shared_memory)
                         return None
                     request = build_perception_request(
                         current.sensor_snapshot,
-                        memory=current.memory,
+                        shared_memory=current.shared_memory,
                         metadata={
                             "source": WORKBENCH_SEQUENCE_ID,
                             "source_id": frame.source_id,
@@ -1149,6 +1149,7 @@ class ImageReplayRunner:
                     timestamp_ms=frame.timestamp_ms,
                     observation=result.observation,
                     observation_error=None,
+                    # Retained evidence from shared_memory["decision.snapshot"].
                     memory=result.memory,
                     host_application=None,
                 )

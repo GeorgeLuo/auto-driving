@@ -27,7 +27,7 @@ class RecordingMapper(FixtureMapper):
 
     def perceive(self, request):
         self.legacy_handoff.append("prior_memory" in request.metadata)
-        self.priors.append(request.memory.get("decision.snapshot"))
+        self.priors.append(request.shared_memory.get("decision.snapshot"))
         return super().perceive(request)
 
 
@@ -39,9 +39,12 @@ class SharedMemoryProbe:
         self.reads = []
 
     def perceive(self, inputs):
-        memory = inputs.memory
-        self.reads.append((memory.get("decision.snapshot"), memory.get("test.stage")))
-        memory["test.perception"] = inputs.frame_id
+        shared_memory = inputs.shared_memory
+        self.reads.append((
+            shared_memory.get("decision.snapshot"),
+            shared_memory.get("test.stage"),
+        ))
+        shared_memory["test.perception"] = inputs.frame_id
         return PerceptionEvidenceBatch(signals=(PerceptionSignal("probe_seen", True),))
 
 
@@ -104,11 +107,11 @@ class WorkbenchTests(unittest.TestCase):
 
             class RecordingStage:
                 def __call__(self, context, observation):
-                    stage_reads.append(context.memory["test.perception"])
-                    context.memory["test.stage"] = context.frame_id
+                    stage_reads.append(context.shared_memory["test.perception"])
+                    context.shared_memory["test.stage"] = context.frame_id
                     snapshot = stage(context, observation)
                     snapshots.append(snapshot)
-                    published.append(context.memory["decision.snapshot"])
+                    published.append(context.shared_memory["decision.snapshot"])
                     return snapshot
 
                 def reset(self):

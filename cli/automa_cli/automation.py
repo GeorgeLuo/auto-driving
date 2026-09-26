@@ -221,7 +221,7 @@ def run_vehicle_automation(
 
     def perceive_stage(context: DecisionFrameContext):
         if context.sensor_snapshot is None:
-            mapper.reset(context.memory)
+            mapper.reset(context.shared_memory)
             return None
         output_dir_text = context.metadata.get("perception_output_dir")
         output_dir = (
@@ -232,7 +232,7 @@ def run_vehicle_automation(
         return mapper.perceive(
             build_perception_request(
                 context.sensor_snapshot,
-                memory=context.memory,
+                shared_memory=context.shared_memory,
                 output_dir=output_dir,
                 metadata={
                     "vehicle_id": vehicle_id,
@@ -603,6 +603,7 @@ def run_vehicle_automation(
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
+            # Retained evidence from shared_memory["decision.snapshot"].
             "memory": cycle_result.memory.to_dict()
             if cycle_result.memory is not None
             else None,

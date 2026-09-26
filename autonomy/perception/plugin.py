@@ -55,7 +55,7 @@ class PerceptionPluginContract:
     All plugins are stateless between calls: temporal history belongs in the
     host map. Instances may retain configuration and reusable model resources.
     ``state_mode`` describes the algorithm's temporal horizon. Plugins requiring
-    history declare ``memory_required`` and implement ``reset(memory)`` to drop
+    history declare ``memory_required`` and implement ``reset(shared_memory)`` to drop
     only their own keys. They own history shape, bounds, and commit policy.
     """
 
@@ -199,7 +199,7 @@ class PerceptionPluginInputs:
     components: Mapping[str, Any]
     diagnostics: PerceptionDiagnosticSink
     metadata: Mapping[str, Any] = field(default_factory=dict)
-    memory: SharedMemory | None = field(default=None, repr=False, compare=False)
+    shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "components", MappingProxyType(dict(self.components)))

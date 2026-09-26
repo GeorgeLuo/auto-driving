@@ -192,6 +192,7 @@ class ShadowProposalsAutonomyEngine:
         if type(observation_error) is not str:
             observation_error = None
 
+        # Retained evidence from shared_memory["decision.snapshot"].
         memory = snapshot.memory if isinstance(snapshot.memory, MemorySnapshot) else None
 
         host_application = metadata.get("host_application")

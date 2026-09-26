@@ -18,7 +18,7 @@ from autonomy.perception import PerceptionEvidenceBatch, build_perception_reques
 from lab.plugins.memory.multi_obstruction_tracks.plugin import MultiObstructionMemory
 from lab.plugins.perception.floor_continuity.src.plugin import FloorContinuityPlugin
 from lab.plugins.perception.floor_continuity_temporal.src.plugin import TemporalFloorContinuityPlugin
-from scripts.perception.durable_obstacles import replay_capture
+from lab.plugins.perception.multi_obstruction_tracks.durable_obstacles import replay_capture
 from tests.implementations.perception.test_plugins import _snapshot, _array_reading
 from tests.implementations.perception.test_shared_memory_contract import mapper_for, plain, semantic
 from tests.lab.perception.test_floor_continuity_temporal import _boundary
@@ -109,7 +109,7 @@ class ExperimentSharedMemoryTests(unittest.TestCase):
             config = root / "config.json"
             config.write_text(json.dumps({"config": {}}))
             region = _region("box", (0.1, 0.2, 0.3, 0.5))
-            with patch("scripts.perception.durable_obstacles.MultiObstructionTracksPlugin._detect_candidates", return_value=([region], rgb[:, :, 0], {})):
+            with patch("lab.plugins.perception.multi_obstruction_tracks.durable_obstacles.MultiObstructionTracksPlugin._detect_candidates", return_value=([region], rgb[:, :, 0], {})):
                 frozen = replay_capture(manifest, config, root / "output")
             result = json.loads((root / "output/detections.jsonl").read_text())
             self.assertEqual(result["things"][0]["thing_id"], "obstruction_track_000")
@@ -130,7 +130,7 @@ class ExperimentSharedMemoryTests(unittest.TestCase):
             config.write_text(json.dumps({"config": {}}))
             region = _region("box", (0.1, 0.2, 0.3, 0.5))
             with patch(
-                "scripts.perception.durable_obstacles.MultiObstructionTracksPlugin._detect_candidates",
+                "lab.plugins.perception.multi_obstruction_tracks.durable_obstacles.MultiObstructionTracksPlugin._detect_candidates",
                 side_effect=[([region], rgb[:, :, 0], {}), ([], rgb[:, :, 0], {})],
             ):
                 frozen = replay_capture(manifest, config, root / "output")

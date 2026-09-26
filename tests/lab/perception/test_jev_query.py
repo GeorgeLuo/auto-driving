@@ -3,13 +3,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.jev_query import (
+from lab.plugins.perception.multi_obstruction_tracks.durable_obstacles import local_durability_corrected
+from lab.plugins.perception.multi_obstruction_tracks.jev_query import (
     TEMPORAL_DURABILITY_QUESTION,
     build_contract_packet,
     build_fixture,
     normalize_response,
 )
-from scripts.perception.durable_obstacles import local_durability_corrected
 
 
 class DurableObstacleFixtureTest(unittest.TestCase):

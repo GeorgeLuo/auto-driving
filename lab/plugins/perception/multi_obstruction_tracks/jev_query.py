@@ -18,11 +18,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.perception.durable_obstacles import (
+from lab.plugins.perception.multi_obstruction_tracks.durable_obstacles import (
     local_durability_corrected,
     replay_capture,
 )

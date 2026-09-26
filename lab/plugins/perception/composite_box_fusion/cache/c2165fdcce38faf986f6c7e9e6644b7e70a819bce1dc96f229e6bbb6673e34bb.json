@@ -1,0 +1,2690 @@
+{
+  "attempts": 1,
+  "created_at_ms": 1789633343843,
+  "latency_ms": 440.786,
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "cluster_00_selected": {
+        "criteria": {
+          "cluster_00_canny_morph_001": "raw box from canny_morph; normalized bounds=[0.42205, 0.76424, 0.48858, 0.85298]; support=['canny_morph_001']",
+          "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_00_union": "union box from canny_morph, hough_fragments, partial_contour; normalized bounds=[0.0, 0.75232, 0.56902, 1.0]; support=['canny_morph_001', 'canny_morph_004', 'canny_morph_005', 'canny_morph_007', 'canny_morph_008', 'canny_morph_009', 'canny_morph_011', 'canny_morph_012', 'canny_morph_013', 'canny_morph_014', 'canny_morph_015', 'canny_morph_019', 'partial_contour_018', 'hough_fragments_028', 'hough_fragments_027', 'hough_fragments_015', 'hough_fragments_001', 'hough_fragments_006', 'hough_fragments_030', 'hough_fragments_000', 'hough_fragments_012', 'hough_fragments_010', 'hough_fragments_023', 'hough_fragments_024', 'hough_fragments_020', 'hough_fragments_014', 'hough_fragments_008']",
+          "cluster_00_weighted_median": "weighted_median box from canny_morph, hough_fragments, partial_contour; normalized bounds=[0.32572, 0.8649, 0.41708, 0.90993]; support=['canny_morph_001', 'canny_morph_004', 'canny_morph_005', 'canny_morph_007', 'canny_morph_008', 'canny_morph_009', 'canny_morph_011', 'canny_morph_012', 'canny_morph_013', 'canny_morph_014', 'canny_morph_015', 'canny_morph_019', 'partial_contour_018', 'hough_fragments_028', 'hough_fragments_027', 'hough_fragments_015', 'hough_fragments_001', 'hough_fragments_006', 'hough_fragments_030', 'hough_fragments_000', 'hough_fragments_012', 'hough_fragments_010', 'hough_fragments_023', 'hough_fragments_024', 'hough_fragments_020', 'hough_fragments_014', 'hough_fragments_008']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_01_selected": {
+        "criteria": {
+          "cluster_01_canny_morph_000": "raw box from canny_morph; normalized bounds=[0.28997, 0.69536, 0.33764, 0.75894]; support=['canny_morph_000']",
+          "cluster_01_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_01_union": "union box from canny_morph, hough_fragments; normalized bounds=[0.06852, 0.69536, 0.36743, 0.76291]; support=['canny_morph_000', 'hough_fragments_004']",
+          "cluster_01_weighted_median": "weighted_median box from canny_morph, hough_fragments; normalized bounds=[0.06852, 0.69536, 0.33764, 0.75894]; support=['canny_morph_000', 'hough_fragments_004']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_01_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_02_selected": {
+        "criteria": {
+          "cluster_02_canny_morph_002": "raw box from canny_morph; normalized bounds=[0.0, 0.43311, 0.13009, 0.60795]; support=['canny_morph_002']",
+          "cluster_02_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_02_union": "union box from canny_morph, partial_contour, quad_rectangularity; normalized bounds=[0.0, 0.12185, 0.20457, 0.60927]; support=['canny_morph_002', 'canny_morph_006', 'canny_morph_010', 'canny_morph_016', 'canny_morph_020', 'partial_contour_004', 'partial_contour_007', 'partial_contour_019', 'quad_rectangularity_007', 'quad_rectangularity_009', 'quad_rectangularity_010', 'quad_rectangularity_014', 'quad_rectangularity_019']",
+          "cluster_02_weighted_median": "weighted_median box from canny_morph, partial_contour, quad_rectangularity; normalized bounds=[0.00695, 0.36821, 0.07944, 0.45828]; support=['canny_morph_002', 'canny_morph_006', 'canny_morph_010', 'canny_morph_016', 'canny_morph_020', 'partial_contour_004', 'partial_contour_007', 'partial_contour_019', 'quad_rectangularity_007', 'quad_rectangularity_009', 'quad_rectangularity_010', 'quad_rectangularity_014', 'quad_rectangularity_019']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_02_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_03_selected": {
+        "criteria": {
+          "cluster_03_canny_morph_003": "raw box from canny_morph; normalized bounds=[0.76961, 0.79603, 0.81728, 0.86093]; support=['canny_morph_003']",
+          "cluster_03_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_03_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_04_selected": {
+        "criteria": {
+          "cluster_04_canny_morph_017": "raw box from canny_morph; normalized bounds=[0.56008, 0.31523, 0.65541, 0.42914]; support=['canny_morph_017']",
+          "cluster_04_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_04_union": "union box from canny_morph, classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.48163, 0.15364, 0.96226, 0.56291]; support=['canny_morph_017', 'canny_morph_018', 'partial_contour_000', 'partial_contour_001', 'partial_contour_002', 'partial_contour_003', 'partial_contour_006', 'partial_contour_009', 'partial_contour_013', 'partial_contour_015', 'partial_contour_016', 'classical_regions_004', 'classical_regions_007', 'photometric_windows_000', 'photometric_windows_001', 'photometric_windows_002', 'photometric_windows_003', 'photometric_windows_004', 'photometric_windows_006', 'photometric_windows_007', 'photometric_windows_009', 'photometric_windows_012', 'photometric_windows_017', 'quad_rectangularity_004', 'quad_rectangularity_005', 'quad_rectangularity_017', 'quad_rectangularity_018']",
+          "cluster_04_weighted_median": "weighted_median box from canny_morph, classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.57498, 0.31656, 0.74922, 0.43841]; support=['canny_morph_017', 'canny_morph_018', 'partial_contour_000', 'partial_contour_001', 'partial_contour_002', 'partial_contour_003', 'partial_contour_006', 'partial_contour_009', 'partial_contour_013', 'partial_contour_015', 'partial_contour_016', 'classical_regions_004', 'classical_regions_007', 'photometric_windows_000', 'photometric_windows_001', 'photometric_windows_002', 'photometric_windows_003', 'photometric_windows_004', 'photometric_windows_006', 'photometric_windows_007', 'photometric_windows_009', 'photometric_windows_012', 'photometric_windows_017', 'quad_rectangularity_004', 'quad_rectangularity_005', 'quad_rectangularity_017', 'quad_rectangularity_018']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_04_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_05_selected": {
+        "criteria": {
+          "cluster_05_canny_morph_021": "raw box from canny_morph; normalized bounds=[0.28302, 0.19205, 0.32969, 0.27285]; support=['canny_morph_021']",
+          "cluster_05_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_05_union": "union box from canny_morph, classical_regions, hough_fragments, partial_contour, quad_rectangularity; normalized bounds=[0.0993, 0.03576, 0.33069, 0.33245]; support=['canny_morph_021', 'partial_contour_017', 'hough_fragments_026', 'classical_regions_020', 'quad_rectangularity_000', 'quad_rectangularity_001', 'quad_rectangularity_006']",
+          "cluster_05_weighted_median": "weighted_median box from canny_morph, classical_regions, hough_fragments, partial_contour, quad_rectangularity; normalized bounds=[0.18272, 0.10042, 0.2572, 0.28609]; support=['canny_morph_021', 'partial_contour_017', 'hough_fragments_026', 'classical_regions_020', 'quad_rectangularity_000', 'quad_rectangularity_001', 'quad_rectangularity_006']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_05_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_06_selected": {
+        "criteria": {
+          "cluster_06_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_06_partial_contour_005": "raw box from partial_contour; normalized bounds=[0.19662, 0.33377, 0.27408, 0.45298]; support=['partial_contour_005']",
+          "cluster_06_union": "union box from classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.10658, 0.27197, 0.47022, 0.58411]; support=['partial_contour_005', 'partial_contour_008', 'partial_contour_010', 'partial_contour_014', 'classical_regions_017', 'classical_regions_018', 'photometric_windows_011', 'photometric_windows_016', 'quad_rectangularity_012', 'quad_rectangularity_013', 'quad_rectangularity_015']",
+          "cluster_06_weighted_median": "weighted_median box from classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.20457, 0.39331, 0.30785, 0.47682]; support=['partial_contour_005', 'partial_contour_008', 'partial_contour_010', 'partial_contour_014', 'classical_regions_017', 'classical_regions_018', 'photometric_windows_011', 'photometric_windows_016', 'quad_rectangularity_012', 'quad_rectangularity_013', 'quad_rectangularity_015']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_06_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_07_selected": {
+        "criteria": {
+          "cluster_07_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+          "cluster_07_partial_contour_011": "raw box from partial_contour; normalized bounds=[0.34558, 0.34172, 0.3853, 0.3947]; support=['partial_contour_011']",
+          "cluster_07_union": "union box from classical_regions, hough_fragments, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.30721, 0.03709, 0.52433, 0.46225]; support=['partial_contour_011', 'partial_contour_012', 'classical_regions_003', 'hough_fragments_003', 'classical_regions_015', 'photometric_windows_008', 'photometric_windows_010', 'photometric_windows_013', 'quad_rectangularity_011']",
+          "cluster_07_weighted_median": "weighted_median box from classical_regions, hough_fragments, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.37537, 0.08787, 0.45978, 0.3947]; support=['partial_contour_011', 'partial_contour_012', 'classical_regions_003', 'hough_fragments_003', 'classical_regions_015', 'photometric_windows_008', 'photometric_windows_010', 'photometric_windows_013', 'quad_rectangularity_011']"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_07_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_08_selected": {
+        "criteria": {
+          "cluster_08_hough_fragments_022": "raw box from hough_fragments; normalized bounds=[0.41708, 0.64636, 0.60179, 0.82252]; support=['hough_fragments_022']",
+          "cluster_08_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_08_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      },
+      "cluster_09_selected": {
+        "criteria": {
+          "cluster_09_classical_regions_012": "raw box from classical_regions; normalized bounds=[0.24765, 0.58996, 0.34483, 0.66109]; support=['classical_regions_012']",
+          "cluster_09_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence. When a weighted_median, union, or intersection hypothesis is supported by at least two independent detector names and is close to a raw fragment, prefer that multi-detector consensus over a single-detector partial box; do not let one high-confidence fragment beat a compact object-sized consensus.",
+        "type": "choice"
+      },
+      "cluster_09_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      }
+    },
+    "state": {
+      "clusters": [
+        {
+          "cluster_id": "cluster_00",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.42205,
+                0.76424,
+                0.48858,
+                0.85298
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_00_canny_morph_001",
+              "kind": "raw",
+              "source_ids": [
+                "canny_morph_001"
+              ],
+              "source_names": [
+                "canny_morph"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.32572,
+                0.8649,
+                0.41708,
+                0.90993
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_00_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "canny_morph_001",
+                "canny_morph_004",
+                "canny_morph_005",
+                "canny_morph_007",
+                "canny_morph_008",
+                "canny_morph_009",
+                "canny_morph_011",
+                "canny_morph_012",
+                "canny_morph_013",
+                "canny_morph_014",
+                "canny_morph_015",
+                "canny_morph_019",
+                "partial_contour_018",
+                "hough_fragments_028",
+                "hough_fragments_027",
+                "hough_fragments_015",
+                "hough_fragments_001",
+                "hough_fragments_006",
+                "hough_fragments_030",
+                "hough_fragments_000",
+                "hough_fragments_012",
+                "hough_fragments_010",
+                "hough_fragments_023",
+                "hough_fragments_024",
+                "hough_fragments_020",
+                "hough_fragments_014",
+                "hough_fragments_008"
+              ],
+              "source_names": [
+                "canny_morph",
+                "hough_fragments",
+                "partial_contour"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.75232,
+                0.56902,
+                1.0
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_00_union",
+              "kind": "union",
+              "source_ids": [
+                "canny_morph_001",
+                "canny_morph_004",
+                "canny_morph_005",
+                "canny_morph_007",
+                "canny_morph_008",
+                "canny_morph_009",
+                "canny_morph_011",
+                "canny_morph_012",
+                "canny_morph_013",
+                "canny_morph_014",
+                "canny_morph_015",
+                "canny_morph_019",
+                "partial_contour_018",
+                "hough_fragments_028",
+                "hough_fragments_027",
+                "hough_fragments_015",
+                "hough_fragments_001",
+                "hough_fragments_006",
+                "hough_fragments_030",
+                "hough_fragments_000",
+                "hough_fragments_012",
+                "hough_fragments_010",
+                "hough_fragments_023",
+                "hough_fragments_024",
+                "hough_fragments_020",
+                "hough_fragments_014",
+                "hough_fragments_008"
+              ],
+              "source_names": [
+                "canny_morph",
+                "hough_fragments",
+                "partial_contour"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_00_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_00_canny_morph_001": "raw box from canny_morph; normalized bounds=[0.42205, 0.76424, 0.48858, 0.85298]; support=['canny_morph_001']",
+            "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_00_union": "union box from canny_morph, hough_fragments, partial_contour; normalized bounds=[0.0, 0.75232, 0.56902, 1.0]; support=['canny_morph_001', 'canny_morph_004', 'canny_morph_005', 'canny_morph_007', 'canny_morph_008', 'canny_morph_009', 'canny_morph_011', 'canny_morph_012', 'canny_morph_013', 'canny_morph_014', 'canny_morph_015', 'canny_morph_019', 'partial_contour_018', 'hough_fragments_028', 'hough_fragments_027', 'hough_fragments_015', 'hough_fragments_001', 'hough_fragments_006', 'hough_fragments_030', 'hough_fragments_000', 'hough_fragments_012', 'hough_fragments_010', 'hough_fragments_023', 'hough_fragments_024', 'hough_fragments_020', 'hough_fragments_014', 'hough_fragments_008']",
+            "cluster_00_weighted_median": "weighted_median box from canny_morph, hough_fragments, partial_contour; normalized bounds=[0.32572, 0.8649, 0.41708, 0.90993]; support=['canny_morph_001', 'canny_morph_004', 'canny_morph_005', 'canny_morph_007', 'canny_morph_008', 'canny_morph_009', 'canny_morph_011', 'canny_morph_012', 'canny_morph_013', 'canny_morph_014', 'canny_morph_015', 'canny_morph_019', 'partial_contour_018', 'hough_fragments_028', 'hough_fragments_027', 'hough_fragments_015', 'hough_fragments_001', 'hough_fragments_006', 'hough_fragments_030', 'hough_fragments_000', 'hough_fragments_012', 'hough_fragments_010', 'hough_fragments_023', 'hough_fragments_024', 'hough_fragments_020', 'hough_fragments_014', 'hough_fragments_008']"
+          }
+        },
+        {
+          "cluster_id": "cluster_01",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.28997,
+                0.69536,
+                0.33764,
+                0.75894
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_01_canny_morph_000",
+              "kind": "raw",
+              "source_ids": [
+                "canny_morph_000"
+              ],
+              "source_names": [
+                "canny_morph"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.06852,
+                0.69536,
+                0.33764,
+                0.75894
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_01_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "canny_morph_000",
+                "hough_fragments_004"
+              ],
+              "source_names": [
+                "canny_morph",
+                "hough_fragments"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.06852,
+                0.69536,
+                0.36743,
+                0.76291
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_01_union",
+              "kind": "union",
+              "source_ids": [
+                "canny_morph_000",
+                "hough_fragments_004"
+              ],
+              "source_names": [
+                "canny_morph",
+                "hough_fragments"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_01_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_01_canny_morph_000": "raw box from canny_morph; normalized bounds=[0.28997, 0.69536, 0.33764, 0.75894]; support=['canny_morph_000']",
+            "cluster_01_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_01_union": "union box from canny_morph, hough_fragments; normalized bounds=[0.06852, 0.69536, 0.36743, 0.76291]; support=['canny_morph_000', 'hough_fragments_004']",
+            "cluster_01_weighted_median": "weighted_median box from canny_morph, hough_fragments; normalized bounds=[0.06852, 0.69536, 0.33764, 0.75894]; support=['canny_morph_000', 'hough_fragments_004']"
+          }
+        },
+        {
+          "cluster_id": "cluster_02",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.43311,
+                0.13009,
+                0.60795
+              ],
+              "confidence": 0.9993962235491695,
+              "hypothesis_id": "cluster_02_canny_morph_002",
+              "kind": "raw",
+              "source_ids": [
+                "canny_morph_002"
+              ],
+              "source_names": [
+                "canny_morph"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.00695,
+                0.36821,
+                0.07944,
+                0.45828
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_02_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "canny_morph_002",
+                "canny_morph_006",
+                "canny_morph_010",
+                "canny_morph_016",
+                "canny_morph_020",
+                "partial_contour_004",
+                "partial_contour_007",
+                "partial_contour_019",
+                "quad_rectangularity_007",
+                "quad_rectangularity_009",
+                "quad_rectangularity_010",
+                "quad_rectangularity_014",
+                "quad_rectangularity_019"
+              ],
+              "source_names": [
+                "canny_morph",
+                "partial_contour",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.12185,
+                0.20457,
+                0.60927
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_02_union",
+              "kind": "union",
+              "source_ids": [
+                "canny_morph_002",
+                "canny_morph_006",
+                "canny_morph_010",
+                "canny_morph_016",
+                "canny_morph_020",
+                "partial_contour_004",
+                "partial_contour_007",
+                "partial_contour_019",
+                "quad_rectangularity_007",
+                "quad_rectangularity_009",
+                "quad_rectangularity_010",
+                "quad_rectangularity_014",
+                "quad_rectangularity_019"
+              ],
+              "source_names": [
+                "canny_morph",
+                "partial_contour",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_02_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_02_canny_morph_002": "raw box from canny_morph; normalized bounds=[0.0, 0.43311, 0.13009, 0.60795]; support=['canny_morph_002']",
+            "cluster_02_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_02_union": "union box from canny_morph, partial_contour, quad_rectangularity; normalized bounds=[0.0, 0.12185, 0.20457, 0.60927]; support=['canny_morph_002', 'canny_morph_006', 'canny_morph_010', 'canny_morph_016', 'canny_morph_020', 'partial_contour_004', 'partial_contour_007', 'partial_contour_019', 'quad_rectangularity_007', 'quad_rectangularity_009', 'quad_rectangularity_010', 'quad_rectangularity_014', 'quad_rectangularity_019']",
+            "cluster_02_weighted_median": "weighted_median box from canny_morph, partial_contour, quad_rectangularity; normalized bounds=[0.00695, 0.36821, 0.07944, 0.45828]; support=['canny_morph_002', 'canny_morph_006', 'canny_morph_010', 'canny_morph_016', 'canny_morph_020', 'partial_contour_004', 'partial_contour_007', 'partial_contour_019', 'quad_rectangularity_007', 'quad_rectangularity_009', 'quad_rectangularity_010', 'quad_rectangularity_014', 'quad_rectangularity_019']"
+          }
+        },
+        {
+          "cluster_id": "cluster_03",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.76961,
+                0.79603,
+                0.81728,
+                0.86093
+              ],
+              "confidence": 0.9983837834145985,
+              "hypothesis_id": "cluster_03_canny_morph_003",
+              "kind": "raw",
+              "source_ids": [
+                "canny_morph_003"
+              ],
+              "source_names": [
+                "canny_morph"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_03_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_03_canny_morph_003": "raw box from canny_morph; normalized bounds=[0.76961, 0.79603, 0.81728, 0.86093]; support=['canny_morph_003']",
+            "cluster_03_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+          }
+        },
+        {
+          "cluster_id": "cluster_04",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.56008,
+                0.31523,
+                0.65541,
+                0.42914
+              ],
+              "confidence": 0.982835053117535,
+              "hypothesis_id": "cluster_04_canny_morph_017",
+              "kind": "raw",
+              "source_ids": [
+                "canny_morph_017"
+              ],
+              "source_names": [
+                "canny_morph"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.57498,
+                0.31656,
+                0.74922,
+                0.43841
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_04_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "canny_morph_017",
+                "canny_morph_018",
+                "partial_contour_000",
+                "partial_contour_001",
+                "partial_contour_002",
+                "partial_contour_003",
+                "partial_contour_006",
+                "partial_contour_009",
+                "partial_contour_013",
+                "partial_contour_015",
+                "partial_contour_016",
+                "classical_regions_004",
+                "classical_regions_007",
+                "photometric_windows_000",
+                "photometric_windows_001",
+                "photometric_windows_002",
+                "photometric_windows_003",
+                "photometric_windows_004",
+                "photometric_windows_006",
+                "photometric_windows_007",
+                "photometric_windows_009",
+                "photometric_windows_012",
+                "photometric_windows_017",
+                "quad_rectangularity_004",
+                "quad_rectangularity_005",
+                "quad_rectangularity_017",
+                "quad_rectangularity_018"
+              ],
+              "source_names": [
+                "canny_morph",
+                "classical_regions",
+                "partial_contour",
+                "photometric_windows",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.48163,
+                0.15364,
+                0.96226,
+                0.56291
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_04_union",
+              "kind": "union",
+              "source_ids": [
+                "canny_morph_017",
+                "canny_morph_018",
+                "partial_contour_000",
+                "partial_contour_001",
+                "partial_contour_002",
+                "partial_contour_003",
+                "partial_contour_006",
+                "partial_contour_009",
+                "partial_contour_013",
+                "partial_contour_015",
+                "partial_contour_016",
+                "classical_regions_004",
+                "classical_regions_007",
+                "photometric_windows_000",
+                "photometric_windows_001",
+                "photometric_windows_002",
+                "photometric_windows_003",
+                "photometric_windows_004",
+                "photometric_windows_006",
+                "photometric_windows_007",
+                "photometric_windows_009",
+                "photometric_windows_012",
+                "photometric_windows_017",
+                "quad_rectangularity_004",
+                "quad_rectangularity_005",
+                "quad_rectangularity_017",
+                "quad_rectangularity_018"
+              ],
+              "source_names": [
+                "canny_morph",
+                "classical_regions",
+                "partial_contour",
+                "photometric_windows",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_04_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_04_canny_morph_017": "raw box from canny_morph; normalized bounds=[0.56008, 0.31523, 0.65541, 0.42914]; support=['canny_morph_017']",
+            "cluster_04_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_04_union": "union box from canny_morph, classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.48163, 0.15364, 0.96226, 0.56291]; support=['canny_morph_017', 'canny_morph_018', 'partial_contour_000', 'partial_contour_001', 'partial_contour_002', 'partial_contour_003', 'partial_contour_006', 'partial_contour_009', 'partial_contour_013', 'partial_contour_015', 'partial_contour_016', 'classical_regions_004', 'classical_regions_007', 'photometric_windows_000', 'photometric_windows_001', 'photometric_windows_002', 'photometric_windows_003', 'photometric_windows_004', 'photometric_windows_006', 'photometric_windows_007', 'photometric_windows_009', 'photometric_windows_012', 'photometric_windows_017', 'quad_rectangularity_004', 'quad_rectangularity_005', 'quad_rectangularity_017', 'quad_rectangularity_018']",
+            "cluster_04_weighted_median": "weighted_median box from canny_morph, classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.57498, 0.31656, 0.74922, 0.43841]; support=['canny_morph_017', 'canny_morph_018', 'partial_contour_000', 'partial_contour_001', 'partial_contour_002', 'partial_contour_003', 'partial_contour_006', 'partial_contour_009', 'partial_contour_013', 'partial_contour_015', 'partial_contour_016', 'classical_regions_004', 'classical_regions_007', 'photometric_windows_000', 'photometric_windows_001', 'photometric_windows_002', 'photometric_windows_003', 'photometric_windows_004', 'photometric_windows_006', 'photometric_windows_007', 'photometric_windows_009', 'photometric_windows_012', 'photometric_windows_017', 'quad_rectangularity_004', 'quad_rectangularity_005', 'quad_rectangularity_017', 'quad_rectangularity_018']"
+          }
+        },
+        {
+          "cluster_id": "cluster_05",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.28302,
+                0.19205,
+                0.32969,
+                0.27285
+              ],
+              "confidence": 0.979525330069024,
+              "hypothesis_id": "cluster_05_canny_morph_021",
+              "kind": "raw",
+              "source_ids": [
+                "canny_morph_021"
+              ],
+              "source_names": [
+                "canny_morph"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.18272,
+                0.10042,
+                0.2572,
+                0.28609
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_05_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "canny_morph_021",
+                "partial_contour_017",
+                "hough_fragments_026",
+                "classical_regions_020",
+                "quad_rectangularity_000",
+                "quad_rectangularity_001",
+                "quad_rectangularity_006"
+              ],
+              "source_names": [
+                "canny_morph",
+                "classical_regions",
+                "hough_fragments",
+                "partial_contour",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0993,
+                0.03576,
+                0.33069,
+                0.33245
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_05_union",
+              "kind": "union",
+              "source_ids": [
+                "canny_morph_021",
+                "partial_contour_017",
+                "hough_fragments_026",
+                "classical_regions_020",
+                "quad_rectangularity_000",
+                "quad_rectangularity_001",
+                "quad_rectangularity_006"
+              ],
+              "source_names": [
+                "canny_morph",
+                "classical_regions",
+                "hough_fragments",
+                "partial_contour",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_05_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_05_canny_morph_021": "raw box from canny_morph; normalized bounds=[0.28302, 0.19205, 0.32969, 0.27285]; support=['canny_morph_021']",
+            "cluster_05_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_05_union": "union box from canny_morph, classical_regions, hough_fragments, partial_contour, quad_rectangularity; normalized bounds=[0.0993, 0.03576, 0.33069, 0.33245]; support=['canny_morph_021', 'partial_contour_017', 'hough_fragments_026', 'classical_regions_020', 'quad_rectangularity_000', 'quad_rectangularity_001', 'quad_rectangularity_006']",
+            "cluster_05_weighted_median": "weighted_median box from canny_morph, classical_regions, hough_fragments, partial_contour, quad_rectangularity; normalized bounds=[0.18272, 0.10042, 0.2572, 0.28609]; support=['canny_morph_021', 'partial_contour_017', 'hough_fragments_026', 'classical_regions_020', 'quad_rectangularity_000', 'quad_rectangularity_001', 'quad_rectangularity_006']"
+          }
+        },
+        {
+          "cluster_id": "cluster_06",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.19662,
+                0.33377,
+                0.27408,
+                0.45298
+              ],
+              "confidence": 0.9388286495901486,
+              "hypothesis_id": "cluster_06_partial_contour_005",
+              "kind": "raw",
+              "source_ids": [
+                "partial_contour_005"
+              ],
+              "source_names": [
+                "partial_contour"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.20457,
+                0.39331,
+                0.30785,
+                0.47682
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_06_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "partial_contour_005",
+                "partial_contour_008",
+                "partial_contour_010",
+                "partial_contour_014",
+                "classical_regions_017",
+                "classical_regions_018",
+                "photometric_windows_011",
+                "photometric_windows_016",
+                "quad_rectangularity_012",
+                "quad_rectangularity_013",
+                "quad_rectangularity_015"
+              ],
+              "source_names": [
+                "classical_regions",
+                "partial_contour",
+                "photometric_windows",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.10658,
+                0.27197,
+                0.47022,
+                0.58411
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_06_union",
+              "kind": "union",
+              "source_ids": [
+                "partial_contour_005",
+                "partial_contour_008",
+                "partial_contour_010",
+                "partial_contour_014",
+                "classical_regions_017",
+                "classical_regions_018",
+                "photometric_windows_011",
+                "photometric_windows_016",
+                "quad_rectangularity_012",
+                "quad_rectangularity_013",
+                "quad_rectangularity_015"
+              ],
+              "source_names": [
+                "classical_regions",
+                "partial_contour",
+                "photometric_windows",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_06_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_06_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_06_partial_contour_005": "raw box from partial_contour; normalized bounds=[0.19662, 0.33377, 0.27408, 0.45298]; support=['partial_contour_005']",
+            "cluster_06_union": "union box from classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.10658, 0.27197, 0.47022, 0.58411]; support=['partial_contour_005', 'partial_contour_008', 'partial_contour_010', 'partial_contour_014', 'classical_regions_017', 'classical_regions_018', 'photometric_windows_011', 'photometric_windows_016', 'quad_rectangularity_012', 'quad_rectangularity_013', 'quad_rectangularity_015']",
+            "cluster_06_weighted_median": "weighted_median box from classical_regions, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.20457, 0.39331, 0.30785, 0.47682]; support=['partial_contour_005', 'partial_contour_008', 'partial_contour_010', 'partial_contour_014', 'classical_regions_017', 'classical_regions_018', 'photometric_windows_011', 'photometric_windows_016', 'quad_rectangularity_012', 'quad_rectangularity_013', 'quad_rectangularity_015']"
+          }
+        },
+        {
+          "cluster_id": "cluster_07",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.34558,
+                0.34172,
+                0.3853,
+                0.3947
+              ],
+              "confidence": 0.9352171326591314,
+              "hypothesis_id": "cluster_07_partial_contour_011",
+              "kind": "raw",
+              "source_ids": [
+                "partial_contour_011"
+              ],
+              "source_names": [
+                "partial_contour"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.37537,
+                0.08787,
+                0.45978,
+                0.3947
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_07_weighted_median",
+              "kind": "weighted_median",
+              "source_ids": [
+                "partial_contour_011",
+                "partial_contour_012",
+                "classical_regions_003",
+                "hough_fragments_003",
+                "classical_regions_015",
+                "photometric_windows_008",
+                "photometric_windows_010",
+                "photometric_windows_013",
+                "quad_rectangularity_011"
+              ],
+              "source_names": [
+                "classical_regions",
+                "hough_fragments",
+                "partial_contour",
+                "photometric_windows",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.30721,
+                0.03709,
+                0.52433,
+                0.46225
+              ],
+              "confidence": 1.0,
+              "hypothesis_id": "cluster_07_union",
+              "kind": "union",
+              "source_ids": [
+                "partial_contour_011",
+                "partial_contour_012",
+                "classical_regions_003",
+                "hough_fragments_003",
+                "classical_regions_015",
+                "photometric_windows_008",
+                "photometric_windows_010",
+                "photometric_windows_013",
+                "quad_rectangularity_011"
+              ],
+              "source_names": [
+                "classical_regions",
+                "hough_fragments",
+                "partial_contour",
+                "photometric_windows",
+                "quad_rectangularity"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_07_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_07_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none",
+            "cluster_07_partial_contour_011": "raw box from partial_contour; normalized bounds=[0.34558, 0.34172, 0.3853, 0.3947]; support=['partial_contour_011']",
+            "cluster_07_union": "union box from classical_regions, hough_fragments, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.30721, 0.03709, 0.52433, 0.46225]; support=['partial_contour_011', 'partial_contour_012', 'classical_regions_003', 'hough_fragments_003', 'classical_regions_015', 'photometric_windows_008', 'photometric_windows_010', 'photometric_windows_013', 'quad_rectangularity_011']",
+            "cluster_07_weighted_median": "weighted_median box from classical_regions, hough_fragments, partial_contour, photometric_windows, quad_rectangularity; normalized bounds=[0.37537, 0.08787, 0.45978, 0.3947]; support=['partial_contour_011', 'partial_contour_012', 'classical_regions_003', 'hough_fragments_003', 'classical_regions_015', 'photometric_windows_008', 'photometric_windows_010', 'photometric_windows_013', 'quad_rectangularity_011']"
+          }
+        },
+        {
+          "cluster_id": "cluster_08",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.41708,
+                0.64636,
+                0.60179,
+                0.82252
+              ],
+              "confidence": 0.88,
+              "hypothesis_id": "cluster_08_hough_fragments_022",
+              "kind": "raw",
+              "source_ids": [
+                "hough_fragments_022"
+              ],
+              "source_names": [
+                "hough_fragments"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_08_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_08_hough_fragments_022": "raw box from hough_fragments; normalized bounds=[0.41708, 0.64636, 0.60179, 0.82252]; support=['hough_fragments_022']",
+            "cluster_08_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+          }
+        },
+        {
+          "cluster_id": "cluster_09",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.24765,
+                0.58996,
+                0.34483,
+                0.66109
+              ],
+              "confidence": 0.83226,
+              "hypothesis_id": "cluster_09_classical_regions_012",
+              "kind": "raw",
+              "source_ids": [
+                "classical_regions_012"
+              ],
+              "source_names": [
+                "classical_regions"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_09_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_09_classical_regions_012": "raw box from classical_regions; normalized bounds=[0.24765, 0.58996, 0.34483, 0.66109]; support=['classical_regions_012']",
+            "cluster_09_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+          }
+        }
+      ],
+      "detector_runs": [
+        {
+          "count": 31,
+          "detector": "classical_regions",
+          "duration_ms": 571.49,
+          "status": "ok"
+        },
+        {
+          "count": 24,
+          "detector": "canny_morph",
+          "duration_ms": 127.482,
+          "status": "ok"
+        },
+        {
+          "count": 24,
+          "detector": "quad_rectangularity",
+          "duration_ms": 315.881,
+          "status": "ok"
+        },
+        {
+          "count": 24,
+          "detector": "partial_contour",
+          "duration_ms": 220.328,
+          "status": "ok"
+        },
+        {
+          "count": 18,
+          "detector": "photometric_windows",
+          "duration_ms": 301.315,
+          "status": "ok"
+        },
+        {
+          "count": 32,
+          "detector": "hough_fragments",
+          "duration_ms": 97.757,
+          "status": "ok"
+        }
+      ],
+      "frame": {
+        "height_px": 3024,
+        "id": "frame_000000",
+        "sensor_id": "front_camera",
+        "width_px": 4032
+      },
+      "image_is_not_available_to_jev": true,
+      "raw_boxes": [
+        {
+          "bbox_xyxy_norm": [
+            0.42205,
+            0.76424,
+            0.48858,
+            0.85298
+          ],
+          "candidate_id": "canny_morph_001",
+          "confidence": 1.0,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.28997,
+            0.69536,
+            0.33764,
+            0.75894
+          ],
+          "candidate_id": "canny_morph_000",
+          "confidence": 1.0,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.43311,
+            0.13009,
+            0.60795
+          ],
+          "candidate_id": "canny_morph_002",
+          "confidence": 0.9993962235491695,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.76961,
+            0.79603,
+            0.81728,
+            0.86093
+          ],
+          "candidate_id": "canny_morph_003",
+          "confidence": 0.9983837834145985,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.29692,
+            0.87682,
+            0.34062,
+            0.93775
+          ],
+          "candidate_id": "canny_morph_004",
+          "confidence": 0.996521191044821,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.26614,
+            0.80662,
+            0.31082,
+            0.86358
+          ],
+          "candidate_id": "canny_morph_005",
+          "confidence": 0.9964438589943334,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.00894,
+            0.36821,
+            0.06356,
+            0.43576
+          ],
+          "candidate_id": "canny_morph_006",
+          "confidence": 0.9940713622277023,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.06058,
+            0.77086,
+            0.11221,
+            0.83444
+          ],
+          "candidate_id": "canny_morph_007",
+          "confidence": 0.9937222707646804,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.12214,
+            0.85695,
+            0.19067,
+            0.95762
+          ],
+          "candidate_id": "canny_morph_008",
+          "confidence": 0.9923751856156541,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.26316,
+            0.8,
+            0.3148,
+            0.86225
+          ],
+          "candidate_id": "canny_morph_009",
+          "confidence": 0.9920727277884616,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.41854,
+            0.1291,
+            0.60927
+          ],
+          "candidate_id": "canny_morph_010",
+          "confidence": 0.9918770864624462,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.21549,
+            0.93642,
+            0.26216,
+            0.99205
+          ],
+          "candidate_id": "canny_morph_011",
+          "confidence": 0.9911999283828538,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.30189,
+            0.8755,
+            0.34062,
+            0.93775
+          ],
+          "candidate_id": "canny_morph_012",
+          "confidence": 0.9854142754564836,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.12711,
+            0.85695,
+            0.19067,
+            0.92715
+          ],
+          "candidate_id": "canny_morph_013",
+          "confidence": 0.985167742133491,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.32572,
+            0.8106,
+            0.37934,
+            0.8755
+          ],
+          "candidate_id": "canny_morph_014",
+          "confidence": 0.9850660947065631,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.14598,
+            0.80132,
+            0.19563,
+            0.85563
+          ],
+          "candidate_id": "canny_morph_015",
+          "confidence": 0.9844675188447235,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.00894,
+            0.36821,
+            0.06951,
+            0.43444
+          ],
+          "candidate_id": "canny_morph_016",
+          "confidence": 0.9843752998143388,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.56008,
+            0.31523,
+            0.65541,
+            0.42914
+          ],
+          "candidate_id": "canny_morph_017",
+          "confidence": 0.982835053117535,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.57498,
+            0.36821,
+            0.62463,
+            0.42119
+          ],
+          "candidate_id": "canny_morph_018",
+          "confidence": 0.9825397147183986,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.26614,
+            0.80662,
+            0.32075,
+            0.86358
+          ],
+          "candidate_id": "canny_morph_019",
+          "confidence": 0.980707035454649,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.56426,
+            0.0,
+            1.0,
+            0.20502
+          ],
+          "candidate_id": "classical_regions_000",
+          "confidence": 0.9708,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.84326,
+            0.07531,
+            1.0,
+            0.34728
+          ],
+          "candidate_id": "classical_regions_001",
+          "confidence": 0.95455,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.42006,
+            0.0,
+            0.5674,
+            0.43515
+          ],
+          "candidate_id": "classical_regions_002",
+          "confidence": 0.9207,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.30721,
+            0.08787,
+            0.45768,
+            0.30126
+          ],
+          "candidate_id": "classical_regions_003",
+          "confidence": 0.90968,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.54859,
+            0.19665,
+            0.74922,
+            0.54393
+          ],
+          "candidate_id": "classical_regions_004",
+          "confidence": 0.90815,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.81191,
+            0.47699,
+            1.0,
+            1.0
+          ],
+          "candidate_id": "classical_regions_005",
+          "confidence": 0.89802,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.31034,
+            0.0,
+            0.43887,
+            0.15481
+          ],
+          "candidate_id": "classical_regions_006",
+          "confidence": 0.89408,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.74295,
+            0.33473,
+            0.87147,
+            0.5523
+          ],
+          "candidate_id": "classical_regions_007",
+          "confidence": 0.8912,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.5523,
+            0.24451,
+            0.87448
+          ],
+          "candidate_id": "classical_regions_008",
+          "confidence": 0.88177,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.85266,
+            0.35983,
+            1.0,
+            0.43096
+          ],
+          "candidate_id": "classical_regions_010",
+          "confidence": 0.85505,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            0.09404,
+            0.23013
+          ],
+          "candidate_id": "classical_regions_011",
+          "confidence": 0.84231,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.24765,
+            0.58996,
+            0.34483,
+            0.66109
+          ],
+          "candidate_id": "classical_regions_012",
+          "confidence": 0.83226,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.12226,
+            0.0,
+            0.19749,
+            0.13808
+          ],
+          "candidate_id": "classical_regions_013",
+          "confidence": 0.82079,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.51097,
+            0.0,
+            0.5768,
+            0.21757
+          ],
+          "candidate_id": "classical_regions_014",
+          "confidence": 0.8187,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.42006,
+            0.3431,
+            0.48589,
+            0.42259
+          ],
+          "candidate_id": "classical_regions_015",
+          "confidence": 0.81587,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.2163,
+            0.0,
+            0.28527,
+            0.06695
+          ],
+          "candidate_id": "classical_regions_016",
+          "confidence": 0.81183,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.26646,
+            0.39331,
+            0.40752,
+            0.54393
+          ],
+          "candidate_id": "classical_regions_017",
+          "confidence": 0.81178,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.10658,
+            0.27197,
+            0.47022,
+            0.49791
+          ],
+          "candidate_id": "classical_regions_018",
+          "confidence": 0.81095,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.10658,
+            0.0,
+            0.17241,
+            0.23431
+          ],
+          "candidate_id": "classical_regions_019",
+          "confidence": 0.81028,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.15361,
+            0.10042,
+            0.23824,
+            0.30126
+          ],
+          "candidate_id": "classical_regions_020",
+          "confidence": 0.80476,
+          "kind": "region_proposal",
+          "source": "classical_regions"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.75232,
+            0.21648,
+            0.97748
+          ],
+          "candidate_id": "hough_fragments_028",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.41311,
+            0.03709,
+            0.50447,
+            0.46225
+          ],
+          "candidate_id": "hough_fragments_003",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.30983,
+            0.76689,
+            0.47567,
+            1.0
+          ],
+          "candidate_id": "hough_fragments_027",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.41708,
+            0.64636,
+            0.60179,
+            0.82252
+          ],
+          "candidate_id": "hough_fragments_022",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.18073,
+            0.0,
+            0.27905,
+            0.32318
+          ],
+          "candidate_id": "hough_fragments_016",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.33168,
+            0.81457,
+            0.56902,
+            0.94437
+          ],
+          "candidate_id": "hough_fragments_015",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.33962,
+            0.77881,
+            0.56107,
+            0.90596
+          ],
+          "candidate_id": "hough_fragments_001",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.04866,
+            0.77483,
+            0.34359,
+            0.86358
+          ],
+          "candidate_id": "hough_fragments_006",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.42205,
+            0.81722,
+            0.56604,
+            0.99868
+          ],
+          "candidate_id": "hough_fragments_030",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.16385,
+            0.82781,
+            0.38729,
+            0.94172
+          ],
+          "candidate_id": "hough_fragments_000",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.04866,
+            0.80662,
+            0.27805,
+            0.91656
+          ],
+          "candidate_id": "hough_fragments_012",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.21946,
+            0.87947,
+            0.44687,
+            0.98411
+          ],
+          "candidate_id": "hough_fragments_010",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0993,
+            0.08079,
+            0.18272,
+            0.33245
+          ],
+          "candidate_id": "hough_fragments_026",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.06852,
+            0.69801,
+            0.36743,
+            0.76291
+          ],
+          "candidate_id": "hough_fragments_004",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.40119,
+            0.82781,
+            0.56902,
+            0.93775
+          ],
+          "candidate_id": "hough_fragments_023",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.09335,
+            0.88874,
+            0.25521,
+            1.0
+          ],
+          "candidate_id": "hough_fragments_024",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.07448,
+            0.9351,
+            0.32969,
+            1.0
+          ],
+          "candidate_id": "hough_fragments_020",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.17676,
+            0.0,
+            0.24727,
+            0.22252
+          ],
+          "candidate_id": "hough_fragments_002",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.13108,
+            0.90464,
+            0.32274,
+            0.98411
+          ],
+          "candidate_id": "hough_fragments_014",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.3426,
+            0.88344,
+            0.55015,
+            0.95364
+          ],
+          "candidate_id": "hough_fragments_008",
+          "confidence": 0.88,
+          "kind": "line_fragment",
+          "source": "hough_fragments"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.56306,
+            0.31523,
+            0.65541,
+            0.42914
+          ],
+          "candidate_id": "partial_contour_000",
+          "confidence": 0.9565313263017008,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.57398,
+            0.31656,
+            0.75472,
+            0.55762
+          ],
+          "candidate_id": "partial_contour_001",
+          "confidence": 0.9427080533906655,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.7289,
+            0.15364,
+            0.8431,
+            0.31523
+          ],
+          "candidate_id": "partial_contour_002",
+          "confidence": 0.9414177072067,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.56405,
+            0.31523,
+            0.62761,
+            0.42119
+          ],
+          "candidate_id": "partial_contour_003",
+          "confidence": 0.9411277146562229,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.00695,
+            0.34834,
+            0.07944,
+            0.44238
+          ],
+          "candidate_id": "partial_contour_004",
+          "confidence": 0.938898616094702,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.19662,
+            0.33377,
+            0.27408,
+            0.45298
+          ],
+          "candidate_id": "partial_contour_005",
+          "confidence": 0.9388286495901486,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.57299,
+            0.36424,
+            0.62463,
+            0.42119
+          ],
+          "candidate_id": "partial_contour_006",
+          "confidence": 0.9379399435632005,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.00099,
+            0.28742,
+            0.05065,
+            0.34967
+          ],
+          "candidate_id": "partial_contour_007",
+          "confidence": 0.9378407240928662,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.20755,
+            0.35099,
+            0.26514,
+            0.43576
+          ],
+          "candidate_id": "partial_contour_008",
+          "confidence": 0.9374923316122208,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.57895,
+            0.36424,
+            0.62562,
+            0.42252
+          ],
+          "candidate_id": "partial_contour_009",
+          "confidence": 0.9373308701084652,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.20457,
+            0.34702,
+            0.26713,
+            0.43974
+          ],
+          "candidate_id": "partial_contour_010",
+          "confidence": 0.937050998448737,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.34558,
+            0.34172,
+            0.3853,
+            0.3947
+          ],
+          "candidate_id": "partial_contour_011",
+          "confidence": 0.9352171326591314,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.34657,
+            0.34172,
+            0.3853,
+            0.3894
+          ],
+          "candidate_id": "partial_contour_012",
+          "confidence": 0.9350923593665422,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.75174,
+            0.30464,
+            0.79245,
+            0.35364
+          ],
+          "candidate_id": "partial_contour_013",
+          "confidence": 0.9347754887307679,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.19662,
+            0.32318,
+            0.30785,
+            0.45298
+          ],
+          "candidate_id": "partial_contour_014",
+          "confidence": 0.9345541095514499,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.54618,
+            0.44503,
+            0.58788,
+            0.50331
+          ],
+          "candidate_id": "partial_contour_015",
+          "confidence": 0.9253762432124792,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.57795,
+            0.34437,
+            0.7428,
+            0.52715
+          ],
+          "candidate_id": "partial_contour_016",
+          "confidence": 0.9219303969419402,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.27309,
+            0.1894,
+            0.33069,
+            0.2755
+          ],
+          "candidate_id": "partial_contour_017",
+          "confidence": 0.9216465136393932,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.38133,
+            0.8649,
+            0.41708,
+            0.90993
+          ],
+          "candidate_id": "partial_contour_018",
+          "confidence": 0.9210067214482255,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.00695,
+            0.34834,
+            0.07845,
+            0.45828
+          ],
+          "candidate_id": "partial_contour_019",
+          "confidence": 0.9156609374203316,
+          "kind": "partial_edge_fragment",
+          "source": "partial_contour"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.68818,
+            0.18675,
+            0.83714,
+            0.3351
+          ],
+          "candidate_id": "photometric_windows_000",
+          "confidence": 0.8423994189696521,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.68818,
+            0.20927,
+            0.83714,
+            0.45828
+          ],
+          "candidate_id": "photometric_windows_001",
+          "confidence": 0.8272359043100884,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.68818,
+            0.33377,
+            0.83714,
+            0.53245
+          ],
+          "candidate_id": "photometric_windows_002",
+          "confidence": 0.821232533119351,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.75074,
+            0.37351,
+            0.8997,
+            0.52185
+          ],
+          "candidate_id": "photometric_windows_003",
+          "confidence": 0.8127716194676264,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.68818,
+            0.24901,
+            0.83714,
+            0.39735
+          ],
+          "candidate_id": "photometric_windows_004",
+          "confidence": 0.8093774781109555,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.31281,
+            0.0,
+            0.46177,
+            0.14834
+          ],
+          "candidate_id": "photometric_windows_005",
+          "confidence": 0.8069454439147603,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.64647,
+            0.24636,
+            0.86594,
+            0.53907
+          ],
+          "candidate_id": "photometric_windows_006",
+          "confidence": 0.8060222928226789,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.68818,
+            0.31126,
+            0.83714,
+            0.4596
+          ],
+          "candidate_id": "photometric_windows_007",
+          "confidence": 0.802217878362511,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.37537,
+            0.06225,
+            0.52433,
+            0.2106
+          ],
+          "candidate_id": "photometric_windows_008",
+          "confidence": 0.8012378489213121,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.81331,
+            0.37351,
+            0.96226,
+            0.52185
+          ],
+          "candidate_id": "photometric_windows_009",
+          "confidence": 0.7992889364709529,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.31281,
+            0.06225,
+            0.46177,
+            0.2106
+          ],
+          "candidate_id": "photometric_windows_010",
+          "confidence": 0.7981004668697848,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.18769,
+            0.43576,
+            0.33664,
+            0.58411
+          ],
+          "candidate_id": "photometric_windows_011",
+          "confidence": 0.7930953299257228,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.62562,
+            0.18675,
+            0.77458,
+            0.3351
+          ],
+          "candidate_id": "photometric_windows_012",
+          "confidence": 0.7929597640302946,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.37537,
+            0.08344,
+            0.52433,
+            0.28212
+          ],
+          "candidate_id": "photometric_windows_013",
+          "confidence": 0.790177711143875,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.37537,
+            0.0,
+            0.52433,
+            0.14834
+          ],
+          "candidate_id": "photometric_windows_014",
+          "confidence": 0.7859633192531869,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.37537,
+            0.0,
+            0.52433,
+            0.24901
+          ],
+          "candidate_id": "photometric_windows_015",
+          "confidence": 0.7849893738300693,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.25025,
+            0.43576,
+            0.39921,
+            0.58411
+          ],
+          "candidate_id": "photometric_windows_016",
+          "confidence": 0.7832664357459516,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.75074,
+            0.31391,
+            0.8997,
+            0.56291
+          ],
+          "candidate_id": "photometric_windows_017",
+          "confidence": 0.7826752196007878,
+          "kind": "photometric_region",
+          "source": "photometric_windows"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.21847,
+            0.18411,
+            0.2572,
+            0.28609
+          ],
+          "candidate_id": "quad_rectangularity_000",
+          "confidence": 0.7660354943780118,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.18272,
+            0.03709,
+            0.23237,
+            0.18013
+          ],
+          "candidate_id": "quad_rectangularity_001",
+          "confidence": 0.6935622726593011,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            0.16087,
+            0.51258
+          ],
+          "candidate_id": "quad_rectangularity_002",
+          "confidence": 0.6787544481518517,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            0.16187,
+            0.33642
+          ],
+          "candidate_id": "quad_rectangularity_003",
+          "confidence": 0.6243052022924693,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.64151,
+            0.31523,
+            0.66236,
+            0.43046
+          ],
+          "candidate_id": "quad_rectangularity_004",
+          "confidence": 0.6193585747376247,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.73784,
+            0.32583,
+            0.7567,
+            0.48477
+          ],
+          "candidate_id": "quad_rectangularity_005",
+          "confidence": 0.6163192508220703,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.18173,
+            0.03576,
+            0.2572,
+            0.28609
+          ],
+          "candidate_id": "quad_rectangularity_006",
+          "confidence": 0.5705454576037409,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0288,
+            0.25563,
+            0.06852,
+            0.33907
+          ],
+          "candidate_id": "quad_rectangularity_007",
+          "confidence": 0.5627457773123438,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.56504,
+            0.18808,
+            0.64647,
+            0.22384
+          ],
+          "candidate_id": "quad_rectangularity_008",
+          "confidence": 0.5543522527906672,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.12185,
+            0.11519,
+            0.5457
+          ],
+          "candidate_id": "quad_rectangularity_009",
+          "confidence": 0.5537773628363868,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.15293,
+            0.51921,
+            0.20457,
+            0.59073
+          ],
+          "candidate_id": "quad_rectangularity_010",
+          "confidence": 0.5509218797155122,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.39027,
+            0.38013,
+            0.45978,
+            0.41854
+          ],
+          "candidate_id": "quad_rectangularity_011",
+          "confidence": 0.5453273375190905,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.22642,
+            0.41589,
+            0.30785,
+            0.4596
+          ],
+          "candidate_id": "quad_rectangularity_012",
+          "confidence": 0.5371731143151065,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.22642,
+            0.41854,
+            0.30189,
+            0.45828
+          ],
+          "candidate_id": "quad_rectangularity_013",
+          "confidence": 0.5361990874898559,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.04767,
+            0.50464,
+            0.11917,
+            0.5457
+          ],
+          "candidate_id": "quad_rectangularity_014",
+          "confidence": 0.5238325797962076,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.18173,
+            0.40397,
+            0.21748,
+            0.47682
+          ],
+          "candidate_id": "quad_rectangularity_015",
+          "confidence": 0.5182162857838534,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.64052,
+            0.50861,
+            0.73784,
+            0.55364
+          ],
+          "candidate_id": "quad_rectangularity_016",
+          "confidence": 0.5171219567304977,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.48163,
+            0.4106,
+            0.58193,
+            0.43841
+          ],
+          "candidate_id": "quad_rectangularity_017",
+          "confidence": 0.5163513142487746,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.52731,
+            0.3457,
+            0.57398,
+            0.40397
+          ],
+          "candidate_id": "quad_rectangularity_018",
+          "confidence": 0.515455713962435,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.0576,
+            0.53245,
+            0.12711,
+            0.57219
+          ],
+          "candidate_id": "quad_rectangularity_019",
+          "confidence": 0.5094469934657091,
+          "kind": "quadrilateral_fragment",
+          "source": "quad_rectangularity"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.11122,
+            0.47417,
+            0.17378,
+            0.58013
+          ],
+          "candidate_id": "canny_morph_020",
+          "confidence": 0.9806338809616453,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        },
+        {
+          "bbox_xyxy_norm": [
+            0.28302,
+            0.19205,
+            0.32969,
+            0.27285
+          ],
+          "candidate_id": "canny_morph_021",
+          "confidence": 0.979525330069024,
+          "kind": "contour_fragment",
+          "source": "canny_morph"
+        }
+      ],
+      "task": "Fuse noisy image-space CV cues into bounded object-boundary hypotheses."
+    }
+  },
+  "response": {
+    "answers": {
+      "cluster_00_selected": {
+        "choice": "cluster_00_weighted_median",
+        "confidence": 0.42,
+        "probabilities": {
+          "cluster_00_canny_morph_001": 0.01,
+          "cluster_00_none": 0.4,
+          "cluster_00_union": 0.02,
+          "cluster_00_weighted_median": 0.56
+        },
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "noul": 0.64,
+        "type": "noul"
+      },
+      "cluster_01_selected": {
+        "choice": "cluster_01_weighted_median",
+        "confidence": 0.22,
+        "probabilities": {
+          "cluster_01_canny_morph_000": 0.02,
+          "cluster_01_none": 0.27,
+          "cluster_01_union": 0.3,
+          "cluster_01_weighted_median": 0.41
+        },
+        "type": "choice"
+      },
+      "cluster_01_usable": {
+        "noul": 0.66,
+        "type": "noul"
+      },
+      "cluster_02_selected": {
+        "choice": "cluster_02_weighted_median",
+        "confidence": 0.69,
+        "probabilities": {
+          "cluster_02_canny_morph_002": 0.01,
+          "cluster_02_none": 0.15,
+          "cluster_02_union": 0.07,
+          "cluster_02_weighted_median": 0.77
+        },
+        "type": "choice"
+      },
+      "cluster_02_usable": {
+        "noul": 0.64,
+        "type": "noul"
+      },
+      "cluster_03_selected": {
+        "choice": "cluster_03_none",
+        "confidence": 0.53,
+        "probabilities": {
+          "cluster_03_canny_morph_003": 0.23,
+          "cluster_03_none": 0.77
+        },
+        "type": "choice"
+      },
+      "cluster_03_usable": {
+        "noul": 0.66,
+        "type": "noul"
+      },
+      "cluster_04_selected": {
+        "choice": "cluster_04_weighted_median",
+        "confidence": 0.95,
+        "probabilities": {
+          "cluster_04_canny_morph_017": 0.02,
+          "cluster_04_none": 0.02,
+          "cluster_04_union": 0.0,
+          "cluster_04_weighted_median": 0.96
+        },
+        "type": "choice"
+      },
+      "cluster_04_usable": {
+        "noul": 0.65,
+        "type": "noul"
+      },
+      "cluster_05_selected": {
+        "choice": "cluster_05_weighted_median",
+        "confidence": 0.88,
+        "probabilities": {
+          "cluster_05_canny_morph_021": 0.01,
+          "cluster_05_none": 0.04,
+          "cluster_05_union": 0.04,
+          "cluster_05_weighted_median": 0.91
+        },
+        "type": "choice"
+      },
+      "cluster_05_usable": {
+        "noul": 0.63,
+        "type": "noul"
+      },
+      "cluster_06_selected": {
+        "choice": "cluster_06_weighted_median",
+        "confidence": 0.91,
+        "probabilities": {
+          "cluster_06_none": 0.04,
+          "cluster_06_partial_contour_005": 0.01,
+          "cluster_06_union": 0.02,
+          "cluster_06_weighted_median": 0.93
+        },
+        "type": "choice"
+      },
+      "cluster_06_usable": {
+        "noul": 0.65,
+        "type": "noul"
+      },
+      "cluster_07_selected": {
+        "choice": "cluster_07_weighted_median",
+        "confidence": 0.79,
+        "probabilities": {
+          "cluster_07_none": 0.05,
+          "cluster_07_partial_contour_011": 0.05,
+          "cluster_07_union": 0.06,
+          "cluster_07_weighted_median": 0.84
+        },
+        "type": "choice"
+      },
+      "cluster_07_usable": {
+        "noul": 0.63,
+        "type": "noul"
+      },
+      "cluster_08_selected": {
+        "choice": "cluster_08_none",
+        "confidence": 0.81,
+        "probabilities": {
+          "cluster_08_hough_fragments_022": 0.1,
+          "cluster_08_none": 0.9
+        },
+        "type": "choice"
+      },
+      "cluster_08_usable": {
+        "noul": 0.65,
+        "type": "noul"
+      },
+      "cluster_09_selected": {
+        "choice": "cluster_09_none",
+        "confidence": 0.4,
+        "probabilities": {
+          "cluster_09_classical_regions_012": 0.3,
+          "cluster_09_none": 0.7
+        },
+        "type": "choice"
+      },
+      "cluster_09_usable": {
+        "noul": 0.65,
+        "type": "noul"
+      }
+    },
+    "model": "jev-1.13.0",
+    "usage": {
+      "input_tokens": 29959,
+      "output_tokens": 933
+    }
+  },
+  "schema": "issue_219_jev_cache_v0"
+}

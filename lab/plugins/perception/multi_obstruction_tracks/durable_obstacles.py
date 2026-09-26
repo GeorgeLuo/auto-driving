@@ -78,7 +78,7 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
             frame = CameraFrame("front_camera", int(item["captured_at_ms"]), np.ascontiguousarray(rgb), image_path, {"source_id": item["frame_id"]})
             batch = plugin.perceive(PerceptionPluginInputs(
                 item["frame_id"], int(item["captured_at_ms"]), {"frame": frame},
-                diagnostics, {"sequence_index": position}, memory=shared_memory,
+                diagnostics, {"sequence_index": position}, shared_memory=shared_memory,
             ))
             sensors = SensorSnapshot(
                 read_id=item["frame_id"], readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -89,7 +89,7 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
             )
             tracking.update(DecisionFrameContext(
                 frame_id=item["frame_id"], frame_index=position,
-                timestamp_ms=frame.captured_at_ms, sensor_snapshot=sensors, memory=shared_memory,
+                timestamp_ms=frame.captured_at_ms, sensor_snapshot=sensors, shared_memory=shared_memory,
             ), Observation(
                 observation_id=item["frame_id"], created_at_ms=frame.captured_at_ms,
                 sensor_snapshot={}, things=tuple(thing.to_dict() for thing in batch.things),

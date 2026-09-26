@@ -188,7 +188,7 @@ class PerceptionPluginInputs:
     components: Mapping[str, Any]
     diagnostics: PerceptionDiagnosticSink
     metadata: Mapping[str, Any] = field(default_factory=dict)
-    memory: SharedMemory | None = field(default=None, repr=False, compare=False)
+    shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "components", MappingProxyType(dict(self.components)))

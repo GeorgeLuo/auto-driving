@@ -39,7 +39,7 @@ class DecisionFrameContext:
     user_steering: float = 0.0
     user_throttle: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
-    memory: SharedMemory | None = field(default=None, repr=False, compare=False)
+    shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -100,6 +100,7 @@ class DecisionCycleResult:
     context: DecisionFrameContext
     perception: PerceptionText | None
     observation: Observation | None
+    # Retained evidence also published at shared_memory["decision.snapshot"].
     memory: MemorySnapshot | None
     patterns: Any
     projections: Any
@@ -155,6 +156,8 @@ class DecisionCycle:
         else:
             observation = None
         try:
+            # Stage return is retained evidence, also stored at
+            # shared_memory["decision.snapshot"] by the implementation.
             memory = self.stages.remember(context, observation) if self.stages.remember else None
             if memory is not None and not isinstance(memory, MemorySnapshot):
                 raise TypeError("decision memory stage must return MemorySnapshot or None")
@@ -168,8 +171,8 @@ class DecisionCycle:
             except Exception:
                 detail = "unprintable error"
             raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
-        if context.memory is not None:
-            updated_observation = context.memory.get("decision.observation")
+        if context.shared_memory is not None:
+            updated_observation = context.shared_memory.get("decision.observation")
             if (
                 isinstance(updated_observation, Observation)
                 and observation is not None

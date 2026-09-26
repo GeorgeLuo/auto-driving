@@ -2700,7 +2700,10 @@ def strict_decode_apply_observation(payload: object) -> Observation:
 
 
 def strict_decode_apply_memory(payload: object) -> MemorySnapshot:
-    """Only legal way apply turns JSON into MemorySnapshot (complete export equality)."""
+    """Decode retained evidence published at shared_memory["decision.snapshot"].
+
+    Only legal way apply turns JSON into MemorySnapshot (complete export equality).
+    """
 
     if not isinstance(payload, dict):
         raise DecisionSurfaceError(

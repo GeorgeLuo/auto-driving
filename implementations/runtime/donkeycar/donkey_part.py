@@ -319,7 +319,8 @@ class AutonomyPilotPart:
                     "status": "absent",
                     "error": "no memory stage is activated",
                 }
-            # Detach memory from the retained publication until the next cycle.
+            # Replace the published snapshot from shared_memory["decision.snapshot"]
+            # until the next cycle.
             if self.latest_snapshot is not None and isinstance(self.latest_snapshot.cycle, dict):
                 cycle = dict(self.latest_snapshot.cycle)
                 cycle["memory"] = snapshot.to_dict() if hasattr(snapshot, "to_dict") else None
@@ -551,6 +552,8 @@ class AutonomyPilotPart:
 
         perception = None if snap.cycle is None else deepcopy(snap.cycle.get("perception"))
         observation = None if snap.cycle is None else deepcopy(snap.cycle.get("observation"))
+        # Republish retained evidence from shared_memory["decision.snapshot"]
+        # through the cycle publication.
         memory = None if snap.cycle is None else deepcopy(snap.cycle.get("memory"))
         return {
             "schema": OBSERVATION_PUBLICATION_SCHEMA,

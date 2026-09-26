@@ -467,28 +467,28 @@ class BoundedEvidenceLedger:
         self.config = config
         reducer = _BoundedEvidenceReducer(**config)
         self.bounds = reducer.bounds
-        self._memory: SharedMemory | None = None
+        self._shared_memory: SharedMemory | None = None
         self._empty = reducer.snapshot()
 
     def snapshot(self) -> MemorySnapshot:
         current = (
-            self._memory.get("decision.snapshot") if self._memory is not None else None
+            self._shared_memory.get("decision.snapshot") if self._shared_memory is not None else None
         )
         return detach_memory_snapshot(current or self._empty)
 
-    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
-        if memory is not None:
-            self._memory = memory
-        if self._memory is None:
+    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
+        if shared_memory is not None:
+            self._shared_memory = shared_memory
+        if self._shared_memory is None:
             raise ValueError("bounded evidence reset requires a shared-memory map")
         previous = self.snapshot()
         next_epoch = max(
             _numbered_epoch(previous.epoch_id),
-            self._memory.get(EPOCH_COUNTER_KEY, 1),
+            self._shared_memory.get(EPOCH_COUNTER_KEY, 1),
         ) + 1
         epoch = f"epoch-{next_epoch}"
-        self._memory[EPOCH_COUNTER_KEY] = next_epoch
-        self._memory["decision.snapshot"] = replace(
+        self._shared_memory[EPOCH_COUNTER_KEY] = next_epoch
+        self._shared_memory["decision.snapshot"] = replace(
             self._empty,
             memory_id=f"memory-reset-{next_epoch}",
             epoch_id=epoch,
@@ -505,15 +505,15 @@ class BoundedEvidenceLedger:
         context: DecisionFrameContext,
         observation: Observation | None,
     ) -> MemorySnapshot:
-        if context.memory is None:
+        if context.shared_memory is None:
             raise ValueError("bounded evidence requires a shared-memory map")
-        self._memory = context.memory
+        self._shared_memory = context.shared_memory
         previous = self.snapshot()
         epoch_number = max(
             _numbered_epoch(previous.epoch_id),
-            context.memory.get(EPOCH_COUNTER_KEY, 1),
+            context.shared_memory.get(EPOCH_COUNTER_KEY, 1),
         )
-        context.memory[EPOCH_COUNTER_KEY] = epoch_number
+        context.shared_memory[EPOCH_COUNTER_KEY] = epoch_number
         if previous.health == "error":
             previous = replace(self._empty, epoch_id=f"epoch-{epoch_number}")
         snapshot = reduce_evidence(
@@ -523,7 +523,7 @@ class BoundedEvidenceLedger:
             implementation_id=self.implementation_id,
             **self.config,
         )
-        context.memory["decision.snapshot"] = snapshot
+        context.shared_memory["decision.snapshot"] = snapshot
         return detach_memory_snapshot(snapshot)
 
 

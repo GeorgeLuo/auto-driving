@@ -601,6 +601,7 @@ def run_vehicle_automation(
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
+            # Retained evidence from shared_memory["decision.snapshot"].
             "memory": cycle_result.memory.to_dict()
             if cycle_result.memory is not None
             else None,

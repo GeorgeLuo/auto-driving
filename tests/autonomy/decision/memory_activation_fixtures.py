@@ -83,8 +83,8 @@ class _RecordingMemory:
         )
         return self._snapshot
 
-    def reset(self, memory=None):
-        del memory
+    def reset(self, shared_memory=None):
+        del shared_memory
         if self.fail_on_reset:
             raise RuntimeError("reset exploded")
         self.epoch += 1
@@ -214,10 +214,10 @@ class _BrokenStrMemory(_RecordingMemory):
             raise _BrokenStringError("payload")
         return super().update(context, observation)
 
-    def reset(self, memory=None):
+    def reset(self, shared_memory=None):
         if self._armed:
             raise _BrokenStringError("payload")
-        return super().reset(memory)
+        return super().reset(shared_memory)
 
     def snapshot(self):
         if self._armed:

@@ -1,9 +1,10 @@
 """Host-owned shared memory for sequential stages and plugins.
 
-A host supplies one mutable mapping for a run; absent access is None. Producers
-own their keys and include timing in values where needed. Writes are visible to
-subsequent consumers in execution order. Hosts own reset and synchronization;
-this mapping imposes no retention policy or domain-specific schema.
+A host supplies one mutable mapping for a run; absent access is None. Parameters
+and fields that carry this mapping are named shared_memory. Producers own their
+keys and include timing in values where needed. Writes are visible to subsequent
+consumers in execution order. Hosts own reset and synchronization; this mapping
+imposes no retention policy or domain-specific schema.
 
 Memory implementations may publish their retained evidence at
 "decision.snapshot". The decision cycle reads the memory stage's result but

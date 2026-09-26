@@ -1071,7 +1071,7 @@ def _run_memory_sequence(
             frame_id=str(frame["frame_id"]),
             frame_index=int(frame["frame_index"]),
             timestamp_ms=int(frame["timestamp_ms"]),
-            memory=shared_memory,
+            shared_memory=shared_memory,
         )
         snapshot = stage.update(context, observation)
         final_snapshot = snapshot
@@ -1539,6 +1539,7 @@ def _stream_physical_memory_with_inspector(
                     lines.append("memory map: unavailable")
                 if fetch_error:
                     lines.append(f"publication: {fetch_error}")
+                # Published retained evidence from shared_memory["decision.snapshot"].
                 elif isinstance(publication, dict) and isinstance(publication.get("memory"), dict):
                     mem = publication["memory"]
                     lines.append(

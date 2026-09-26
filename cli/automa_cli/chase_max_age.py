@@ -116,6 +116,8 @@ def extract_chase_lifecycle_keys(frames: list[dict[str, Any]]) -> set[str]:
             observed_index[containing_frame_id] = containing_index
         observed_index[format_chase_frame_id(containing_index)] = containing_index
 
+        # Evaluation frames serialize retained evidence from
+        # shared_memory["decision.snapshot"].
         memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else None
         if memory is None:
             continue

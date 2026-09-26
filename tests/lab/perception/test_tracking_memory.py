@@ -32,7 +32,7 @@ def step(plugin, memory, index, rgb, *, candidate=True):
     )
     return plugin.update(DecisionFrameContext(
         frame_id=frame_id, frame_index=index, timestamp_ms=now,
-        sensor_snapshot=sensors, memory=memory,
+        sensor_snapshot=sensors, shared_memory=memory,
     ), observation)
 
 

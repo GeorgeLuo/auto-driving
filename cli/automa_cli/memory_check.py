@@ -1949,7 +1949,10 @@ def run_physical_memory_check(
 
 
 def live_memory_from_publication(publication: dict[str, Any]) -> dict[str, Any] | None:
-    """Extract the onboard MemorySnapshot payload from a publication."""
+    """Extract retained evidence from a publication.
+
+    The snapshot originates at shared_memory["decision.snapshot"].
+    """
 
     memory = publication.get("memory")
     if not isinstance(memory, dict):
@@ -2825,7 +2828,7 @@ def _feed_frames(
             frame_id=str(frame["frame_id"]),
             frame_index=int(frame["frame_index"]),
             timestamp_ms=int(frame["timestamp_ms"]),
-            memory=shared_memory,
+            shared_memory=shared_memory,
         )
         snapshot = stage.update(context, observation)
     return snapshot.to_dict()

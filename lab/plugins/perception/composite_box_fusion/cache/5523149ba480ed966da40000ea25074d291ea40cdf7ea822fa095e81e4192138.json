@@ -1,0 +1,167 @@
+{
+  "attempts": 1,
+  "created_at_ms": 1789626615937,
+  "latency_ms": 165.544,
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "cluster_00_selected": {
+        "criteria": {
+          "cluster_00_classical_regions_001": "raw box from classical_regions; normalized bounds=[0.0, 0.15063, 0.3511, 0.64017]; support=['classical_regions_001']",
+          "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+        },
+        "instructions": "Which bounded hypothesis best encloses one distinct visible object or obstacle supported by the structured CV evidence? Choose none when the cluster is clutter, a floor-only interruption, or insufficiently object-like. Select a fused box only when independent detector cues agree on one compact spatial mode. Boxes from one detector are correlated and count as one cue. Do not use a large floor, wall, image-border, or edge region as object support, and do not combine separated object-sized modes with a union or median. A single compact, high-confidence raw proposal may be usable when it is isolated and not contradicted by broad cues. A compact closed-edge rectangle with plausible image geometry may remain usable even when its edge confidence is lower than a color-region confidence.",
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "criteria": {
+          "false": "The cues are correlated, spatially heterogeneous, cluttered, or describe only a surface interruption.",
+          "true": "Several independent cues agree on one compact distinct object or obstacle, or one isolated compact raw proposal with plausible geometry is usable."
+        },
+        "instructions": "Does this structured cluster support a usable boundary for one distinct object rather than unrelated image regions?",
+        "type": "noul"
+      }
+    },
+    "state": {
+      "clusters": [
+        {
+          "cluster_id": "cluster_00",
+          "hypotheses": [
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.15063,
+                0.3511,
+                0.64017
+              ],
+              "confidence": 0.91292,
+              "hypothesis_id": "cluster_00_classical_regions_001",
+              "kind": "raw",
+              "source_ids": [
+                "classical_regions_001"
+              ],
+              "source_names": [
+                "classical_regions"
+              ]
+            },
+            {
+              "bbox_xyxy_norm": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "confidence": 0.0,
+              "hypothesis_id": "cluster_00_none",
+              "kind": "none",
+              "source_ids": [],
+              "source_names": []
+            }
+          ],
+          "question_criteria": {
+            "cluster_00_classical_regions_001": "raw box from classical_regions; normalized bounds=[0.0, 0.15063, 0.3511, 0.64017]; support=['classical_regions_001']",
+            "cluster_00_none": "none box from no detector; normalized bounds=[0.0, 0.0, 0.0, 0.0]; support=none"
+          }
+        }
+      ],
+      "detector_runs": [
+        {
+          "count": 1,
+          "detector": "classical_regions",
+          "duration_ms": 14.8,
+          "status": "ok"
+        },
+        {
+          "count": 0,
+          "detector": "edge_rectangles",
+          "duration_ms": 0.459,
+          "status": "empty"
+        }
+      ],
+      "frame": {
+        "height_px": 240,
+        "id": "frame_000004",
+        "sensor_id": "front_camera",
+        "width_px": 320
+      },
+      "image_is_not_available_to_jev": true,
+      "raw_boxes": [
+        {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.15063,
+            0.3511,
+            0.64017
+          ],
+          "candidate_id": "classical_regions_001",
+          "confidence": 0.91292,
+          "kind": "region_proposal",
+          "label": "coherent color region",
+          "properties": {
+            "area_fraction": 0.099049,
+            "centroid_xy_norm": [
+              0.18829,
+              0.39555
+            ],
+            "color_coherence": 0.89777,
+            "contour_xy_norm": [
+              [
+                0.0,
+                0.15063
+              ],
+              [
+                0.0,
+                0.30126
+              ],
+              [
+                0.09091,
+                0.29707
+              ],
+              [
+                0.12226,
+                0.64017
+              ],
+              [
+                0.3511,
+                0.54393
+              ],
+              [
+                0.33542,
+                0.30126
+              ]
+            ],
+            "evidence": "classical_color_component",
+            "solidity": 0.88264,
+            "thing_id": "classical_region_001",
+            "touches_lower_image": false
+          },
+          "source": "classical_regions"
+        }
+      ],
+      "task": "Fuse noisy image-space CV cues into bounded object-boundary hypotheses."
+    }
+  },
+  "response": {
+    "answers": {
+      "cluster_00_selected": {
+        "choice": "cluster_00_classical_regions_001",
+        "confidence": 0.19,
+        "probabilities": {
+          "cluster_00_classical_regions_001": 0.6,
+          "cluster_00_none": 0.4
+        },
+        "type": "choice"
+      },
+      "cluster_00_usable": {
+        "noul": 0.73,
+        "type": "noul"
+      }
+    },
+    "model": "jev-1.13.0",
+    "usage": {
+      "input_tokens": 1450,
+      "output_tokens": 83
+    }
+  },
+  "schema": "issue_219_jev_cache_v0"
+}

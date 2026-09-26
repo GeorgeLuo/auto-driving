@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 from .analyzer import AnalysisError, AnalyzerConfig, analyze_diff, analyze_tree, render_markdown, report_to_dict
-from .backtest import render_backtest_markdown, run_manifest
 from .factors.verification import attach_verification
 from .render import render_html
 
@@ -74,11 +73,6 @@ def build_parser() -> argparse.ArgumentParser:
     _common_options(diff)
     diff.add_argument("--evidence", type=Path, help="Attach a qca/verification/v1 record for these exact revisions.")
 
-    backtest = subparsers.add_parser("backtest", help="Run a declared historical backtest manifest.")
-    backtest.add_argument("--manifest", required=True, type=Path)
-    backtest.add_argument("--json", dest="json_path", type=Path)
-    backtest.add_argument("--markdown", dest="markdown_path", type=Path)
-    backtest.add_argument("--html", dest="html_path", type=Path)
     render = subparsers.add_parser("render", help="Render an existing JSON record as standalone HTML.")
     render.add_argument("report", type=Path)
     render.add_argument("--html", dest="html_path", required=True, type=Path)
@@ -141,13 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             _write(args.html_path, render_html(payload))
             print(markdown, end="")
             return 0
-        payload = run_manifest(args.manifest)
-        markdown = render_backtest_markdown(payload)
-        _write(args.json_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
-        _write(args.markdown_path, markdown)
-        _write(args.html_path, render_html(payload))
-        print(markdown, end="")
-        return 0
+        raise AnalysisError(f"unknown command: {args.command}")
     except (AnalysisError, ValueError, OSError) as exc:
         print(f"qca: {exc}", file=sys.stderr)
         return 2

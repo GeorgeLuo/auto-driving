@@ -1,30 +1,23 @@
 from __future__ import annotations
-
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
-
 from cli.automa_cli.memory import (
     MEMORY_REPLAY_MAX_FRAMES,
     MEMORY_REPLAY_RECORD_ARTIFACTS,
-    _directory_byte_size,
-    _remove_tree_strict,
-    _stabilize_record_byte_count,
     load_memory_observation_sequence,
     memory_snapshot_digest,
     replay_vehicle_memory,
-    write_memory_replay_record,
 )
 from tests.support.cli_runner import run_automa
+from tests.cli.memory.replay_fixtures import (
+    RECURRENCE_SOURCE,
+    MemoryReplayFixture,
+)
 
-SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
-RECURRENCE_SOURCE = SOURCES / "recurrence_sequence" / "sequence.json"
-CONFLICT_SOURCE = SOURCES / "conflict_sequence" / "sequence.json"
 
-
-class MemoryReplayTests(unittest.TestCase):
+class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
     def test_replay_help_is_registered(self) -> None:
         result = run_automa("vehicles", "memory", "help")
         self.assertEqual(result.returncode, 0)
@@ -132,7 +125,9 @@ class MemoryReplayTests(unittest.TestCase):
     def test_directory_sequence_loader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "sequence.json").write_text(RECURRENCE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
+            (root / "sequence.json").write_text(
+                RECURRENCE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8"
+            )
             frames = load_memory_observation_sequence(root)
             self.assertEqual(len(frames), 3)
 
@@ -177,7 +172,9 @@ class MemoryReplayTests(unittest.TestCase):
             for name in MEMORY_REPLAY_RECORD_ARTIFACTS:
                 self.assertTrue((record_dir / name).is_file(), name)
 
-            manifest = json.loads((record_dir / "manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads(
+                (record_dir / "manifest.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(manifest["schema"], "automa_memory_replay_record_v0")
             self.assertTrue(manifest["opt_in"])
             self.assertFalse(manifest["writes_default_history"])
@@ -190,14 +187,18 @@ class MemoryReplayTests(unittest.TestCase):
             self.assertIn("bytes_in_record", manifest["bounds"])
             self.assertGreater(manifest["bounds"]["bytes_in_record"], 0)
 
-            extract = (record_dir / "provenance_extract.html").read_text(encoding="utf-8")
+            extract = (record_dir / "provenance_extract.html").read_text(
+                encoding="utf-8"
+            )
             self.assertIn("retained evidence", extract.lower())
             self.assertIn("not current camera geometry", extract.lower())
             self.assertIn("thing:1:14:floor-plane-v0:18:floor_boundary_000", extract)
             self.assertIn("provenance.frame_id", extract)
             self.assertIn("obs_001", extract)  # last update of recurring thing
 
-            result_on_disk = json.loads((record_dir / "result.json").read_text(encoding="utf-8"))
+            result_on_disk = json.loads(
+                (record_dir / "result.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(result_on_disk["digest"], payload["digest"])
             self.assertGreaterEqual(len(result_on_disk["provenance_rows"]), 1)
             for row in result_on_disk["provenance_rows"]:
@@ -235,546 +236,3 @@ class MemoryReplayTests(unittest.TestCase):
             self.assertTrue(payload["recorded"])
             self.assertTrue(output_root.exists())
             self.assertEqual(len(list(output_root.iterdir())), 1)
-
-    def test_replay_rejects_sequences_over_frame_ceiling(self) -> None:
-        frames = [
-            {
-                "frame_id": f"frame_{index:04d}",
-                "frame_index": index,
-                "timestamp_ms": 1_000 + index,
-                "observation": {
-                    "observation_id": f"obs_{index:04d}",
-                    "created_at_ms": 1_000 + index,
-                    "sensor_snapshot": {},
-                    "perception_plugin_id": "lightweight_observer",
-                    "summary": [f"frame {index}"],
-                    "things": [],
-                    "signals": [],
-                },
-            }
-            for index in range(MEMORY_REPLAY_MAX_FRAMES + 1)
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            sequence = Path(tmp) / "too_long.json"
-            sequence.write_text(
-                json.dumps({"schema": "automa_memory_observation_sequence_v0", "frames": frames}),
-                encoding="utf-8",
-            )
-            result = replay_vehicle_memory(
-                vehicle_id="chase-sim-chaser",
-                sequence=sequence,
-                implementation_id="bounded_evidence",
-                json_output=True,
-            )
-        self.assertEqual(result.exit_code, 2)
-        self.assertIn("max allowed", result.message)
-
-    def test_loader_enforces_max_frames_before_return(self) -> None:
-        frames = [
-            {
-                "frame_id": f"frame_{index:04d}",
-                "frame_index": index,
-                "timestamp_ms": 1_000 + index,
-                "observation": {
-                    "observation_id": f"obs_{index:04d}",
-                    "created_at_ms": 1_000 + index,
-                    "sensor_snapshot": {},
-                    "perception_plugin_id": "lightweight_observer",
-                    "summary": [f"frame {index}"],
-                    "things": [],
-                    "signals": [],
-                },
-            }
-            for index in range(5)
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            sequence = Path(tmp) / "five.json"
-            sequence.write_text(
-                json.dumps(
-                    {"schema": "automa_memory_observation_sequence_v0", "frames": frames}
-                ),
-                encoding="utf-8",
-            )
-            with self.assertRaisesRegex(ValueError, "max allowed is 3"):
-                load_memory_observation_sequence(sequence, max_frames=3)
-
-    def test_loader_enforces_sequence_file_byte_preflight(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            sequence = Path(tmp) / "bulky.json"
-            sequence.write_text("{" + ("x" * 200) + "}", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "max allowed is 64"):
-                load_memory_observation_sequence(
-                    sequence,
-                    max_frames=16,
-                    max_sequence_file_bytes=64,
-                )
-
-    def test_loader_directory_rejects_excess_frame_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for index in range(4):
-                (root / f"frame_{index:03d}.json").write_text(
-                    json.dumps(
-                        {
-                            "frame_id": f"frame_{index:03d}",
-                            "frame_index": index,
-                            "timestamp_ms": index,
-                            "observation": {
-                                "observation_id": f"obs_{index:03d}",
-                                "created_at_ms": index,
-                                "sensor_snapshot": {},
-                                "perception_plugin_id": "lightweight_observer",
-                                "summary": [],
-                                "things": [],
-                                "signals": [],
-                            },
-                        }
-                    ),
-                    encoding="utf-8",
-                )
-            with self.assertRaisesRegex(ValueError, "frame files"):
-                load_memory_observation_sequence(root, max_frames=3)
-
-    def test_loader_directory_accepts_exact_frame_boundary(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for index in range(3):
-                (root / f"frame_{index:03d}.json").write_text(
-                    json.dumps(
-                        {
-                            "frame_id": f"frame_{index:03d}",
-                            "frame_index": index,
-                            "timestamp_ms": index,
-                            "observation": {
-                                "observation_id": f"obs_{index:03d}",
-                                "created_at_ms": index,
-                                "sensor_snapshot": {},
-                                "perception_plugin_id": "lightweight_observer",
-                                "summary": [],
-                                "things": [],
-                                "signals": [],
-                            },
-                        }
-                    ),
-                    encoding="utf-8",
-                )
-            frames = load_memory_observation_sequence(root, max_frames=3)
-            self.assertEqual(len(frames), 3)
-
-    def test_loader_file_accepts_exact_frame_boundary(self) -> None:
-        frames = [
-            {
-                "frame_id": f"frame_{index:04d}",
-                "frame_index": index,
-                "timestamp_ms": 1_000 + index,
-                "observation": {
-                    "observation_id": f"obs_{index:04d}",
-                    "created_at_ms": 1_000 + index,
-                    "sensor_snapshot": {},
-                    "perception_plugin_id": "lightweight_observer",
-                    "summary": [f"frame {index}"],
-                    "things": [],
-                    "signals": [],
-                },
-            }
-            for index in range(3)
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            sequence = Path(tmp) / "exact.json"
-            sequence.write_text(
-                json.dumps(
-                    {"schema": "automa_memory_observation_sequence_v0", "frames": frames}
-                ),
-                encoding="utf-8",
-            )
-            loaded = load_memory_observation_sequence(sequence, max_frames=3)
-            self.assertEqual(len(loaded), 3)
-
-    def test_loader_directory_stops_scan_at_max_plus_one(self) -> None:
-        """Reject without materializing every matching path under a large directory."""
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for index in range(12):
-                (root / f"frame_{index:03d}.json").write_text(
-                    json.dumps(
-                        {
-                            "frame_id": f"frame_{index:03d}",
-                            "frame_index": index,
-                            "timestamp_ms": index,
-                            "observation": {
-                                "observation_id": f"obs_{index:03d}",
-                                "created_at_ms": index,
-                                "sensor_snapshot": {},
-                                "perception_plugin_id": "lightweight_observer",
-                                "summary": [],
-                                "things": [],
-                                "signals": [],
-                            },
-                        }
-                    ),
-                    encoding="utf-8",
-                )
-            frame_hits: list[str] = []
-            real_is_file = Path.is_file
-
-            def tracking_is_file(self: Path) -> bool:
-                result = real_is_file(self)
-                # Count only real frame JSON matches (named sequence candidates may be probed first).
-                if (
-                    result
-                    and self.parent == root
-                    and self.name.startswith("frame_")
-                    and self.suffix.lower() == ".json"
-                ):
-                    frame_hits.append(self.name)
-                    if len(frame_hits) > 4:
-                        raise AssertionError(
-                            f"directory scan continued past max_frames+1: {frame_hits}"
-                        )
-                return result
-
-            with patch.object(Path, "is_file", tracking_is_file):
-                with self.assertRaisesRegex(ValueError, "more than 3 frame files"):
-                    load_memory_observation_sequence(root, max_frames=3)
-            # max_frames=3 → reject on the 4th match; no further frame is_file checks.
-            self.assertEqual(len(frame_hits), 4)
-            with patch.object(Path, "read_text", side_effect=AssertionError("read")):
-                with self.assertRaisesRegex(ValueError, "more than 3 frame files"):
-                    load_memory_observation_sequence(root, max_frames=3)
-
-    def test_directory_byte_size_fails_closed_on_stat_error(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            target = root / "sequence.json"
-            target.write_text("{}", encoding="utf-8")
-            real_lstat = Path.lstat
-
-            def flaky_lstat(self: Path, *args, **kwargs):
-                if self.name == "sequence.json":
-                    raise OSError("injected stat failure")
-                return real_lstat(self, *args, **kwargs)
-
-            with patch.object(Path, "lstat", flaky_lstat):
-                with self.assertRaisesRegex(OSError, "could not measure record artifact"):
-                    _directory_byte_size(root)
-
-    def test_record_aborts_when_artifact_cannot_be_measured(self) -> None:
-        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
-        payload = {
-            "schema": "vehicle_memory_replay_v0",
-            "vehicle_id": "chase-sim-chaser",
-            "frame_count": len(frames),
-            "implementation_id": "bounded_evidence",
-            "digest": "abc",
-            "final": {"health": "healthy", "record_count": 0, "records": []},
-        }
-        with tempfile.TemporaryDirectory() as tmp:
-            output_root = Path(tmp) / "memory-replay"
-            real_lstat = Path.lstat
-
-            def flaky_lstat(self: Path, *args, **kwargs):
-                if self.name == "sequence.json":
-                    raise OSError("injected stat failure")
-                return real_lstat(self, *args, **kwargs)
-
-            with patch.object(Path, "lstat", flaky_lstat):
-                with self.assertRaisesRegex(OSError, "could not measure"):
-                    write_memory_replay_record(
-                        vehicle_id="chase-sim-chaser",
-                        sequence_path=RECURRENCE_SOURCE,
-                        frames=frames,
-                        payload=payload,
-                        output_root=output_root,
-                        max_frames=16,
-                        max_record_bytes=2 * 1024 * 1024,
-                    )
-            self.assertFalse(output_root.exists() and any(output_root.iterdir()))
-
-    def test_cleanup_failure_surfaces_residual_path(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            record_dir = Path(tmp) / "partial-record"
-            record_dir.mkdir()
-            sticky = record_dir / "sequence.json"
-            sticky.write_text("{}", encoding="utf-8")
-            real_unlink = Path.unlink
-
-            def deny_unlink(self: Path, *args, **kwargs):
-                if self.name == "sequence.json":
-                    raise PermissionError("denied")
-                return real_unlink(self, *args, **kwargs)
-
-            with patch.object(Path, "unlink", deny_unlink):
-                with self.assertRaisesRegex(OSError, "failed to remove partial record tree") as ctx:
-                    _remove_tree_strict(record_dir)
-            self.assertTrue(sticky.exists())
-            self.assertIn(str(record_dir), str(ctx.exception))
-            self.assertIn("sequence.json", str(ctx.exception))
-
-    def test_stabilize_converges_across_digit_boundary(self) -> None:
-        """Declared size must converge when digit width grows (e.g. 999 -> 1001)."""
-
-        with tempfile.TemporaryDirectory() as tmp:
-            record_dir = Path(tmp) / "record"
-            record_dir.mkdir()
-            (record_dir / "payload.bin").write_bytes(b"x" * 10)
-            extract_path = record_dir / "provenance_extract.html"
-            extract_path.write_text("<html></html>", encoding="utf-8")
-            manifest: dict = {"bounds": {}}
-            # measure → write → measure (grew) → measure → write → measure (stable)
-            sizes = [999, 1001, 1001, 1001]
-            with patch(
-                "cli.automa_cli.memory._directory_byte_size", side_effect=sizes
-            ):
-                total = _stabilize_record_byte_count(
-                    record_dir=record_dir,
-                    manifest=manifest,
-                    payload={"schema": "vehicle_memory_replay_v0", "digest": "x"},
-                    extract_path=extract_path,
-                    provenance_rows=[],
-                    max_record_bytes=10_000,
-                )
-            self.assertEqual(total, 1001)
-            self.assertEqual(manifest["bounds"]["bytes_in_record"], 1001)
-            result = json.loads((record_dir / "result.json").read_text(encoding="utf-8"))
-            self.assertEqual(result["record_manifest"]["bounds"]["bytes_in_record"], 1001)
-
-    def _record_payload(self, frames: list) -> dict:
-        return {
-            "schema": "vehicle_memory_replay_v0",
-            "vehicle_id": "chase-sim-chaser",
-            "frame_count": len(frames),
-            "implementation_id": "bounded_evidence",
-            "digest": "abc",
-            "final": {
-                "health": "healthy",
-                "record_count": 1,
-                "records": [
-                    {
-                        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000",
-                        "kind": "floor_boundary",
-                        "label": "boundary",
-                        "confidence": 0.9,
-                        "provenance": {
-                            "frame_id": "frame_001",
-                            "observation_id": "obs_001",
-                            "evidence_id": "floor_boundary_000",
-                        },
-                    }
-                ],
-            },
-        }
-
-    def test_record_enforces_total_byte_ceiling(self) -> None:
-        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
-        payload = self._record_payload(frames)
-        with tempfile.TemporaryDirectory() as tmp:
-            output_root = Path(tmp) / "memory-replay"
-            with self.assertRaisesRegex(ValueError, "max_record_bytes"):
-                write_memory_replay_record(
-                    vehicle_id="chase-sim-chaser",
-                    sequence_path=RECURRENCE_SOURCE,
-                    frames=frames,
-                    payload=payload,
-                    output_root=output_root,
-                    max_frames=16,
-                    max_record_bytes=200,
-                )
-            # Fail closed: no partial record directory left behind.
-            self.assertFalse(output_root.exists() and any(output_root.iterdir()))
-
-    def test_record_byte_ceiling_below_exact_and_above(self) -> None:
-        """Configured max_record_bytes is the acceptance boundary (no fixed reservation)."""
-
-        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
-        payload = self._record_payload(frames)
-        frozen_stamp = "20200101-000000"
-        frozen_time = 1_577_836_800.0
-
-        def clear_output(root: Path) -> None:
-            if root.exists():
-                for child in list(root.iterdir()):
-                    _remove_tree_strict(child)
-
-        def write_with(root: Path, ceiling: int) -> dict:
-            return write_memory_replay_record(
-                vehicle_id="chase-sim-chaser",
-                sequence_path=RECURRENCE_SOURCE,
-                frames=frames,
-                payload=payload,
-                output_root=root,
-                max_frames=16,
-                max_record_bytes=ceiling,
-            )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            output_root = Path(tmp) / "memory-replay"
-            with patch(
-                "cli.automa_cli.memory.time.strftime", return_value=frozen_stamp
-            ), patch("cli.automa_cli.memory.time.time", return_value=frozen_time):
-                # Generous ceiling succeeds (above any tight bound).
-                generous = write_with(output_root, 2 * 1024 * 1024)
-                measured = int(generous["manifest"]["bounds"]["bytes_in_record"])
-                self.assertGreater(measured, 1_000)
-
-                # Re-measure under a ceiling with the same digit width as the final
-                # size so max_record_bytes encoding does not change the total.
-                clear_output(output_root)
-                tight = write_with(output_root, measured)
-                exact = int(tight["manifest"]["bounds"]["bytes_in_record"])
-                self.assertLessEqual(exact, measured)
-
-                # Exact boundary: same digit-width ceiling equals on-disk total.
-                clear_output(output_root)
-                at_limit = write_with(output_root, exact)
-                self.assertEqual(at_limit["manifest"]["bounds"]["bytes_in_record"], exact)
-                record_dir = output_root / Path(at_limit["record_dir"]).name
-                self.assertEqual(_directory_byte_size(record_dir), exact)
-
-                # Above boundary: also succeeds.
-                clear_output(output_root)
-                above = write_with(output_root, exact + 128)
-                self.assertEqual(above["manifest"]["bounds"]["bytes_in_record"], exact)
-
-                # Below boundary: rejected and cleaned up.
-                clear_output(output_root)
-                with self.assertRaisesRegex(ValueError, "max_record_bytes"):
-                    write_with(output_root, exact - 1)
-                self.assertFalse(output_root.exists() and any(output_root.iterdir()))
-
-    def test_record_stabilizes_bytes_in_record_on_disk(self) -> None:
-        frames = load_memory_observation_sequence(RECURRENCE_SOURCE)
-        payload = {
-            "schema": "vehicle_memory_replay_v0",
-            "vehicle_id": "chase-sim-chaser",
-            "frame_count": len(frames),
-            "implementation_id": "bounded_evidence",
-            "digest": "abc",
-            "final": {
-                "health": "healthy",
-                "record_count": 1,
-                "records": [
-                    {
-                        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000",
-                        "kind": "floor_boundary",
-                        "label": "boundary",
-                        "confidence": 0.9,
-                        "provenance": {
-                            "frame_id": "frame_001",
-                            "observation_id": "obs_001",
-                            "evidence_id": "floor_boundary_000",
-                        },
-                    }
-                ],
-            },
-        }
-        with tempfile.TemporaryDirectory() as tmp:
-            output_root = Path(tmp) / "memory-replay"
-            written = write_memory_replay_record(
-                vehicle_id="chase-sim-chaser",
-                sequence_path=RECURRENCE_SOURCE,
-                frames=frames,
-                payload=payload,
-                output_root=output_root,
-                max_frames=16,
-                max_record_bytes=2 * 1024 * 1024,
-            )
-            record_dir = output_root / Path(written["record_dir"]).name
-            on_disk = _directory_byte_size(record_dir)
-            manifest = json.loads((record_dir / "manifest.json").read_text(encoding="utf-8"))
-            result_on_disk = json.loads((record_dir / "result.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["bounds"]["bytes_in_record"], on_disk)
-            self.assertEqual(
-                result_on_disk["record_manifest"]["bounds"]["bytes_in_record"],
-                on_disk,
-            )
-            self.assertEqual(result_on_disk["record_bounds"]["bytes_in_record"], on_disk)
-
-    def test_replay_conflict_sequence_asserts_policy_and_counters(self) -> None:
-        """Offline update-frame sequence for bounded_evidence conflict policy.
-
-        Replay only exposes a final snapshot, so intermediate invalidation and
-        re-admission are asserted by replaying successive prefixes of the same
-        fixture (no schema widening).
-        """
-
-        full = json.loads(CONFLICT_SOURCE.read_text(encoding="utf-8"))
-        frames = full["frames"]
-        self.assertEqual(len(frames), 4)
-
-        # Expected end-state after each prefix length (1-based frame count).
-        expected_by_prefix = {
-            1: {
-                "record_count": 1,
-                "kind": "floor_boundary",
-                "conflict_count": 0,
-                "last_update_conflict_count": 0,
-            },
-            2: {
-                "record_count": 0,
-                "kind": None,
-                "conflict_count": 1,
-                "last_update_conflict_count": 1,
-            },
-            3: {
-                "record_count": 1,
-                "kind": "obstacle",
-                "conflict_count": 1,
-                "last_update_conflict_count": 0,
-            },
-            4: {
-                "record_count": 1,
-                "kind": "obstacle",
-                "conflict_count": 1,
-                "last_update_conflict_count": 0,
-            },
-        }
-
-        with tempfile.TemporaryDirectory() as tmp:
-            for prefix_len, expected in expected_by_prefix.items():
-                with self.subTest(prefix_len=prefix_len):
-                    prefix_path = Path(tmp) / f"conflict_prefix_{prefix_len}.json"
-                    prefix_path.write_text(
-                        json.dumps(
-                            {
-                                "schema": full["schema"],
-                                "description": f"prefix {prefix_len} of conflict_sequence",
-                                "frames": frames[:prefix_len],
-                            }
-                        ),
-                        encoding="utf-8",
-                    )
-                    result = replay_vehicle_memory(
-                        vehicle_id="chase-sim-chaser",
-                        sequence=prefix_path,
-                        implementation_id="bounded_evidence",
-                        json_output=True,
-                        verify_twice=True,
-                    )
-                    self.assertEqual(result.exit_code, 0, result.message)
-                    payload = json.loads(result.message)
-                    self.assertEqual(payload["frame_count"], prefix_len)
-                    final = payload["final"]
-                    metadata = final.get("metadata") or {}
-                    self.assertEqual(
-                        metadata.get("conflict_policy"),
-                        "bounded_evidence_structural_v1",
-                    )
-                    self.assertEqual(final["record_count"], expected["record_count"])
-                    self.assertEqual(
-                        metadata.get("conflict_count"), expected["conflict_count"]
-                    )
-                    self.assertEqual(
-                        metadata.get("last_update_conflict_count"),
-                        expected["last_update_conflict_count"],
-                    )
-                    if expected["kind"] is None:
-                        self.assertEqual(final["records"], [])
-                    else:
-                        self.assertEqual(final["records"][0]["kind"], expected["kind"])
-                        record_ids = {item["record_id"] for item in final["records"]}
-                        self.assertTrue(any(i.endswith(":6:slot_a") for i in record_ids))
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)

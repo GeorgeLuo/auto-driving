@@ -91,9 +91,9 @@ class PluginPerceptionMapper:
         for provider_spec in sorted(set(self._component_provider_specs.values())):
             self._component_provider(provider_spec)
 
-    def reset(self) -> None:
+    def reset(self, memory=None) -> None:
         for plugin in self.plugins:
-            _reset_plugin(plugin)
+            _reset_plugin(plugin, memory)
 
     def describe_schema(self) -> dict[str, Any]:
         component_consumers: dict[str, list[str]] = {}
@@ -249,7 +249,7 @@ class PluginPerceptionMapper:
             components, missing = self._resolve_inputs(plugin.contract, request)
             if missing:
                 if plugin.contract.state_mode != "stateless":
-                    _reset_plugin(plugin)
+                    _reset_plugin(plugin, request.memory)
                 details = "; ".join(
                     f"{name}: {reason}" for name, reason in sorted(missing.items())
                 )
@@ -264,6 +264,7 @@ class PluginPerceptionMapper:
                 components=components,
                 diagnostics=diagnostics,
                 metadata=request.metadata,
+                memory=request.memory,
             )
             batch = plugin.perceive(inputs)
             if not isinstance(batch, PerceptionEvidenceBatch):
@@ -388,10 +389,13 @@ def _validate_plugin(configured_id: str, plugin: Any) -> None:
         raise TypeError(f"plugin {plugin_id!r} must implement perceive()")
 
 
-def _reset_plugin(plugin: Any) -> None:
+def _reset_plugin(plugin: Any, memory=None) -> None:
     reset = getattr(plugin, "reset", None)
     if callable(reset):
-        reset()
+        if plugin.contract.memory_required:
+            reset(memory)
+        else:
+            reset()
 
 
 def _line_value(value: str) -> str:

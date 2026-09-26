@@ -3,14 +3,18 @@ from __future__ import annotations
 import unittest
 from copy import deepcopy
 
-from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.decision import (
+    DecisionFrameContext,
+    Observation,
+    serialized_memory_snapshot_bytes,
+)
 from autonomy.perception import ViewLocation
 from implementations.memory.bounded_evidence import (
     CONFLICT_POLICY,
-    BoundedEvidenceLedger,
+    _BoundedEvidenceReducer as BoundedEvidenceReducer,
     json_values_equal,
     location_geometry_signature,
-    property_shape,
+    namespaced_record_id,
 )
 
 
@@ -66,10 +70,10 @@ def _thing(
     return thing
 
 
-def _ledger(**kwargs) -> BoundedEvidenceLedger:
+def _ledger(**kwargs) -> BoundedEvidenceReducer:
     defaults = {"max_records": 8, "max_age_ms": 10_000}
     defaults.update(kwargs)
-    return BoundedEvidenceLedger(**defaults)
+    return BoundedEvidenceReducer(**defaults)
 
 
 def _ctx(frame: str, index: int, ts: int) -> DecisionFrameContext:
@@ -77,19 +81,6 @@ def _ctx(frame: str, index: int, ts: int) -> DecisionFrameContext:
 
 
 class HelperUnitTests(unittest.TestCase):
-    def test_property_shape_table(self) -> None:
-        self.assertEqual(property_shape(None), "null")
-        self.assertEqual(property_shape(True), "boolean")
-        self.assertEqual(property_shape(1), "number")
-        self.assertEqual(property_shape(1.5), "number")
-        self.assertEqual(property_shape("x"), "string")
-        self.assertEqual(property_shape([]), ("array",))
-        self.assertEqual(property_shape([1, "a"]), ("array", "number", "string"))
-        self.assertEqual(
-            property_shape({"b": 1, "a": True}),
-            ("object", (("a", "boolean"), ("b", "number"))),
-        )
-
     def test_location_geometry_signatures(self) -> None:
         self.assertIsNone(location_geometry_signature(None))
         bare = ViewLocation(frame="image", zone="center")
@@ -184,6 +175,18 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(snap.record_count, 0)
         self.assertEqual(snap.metadata["conflict_count"], 1)
         self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
+        self.assertEqual(
+            snap.metadata["last_update_drops"],
+            [
+                {
+                    "record_id": namespaced_record_id(
+                        "thing", "floor_boundary_000", "floor-plane-v0"
+                    ),
+                    "reason": "kind_changed",
+                    "action": "removed_prior_and_rejected_current",
+                }
+            ],
+        )
 
     def test_location_present_absent_and_family_changes(self) -> None:
         ledger = _ledger()
@@ -248,22 +251,42 @@ class ConflictMatrixTests(unittest.TestCase):
         )
         self.assertEqual(snap.record_count, 0)
 
-    def test_property_shape_change(self) -> None:
+    def test_properties_can_change_shape_between_frames(self) -> None:
         ledger = _ledger()
         ledger.update(
             _ctx("f1", 1, 100),
-            _observation("o1", created_at_ms=90, things=(_thing(properties={"score": 1}),)),
+            _observation(
+                "o1", created_at_ms=90, things=(_thing(properties={"tracks": []}),)
+            ),
         )
         snap = ledger.update(
             _ctx("f2", 2, 200),
             _observation(
                 "o2",
                 created_at_ms=190,
-                things=(_thing(properties={"score": {"v": 1}}),),
+                things=(
+                    _thing(
+                        properties={
+                            "tracks": [{"id": 1}],
+                            "events": {"1": "matched"},
+                        }
+                    ),
+                ),
             ),
         )
-        self.assertEqual(snap.record_count, 0)
-        self.assertEqual(snap.metadata["conflict_count"], 1)
+        self.assertEqual(snap.record_count, 1)
+        self.assertEqual(snap.records[0].properties["tracks"], [{"id": 1}])
+        self.assertEqual(snap.metadata["conflict_count"], 0)
+        self.assertEqual(snap.metadata["last_update_drop_count"], 0)
+        snap = ledger.update(
+            _ctx("f3", 3, 300),
+            _observation(
+                "o3", created_at_ms=290, things=(_thing(properties={"tracks": [1, 2]}),)
+            ),
+        )
+        self.assertEqual(snap.record_count, 1)
+        self.assertEqual(snap.records[0].properties, {"tracks": [1, 2]})
+        self.assertEqual(snap.metadata["last_update_drop_count"], 0)
 
     def test_same_observation_contradiction_order_independent(self) -> None:
         for order in ("ab", "ba"):
@@ -278,6 +301,10 @@ class ConflictMatrixTests(unittest.TestCase):
                 )
                 self.assertEqual(snap.record_count, 0)
                 self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
+                self.assertEqual(
+                    snap.metadata["last_update_drops"][0]["reason"],
+                    "contradictory_candidates",
+                )
 
     def test_same_observation_confidence_and_bbox_contradictions(self) -> None:
         # Both tuple orders required by the accepted matrix (not subsumed by score-only).
@@ -399,6 +426,7 @@ class ConflictMatrixTests(unittest.TestCase):
         missing = ledger.update(_ctx("f2", 2, 1100), _observation("o2", created_at_ms=1090))
         self.assertEqual(missing.record_count, 2)
         self.assertEqual(missing.metadata["last_update_conflict_count"], 0)
+        self.assertEqual(missing.metadata["last_update_drop_count"], 0)
 
         false_signal = ledger.update(
             _ctx("f3", 3, 1200),
@@ -418,6 +446,11 @@ class ConflictMatrixTests(unittest.TestCase):
 
         expired = ledger.update(_ctx("f4", 4, 2000), None)
         self.assertEqual(expired.record_count, 0)
+        self.assertEqual(expired.metadata["last_update_drop_count"], 2)
+        self.assertEqual(
+            {item["reason"] for item in expired.metadata["last_update_drops"]},
+            {"expired"},
+        )
 
     def test_post_conflict_empty_slot_readmit(self) -> None:
         ledger = _ledger()
@@ -489,6 +522,80 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(snap.metadata["capacity_eviction_count"], 1)
         self.assertEqual(snap.metadata["conflict_count"], 0)
         self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
+        self.assertEqual(snap.metadata["last_update_drops"][0]["reason"], "capacity")
+
+    def test_rejected_properties_and_bounded_drop_report(self) -> None:
+        ledger = _ledger(max_records=1, max_property_bytes=32)
+        rejected = ledger.update(
+            _ctx("f1", 1, 100),
+            _observation(
+                "o1",
+                created_at_ms=90,
+                things=(_thing("too_large", properties={"data": "x" * 100}),),
+            ),
+        )
+        self.assertEqual(rejected.record_count, 0)
+        self.assertEqual(rejected.metadata["last_update_drops"][0]["reason"], "properties_too_large")
+        self.assertEqual(rejected.metadata["last_update_drops"][0]["action"], "not_admitted")
+
+        pressure = ledger.update(
+            _ctx("f2", 2, 200),
+            _observation(
+                "o2",
+                created_at_ms=190,
+                things=tuple(
+                    _thing(str(index), properties={"ok": 1}) for index in range(20)
+                ),
+            ),
+        )
+        self.assertEqual(pressure.metadata["last_update_drop_count"], 19)
+        self.assertEqual(len(pressure.metadata["last_update_drops"]), 12)
+        self.assertEqual(pressure.metadata["last_update_drops_omitted"], 7)
+
+    def test_drop_details_fit_snapshot_byte_limit(self) -> None:
+        ledger = _ledger(max_records=1, max_property_bytes=32, max_serialized_bytes=1024)
+        snapshot = ledger.update(
+            _ctx("f1", 1, 100),
+            _observation(
+                "o1",
+                created_at_ms=90,
+                things=tuple(
+                    _thing(str(index), properties={"data": "x" * 100})
+                    for index in range(20)
+                ),
+            ),
+        )
+        self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 1024)
+        self.assertEqual(snapshot.metadata["last_update_drop_count"], 20)
+        self.assertGreater(snapshot.metadata["last_update_drops_omitted"], 0)
+
+    def test_conflict_remains_visible_after_many_expirations(self) -> None:
+        ledger = _ledger(max_records=20, max_age_ms=100)
+        ledger.update(
+            _ctx("f1", 1, 100),
+            _observation(
+                "o1",
+                created_at_ms=90,
+                things=tuple(_thing(str(index)) for index in range(13)),
+            ),
+        )
+        snapshot = ledger.update(
+            _ctx("f2", 2, 300),
+            _observation(
+                "o2",
+                created_at_ms=290,
+                things=(
+                    _thing("new", kind="floor_boundary"),
+                    _thing("new", kind="obstacle"),
+                ),
+            ),
+        )
+        self.assertEqual(snapshot.metadata["last_update_drop_count"], 14)
+        self.assertEqual(
+            snapshot.metadata["last_update_drops"][0]["reason"],
+            "contradictory_candidates",
+        )
+        self.assertEqual(snapshot.metadata["last_update_drops_omitted"], 2)
 
     def test_expiry_before_compare_admits_without_conflict(self) -> None:
         """Retained older than max_age expires before same-slot compare (matrix row)."""

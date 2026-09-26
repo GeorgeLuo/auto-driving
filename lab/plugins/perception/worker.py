@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 from autonomy.perception import build_perception_request  # noqa: E402
 from autonomy.perception.mappers import PluginPerceptionMapper  # noqa: E402
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot  # noqa: E402
+from lab.plugins.perception.worker_memory import decode_memory, encode_memory  # noqa: E402
 
 
 def main() -> int:
@@ -64,8 +65,10 @@ def main() -> int:
                 _write({"request_id": request_id, "ok": True, "stopped": True})
                 return 0
             if action == "reset":
-                mapper.reset()
-                _write({"request_id": request_id, "ok": True, "reset": True})
+                memory = decode_memory(command.get("memory"))
+                mapper.reset(memory)
+                _write({"request_id": request_id, "ok": True, "reset": True,
+                        "memory": encode_memory(memory)})
                 continue
             if action == "describe_schema":
                 with contextlib.redirect_stdout(sys.stderr):
@@ -74,11 +77,13 @@ def main() -> int:
                 continue
             if action != "perceive":
                 raise ValueError(f"unsupported worker command {action!r}")
-            result = _perceive(mapper, command)
+            memory = decode_memory(command.get("memory"))
+            result = _perceive(mapper, command, memory=memory)
             _write({
                 "request_id": request_id,
                 "ok": True,
                 "perception": result.to_dict(),
+                "memory": encode_memory(memory),
                 "runtime": _runtime_metrics(),
             })
         except Exception as exc:
@@ -90,7 +95,7 @@ def main() -> int:
     return 0
 
 
-def _perceive(mapper: PluginPerceptionMapper, command: dict[str, Any]):
+def _perceive(mapper: PluginPerceptionMapper, command: dict[str, Any], *, memory=None):
     image_path = Path(str(command["image_path"])).resolve()
     if not image_path.is_file():
         raise FileNotFoundError(image_path)
@@ -117,6 +122,7 @@ def _perceive(mapper: PluginPerceptionMapper, command: dict[str, Any]):
         return mapper.perceive(
             build_perception_request(
                 snapshot,
+                memory=memory,
                 output_dir=output_dir,
                 metadata=dict(command.get("metadata") or {}),
             )

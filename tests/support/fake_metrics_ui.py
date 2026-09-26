@@ -21,7 +21,9 @@ def fake_metrics_ui_server() -> Iterator[str]:
     """Serve the read-only Chase protocol used by deterministic CLI gates."""
 
     server = _ThreadingWebSocketServer(("127.0.0.1", 0), _MetricsUiHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
     host, port = server.server_address[:2]
     try:
@@ -166,9 +168,7 @@ def _read_frame(connection: object) -> tuple[int, bytes] | None:
     if payload is None:
         return None
     if masked:
-        payload = bytes(
-            byte ^ mask[index % 4] for index, byte in enumerate(payload)
-        )
+        payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
     return opcode, payload
 
 

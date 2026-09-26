@@ -2,15 +2,19 @@
   "schema": "automa_lab_perception_plugin_v0",
   "id": "multi_obstruction_tracks",
   "name": "Multi-obstruction temporal tracks",
-  "description": "Suppress lower-frame floor/background regions by image position and shape, associate multiple generic obstruction regions, and expose bounded track evidence.",
+  "description": "Detect floor-suppressed obstruction candidates; Workbench tracking memory associates and retains tracks.",
+  "memory": {
+    "implementation_id": "multi_obstruction_tracks",
+    "implementation_spec": "lab.plugins.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory"
+  },
   "plugin": {
     "entrypoint": "lab.plugins.perception.multi_obstruction_tracks.src.plugin:MultiObstructionTracksPlugin",
     "config": {
       "max_tracks": 2,
-      "floor_cutoff_y": 0.50,
+      "floor_cutoff_y": 0.5,
       "minimum_object_height": 0.14,
       "minimum_object_area_fraction": 0.006,
-      "maximum_object_area_fraction": 0.30,
+      "maximum_object_area_fraction": 0.3,
       "association_distance": 0.35,
       "minimum_association_score": 0.12,
       "smoothing_alpha": 0.35,
@@ -45,7 +49,7 @@
   },
   "output": {
     "schema": "perception_text_v2",
-    "kind": "obstacle",
+    "kind": "region_proposal",
     "semantic_labels": false,
     "depth": false
   }

@@ -15,6 +15,7 @@ from .cycle import (
     DecisionCycleResult,
     DecisionFrameContext,
     DecisionStages,
+    MemoryUpdateError,
 )
 from .memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
@@ -76,6 +77,7 @@ __all__ = [
     "DecisionCycleResult",
     "DecisionFrameContext",
     "DecisionStages",
+    "MemoryUpdateError",
     "MemoryActivation",
     "MemoryBounds",
     "MemoryImplementation",

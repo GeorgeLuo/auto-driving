@@ -10,11 +10,11 @@ Use `automa vehicles perception candidates` for readiness and
 all ready candidates. Add `--record` only when review artifacts are needed.
 
 Plugins are stateless between frames. Keep previous images, track identities,
-smoothing, and other temporal history in `inputs.memory`, under plugin-owned
+smoothing, and other temporal history in `inputs.shared_memory`, under plugin-owned
 keys. Configuration and reusable model resources can remain on the instance.
 `state_mode` describes the temporal input horizon (`stateless`, `pairwise`, or
 `windowed`); it does not permit private history. Set `memory_required=True` when
-the algorithm requires the shared map, and implement `reset(memory)` to remove
+the algorithm requires the shared map, and implement `reset(shared_memory)` to remove
 only that plugin's keys. Missing required inputs invoke this reset hook.
 Plugins own history bounds and successful/warm-up/error commit decisions.
 
@@ -25,7 +25,7 @@ uses Python serialization for arrays and plugin records; it is a trusted local
 process protocol, not a recording or remote-input format. This copies history
 per call; keep histories bounded. In-process execution has no transport cost.
 
-A plugin must produce equivalent evidence and next memory when recreated between
+A plugin must produce equivalent evidence and the next shared map when recreated between
 frames. Catalog conformance tests also check empty-map restart and interleaved
 runs on one instance. Add a deterministic fixture to those tests with each new
 plugin; external models may be stubbed while their adapters are exercised.

@@ -14,13 +14,13 @@ import pickle
 from autonomy.memory import SharedMemory
 
 
-def encode_memory(memory: SharedMemory | None) -> str | None:
-    if memory is None:
+def encode_shared_memory(shared_memory: SharedMemory | None) -> str | None:
+    if shared_memory is None:
         return None
-    return base64.b64encode(pickle.dumps(dict(memory), protocol=5)).decode("ascii")
+    return base64.b64encode(pickle.dumps(dict(shared_memory), protocol=5)).decode("ascii")
 
 
-def decode_memory(payload: str | None) -> dict | None:
+def decode_shared_memory(payload: str | None) -> dict | None:
     if payload is None:
         return None
     return pickle.loads(base64.b64decode(payload, validate=True))

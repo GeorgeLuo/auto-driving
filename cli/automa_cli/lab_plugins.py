@@ -15,7 +15,7 @@ from typing import Any, TextIO
 import cv2
 import requests  # type: ignore[import-untyped]
 
-from lab.plugins.perception.worker_memory import decode_memory, encode_memory
+from lab.plugins.perception.worker_memory import decode_shared_memory, encode_shared_memory
 
 from autonomy.perception import (
     PERCEPTION_TEXT_SCHEMA,
@@ -305,12 +305,14 @@ class LabPerceptionMapper:
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
 
-    def reset(self, memory=None) -> None:
-        response = self._request({"command": "reset", "memory": encode_memory(memory)})
-        if memory is not None:
-            updated_memory = decode_memory(response["memory"])
-            memory.clear()
-            memory.update(updated_memory)
+    def reset(self, shared_memory=None) -> None:
+        response = self._request(
+            {"command": "reset", "shared_memory": encode_shared_memory(shared_memory)}
+        )
+        if shared_memory is not None:
+            updated_memory = decode_shared_memory(response["shared_memory"])
+            shared_memory.clear()
+            shared_memory.update(updated_memory)
 
     def describe_schema(self) -> dict[str, Any]:
         response = self._request({"command": "describe_schema"})
@@ -340,7 +342,7 @@ class LabPerceptionMapper:
         try:
             frame = provide_camera_frame(request, FRONT_CAMERA_RGB_INPUT)
         except PerceptionComponentUnavailable as exc:
-            self.reset(request.memory)
+            self.reset(request.shared_memory)
             raise RuntimeError(f"front camera unavailable: {exc}") from exc
         image_path = frame.source_path
         if image_path is None or not image_path.is_file():
@@ -356,16 +358,16 @@ class LabPerceptionMapper:
                 "captured_at_ms": frame.captured_at_ms,
                 "output_dir": str(request.output_dir) if request.output_dir is not None else None,
                 "metadata": request.metadata,
-                "memory": encode_memory(request.memory),
+                "shared_memory": encode_shared_memory(request.shared_memory),
             }
         )
         perception = response.get("perception")
         if not isinstance(perception, dict):
             raise RuntimeError("candidate worker did not return perception output")
-        if request.memory is not None:
-            updated_memory = decode_memory(response["memory"])
-            request.memory.clear()
-            request.memory.update(updated_memory)
+        if request.shared_memory is not None:
+            updated_memory = decode_shared_memory(response["shared_memory"])
+            request.shared_memory.clear()
+            request.shared_memory.update(updated_memory)
         self.last_runtime_metrics = dict(response.get("runtime") or {})
         return PerceptionText.from_dict(perception)
 

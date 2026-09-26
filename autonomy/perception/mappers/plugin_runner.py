@@ -91,9 +91,9 @@ class PluginPerceptionMapper:
         for provider_spec in sorted(set(self._component_provider_specs.values())):
             self._component_provider(provider_spec)
 
-    def reset(self, memory=None) -> None:
+    def reset(self, shared_memory=None) -> None:
         for plugin in self.plugins:
-            _reset_plugin(plugin, memory)
+            _reset_plugin(plugin, shared_memory)
 
     def describe_schema(self) -> dict[str, Any]:
         component_consumers: dict[str, list[str]] = {}
@@ -249,7 +249,7 @@ class PluginPerceptionMapper:
             components, missing = self._resolve_inputs(plugin.contract, request)
             if missing:
                 if plugin.contract.state_mode != "stateless":
-                    _reset_plugin(plugin, request.memory)
+                    _reset_plugin(plugin, request.shared_memory)
                 details = "; ".join(
                     f"{name}: {reason}" for name, reason in sorted(missing.items())
                 )
@@ -389,11 +389,11 @@ def _validate_plugin(configured_id: str, plugin: Any) -> None:
         raise TypeError(f"plugin {plugin_id!r} must implement perceive()")
 
 
-def _reset_plugin(plugin: Any, memory=None) -> None:
+def _reset_plugin(plugin: Any, shared_memory=None) -> None:
     reset = getattr(plugin, "reset", None)
     if callable(reset):
         if plugin.contract.memory_required:
-            reset(memory)
+            reset(shared_memory)
         else:
             reset()
 

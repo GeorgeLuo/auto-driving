@@ -133,8 +133,6 @@ class SourceRef:
         allowed = {
             "observation",
             "memory_record",
-            "pattern",
-            "projection",
             "capability",
         }
         if self.kind not in allowed:

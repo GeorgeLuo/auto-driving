@@ -78,8 +78,6 @@ class ShadowProposalsAutonomyEngine:
             "stages": {
                 "action": "shadow_proposals_run_cycle",
                 "memory": "inspectable_snapshot",
-                "patterns": None,
-                "projections": None,
             },
         }
 

@@ -73,8 +73,6 @@ class IdleAutonomyEngine:
             "stages": {
                 "action": "hold_position",
                 "memory": "inspectable_snapshot",
-                "patterns": None,
-                "projections": None,
             },
         }
 

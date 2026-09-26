@@ -73,13 +73,11 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.control.reason, "decision-cycle-idle")
 
     def test_action_only_cycle_uses_action_output(self) -> None:
-        def choose_action(context, perception, observation, memory, patterns, projections):
+        def choose_action(context, perception, observation, memory):
             self.assertEqual(context.frame_id, "frame_000")
             self.assertIsNone(perception)
             self.assertIsNone(observation)
             self.assertIsNone(memory)
-            self.assertIsNone(patterns)
-            self.assertIsNone(projections)
             return AutonomyControl(
                 steering=0.25,
                 throttle=0.0,
@@ -107,7 +105,7 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.control.reason, "waiting-for-decision")
 
     def test_action_stage_rejects_undeclared_dictionary_output(self) -> None:
-        def choose_action(context, perception, observation, memory, patterns, projections):
+        def choose_action(context, perception, observation, memory):
             return {"steering": 0.0, "throttle": 0.0}
 
         cycle = DecisionCycle(DecisionStages(choose_action=choose_action))

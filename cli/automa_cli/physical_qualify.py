@@ -210,6 +210,7 @@ def _run_strategy_on_frames(
         active = mapper
         if mapper_context is not None:
             mapper_context.__enter__()
+        shared_memory: dict[str, Any] = {}
         active.reset()
         for index, frame in enumerate(frames):
             image_path = Path(frame["frame_path"])
@@ -232,7 +233,7 @@ def _run_strategy_on_frames(
                 metadata={"source": "physical_qualify"},
             )
             started = time.perf_counter()
-            perception = active.perceive(build_perception_request(snapshot))
+            perception = active.perceive(build_perception_request(snapshot, memory=shared_memory))
             duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
             perception_dict = perception.to_dict()
             payload = _perception_to_score_payload(

@@ -98,14 +98,15 @@ class ActivatedPerceptionStage:
         self.last_duration_ms: float | None = None
         self.last_frame_index: int | None = None
 
-    def reset(self) -> None:
-        self.mapper.reset()
+    def reset(self, memory=None) -> None:
+        self.mapper.reset(memory)
         self.last_output = None
         self.last_duration_ms = None
         self.last_frame_index = None
 
     def __call__(self, context) -> PerceptionText | None:
         if context.sensor_snapshot is None:
+            self.mapper.reset(context.memory)
             self.last_output = None
             self.last_duration_ms = None
             self.last_frame_index = context.frame_index

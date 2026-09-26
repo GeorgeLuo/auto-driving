@@ -95,10 +95,11 @@ class PerceptionPluginTests(unittest.TestCase):
             },
         )
 
-        first = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "first")))
-        second = mapper.perceive(build_perception_request(_snapshot(_array_reading(shifted), "second")))
-        mapper.reset()
-        after_reset = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "third")))
+        memory = {}
+        first = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "first"), memory=memory))
+        second = mapper.perceive(build_perception_request(_snapshot(_array_reading(shifted), "second"), memory=memory))
+        mapper.reset(memory)
+        after_reset = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "third"), memory=memory))
 
         self.assertEqual(first.status, "warming_up")
         self.assertIn(second.status, {"ok", "empty"})
@@ -107,6 +108,7 @@ class PerceptionPluginTests(unittest.TestCase):
 
     def test_windowed_tracks_keep_ids_and_expire_after_bounded_misses(self) -> None:
         plugin = MotionTracksPlugin(max_track_misses=1)
+        plugin._initialize_history()  # Exercise one call-local association workspace.
         first_candidate = {
             "source_bbox": (0.1, 0.1, 0.3, 0.3),
             "target_bbox": (0.12, 0.1, 0.32, 0.3),
@@ -137,13 +139,15 @@ class PerceptionPluginTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
+            memory = {}
             mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(rgb), "first"), output_dir=output_dir)
+                build_perception_request(_snapshot(_array_reading(rgb), "first"), output_dir=output_dir, memory=memory)
             )
             result = mapper.perceive(
                 build_perception_request(
                     _snapshot(_array_reading(shifted), "second"),
                     output_dir=output_dir,
+                    memory=memory,
                 )
             )
             key = "motion-tracks-v0/scene_tracks"

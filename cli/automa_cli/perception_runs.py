@@ -123,6 +123,7 @@ def run_perception_experiment(
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
 
+            shared_memory: dict[str, Any] = {}
             active_mapper.reset()
             frame_records: list[dict[str, Any]] = []
             for index in range(frame_count):
@@ -141,6 +142,7 @@ def run_perception_experiment(
                 perception = active_mapper.perceive(
                     build_perception_request(
                         snapshot,
+                        memory=shared_memory,
                         output_dir=perception_output_dir,
                         metadata={
                             "run_id": run_id,
@@ -283,6 +285,7 @@ def apply_perception_experiment(
             results_dir = working_dir / "results"
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
+            shared_memory: dict[str, Any] = {}
             active_mapper.reset()
             frame_records: list[dict[str, Any]] = []
             for index, image_path in enumerate(image_paths):
@@ -307,6 +310,7 @@ def apply_perception_experiment(
                 perception = active_mapper.perceive(
                     build_perception_request(
                         snapshot,
+                        memory=shared_memory,
                         output_dir=(results_dir / frame_id) if record else None,
                         metadata={"run_id": run_id, "frame_index": index, "apply": True},
                     )

@@ -52,7 +52,7 @@ class FixtureMapper:
         self.calls: list[str] = []
         self.reset_count = 0
 
-    def reset(self) -> None:
+    def reset(self, memory=None) -> None:
         self.reset_count += 1
 
     def describe_schema(self) -> dict[str, object]:
@@ -156,7 +156,7 @@ class ErrorMemory:
             error="injected memory failure",
         )
 
-    def reset(self) -> None:
+    def reset(self, memory=None) -> None:
         return None
 
 

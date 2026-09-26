@@ -162,7 +162,7 @@ class PerceptionMapper(Protocol):
 
     plugin_id: str
 
-    def reset(self) -> None:
+    def reset(self, memory: SharedMemory | None = None) -> None:
         ...
 
     def describe_schema(self) -> dict[str, Any]:

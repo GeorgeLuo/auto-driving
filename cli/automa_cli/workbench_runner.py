@@ -1105,6 +1105,7 @@ class ImageReplayRunner:
 
                 def perceive(current: DecisionFrameContext) -> PerceptionText | None:
                     if frame.absent or current.sensor_snapshot is None:
+                        mapper.reset(current.memory)
                         return None
                     request = build_perception_request(
                         current.sensor_snapshot,

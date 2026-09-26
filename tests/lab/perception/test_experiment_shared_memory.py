@@ -114,3 +114,37 @@ class ExperimentSharedMemoryTests(unittest.TestCase):
             result = json.loads((root / "output/detections.jsonl").read_text())
             self.assertEqual(result["things"][0]["thing_id"], "obstruction_track_000")
             self.assertIn("tracker_source_code_sha256", frozen)
+
+    def test_missing_replay_image_records_failure_and_resets_tracking(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            rgb = np.full((100, 100, 3), 100, dtype=np.uint8)
+            Image.fromarray(rgb).save(root / "frame.png")
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps({"camera_frames": [
+                {"frame_id": "before", "frame_index": 0, "captured_at_ms": 10, "image": "frame.png"},
+                {"frame_id": "missing", "frame_index": 1, "captured_at_ms": 20, "image": "missing.png"},
+                {"frame_id": "after", "frame_index": 2, "captured_at_ms": 30, "image": "frame.png"},
+            ]}))
+            config = root / "config.json"
+            config.write_text(json.dumps({"config": {}}))
+            region = _region("box", (0.1, 0.2, 0.3, 0.5))
+            with patch(
+                "scripts.perception.durable_obstacles.MultiObstructionTracksPlugin._detect_candidates",
+                side_effect=[([region], rgb[:, :, 0], {}), ([], rgb[:, :, 0], {})],
+            ):
+                frozen = replay_capture(manifest, config, root / "output")
+            records = [json.loads(line) for line in (root / "output/detections.jsonl").read_text().splitlines()]
+            ledger = json.loads((root / "output/frames.json").read_text())
+
+            self.assertTrue(records[0]["things"])
+            self.assertEqual([item["status"] for item in records], ["ok", "unavailable", "ok"])
+            self.assertFalse(records[1]["available"])
+            self.assertIsNone(records[1]["image_sha256"])
+            self.assertEqual(records[1]["things"], [])
+            self.assertFalse(ledger[1]["available"])
+            self.assertIsNone(ledger[1]["image_sha256"])
+            self.assertEqual(records[2]["things"], [])
+            self.assertEqual(records[2]["measurement"]["tracking"]["memory_tracks_read"], 0)
+            self.assertEqual(frozen["processed_count"], 2)
+            self.assertEqual(frozen["failures"], [{"frame_id": "missing", "reason": "missing_image"}])

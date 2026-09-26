@@ -58,11 +58,12 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
         for position, item in enumerate(frames):
             rel_image = Path(item["image"])
             image_path = capture_dir / rel_image
+            available = image_path.is_file()
             entry = {"position": position, "frame_id": item["frame_id"], "frame_index": item["frame_index"],
                      "timestamp_ms": item["captured_at_ms"], "image": str(image_path),
-                     "image_sha256": sha256(image_path), "available": image_path.is_file()}
+                     "image_sha256": sha256(image_path) if available else None, "available": available}
             ledger.append(entry)
-            if not image_path.is_file():
+            if not available:
                 tracking.reset(shared_memory)
                 failures.append({"frame_id": item["frame_id"], "reason": "missing_image"})
                 detections_file.write(json.dumps({**entry, "status": "unavailable", "things": []}, sort_keys=True) + "\n")

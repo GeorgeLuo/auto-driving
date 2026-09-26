@@ -252,7 +252,7 @@ class WorkbenchTests(unittest.TestCase):
     def test_runner_fails_closed_on_mapper_and_memory_errors(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            _make_images(root, 1)
+            _make_images(root, 2)
             error_mapper = ErrorStatusMapper()
             runner = ImageReplayRunner(
                 root,
@@ -280,7 +280,11 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
-            self.assertEqual(memory_state["memory"]["health"], "error")
+            self.assertIsNone(memory_state["memory"])
+            self.assertIsNone(memory_state["decision"])
+            self.assertIn("injected memory failure", memory_state["failure"]["message"])
+            self.assertEqual(len(memory_mapper.calls), 1)
+            self.assertEqual(memory_state["progress"]["completed"], 0)
 
     def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
         with TemporaryDirectory() as directory:

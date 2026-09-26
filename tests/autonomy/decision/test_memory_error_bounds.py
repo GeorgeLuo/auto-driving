@@ -15,7 +15,7 @@ from tests.autonomy.decision.memory_activation_fixtures import (
 
 
 class MemoryActivationTests(unittest.TestCase):
-    def test_large_exception_diagnostics_stay_under_serialized_ceiling(self) -> None:
+    def test_large_update_exception_keeps_bounded_status_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"]["implementation_config"]["fail_on_update"] = True
@@ -33,23 +33,14 @@ class MemoryActivationTests(unittest.TestCase):
 
             stage.implementation.update = huge_fail  # type: ignore[method-assign]
             try:
-                snapshot = stage.update(
-                    DecisionFrameContext("frame_8", 8, 800),
-                    Observation("obs_8", 790, {}),
-                )
+                with self.assertRaises(RuntimeError):
+                    stage.update(
+                        DecisionFrameContext("frame_8", 8, 800),
+                        Observation("obs_8", 790, {}),
+                    )
             finally:
                 stage.implementation.update = original_update  # type: ignore[method-assign]
-            self.assertEqual(snapshot.health, "error")
-            from autonomy.decision import (
-                DEFAULT_MAX_DIAGNOSTIC_CHARS,
-                serialized_memory_snapshot_bytes,
-            )
-
-            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 2_000)
-            self.assertLessEqual(
-                serialized_memory_snapshot_bytes(stage.last_snapshot),  # type: ignore[arg-type]
-                2_000,
-            )
+            from autonomy.decision import DEFAULT_MAX_DIAGNOSTIC_CHARS
             # last_error/status must also be bounded (Chase worker publishes this).
             status = stage.status()
             self.assertIsNotNone(status["last_error"])
@@ -64,7 +55,7 @@ class MemoryActivationTests(unittest.TestCase):
             status_bytes = len(json.dumps(status, sort_keys=True).encode("utf-8"))
             self.assertLess(status_bytes, 4_000)
 
-    def test_error_fallback_ignores_prior_near_ceiling_epoch_identity(self) -> None:
+    def test_update_failure_preserves_prior_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"][
@@ -80,21 +71,12 @@ class MemoryActivationTests(unittest.TestCase):
             )
             self.assertEqual(first.health, "empty")
             self.assertGreater(len(first.epoch_id), 1_000)
-            # Next update raises; isolation must not leak ValueError from fallback size.
-            second = stage.update(
-                DecisionFrameContext("frame_b", 2, 200),
-                Observation("obs_b", 190, {}),
-            )
-            self.assertEqual(second.health, "error")
-            self.assertTrue(second.epoch_id.startswith("epoch-error-"))
-            self.assertLessEqual(len(second.epoch_id), 48)
-            from autonomy.decision import serialized_memory_snapshot_bytes
-
-            self.assertLessEqual(serialized_memory_snapshot_bytes(second), 2_000)
-            self.assertLessEqual(
-                serialized_memory_snapshot_bytes(stage.last_snapshot),  # type: ignore[arg-type]
-                2_000,
-            )
+            with self.assertRaises(RuntimeError):
+                stage.update(
+                    DecisionFrameContext("frame_b", 2, 200),
+                    Observation("obs_b", 190, {}),
+                )
+            self.assertEqual(stage.last_snapshot, first)
 
     def test_reset_failure_preserves_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -149,48 +131,7 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
             self.assertIn("reset exploded", stage.last_error or "")
 
-    def test_multibyte_implementation_id_does_not_break_fallback_isolation(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            payload = _valid_payload()
-            # Multibyte id matching activation/implementation; fallback must use a
-            # fixed ASCII marker, not a character-truncated copy of this id.
-            multibyte_id = "x" + ("😀" * 100)
-            payload["memory"]["implementation_id"] = multibyte_id
-            payload["memory"][
-                "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_ConfigurableIdMemory"
-            payload["memory"]["implementation_config"][
-                "implementation_id"
-            ] = multibyte_id
-            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 512
-            stage = ActivatedMemoryStage(
-                read_memory_activation(_write_payload(tmp, payload))
-            )
-            self.assertEqual(stage.activation.implementation_id, multibyte_id)
-
-            def boom(context, observation):
-                del context, observation
-                raise RuntimeError("boom")
-
-            original_update = stage.implementation.update
-            stage.implementation.update = boom  # type: ignore[method-assign]
-            try:
-                snapshot = stage.update(
-                    DecisionFrameContext("f", 1, 1),
-                    Observation("o", 1, {}),
-                )
-            finally:
-                stage.implementation.update = original_update  # type: ignore[method-assign]
-            self.assertEqual(snapshot.health, "error")
-            self.assertEqual(snapshot.implementation_id, "framework")
-            self.assertNotEqual(snapshot.implementation_id, multibyte_id[:48])
-            from autonomy.decision import serialized_memory_snapshot_bytes
-
-            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
-
-    def test_broken_exception_str_still_isolates_update_reset_snapshot(self) -> None:
+    def test_broken_exception_str_still_records_update_and_isolates_reset_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"][
@@ -199,11 +140,11 @@ class MemoryActivationTests(unittest.TestCase):
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            updated = stage.update(
-                DecisionFrameContext("f1", 1, 1),
-                Observation("o1", 1, {}),
-            )
-            self.assertEqual(updated.health, "error")
+            with self.assertRaises(Exception):
+                stage.update(
+                    DecisionFrameContext("f1", 1, 1),
+                    Observation("o1", 1, {}),
+                )
             self.assertIn("unprintable exception", stage.last_error or "")
             self.assertNotIn("stringification failed", stage.last_error or "")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy, deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,7 @@ class MotionTracksPlugin:
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="windowed",
+        memory_required=True,
         description="Track bounded coherent feature-motion regions across frames.",
         assumptions=(
             "neighboring processed frames overlap enough for patch matching",
@@ -83,14 +85,41 @@ class MotionTracksPlugin:
         self.max_track_misses = max(0, int(max_track_misses))
         self.min_association_iou = max(0.0, min(1.0, float(min_association_iou)))
         self.max_association_distance = max(0.0, float(max_association_distance))
-        self.reset()
 
-    def reset(self) -> None:
+    def _initialize_history(self) -> None:
         self._previous_rgb: np.ndarray | None = None
         self._tracks: dict[int, _SceneTrack] = {}
         self._next_track_id = 1
 
+    def reset(self, memory=None) -> None:
+        if memory is not None:
+            memory.pop(self._memory_key, None)
+
+    @property
+    def _memory_key(self) -> str:
+        return f"perception.{self.plugin_id}.history"
+
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        if inputs.memory is None:
+            raise ValueError(f"{self.plugin_id} requires host shared memory")
+        # Only this call owns the mutable algorithm workspace. Configuration
+        # stays on the plugin; history is read from and committed to the map.
+        step = copy(self)
+        step._initialize_history()
+        for name, value in deepcopy(inputs.memory.get(self._memory_key, {})).items():
+            setattr(step, name, value)
+        try:
+            batch = step._perceive_frame(inputs)
+        except PerceptionPluginWarmingUp:
+            inputs.memory[self._memory_key] = step._history()
+            raise
+        inputs.memory[self._memory_key] = step._history()
+        return batch
+
+    def _history(self) -> dict[str, Any]:
+        return {name: getattr(self, name) for name in ('_previous_rgb', '_tracks', '_next_track_id')}
+
+    def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)
         current_rgb = frame.rgb
         previous_rgb = self._previous_rgb

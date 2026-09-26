@@ -190,17 +190,6 @@ def _canonical_capabilities_payload(value: object, *, path: str) -> object:
     return deep_freeze(canonical)
 
 
-def _canonical_bundle_payload(
-    value: object, *, path: str, schema_key: str
-) -> object:
-    payload = _plain_mapping(value)
-    schema = payload.get(schema_key)
-    if type(schema) is not str or not schema:
-        raise ValueError(f"{path} requires non-empty string {schema_key!r}")
-    _reject_forbidden_channel_keys(payload, path=path)
-    return deep_freeze(payload)
-
-
 def _canonical_prior_host_payload(value: object, *, path: str) -> object:
     payload = _plain_mapping(value)
     unknown = sorted(set(payload) - PRIOR_HOST_ALLOWED_KEYS)
@@ -264,14 +253,6 @@ def _canonicalize_ready_component(name: str, envelope: "ComponentEnvelope") -> o
         if not isinstance(value, MemorySnapshot):
             raise TypeError(f"{path} must be MemorySnapshot when ready")
         return value
-    if name == "patterns":
-        return _canonical_bundle_payload(
-            value, path=path, schema_key="pattern_bundle_schema"
-        )
-    if name == "projections":
-        return _canonical_bundle_payload(
-            value, path=path, schema_key="projection_bundle_schema"
-        )
     if name == "capabilities":
         return _canonical_capabilities_payload(value, path=path)
     if name == "prior_host_applied_command":
@@ -447,8 +428,6 @@ class DecisionDataSource:
     timestamp_ms: int
     observation: ComponentEnvelope
     memory: ComponentEnvelope
-    patterns: ComponentEnvelope
-    projections: ComponentEnvelope
     capabilities: ComponentEnvelope
     prior_host_applied_command: ComponentEnvelope
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -477,8 +456,6 @@ class DecisionDataSource:
         for name in (
             "observation",
             "memory",
-            "patterns",
-            "projections",
             "capabilities",
             "prior_host_applied_command",
         ):
@@ -538,8 +515,6 @@ class DecisionDataSource:
             "timestamp_ms": self.timestamp_ms,
             "observation": self.observation.to_dict(),
             "memory": self.memory.to_dict(),
-            "patterns": self.patterns.to_dict(),
-            "projections": self.projections.to_dict(),
             "capabilities": self.capabilities.to_dict(),
             "prior_host_applied_command": self.prior_host_applied_command.to_dict(),
             "metadata": frozen_mapping_to_dict(self.metadata),
@@ -555,8 +530,6 @@ def build_decision_data_source(
     observation_configured: bool = False,
     observation_error: str | None = None,
     memory: MemorySnapshot | None = None,
-    patterns: ComponentEnvelope | None = None,
-    projections: ComponentEnvelope | None = None,
     capabilities: ComponentEnvelope | None = None,
     prior_host_applied_command: ComponentEnvelope | None = None,
     metadata: dict[str, Any] | None = None,
@@ -580,10 +553,6 @@ def build_decision_data_source(
             updated_at_ms=timestamp_ms,
         ),
         memory=memory_envelope_from_snapshot(memory, updated_at_ms=timestamp_ms),
-        patterns=patterns
-        or unavailable_envelope("stage_not_configured", updated_at_ms=timestamp_ms),
-        projections=projections
-        or unavailable_envelope("stage_not_configured", updated_at_ms=timestamp_ms),
         capabilities=capabilities
         or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),
         prior_host_applied_command=prior_host_applied_command

@@ -67,10 +67,7 @@ class AutonomyCycleHost:
         perception,
         observation,
         memory,
-        patterns,
-        projections,
     ):
-        del patterns, projections
         return self.manager.step(
             AutonomySnapshot(
                 sensor_snapshot=context.sensor_snapshot,

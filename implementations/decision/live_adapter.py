@@ -64,8 +64,6 @@ class ObstacleAvoidanceAutonomyEngine:
             "stages": {
                 "action": "obstacle_avoidance_proposal_run_cycle",
                 "memory": "inspectable_snapshot",
-                "patterns": None,
-                "projections": None,
             },
         }
 

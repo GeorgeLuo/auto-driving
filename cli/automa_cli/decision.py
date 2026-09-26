@@ -157,8 +157,6 @@ SOURCE_EXACT_KEYS = frozenset(
         "timestamp_ms",
         "observation",
         "memory",
-        "patterns",
-        "projections",
         "capabilities",
         "prior_host_applied_command",
         "metadata",
@@ -288,8 +286,6 @@ LOCATION_REQUIRED_KEYS = frozenset(
 SHADOW_DECISION_INPUTS = (
     "observation",
     "memory",
-    "patterns",
-    "projections",
     "capabilities",
     "prior_host_applied_command",
 )
@@ -1781,8 +1777,6 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
     for env_key in (
         "observation",
         "memory",
-        "patterns",
-        "projections",
         "capabilities",
         "prior_host_applied_command",
     ):
@@ -1798,8 +1792,6 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
             timestamp_ms=payload["timestamp_ms"],
             observation=envelopes["observation"],
             memory=envelopes["memory"],
-            patterns=envelopes["patterns"],
-            projections=envelopes["projections"],
             capabilities=envelopes["capabilities"],
             prior_host_applied_command=envelopes["prior_host_applied_command"],
             metadata=dict(payload.get("metadata") or {}),

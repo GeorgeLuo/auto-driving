@@ -311,7 +311,7 @@ class ActivatedMemoryStage:
         started = time.perf_counter()
         try:
             # Observation evidence is separate from the host-owned shared map
-            # available through context.memory.
+            # available through context.shared_memory.
             snapshot = self.implementation.update(context, observation)
             owned = self._accept_snapshot(snapshot, operation="update")
             if owned.health == "error":
@@ -326,12 +326,12 @@ class ActivatedMemoryStage:
             self.update_count += 1
         return self._publish_snapshot(owned)
 
-    def reset(self, memory: SharedMemory | None = None) -> MemorySnapshot:
+    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
         started = time.perf_counter()
         try:
             snapshot = (
-                self.implementation.reset(memory)
-                if memory is not None
+                self.implementation.reset(shared_memory)
+                if shared_memory is not None
                 else self.implementation.reset()
             )
             owned = self._accept_snapshot(snapshot, operation="reset")
@@ -357,8 +357,8 @@ class ActivatedMemoryStage:
             )
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
-        if memory is not None:
-            memory["decision.snapshot"] = owned
+        if shared_memory is not None:
+            shared_memory["decision.snapshot"] = owned
         return self._publish_snapshot(owned)
 
     def snapshot(self) -> MemorySnapshot:

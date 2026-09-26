@@ -211,7 +211,10 @@ class MemoryBounds:
 
 @dataclass(frozen=True)
 class MemorySnapshot:
-    """Detached, inspectable memory state after one cycle update or reset."""
+    """Detached retained evidence after one cycle update or reset.
+
+    Instances are the value published at shared_memory["decision.snapshot"].
+    """
 
     memory_id: str
     epoch_id: str

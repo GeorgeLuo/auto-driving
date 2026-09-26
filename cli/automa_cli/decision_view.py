@@ -623,6 +623,8 @@ class DecisionView:
         source = cycle.get("source") if isinstance(cycle, dict) else None
         authority = transaction.stream_frame.get("authority_summary")
         observation = source.get("observation") if isinstance(source, dict) else None
+        # Serialized retained evidence from shared_memory["decision.snapshot"],
+        # carried through the cycle publication.
         memory = source.get("memory") if isinstance(source, dict) else None
         evidence = _evidence_projection(
             transaction_id=transaction.transaction_id,

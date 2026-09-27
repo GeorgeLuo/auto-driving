@@ -107,6 +107,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         "line_junction_support",
     )
     _emit_object_separated_geometry = False
+    _jev_cache_directory = Path(__file__).resolve().parents[1] / "cache"
 
     def __init__(
         self,
@@ -889,11 +890,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         request_digest = hashlib.sha256(
             _canonical_json(request).encode("utf-8")
         ).hexdigest()
-        cache_path = (
-            Path(__file__).resolve().parents[1]
-            / "cache"
-            / f"geometry-v1-{request_digest}.json"
-        )
+        cache_path = self._jev_cache_directory / f"geometry-v1-{request_digest}.json"
         if cache_path.is_file():
             try:
                 cached = json.loads(cache_path.read_text(encoding="utf-8"))

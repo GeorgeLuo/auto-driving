@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from lab.plugins.perception.composite_box_fusion.src.plugin import *  # noqa: F401,F403
@@ -17,6 +18,7 @@ class CompositeBoxFusionPlugin(_CompositeBoxFusionPlugin):
     """Keep the variant entrypoint and its object separation default."""
 
     _emit_object_separated_geometry = True
+    _jev_cache_directory = Path(__file__).resolve().parents[1] / "cache"
 
     def __init__(
         self,

@@ -13,6 +13,7 @@ class AutonomySnapshot:
     sensor_snapshot: Any = None
     perception: Any = None
     observation: Any = None
+    # Retained evidence from shared_memory["decision.snapshot"], not the shared map.
     memory: Any = None
     cycle: dict[str, Any] = field(default_factory=dict)
     mode: str = "user"

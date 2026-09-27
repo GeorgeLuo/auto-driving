@@ -24,12 +24,11 @@ class MemoryActivationTests(unittest.TestCase):
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            snapshot = stage.update(
-                DecisionFrameContext("f1", 1, 1),
-                Observation("o1", 1, {}),
-            )
-            self.assertEqual(snapshot.health, "error")
-            self.assertIn("declares max_serialized_bytes", snapshot.error or "")
+            with self.assertRaisesRegex(ValueError, "declares max_serialized_bytes"):
+                stage.update(
+                    DecisionFrameContext("f1", 1, 1),
+                    Observation("o1", 1, {}),
+                )
 
     def test_rejects_when_normalization_would_exceed_activation_ceiling(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -42,17 +41,14 @@ class MemoryActivationTests(unittest.TestCase):
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            snapshot = stage.update(
-                DecisionFrameContext("f1", 1, 1),
-                Observation("o1", 1, {}),
-            )
+            with self.assertRaisesRegex(ValueError, "eviction_policy"):
+                stage.update(
+                    DecisionFrameContext("f1", 1, 1),
+                    Observation("o1", 1, {}),
+                )
             # Policy mismatch is rejected before silent normalize-and-relabel.
-            self.assertEqual(snapshot.health, "error")
             self.assertIsNotNone(stage.last_error)
             self.assertIn("eviction_policy", stage.last_error or "")
-            from autonomy.decision import serialized_memory_snapshot_bytes
-
-            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 600)
 
     def test_rejects_when_normalization_increases_size_past_activation_ceiling(
         self,
@@ -70,15 +66,12 @@ class MemoryActivationTests(unittest.TestCase):
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            snapshot = stage.update(
-                DecisionFrameContext("f1", 1, 1),
-                Observation("o1", 1, {}),
-            )
-            self.assertEqual(snapshot.health, "error")
+            with self.assertRaisesRegex(ValueError, "normalized memory snapshot"):
+                stage.update(
+                    DecisionFrameContext("f1", 1, 1),
+                    Observation("o1", 1, {}),
+                )
             self.assertIn("normalized memory snapshot", stage.last_error or "")
-            from autonomy.decision import serialized_memory_snapshot_bytes
-
-            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
 
     def test_framework_rejects_non_json_property_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -89,12 +82,11 @@ class MemoryActivationTests(unittest.TestCase):
             stage = ActivatedMemoryStage(
                 read_memory_activation(_write_payload(tmp, payload))
             )
-            snapshot = stage.update(
-                DecisionFrameContext("frame_9", 9, 900),
-                Observation("obs_9", 890, {}),
-            )
-            self.assertEqual(snapshot.health, "error")
-            self.assertIn("JSON", snapshot.error or "")
+            with self.assertRaisesRegex(ValueError, "JSON"):
+                stage.update(
+                    DecisionFrameContext("frame_9", 9, 900),
+                    Observation("obs_9", 890, {}),
+                )
 
     def test_activation_document_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

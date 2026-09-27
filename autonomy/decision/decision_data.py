@@ -427,6 +427,7 @@ class DecisionDataSource:
     frame_index: int
     timestamp_ms: int
     observation: ComponentEnvelope
+    # Retained evidence from shared_memory["decision.snapshot"].
     memory: ComponentEnvelope
     capabilities: ComponentEnvelope
     prior_host_applied_command: ComponentEnvelope
@@ -529,6 +530,7 @@ def build_decision_data_source(
     observation: Observation | dict[str, Any] | None = None,
     observation_configured: bool = False,
     observation_error: str | None = None,
+    # Retained evidence from shared_memory["decision.snapshot"].
     memory: MemorySnapshot | None = None,
     capabilities: ComponentEnvelope | None = None,
     prior_host_applied_command: ComponentEnvelope | None = None,

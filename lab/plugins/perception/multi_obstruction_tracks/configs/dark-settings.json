@@ -1,0 +1,50 @@
+{
+  "profile": "dark-settings",
+  "schema": "automa_lab_perception_parameter_profile_v0",
+  "candidate": "multi_obstruction_tracks",
+  "purpose": "Shared-plugin parameter profile for the darker 22-frame PiCar capture.",
+  "source_code_changed": true,
+  "implementation_revision": "revised-shared-detector-v2",
+  "source_code": "lab/plugins/perception/multi_obstruction_tracks/src/plugin.py",
+  "evidence_capture": "lab/runs/cv-synthesis-20260919/decision-motion-20s-20260919-224250/frames-0-21",
+  "config": {
+    "max_tracks": 2,
+    "floor_cutoff_y": 0.5,
+    "minimum_object_height": 0.1,
+    "minimum_object_area_fraction": 0.006,
+    "maximum_object_area_fraction": 0.3,
+    "association_distance": 0.35,
+    "minimum_association_score": 0.0,
+    "smoothing_alpha": 0.2,
+    "max_missed_frames": 4,
+    "reacquire_window_frames": 8,
+    "minimum_feature_points": 4,
+    "canny_low": 35,
+    "canny_high": 70,
+    "minimum_contour_area_fraction": 0.003,
+    "maximum_contour_area_fraction": 0.25,
+    "contour_merge_gap": 0.0,
+    "contrast_normalization": "none",
+    "contrast_clip_limit": 2.0,
+    "contrast_tile_size": 8,
+    "contrast_gamma": 1.0,
+    "preserve_separate_proposals": false,
+    "duplicate_suppression_iou": 0.85,
+    "output_bbox_shrink_x": 1.0,
+    "output_bbox_shrink_y": 0.7,
+    "minimum_output_confidence": 0.0
+  },
+  "manual_evaluation": {
+    "reference": "lab/runs/cv-synthesis-20260919/decision-motion-20s-20260919-224250/manual-boxes-tight.json",
+    "gate": "lab/runs/cv-synthesis-20260919/strict-freeze-20260920/strict-baseline-result.json",
+    "strict_evaluator": "lab/runs/cv-synthesis-20260919/strict-freeze-20260920/strict_gate.py",
+    "strict_step1_baseline_run": "lab/plugins/perception/multi_obstruction_tracks/runs/apply-frames-0-21-20260920-181509-037617-eb6754f6",
+    "relaxed_baseline_gate": "lab/runs/cv-synthesis-20260919/decision-motion-20s-20260919-224250/manual-revised-gate-final.json",
+    "eligible_run": "lab/plugins/perception/multi_obstruction_tracks/runs/apply-frames-0-21-20260920-090656-132376-8c2740e9"
+  },
+  "selection_basis": {
+    "manual_observation": "Dark RGB frames contain the labelled left box, center white box, and right open box; the profile retains all three visible regions through the 22 retained frames.",
+    "confidence_floor_semantics": "minimum_output_confidence applies to predicted and held stale tracks; matched and reacquired detector observations remain eligible for output.",
+    "bright_profile": "lab/plugins/perception/multi_obstruction_tracks/configs/bright-settings.json"
+  }
+}

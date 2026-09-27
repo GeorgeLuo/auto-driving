@@ -157,6 +157,7 @@ class ShadowProposalsEngine:
         timestamp_ms: int,
         observation: Observation | dict[str, Any] | None = None,
         observation_error: str | None = None,
+        # Retained evidence from shared_memory["decision.snapshot"].
         memory: MemorySnapshot | None = None,
         host_application: ComponentEnvelope | None = None,
         prior_host_applied_command: ComponentEnvelope | None = None,

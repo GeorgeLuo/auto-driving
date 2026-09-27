@@ -84,10 +84,12 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(stages=DecisionStages(perceive=stage))
         )
-        _steering, _throttle, _control, _engine, cycle = part.run(
+        part.run(
             image_array=np.zeros((24, 32, 3), dtype=np.uint8),
             mode="local",
         )
+        part.wait_for_cycle()
+        _steering, _throttle, _control, _engine, cycle = part.completed_outputs("local")
         self.assertEqual(cycle["perception"]["status"], "ok")
         self.assertEqual(cycle["observation"]["perception_schema"], "perception_text_v2")
 

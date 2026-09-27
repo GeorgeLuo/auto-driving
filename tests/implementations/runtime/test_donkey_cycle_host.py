@@ -234,6 +234,39 @@ class RuntimeCycleHostTests(unittest.TestCase):
             ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA,
         )
 
+    def test_memory_update_failure_stops_future_pilot_cycles(self) -> None:
+        calls = 0
+
+        def remember(_context, _observation):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("memory update failed")
+            return None
+
+        manager = AutonomyManager()
+        manager.engine = _PushyEngine()
+        part = AutonomyPilotPart(
+            host=AutonomyCycleHost(manager=manager, stages=DecisionStages(remember=remember)),
+            min_interval_s=0.0,
+        )
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        part.run(image_array=image, mode="local")
+        part.wait_for_cycle()
+        self.assertEqual(part.completed_outputs("local")[:2], (0.7, 0.4))
+
+        part.run(image_array=image, mode="local")
+        part.wait_for_cycle()
+        self.assertEqual(part.completed_outputs("local")[:2], (0.0, 0.0))
+        self.assertEqual(part.latest_snapshot.status, "error")
+        self.assertTrue(part.observation_status()["memory_update_halted"])
+
+        part.run(image_array=image, mode="local")
+        self.assertEqual(calls, 2)
+        self.assertEqual(part.processed_count, 2)
+        self.assertEqual(part.completed_outputs("local")[:2], (0.0, 0.0))
+
     def test_status_omits_raw_image_payload(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
         part.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")

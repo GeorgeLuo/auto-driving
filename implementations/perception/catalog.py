@@ -14,6 +14,9 @@ PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
     "floor_plane": "implementations.perception.traversability.plugin:FloorPlanePlugin",
     "frame": "implementations.perception.observation.plugin:FrameObservationPlugin",
     "motion_tracks": "implementations.perception.motion.tracks:MotionTracksPlugin",
+    "obstruction_tracks": (
+        "implementations.perception.obstruction_tracks:MultiObstructionTracksPlugin"
+    ),
     "sim_color_targets": (
         "implementations.perception.simulation.color_targets:SimColorTargetsPlugin"
     ),
@@ -64,6 +67,41 @@ PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
         "output_contract": {
             "schema": PERCEPTION_TEXT_SCHEMA,
             "meaning": "structured surface, boundary, and scene-track evidence",
+        },
+    },
+    "obstruction_observer": {
+        "description": (
+            "Generic obstruction observer: frame facts, floor suppression, and "
+            "bounded multi-region temporal tracks."
+        ),
+        "mapper_spec": PERCEPTION_MAPPER_SPEC,
+        "mapper_config": {
+            "plugins": ["frame", "floor_plane", "obstruction_tracks"],
+            "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
+            "plugin_configs": {
+                "obstruction_tracks": {
+                    "max_tracks": 4,
+                    "floor_cutoff_y": 0.72,
+                    "minimum_object_height": 0.10,
+                    "minimum_object_area_fraction": 0.006,
+                    "maximum_object_area_fraction": 0.60,
+                    "association_distance": 0.35,
+                    "minimum_association_score": 0.12,
+                    "smoothing_alpha": 0.35,
+                    "max_missed_frames": 2,
+                    "reacquire_window_frames": 4,
+                    "minimum_feature_points": 6,
+                    "canny_low": 20,
+                    "canny_high": 40,
+                    "minimum_contour_area_fraction": 0.0015,
+                    "maximum_contour_area_fraction": 0.25,
+                    "contour_merge_gap": 0.16,
+                }
+            },
+        },
+        "output_contract": {
+            "schema": PERCEPTION_TEXT_SCHEMA,
+            "meaning": "structured frame, floor, and generic obstruction-track evidence",
         },
     },
 }

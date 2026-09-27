@@ -1,9 +1,13 @@
 from __future__ import annotations
+import json
+import shutil
 import threading
 import time
-import shutil
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Iterator
+from urllib.request import Request, urlopen
 from PIL import Image
 from autonomy.perception import (
     PERCEPTION_TEXT_SCHEMA,
@@ -13,7 +17,44 @@ from autonomy.perception import (
     ViewLocation,
 )
 from autonomy.decision.memory import MemoryBounds, MemorySnapshot
-from cli.automa_cli.workbench import ImageReplayRunner as ProductionImageReplayRunner
+from cli.automa_cli.workbench import (
+    ImageReplayRunner as ProductionImageReplayRunner,
+    WorkbenchServer,
+)
+
+
+@contextmanager
+def image_source(count: int) -> Iterator[Path]:
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        _make_images(root, count)
+        yield root
+
+
+def write_manifest(root: Path, payload: dict, name: str = "manifest.json") -> None:
+    (root / name).write_text(json.dumps(payload), encoding="utf-8")
+
+
+def serve_workbench(testcase, runner: ProductionImageReplayRunner) -> str:
+    server = WorkbenchServer(runner).start()
+    testcase.addCleanup(server.stop)
+    base = server.url
+    if base is None:
+        raise AssertionError("workbench server has no URL")
+    return base
+
+
+def post_action(base: str, payload: dict[str, object], *, timeout: float = 2) -> dict:
+    response = urlopen(
+        Request(
+            base + "api/action",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        ),
+        timeout=timeout,
+    )
+    return json.loads(response.read())
 
 
 class PluginCatalogFixture:
@@ -52,7 +93,7 @@ class FixtureMapper:
         self.calls: list[str] = []
         self.reset_count = 0
 
-    def reset(self) -> None:
+    def reset(self, shared_memory=None) -> None:
         self.reset_count += 1
 
     def describe_schema(self) -> dict[str, object]:
@@ -156,7 +197,7 @@ class ErrorMemory:
             error="injected memory failure",
         )
 
-    def reset(self) -> None:
+    def reset(self, shared_memory=None) -> None:
         return None
 
 

@@ -6,11 +6,13 @@ import importlib
 import json
 import time
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from .cycle import DecisionFrameContext
+from autonomy.memory import SharedMemory
+
+from .cycle import DecisionFrameContext, MemoryUpdateError
 from .memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
     DEFAULT_MAX_PROPERTY_BYTES,
@@ -276,10 +278,9 @@ def instantiate_memory_implementation(
 class ActivatedMemoryStage:
     """Decision-cycle memory stage backed by one activated implementation.
 
-    The framework owns load, reset, timing, status, and failure isolation.
+    The framework owns load, reset, timing, status, and validation.
     Implementations only express update/reset/snapshot policy. Source
-    observations are treated as read-only inputs; failures produce an error
-    snapshot with no retained claims and do not raise into the cycle.
+    observations are treated as read-only inputs; update failures stop the cycle.
     """
 
     def __init__(self, activation: MemoryActivation) -> None:
@@ -291,7 +292,9 @@ class ActivatedMemoryStage:
         self.update_count = 0
         self.reset_count = 0
         self.failure_count = 0
-        self.last_snapshot = self.reset()
+        # The host map is not available during construction; inspect the
+        # implementation's initial snapshot without counting a real reset.
+        self.last_snapshot = self.snapshot()
 
     def __call__(
         self,
@@ -307,23 +310,30 @@ class ActivatedMemoryStage:
     ) -> MemorySnapshot:
         started = time.perf_counter()
         try:
-            # Observations are frozen; deepcopy defensive metadata only if needed
-            # by refusing mutation contracts: never pass writable shared state.
+            # Observation evidence is separate from the host-owned shared map
+            # available through context.shared_memory.
             snapshot = self.implementation.update(context, observation)
             owned = self._accept_snapshot(snapshot, operation="update")
+            if owned.health == "error":
+                raise MemoryUpdateError(owned.error or "memory stage returned an error snapshot")
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(format_exception_safely(exc))
-            owned = self._error_snapshot(self.last_error)
-        self.last_duration_ms = (time.perf_counter() - started) * 1000.0
-        self.update_count += 1
+            raise
+        finally:
+            self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+            self.update_count += 1
         return self._publish_snapshot(owned)
 
-    def reset(self) -> MemorySnapshot:
+    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
         started = time.perf_counter()
         try:
-            snapshot = self.implementation.reset()
+            snapshot = (
+                self.implementation.reset(shared_memory)
+                if shared_memory is not None
+                else self.implementation.reset()
+            )
             owned = self._accept_snapshot(snapshot, operation="reset")
             if owned.health not in {"empty", "unavailable"}:
                 raise ValueError(
@@ -347,6 +357,8 @@ class ActivatedMemoryStage:
             )
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
+        if shared_memory is not None:
+            shared_memory["decision.snapshot"] = owned
         return self._publish_snapshot(owned)
 
     def snapshot(self) -> MemorySnapshot:
@@ -422,41 +434,20 @@ class ActivatedMemoryStage:
             )
         # Reject removed or weakened age/size bounds. None is weaker than a
         # finite activation ceiling; a larger window/limit is also weaker.
-        if configured.max_age_ms is not None:
-            if declared.max_age_ms is None:
+        for field_name in ("max_age_ms", "max_property_bytes", "max_serialized_bytes"):
+            configured_limit = getattr(configured, field_name)
+            if configured_limit is None:
+                continue
+            declared_limit = getattr(declared, field_name)
+            if declared_limit is None:
                 raise ValueError(
-                    "memory snapshot removed max_age_ms while activation requires "
-                    f"max_age_ms={configured.max_age_ms}"
+                    f"memory snapshot removed {field_name} while activation requires "
+                    f"{field_name}={configured_limit}"
                 )
-            if declared.max_age_ms > configured.max_age_ms:
+            if declared_limit > configured_limit:
                 raise ValueError(
-                    "memory snapshot max_age_ms "
-                    f"{declared.max_age_ms} exceeds activation max_age_ms "
-                    f"{configured.max_age_ms}"
-                )
-        if configured.max_property_bytes is not None:
-            if declared.max_property_bytes is None:
-                raise ValueError(
-                    "memory snapshot removed max_property_bytes while activation "
-                    f"requires max_property_bytes={configured.max_property_bytes}"
-                )
-            if declared.max_property_bytes > configured.max_property_bytes:
-                raise ValueError(
-                    "memory snapshot max_property_bytes "
-                    f"{declared.max_property_bytes} exceeds activation "
-                    f"max_property_bytes={configured.max_property_bytes}"
-                )
-        if configured.max_serialized_bytes is not None:
-            if declared.max_serialized_bytes is None:
-                raise ValueError(
-                    "memory snapshot removed max_serialized_bytes while activation "
-                    f"requires max_serialized_bytes={configured.max_serialized_bytes}"
-                )
-            if declared.max_serialized_bytes > configured.max_serialized_bytes:
-                raise ValueError(
-                    "memory snapshot max_serialized_bytes "
-                    f"{declared.max_serialized_bytes} exceeds activation "
-                    f"max_serialized_bytes={configured.max_serialized_bytes}"
+                    f"memory snapshot {field_name} {declared_limit} exceeds activation "
+                    f"{field_name} {configured_limit}"
                 )
 
         # Enforce the tighter of activation and declared property ceilings.
@@ -494,21 +485,7 @@ class ActivatedMemoryStage:
         if detached.bounds == configured:
             normalized = detached
         else:
-            normalized = detach_memory_snapshot(
-                MemorySnapshot(
-                    memory_id=detached.memory_id,
-                    epoch_id=detached.epoch_id,
-                    health=detached.health,
-                    bounds=configured,
-                    created_at_ms=detached.created_at_ms,
-                    records=detached.records,
-                    summary=detached.summary,
-                    implementation_id=detached.implementation_id,
-                    error=detached.error,
-                    metadata=detached.metadata,
-                    schema=detached.schema,
-                )
-            )
+            normalized = detach_memory_snapshot(replace(detached, bounds=configured))
         final_size = serialized_memory_snapshot_bytes(normalized)
         if (
             configured.max_serialized_bytes is not None

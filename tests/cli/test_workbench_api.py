@@ -1,8 +1,7 @@
 from __future__ import annotations
 import json
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
+from functools import partial
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -11,58 +10,39 @@ from tests.cli.workbench_fixtures import (
     PluginCatalogFixture,
     FixtureMapper,
     ImageReplayRunner,
-    _make_images,
     _wait_until,
+    image_source,
+    post_action,
+    serve_workbench,
+    write_manifest,
 )
 
 
 class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
     def test_loopback_api_accepts_realtime_pace_selection(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
-            (root / "manifest.json").write_text(
-                json.dumps(
+        with image_source(2) as root:
+            write_manifest(root, {
+                "source_id": "api-timed.fixture",
+                "frames": [
                     {
-                        "source_id": "api-timed.fixture",
-                        "frames": [
-                            {
-                                "frame_id": "first",
-                                "timestamp_ms": 0,
-                                "image_path": "frame_00.png",
-                            },
-                            {
-                                "frame_id": "second",
-                                "timestamp_ms": 20,
-                                "image_path": "frame_01.png",
-                            },
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "first",
+                        "timestamp_ms": 0,
+                        "image_path": "frame_00.png",
+                    },
+                    {
+                        "frame_id": "second",
+                        "timestamp_ms": 20,
+                        "image_path": "frame_01.png",
+                    },
+                ],
+            })
             runner = ImageReplayRunner(
                 cadence_ms=5000,
                 mapper_factory=FixtureMapper,
             )
-            server = WorkbenchServer(runner).start()
-            self.addCleanup(server.stop)
-            base = server.url
-            self.assertIsNotNone(base)
+            base = serve_workbench(self, runner)
 
-            def post(payload: dict[str, object]) -> dict[str, object]:
-                body = json.dumps(payload).encode("utf-8")
-                return json.loads(
-                    urlopen(
-                        Request(
-                            base + "api/action",
-                            data=body,
-                            headers={"Content-Type": "application/json"},
-                            method="POST",
-                        ),
-                        timeout=3,
-                    ).read()
-                )
+            post = partial(post_action, base, timeout=3)
 
             started = post(
                 {
@@ -76,30 +56,13 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(runner.wait(3)["phase"], "completed")
 
     def test_loopback_api_exposes_and_applies_plugin_selection(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
+        with image_source(1) as root:
             runner = ImageReplayRunner(cadence_ms=0)
-            server = WorkbenchServer(runner).start()
-            self.addCleanup(server.stop)
-            base = server.url
-            self.assertIsNotNone(base)
+            base = serve_workbench(self, runner)
 
             plugin_root = str(self.plugin_root.resolve())
 
-            def post(payload: dict[str, object]) -> dict[str, object]:
-                body = json.dumps(payload).encode("utf-8")
-                return json.loads(
-                    urlopen(
-                        Request(
-                            base + "api/action",
-                            data=body,
-                            headers={"Content-Type": "application/json"},
-                            method="POST",
-                        ),
-                        timeout=2,
-                    ).read()
-                )
+            post = partial(post_action, base, timeout=2)
 
             inspected = post({"action": "refresh_plugins", "plugin_dir": plugin_root})
             catalog = inspected["state"]["plugin_catalog"]
@@ -160,29 +123,12 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         )
 
     def test_loopback_api_allows_live_plugin_selection_at_frame_boundary(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 3)
+        with image_source(3) as root:
             runner = ImageReplayRunner(cadence_ms=5000)
-            server = WorkbenchServer(runner).start()
-            self.addCleanup(server.stop)
-            base = server.url
-            self.assertIsNotNone(base)
+            base = serve_workbench(self, runner)
             plugin_root = str(self.plugin_root.resolve())
 
-            def post(payload: dict[str, object]) -> dict[str, object]:
-                body = json.dumps(payload).encode("utf-8")
-                return json.loads(
-                    urlopen(
-                        Request(
-                            base + "api/action",
-                            data=body,
-                            headers={"Content-Type": "application/json"},
-                            method="POST",
-                        ),
-                        timeout=10,
-                    ).read()
-                )
+            post = partial(post_action, base, timeout=10)
 
             post({"action": "refresh_plugins", "plugin_dir": plugin_root})
             post(
@@ -212,29 +158,22 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 selected["state"]["run_active_plugin_ids"], ["floor_continuity"]
             )
+            self.assertEqual(selected["state"]["timeline"], [])
             paused = post({"action": "pause", "run_id": run_id})
             self.assertEqual(paused["state"]["phase"], "paused")
             stepped = post({"action": "step", "run_id": run_id})
             first_id = stepped["state"]["timeline"][0]["frame"]["frame_id"]
-            second_id = stepped["state"]["timeline"][1]["frame"]["frame_id"]
             first_detail = runner.frame_detail(first_id, run_id=run_id)
-            second_detail = runner.frame_detail(second_id, run_id=run_id)
 
         self.assertEqual(
             [run["plugin_id"] for run in first_detail["perception"]["plugin_runs"]],
-            ["classical_regions"],
-        )
-        self.assertEqual(
-            [run["plugin_id"] for run in second_detail["perception"]["plugin_runs"]],
             ["floor_continuity"],
         )
         self.assertEqual(stepped["state"]["phase"], "paused")
         post({"action": "cancel", "run_id": run_id})
 
-    def test_running_empty_selection_keeps_current_frame_perception(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 3)
+    def test_running_empty_selection_starts_fresh_replay(self) -> None:
+        with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=self.plugin_root,
@@ -259,15 +198,10 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], [])
-            self.assertEqual(
-                [run["plugin_id"] for run in selected["perception"]["plugin_runs"]],
-                ["classical_regions"],
-            )
+            self.assertIsNone(selected["perception"])
+            self.assertEqual(selected["timeline"], [])
             paused = runner.dispatch("pause", run_id=run_id)
-            self.assertEqual(
-                [run["plugin_id"] for run in paused["perception"]["plugin_runs"]],
-                ["classical_regions"],
-            )
+            self.assertIsNone(paused["perception"])
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(list(stepped["perception"]["plugin_runs"] or ()), [])
             self.assertEqual(stepped["perception"]["status"], "empty")
@@ -276,9 +210,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(
         self,
     ) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
+        with image_source(1) as root:
             runner = ImageReplayRunner(cadence_ms=0)
             server = WorkbenchServer(runner).start()
             self.addCleanup(server.stop)

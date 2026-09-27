@@ -1,19 +1,13 @@
 from __future__ import annotations
 import json
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from tests.support.cli_runner import run_automa
-from tests.cli.workbench_fixtures import (
-    _make_images,
-)
+from tests.cli.workbench_fixtures import image_source
 
 
 class WorkbenchTests(unittest.TestCase):
     def test_cli_replay_machine_readable_boundary(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
+        with image_source(1) as root:
             result = run_automa(
                 "vehicles",
                 "workbench",
@@ -39,9 +33,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn("argv", payload)
 
     def test_cli_replay_accepts_realtime_pace(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
+        with image_source(1) as root:
             result = run_automa(
                 "vehicles",
                 "workbench",
@@ -59,9 +51,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(payload["controls"]["pace"], "realtime")
 
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
+        with image_source(1) as root:
             result = run_automa(
                 "vehicles",
                 "workbench",

@@ -1,4 +1,10 @@
-"""Reference avoid_recent_obstruction proposal plugin (M006-04)."""
+"""Reference avoid_recent_obstruction proposal plugin (M006-04).
+
+Compatible with the Workbench ``multi_obstruction_tracks`` memory plugin: it
+reads retained image-located ``obstacle`` records, including the tracks that
+plugin produces. It accepts records by kind and location, regardless of which
+perception or memory implementation produced them.
+"""
 
 from __future__ import annotations
 
@@ -202,6 +208,7 @@ def propose(
             available=False,
         )
 
+    # Retained evidence from shared_memory["decision.snapshot"].
     memory = source.memory
     if memory.status != "ready":
         reason = (

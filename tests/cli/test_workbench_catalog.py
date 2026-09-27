@@ -1,7 +1,6 @@
 from __future__ import annotations
 import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from cli.automa_cli.workbench import (
     PluginCatalogError,
     ReplayActionError,
@@ -10,8 +9,8 @@ from cli.automa_cli.workbench import (
 from tests.cli.workbench_fixtures import (
     PluginCatalogFixture,
     ImageReplayRunner,
-    _make_images,
     _wait_until,
+    image_source,
 )
 
 
@@ -48,9 +47,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         self.assertEqual(catalog.normalize_selection([]), ())
 
     def test_explicit_catalog_selection_runs_only_selected_plugins(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
+        with image_source(1) as root:
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=self.plugin_root,
@@ -72,10 +69,16 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             "lightweight_observer",
         )
 
+    def test_memory_companion_is_selected_from_manifest(self) -> None:
+        catalog = discover_plugin_catalog(
+            Path(__file__).resolve().parents[2] / "lab/plugins/perception"
+        )
+        companion = catalog.memory_for_selection(["multi_obstruction_tracks"])
+        self.assertEqual(companion["implementation_id"], "multi_obstruction_tracks")
+        self.assertIsNone(catalog.memory_for_selection(["classical_regions"]))
+
     def test_explicit_catalog_allows_raw_capture_and_live_replacement(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 3)
+        with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=self.plugin_root,
@@ -107,6 +110,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], ["floor_continuity"])
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
             paused = runner.dispatch("pause", run_id=run_id)
             self.assertEqual(paused["phase"], "paused")
             first_detail = runner.frame_detail(
@@ -114,7 +118,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(
                 [run["plugin_id"] for run in first_detail["perception"]["plugin_runs"]],
-                ["classical_regions"],
+                ["floor_continuity"],
             )
             with self.assertRaises(ReplayActionError):
                 runner.dispatch(
@@ -139,9 +143,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             runner.dispatch("cancel", run_id=run_id)
 
     def test_paused_plugin_toggle_reprocesses_current_frame_evidence(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 3)
+        with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=self.plugin_root,

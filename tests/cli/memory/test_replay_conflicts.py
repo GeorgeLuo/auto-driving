@@ -79,7 +79,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                     metadata = final.get("metadata") or {}
                     self.assertEqual(
                         metadata.get("conflict_policy"),
-                        "bounded_evidence_structural_v1",
+                        "bounded_evidence_structural_v2",
                     )
                     self.assertEqual(final["record_count"], expected["record_count"])
                     self.assertEqual(
@@ -89,6 +89,11 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                         metadata.get("last_update_conflict_count"),
                         expected["last_update_conflict_count"],
                     )
+                    if prefix_len == 2:
+                        self.assertEqual(
+                            metadata["last_update_drops"][0]["reason"],
+                            "kind_changed",
+                        )
                     if expected["kind"] is None:
                         self.assertEqual(final["records"], [])
                     else:

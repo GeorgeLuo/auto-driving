@@ -220,49 +220,66 @@ class _BoundedEvidenceReducer:
         now_ms: int,
     ) -> list[RetainedEvidence]:
         records: list[RetainedEvidence] = []
-        if self.retain_things:
-            for thing in observation.things:
-                if not isinstance(thing, dict):
-                    self._report_drop("<thing>", "invalid_candidate", "not_admitted")
+        for kind, enabled, candidates in (
+            ("thing", self.retain_things, observation.things),
+            ("signal", self.retain_signals, observation.signals),
+        ):
+            if not enabled:
+                continue
+            is_thing = kind == "thing"
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    self._report_drop(f"<{kind}>", "invalid_candidate", "not_admitted")
                     continue
-                confidence = float(thing.get("confidence") or 0.0)
+                confidence = float(candidate.get("confidence") or 0.0)
                 if confidence < self.min_confidence:
                     continue
-                evidence_id = str(thing.get("thing_id") or "").strip()
+                evidence_id = str(candidate.get(f"{kind}_id") or "").strip()
                 if not evidence_id:
-                    self._report_drop("<thing>", "missing_evidence_id", "not_admitted")
+                    self._report_drop(f"<{kind}>", "missing_evidence_id", "not_admitted")
                     continue
-                source_plugin = thing.get("source_plugin_id")
+                value = candidate.get("value") if kind == "signal" else None
+                # Keep affirmative / present signals; skip explicit false.
+                if kind == "signal" and value is False:
+                    continue
+                source_plugin = candidate.get("source_plugin_id")
                 if source_plugin is None:
                     source_plugin = observation.perception_plugin_id
-                record_id = namespaced_record_id("thing", evidence_id, source_plugin)
-                location = _location_from_payload(thing.get("location"))
-                coordinate_frame = (
-                    location.frame if location is not None else "image"
+                record_id = namespaced_record_id(kind, evidence_id, source_plugin)
+                location = (
+                    _location_from_payload(candidate.get("location"))
+                    if is_thing else None
                 )
                 try:
                     properties = ensure_strict_json_value(
-                        deepcopy(dict(thing.get("properties") or {}))
+                        deepcopy(dict(candidate.get("properties") or {}))
                     )
                 except (TypeError, ValueError):
                     self._report_drop(record_id, "invalid_properties", "not_admitted")
                     continue
-                if not isinstance(properties, dict):
-                    self._report_drop(record_id, "invalid_properties", "not_admitted")
-                    continue
+                if kind == "signal":
+                    properties["value"] = value
+                    try:
+                        properties = ensure_strict_json_value(properties)
+                    except ValueError:
+                        self._report_drop(record_id, "invalid_properties", "not_admitted")
+                        continue
                 if not self._properties_within_bound(properties):
                     self._report_drop(record_id, "properties_too_large", "not_admitted")
                     continue
+                label = str(candidate.get("label") or evidence_id) if is_thing else evidence_id
                 records.append(
                     RetainedEvidence(
                         record_id=record_id,
-                        kind=str(thing.get("kind") or "thing"),
-                        label=str(thing.get("label") or evidence_id),
+                        kind=str(candidate.get("kind") or "thing") if is_thing else "signal",
+                        label=label,
                         confidence=confidence,
                         provenance=MemoryProvenance(
                             observation_id=observation.observation_id,
                             evidence_id=evidence_id,
-                            coordinate_frame=coordinate_frame,
+                            coordinate_frame=(
+                                location.frame if location is not None else "image"
+                            ) if is_thing else "observation",
                             observed_at_ms=int(observation.created_at_ms),
                             updated_at_ms=now_ms,
                             source_plugin_id=(
@@ -271,70 +288,6 @@ class _BoundedEvidenceReducer:
                             frame_id=context.frame_id,
                         ),
                         location=location,
-                        properties=properties,
-                    )
-                )
-        if self.retain_signals:
-            for signal in observation.signals:
-                if not isinstance(signal, dict):
-                    self._report_drop("<signal>", "invalid_candidate", "not_admitted")
-                    continue
-                confidence = float(signal.get("confidence") or 0.0)
-                if confidence < self.min_confidence:
-                    continue
-                signal_id = str(signal.get("signal_id") or "").strip()
-                if not signal_id:
-                    self._report_drop("<signal>", "missing_evidence_id", "not_admitted")
-                    continue
-                value = signal.get("value")
-                # Keep affirmative / present signals; skip explicit false.
-                if value is False:
-                    continue
-                source_plugin = signal.get("source_plugin_id")
-                if source_plugin is None:
-                    source_plugin = observation.perception_plugin_id
-                record_id = namespaced_record_id("signal", signal_id, source_plugin)
-                try:
-                    properties = ensure_strict_json_value(
-                        deepcopy(dict(signal.get("properties") or {}))
-                    )
-                except (TypeError, ValueError):
-                    self._report_drop(record_id, "invalid_properties", "not_admitted")
-                    continue
-                if not isinstance(properties, dict):
-                    self._report_drop(record_id, "invalid_properties", "not_admitted")
-                    continue
-                properties = dict(properties)
-                properties["value"] = value
-                try:
-                    properties = ensure_strict_json_value(properties)
-                except ValueError:
-                    self._report_drop(record_id, "invalid_properties", "not_admitted")
-                    continue
-                if not isinstance(properties, dict):
-                    self._report_drop(record_id, "invalid_properties", "not_admitted")
-                    continue
-                if not self._properties_within_bound(properties):
-                    self._report_drop(record_id, "properties_too_large", "not_admitted")
-                    continue
-                records.append(
-                    RetainedEvidence(
-                        record_id=record_id,
-                        kind="signal",
-                        label=signal_id,
-                        confidence=confidence,
-                        provenance=MemoryProvenance(
-                            observation_id=observation.observation_id,
-                            evidence_id=signal_id,
-                            coordinate_frame="observation",
-                            observed_at_ms=int(observation.created_at_ms),
-                            updated_at_ms=now_ms,
-                            source_plugin_id=(
-                                str(source_plugin) if source_plugin is not None else None
-                            ),
-                            frame_id=context.frame_id,
-                        ),
-                        location=None,
                         properties=properties,
                     )
                 )
@@ -382,9 +335,7 @@ class _BoundedEvidenceReducer:
         created_at_ms: int,
         observation: Observation | None,
     ) -> MemorySnapshot:
-        observation_id = (
-            observation.observation_id if observation is not None else None
-        )
+        epoch_id = f"epoch-{self._epoch}"
         records = tuple(
             sorted(
                 self._records.values(),
@@ -394,40 +345,34 @@ class _BoundedEvidenceReducer:
                 ),
             )
         )
-        if not records:
-            return empty_memory_snapshot(
-                memory_id=memory_id,
-                epoch_id=f"epoch-{self._epoch}",
-                bounds=self.bounds,
-                created_at_ms=created_at_ms,
-                implementation_id=self.implementation_id,
-                summary=(
-                    "memory_empty=true",
-                    f"epoch_id=epoch-{self._epoch}",
-                    (
-                        "reason=no_observation"
-                        if observation is None
-                        else "reason=no_retained_evidence"
-                    ),
-                ),
-                metadata=self._metadata(observation_id=observation_id),
+        if records:
+            summary = (
+                f"retained_count={len(records)}",
+                f"epoch_id={epoch_id}",
+                f"kinds={','.join(sorted({record.kind for record in records}))}",
+                "policy=bounded_evidence_recency",
             )
-        kinds = sorted({record.kind for record in records})
+        else:
+            summary = (
+                "memory_empty=true",
+                f"epoch_id={epoch_id}",
+                "reason=no_observation"
+                if observation is None else "reason=no_retained_evidence",
+            )
         return MemorySnapshot(
             memory_id=memory_id,
-            epoch_id=f"epoch-{self._epoch}",
-            health="healthy",
+            epoch_id=epoch_id,
+            health="healthy" if records else "empty",
             bounds=self.bounds,
             created_at_ms=created_at_ms,
             records=records,
-            summary=(
-                f"retained_count={len(records)}",
-                f"epoch_id=epoch-{self._epoch}",
-                f"kinds={','.join(kinds)}",
-                "policy=bounded_evidence_recency",
-            ),
+            summary=summary,
             implementation_id=self.implementation_id,
-            metadata=self._metadata(observation_id=observation_id),
+            metadata=self._metadata(
+                observation_id=(
+                    observation.observation_id if observation is not None else None
+                )
+            ),
         )
 
 
@@ -605,23 +550,21 @@ def json_values_equal(left: Any, right: Any) -> bool:
 def payload_equal(left: RetainedEvidence, right: RetainedEvidence) -> bool:
     """Same-observation payload equality (provenance excluded)."""
 
-    if left.record_id != right.record_id:
-        return False
-    if left.kind != right.kind:
-        return False
-    if left.label != right.label:
-        return False
-    if left.confidence != right.confidence:
-        return False
-    if left.location is None and right.location is None:
-        location_ok = True
-    elif left.location is None or right.location is None:
-        location_ok = False
-    else:
-        location_ok = left.location.to_dict() == right.location.to_dict()
-    if not location_ok:
-        return False
-    return json_values_equal(left.properties, right.properties)
+    return (
+        left.record_id == right.record_id
+        and left.kind == right.kind
+        and left.label == right.label
+        and left.confidence == right.confidence
+        and (
+            (left.location is None and right.location is None)
+            or (
+                left.location is not None
+                and right.location is not None
+                and left.location.to_dict() == right.location.to_dict()
+            )
+        )
+        and json_values_equal(left.properties, right.properties)
+    )
 
 
 def structural_conflict_reason(

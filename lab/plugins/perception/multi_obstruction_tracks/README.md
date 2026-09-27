@@ -16,4 +16,6 @@ than held as unsupported ghost obstacles. Association uses a hard spatial gate
 before the score tie-break, and both detector misses and lost-identity expiry
 are bounded by configuration.
 
-This is an offline lab candidate only.
+This is an offline lab candidate only. Its replay, local durability scoring,
+and diagnostic panels live beside it: `durable_obstacles.py`,
+`render_durable_evidence.py`, and `jev_query.py`.

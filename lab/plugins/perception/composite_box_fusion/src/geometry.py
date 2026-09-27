@@ -141,6 +141,7 @@ def cluster_proposals(
     max_clusters: int,
     split_spatial_modes: bool,
     split_center_gap: float,
+    object_separated: bool | None = None,
 ) -> tuple[
     dict[str, list[GeometryProposal]],
     dict[str, list[GeometryProposal]],
@@ -212,23 +213,54 @@ def cluster_proposals(
     split: dict[str, list[GeometryProposal]] = {}
     split_events: list[dict[str, Any]] = []
     for cluster_id, group in base.items():
-        modes = _split_modes(group, split_center_gap) if split_spatial_modes else [group]
+        if split_spatial_modes:
+            modes = (
+                _split_modes_recursive(group, split_center_gap)
+                if object_separated
+                else _split_modes(group, split_center_gap)
+            )
+        else:
+            modes = [group]
         if len(modes) == 1:
             split[cluster_id] = group
             continue
-        split_events.append(
-            {
-                "cluster_id": cluster_id,
-                "mode_count": len(modes),
-                "split_center_gap": split_center_gap,
-                "mode_proposal_ids": [
-                    [proposal.proposal_id for proposal in mode] for mode in modes
-                ],
-            }
-        )
+        event: dict[str, Any] = {
+            "cluster_id": cluster_id,
+            "mode_count": len(modes),
+            "split_center_gap": split_center_gap,
+        }
+        if object_separated is not None:
+            event["object_separated_geometry"] = object_separated
+        event["mode_proposal_ids"] = [
+            [proposal.proposal_id for proposal in mode] for mode in modes
+        ]
+        split_events.append(event)
         for mode_index, mode in enumerate(modes):
             split[f"{cluster_id}_mode_{mode_index:02d}"] = mode
     return base, split, rejected, split_events
+
+
+def _split_modes_recursive(
+    proposals: list[GeometryProposal], split_center_gap: float
+) -> list[list[GeometryProposal]]:
+    """Recursively retain every separated spatial mode in a cluster."""
+    pending = [proposals]
+    result: list[list[GeometryProposal]] = []
+    while pending:
+        group = pending.pop()
+        modes = _split_modes(group, split_center_gap)
+        if len(modes) == 1:
+            result.append(group)
+        else:
+            pending.extend(modes)
+    return sorted(
+        result,
+        key=lambda group: (
+            -max((item.confidence for item in group), default=0.0),
+            -len(group),
+            min((item.proposal_id for item in group), default=""),
+        ),
+    )
 
 
 def make_hypotheses(

@@ -106,6 +106,8 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         "floor_context",
         "line_junction_support",
     )
+    _emit_object_separated_geometry = False
+    _jev_cache_directory = Path(__file__).resolve().parents[1] / "cache"
 
     def __init__(
         self,
@@ -143,6 +145,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         geometry_cluster_center_distance: float = 0.07,
         geometry_split_spatial_modes: bool = True,
         geometry_split_center_gap: float = 0.14,
+        object_separated_geometry: bool = False,
         geometry_max_hypotheses_per_cluster: int = 10,
         robust_extent_low_quantile: float = 0.10,
         robust_extent_high_quantile: float = 0.90,
@@ -182,6 +185,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         )
         self.geometry_split_spatial_modes = bool(geometry_split_spatial_modes)
         self.geometry_split_center_gap = max(0.01, float(geometry_split_center_gap))
+        self.object_separated_geometry = bool(object_separated_geometry)
         self.geometry_max_hypotheses_per_cluster = max(
             6, int(geometry_max_hypotheses_per_cluster)
         )
@@ -692,6 +696,11 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             max_clusters=self.geometry_max_clusters,
             split_spatial_modes=self.geometry_split_spatial_modes,
             split_center_gap=self.geometry_split_center_gap,
+            **(
+                {"object_separated": self.object_separated_geometry}
+                if self._emit_object_separated_geometry
+                else {}
+            ),
         )
         for proposal_id, reasons in cluster_rejections.items():
             if proposal_id in record_by_id:
@@ -804,6 +813,11 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 for selector, choices in selectors.items()
             },
             "active_selector": self.geometry_selector,
+            **(
+                {"object_separated_geometry": self.object_separated_geometry}
+                if self._emit_object_separated_geometry
+                else {}
+            ),
             "selected_hypotheses": [hypothesis.to_dict() for hypothesis in selected_hypotheses],
             "selected_tracking_boxes": [
                 {
@@ -876,11 +890,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         request_digest = hashlib.sha256(
             _canonical_json(request).encode("utf-8")
         ).hexdigest()
-        cache_path = (
-            Path(__file__).resolve().parents[1]
-            / "cache"
-            / f"geometry-v1-{request_digest}.json"
-        )
+        cache_path = self._jev_cache_directory / f"geometry-v1-{request_digest}.json"
         if cache_path.is_file():
             try:
                 cached = json.loads(cache_path.read_text(encoding="utf-8"))

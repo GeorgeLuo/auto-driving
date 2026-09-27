@@ -796,25 +796,11 @@ def run_chase_shadow_memory_check(
         "provenance_extract": None,
     }
 
-    if record:
-        try:
-            record_info = write_memory_check_record(
-                report=report,
-                all_frames=frames,
-                phase_results=phase_results,
-                output_root=output_root or memory_check_output_root(),
-                captured_images=captured_images,
-            )
-        except (OSError, ValueError) as exc:
-            return CommandResult(2, f"Could not write memory check record: {exc}")
-        report["recorded"] = True
-        report["record_dir"] = record_info["record_dir"]
-        report["provenance_extract"] = record_info["provenance_extract"]
-        report["record_manifest"] = record_info["manifest"]
-        _emit(output, f"record: {report['record_dir']}")
-        _emit(output, f"provenance extract: {report['provenance_extract']}")
-    else:
-        _emit(output, "record: disabled (pass --record for bounded extract)")
+    record_error = _record_check_report(
+        report, frames, phase_results, record, output, output_root, captured_images
+    )
+    if record_error is not None:
+        return record_error
 
     exit_code = 0 if passed else 1
     if json_output:
@@ -1483,25 +1469,11 @@ def run_offline_memory_check(
         "provenance_extract": None,
     }
 
-    if record:
-        try:
-            record_info = write_memory_check_record(
-                report=report,
-                all_frames=all_frames,
-                phase_results=phase_results,
-                output_root=output_root or memory_check_output_root(),
-                captured_images=captured_images,
-            )
-        except (OSError, ValueError) as exc:
-            return CommandResult(2, f"Could not write memory check record: {exc}")
-        report["recorded"] = True
-        report["record_dir"] = record_info["record_dir"]
-        report["provenance_extract"] = record_info["provenance_extract"]
-        report["record_manifest"] = record_info["manifest"]
-        _emit(output, f"record: {report['record_dir']}")
-        _emit(output, f"provenance extract: {report['provenance_extract']}")
-    else:
-        _emit(output, "record: disabled (pass --record for bounded extract)")
+    record_error = _record_check_report(
+        report, all_frames, phase_results, record, output, output_root, captured_images
+    )
+    if record_error is not None:
+        return record_error
 
     exit_code = 0 if passed else 1
     if json_output:
@@ -1909,25 +1881,11 @@ def run_physical_memory_check(
         "provenance_extract": None,
     }
 
-    if record:
-        try:
-            record_info = write_memory_check_record(
-                report=report,
-                all_frames=all_frames,
-                phase_results=phase_results,
-                output_root=output_root or memory_check_output_root(),
-                captured_images=captured_images or None,
-            )
-        except (OSError, ValueError) as exc:
-            return CommandResult(2, f"Could not write memory check record: {exc}")
-        report["recorded"] = True
-        report["record_dir"] = record_info["record_dir"]
-        report["provenance_extract"] = record_info["provenance_extract"]
-        report["record_manifest"] = record_info["manifest"]
-        _emit(output, f"record: {report['record_dir']}")
-        _emit(output, f"provenance extract: {report['provenance_extract']}")
-    else:
-        _emit(output, "record: disabled (pass --record for bounded extract)")
+    record_error = _record_check_report(
+        report, all_frames, phase_results, record, output, output_root, captured_images
+    )
+    if record_error is not None:
+        return record_error
 
     exit_code = 0 if passed else 1
     if json_output:
@@ -2571,6 +2529,39 @@ def score_memory_check_phase(
         }
 
     return {"passed": False, "reason": f"unknown phase {phase_name!r}"}
+
+
+def _record_check_report(
+    report: dict[str, Any],
+    frames: list[dict[str, Any]],
+    phase_results: list[dict[str, Any]],
+    record: bool,
+    output: TextIO | None,
+    output_root: Path | None,
+    captured_images: dict[str, bytes] | None,
+) -> CommandResult | None:
+    if not record:
+        _emit(output, "record: disabled (pass --record for bounded extract)")
+        return None
+    try:
+        record_info = write_memory_check_record(
+            report=report,
+            all_frames=frames,
+            phase_results=phase_results,
+            output_root=output_root or memory_check_output_root(),
+            captured_images=captured_images,
+        )
+    except (OSError, ValueError) as exc:
+        return CommandResult(2, f"Could not write memory check record: {exc}")
+    report.update(
+        recorded=True,
+        record_dir=record_info["record_dir"],
+        provenance_extract=record_info["provenance_extract"],
+        record_manifest=record_info["manifest"],
+    )
+    _emit(output, f"record: {report['record_dir']}")
+    _emit(output, f"provenance extract: {report['provenance_extract']}")
+    return None
 
 
 def write_memory_check_record(

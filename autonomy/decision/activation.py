@@ -6,7 +6,7 @@ import importlib
 import json
 import time
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -434,41 +434,20 @@ class ActivatedMemoryStage:
             )
         # Reject removed or weakened age/size bounds. None is weaker than a
         # finite activation ceiling; a larger window/limit is also weaker.
-        if configured.max_age_ms is not None:
-            if declared.max_age_ms is None:
+        for field_name in ("max_age_ms", "max_property_bytes", "max_serialized_bytes"):
+            configured_limit = getattr(configured, field_name)
+            if configured_limit is None:
+                continue
+            declared_limit = getattr(declared, field_name)
+            if declared_limit is None:
                 raise ValueError(
-                    "memory snapshot removed max_age_ms while activation requires "
-                    f"max_age_ms={configured.max_age_ms}"
+                    f"memory snapshot removed {field_name} while activation requires "
+                    f"{field_name}={configured_limit}"
                 )
-            if declared.max_age_ms > configured.max_age_ms:
+            if declared_limit > configured_limit:
                 raise ValueError(
-                    "memory snapshot max_age_ms "
-                    f"{declared.max_age_ms} exceeds activation max_age_ms "
-                    f"{configured.max_age_ms}"
-                )
-        if configured.max_property_bytes is not None:
-            if declared.max_property_bytes is None:
-                raise ValueError(
-                    "memory snapshot removed max_property_bytes while activation "
-                    f"requires max_property_bytes={configured.max_property_bytes}"
-                )
-            if declared.max_property_bytes > configured.max_property_bytes:
-                raise ValueError(
-                    "memory snapshot max_property_bytes "
-                    f"{declared.max_property_bytes} exceeds activation "
-                    f"max_property_bytes={configured.max_property_bytes}"
-                )
-        if configured.max_serialized_bytes is not None:
-            if declared.max_serialized_bytes is None:
-                raise ValueError(
-                    "memory snapshot removed max_serialized_bytes while activation "
-                    f"requires max_serialized_bytes={configured.max_serialized_bytes}"
-                )
-            if declared.max_serialized_bytes > configured.max_serialized_bytes:
-                raise ValueError(
-                    "memory snapshot max_serialized_bytes "
-                    f"{declared.max_serialized_bytes} exceeds activation "
-                    f"max_serialized_bytes={configured.max_serialized_bytes}"
+                    f"memory snapshot {field_name} {declared_limit} exceeds activation "
+                    f"{field_name} {configured_limit}"
                 )
 
         # Enforce the tighter of activation and declared property ceilings.
@@ -506,21 +485,7 @@ class ActivatedMemoryStage:
         if detached.bounds == configured:
             normalized = detached
         else:
-            normalized = detach_memory_snapshot(
-                MemorySnapshot(
-                    memory_id=detached.memory_id,
-                    epoch_id=detached.epoch_id,
-                    health=detached.health,
-                    bounds=configured,
-                    created_at_ms=detached.created_at_ms,
-                    records=detached.records,
-                    summary=detached.summary,
-                    implementation_id=detached.implementation_id,
-                    error=detached.error,
-                    metadata=detached.metadata,
-                    schema=detached.schema,
-                )
-            )
+            normalized = detach_memory_snapshot(replace(detached, bounds=configured))
         final_size = serialized_memory_snapshot_bytes(normalized)
         if (
             configured.max_serialized_bytes is not None

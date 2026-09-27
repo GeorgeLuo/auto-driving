@@ -983,6 +983,7 @@ def _restart_and_sample_sim_controller(
         perception = mapper.perceive(
             build_perception_request(
                 snapshot,
+                shared_memory={},
                 output_dir=sample_dir / "perception",
                 metadata={
                     "activation": str(perception_runtime_dir / "active.json"),

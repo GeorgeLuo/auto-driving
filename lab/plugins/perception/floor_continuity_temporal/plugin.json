@@ -1,0 +1,46 @@
+{
+  "schema": "automa_lab_perception_plugin_v0",
+  "id": "floor_continuity_temporal",
+  "name": "Temporal floor continuity",
+  "description": "Temporal association and box smoothing around the existing floor-continuity cue.",
+  "plugin": {
+    "entrypoint": "lab.plugins.perception.floor_continuity_temporal.src.plugin:TemporalFloorContinuityPlugin",
+    "config": {
+      "working_width": 320,
+      "horizon_ratio": 0.4,
+      "edge_margin_ratio": 0.03,
+      "seed_x0_ratio": 0.3,
+      "seed_x1_ratio": 0.7,
+      "seed_y0_ratio": 0.78,
+      "seed_y1_ratio": 0.96,
+      "color_distance_limit": 4.5,
+      "texture_distance_limit": 4.0,
+      "edge_quantile": 0.92,
+      "minimum_edge_strength": 0.24,
+      "minimum_floor_fraction": 0.08,
+      "minimum_floor_support_px": 8,
+      "minimum_interruption_run_px": 6,
+      "minimum_boundary_width_ratio": 0.025,
+      "minimum_boundary_confidence": 0.65,
+      "max_boundaries": 8,
+      "smoothing_alpha": 0.45,
+      "association_distance": 0.3,
+      "minimum_association_score": 0.18,
+      "max_hold_frames": 2
+    }
+  },
+  "inputs": [
+    {
+      "name": "frame",
+      "component_id": "camera.rgb:front_camera",
+      "provider_spec": "implementations.perception.components.camera:provide_camera_frame"
+    }
+  ],
+  "runtime": {"python": "core"},
+  "output": {
+    "schema": "perception_text_v2",
+    "kind": "floor_boundary",
+    "semantic_labels": false,
+    "depth": false
+  }
+}

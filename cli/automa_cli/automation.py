@@ -19,8 +19,8 @@ from typing import Any, TextIO
 
 from autonomy.decision import (
     DecisionFrameContext,
-    DecisionStages,
-    load_memory_stage_if_present,
+    DecisionSteps,
+    load_memory_step_if_present,
 )
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
 from autonomy.runtime import AutonomyManager
@@ -219,7 +219,7 @@ def run_vehicle_automation(
             ),
         )
 
-    def perceive_stage(context: DecisionFrameContext):
+    def perceive_step(context: DecisionFrameContext):
         if context.sensor_snapshot is None:
             mapper.reset(context.shared_memory)
             return None
@@ -249,10 +249,10 @@ def run_vehicle_automation(
         default_engine_config=dict(decision_config["engine_config"]),
     )
     memory_activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    memory_stage = None
+    memory_step = None
     if memory_activation_path.exists():
         try:
-            memory_stage = load_memory_stage_if_present(memory_activation_path)
+            memory_step = load_memory_step_if_present(memory_activation_path)
         except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
             return CommandResult(
                 2,
@@ -266,9 +266,9 @@ def run_vehicle_automation(
             )
     cycle_host = AutonomyCycleHost(
         manager=engine_manager,
-        stages=DecisionStages(
-            perceive=perceive_stage,
-            remember=memory_stage,
+        steps=DecisionSteps(
+            perceive=perceive_step,
+            remember=memory_step,
         ),
     )
 
@@ -350,11 +350,11 @@ def run_vehicle_automation(
         "memory": (
             {
                 "activation": display_path(memory_activation_path),
-                "implementation_id": memory_stage.activation.implementation_id,
-                "implementation_spec": memory_stage.activation.implementation_spec,
-                "status": memory_stage.status(),
+                "implementation_id": memory_step.activation.implementation_id,
+                "implementation_spec": memory_step.activation.implementation_spec,
+                "status": memory_step.status(),
             }
-            if memory_stage is not None
+            if memory_step is not None
             else {
                 "activation": display_path(memory_activation_path),
                 "status": "absent",
@@ -452,13 +452,13 @@ def run_vehicle_automation(
         if not isinstance(request, dict):
             request = {}
         token = request.get("token")
-        if memory_stage is None:
+        if memory_step is None:
             result = {
                 "schema": "automa_memory_reset_result_v0",
                 "ok": False,
                 "status": "absent",
                 "token": token,
-                "error": "no memory stage is activated in the automation worker",
+                "error": "no memory step is activated in the automation worker",
                 "completed_at_ms": _timestamp_ms(),
             }
         else:
@@ -470,7 +470,7 @@ def run_vehicle_automation(
                     "status": "reset",
                     "token": token,
                     "snapshot": snapshot.to_dict() if snapshot is not None and hasattr(snapshot, "to_dict") else None,
-                    "memory": memory_stage.status(),
+                    "memory": memory_step.status(),
                     "completed_at_ms": _timestamp_ms(),
                 }
             except Exception as exc:  # noqa: BLE001 - worker control boundary
@@ -484,12 +484,12 @@ def run_vehicle_automation(
                 }
         _write_json(result_path, result)
         with state_lock:
-            if memory_stage is not None:
+            if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_stage.activation.implementation_id,
-                    "implementation_spec": memory_stage.activation.implementation_spec,
-                    "status": memory_stage.status(),
+                    "implementation_id": memory_step.activation.implementation_id,
+                    "implementation_spec": memory_step.activation.implementation_spec,
+                    "status": memory_step.status(),
                 }
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
@@ -722,12 +722,12 @@ def run_vehicle_automation(
                 },
                 "blocking_layer": None if view_ready else "perception_view",
             }
-            if memory_stage is not None:
+            if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_stage.activation.implementation_id,
-                    "implementation_spec": memory_stage.activation.implementation_spec,
-                    "status": memory_stage.status(),
+                    "implementation_id": memory_step.activation.implementation_id,
+                    "implementation_spec": memory_step.activation.implementation_spec,
+                    "status": memory_step.status(),
                 }
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)

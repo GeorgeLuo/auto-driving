@@ -236,7 +236,7 @@ class MemoryResetCommandTests(unittest.TestCase):
         ):
             result = reset_vehicle_memory(vehicle_id="piracer")
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("No live memory stage", result.message)
+        self.assertIn("No live memory step", result.message)
 
 
 if __name__ == "__main__":

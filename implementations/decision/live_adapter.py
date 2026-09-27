@@ -61,7 +61,7 @@ class ObstacleAvoidanceAutonomyEngine:
                 ),
                 "live_modes": sorted(LIVE_MODES),
             },
-            "stages": {
+            "steps": {
                 "action": "obstacle_avoidance_proposal_run_cycle",
                 "memory": "inspectable_snapshot",
             },

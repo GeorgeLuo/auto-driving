@@ -304,7 +304,7 @@ def require_chase_max_age_identity(
     Continuity requires an immutable automation ``run_id`` (not just memory epoch
     strings, which restart at ``epoch-1``), matching frame/probe memory epochs,
     and a capacity-eviction counter baseline taken from the correlated frame's
-    published ``MemorySnapshot.metadata`` (not from stage/probe status).
+    published ``MemorySnapshot.metadata`` (not from step/probe status).
     """
 
     if not isinstance(probe, dict):
@@ -415,7 +415,7 @@ def capacity_eviction_is_ambiguous(
         if any(not is_chase_always_on_key(rid) for rid in replacements):
             return True
     # Full ledger of only always-on keys after tracked loss is still causally
-    # ambiguous for a capacity-bounded stage (headroom was not available).
+    # ambiguous for a capacity-bounded step (headroom was not available).
     return True
 
 
@@ -879,7 +879,7 @@ def wait_for_chase_memory_key_expiry(
         # Authoritative capacity-eviction counter from frame MemorySnapshot
         # metadata survives unsampled intermediate frames: any increase during
         # the wait voids a pure max-age claim. Read only from the correlated
-        # frame (not stage/probe status) so autonomy stays generic.
+        # frame (not step/probe status) so autonomy stays generic.
         frame_evictions = frame_capacity_eviction_count(frame)
         if frame_evictions is None:
             return _fail_wait(

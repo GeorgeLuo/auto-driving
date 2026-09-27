@@ -1,12 +1,12 @@
-"""Generic observation contracts, memory values, and staged controller cycle."""
+"""Generic observation contracts, memory values, and decision cycle steps."""
 
 from .activation import (
     MEMORY_ACTIVATION_SCHEMA,
-    ActivatedMemoryStage,
+    ActivatedMemoryStep,
     MemoryActivation,
     instantiate_memory_implementation,
     load_memory_implementation,
-    load_memory_stage_if_present,
+    load_memory_step_if_present,
     read_memory_activation,
 )
 from .cycle import (
@@ -14,7 +14,7 @@ from .cycle import (
     DecisionCycle,
     DecisionCycleResult,
     DecisionFrameContext,
-    DecisionStages,
+    DecisionSteps,
     MemoryUpdateError,
 )
 from .memory import (
@@ -72,11 +72,11 @@ __all__ = [
     "MEMORY_SNAPSHOT_SCHEMA",
     "MIN_MAX_SERIALIZED_BYTES",
     "OBSERVATION_SCHEMA",
-    "ActivatedMemoryStage",
+    "ActivatedMemoryStep",
     "DecisionCycle",
     "DecisionCycleResult",
     "DecisionFrameContext",
-    "DecisionStages",
+    "DecisionSteps",
     "MemoryUpdateError",
     "MemoryActivation",
     "MemoryBounds",
@@ -93,7 +93,7 @@ __all__ = [
     "error_memory_snapshot",
     "instantiate_memory_implementation",
     "load_memory_implementation",
-    "load_memory_stage_if_present",
+    "load_memory_step_if_present",
     "observation_from_perception",
     "read_memory_activation",
     "serialized_mapping_bytes",

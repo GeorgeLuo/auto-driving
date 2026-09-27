@@ -6,9 +6,9 @@ import unittest
 from pathlib import Path
 
 from autonomy.decision import (
-    ActivatedMemoryStage,
+    ActivatedMemoryStep,
     DecisionFrameContext,
-    DecisionStages,
+    DecisionSteps,
     DecisionCycle,
     Observation,
     read_memory_activation,
@@ -254,7 +254,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         after = ledger.update(DecisionFrameContext("f2", 2, 200), None)
         self.assertEqual(after.health, "empty")
 
-    def test_activation_loads_through_framework_stage(self) -> None:
+    def test_activation_loads_through_framework_step(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
             path.write_text(
@@ -265,7 +265,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            stage = ActivatedMemoryStage(read_memory_activation(path))
+            step = ActivatedMemoryStep(read_memory_activation(path))
             shared_memory = {}
             observation = _observation(
                 "obs_9",
@@ -273,15 +273,15 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 things=(_thing("floor_boundary_001", zone="center"),),
             )
             result = DecisionCycle(
-                DecisionStages(
+                DecisionSteps(
                     observe=lambda context, perception: observation,
-                    remember=stage,
+                    remember=step,
                 )
             ).run(DecisionFrameContext("frame_9", 9, 100, shared_memory=shared_memory))
             self.assertEqual(result.memory.health, "healthy")
             self.assertEqual(result.memory.record_count, 1)
             self.assertEqual(result.memory.implementation_id, "bounded_evidence")
-            self.assertEqual(stage.status()["implementation_id"], "bounded_evidence")
+            self.assertEqual(step.status()["implementation_id"], "bounded_evidence")
             self.assertEqual(
                 shared_memory["decision.snapshot"].to_dict(),
                 result.memory.to_dict(),

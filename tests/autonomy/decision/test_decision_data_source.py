@@ -130,7 +130,7 @@ class DecisionDataSourceTests(unittest.TestCase):
             source.prior_host_applied_command.reason,
             "host_did_not_report_applied_command",
         )
-        # Default observe stage is unconfigured for this unit.
+        # Default observe step is unconfigured for this unit.
         self.assertEqual(source.observation.status, "unavailable")
         self.assertEqual(source.observation.reason, "observation_not_configured")
 

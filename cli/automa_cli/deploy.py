@@ -471,7 +471,7 @@ def update_vehicle_autonomy(
         if runtime_verification.get("memory_implementation"):
             verified_lines.append(
                 "Memory verified: "
-                f"{runtime_verification['memory_implementation']} stage is live"
+                f"{runtime_verification['memory_implementation']} step is live"
             )
     return CommandResult(
         0,
@@ -983,7 +983,7 @@ def _verify_physical_autonomy_runtime(
         if not actual_memory:
             vehicle_id = target.vehicle_id
             raise RuntimeError(
-                f"{status_url} has no live memory stage, but activation "
+                f"{status_url} has no live memory step, but activation "
                 f"{expected_memory_implementation!r} was deployed. "
                 "Memory activation is installed by autonomy deploy; the load path "
                 "lives in the Donkey manage.py harness from core. "

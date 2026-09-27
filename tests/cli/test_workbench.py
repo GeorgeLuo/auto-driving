@@ -230,7 +230,7 @@ class WorkbenchTests(unittest.TestCase):
                 root,
                 cadence_ms=0,
                 mapper_factory=lambda: memory_mapper,
-                memory_stage_factory=lambda: ErrorMemory(),
+                memory_step_factory=lambda: ErrorMemory(),
             )
             memory_started = memory_runner.start()
             memory_state = (

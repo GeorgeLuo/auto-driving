@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext, DecisionStages
+from autonomy.decision import DecisionFrameContext, DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
 from autonomy.runtime.manager import AutonomyManager
@@ -95,9 +95,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
             ]
         )
 
-    def test_host_rejects_a_second_action_stage(self) -> None:
-        with self.assertRaisesRegex(ValueError, "owns the decision action stage"):
-            AutonomyCycleHost(stages=DecisionStages(choose_action=lambda *args: None))
+    def test_host_rejects_a_second_action_step(self) -> None:
+        with self.assertRaisesRegex(ValueError, "owns the decision action step"):
+            AutonomyCycleHost(steps=DecisionSteps(choose_action=lambda *args: None))
 
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
@@ -247,7 +247,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         manager = AutonomyManager()
         manager.engine = _PushyEngine()
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager, stages=DecisionStages(remember=remember)),
+            host=AutonomyCycleHost(manager=manager, steps=DecisionSteps(remember=remember)),
             min_interval_s=0.0,
         )
         image = np.zeros((2, 2, 3), dtype=np.uint8)

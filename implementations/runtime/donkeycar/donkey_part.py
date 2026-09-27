@@ -292,9 +292,9 @@ class AutonomyPilotPart:
             return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
 
     def reset_memory(self) -> dict[str, Any]:
-        """Reset the live memory stage under the same lock as observation cycles.
+        """Reset the live memory step under the same lock as observation cycles.
 
-        Clears retained memory on the stage and detaches memory from the latest
+        Clears retained memory on the step and detaches memory from the latest
         published observation so operators see an empty map immediately.
         """
         with self._lock:
@@ -317,7 +317,7 @@ class AutonomyPilotPart:
                 return {
                     "ok": False,
                     "status": "absent",
-                    "error": "no memory stage is activated",
+                    "error": "no memory step is activated",
                 }
             # Replace the published snapshot from shared_memory["decision.snapshot"]
             # until the next cycle.
@@ -325,13 +325,13 @@ class AutonomyPilotPart:
                 cycle = dict(self.latest_snapshot.cycle)
                 cycle["memory"] = snapshot.to_dict() if hasattr(snapshot, "to_dict") else None
                 self.latest_snapshot = replace(self.latest_snapshot, cycle=cycle)
-            stage = self.host.cycle.stages.remember
-            stage_status = stage.status() if stage is not None and callable(getattr(stage, "status", None)) else None
+            step = self.host.cycle.steps.remember
+            step_status = step.status() if step is not None and callable(getattr(step, "status", None)) else None
             return {
                 "ok": True,
                 "status": "reset",
                 "snapshot": snapshot.to_dict() if hasattr(snapshot, "to_dict") else None,
-                "memory": stage_status,
+                "memory": step_status,
             }
 
     def publish_latest_frame_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:

@@ -587,7 +587,7 @@ index 8af4669..232d5df 100644
 +
 +
 +class AutonomyMemoryResetAPI(AutonomyAPIBase):
-+    """Reset the activated memory stage without restarting the Donkey process."""
++    """Reset the activated memory step without restarting the Donkey process."""
 +
 +    def post(self):
 +        publisher = getattr(self.application, "observation_publisher", None)

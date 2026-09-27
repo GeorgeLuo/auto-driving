@@ -210,7 +210,7 @@ class ShadowProposalsEngine:
                 timestamp_ms=timestamp_ms,
                 observation=observation,
                 observation_error=observation_error,
-                # Absent + no error ⇒ stage not configured for this unit.
+                # Absent + no error ⇒ step not configured for this unit.
                 observation_configured=False,
                 memory=memory,
                 capabilities=capabilities

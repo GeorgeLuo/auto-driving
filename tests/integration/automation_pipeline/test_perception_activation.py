@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext, DecisionStages
-from autonomy.perception import ActivatedPerceptionStage, read_perception_activation
+from autonomy.decision import DecisionFrameContext, DecisionSteps
+from autonomy.perception import ActivatedPerceptionStep, read_perception_activation
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
@@ -36,7 +36,7 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            stage = ActivatedPerceptionStage(read_perception_activation(activation_path))
+            step = ActivatedPerceptionStep(read_perception_activation(activation_path))
             snapshot = SensorSnapshot(
                 read_id="onboard-frame",
                 readings={
@@ -51,7 +51,7 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
                 completed_at_ms=10,
             )
 
-            result = stage(
+            result = step(
                 DecisionFrameContext(
                     frame_id="onboard-frame",
                     frame_index=0,
@@ -63,26 +63,26 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.artifacts, {})
-        stage_status = stage.status()
-        self.assertEqual(stage_status["algorithm"], "test-observer")
-        self.assertEqual(stage_status["last_status"], "ok")
-        self.assertEqual(stage_status["last_frame_index"], 0)
-        self.assertEqual(stage_status["last_thing_count"], 1)
-        self.assertGreaterEqual(stage_status["last_duration_ms"], 0.0)
+        step_status = step.status()
+        self.assertEqual(step_status["algorithm"], "test-observer")
+        self.assertEqual(step_status["last_status"], "ok")
+        self.assertEqual(step_status["last_frame_index"], 0)
+        self.assertEqual(step_status["last_thing_count"], 1)
+        self.assertGreaterEqual(step_status["last_duration_ms"], 0.0)
         self.assertEqual(
-            [run["plugin_id"] for run in stage_status["last_plugin_runs"]],
+            [run["plugin_id"] for run in step_status["last_plugin_runs"]],
             ["frame-observation-v0"],
         )
 
         manager = AutonomyManager()
-        manager.register_status_provider("perception", stage.status)
+        manager.register_status_provider("perception", step.status)
         self.assertEqual(
             manager.status()["components"]["perception"]["algorithm"],
             "test-observer",
         )
 
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(stages=DecisionStages(perceive=stage))
+            host=AutonomyCycleHost(steps=DecisionSteps(perceive=step))
         )
         part.run(
             image_array=np.zeros((24, 32, 3), dtype=np.uint8),

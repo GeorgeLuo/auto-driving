@@ -662,7 +662,7 @@ def build_parser() -> argparse.ArgumentParser:
         "reset",
         help="Reset live memory to a new empty epoch on Chase or PiCar.",
         description=(
-            "Reset the activated memory stage on the live host. Chase uses the "
+            "Reset the activated memory step on the live host. Chase uses the "
             "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms an "
             "empty epoch via live probe. Does not move the vehicle or write history."
         ),
@@ -752,7 +752,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Evaluate memory lifecycle gates: present, dropout, max-age expiry, and reset. "
             "Chase (live automation) scores shadow identity/alignment, retained-prior "
             "provenance, max-age expiry without reset, observe-only control, and reset. "
-            "Offline ids use a phase script. PiCar scores the live onboard stage from "
+            "Offline ids use a phase script. PiCar scores the live onboard step from "
             "publication.memory (no forced dropout, no local ephemeral reducer), waits "
             "for live age expiry, and POSTs onboard reset. Never moves the car. "
             "Pass --record for a bounded report, source frames, and extract."
@@ -943,8 +943,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_info = info_commands.add_parser(
         "decision",
-        help="Show the locally staged decision engine and stage schema.",
-        description="Show the locally staged decision engine and stage schema.",
+        help="Show the locally staged decision engine and step schema.",
+        description="Show the locally staged decision engine and step schema.",
     )
     decision_info.add_argument(
         "--id",
@@ -1426,9 +1426,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Deploy a versioned autonomy controller release to a physical PiCar.",
         description=(
             "Deploy a versioned autonomy controller release to a physical PiCar. "
-            "With --restart, verifies engine, perception, and live memory stage. "
+            "With --restart, verifies engine, perception, and live memory step. "
             "Memory activation ships here; manage.py load path ships with core—if "
-            "verification reports no memory stage, update core then re-run autonomy."
+            "verification reports no memory step, update core then re-run autonomy."
         ),
     )
     autonomy.add_argument(

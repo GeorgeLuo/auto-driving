@@ -1,4 +1,4 @@
-"""Automa decision stage, info, stream, and offline apply surfaces (M006-05)."""
+"""Automa decision step, info, stream, and offline apply surfaces (M006-05)."""
 
 from __future__ import annotations
 
@@ -3555,16 +3555,16 @@ def _decision_activation(
 def _format_decision_info(payload: dict[str, Any]) -> str:
     activation = payload["activation"]
     schema = payload.get("engine_schema") if isinstance(payload.get("engine_schema"), dict) else {}
-    stages = schema.get("stages") if isinstance(schema.get("stages"), dict) else {}
+    steps = schema.get("steps") if isinstance(schema.get("steps"), dict) else {}
     lines = [
         f"Decision: {payload['vehicle_id']} -> {activation.get('engine_id', 'unknown')}",
         f"Engine: {activation.get('engine_spec', 'unknown')}",
         f"Activation: {activation['path']}",
         f"Schema source: {(payload.get('engine_schema_source') or {}).get('engine_spec', 'unknown')}.describe_schema()",
         "",
-        "Stages:",
+        "Steps:",
         *(
-            [f"- {name}: {value if value is not None else 'disabled'}" for name, value in stages.items()]
+            [f"- {name}: {value if value is not None else 'disabled'}" for name, value in steps.items()]
             or ["- none declared"]
         ),
         "",

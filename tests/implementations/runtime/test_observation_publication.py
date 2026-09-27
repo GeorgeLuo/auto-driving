@@ -72,16 +72,16 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
         self.assertTrue(payload["frame"]["has_image"])
         self.assertEqual(payload["algorithm"], "test-observer")
-        # Idle host has no perception stage; publication still carries cycle control.
+        # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
         self.assertEqual(payload["control"]["reason"], "stable-idle-engine")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
-    def test_publication_includes_memory_snapshot_when_stage_present(self) -> None:
+    def test_publication_includes_memory_snapshot_when_step_present(self) -> None:
         from autonomy.decision import (
             DecisionFrameContext,
-            DecisionStages,
+            DecisionSteps,
             MemoryBounds,
             MemoryProvenance,
             MemorySnapshot,
@@ -123,7 +123,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 implementation_id="bounded_evidence",
             )
 
-        host = AutonomyCycleHost(stages=DecisionStages(remember=remember))
+        host = AutonomyCycleHost(steps=DecisionSteps(remember=remember))
         part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()

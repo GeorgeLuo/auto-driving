@@ -88,8 +88,8 @@ def instantiate_perception_mapper(
     return mapper
 
 
-class ActivatedPerceptionStage:
-    """Decision-cycle perception stage backed by one activated mapper."""
+class ActivatedPerceptionStep:
+    """Decision-cycle perception step backed by one activated mapper."""
 
     def __init__(self, activation: PerceptionActivation) -> None:
         self.activation = activation

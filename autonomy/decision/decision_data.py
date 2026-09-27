@@ -539,7 +539,7 @@ def build_decision_data_source(
     """Build a frozen DecisionDataSource for one cycle.
 
     Default observation mapping is unconfigured (``observation_not_configured``)
-    when no observation is supplied, matching the optional observe stage for
+    when no observation is supplied, matching the optional observe step for
     this unit. Callers that expect a frame but failed to capture must pass
     ``observation_configured=True`` or an ``observation_error``.
     """

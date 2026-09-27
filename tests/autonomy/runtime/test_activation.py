@@ -16,7 +16,7 @@ def _valid_payload() -> dict:
             "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
             "engine_config": {
                 "policy": {
-                    "stages": ["perception", "decision"],
+                    "steps": ["perception", "decision"],
                 }
             },
         },
@@ -102,15 +102,15 @@ class DecisionActivationTests(unittest.TestCase):
             payload = _valid_payload()
             activation = read_decision_activation(_write_payload(tmp, payload))
 
-        activation.engine_config["policy"]["stages"].append("action")
+        activation.engine_config["policy"]["steps"].append("action")
         self.assertEqual(
-            activation.payload["decision"]["engine_config"]["policy"]["stages"],
+            activation.payload["decision"]["engine_config"]["policy"]["steps"],
             ["perception", "decision"],
         )
 
-        activation.payload["decision"]["engine_config"]["policy"]["stages"].append("memory")
+        activation.payload["decision"]["engine_config"]["policy"]["steps"].append("memory")
         self.assertEqual(
-            activation.engine_config["policy"]["stages"],
+            activation.engine_config["policy"]["steps"],
             ["perception", "decision", "action"],
         )
         self.assertEqual(

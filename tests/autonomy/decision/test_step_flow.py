@@ -8,7 +8,7 @@ from autonomy.decision import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
     DecisionFrameContext,
-    DecisionStages,
+    DecisionSteps,
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
@@ -20,7 +20,7 @@ from autonomy.runtime import AutonomyControl
 
 
 class DecisionStageFlowTests(unittest.TestCase):
-    def test_complete_cycle_runs_stages_in_order_and_passes_results_forward(self) -> None:
+    def test_complete_cycle_runs_steps_in_order_and_passes_results_forward(self) -> None:
         context = DecisionFrameContext(
             frame_id="frame_007",
             frame_index=7,
@@ -77,10 +77,10 @@ class DecisionStageFlowTests(unittest.TestCase):
             confidence=0.9,
             reason="path-clear",
         )
-        stage_calls: list[tuple[str, tuple[int, ...]]] = []
+        step_calls: list[tuple[str, tuple[int, ...]]] = []
 
-        def record(stage: str, *values: object) -> None:
-            stage_calls.append((stage, tuple(id(value) for value in values)))
+        def record(step: str, *values: object) -> None:
+            step_calls.append((step, tuple(id(value) for value in values)))
 
         def perceive(received_context):
             record("perceive", received_context)
@@ -110,7 +110,7 @@ class DecisionStageFlowTests(unittest.TestCase):
             return control
 
         cycle = DecisionCycle(
-            DecisionStages(
+            DecisionSteps(
                 perceive=perceive,
                 observe=observe,
                 remember=remember,
@@ -125,7 +125,7 @@ class DecisionStageFlowTests(unittest.TestCase):
             result = cycle.run(context)
 
         self.assertEqual(
-            stage_calls,
+            step_calls,
             [
                 ("perceive", (id(context),)),
                 ("observe", (id(context), id(perception))),

@@ -5,7 +5,7 @@ import unittest
 from autonomy.decision import (
     DecisionCycle,
     DecisionFrameContext,
-    DecisionStages,
+    DecisionSteps,
     MemoryBounds,
     MemoryUpdateError,
     empty_memory_snapshot,
@@ -53,24 +53,24 @@ class DecisionCycleTests(unittest.TestCase):
                 summary=("custom observation",),
             )
 
-        result = DecisionCycle(DecisionStages(observe=observe)).run(self.context())
+        result = DecisionCycle(DecisionSteps(observe=observe)).run(self.context())
 
         self.assertIsNotNone(result.observation)
         self.assertEqual(result.observation.observation_id, "frame_000")
         self.assertEqual(result.control.reason, "decision-cycle-idle")
 
-    def test_perception_without_observe_stage_uses_default_observation(self) -> None:
+    def test_perception_without_observe_step_uses_default_observation(self) -> None:
         perception = self.perception()
 
         result = DecisionCycle(
-            DecisionStages(perceive=lambda context: perception),
+            DecisionSteps(perceive=lambda context: perception),
         ).run(self.context())
 
         self.assertIs(result.perception, perception)
         self.assertIsNotNone(result.observation)
         self.assertEqual(result.observation.observation_id, "frame_000")
         self.assertEqual(result.observation.perception_plugin_id, "test-perception")
-        self.assertEqual(result.observation.metadata["source"], "default_observe_stage")
+        self.assertEqual(result.observation.metadata["source"], "default_observe_step")
         self.assertEqual(result.control.reason, "decision-cycle-idle")
 
     def test_action_only_cycle_uses_action_output(self) -> None:
@@ -86,7 +86,7 @@ class DecisionCycleTests(unittest.TestCase):
                 reason="test-action",
             )
 
-        result = DecisionCycle(DecisionStages(choose_action=choose_action)).run(self.context())
+        result = DecisionCycle(DecisionSteps(choose_action=choose_action)).run(self.context())
 
         self.assertEqual(result.control.reason, "test-action")
         self.assertEqual(result.control.steering, 0.25)
@@ -94,7 +94,7 @@ class DecisionCycleTests(unittest.TestCase):
 
     def test_none_action_output_uses_configured_idle_control(self) -> None:
         cycle = DecisionCycle(
-            DecisionStages(choose_action=lambda *args: None),
+            DecisionSteps(choose_action=lambda *args: None),
             idle_reason="waiting-for-decision",
         )
 
@@ -105,16 +105,16 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.control.confidence, 1.0)
         self.assertEqual(result.control.reason, "waiting-for-decision")
 
-    def test_action_stage_rejects_undeclared_dictionary_output(self) -> None:
+    def test_action_step_rejects_undeclared_dictionary_output(self) -> None:
         def choose_action(context, perception, observation, memory):
             return {"steering": 0.0, "throttle": 0.0}
 
-        cycle = DecisionCycle(DecisionStages(choose_action=choose_action))
+        cycle = DecisionCycle(DecisionSteps(choose_action=choose_action))
 
         with self.assertRaisesRegex(TypeError, "must return AutonomyControl or None"):
             cycle.run(self.context())
 
-    def test_memory_stage_accepts_typed_snapshot_and_keeps_idle(self) -> None:
+    def test_memory_step_accepts_typed_snapshot_and_keeps_idle(self) -> None:
         snapshot = empty_memory_snapshot(
             memory_id="mem_frame_000",
             epoch_id="epoch_1",
@@ -124,7 +124,7 @@ class DecisionCycleTests(unittest.TestCase):
         )
 
         result = DecisionCycle(
-            DecisionStages(remember=lambda context, observation: snapshot)
+            DecisionSteps(remember=lambda context, observation: snapshot)
         ).run(self.context())
 
         self.assertIs(result.memory, snapshot)
@@ -132,9 +132,9 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.control.reason, "decision-cycle-idle")
         self.assertEqual(result.to_dict()["memory"]["health"], "empty")
 
-    def test_memory_stage_rejects_undeclared_dictionary_output(self) -> None:
+    def test_memory_step_rejects_undeclared_dictionary_output(self) -> None:
         cycle = DecisionCycle(
-            DecisionStages(remember=lambda context, observation: {"records": []})
+            DecisionSteps(remember=lambda context, observation: {"records": []})
         )
 
         with self.assertRaisesRegex(MemoryUpdateError, "must return MemorySnapshot or None"):
@@ -149,7 +149,7 @@ class DecisionCycleTests(unittest.TestCase):
             raise RuntimeError("update failed")
 
         cycle = DecisionCycle(
-            DecisionStages(
+            DecisionSteps(
                 remember=remember,
                 choose_action=lambda *args: actions.append(args),
             )
@@ -174,7 +174,7 @@ class DecisionCycleTests(unittest.TestCase):
         def remember(context, observation):
             raise UnprintableError()
 
-        cycle = DecisionCycle(DecisionStages(remember=remember))
+        cycle = DecisionCycle(DecisionSteps(remember=remember))
         with self.assertRaisesRegex(MemoryUpdateError, "unprintable error"):
             cycle.run(self.context())
 

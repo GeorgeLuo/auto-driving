@@ -49,3 +49,8 @@ Do not confound responses with caveats or protective statements, this can be not
 # Context
 
 Where the query sits in a chain of queries matters insomuch as how it informs what the next actions are. Are we gating code changes? Are we gating worktree cleanup? This should not be foundational to approaching the question, but when a response disjoints from the conversation chain in context, friction is introduced. Questions are intended to reduce solution space, not branch into webs of more questions.
+
+A more concrete point is if questions are for clarification or hypothesizing upon a previous show-don’t-tell representation, the formatting should be consistent from message to message. For example:
+
+* response before contains pseudocode, do not switch to abstract description
+* Add another column to table, do not change the wording of the other columns

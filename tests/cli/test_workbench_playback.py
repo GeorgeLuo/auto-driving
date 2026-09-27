@@ -1,21 +1,22 @@
 from __future__ import annotations
-import json
 import time
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
+from functools import partial
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract, PerceptionSignal
 from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.decision.memory import MemorySnapshot
 from cli.automa_cli.workbench_runner import _default_memory_stage
-from cli.automa_cli.workbench import ReplayActionError, WorkbenchServer
+from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
     FixtureMapper,
     ImageReplayRunner,
-    _make_images,
     _wait_until,
+    image_source,
+    post_action,
+    serve_workbench,
+    write_manifest,
 )
 
 
@@ -75,9 +76,7 @@ class WorkbenchTests(unittest.TestCase):
 
             return RecordingStage()
 
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
+        with image_source(2) as root:
             runner = ImageReplayRunner(
                 root, cadence_ms=0, mapper_factory=lambda: mapper,
                 memory_stage_factory=memory_factory,
@@ -95,9 +94,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[2], (None, None))
 
     def test_pause_resume_step_reset_and_stale_run_are_server_owned(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 3)
+        with image_source(3) as root:
             runner = ImageReplayRunner(root, cadence_ms=1000)
             first = runner.start()
             run_id = first["run_id"]
@@ -129,30 +126,23 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed_again["progress"]["completed"], 3)
 
     def test_sequential_replay_uses_shared_memory_without_legacy_handoff(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
-            (root / "manifest.json").write_text(
-                json.dumps(
+        with image_source(2) as root:
+            write_manifest(root, {
+                "camera_frames": [
                     {
-                        "camera_frames": [
-                            {
-                                "frame_id": "camera-first",
-                                "frame_index": 10,
-                                "captured_at_ms": 1000,
-                                "image": "frame_00.png",
-                            },
-                            {
-                                "frame_id": "camera-next",
-                                "frame_index": 13,
-                                "captured_at_ms": 1080,
-                                "image": "frame_01.png",
-                            },
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "camera-first",
+                        "frame_index": 10,
+                        "captured_at_ms": 1000,
+                        "image": "frame_00.png",
+                    },
+                    {
+                        "frame_id": "camera-next",
+                        "frame_index": 13,
+                        "captured_at_ms": 1080,
+                        "image": "frame_01.png",
+                    },
+                ]
+            })
             mapper = RecordingMapper()
             runner = ImageReplayRunner(
                 root,
@@ -170,9 +160,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(mapper.legacy_handoff, [False, False])
 
     def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 4)
+        with image_source(4) as root:
             mapper = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
@@ -222,9 +210,7 @@ class WorkbenchTests(unittest.TestCase):
             idle.dispatch("seek", run_id="missing", position=0)
 
     def test_loop_playback_rewinds_instead_of_completing(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
+        with image_source(2) as root:
             mapper = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
@@ -248,28 +234,11 @@ class WorkbenchTests(unittest.TestCase):
             self.assertFalse(finished["controls"]["loop"])
 
     def test_seek_while_running_pauses_and_serves_frame_bytes_by_position(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 4)
+        with image_source(4) as root:
             runner = ImageReplayRunner(root, cadence_ms=5000)
-            server = WorkbenchServer(runner).start()
-            self.addCleanup(server.stop)
-            base = server.url
-            self.assertIsNotNone(base)
+            base = serve_workbench(self, runner)
 
-            def post(payload: dict[str, object]) -> dict[str, object]:
-                body = json.dumps(payload).encode("utf-8")
-                return json.loads(
-                    urlopen(
-                        Request(
-                            base + "api/action",
-                            data=body,
-                            headers={"Content-Type": "application/json"},
-                            method="POST",
-                        ),
-                        timeout=10,
-                    ).read()
-                )
+            post = partial(post_action, base, timeout=10)
 
             started = post(
                 {"action": "start", "source_dir": str(root), "cadence_ms": 5000}
@@ -286,34 +255,27 @@ class WorkbenchTests(unittest.TestCase):
             post({"action": "cancel", "run_id": run_id})
 
     def test_realtime_pace_honors_recorded_frame_timestamps(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 3)
-            (root / "manifest.json").write_text(
-                json.dumps(
+        with image_source(3) as root:
+            write_manifest(root, {
+                "source_id": "timed.fixture",
+                "frames": [
                     {
-                        "source_id": "timed.fixture",
-                        "frames": [
-                            {
-                                "frame_id": "first",
-                                "timestamp_ms": 0,
-                                "image_path": "frame_00.png",
-                            },
-                            {
-                                "frame_id": "second",
-                                "timestamp_ms": 80,
-                                "image_path": "frame_01.png",
-                            },
-                            {
-                                "frame_id": "third",
-                                "timestamp_ms": 160,
-                                "image_path": "frame_02.png",
-                            },
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "first",
+                        "timestamp_ms": 0,
+                        "image_path": "frame_00.png",
+                    },
+                    {
+                        "frame_id": "second",
+                        "timestamp_ms": 80,
+                        "image_path": "frame_01.png",
+                    },
+                    {
+                        "frame_id": "third",
+                        "timestamp_ms": 160,
+                        "image_path": "frame_02.png",
+                    },
+                ],
+            })
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,

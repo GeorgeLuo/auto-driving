@@ -269,12 +269,6 @@
             "responsibility": "Deterministic compatibility checks spanning multiple production ownership boundaries."
           },
           {
-            "path": "tests/lab/",
-            "category": "verification",
-            "commit_policy": "source",
-            "responsibility": "Tests for experimental candidates that have not been promoted into concrete implementations."
-          },
-          {
             "path": "tests/live/",
             "category": "verification",
             "commit_policy": "source",

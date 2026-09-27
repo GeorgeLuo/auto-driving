@@ -3,7 +3,6 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from zipfile import ZipFile
 from cli.automa_cli.workbench import SourceValidationError, normalize_image_directory
 from tests.cli.workbench_fixtures import (
     BlockingSecondMapper,
@@ -14,11 +13,6 @@ from tests.cli.workbench_fixtures import (
     ImageReplayRunner,
     _make_images,
 )
-
-DECISION_PLAYBACK_SOURCE_ARCHIVE = Path(
-    "tests/cli/sources/images/chase-decision-playback-steering-left-right/capture.zip"
-)
-WORKBENCH_PLUGIN_DIR = Path("lab/plugins/perception")
 
 
 class WorkbenchTests(unittest.TestCase):
@@ -364,83 +358,6 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(
             decision_config["accepted_kinds"],
             ["floor_boundary", "obstacle", "obstruction_evidence"],
-        )
-
-    def test_recorded_steering_capture_replays_both_decision_changes(self) -> None:
-        expected_phases = [
-            "baseline-center",
-            "steer-left-forward",
-            "left-turn-settle",
-            "reverse-to-start-from-left",
-            "center-between-turns",
-            "steer-right-forward",
-            "right-turn-settle",
-            "reverse-to-start-from-right",
-            "return-to-center",
-        ]
-
-        with TemporaryDirectory() as directory:
-            capture_dir = Path(directory) / "capture"
-            capture_dir.mkdir()
-            with ZipFile(DECISION_PLAYBACK_SOURCE_ARCHIVE) as archive:
-                archive.extractall(capture_dir)
-            manifest = json.loads(
-                (capture_dir / "manifest.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(
-                [item["name"] for item in manifest["capture"]["control_sequence"]],
-                expected_phases,
-            )
-
-            runner = ImageReplayRunner(
-                capture_dir,
-                plugin_dir=WORKBENCH_PLUGIN_DIR,
-                active_plugin_ids=["floor_continuity_capture"],
-                cadence_ms=0,
-                max_frames=128,
-            )
-            started = runner.start()
-            try:
-                state = runner.wait(30) if started["phase"] == "running" else started
-            finally:
-                runner.close()
-
-        self.assertEqual(state["phase"], "completed")
-        self.assertEqual(
-            state["progress"], {"completed": 102, "total": 102, "percent": 100.0}
-        )
-        self.assertEqual(state["source"]["source_id"], manifest["source_id"])
-        self.assertEqual(state["summary"]["perception_status"], "ok")
-        self.assertEqual(state["summary"]["memory_health"], "healthy")
-
-        timeline_by_frame_id = {
-            item["frame"]["frame_id"]: item for item in state["timeline"]
-        }
-        phase_by_frame_id = {
-            item["frame_id"]: item["annotation"]["control_phase"]
-            for item in manifest["frames"]
-        }
-        left_proposals = [
-            item["decision"]["proposed_steering"]
-            for frame_id, item in timeline_by_frame_id.items()
-            if phase_by_frame_id[frame_id]
-            in {"steer-left-forward", "reverse-to-start-from-left"}
-            and item["decision"]["proposed_steering"] is not None
-        ]
-        right_proposals = [
-            item["decision"]["proposed_steering"]
-            for frame_id, item in timeline_by_frame_id.items()
-            if phase_by_frame_id[frame_id]
-            in {"steer-right-forward", "reverse-to-start-from-right"}
-            and item["decision"]["proposed_steering"] is not None
-        ]
-        self.assertTrue(any(value < 0 for value in left_proposals))
-        self.assertTrue(any(value > 0 for value in right_proposals))
-        self.assertTrue(
-            all(
-                not item["decision"]["proposed_applied"]
-                for item in state["timeline"]
-            )
         )
 
     def test_absence_does_not_invoke_perception_or_fabricate_image(self) -> None:

@@ -82,11 +82,8 @@ class AutonomyCycleHost:
         perception,
         observation,
         memory,
-        patterns,
-        projections,
     ):
         # memory is retained evidence from shared_memory["decision.snapshot"].
-        del patterns, projections
         return self.manager.step(
             AutonomySnapshot(
                 sensor_snapshot=context.sensor_snapshot,

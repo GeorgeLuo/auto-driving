@@ -71,8 +71,6 @@ class DecisionStageFlowTests(unittest.TestCase):
             summary=("retained_count=1",),
             implementation_id="test_memory",
         )
-        patterns = {"path": "clear"}
-        projections = ("continue_forward",)
         control = AutonomyControl(
             steering=0.1,
             throttle=0.2,
@@ -96,37 +94,11 @@ class DecisionStageFlowTests(unittest.TestCase):
             record("remember", received_context, received_observation)
             return memory
 
-        def update_patterns(received_context, received_observation, received_memory):
-            record(
-                "update_patterns",
-                received_context,
-                received_observation,
-                received_memory,
-            )
-            return patterns
-
-        def update_projections(
-            received_context,
-            received_observation,
-            received_memory,
-            received_patterns,
-        ):
-            record(
-                "update_projections",
-                received_context,
-                received_observation,
-                received_memory,
-                received_patterns,
-            )
-            return projections
-
         def choose_action(
             received_context,
             received_perception,
             received_observation,
             received_memory,
-            received_patterns,
-            received_projections,
         ):
             record(
                 "choose_action",
@@ -134,8 +106,6 @@ class DecisionStageFlowTests(unittest.TestCase):
                 received_perception,
                 received_observation,
                 received_memory,
-                received_patterns,
-                received_projections,
             )
             return control
 
@@ -144,8 +114,6 @@ class DecisionStageFlowTests(unittest.TestCase):
                 perceive=perceive,
                 observe=observe,
                 remember=remember,
-                update_patterns=update_patterns,
-                update_projections=update_projections,
                 choose_action=choose_action,
             )
         )
@@ -162,11 +130,6 @@ class DecisionStageFlowTests(unittest.TestCase):
                 ("perceive", (id(context),)),
                 ("observe", (id(context), id(perception))),
                 ("remember", (id(context), id(observation))),
-                ("update_patterns", (id(context), id(observation), id(memory))),
-                (
-                    "update_projections",
-                    (id(context), id(observation), id(memory), id(patterns)),
-                ),
                 (
                     "choose_action",
                     (
@@ -174,8 +137,6 @@ class DecisionStageFlowTests(unittest.TestCase):
                         id(perception),
                         id(observation),
                         id(memory),
-                        id(patterns),
-                        id(projections),
                     ),
                 ),
             ],
@@ -184,8 +145,6 @@ class DecisionStageFlowTests(unittest.TestCase):
         self.assertIs(result.perception, perception)
         self.assertIs(result.observation, observation)
         self.assertIs(result.memory, memory)
-        self.assertIs(result.patterns, patterns)
-        self.assertIs(result.projections, projections)
         self.assertIs(result.control, control)
         self.assertEqual(result.duration_ms, 7)
 
@@ -193,9 +152,9 @@ class DecisionStageFlowTests(unittest.TestCase):
         self.assertEqual(serialized["schema"], DECISION_CYCLE_RESULT_SCHEMA)
         self.assertEqual(serialized["context"]["frame_id"], "frame_007")
         self.assertEqual(serialized["memory"], memory.to_dict())
-        self.assertEqual(serialized["patterns"], patterns)
-        self.assertEqual(serialized["projections"], ["continue_forward"])
         self.assertEqual(serialized["control"], control.to_dict())
+        self.assertNotIn("patterns", serialized)
+        self.assertNotIn("projections", serialized)
         json.dumps(serialized)
 
         serialized["context"]["metadata"]["route"]["candidate"] = "left"

@@ -60,22 +60,12 @@ MemoryStage = Callable[
     [DecisionFrameContext, Observation | None],
     MemorySnapshot | None,
 ]
-PatternStage = Callable[
-    [DecisionFrameContext, Observation | None, MemorySnapshot | None],
-    Any,
-]
-ProjectionStage = Callable[
-    [DecisionFrameContext, Observation | None, MemorySnapshot | None, Any],
-    Any,
-]
 ActionStage = Callable[
     [
         DecisionFrameContext,
         PerceptionText | None,
         Observation | None,
         MemorySnapshot | None,
-        Any,
-        Any,
     ],
     AutonomyControl | None,
 ]
@@ -83,13 +73,11 @@ ActionStage = Callable[
 
 @dataclass(frozen=True)
 class DecisionStages:
-    """Optional stage callables for a decision cycle."""
+    """Optional stages; memory plugins own retained-evidence transformations."""
 
     perceive: PerceiveStage | None = None
     observe: ObserveStage | None = None
     remember: MemoryStage | None = None
-    update_patterns: PatternStage | None = None
-    update_projections: ProjectionStage | None = None
     choose_action: ActionStage | None = None
 
 
@@ -102,8 +90,6 @@ class DecisionCycleResult:
     observation: Observation | None
     # Retained evidence also published at shared_memory["decision.snapshot"].
     memory: MemorySnapshot | None
-    patterns: Any
-    projections: Any
     control: AutonomyControl
     started_at_ms: int
     completed_at_ms: int
@@ -123,8 +109,6 @@ class DecisionCycleResult:
             "perception": self.perception.to_dict() if self.perception is not None else None,
             "observation": self.observation.to_dict() if self.observation is not None else None,
             "memory": _to_plain_data(self.memory),
-            "patterns": _to_plain_data(self.patterns),
-            "projections": _to_plain_data(self.projections),
             "control": self.control.to_dict(),
         }
 
@@ -181,18 +165,8 @@ class DecisionCycle:
                 and memory.health != "error"
             ):
                 observation = updated_observation
-        patterns = (
-            self.stages.update_patterns(context, observation, memory)
-            if self.stages.update_patterns
-            else None
-        )
-        projections = (
-            self.stages.update_projections(context, observation, memory, patterns)
-            if self.stages.update_projections
-            else None
-        )
         control = (
-            self.stages.choose_action(context, perception, observation, memory, patterns, projections)
+            self.stages.choose_action(context, perception, observation, memory)
             if self.stages.choose_action
             else None
         )
@@ -206,8 +180,6 @@ class DecisionCycle:
             perception=perception,
             observation=observation,
             memory=memory,
-            patterns=patterns,
-            projections=projections,
             control=control,
             started_at_ms=started_at_ms,
             completed_at_ms=timestamp_ms(),

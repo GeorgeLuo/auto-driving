@@ -409,8 +409,8 @@
           <p>Perception is adapted to the stable decision-facing <code>Observation</code> shape.</p>
           <ul>
             <li>The default observe stage runs only when perception exists.</li>
-            <li>Memory, patterns, and projections are optional stages.</li>
-            <li>All three optional state stages are currently no-ops.</li>
+            <li>Memory is an optional stage; memory plugins own retained-evidence transformations.</li>
+            <li>Without a configured memory plugin, the memory output is null.</li>
           </ul>
         </div>
 
@@ -486,8 +486,8 @@
         </div>
         <div class="step">
           <div>
-            <h3>Leave State Stages Empty</h3>
-            <p>No live memory, pattern, or projection implementation is selected yet. The cycle explicitly carries <code>null</code> for those outputs.</p>
+            <h3>Update Memory</h3>
+            <p>An activated memory plugin transforms observations into a <code>MemorySnapshot</code> for the decision engine. Without a configured memory stage, the cycle carries <code>null</code>.</p>
           </div>
         </div>
         <div class="step">
@@ -511,13 +511,11 @@
       </div>
 
       <div class="callout">
-        <strong>Memory remains a contract, not an implementation:</strong>
-        the shared cycle carries explicit memory, pattern, and projection slots,
-        but all three remain <code>null</code>. Physical observation is proven
-        under manual mode; a memory implementation should consume real
-        <code>Observation</code> values and appear directly in
-        <code>DecisionCycleResult</code> rather than manufacturing a parallel
-        inspection-only representation.
+        <strong>Memory plugins own memory transformations:</strong>
+        the shared cycle passes their <code>MemorySnapshot</code> directly to
+        the action stage and exposes it in <code>DecisionCycleResult</code>.
+        Derived evidence belongs in that memory contract, so the harness does
+        not need separate pattern or projection stages.
       </div>
     </section>
 
@@ -552,9 +550,9 @@
             <td><code>autonomy/decision/observation.py</code></td>
           </tr>
           <tr>
-            <td>State Stages</td>
-            <td>Observation and prior stage output.</td>
-            <td>Optional memory, patterns, and projections; currently <code>null</code>.</td>
+            <td>Memory Stage</td>
+            <td>Observation and frame context.</td>
+            <td>Optional memory supplied by the activated memory plugin.</td>
             <td><code>autonomy/decision/cycle.py</code></td>
           </tr>
           <tr>

@@ -50,8 +50,6 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
             [
                 "observation",
                 "memory",
-                "patterns",
-                "projections",
                 "capabilities",
                 "prior_host_applied_command",
             ],

@@ -19,6 +19,12 @@ from tests.autonomy.decision.action_proposal_plan_fixtures import (
 
 
 class ActionProposalMatrixTests(unittest.TestCase):
+    def test_source_refs_reject_removed_harness_stages(self) -> None:
+        for kind in ("pattern", "projection"):
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(ValueError, "invalid SourceRef.kind"):
+                    SourceRef(kind=kind, id="removed-stage-output")
+
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
         engine = ShadowProposalsEngine(
             config=ShadowProposalsConfig(enabled_plugins=("cruise",)),

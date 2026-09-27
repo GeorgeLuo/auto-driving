@@ -148,8 +148,6 @@ class DecisionDataSourceTests(unittest.TestCase):
                 timestamp_ms=1,
                 observation=unavailable_envelope("x"),
                 memory=unavailable_envelope("y"),
-                patterns=unavailable_envelope("p"),
-                projections=unavailable_envelope("q"),
                 capabilities=ready_envelope({"max_abs_steering": 1.0}),
                 prior_host_applied_command=unavailable_envelope("h"),
                 schema="wrong",
@@ -353,14 +351,6 @@ class DecisionDataSourceTests(unittest.TestCase):
                     updated_at_ms=1,
                 ),
             )
-        # Patterns ready without required schema key.
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                patterns=ready_envelope({"items": []}, updated_at_ms=1),
-            )
         # Prior host applied must be host-reported applied=true.
         with self.assertRaises(ValueError):
             build_decision_data_source(
@@ -420,13 +410,8 @@ class DecisionDataSourceTests(unittest.TestCase):
                 },
                 updated_at_ms=1,
             ),
-            patterns=ready_envelope(
-                {"pattern_bundle_schema": "patterns_v0", "items": []},
-                updated_at_ms=1,
-            ),
         )
         self.assertEqual(source.prior_host_applied_command.status, "ready")
-        self.assertEqual(source.patterns.status, "ready")
         prior = source.to_dict()["prior_host_applied_command"]["value"]
         self.assertIs(type(prior["steering"]), float)
         self.assertIs(type(prior["throttle"]), float)
@@ -463,8 +448,6 @@ class DecisionDataSourceTests(unittest.TestCase):
             timestamp_ms=1,
             observation=ready,
             memory=unavailable_envelope("memory_not_provided"),
-            patterns=unavailable_envelope("stage_not_configured"),
-            projections=unavailable_envelope("stage_not_configured"),
             capabilities=ready_envelope(
                 {
                     "max_abs_steering": 1.0,
@@ -520,9 +503,12 @@ class DecisionDataSourceTests(unittest.TestCase):
                         frame_id="f",
                         frame_index=0,
                         timestamp_ms=1,
-                        patterns=ready_envelope(
+                        capabilities=ready_envelope(
                             {
-                                "pattern_bundle_schema": "patterns_v0",
+                                "max_abs_steering": 1.0,
+                                "max_abs_throttle": 1.0,
+                                "allows_reverse": True,
+                                "coordinate_frame": "image",
                                 bad_key: {"x": 1},
                             },
                             updated_at_ms=1,

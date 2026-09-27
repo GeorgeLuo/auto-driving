@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,6 +11,8 @@ from tests.cli.workbench_fixtures import (
     FixtureMapper,
     ImageReplayRunner,
     _make_images,
+    image_source,
+    write_manifest,
 )
 
 
@@ -22,27 +23,22 @@ class WorkbenchTests(unittest.TestCase):
             frame_root = root / "frames"
             frame_root.mkdir()
             _make_images(frame_root, 2)
-            (root / "manifest.json").write_text(
-                json.dumps(
+            write_manifest(root, {
+                "camera_frames": [
                     {
-                        "camera_frames": [
-                            {
-                                "frame_id": "camera-10",
-                                "frame_index": 10,
-                                "captured_at_ms": 1000,
-                                "image": "frames/frame_00.png",
-                            },
-                            {
-                                "frame_id": "camera-13",
-                                "frame_index": 13,
-                                "captured_at_ms": 1080,
-                                "image": "frames/frame_01.png",
-                            },
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "camera-10",
+                        "frame_index": 10,
+                        "captured_at_ms": 1000,
+                        "image": "frames/frame_00.png",
+                    },
+                    {
+                        "frame_id": "camera-13",
+                        "frame_index": 13,
+                        "captured_at_ms": 1080,
+                        "image": "frames/frame_01.png",
+                    },
+                ]
+            })
 
             feed = normalize_image_directory(root)
 
@@ -71,10 +67,7 @@ class WorkbenchTests(unittest.TestCase):
                 }
                 for index in range(269)
             ]
-            (root / "manifest.json").write_text(
-                json.dumps({"camera_frames": camera_frames}),
-                encoding="utf-8",
-            )
+            write_manifest(root, {"camera_frames": camera_frames})
 
             feed = normalize_image_directory(root)
 
@@ -89,37 +82,32 @@ class WorkbenchTests(unittest.TestCase):
             root.mkdir(parents=True)
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
-            (root / "run.json").write_text(
-                json.dumps(
+            write_manifest(root, {
+                "source_id": "fixture.sequence",
+                "run_dir": "lab/plugins/perception/example/runs/fixture-run",
+                "source": {
+                    "kind": "apply",
+                    "path": "/previous/location/auto-driving/lab/runs/capture",
+                },
+                "frames": [
                     {
-                        "source_id": "fixture.sequence",
-                        "run_dir": "lab/plugins/perception/example/runs/fixture-run",
-                        "source": {
-                            "kind": "apply",
-                            "path": "/previous/location/auto-driving/lab/runs/capture",
-                        },
-                        "frames": [
-                            {
-                                "frame_id": "capture-b",
-                                "frame_index": 5,
-                                "captured_at_ms": 500,
-                                "image_path": (
-                                    "/previous/location/auto-driving/lab/runs/capture/"
-                                    "frame_01.png"
-                                ),
-                            },
-                            {
-                                "frame_id": "capture-dropout",
-                                "frame_index": 6,
-                                "captured_at_ms": 600,
-                                "absent": True,
-                                "absence_reason": "camera dropout",
-                            },
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "capture-b",
+                        "frame_index": 5,
+                        "captured_at_ms": 500,
+                        "image_path": (
+                            "/previous/location/auto-driving/lab/runs/capture/"
+                            "frame_01.png"
+                        ),
+                    },
+                    {
+                        "frame_id": "capture-dropout",
+                        "frame_index": 6,
+                        "captured_at_ms": 600,
+                        "absent": True,
+                        "absence_reason": "camera dropout",
+                    },
+                ],
+            }, name="run.json")
 
             feed = normalize_image_directory(root)
 
@@ -134,27 +122,17 @@ class WorkbenchTests(unittest.TestCase):
     def test_directory_adapter_rejects_traversal_duplicate_and_unsupported_inputs(
         self,
     ) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
-            (root / "manifest.json").write_text(
-                json.dumps(
-                    {
-                        "frames": [
-                            {"frame_id": "same", "image_path": "frame_00.png"},
-                            {"frame_id": "same", "image_path": "frame_00.png"},
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
+        with image_source(1) as root:
+            write_manifest(root, {
+                "frames": [
+                    {"frame_id": "same", "image_path": "frame_00.png"},
+                    {"frame_id": "same", "image_path": "frame_00.png"},
+                ]
+            })
             with self.assertRaises(SourceValidationError):
                 normalize_image_directory(root)
 
-            (root / "manifest.json").write_text(
-                json.dumps({"frames": [{"image_path": "../outside.png"}]}),
-                encoding="utf-8",
-            )
+            write_manifest(root, {"frames": [{"image_path": "../outside.png"}]})
             with self.assertRaises(SourceValidationError):
                 normalize_image_directory(root)
 
@@ -177,51 +155,41 @@ class WorkbenchTests(unittest.TestCase):
             with self.assertRaises(SourceValidationError):
                 normalize_image_directory(root, max_image_bytes=10)
 
-            (root / "manifest.json").write_text(
-                json.dumps(
+            write_manifest(root, {
+                "frames": [
                     {
-                        "frames": [
-                            {
-                                "frame_id": "later",
-                                "frame_index": 2,
-                                "timestamp_ms": 20,
-                                "image_path": "frame_00.png",
-                            },
-                            {
-                                "frame_id": "earlier",
-                                "frame_index": 1,
-                                "timestamp_ms": 30,
-                                "image_path": "frame_01.png",
-                            },
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "later",
+                        "frame_index": 2,
+                        "timestamp_ms": 20,
+                        "image_path": "frame_00.png",
+                    },
+                    {
+                        "frame_id": "earlier",
+                        "frame_index": 1,
+                        "timestamp_ms": 30,
+                        "image_path": "frame_01.png",
+                    },
+                ]
+            })
             with self.assertRaises(SourceValidationError):
                 normalize_image_directory(root)
 
-            (root / "manifest.json").write_text(
-                json.dumps(
+            write_manifest(root, {
+                "frames": [
                     {
-                        "frames": [
-                            {
-                                "frame_id": "first",
-                                "frame_index": 1,
-                                "timestamp_ms": 40,
-                                "image_path": "frame_00.png",
-                            },
-                            {
-                                "frame_id": "second",
-                                "frame_index": 2,
-                                "timestamp_ms": 40,
-                                "image_path": "frame_01.png",
-                            },
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "first",
+                        "frame_index": 1,
+                        "timestamp_ms": 40,
+                        "image_path": "frame_00.png",
+                    },
+                    {
+                        "frame_id": "second",
+                        "frame_index": 2,
+                        "timestamp_ms": 40,
+                        "image_path": "frame_01.png",
+                    },
+                ]
+            })
             with self.assertRaises(SourceValidationError):
                 normalize_image_directory(root)
 
@@ -244,9 +212,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIsNone(broken_state["perception"])
 
     def test_runner_fails_closed_on_mapper_and_memory_errors(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
+        with image_source(2) as root:
             error_mapper = ErrorStatusMapper()
             runner = ImageReplayRunner(
                 root,
@@ -281,9 +247,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(memory_state["progress"]["completed"], 0)
 
     def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
+        with image_source(2) as root:
             mapper = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
@@ -315,9 +279,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
 
     def test_runner_persists_frame_correlated_shadow_decision_playback(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
+        with image_source(2) as root:
             mapper = DecisionFixtureMapper()
             runner = ImageReplayRunner(
                 root,
@@ -361,24 +323,17 @@ class WorkbenchTests(unittest.TestCase):
         )
 
     def test_absence_does_not_invoke_perception_or_fabricate_image(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 1)
-            (root / "manifest.json").write_text(
-                json.dumps(
+        with image_source(1) as root:
+            write_manifest(root, {
+                "frames": [
+                    {"frame_id": "present", "image_path": "frame_00.png"},
                     {
-                        "frames": [
-                            {"frame_id": "present", "image_path": "frame_00.png"},
-                            {
-                                "frame_id": "absent",
-                                "absent": True,
-                                "absence_reason": "dropout",
-                            },
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
+                        "frame_id": "absent",
+                        "absent": True,
+                        "absence_reason": "dropout",
+                    },
+                ]
+            })
             mapper = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
@@ -394,9 +349,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["observation"]["metadata"]["absence_reason"], "dropout")
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
+        with image_source(2) as root:
             mapper = BlockingSecondMapper()
             runner = ImageReplayRunner(
                 root,

@@ -22,8 +22,6 @@ It reports the ten slowest tests, including setup and cleanup. Use
   operator-visible behavior.
 - `integration/` exercises compatibility across ownership boundaries using
   disposable local state.
-- `lab/` protects experimental candidates without presenting them as production
-  implementations.
 - `live/` contains named, bounded checks that require explicit opt-in.
 
 For new or materially changed tests, name a concrete regression and the

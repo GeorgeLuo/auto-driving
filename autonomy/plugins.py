@@ -2,6 +2,7 @@
 
 The core tracks which plugin definitions are selected. A step owns construction,
 execution, reset, and validation of the behavior declared by those definitions.
+``replace_selection`` sequences that handoff when a resolved selection changes.
 Definitions may come from packaged entries, explicit JSON files, or a future
 catalog implementing ``PluginResolver``.
 """
@@ -9,11 +10,11 @@ catalog implementing ``PluginResolver``.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 
 PluginReference = str | Path
@@ -179,3 +180,111 @@ class PluginManager:
             definition for definition in self._selected if definition.plugin_id != plugin_id
         )
         return self._selected
+
+
+_T = TypeVar("_T")
+
+
+def replace_selection(
+    applied: Iterable[tuple[PluginDefinition, _T]],
+    selected: Iterable[PluginDefinition],
+    *,
+    load: Callable[[PluginDefinition], _T],
+    validate: Callable[[tuple[_T, ...]], None] | None = None,
+    reset: Callable[[_T], None] | None = None,
+) -> tuple[_T, ...]:
+    """Return the instances a step can publish for an already resolved selection.
+
+    Equal definitions keep their instances. Other definitions are passed to
+    ``load``. ``validate`` then sees the full sequence. Only after it returns
+    are instances that are not in that sequence passed to ``reset``. A failure
+    from ``load`` or ``validate`` does not call ``reset``. This does not import
+    plugins or change a ``PluginManager``.
+    """
+
+    if not callable(load):
+        raise PluginManagementError("load must be callable")
+    if validate is not None and not callable(validate):
+        raise PluginManagementError("validate must be callable")
+    if reset is not None and not callable(reset):
+        raise PluginManagementError("reset must be callable")
+
+    applied_pairs = _applied_pairs(applied)
+    selected_definitions = _selected_definitions(selected)
+    if tuple(definition for definition, _instance in applied_pairs) == selected_definitions:
+        return tuple(instance for _definition, instance in applied_pairs)
+
+    applied_by_id = {
+        definition.plugin_id: (definition, instance)
+        for definition, instance in applied_pairs
+    }
+    candidates: list[_T] = []
+    for definition in selected_definitions:
+        existing = applied_by_id.get(definition.plugin_id)
+        if existing is not None and existing[0] == definition:
+            candidates.append(existing[1])
+        else:
+            candidates.append(load(definition))
+
+    published = tuple(candidates)
+    if validate is not None:
+        validate(published)
+    if reset is not None:
+        kept = {id(instance) for instance in published}
+        released: set[int] = set()
+        for _definition, instance in applied_pairs:
+            identity = id(instance)
+            if identity in kept or identity in released:
+                continue
+            released.add(identity)
+            reset(instance)
+    return published
+
+
+def _ordered_collection(value: Iterable[Any], *, what: str) -> list[Any]:
+    if isinstance(value, (str, bytes, Mapping, set, frozenset)):
+        raise PluginManagementError(f"{what} must be an ordered collection")
+    try:
+        return list(value)
+    except TypeError as exc:
+        raise PluginManagementError(f"{what} must be iterable") from exc
+
+
+def _selected_definitions(
+    selected: Iterable[PluginDefinition],
+) -> tuple[PluginDefinition, ...]:
+    chosen: dict[str, PluginDefinition] = {}
+    ordered: list[PluginDefinition] = []
+    for definition in _ordered_collection(selected, what="selected plugins"):
+        if not isinstance(definition, PluginDefinition):
+            raise PluginManagementError("selected plugins must be PluginDefinition values")
+        existing = chosen.get(definition.plugin_id)
+        if existing is None:
+            chosen[definition.plugin_id] = definition
+            ordered.append(definition)
+            continue
+        if existing != definition:
+            raise PluginManagementError(
+                f"selection contains conflicting definitions for {definition.plugin_id!r}"
+            )
+    return tuple(ordered)
+
+
+def _applied_pairs(
+    applied: Iterable[tuple[PluginDefinition, _T]],
+) -> tuple[tuple[PluginDefinition, _T], ...]:
+    pairs: list[tuple[PluginDefinition, _T]] = []
+    seen: set[str] = set()
+    for item in _ordered_collection(applied, what="applied plugins"):
+        definition = item[0] if isinstance(item, tuple) and len(item) == 2 else None
+        if not isinstance(definition, PluginDefinition):
+            raise PluginManagementError(
+                "applied plugins must be (PluginDefinition, instance) pairs"
+            )
+        if definition.plugin_id in seen:
+            raise PluginManagementError(
+                f"applied plugins contain duplicate id {definition.plugin_id!r}"
+            )
+        seen.add(definition.plugin_id)
+        pairs.append((definition, item[1]))
+    return tuple(pairs)

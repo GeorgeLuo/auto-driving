@@ -15,6 +15,8 @@ from autonomy.perception import (
     build_perception_request,
     instantiate_perception_mapper,
 )
+from autonomy.perception.selection import perception_plugin_manager
+from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
@@ -387,14 +389,20 @@ def set_vehicle_perception_plugin(
             ),
         )
 
-    after = list(before)
-    changed = False
-    if enabled and plugin_id not in after:
-        after.append(plugin_id)
-        changed = True
-    elif not enabled and plugin_id in after:
-        after = [plugin for plugin in after if plugin != plugin_id]
-        changed = True
+    try:
+        manager = perception_plugin_manager(
+            mapper_config.get("plugin_specs", {}),
+            mapper_config.get("plugin_configs", {}),
+        )
+        manager.select(before)
+        if enabled:
+            manager.add(plugin_id)
+        else:
+            manager.remove(plugin_id)
+        after = list(manager.selected_ids)
+    except PluginManagementError as exc:
+        return CommandResult(2, str(exc))
+    changed = after != before
 
     if changed:
         mapper_config["plugins"] = after

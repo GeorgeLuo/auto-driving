@@ -25,6 +25,7 @@ from autonomy.perception.plugin import (
     PerceptionPluginWarmingUp,
 )
 from autonomy.perception.rendering import signal_line, thing_line
+from autonomy.perception.selection import perception_plugin_manager
 
 
 ComponentProvider = Callable[[PerceptionRequest, PerceptionPluginInput], Any]
@@ -59,20 +60,14 @@ class PluginPerceptionMapper:
         plugin_ids = tuple(() if plugins is None else plugins)
         if len(plugin_ids) != len(set(plugin_ids)):
             raise ValueError("configured perception plugin ids must be unique")
-        unknown = [plugin_id for plugin_id in plugin_ids if plugin_id not in specs]
-        if unknown:
-            available = ", ".join(sorted(specs))
-            raise ValueError(f"Unknown perception plugin(s): {unknown}. Available: {available}.")
+        manager = perception_plugin_manager(specs, configs)
+        selected = manager.select(plugin_ids)
         self.plugin_specs = specs
         self.plugin_configs = configs
-        self.plugin_ids = plugin_ids
+        self.plugin_ids = manager.selected_ids
         self.plugins = tuple(
-            _instantiate_plugin(
-                plugin_id,
-                self.plugin_specs[plugin_id],
-                self.plugin_configs.get(plugin_id, {}),
-            )
-            for plugin_id in self.plugin_ids
+            _instantiate_plugin(item.plugin_id, item.entrypoint, dict(item.config))
+            for item in selected
         )
         runtime_ids = [plugin.plugin_id for plugin in self.plugins]
         if len(runtime_ids) != len(set(runtime_ids)):

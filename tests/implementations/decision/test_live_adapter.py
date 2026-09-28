@@ -12,7 +12,7 @@ from autonomy.decision.memory import (
     empty_memory_snapshot,
 )
 from autonomy.decision.observation import Observation
-from autonomy.decision.cycle import DecisionStages
+from autonomy.decision.cycle import DecisionSteps
 from autonomy.perception import ViewLocation
 from autonomy.runtime.engine import AutonomySnapshot
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -149,7 +149,7 @@ class LiveAdapterTests(unittest.TestCase):
             default_engine_config={},
         )
 
-        def remember(context, observation):  # noqa: ANN001 - test stage
+        def remember(context, observation):  # noqa: ANN001 - test step
             del observation
             return _memory(
                 "left",
@@ -160,7 +160,7 @@ class LiveAdapterTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(
                 manager=manager,
-                stages=DecisionStages(remember=remember),
+                steps=DecisionSteps(remember=remember),
             ),
             min_interval_s=0.0,
         )

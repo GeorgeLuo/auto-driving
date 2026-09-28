@@ -121,7 +121,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles perception qualify` | Offline common-frame compare of packaged control vs one lab candidate on labeled physical-check frames; emits promote/reject. |
 | `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
-| `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory stage; if activation is present but the stage is missing, update core (manage.py harness) then re-run autonomy. |
+| `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory step; if activation is present but the step is missing, update core (manage.py harness) then re-run autonomy. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
@@ -407,9 +407,9 @@ zero and Donkey DriveMode keeps manual input authoritative.
 **Deploy split:** autonomy packages ship the controller tree and activation
 files (including `runtime/memory/active.json`). The code path that *loads*
 memory into the Donkey loop lives in `manage.py` from **core**. After harness
-changes that add stages, run core then autonomy with `--restart`. Autonomy
+changes that add steps, run core then autonomy with `--restart`. Autonomy
 `--restart` verification fails if a memory activation was shipped but no live
-memory stage appears in `/autonomy/status`.
+memory step appears in `/autonomy/status`.
 
 Decision and memory selection are local until the next autonomy deployment:
 
@@ -533,7 +533,7 @@ implementations          -> satisfy and compose autonomy contracts
 CLI/runtime entrypoints  -> select implementations and execute the cycle
 ```
 
-Perception follows a component-injection model. The stable stage wraps a
+Perception follows a component-injection model. The stable step wraps a
 generic `SensorSnapshot` and runs configured plugins without knowing which
 sensor or meaning any plugin uses. Each plugin declares named component inputs
 and returns only structured signals, spatial evidence, and measurements. The

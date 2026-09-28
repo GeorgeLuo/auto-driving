@@ -1,4 +1,4 @@
-"""Host-owned shared memory for sequential stages and plugins.
+"""Host-owned shared memory for sequential steps and plugins.
 
 A host supplies one mutable mapping for a run; absent access is None. Parameters
 and fields that carry this mapping are named shared_memory. Producers own their
@@ -16,9 +16,9 @@ interpret plugin histories. Values may be Python records or arrays, not only
 JSON. A memory snapshot is a plugin's evidence view, not the entire shared map.
 
 Memory implementations may publish their retained evidence at
-"decision.snapshot". The decision cycle reads the memory stage's result but
+"decision.snapshot". The decision cycle reads the memory step's result but
 does not write that key. A memory plugin may publish a current-cycle Observation
-at "decision.observation" for subsequent stages. Other producers may use their
+at "decision.observation" for subsequent steps. Other producers may use their
 own keys; the existing evidence reducer does not evict those entries.
 """
 

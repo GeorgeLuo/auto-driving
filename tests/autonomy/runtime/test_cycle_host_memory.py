@@ -7,9 +7,9 @@ from pathlib import Path
 
 from autonomy.decision import (
     DecisionFrameContext,
-    DecisionStages,
+    DecisionSteps,
     MemoryUpdateError,
-    load_memory_stage_if_present,
+    load_memory_step_if_present,
     read_memory_activation,
 )
 from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
@@ -153,10 +153,10 @@ def _write_activation(root: Path, *, fail_on_update: bool = False) -> Path:
 
 
 class CycleHostMemoryWiringTests(unittest.TestCase):
-    def test_engine_cannot_mutate_stage_owned_memory_through_cycle_result(self) -> None:
+    def test_engine_cannot_mutate_step_owned_memory_through_cycle_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            stage = load_memory_stage_if_present(_write_activation(Path(tmp)))
-            self.assertIsNotNone(stage)
+            step = load_memory_step_if_present(_write_activation(Path(tmp)))
+            self.assertIsNotNone(step)
             manager = AutonomyManager()
             engine = _PushyEngine()
             manager.engine = engine
@@ -164,27 +164,27 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
             host = AutonomyCycleHost(
                 manager=manager,
-                stages=DecisionStages(
+                steps=DecisionSteps(
                     observe=lambda context, perception: Observation(
                         observation_id="obs-1",
                         created_at_ms=1,
                         sensor_snapshot={},
                         summary=("test",),
                     ),
-                    remember=stage,
+                    remember=step,
                 ),
             )
             result = host.run(DecisionFrameContext("frame_1", 0, 1_000))
             assert result.memory is not None
-            assert stage is not None
-            self.assertIsNot(result.memory, stage.last_snapshot)
+            assert step is not None
+            self.assertIsNot(result.memory, step.last_snapshot)
             # Mutate the cycle result handed to callers/engines.
             result.memory.metadata["engine_mutated"] = True
             if result.memory.records:
                 result.memory.records[0].properties["tamper"] = True
             if hasattr(engine, "last_snapshot") and engine.last_snapshot.memory is not None:
                 engine.last_snapshot.memory.metadata["via_engine"] = True
-            owned = stage.last_snapshot
+            owned = step.last_snapshot
             assert owned is not None
             self.assertNotIn("engine_mutated", owned.metadata)
             self.assertNotIn("via_engine", owned.metadata)
@@ -193,13 +193,13 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
     def test_host_passes_memory_snapshot_to_engine_and_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            stage = load_memory_stage_if_present(_write_activation(Path(tmp)))
-            self.assertIsNotNone(stage)
+            step = load_memory_step_if_present(_write_activation(Path(tmp)))
+            self.assertIsNotNone(step)
             manager = AutonomyManager()
             manager.engine = _PushyEngine()
             host = AutonomyCycleHost(
                 manager=manager,
-                stages=DecisionStages(remember=stage),
+                steps=DecisionSteps(remember=step),
             )
             from autonomy.decision import Observation
 
@@ -210,7 +210,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
                     timestamp_ms=100,
                 )
             )
-            # no observe stage -> observation None; memory still runs
+            # no observe step -> observation None; memory still runs
             self.assertIsNotNone(result.memory)
             self.assertEqual(result.control.reason, "pushy-test-engine")
             self.assertTrue(result.control.steering > 0.0)
@@ -224,22 +224,22 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
             from autonomy.decision import Observation
 
-            stage.update(
+            step.update(
                 DecisionFrameContext("frame_2", 2, 200),
                 Observation("obs_2", 190, {}),
             )
-            self.assertEqual(stage.snapshot().health, "healthy")
+            self.assertEqual(step.snapshot().health, "healthy")
 
     def test_memory_failure_stops_before_engine_control(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            stage = load_memory_stage_if_present(
+            step = load_memory_step_if_present(
                 _write_activation(Path(tmp), fail_on_update=True)
             )
             manager = AutonomyManager()
             manager.engine = _PushyEngine()
             host = AutonomyCycleHost(
                 manager=manager,
-                stages=DecisionStages(remember=stage),
+                steps=DecisionSteps(remember=step),
             )
             with self.assertRaisesRegex(MemoryUpdateError, "forced-memory-failure"):
                 host.run(
@@ -250,8 +250,8 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
     def test_idle_engine_reports_has_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            stage = load_memory_stage_if_present(_write_activation(Path(tmp)))
-            host = AutonomyCycleHost(stages=DecisionStages(remember=stage))
+            step = load_memory_step_if_present(_write_activation(Path(tmp)))
+            host = AutonomyCycleHost(steps=DecisionSteps(remember=step))
             result = host.run(
                 DecisionFrameContext(frame_id="frame_i", frame_index=0, timestamp_ms=1)
             )
@@ -261,18 +261,18 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
     def test_host_reset_memory_clears_records_and_bumps_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            stage = load_memory_stage_if_present(_write_activation(Path(tmp)))
-            self.assertIsNotNone(stage)
-            host = AutonomyCycleHost(stages=DecisionStages(remember=stage))
+            step = load_memory_step_if_present(_write_activation(Path(tmp)))
+            self.assertIsNotNone(step)
+            host = AutonomyCycleHost(steps=DecisionSteps(remember=step))
             from autonomy.decision import Observation
 
-            stage.update(
+            step.update(
                 DecisionFrameContext("frame_fill", 1, 100),
                 Observation("obs_fill", 90, {}),
             )
-            self.assertEqual(stage.snapshot().health, "healthy")
-            self.assertEqual(stage.snapshot().record_count, 1)
-            prior_epoch = stage.snapshot().epoch_id
+            self.assertEqual(step.snapshot().health, "healthy")
+            self.assertEqual(step.snapshot().record_count, 1)
+            prior_epoch = step.snapshot().epoch_id
 
             reset_snapshot = host.reset_memory()
             self.assertIsNotNone(reset_snapshot)
@@ -285,10 +285,10 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
             path.write_text(json.dumps(build_memory_activation_payload()))
-            stage = load_memory_stage_if_present(path)
-            self.assertIsNotNone(stage)
-            host = AutonomyCycleHost(stages=DecisionStages(remember=stage))
-            self.assertEqual(stage.snapshot().epoch_id, "epoch-1")
+            step = load_memory_step_if_present(path)
+            self.assertIsNotNone(step)
+            host = AutonomyCycleHost(steps=DecisionSteps(remember=step))
+            self.assertEqual(step.snapshot().epoch_id, "epoch-1")
             self.assertEqual(host.reset_memory().epoch_id, "epoch-2")
             self.assertEqual(host.reset_memory().epoch_id, "epoch-3")
             result = host.run(DecisionFrameContext("f1", 1, 100))
@@ -316,7 +316,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
         manager = AutonomyManager()
         manager.engine = _PushyEngine()
-        host = AutonomyCycleHost(manager=manager, stages=DecisionStages(observe=observe, remember=remember))
+        host = AutonomyCycleHost(manager=manager, steps=DecisionSteps(observe=observe, remember=remember))
         for index in range(2):
             result = host.run(DecisionFrameContext(f"frame-{index}", index, index))
             self.assertEqual(result.observation.summary, ("updated",))
@@ -324,13 +324,13 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             self.assertIs(result.memory, host.shared_memory["decision.snapshot"])
         self.assertEqual(seen, [None, "frame-0"])
 
-    def test_host_reset_memory_without_stage_returns_none(self) -> None:
+    def test_host_reset_memory_without_step_returns_none(self) -> None:
         host = AutonomyCycleHost()
         self.assertIsNone(host.reset_memory())
 
     def test_missing_memory_activation_is_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertIsNone(load_memory_stage_if_present(Path(tmp) / "active.json"))
+            self.assertIsNone(load_memory_step_if_present(Path(tmp) / "active.json"))
 
     def test_activation_reader_used_by_loader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

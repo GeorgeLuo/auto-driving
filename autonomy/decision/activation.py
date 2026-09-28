@@ -1,4 +1,4 @@
-"""Memory activation documents and framework-owned stage execution."""
+"""Memory activation documents and framework-owned step execution."""
 
 from __future__ import annotations
 
@@ -227,8 +227,8 @@ def load_memory_implementation(
     )
 
 
-def load_memory_stage_if_present(path: Path) -> ActivatedMemoryStage | None:
-    """Load an activated memory stage when the activation document exists.
+def load_memory_step_if_present(path: Path) -> ActivatedMemoryStep | None:
+    """Load an activated memory step when the activation document exists.
 
     Missing paths return None so Chase and Donkey hosts can share optional
     wiring without requiring memory before package activation exists.
@@ -236,7 +236,7 @@ def load_memory_stage_if_present(path: Path) -> ActivatedMemoryStage | None:
 
     if not path.exists():
         return None
-    return ActivatedMemoryStage(read_memory_activation(path))
+    return ActivatedMemoryStep(read_memory_activation(path))
 
 
 def instantiate_memory_implementation(
@@ -275,8 +275,8 @@ def instantiate_memory_implementation(
     return implementation
 
 
-class ActivatedMemoryStage:
-    """Decision-cycle memory stage backed by one activated implementation.
+class ActivatedMemoryStep:
+    """Decision-cycle memory step backed by one activated implementation.
 
     The framework owns load, reset, timing, status, and validation.
     Implementations only express update/reset/snapshot policy. Source
@@ -315,9 +315,9 @@ class ActivatedMemoryStage:
             snapshot = self.implementation.update(context, observation)
             owned = self._accept_snapshot(snapshot, operation="update")
             if owned.health == "error":
-                raise MemoryUpdateError(owned.error or "memory stage returned an error snapshot")
+                raise MemoryUpdateError(owned.error or "memory step returned an error snapshot")
             self.last_error = None
-        except Exception as exc:  # noqa: BLE001 - stage isolation boundary
+        except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(format_exception_safely(exc))
             raise
@@ -343,7 +343,7 @@ class ActivatedMemoryStage:
             if owned.records:
                 raise ValueError("memory reset must not retain records")
             self.last_error = None
-        except Exception as exc:  # noqa: BLE001 - stage isolation boundary
+        except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(format_exception_safely(exc))
             memory_id, epoch_id = framework_reset_identity(self.reset_count + 1)
@@ -365,7 +365,7 @@ class ActivatedMemoryStage:
         try:
             current = self.implementation.snapshot()
             owned = self._accept_snapshot(current, operation="snapshot")
-        except Exception as exc:  # noqa: BLE001 - stage isolation boundary
+        except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(format_exception_safely(exc))
             owned = self._error_snapshot(self.last_error)
@@ -373,7 +373,7 @@ class ActivatedMemoryStage:
 
     def status(self) -> dict[str, Any]:
         last = self.last_snapshot
-        # Keep this stage generic: do not promote implementation-specific
+        # Keep this step generic: do not promote implementation-specific
         # telemetry keys (for example capacity eviction counters) into status.
         # Callers that need snapshot metadata read the published MemorySnapshot.
         return {
@@ -498,7 +498,7 @@ class ActivatedMemoryStage:
         return normalized
 
     def _publish_snapshot(self, owned: MemorySnapshot) -> MemorySnapshot:
-        """Store stage-owned state and return a second detached caller copy."""
+        """Store step-owned state and return a second detached caller copy."""
 
         self.last_snapshot = owned
         return detach_memory_snapshot(owned)

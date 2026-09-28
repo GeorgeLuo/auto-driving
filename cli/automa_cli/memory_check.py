@@ -13,7 +13,7 @@ from urllib.parse import quote, urljoin
 from urllib.request import urlopen
 
 from autonomy.decision import (
-    ActivatedMemoryStage,
+    ActivatedMemoryStep,
     DecisionFrameContext,
     Observation,
     read_memory_activation,
@@ -106,7 +106,7 @@ def run_vehicle_memory_check(
 
     - Chase-sim (discovered): live automation frames + shadow reference alignment.
     - Offline staging ids: process-local phase script.
-    - PiCar: scores the **live onboard** stage via publication.memory and
+    - PiCar: scores the **live onboard** step via publication.memory and
       onboard reset (no forced dropout, no ephemeral local reducer). Recorded
       captures require publication/JPEG frame-id pairing.
     """
@@ -1336,7 +1336,7 @@ def run_offline_memory_check(
         )
 
     try:
-        stage, activation_source = _load_check_stage(
+        step, activation_source = _load_check_step(
             vehicle_id=vehicle_id,
             implementation_id=selected,
             force_ephemeral=implementation_id is not None,
@@ -1363,7 +1363,7 @@ def run_offline_memory_check(
         name = str(phase["name"])
         _emit(output, f"phase: {name}")
         if name == "reset":
-            snapshot = stage.reset(shared_memory)
+            snapshot = step.reset(shared_memory)
             shared_memory.clear()
             shared_memory["decision.snapshot"] = snapshot
             final = snapshot.to_dict()
@@ -1371,7 +1371,7 @@ def run_offline_memory_check(
         else:
             frames_for_phase = list(phase.get("frames") or [])
             all_frames.extend(frames_for_phase)
-            final = _feed_frames(stage, frames_for_phase, shared_memory)
+            final = _feed_frames(step, frames_for_phase, shared_memory)
 
         score = score_memory_check_phase(
             phase_name=name,
@@ -1461,7 +1461,7 @@ def run_offline_memory_check(
             "scenario_note": safety_note
             or (
                 "Offline/Chase phase script uses camera-equivalent structured observations "
-                "and the same memory stage as live hosts."
+                "and the same memory step as live hosts."
             ),
         },
         "recorded": False,
@@ -1514,15 +1514,15 @@ def run_physical_memory_check(
     reset_fn: Callable[[], dict[str, Any]] | None = None,
     probe_fn: Callable[[], dict[str, Any]] | None = None,
 ) -> CommandResult:
-    """Stationary Pi check against the **active onboard** memory stage.
+    """Stationary Pi check against the **active onboard** memory step.
 
     Every phase is scored from live publications / status (not an ephemeral
     local reducer). Dropout uses observed publications without forced empties.
-    Expiry waits for the live stage to drop retained keys. Reset calls the
+    Expiry waits for the live step to drop retained keys. Reset calls the
     onboard reset endpoint and requires an epoch/reset-count transition.
     """
 
-    del implementation_id  # Pi path validates the activated onboard stage only.
+    del implementation_id  # Pi path validates the activated onboard step only.
     base_url = picar_base_url(vehicle)
     if not base_url:
         return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
@@ -1543,7 +1543,7 @@ def run_physical_memory_check(
     )
     prompt = input_fn or input
 
-    _emit(output, "Physical memory check (stationary Pi — live onboard stage)")
+    _emit(output, "Physical memory check (stationary Pi — live onboard step)")
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"endpoint: {base_url}")
     _emit(output, "movement: never commanded (manual placement only)")
@@ -1640,7 +1640,7 @@ def run_physical_memory_check(
             return CommandResult(
                 2,
                 f"{placement}: publication has no memory snapshot. "
-                "Deploy memory activation (core+autonomy) so the onboard stage is live.",
+                "Deploy memory activation (core+autonomy) so the onboard step is live.",
             )
         _emit(
             output,
@@ -1867,11 +1867,11 @@ def run_physical_memory_check(
             "movement_commands_sent": False,
             "action_policy": "physical_observe_only",
             "rewritten_engine_idle": True,
-            "lifecycle_source": "live_onboard_stage",
+            "lifecycle_source": "live_onboard_step",
             "forced_dropout": False,
             "ephemeral_local_reducer": False,
             "scenario_note": (
-                "Pi path scores publication.memory from the activated onboard stage for "
+                "Pi path scores publication.memory from the activated onboard step for "
                 "present/dropout/expiry, and POST /autonomy/memory/reset for reset. "
                 f"Frame-pair attempts={pair_attempts_total}. No movement commands."
             ),
@@ -1893,7 +1893,7 @@ def run_physical_memory_check(
     lines = [
         f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
         f"Implementation: {implementation_id_live or 'live_onboard'}",
-        "Lifecycle source: live onboard stage",
+        "Lifecycle source: live onboard step",
         "Phases: "
         + ", ".join(
             f"{item['phase']}={'ok' if item['passed'] else 'fail'}" for item in phase_results
@@ -1958,7 +1958,7 @@ def record_ids_from_memory(memory: dict[str, Any]) -> set[str]:
 
 
 def currently_refreshed_memory_keys(publication: dict[str, Any]) -> set[str]:
-    """Keys the active stage refreshed on this publication's frame.
+    """Keys the active step refreshed on this publication's frame.
 
     Prefer memory records whose ``provenance.frame_id`` matches the publication
     frame id — that reuses the onboard implementation's admission behavior
@@ -2768,12 +2768,12 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
     return notes
 
 
-def _load_check_stage(
+def _load_check_step(
     *,
     vehicle_id: str,
     implementation_id: str,
     force_ephemeral: bool,
-) -> tuple[ActivatedMemoryStage, str]:
+) -> tuple[ActivatedMemoryStep, str]:
     # Check uses fixed short max_age so expiry is deterministic offline.
     # force_ephemeral reserved for future staged-activation variants.
     del force_ephemeral
@@ -2798,21 +2798,21 @@ def _load_check_stage(
     handle.close()
     path = Path(handle.name)
     try:
-        stage = ActivatedMemoryStage(read_memory_activation(path))
+        step = ActivatedMemoryStep(read_memory_activation(path))
     finally:
         try:
             path.unlink(missing_ok=True)
         except OSError:
             pass
-    return stage, f"ephemeral-check:{implementation_id}(max_age_ms={CHECK_MAX_AGE_MS})"
+    return step, f"ephemeral-check:{implementation_id}(max_age_ms={CHECK_MAX_AGE_MS})"
 
 
 def _feed_frames(
-    stage: ActivatedMemoryStage,
+    step: ActivatedMemoryStep,
     frames: list[dict[str, Any]],
     shared_memory: dict[str, Any],
 ) -> dict[str, Any]:
-    snapshot = stage.snapshot()
+    snapshot = step.snapshot()
     for frame in frames:
         observation = Observation.from_dict(frame["observation"])
         context = DecisionFrameContext(
@@ -2821,7 +2821,7 @@ def _feed_frames(
             timestamp_ms=int(frame["timestamp_ms"]),
             shared_memory=shared_memory,
         )
-        snapshot = stage.update(context, observation)
+        snapshot = step.update(context, observation)
     return snapshot.to_dict()
 
 

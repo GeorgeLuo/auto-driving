@@ -142,7 +142,7 @@ class MemoryCheckTests(unittest.TestCase):
             self.assertTrue(payload["passed"])
             self.assertEqual(payload["provider"], "picar")
             self.assertEqual(
-                payload["safety"]["lifecycle_source"], "live_onboard_stage"
+                payload["safety"]["lifecycle_source"], "live_onboard_step"
             )
             self.assertFalse(payload["safety"]["forced_dropout"])
             self.assertFalse(payload["safety"]["ephemeral_local_reducer"])

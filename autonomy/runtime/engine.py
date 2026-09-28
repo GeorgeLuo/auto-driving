@@ -71,7 +71,7 @@ class IdleAutonomyEngine:
                 "type": "AutonomyControl",
                 "movement": "always idle",
             },
-            "stages": {
+            "steps": {
                 "action": "hold_position",
                 "memory": "inspectable_snapshot",
             },

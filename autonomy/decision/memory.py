@@ -23,9 +23,9 @@ DEFAULT_MAX_PROPERTY_BYTES = 4_096
 DEFAULT_MAX_SERIALIZED_BYTES = 262_144
 # Floor for max_serialized_bytes: a minimal framework empty/error fallback is ~450
 # bytes once identity fields and bounds are included. Reject smaller ceilings at
-# validation time rather than while constructing stage failure snapshots.
+# validation time rather than while constructing step failure snapshots.
 MIN_MAX_SERIALIZED_BYTES = 512
-# Cap for stage status / worker-facing diagnostic strings (not only snapshots).
+# Cap for step status / worker-facing diagnostic strings (not only snapshots).
 DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_024
 
 MemoryHealth = Literal["empty", "healthy", "unavailable", "error"]

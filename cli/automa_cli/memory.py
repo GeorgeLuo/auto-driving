@@ -14,10 +14,10 @@ from typing import Any, TextIO
 
 from autonomy.decision import (
     MEMORY_ACTIVATION_SCHEMA,
-    ActivatedMemoryStage,
+    ActivatedMemoryStep,
     DecisionFrameContext,
     Observation,
-    load_memory_stage_if_present,
+    load_memory_step_if_present,
     read_memory_activation,
 )
 from implementations.memory import (
@@ -302,7 +302,7 @@ def replay_vehicle_memory(
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    stage: ActivatedMemoryStage | None = None
+    step: ActivatedMemoryStep | None = None
     selected_implementation = implementation_id
     activation_source: str
 
@@ -319,13 +319,13 @@ def replay_vehicle_memory(
             implementation_id=implementation_id,
             bundle=bundle,
         ) as temp_activation:
-            stage = ActivatedMemoryStage(read_memory_activation(temp_activation))
+            step = ActivatedMemoryStep(read_memory_activation(temp_activation))
             activation_source = f"ephemeral:{implementation_id}"
             selected_implementation = implementation_id
-            run_a = _run_memory_sequence(stage=stage, frames=frames)
+            run_a = _run_memory_sequence(step=step, frames=frames)
             if verify_twice:
-                stage_b = ActivatedMemoryStage(read_memory_activation(temp_activation))
-                run_b = _run_memory_sequence(stage=stage_b, frames=frames)
+                step_b = ActivatedMemoryStep(read_memory_activation(temp_activation))
+                run_b = _run_memory_sequence(step=step_b, frames=frames)
             else:
                 run_b = run_a
     else:
@@ -342,25 +342,25 @@ def replay_vehicle_memory(
                 ),
             )
         try:
-            stage = load_memory_stage_if_present(activation_path)
+            step = load_memory_step_if_present(activation_path)
         except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
             return CommandResult(
                 2,
                 f"Could not load memory activation {display_path(activation_path)}: {exc}",
             )
-        if stage is None:
+        if step is None:
             return CommandResult(
                 2,
                 f"Memory activation is missing or empty at {display_path(activation_path)}.",
             )
         activation_source = display_path(activation_path)
-        selected_implementation = stage.activation.implementation_id
-        run_a = _run_memory_sequence(stage=stage, frames=frames)
+        selected_implementation = step.activation.implementation_id
+        run_a = _run_memory_sequence(step=step, frames=frames)
         if verify_twice:
-            stage_b = load_memory_stage_if_present(activation_path)
-            if stage_b is None:
+            step_b = load_memory_step_if_present(activation_path)
+            if step_b is None:
                 return CommandResult(2, "Could not reload memory activation for determinism check.")
-            run_b = _run_memory_sequence(stage=stage_b, frames=frames)
+            run_b = _run_memory_sequence(step=step_b, frames=frames)
         else:
             run_b = run_a
 
@@ -1058,13 +1058,13 @@ def _normalize_sequence_frame(
 
 def _run_memory_sequence(
     *,
-    stage: ActivatedMemoryStage,
+    step: ActivatedMemoryStep,
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    # Fresh epoch for this pass (stage already reset on construction).
+    # Fresh epoch for this pass (step already reset on construction).
     per_frame: list[dict[str, Any]] = []
     shared_memory: dict[str, Any] = {}
-    final_snapshot = stage.snapshot()
+    final_snapshot = step.snapshot()
     for frame in frames:
         observation = Observation.from_dict(frame["observation"])
         context = DecisionFrameContext(
@@ -1073,7 +1073,7 @@ def _run_memory_sequence(
             timestamp_ms=int(frame["timestamp_ms"]),
             shared_memory=shared_memory,
         )
-        snapshot = stage.update(context, observation)
+        snapshot = step.update(context, observation)
         final_snapshot = snapshot
         per_frame.append(
             {
@@ -1178,7 +1178,7 @@ def reset_vehicle_memory(
             2,
             "\n".join(
                 [
-                    f"No live memory stage to reset for {vehicle_id!r}.",
+                    f"No live memory step to reset for {vehicle_id!r}.",
                     str(before.get("error") or "Memory component is absent."),
                 ]
             ),
@@ -1746,7 +1746,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
             "provider": "chase-sim",
             "status": "absent",
             "error": (
-                "Automation worker has no live memory stage. "
+                "Automation worker has no live memory step. "
                 f"Stage memory then restart automation: "
                 f"./cli/automa vehicles update memory --id {vehicle_id}"
             ),
@@ -1803,7 +1803,7 @@ def assess_chase_memory_worker_liveness(
 
     ``updated_at_ms`` is the automation-wide state heartbeat refreshed by the
     capture loop. It proves worker publication freshness, not that the memory
-    stage itself just completed an update.
+    step itself just completed an update.
     """
 
     run_status = str(state.get("status") or "")

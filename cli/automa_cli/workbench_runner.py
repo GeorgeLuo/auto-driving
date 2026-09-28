@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision import (
-    ActivatedMemoryStage,
+    ActivatedMemoryStep,
     DecisionCycle,
     DecisionFrameContext,
-    DecisionStages,
+    DecisionSteps,
     MemoryActivation,
     Observation,
     observation_from_perception,
@@ -104,7 +104,7 @@ def _default_mapper() -> PerceptionMapper:
     )
 
 
-def _default_memory_stage(companion: dict[str, Any] | None = None) -> ActivatedMemoryStage:
+def _default_memory_step(companion: dict[str, Any] | None = None) -> ActivatedMemoryStep:
     payload = build_memory_activation_payload(DEFAULT_MEMORY_IMPLEMENTATION)
     section = payload["memory"]
     if companion:
@@ -120,7 +120,7 @@ def _default_memory_stage(companion: dict[str, Any] | None = None) -> ActivatedM
         source_path=Path("workbench-plugin-memory"),
         payload=payload,
     )
-    return ActivatedMemoryStage(activation)
+    return ActivatedMemoryStep(activation)
 
 
 def _safe_status(value: Any) -> str:
@@ -155,7 +155,7 @@ class ImageReplayRunner:
         max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
         max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
         mapper_factory: Callable[[], PerceptionMapper] | None = None,
-        memory_stage_factory: Callable[[], Any] | None = None,
+        memory_step_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.source_root = (
             Path(source_root).expanduser().resolve() if source_root else None
@@ -166,14 +166,14 @@ class ImageReplayRunner:
         self.max_image_bytes = int(max_image_bytes)
         self.mapper_factory = mapper_factory or _default_mapper
         self._mapper_factory_explicit = mapper_factory is not None
-        self.memory_stage_factory = memory_stage_factory
+        self.memory_step_factory = memory_step_factory
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
         self._action_lock = threading.RLock()
         self._worker: threading.Thread | None = None
         self._feed: ImageFeed | None = None
         self._mapper: Any = None
-        self._memory_stage: Any = None
+        self._memory_step: Any = None
         self._shared_memory: dict[str, Any] = {}
         self._decision_engine: Any = None
         self._history: dict[str, dict[str, Any]] = {}
@@ -378,11 +378,11 @@ class ImageReplayRunner:
                 run_id = f"run-{uuid.uuid4().hex}"
                 self._generation += 1
                 generation = self._generation
-                if self._mapper is not None or self._memory_stage is not None:
+                if self._mapper is not None or self._memory_step is not None:
                     self._cleanup_locked()
                 self._feed = None
                 self._mapper = None
-                self._memory_stage = None
+                self._memory_step = None
                 self._decision_engine = None
                 self._history.clear()
                 self._shared_memory = {}
@@ -401,7 +401,7 @@ class ImageReplayRunner:
                         max_image_bytes=self.max_image_bytes,
                     )
                     mapper = self._build_mapper_for_selection(selected_plugin_ids)
-                    memory_stage = self._build_memory_stage_for_selection(selected_plugin_ids)
+                    memory_step = self._build_memory_step_for_selection(selected_plugin_ids)
                     decision_engine = create_shadow_proposals_engine()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
@@ -414,7 +414,7 @@ class ImageReplayRunner:
                 self._feed = feed
                 self.source_dir = str(feed.source_path)
                 self._mapper = mapper
-                self._memory_stage = memory_stage
+                self._memory_step = memory_step
                 self._decision_engine = decision_engine
                 self._state["active_plugin_ids"] = list(selected_plugin_ids)
                 self._state["plugin_order"] = list(selected_plugin_ids)
@@ -709,20 +709,20 @@ class ImageReplayRunner:
                 normalized != self._active_plugin_ids or self._mapper is None
             ):
                 next_mapper = None
-                next_memory_stage = None
+                next_memory_step = None
                 previous_mapper = self._mapper
-                previous_memory_stage = self._memory_stage
+                previous_memory_step = self._memory_step
                 try:
                     next_mapper = self._build_mapper_for_selection(normalized)
-                    next_memory_stage = self._build_memory_stage_for_selection(normalized)
+                    next_memory_step = self._build_memory_step_for_selection(normalized)
                     next_decision_engine = create_shadow_proposals_engine()
                     if previous_mapper is not None:
                         previous_mapper.reset()
-                    if previous_memory_stage is not None:
-                        if isinstance(previous_memory_stage, ActivatedMemoryStage):
-                            previous_memory_stage.reset(self._shared_memory)
+                    if previous_memory_step is not None:
+                        if isinstance(previous_memory_step, ActivatedMemoryStep):
+                            previous_memory_step.reset(self._shared_memory)
                         else:
-                            previous_memory_stage.reset()
+                            previous_memory_step.reset()
                 except Exception as exc:  # noqa: BLE001 - selection boundary
                     if next_mapper is not None:
                         try:
@@ -742,7 +742,7 @@ class ImageReplayRunner:
                         state=self.state(),
                     ) from exc
                 self._mapper = next_mapper
-                self._memory_stage = next_memory_stage
+                self._memory_step = next_memory_step
                 self._decision_engine = next_decision_engine
                 self._shared_memory = {}
 
@@ -803,13 +803,13 @@ class ImageReplayRunner:
             return self.mapper_factory()
         return self._plugin_catalog.build_mapper(selected_plugin_ids)
 
-    def _build_memory_stage_for_selection(self, selected_plugin_ids: tuple[str, ...]) -> Any:
-        if self.memory_stage_factory is not None:
-            return self.memory_stage_factory()
-        return _default_memory_stage(self._plugin_catalog.memory_for_selection(selected_plugin_ids))
+    def _build_memory_step_for_selection(self, selected_plugin_ids: tuple[str, ...]) -> Any:
+        if self.memory_step_factory is not None:
+            return self.memory_step_factory()
+        return _default_memory_step(self._plugin_catalog.memory_for_selection(selected_plugin_ids))
 
     def _memory_implementation_id(self) -> str:
-        activation = getattr(self._memory_stage, "activation", None)
+        activation = getattr(self._memory_step, "activation", None)
         if activation is not None:
             return str(activation.implementation_id)
         selected = set(self._active_plugin_ids)
@@ -916,7 +916,7 @@ class ImageReplayRunner:
                 self._apply_cached_frame_locked(frame, cached)
                 self._record_action_locked("seek", position=position)
                 return copy.deepcopy(self._state)
-            # A future seek must advance the live stages through every unseen
+            # A future seek must advance the live steps through every unseen
             # source frame so their state matches the displayed result.
             unseen = self._feed.frames[len(self._history):position + 1]
         for next_frame in unseen:
@@ -1085,7 +1085,7 @@ class ImageReplayRunner:
                 if frame.position != len(self._history):
                     raise RuntimeError("replay frame would skip uncached source frames")
                 mapper = self._mapper
-                memory_stage = self._memory_stage
+                memory_step = self._memory_step
                 decision_engine = self._decision_engine
             try:
                 snapshot = _snapshot_for_frame(frame)
@@ -1136,10 +1136,10 @@ class ImageReplayRunner:
                     )
 
                 result = DecisionCycle(
-                    DecisionStages(
+                    DecisionSteps(
                         perceive=perceive,
                         observe=observe,
-                        remember=memory_stage,
+                        remember=memory_step,
                     ),
                     idle_reason="workbench-observation-only",
                 ).run(context)
@@ -1258,12 +1258,12 @@ class ImageReplayRunner:
                 mapper_status = "reset"
             except Exception as exc:  # noqa: BLE001 - cleanup boundary
                 mapper_status = f"error: {type(exc).__name__}: {exc}"
-        if self._memory_stage is not None:
+        if self._memory_step is not None:
             try:
-                if isinstance(self._memory_stage, ActivatedMemoryStage):
-                    self._memory_stage.reset(self._shared_memory)
+                if isinstance(self._memory_step, ActivatedMemoryStep):
+                    self._memory_step.reset(self._shared_memory)
                 else:
-                    self._memory_stage.reset()
+                    self._memory_step.reset()
                 memory_status = "reset"
             except Exception as exc:  # noqa: BLE001 - cleanup boundary
                 memory_status = f"error: {type(exc).__name__}: {exc}"
@@ -1279,7 +1279,7 @@ class ImageReplayRunner:
             "recording_enabled": False,
         }
         self._mapper = None
-        self._memory_stage = None
+        self._memory_step = None
         self._decision_engine = None
         return cleanup
 

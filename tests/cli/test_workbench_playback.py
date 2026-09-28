@@ -7,7 +7,7 @@ from urllib.request import urlopen
 from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract, PerceptionSignal
 from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.decision.memory import MemorySnapshot
-from cli.automa_cli.workbench_runner import _default_memory_stage
+from cli.automa_cli.workbench_runner import _default_memory_step
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
     FixtureMapper,
@@ -43,43 +43,43 @@ class SharedMemoryProbe:
         shared_memory = inputs.shared_memory
         self.reads.append((
             shared_memory.get("decision.snapshot"),
-            shared_memory.get("test.stage"),
+            shared_memory.get("test.step"),
         ))
         shared_memory["test.perception"] = inputs.frame_id
         return PerceptionEvidenceBatch(signals=(PerceptionSignal("probe_seen", True),))
 
 
 class WorkbenchTests(unittest.TestCase):
-    def test_shared_memory_connects_plugin_and_memory_stage_across_frames(self):
+    def test_shared_memory_connects_plugin_and_memory_step_across_frames(self):
         mapper = PluginPerceptionMapper(
             plugins=["probe"],
             plugin_specs={"probe": f"{__name__}:SharedMemoryProbe"},
         )
-        stage_reads = []
+        step_reads = []
         snapshots = []
         published = []
 
         def memory_factory():
-            stage = _default_memory_stage()
+            step = _default_memory_step()
 
-            class RecordingStage:
+            class RecordingStep:
                 def __call__(self, context, observation):
-                    stage_reads.append(context.shared_memory["test.perception"])
-                    context.shared_memory["test.stage"] = context.frame_id
-                    snapshot = stage(context, observation)
+                    step_reads.append(context.shared_memory["test.perception"])
+                    context.shared_memory["test.step"] = context.frame_id
+                    snapshot = step(context, observation)
                     snapshots.append(snapshot)
                     published.append(context.shared_memory["decision.snapshot"])
                     return snapshot
 
                 def reset(self):
-                    return stage.reset()
+                    return step.reset()
 
-            return RecordingStage()
+            return RecordingStep()
 
         with image_source(2) as root:
             runner = ImageReplayRunner(
                 root, cadence_ms=0, mapper_factory=lambda: mapper,
-                memory_stage_factory=memory_factory,
+                memory_step_factory=memory_factory,
             )
             runner.start()
             completed = runner.wait(5)
@@ -87,7 +87,7 @@ class WorkbenchTests(unittest.TestCase):
             reads = mapper.plugins[0].reads
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
-            self.assertEqual(reads[1][1], stage_reads[0])
+            self.assertEqual(reads[1][1], step_reads[0])
             self.assertEqual(completed["memory"], snapshots[-1].to_dict())
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")

@@ -364,7 +364,7 @@
       <p class="lead">
         The automation engine treats each vehicle as a sensor-and-control
         boundary. A shared, no-op-friendly cycle can perceive, observe, retain
-        state, and select an action without requiring every stage to be
+        state, and select an action without requiring every step to be
         implemented. The default decision engine is deliberately idle, while
         the explicit PiCar obstacle-avoidance engine provides the first bounded
         live-control path.
@@ -379,7 +379,7 @@
 
     <section class="diagram-shell" aria-labelledby="main-flow-title">
       <h2 id="main-flow-title">Main Runtime Loop</h2>
-      <div class="runtime-grid" role="img" aria-label="A sensor snapshot flows through optional perception and state stages, into a loadable decision engine, then through an environment-specific control gate.">
+      <div class="runtime-grid" role="img" aria-label="A sensor snapshot flows through optional perception and state steps, into a loadable decision engine, then through an environment-specific control gate.">
         <div class="node vehicle">
           <h3>Sensor Input</h3>
           <p>Each tick starts with a generic <code>SensorSnapshot</code>.</p>
@@ -396,7 +396,7 @@
           <h3>Optional Perception</h3>
           <p>A configured mapper turns sensor readings into <code>PerceptionText</code> evidence.</p>
           <ul>
-            <li>The stable stage is agnostic of sensor and evidence kinds.</li>
+            <li>The stable step is agnostic of sensor and evidence kinds.</li>
             <li>Plugins declare and resolve their own input components.</li>
             <li>Plugins emit signals, things, artifacts, and limits.</li>
           </ul>
@@ -408,8 +408,8 @@
           <h3>Observation And State</h3>
           <p>Perception is adapted to the stable decision-facing <code>Observation</code> shape.</p>
           <ul>
-            <li>The default observe stage runs only when perception exists.</li>
-            <li>Memory is an optional stage; memory plugins own retained-evidence transformations.</li>
+            <li>The default observe step runs only when perception exists.</li>
+            <li>Memory is an optional step; memory plugins own retained-evidence transformations.</li>
             <li>Without a configured memory plugin, the memory output is null.</li>
           </ul>
         </div>
@@ -475,7 +475,7 @@
         <div class="step">
           <div>
             <h3>Perceive</h3>
-            <p>The activated generic plugin-chain stage passes a component context over the sensor snapshot. Each configured implementation resolves only the components it needs. The same stage shape runs locally for Chase and on the Donkey host.</p>
+            <p>The activated generic plugin-chain step passes a component context over the sensor snapshot. Each configured implementation resolves only the components it needs. The same step shape runs locally for Chase and on the Donkey host.</p>
           </div>
         </div>
         <div class="step">
@@ -487,7 +487,7 @@
         <div class="step">
           <div>
             <h3>Update Memory</h3>
-            <p>An activated memory plugin transforms observations into a <code>MemorySnapshot</code> for the decision engine. Without a configured memory stage, the cycle carries <code>null</code>.</p>
+            <p>An activated memory plugin transforms observations into a <code>MemorySnapshot</code> for the decision engine. Without a configured memory step, the cycle carries <code>null</code>.</p>
           </div>
         </div>
         <div class="step">
@@ -513,9 +513,9 @@
       <div class="callout">
         <strong>Memory plugins own memory transformations:</strong>
         the shared cycle passes their <code>MemorySnapshot</code> directly to
-        the action stage and exposes it in <code>DecisionCycleResult</code>.
+        the action step and exposes it in <code>DecisionCycleResult</code>.
         Derived evidence belongs in that memory contract, so the harness does
-        not need separate pattern or projection stages.
+        not need separate pattern or projection steps.
       </div>
     </section>
 
@@ -550,14 +550,14 @@
             <td><code>autonomy/decision/observation.py</code></td>
           </tr>
           <tr>
-            <td>Memory Stage</td>
+            <td>Memory Step</td>
             <td>Observation and frame context.</td>
             <td>Optional memory supplied by the activated memory plugin.</td>
             <td><code>autonomy/decision/cycle.py</code></td>
           </tr>
           <tr>
             <td>Decision</td>
-            <td><code>AutonomySnapshot</code> with all available stage outputs.</td>
+            <td><code>AutonomySnapshot</code> with all available step outputs.</td>
             <td>Normalized <code>AutonomyControl</code>.</td>
             <td><code>autonomy/runtime/engine.py</code>, <code>cycle_host.py</code></td>
           </tr>
@@ -585,7 +585,7 @@
           <h3>Recorded Cycle</h3>
           <p>Opt into a bounded recording when the full perception, observation, control, and cycle result need inspection.</p>
           <p><code>./cli/automa vehicles automation run --id chase-sim-chaser --frames 5 --record</code></p>
-          <p>Recorded cycle JSON reflects the actual runtime; unimplemented state stages remain <code>null</code>.</p>
+          <p>Recorded cycle JSON reflects the actual runtime; unimplemented state steps remain <code>null</code>.</p>
         </div>
       </div>
     </section>

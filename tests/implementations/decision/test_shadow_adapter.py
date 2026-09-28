@@ -102,7 +102,7 @@ class ShadowAdapterTests(unittest.TestCase):
         schema = manager.status()["engine_schema"]
         self.assertEqual(schema["engine_id"], "shadow-proposals")
         self.assertEqual(schema["engine_spec"], ADAPTER_ENGINE_SPEC)
-        self.assertEqual(schema["stages"]["action"], "shadow_proposals_run_cycle")
+        self.assertEqual(schema["steps"]["action"], "shadow_proposals_run_cycle")
         self.assertEqual(schema["output"]["movement"], "always idle")
 
     def test_bare_shadow_engine_is_not_activation_spec(self) -> None:

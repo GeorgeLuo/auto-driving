@@ -23,7 +23,7 @@ class ActionProposalMatrixTests(unittest.TestCase):
         for kind in ("pattern", "projection"):
             with self.subTest(kind=kind):
                 with self.assertRaisesRegex(ValueError, "invalid SourceRef.kind"):
-                    SourceRef(kind=kind, id="removed-stage-output")
+                    SourceRef(kind=kind, id="removed-step-output")
 
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
         engine = ShadowProposalsEngine(

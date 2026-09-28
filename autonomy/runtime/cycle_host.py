@@ -4,33 +4,33 @@ from dataclasses import replace
 from typing import Any
 
 from autonomy.memory import SharedMemory
-from autonomy.decision.activation import ActivatedMemoryStage
+from autonomy.decision.activation import ActivatedMemoryStep
 from autonomy.decision.cycle import (
     DecisionCycle,
     DecisionCycleResult,
     DecisionFrameContext,
-    DecisionStages,
+    DecisionSteps,
 )
 from .engine import AutonomySnapshot
 from .manager import AutonomyManager
 
 
 class AutonomyCycleHost:
-    """Run one strict staged cycle around a loadable autonomy engine."""
+    """Run one decision cycle around a loadable autonomy engine."""
 
     def __init__(
         self,
         *,
         manager: AutonomyManager | None = None,
-        stages: DecisionStages | None = None,
+        steps: DecisionSteps | None = None,
     ) -> None:
-        configured_stages = stages or DecisionStages()
-        if configured_stages.choose_action is not None:
-            raise ValueError("AutonomyCycleHost owns the decision action stage")
+        configured_steps = steps or DecisionSteps()
+        if configured_steps.choose_action is not None:
+            raise ValueError("AutonomyCycleHost owns the decision action step")
 
         self.manager = manager or AutonomyManager()
         self.cycle = DecisionCycle(
-            replace(configured_stages, choose_action=self._choose_action),
+            replace(configured_steps, choose_action=self._choose_action),
         )
         self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
@@ -49,27 +49,27 @@ class AutonomyCycleHost:
             "engine": self.manager.status(),
             "last_cycle": self.last_result.to_dict() if self.last_result is not None else None,
         }
-        remember = self.cycle.stages.remember
+        remember = self.cycle.steps.remember
         if remember is not None and callable(getattr(remember, "status", None)):
             payload["memory"] = remember.status()
         return payload
 
     def reset_memory(self) -> Any:
-        """Reset the activated memory stage when present.
+        """Reset the activated memory step when present.
 
-        Returns the post-reset snapshot from the stage, or ``None`` when no
-        memory stage is configured. Does not raise when the stage is absent.
+        Returns the post-reset snapshot from the step, or ``None`` when no
+        memory step is configured. Does not raise when the step is absent.
         """
-        remember = self.cycle.stages.remember
+        remember = self.cycle.steps.remember
         if remember is None:
             self.shared_memory.clear()
             return None
         reset = getattr(remember, "reset", None)
         if not callable(reset):
-            raise TypeError("configured memory stage does not support reset")
+            raise TypeError("configured memory step does not support reset")
         snapshot = (
             reset(self.shared_memory)
-            if isinstance(remember, ActivatedMemoryStage)
+            if isinstance(remember, ActivatedMemoryStep)
             else reset()
         )
         self.shared_memory.clear()

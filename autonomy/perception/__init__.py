@@ -25,7 +25,7 @@ from .plugin import (
 from .inputs import build_perception_request
 from .activation import (
     PERCEPTION_ACTIVATION_SCHEMA,
-    ActivatedPerceptionStage,
+    ActivatedPerceptionStep,
     PerceptionActivation,
     instantiate_perception_mapper,
     load_perception_mapper,
@@ -33,7 +33,7 @@ from .activation import (
 )
 
 __all__ = [
-    "ActivatedPerceptionStage",
+    "ActivatedPerceptionStep",
     "PERCEPTION_ACTIVATION_SCHEMA",
     "PERCEPTION_TEXT_SCHEMA",
     "PerceivedThing",

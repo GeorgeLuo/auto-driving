@@ -155,7 +155,7 @@ class PhysicalDeployTests(unittest.TestCase):
         ).encode("utf-8")
 
         with patch("cli.automa_cli.deploy.urllib_request.urlopen", return_value=response):
-            with self.assertRaisesRegex(RuntimeError, "no live memory stage"):
+            with self.assertRaisesRegex(RuntimeError, "no live memory step"):
                 _verify_physical_autonomy_runtime(
                     target=target,
                     expected_engine_spec="autonomy.runtime.engine:IdleAutonomyEngine",

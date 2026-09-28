@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from autonomy.decision import (
-    ActivatedMemoryStage,
+    ActivatedMemoryStep,
     DecisionFrameContext,
     Observation,
     read_memory_activation,
@@ -21,11 +21,11 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision.memory_activation_fixtures:_SelfContradictingBoundsMemory"
-            stage = ActivatedMemoryStage(
+            step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "declares max_serialized_bytes"):
-                stage.update(
+                step.update(
                     DecisionFrameContext("f1", 1, 1),
                     Observation("o1", 1, {}),
                 )
@@ -38,17 +38,17 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision.memory_activation_fixtures:_NormalizationInflatesSizeMemory"
-            stage = ActivatedMemoryStage(
+            step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "eviction_policy"):
-                stage.update(
+                step.update(
                     DecisionFrameContext("f1", 1, 1),
                     Observation("o1", 1, {}),
                 )
             # Policy mismatch is rejected before silent normalize-and-relabel.
-            self.assertIsNotNone(stage.last_error)
-            self.assertIn("eviction_policy", stage.last_error or "")
+            self.assertIsNotNone(step.last_error)
+            self.assertIn("eviction_policy", step.last_error or "")
 
     def test_rejects_when_normalization_increases_size_past_activation_ceiling(
         self,
@@ -63,15 +63,15 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision.memory_activation_fixtures:_TighterDeclaredSizeMemory"
-            stage = ActivatedMemoryStage(
+            step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "normalized memory snapshot"):
-                stage.update(
+                step.update(
                     DecisionFrameContext("f1", 1, 1),
                     Observation("o1", 1, {}),
                 )
-            self.assertIn("normalized memory snapshot", stage.last_error or "")
+            self.assertIn("normalized memory snapshot", step.last_error or "")
 
     def test_framework_rejects_non_json_property_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,11 +79,11 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision.memory_activation_fixtures:_NonJsonPropertyMemory"
-            stage = ActivatedMemoryStage(
+            step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "JSON"):
-                stage.update(
+                step.update(
                     DecisionFrameContext("frame_9", 9, 900),
                     Observation("obs_9", 890, {}),
                 )
@@ -133,7 +133,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"]["implementation_id"] = "other_id"
             with self.assertRaisesRegex(ValueError, "implementation_id mismatch"):
-                ActivatedMemoryStage(
+                ActivatedMemoryStep(
                     read_memory_activation(_write_payload(tmp, payload))
                 )
 

@@ -75,7 +75,7 @@ class ShadowProposalsAutonomyEngine:
                 "type": "AutonomyControl",
                 "movement": "always idle",
             },
-            "stages": {
+            "steps": {
                 "action": "shadow_proposals_run_cycle",
                 "memory": "inspectable_snapshot",
             },

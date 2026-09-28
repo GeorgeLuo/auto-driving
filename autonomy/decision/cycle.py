@@ -54,13 +54,13 @@ class DecisionFrameContext:
         }
 
 
-PerceiveStage = Callable[[DecisionFrameContext], PerceptionText | None]
-ObserveStage = Callable[[DecisionFrameContext, PerceptionText | None], Observation | None]
-MemoryStage = Callable[
+PerceiveStep = Callable[[DecisionFrameContext], PerceptionText | None]
+ObserveStep = Callable[[DecisionFrameContext, PerceptionText | None], Observation | None]
+MemoryStep = Callable[
     [DecisionFrameContext, Observation | None],
     MemorySnapshot | None,
 ]
-ActionStage = Callable[
+ActionStep = Callable[
     [
         DecisionFrameContext,
         PerceptionText | None,
@@ -72,13 +72,13 @@ ActionStage = Callable[
 
 
 @dataclass(frozen=True)
-class DecisionStages:
-    """Optional stages; memory plugins own retained-evidence transformations."""
+class DecisionSteps:
+    """Optional steps; memory plugins own retained-evidence transformations."""
 
-    perceive: PerceiveStage | None = None
-    observe: ObserveStage | None = None
-    remember: MemoryStage | None = None
-    choose_action: ActionStage | None = None
+    perceive: PerceiveStep | None = None
+    observe: ObserveStep | None = None
+    remember: MemoryStep | None = None
+    choose_action: ActionStep | None = None
 
 
 @dataclass(frozen=True)
@@ -114,39 +114,39 @@ class DecisionCycleResult:
 
 
 class DecisionCycle:
-    """No-op friendly staged controller cycle."""
+    """No-op friendly decision cycle with optional steps."""
 
     def __init__(
         self,
-        stages: DecisionStages | None = None,
+        steps: DecisionSteps | None = None,
         *,
         idle_reason: str = "decision-cycle-idle",
     ) -> None:
-        self.stages = stages or DecisionStages()
+        self.steps = steps or DecisionSteps()
         self.idle_reason = idle_reason
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
         started_at_ms = timestamp_ms()
-        perception = self.stages.perceive(context) if self.stages.perceive else None
-        if self.stages.observe:
-            observation = self.stages.observe(context, perception)
+        perception = self.steps.perceive(context) if self.steps.perceive else None
+        if self.steps.observe:
+            observation = self.steps.observe(context, perception)
         elif perception is not None:
             observation = observation_from_perception(
                 observation_id=context.frame_id,
                 sensor_snapshot=context.sensor_snapshot,
                 perception=perception,
-                metadata={"source": "default_observe_stage"},
+                metadata={"source": "default_observe_step"},
             )
         else:
             observation = None
         try:
-            # Stage return is retained evidence, also stored at
+            # Step return is retained evidence, also stored at
             # shared_memory["decision.snapshot"] by the implementation.
-            memory = self.stages.remember(context, observation) if self.stages.remember else None
+            memory = self.steps.remember(context, observation) if self.steps.remember else None
             if memory is not None and not isinstance(memory, MemorySnapshot):
-                raise TypeError("decision memory stage must return MemorySnapshot or None")
+                raise TypeError("decision memory step must return MemorySnapshot or None")
             if memory is not None and memory.health == "error":
-                raise MemoryUpdateError(memory.error or "memory stage returned an error snapshot")
+                raise MemoryUpdateError(memory.error or "memory step returned an error snapshot")
         except MemoryUpdateError:
             raise
         except Exception as exc:
@@ -166,14 +166,14 @@ class DecisionCycle:
             ):
                 observation = updated_observation
         control = (
-            self.stages.choose_action(context, perception, observation, memory)
-            if self.stages.choose_action
+            self.steps.choose_action(context, perception, observation, memory)
+            if self.steps.choose_action
             else None
         )
         if control is None:
             control = AutonomyControl(confidence=1.0, reason=self.idle_reason)
         elif not isinstance(control, AutonomyControl):
-            raise TypeError("decision action stage must return AutonomyControl or None")
+            raise TypeError("decision action step must return AutonomyControl or None")
 
         return DecisionCycleResult(
             context=context,

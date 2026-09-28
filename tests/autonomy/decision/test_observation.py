@@ -64,7 +64,7 @@ class ObservationAdaptationTests(unittest.TestCase):
             observation_id="frame_007",
             sensor_snapshot=sensor_snapshot,
             perception=perception,
-            metadata={"source": "test-observe-stage"},
+            metadata={"source": "test-observe-step"},
             created_at_ms=0,
         )
 
@@ -77,7 +77,7 @@ class ObservationAdaptationTests(unittest.TestCase):
         self.assertEqual(observation.things[0]["thing_id"], "region_1")
         self.assertEqual(observation.artifacts["overlay"], "artifacts/overlay.png")
         self.assertEqual(observation.metadata["limits"], list(perception.limits))
-        self.assertEqual(observation.metadata["source"], "test-observe-stage")
+        self.assertEqual(observation.metadata["source"], "test-observe-step")
 
         camera = observation.sensor_snapshot["readings"][FRONT_CAMERA_SENSOR_ID]
         self.assertTrue(camera["has_value"])
@@ -106,7 +106,7 @@ class ObservationAdaptationTests(unittest.TestCase):
             observation_id="frame_008",
             sensor_snapshot=None,
             perception=None,
-            metadata={"source": "manual-observe-stage"},
+            metadata={"source": "manual-observe-step"},
             created_at_ms=800,
         )
 
@@ -117,7 +117,7 @@ class ObservationAdaptationTests(unittest.TestCase):
             observation.summary,
             ("observation_available=false reason=no_perception",),
         )
-        self.assertEqual(observation.metadata["source"], "manual-observe-stage")
+        self.assertEqual(observation.metadata["source"], "manual-observe-step")
 
 
 if __name__ == "__main__":

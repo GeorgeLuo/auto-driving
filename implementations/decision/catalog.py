@@ -12,6 +12,7 @@ from autonomy.decision.shadow_runner import (
     ShadowProposalsConfig,
     ShadowProposalsEngine,
 )
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
 from implementations.decision.config import (
     ObstacleAvoidanceConfig,
     engine_config_document,
@@ -22,8 +23,16 @@ from implementations.decision.proposals.avoid_recent_obstruction import (
     propose as avoid_propose,
 )
 
-# Implementation catalog is the sole authority for known proposal plugin ids.
-KNOWN_PROPOSAL_PLUGIN_IDS: frozenset[str] = frozenset({PLUGIN_ID})
+# Packaged definitions resolve through the same core catalog as other steps.
+PROPOSAL_PLUGIN_CATALOG = LocalPluginCatalog(
+    [
+        PluginDefinition(
+            step="proposal",
+            plugin_id=PLUGIN_ID,
+            entrypoint="implementations.decision.proposals.avoid_recent_obstruction:propose",
+        ),
+    ]
+)
 
 
 def validate_engine_config(
@@ -32,12 +41,7 @@ def validate_engine_config(
     """Return the packaged proposal document, or raise if it cannot be used."""
 
     cfg = parse_engine_config(engine_config)
-    for plugin_id in cfg.enabled_plugins:
-        if plugin_id not in KNOWN_PROPOSAL_PLUGIN_IDS:
-            raise ValueError(
-                f"Unknown proposal plugin {plugin_id!r}. "
-                f"Known: {', '.join(sorted(KNOWN_PROPOSAL_PLUGIN_IDS))}."
-            )
+    PluginManager("proposal", PROPOSAL_PLUGIN_CATALOG).select(cfg.enabled_plugins)
     return engine_config_document(cfg)
 
 
@@ -45,11 +49,8 @@ def create_shadow_proposals_engine(
     config: ObstacleAvoidanceConfig | Mapping[str, Any] | None = None,
 ) -> ShadowProposalsEngine:
     cfg = parse_engine_config(config)
-    # Reject unknown enabled ids at activation against this catalog (not a
-    # caller-supplied known_plugins field).
-    for plugin_id in cfg.enabled_plugins:
-        if plugin_id not in KNOWN_PROPOSAL_PLUGIN_IDS:
-            raise ValueError(f"unknown plugin_id {plugin_id!r}")
+    manager = PluginManager("proposal", PROPOSAL_PLUGIN_CATALOG)
+    manager.select(cfg.enabled_plugins)
 
     def _bound(source: DecisionDataSource) -> ActionProposal:
         return avoid_propose(
@@ -61,7 +62,7 @@ def create_shadow_proposals_engine(
 
     plugins = {PLUGIN_ID: _bound}
     engine = ShadowProposalsEngine.create(
-        config=ShadowProposalsConfig(enabled_plugins=cfg.enabled_plugins),
+        config=ShadowProposalsConfig(enabled_plugins=manager.selected_ids),
         plugins=plugins,
     )
     engine.reported_config = engine_config_document(cfg)

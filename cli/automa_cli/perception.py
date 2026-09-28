@@ -4,8 +4,13 @@ import importlib
 import json
 import os
 import shutil
+import stat
 import sys
+import tempfile
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -60,6 +65,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "perception"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 LAB_CANDIDATE_MAPPER_SPEC = "cli.automa_cli.lab_plugins:LabPerceptionMapper"
+_STAGED_BUNDLE_IMPORT_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -423,7 +429,7 @@ def set_vehicle_perception_plugin(
             "enabled": enabled,
             "changed_at_ms": int(time.time() * 1000),
         }
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        _write_json_atomically(manifest_path, manifest)
 
     payload = {
         "schema": "vehicle_perception_plugin_update_v0",
@@ -1039,21 +1045,10 @@ def _instantiate_mapper_from_bundle(
     mapper_config: dict[str, Any],
     bundle_root: Path,
 ):
-    """Construct a staged mapper while all of its imports resolve to one bundle."""
+    """Construct a staged mapper and retain its bundle import context."""
 
-    bundle_root_text = str(bundle_root)
-    staged_prefixes = ("autonomy", "implementations")
-    cached = {
-        name: module
-        for name, module in list(sys.modules.items())
-        if name in staged_prefixes or any(name.startswith(f"{prefix}.") for prefix in staged_prefixes)
-    }
-    for name in cached:
-        sys.modules.pop(name, None)
-    previous_dont_write_bytecode = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True
-    sys.path.insert(0, bundle_root_text)
-    try:
+    import_context = _StagedBundleImportContext(bundle_root)
+    with import_context.activate():
         module = importlib.import_module(module_name)
         mapper_cls = getattr(module, class_name)
         mapper = mapper_cls(**mapper_config)
@@ -1064,20 +1059,69 @@ def _instantiate_mapper_from_bundle(
                     f"does not implement {method_name}()"
                 )
         mapper.reset()
-    finally:
-        sys.dont_write_bytecode = previous_dont_write_bytecode
-        try:
-            sys.path.remove(bundle_root_text)
-        except ValueError:
-            pass
-        for name in [
-            name
-            for name in list(sys.modules)
-            if name in staged_prefixes or any(name.startswith(f"{prefix}.") for prefix in staged_prefixes)
-        ]:
-            sys.modules.pop(name, None)
-        sys.modules.update(cached)
+
+    manager = getattr(mapper, "plugin_manager", None)
+    if callable(getattr(manager, "select", None)):
+        for method_name in ("reset", "describe_schema", "perceive", "close"):
+            method = getattr(mapper, method_name, None)
+            if not callable(method):
+                continue
+
+            def invoke_in_bundle(*args, _method=method, **kwargs):
+                with import_context.activate():
+                    return _method(*args, **kwargs)
+
+            setattr(mapper, method_name, invoke_in_bundle)
     return mapper
+
+
+class _StagedBundleImportContext:
+    """Temporarily activate one bundle's modules for a manager-backed mapper."""
+
+    _PREFIXES = ("autonomy", "implementations")
+
+    def __init__(self, bundle_root: Path) -> None:
+        self.bundle_root = str(bundle_root)
+        self.modules: dict[str, Any] = {}
+
+    @contextmanager
+    def activate(self) -> Iterator[None]:
+        with _STAGED_BUNDLE_IMPORT_LOCK:
+            cached = {
+                name: module
+                for name, module in list(sys.modules.items())
+                if self._is_bundle_module(name)
+            }
+            for name in cached:
+                sys.modules.pop(name, None)
+            sys.modules.update(self.modules)
+            previous_dont_write_bytecode = sys.dont_write_bytecode
+            sys.dont_write_bytecode = True
+            sys.path.insert(0, self.bundle_root)
+            try:
+                yield
+            finally:
+                self.modules = {
+                    name: module
+                    for name, module in list(sys.modules.items())
+                    if self._is_bundle_module(name)
+                }
+                for name in list(sys.modules):
+                    if self._is_bundle_module(name):
+                        sys.modules.pop(name, None)
+                sys.modules.update(cached)
+                try:
+                    sys.path.remove(self.bundle_root)
+                except ValueError:
+                    pass
+                sys.dont_write_bytecode = previous_dont_write_bytecode
+
+    @classmethod
+    def _is_bundle_module(cls, name: str) -> bool:
+        return any(
+            name == prefix or name.startswith(f"{prefix}.")
+            for prefix in cls._PREFIXES
+        )
 
 
 def _close_mapper(mapper: Any) -> None:
@@ -1535,6 +1579,27 @@ def _configured_plugins(activation: dict[str, Any]) -> list[str]:
     return [str(plugin) for plugin in plugins]
 
 
+def _write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
+    """Replace a JSON activation in one step so the running worker can poll it."""
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            mode = None
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            if mode is not None:
+                os.fchmod(stream.fileno(), mode)
+            stream.write(json.dumps(payload, indent=2, sort_keys=True))
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
 def _available_plugins(*, mapper_spec: str, mapper_config: dict[str, Any], bundle_root: Path) -> list[str]:
     module_name, separator, _class_name = mapper_spec.partition(":")
     if not separator:
@@ -1563,5 +1628,6 @@ def _format_plugin_update(payload: dict[str, Any]) -> str:
             f"{status}: {payload['plugin']} {action} for {payload['vehicle_id']}",
             f"Activation: {payload['activation']}",
             f"Enabled plugins: {', '.join(payload['plugins_after']) or 'none'}",
+            "A running automation applies this change on its next perception frame.",
         ]
     )

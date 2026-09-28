@@ -1,6 +1,6 @@
-"""Stage-independent plugin discovery and selection.
+"""Step-independent plugin discovery and selection.
 
-The core tracks which plugin definitions are selected. A stage owns construction,
+The core tracks which plugin definitions are selected. A step owns construction,
 execution, reset, and validation of the behavior declared by those definitions.
 Definitions may come from packaged entries, explicit JSON files, or a future
 catalog implementing ``PluginResolver``.
@@ -25,9 +25,9 @@ class PluginManagementError(ValueError):
 
 @dataclass(frozen=True)
 class PluginDefinition:
-    """The common fields needed to select a plugin for any stage."""
+    """The common fields needed to select a plugin for any step."""
 
-    stage: str
+    step: str
     plugin_id: str
     entrypoint: str
     config: Mapping[str, Any] = field(default_factory=dict)
@@ -35,7 +35,7 @@ class PluginDefinition:
     source: Path | None = None
 
     def __post_init__(self) -> None:
-        for name in ("stage", "plugin_id", "entrypoint"):
+        for name in ("step", "plugin_id", "entrypoint"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise PluginManagementError(f"plugin {name} must be a non-empty string")
@@ -58,7 +58,7 @@ class PluginDefinition:
             raise PluginManagementError(f"plugin file {source} must contain an object")
         try:
             return cls(
-                stage=payload["stage"],
+                step=payload["step"],
                 plugin_id=payload["id"],
                 entrypoint=payload["entrypoint"],
                 config=payload.get("config", {}),
@@ -72,7 +72,7 @@ class PluginDefinition:
 class PluginResolver(Protocol):
     """An ID or file resolver; a remote catalog can provide this later."""
 
-    def resolve(self, stage: str, reference: PluginReference) -> PluginDefinition: ...
+    def resolve(self, step: str, reference: PluginReference) -> PluginDefinition: ...
 
 
 class LocalPluginCatalog:
@@ -84,40 +84,40 @@ class LocalPluginCatalog:
             self.register(definition)
 
     def register(self, definition: PluginDefinition) -> None:
-        key = (definition.stage, definition.plugin_id)
+        key = (definition.step, definition.plugin_id)
         existing = self._definitions.get(key)
         if existing is not None and existing != definition:
             raise PluginManagementError(
-                f"duplicate plugin id {definition.plugin_id!r} for stage {definition.stage!r}"
+                f"duplicate plugin id {definition.plugin_id!r} for step {definition.step!r}"
             )
         self._definitions[key] = definition
 
-    def list(self, stage: str) -> tuple[PluginDefinition, ...]:
+    def list(self, step: str) -> tuple[PluginDefinition, ...]:
         return tuple(
-            definition for (item_stage, _), definition in sorted(self._definitions.items())
-            if item_stage == stage
+            definition for (item_step, _), definition in sorted(self._definitions.items())
+            if item_step == step
         )
 
-    def resolve(self, stage: str, reference: PluginReference) -> PluginDefinition:
+    def resolve(self, step: str, reference: PluginReference) -> PluginDefinition:
         if isinstance(reference, Path):
             return PluginDefinition.from_file(reference)
         if not isinstance(reference, str) or not reference.strip():
             raise PluginManagementError("plugin reference must be an ID or file path")
-        definition = self._definitions.get((stage, reference))
+        definition = self._definitions.get((step, reference))
         if definition is not None:
             return definition
         if reference.endswith(".json") or "/" in reference or "\\" in reference:
             return PluginDefinition.from_file(reference)
-        raise PluginManagementError(f"unknown plugin id {reference!r} for stage {stage!r}")
+        raise PluginManagementError(f"unknown plugin id {reference!r} for step {step!r}")
 
 
 class PluginManager:
-    """Manage a stage's ordered active definitions without imposing a count cap."""
+    """Manage a step's ordered active definitions without imposing a count cap."""
 
-    def __init__(self, stage: str, resolver: PluginResolver) -> None:
-        if not isinstance(stage, str) or not stage.strip():
-            raise PluginManagementError("stage must be a non-empty string")
-        self.stage = stage
+    def __init__(self, step: str, resolver: PluginResolver) -> None:
+        if not isinstance(step, str) or not step.strip():
+            raise PluginManagementError("step must be a non-empty string")
+        self.step = step
         self.resolver = resolver
         self._selected: tuple[PluginDefinition, ...] = ()
 
@@ -146,12 +146,12 @@ class PluginManager:
         for reference in values:
             definition = (
                 reference if isinstance(reference, PluginDefinition)
-                else self.resolver.resolve(self.stage, reference)
+                else self.resolver.resolve(self.step, reference)
             )
-            if definition.stage != self.stage:
+            if definition.step != self.step:
                 raise PluginManagementError(
-                    f"plugin {definition.plugin_id!r} belongs to {definition.stage!r}, "
-                    f"not {self.stage!r}"
+                    f"plugin {definition.plugin_id!r} belongs to {definition.step!r}, "
+                    f"not {self.step!r}"
                 )
             existing = selected.get(definition.plugin_id)
             if existing is not None and existing != definition:
@@ -163,7 +163,7 @@ class PluginManager:
         return self._selected
 
     def add(self, reference: PluginReference) -> tuple[PluginDefinition, ...]:
-        definition = self.resolver.resolve(self.stage, reference)
+        definition = self.resolver.resolve(self.step, reference)
         if definition.plugin_id in self.selected_ids:
             # A file reference may have changed since the previous selection.
             return self.select(

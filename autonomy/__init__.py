@@ -6,5 +6,5 @@ Subpackages are layered by dependency direction:
 - perception: sensor-to-evidence contracts and reusable primitives
 - decision: observation shapes, memory values, and decision cycle steps
 - runtime: loadable engine contracts and lifecycle management
-- plugins: stage-independent plugin definitions, resolution, and selection
+- plugins: step-independent plugin definitions, resolution, and selection
 """

@@ -3,7 +3,13 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
-from autonomy.plugins import PluginDefinition, PluginManagementError, replace_selection
+from autonomy.plugins import (
+    PluginDefinition,
+    PluginManagementError,
+    PluginManager,
+    PluginSelectionRuntime,
+    replace_selection,
+)
 
 
 def _definition(plugin_id: str, **overrides: Any) -> PluginDefinition:
@@ -208,6 +214,67 @@ class ReplaceSelectionTests(unittest.TestCase):
                 (),
                 load=lambda _definition: object(),
             )
+
+
+class PluginSelectionRuntimeTests(unittest.TestCase):
+    def test_applies_multiple_manager_selections_and_reconciles_on_next_call(self) -> None:
+        definitions = tuple(_definition(plugin_id) for plugin_id in ("first", "second", "third"))
+        manager = PluginManager.from_specs(
+            "perception",
+            {definition.plugin_id: definition.entrypoint for definition in definitions},
+            {"second": {"mode": "configured"}},
+        )
+        self.assertEqual(manager.selected, ())
+        manager.select(("first", "second"))
+        self.assertEqual(manager.selected[1].config, {"mode": "configured"})
+        runtime = PluginSelectionRuntime(manager)
+        loaded: dict[str, object] = {}
+        reset: list[object] = []
+
+        def load(definition: PluginDefinition) -> object:
+            instance = object()
+            loaded[definition.plugin_id] = instance
+            return instance
+
+        first_application = runtime.apply(load=load, reset=reset.append)
+        self.assertEqual(
+            tuple(definition.plugin_id for definition, _instance in first_application),
+            ("first", "second"),
+        )
+        self.assertEqual(len(first_application), 2)
+
+        manager.select(("second", "third"))
+        second_application = runtime.apply(load=load, reset=reset.append)
+
+        self.assertEqual(
+            tuple(definition.plugin_id for definition, _instance in second_application),
+            ("second", "third"),
+        )
+        self.assertIs(second_application[0][1], first_application[1][1])
+        self.assertIs(second_application[1][1], loaded["third"])
+        self.assertEqual(reset, [first_application[0][1]])
+        self.assertEqual(runtime.applied, second_application)
+
+    def test_failed_validation_keeps_the_previous_applied_selection(self) -> None:
+        first = _definition("first")
+        second = _definition("second")
+        manager = PluginManager.from_specs(
+            "perception",
+            {definition.plugin_id: definition.entrypoint for definition in (first, second)},
+        )
+        manager.select(("first",))
+        runtime = PluginSelectionRuntime(manager)
+        original = runtime.apply(load=lambda _definition: object())
+        manager.select(("second",))
+
+        def reject(_instances: tuple[object, ...]) -> None:
+            raise ValueError("step-specific validation failed")
+
+        with self.assertRaisesRegex(ValueError, "step-specific validation failed"):
+            runtime.apply(load=lambda _definition: object(), validate=reject)
+
+        self.assertEqual(runtime.applied, original)
+        self.assertEqual(manager.selected_ids, ("second",))
 
 
 if __name__ == "__main__":

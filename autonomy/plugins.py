@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 
 PluginReference = str | Path
@@ -122,6 +122,31 @@ class PluginManager:
         self.resolver = resolver
         self._selected: tuple[PluginDefinition, ...] = ()
 
+    @classmethod
+    def from_specs(
+        cls,
+        step: str,
+        specs: Mapping[str, str],
+        configs: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> PluginManager:
+        """Build a local manager from step-scoped entrypoint and config maps."""
+
+        if not isinstance(specs, Mapping):
+            raise PluginManagementError("plugin specs must be a mapping")
+        if configs is not None and not isinstance(configs, Mapping):
+            raise PluginManagementError("plugin configs must be a mapping")
+        plugin_configs = configs or {}
+        catalog = LocalPluginCatalog(
+            PluginDefinition(
+                step=step,
+                plugin_id=plugin_id,
+                entrypoint=entrypoint,
+                config=plugin_configs.get(plugin_id, {}),
+            )
+            for plugin_id, entrypoint in specs.items()
+        )
+        return cls(step, catalog)
+
     @property
     def selected(self) -> tuple[PluginDefinition, ...]:
         return self._selected
@@ -183,6 +208,52 @@ class PluginManager:
 
 
 _T = TypeVar("_T")
+
+
+class PluginSelectionRuntime(Generic[_T]):
+    """Apply a manager's selected definitions to step-owned plugin instances.
+
+    The manager is the source of truth for the desired selection. This runtime
+    retains the instances already applied and reconciles them with the manager
+    whenever ``apply`` is called. It does not impose a plugin-count limit or
+    define how a step loads, validates, executes, or resets its plugin type.
+    """
+
+    def __init__(self, manager: PluginManager) -> None:
+        if not isinstance(manager, PluginManager):
+            raise PluginManagementError("manager must be a PluginManager")
+        self.manager = manager
+        self._applied: tuple[tuple[PluginDefinition, _T], ...] = ()
+
+    @property
+    def applied(self) -> tuple[tuple[PluginDefinition, _T], ...]:
+        """The definitions and instances currently published by the step."""
+
+        return self._applied
+
+    def apply(
+        self,
+        *,
+        load: Callable[[PluginDefinition], _T],
+        validate: Callable[[tuple[_T, ...]], None] | None = None,
+        reset: Callable[[_T], None] | None = None,
+    ) -> tuple[tuple[PluginDefinition, _T], ...]:
+        """Apply the manager's current selection and return its instances.
+
+        The selection is snapshotted once. If the manager changes during
+        application, the new selection is picked up by the next call.
+        """
+
+        selected = tuple(self.manager.selected)
+        instances = replace_selection(
+            self._applied,
+            selected,
+            load=load,
+            validate=validate,
+            reset=reset,
+        )
+        self._applied = tuple(zip(selected, instances, strict=True))
+        return self._applied
 
 
 def replace_selection(

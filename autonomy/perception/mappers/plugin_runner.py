@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from threading import RLock
 from typing import Any, Callable
 
-from autonomy.plugins import PluginDefinition, PluginManager, replace_selection
+from autonomy.plugins import PluginManager, PluginSelectionRuntime
 from autonomy.perception.evidence import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -78,15 +78,15 @@ class PluginPerceptionMapper:
             )
 
         self.plugin_manager = plugin_manager
+        self._selection_runtime = PluginSelectionRuntime(plugin_manager)
         self.plugin_specs = specs
         self.plugin_configs = configs
         self._runtime_lock = RLock()
-        self._applied_selection: tuple[PluginDefinition, ...] = ()
         self.plugin_ids: tuple[str, ...] = ()
         self.plugins: tuple[Any, ...] = ()
         self._component_providers: dict[str, ComponentProvider] = {}
         self._component_provider_specs: dict[str, str] = {}
-        self._apply_selection(tuple(self.plugin_manager.selected))
+        self._apply_selection()
 
     def reset(self, shared_memory=None) -> None:
         with self._runtime_lock:
@@ -163,11 +163,8 @@ class PluginPerceptionMapper:
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
         with self._runtime_lock:
-            # Take one immutable selection snapshot for this sensor frame. A
-            # concurrent manager update is picked up by the next call.
-            self._apply_selection(
-                tuple(self.plugin_manager.selected), request.shared_memory
-            )
+            # Core snapshots the manager's selection once for this sensor frame.
+            self._apply_selection(request.shared_memory)
             return self._perceive_selected(request)
 
     def _perceive_selected(self, request: PerceptionRequest) -> PerceptionText:
@@ -244,16 +241,15 @@ class PluginPerceptionMapper:
 
     def _apply_selection(
         self,
-        selected: tuple[PluginDefinition, ...],
         shared_memory=None,
     ) -> None:
-        if selected == self._applied_selection:
-            return
-
-        candidate_provider_specs: dict[str, str] = {}
-        candidate_providers: dict[str, ComponentProvider] = {}
+        candidate_provider_specs: dict[str, str] | None = None
+        candidate_providers: dict[str, ComponentProvider] | None = None
 
         def validate(candidate_plugins: tuple[Any, ...]) -> None:
+            nonlocal candidate_provider_specs, candidate_providers
+            candidate_provider_specs = {}
+            candidate_providers = {}
             runtime_ids = [plugin.plugin_id for plugin in candidate_plugins]
             if len(runtime_ids) != len(set(runtime_ids)):
                 raise ValueError("perception plugin runtime ids must be unique")
@@ -278,9 +274,7 @@ class PluginPerceptionMapper:
                     )
                 candidate_providers[provider_spec] = provider
 
-        candidate_plugins = replace_selection(
-            tuple(zip(self._applied_selection, self.plugins, strict=True)),
-            selected,
+        applied = self._selection_runtime.apply(
             load=lambda definition: _instantiate_plugin(
                 definition.plugin_id,
                 definition.entrypoint,
@@ -289,6 +283,11 @@ class PluginPerceptionMapper:
             validate=validate,
             reset=lambda plugin: _reset_plugin(plugin, shared_memory),
         )
+        if candidate_provider_specs is None or candidate_providers is None:
+            return
+
+        selected = tuple(definition for definition, _plugin in applied)
+        candidate_plugins = tuple(plugin for _definition, plugin in applied)
 
         # Publish only after all newly selected plugins and their providers
         # have been constructed and validated.
@@ -301,9 +300,8 @@ class PluginPerceptionMapper:
             candidate_specs[definition.plugin_id] = definition.entrypoint
             candidate_configs[definition.plugin_id] = dict(definition.config)
 
-        self._applied_selection = selected
         self.plugin_ids = tuple(definition.plugin_id for definition in selected)
-        self.plugins = tuple(candidate_plugins)
+        self.plugins = candidate_plugins
         self._component_provider_specs = candidate_provider_specs
         self._component_providers = candidate_providers
         self.plugin_specs = candidate_specs

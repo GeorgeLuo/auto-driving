@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
+from autonomy.plugins import PluginManager
 
 
 def perception_plugin_manager(
@@ -14,14 +14,4 @@ def perception_plugin_manager(
 ) -> PluginManager:
     """Create a perception manager without selecting or constructing plugins."""
 
-    configs = configs or {}
-    catalog = LocalPluginCatalog(
-        PluginDefinition(
-            step="perception",
-            plugin_id=plugin_id,
-            entrypoint=spec,
-            config=configs.get(plugin_id, {}),
-        )
-        for plugin_id, spec in specs.items()
-    )
-    return PluginManager("perception", catalog)
+    return PluginManager.from_specs("perception", specs, configs)

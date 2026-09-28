@@ -1,4 +1,4 @@
-"""Adapt perception mapper configuration to common plugin management."""
+"""Build the perception-scoped view of the common plugin manager."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ def perception_plugin_manager(
     specs: Mapping[str, str],
     configs: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> PluginManager:
+    """Create a perception manager without selecting or constructing plugins."""
+
     configs = configs or {}
     catalog = LocalPluginCatalog(
         PluginDefinition(

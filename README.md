@@ -312,14 +312,14 @@ promotion decision moves them into `implementations/`.
 ### Perception Plugins
 
 The staged perception schema reports the available and enabled plugins. Enable
-or disable one plugin at a time, then restart the worker so it imports the new
-chain:
+or disable one plugin at a time. A running worker applies the updated selection
+at the next perception frame; if automation is stopped, it uses the selection
+the next time it starts:
 
 ```sh
 ./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles perception enable --id chase-sim-chaser floor_plane
 ./cli/automa vehicles perception disable --id chase-sim-chaser sim_color_targets
-./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
 
 ## Physical PiRacer Workflow

@@ -3,7 +3,7 @@
 from .bounded_evidence import BoundedEvidenceLedger
 from .catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
-    MEMORY_IMPLEMENTATIONS,
+    MEMORY_PLUGIN_CATALOG,
     available_memory_implementation_ids,
     build_memory_activation_payload,
     memory_implementation_spec,
@@ -12,7 +12,7 @@ from .catalog import (
 __all__ = [
     "BoundedEvidenceLedger",
     "DEFAULT_MEMORY_IMPLEMENTATION",
-    "MEMORY_IMPLEMENTATIONS",
+    "MEMORY_PLUGIN_CATALOG",
     "available_memory_implementation_ids",
     "build_memory_activation_payload",
     "memory_implementation_spec",

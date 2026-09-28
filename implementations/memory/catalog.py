@@ -5,21 +5,24 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
+
 
 DEFAULT_MEMORY_IMPLEMENTATION = "bounded_evidence"
 
-MEMORY_IMPLEMENTATIONS: dict[str, dict[str, Any]] = {
-    "bounded_evidence": {
-        "implementation_id": "bounded_evidence",
-        "implementation_spec": (
+MEMORY_PLUGIN_CATALOG = LocalPluginCatalog([
+    PluginDefinition(
+        step="memory",
+        plugin_id="bounded_evidence",
+        entrypoint=(
             "implementations.memory.bounded_evidence:BoundedEvidenceLedger"
         ),
-        "description": (
+        metadata={"description": (
             "Bounded recency ledger of observation things and signals with "
             "provenance, age expiry, and oldest-first eviction. Does not claim "
             "semantic object identity or world truth."
-        ),
-        "default_config": {
+        )},
+        config={
             "max_records": 32,
             "max_age_ms": 10_000,
             "eviction_policy": "oldest_first",
@@ -29,27 +32,22 @@ MEMORY_IMPLEMENTATIONS: dict[str, dict[str, Any]] = {
             "max_property_bytes": 4_096,
             "max_serialized_bytes": 262_144,
         },
-    },
-}
+    ),
+])
 
 
 def available_memory_implementation_ids() -> tuple[str, ...]:
-    return tuple(sorted(MEMORY_IMPLEMENTATIONS))
+    return tuple(plugin.plugin_id for plugin in MEMORY_PLUGIN_CATALOG.list("memory"))
 
 
 def memory_implementation_spec(implementation_id: str) -> dict[str, Any]:
-    try:
-        entry = MEMORY_IMPLEMENTATIONS[implementation_id]
-    except KeyError as exc:
-        known = ", ".join(available_memory_implementation_ids()) or "(none)"
-        raise KeyError(
-            f"unknown memory implementation {implementation_id!r}; known: {known}"
-        ) from exc
+    # Adapt the current single-implementation activation to core selection.
+    entry, = PluginManager("memory", MEMORY_PLUGIN_CATALOG).select([implementation_id])
     return {
-        "implementation_id": entry["implementation_id"],
-        "implementation_spec": entry["implementation_spec"],
-        "description": entry["description"],
-        "default_config": deepcopy(entry["default_config"]),
+        "implementation_id": entry.plugin_id,
+        "implementation_spec": entry.entrypoint,
+        "description": entry.metadata.get("description", ""),
+        "default_config": deepcopy(dict(entry.config)),
     }
 
 
@@ -61,7 +59,7 @@ def build_memory_activation_payload(
     """Build a current-schema memory activation document payload."""
 
     entry = memory_implementation_spec(implementation_id)
-    config = deepcopy(entry["default_config"])
+    config = entry["default_config"]
     if config_overrides:
         config.update(config_overrides)
     return {

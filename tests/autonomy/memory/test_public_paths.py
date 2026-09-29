@@ -30,8 +30,19 @@ from autonomy.decision import (
     MemorySnapshot as DecisionPackageSnapshot,
     read_memory_activation as decision_read_memory_activation,
 )
+from autonomy.decision.activation import (
+    ActivatedMemoryStep as DecisionModuleActivatedMemoryStep,
+    MemoryActivation as DecisionModuleMemoryActivation,
+    bounds_from_config as decision_bounds_from_config,
+    read_memory_activation as decision_module_read_memory_activation,
+)
 from autonomy.decision.memory import MemorySnapshot as DecisionModuleSnapshot
 from autonomy.decision.plugin import MemoryImplementation as DecisionModuleProtocol
+from autonomy.memory.activation import (
+    MemoryActivation as DirectMemoryActivation,
+    bounds_from_config as direct_bounds_from_config,
+    read_memory_activation as direct_read_memory_activation,
+)
 from autonomy.perception.mappers import PluginPerceptionMapper as MapperPackageClass
 from autonomy.perception.mappers.plugin_runner import (
     PluginPerceptionMapper as MapperModuleClass,
@@ -44,9 +55,12 @@ assert MapperPackageClass is PluginPerceptionMapper is MapperModuleClass
 assert DecisionModuleSnapshot is DecisionPackageSnapshot is PackageSnapshot is MemorySnapshot
 assert DecisionModuleProtocol is DecisionPackageProtocol is PackageProtocol is MemoryImplementation
 assert DecisionActivatedMemoryStep is ActivatedMemoryStep
+assert DecisionModuleActivatedMemoryStep is ActivatedMemoryStep
 assert ActivationMemoryStep is ActivatedMemoryStep is PluginMemoryRunner
 assert DirectPluginMemoryRunner is PluginMemoryRunner
-assert decision_read_memory_activation is read_memory_activation
+assert DecisionModuleMemoryActivation is MemoryActivation is DirectMemoryActivation
+assert decision_read_memory_activation is read_memory_activation is direct_read_memory_activation
+assert decision_bounds_from_config is direct_bounds_from_config
 assert HostSharedMemory is SharedMemory
 assert MemoryActivation is not None and memory_plugin_manager is not None
 """
@@ -61,6 +75,7 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.perception",
             "import autonomy.memory.plugin",
             "import autonomy.perception.mappers.plugin_runner",
+            "from autonomy.decision.activation import MemoryActivation",
         )
         for first in orders:
             with self.subTest(first=first):

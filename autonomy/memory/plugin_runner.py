@@ -22,7 +22,12 @@ from autonomy.decision.memory import (
 from autonomy.decision.observation import Observation
 from autonomy.decision.plugin import MemoryImplementation
 from autonomy.memory import SharedMemory
-from autonomy.plugins import PluginDefinition, PluginManager, PluginSelectionRuntime
+from autonomy.plugins import (
+    PluginDefinition,
+    PluginManager,
+    PluginSelectionRuntime,
+    plugin_report as build_plugin_report,
+)
 
 from .activation import (
     FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
@@ -186,6 +191,28 @@ class PluginMemoryRunner:
         self.last_snapshot = detach_memory_snapshot(snapshot) if snapshot is not None else None
         return detach_memory_snapshot(snapshot) if snapshot is not None else None
 
+    def plugin_report(self) -> dict[str, Any]:
+        """Report catalog, requested, and published plugins for applied instances."""
+
+        with self._runtime_lock:
+            return self._plugin_report()
+
+    def _plugin_report(self) -> dict[str, Any]:
+        records = [
+            {
+                "plugin_id": plugin.plugin_id,
+                "implementation_id": plugin.implementation_id,
+                "duration_ms": plugin.last_duration_ms,
+                "error": plugin.last_error,
+            }
+            for plugin in self.plugins
+        ]
+        return build_plugin_report(
+            self.plugin_manager,
+            self._selection_runtime.applied,
+            records,
+        )
+
     def status(self) -> dict[str, Any]:
         with self._runtime_lock:
             last = self.last_snapshot
@@ -199,6 +226,7 @@ class PluginMemoryRunner:
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),
                 "plugins": [plugin.status() for plugin in self.plugins],
+                "plugin_report": self._plugin_report(),
                 "update_count": self.update_count,
                 "reset_count": self.reset_count,
                 "failure_count": self.failure_count,

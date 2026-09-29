@@ -5,8 +5,9 @@ execution, reset, and validation of the behavior declared by those definitions.
 ``replace_selection`` sequences that handoff when a resolved selection changes.
 ``PluginSelectionRuntime`` can prepare the same handoff and commit it later, so
 the next selection is loaded and validated before published instances are reset.
-Definitions may come from packaged entries, explicit JSON files, or a future
-catalog implementing ``PluginResolver``.
+``plugin_report`` describes the catalog, the manager's requested selection, and
+the instances a step has published. Definitions may come from packaged entries,
+explicit JSON files, or a future catalog implementing ``PluginResolver``.
 """
 
 from __future__ import annotations
@@ -350,6 +351,34 @@ def replace_selection(
     return tuple(instance for _definition, instance in staged)
 
 
+def plugin_report(
+    manager: PluginManager,
+    applied: Iterable[tuple[PluginDefinition, Any]],
+    records: Iterable[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Describe availability, the requested selection, and published plugins.
+
+    ``records`` describe applied instances, matched by catalog ``plugin_id``.
+    Only identity, timing, and error are copied. A record for a plugin that is
+    not applied is ignored, and duration and error stay null when omitted.
+    """
+
+    if not isinstance(manager, PluginManager):
+        raise PluginManagementError("manager must be a PluginManager")
+    applied_pairs = _applied_pairs(applied)
+    supplied = _report_records(records)
+    plugins = [
+        _report_plugin(definition.plugin_id, supplied.get(definition.plugin_id, {}))
+        for definition, _instance in applied_pairs
+    ]
+    return {
+        "available_plugin_ids": sorted(manager.available_ids),
+        "selected_plugin_ids": list(manager.selected_ids),
+        "applied_plugin_ids": [definition.plugin_id for definition, _instance in applied_pairs],
+        "plugins": plugins,
+    }
+
+
 def _stage_selection(
     applied: Iterable[tuple[PluginDefinition, _T]],
     selected: Iterable[PluginDefinition],
@@ -461,3 +490,52 @@ def _applied_pairs(
         seen.add(definition.plugin_id)
         pairs.append((definition, item[1]))
     return tuple(pairs)
+
+
+def _report_records(
+    records: Iterable[Mapping[str, Any]] | None,
+) -> dict[str, Mapping[str, Any]]:
+    if records is None:
+        return {}
+    indexed: dict[str, Mapping[str, Any]] = {}
+    for record in _ordered_collection(records, what="plugin report records"):
+        if not isinstance(record, Mapping):
+            raise PluginManagementError("plugin report records must be objects")
+        plugin_id = record.get("plugin_id")
+        if not isinstance(plugin_id, str) or not plugin_id.strip():
+            raise PluginManagementError("plugin report records need a plugin_id")
+        indexed.setdefault(plugin_id, record)
+    return indexed
+
+
+def _report_plugin(plugin_id: str, record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "plugin_id": plugin_id,
+        "implementation_id": _report_identifier(record.get("implementation_id")),
+        "duration_ms": _report_duration(record.get("duration_ms")),
+        "error": _report_error(record.get("error")),
+    }
+
+
+def _report_identifier(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise PluginManagementError("plugin implementation_id must be a non-empty string")
+    return value
+
+
+def _report_duration(value: Any) -> float | int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise PluginManagementError("plugin duration_ms must be a number")
+    return value
+
+
+def _report_error(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise PluginManagementError("plugin error must be a string")
+    return value

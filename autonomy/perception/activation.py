@@ -135,7 +135,7 @@ class ActivatedPerceptionStep:
 
     def status(self) -> dict[str, Any]:
         output = self.last_output
-        return {
+        payload: dict[str, Any] = {
             "algorithm": self.activation.algorithm,
             "mapper_spec": self.activation.mapper_spec,
             "last_status": output.status if output is not None else None,
@@ -150,3 +150,52 @@ class ActivatedPerceptionStep:
                 else []
             ),
         }
+        report = _execution_plugin_report(self.mapper, output)
+        if report is not None:
+            payload["plugin_report"] = report
+        return payload
+
+
+def _execution_plugin_report(mapper: Any, output: PerceptionText | None) -> dict[str, Any] | None:
+    """Common plugin envelope for published instances, with last-run timing.
+
+    Mappers that do not manage a plugin selection omit the envelope. Domain
+    fields on each run stay in ``last_plugin_runs``.
+    """
+
+    if getattr(mapper, "plugin_manager", None) is None:
+        return None
+    report_for = getattr(mapper, "plugin_report", None)
+    if not callable(report_for):
+        return None
+    report = report_for()
+    if not isinstance(report, dict):
+        return None
+    runs = {
+        run.plugin_id: run
+        for run in (output.plugin_runs if output is not None else ())
+    }
+    plugins: list[dict[str, Any]] = []
+    for record in report.get("plugins") or ():
+        if not isinstance(record, dict):
+            continue
+        plugin_id = record.get("plugin_id")
+        merged = {
+            "plugin_id": plugin_id,
+            "implementation_id": record.get("implementation_id"),
+            "duration_ms": record.get("duration_ms"),
+            "error": record.get("error"),
+        }
+        run = runs.get(plugin_id)
+        if run is not None:
+            if run.implementation_id:
+                merged["implementation_id"] = run.implementation_id
+            merged["duration_ms"] = run.duration_ms
+            merged["error"] = run.error
+        plugins.append(merged)
+    return {
+        "available_plugin_ids": list(report.get("available_plugin_ids") or []),
+        "selected_plugin_ids": list(report.get("selected_plugin_ids") or []),
+        "applied_plugin_ids": list(report.get("applied_plugin_ids") or []),
+        "plugins": plugins,
+    }

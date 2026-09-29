@@ -9,6 +9,7 @@ from autonomy.plugins import (
     PluginManagementError,
     PluginManager,
     PluginSelectionRuntime,
+    plugin_report,
     replace_selection,
 )
 
@@ -467,6 +468,96 @@ class PluginSelectionRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.applied, original)
         with self.assertRaisesRegex(PluginManagementError, "prepared"):
             runtime.commit()
+
+
+class PluginReportTests(unittest.TestCase):
+    def test_report_separates_selected_from_applied_records(self) -> None:
+        manager = PluginManager.from_specs(
+            "memory",
+            {
+                "first": "implementations.example:first",
+                "second": "implementations.example:second",
+                "third": "implementations.example:third",
+            },
+        )
+        manager.select(("second", "first"))
+        runtime = PluginSelectionRuntime(manager)
+        runtime.apply(load=lambda definition: definition.plugin_id)
+        manager.select(("third", "first"))
+
+        report = plugin_report(
+            manager,
+            runtime.applied,
+            [
+                {
+                    "plugin_id": "second",
+                    "implementation_id": "second-impl",
+                    "duration_ms": 1.5,
+                    "error": None,
+                    "bounds": {"max_records": 4},
+                    "last_health": "healthy",
+                    "status": "ok",
+                },
+                {
+                    "plugin_id": "third",
+                    "implementation_id": "uncommitted",
+                    "duration_ms": 9,
+                    "error": "should not appear",
+                },
+                {
+                    "plugin_id": "first",
+                    "implementation_id": "first-impl",
+                    "duration_ms": 0,
+                    "error": "kept",
+                },
+            ],
+        )
+
+        self.assertEqual(report["available_plugin_ids"], ["first", "second", "third"])
+        self.assertEqual(report["selected_plugin_ids"], ["third", "first"])
+        self.assertEqual(report["applied_plugin_ids"], ["second", "first"])
+        self.assertEqual(
+            report["plugins"],
+            [
+                {
+                    "plugin_id": "second",
+                    "implementation_id": "second-impl",
+                    "duration_ms": 1.5,
+                    "error": None,
+                },
+                {
+                    "plugin_id": "first",
+                    "implementation_id": "first-impl",
+                    "duration_ms": 0,
+                    "error": "kept",
+                },
+            ],
+        )
+        self.assertEqual(
+            set(report["plugins"][0]),
+            {"plugin_id", "implementation_id", "duration_ms", "error"},
+        )
+
+        blank = plugin_report(manager, runtime.applied)
+        self.assertEqual(blank["selected_plugin_ids"], ["third", "first"])
+        self.assertEqual(blank["applied_plugin_ids"], ["second", "first"])
+        self.assertEqual(
+            blank["plugins"],
+            [
+                {
+                    "plugin_id": "second",
+                    "implementation_id": None,
+                    "duration_ms": None,
+                    "error": None,
+                },
+                {
+                    "plugin_id": "first",
+                    "implementation_id": None,
+                    "duration_ms": None,
+                    "error": None,
+                },
+            ],
+        )
 
 
 if __name__ == "__main__":

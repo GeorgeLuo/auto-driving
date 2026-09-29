@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 
+from autonomy.decision import DecisionFrameContext
 from autonomy.perception import (
     PERCEPTION_TEXT_SCHEMA,
+    ActivatedPerceptionStep,
     PerceivedThing,
     PerceptionComponentUnavailable,
     PerceptionEvidenceBatch,
@@ -14,12 +19,13 @@ from autonomy.perception import (
     PerceptionSignal,
     ViewLocation,
     build_perception_request,
+    read_perception_activation,
 )
 from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.perception.selection import perception_plugin_manager
 from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
 
 
 TEST_INPUT = PerceptionPluginInput(
@@ -382,6 +388,166 @@ class PluginRunnerTests(unittest.TestCase):
         mapper.perceive(build_perception_request(_snapshot(_array_reading(), "frame-2")))
         self.assertIs(mapper.plugins[0], working)
         self.assertEqual(working.reset_count, 0)
+
+    def test_schema_distinguishes_selected_ids_from_applied_plugins(self) -> None:
+        manager = perception_plugin_manager(
+            {
+                "working": f"{__name__}:WorkingPlugin",
+                "spare": f"{__name__}:WorkingPlugin",
+                "broken": f"{__name__}:ConstructionFailurePlugin",
+            }
+        )
+        manager.select(["working"])
+        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        published = mapper.plugins[0]
+        manager.select(["spare"])
+
+        configuration = mapper.describe_schema()["configuration"]
+
+        self.assertEqual(configuration["plugins"], ["working"])
+        self.assertEqual(configuration["selected_plugin_ids"], ["spare"])
+        self.assertEqual(configuration["applied_plugin_ids"], ["working"])
+        self.assertEqual(
+            configuration["available_plugins"],
+            ["broken", "spare", "working"],
+        )
+        self.assertEqual(
+            mapper.plugin_report()["plugins"],
+            [
+                {
+                    "plugin_id": "working",
+                    "implementation_id": "working-test-v0",
+                    "duration_ms": None,
+                    "error": None,
+                }
+            ],
+        )
+
+        manager.select(["broken"])
+        with self.assertRaisesRegex(RuntimeError, "expected construction failure"):
+            mapper.prepare_selection()
+
+        configuration = mapper.describe_schema()["configuration"]
+        self.assertEqual(configuration["plugins"], ["working"])
+        self.assertEqual(configuration["selected_plugin_ids"], ["broken"])
+        self.assertEqual(configuration["applied_plugin_ids"], ["working"])
+        self.assertIs(mapper.plugins[0], published)
+        self.assertEqual(mapper.plugin_report()["plugins"][0]["plugin_id"], "working")
+        self.assertIsNone(mapper.plugin_report()["plugins"][0]["duration_ms"])
+
+    def test_step_status_reports_applied_runs_with_catalog_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "automa_perception_activation_v0",
+                        "perception": {
+                            "algorithm": "test-observer",
+                            "mapper_spec": PERCEPTION_MAPPER_SPEC,
+                            "mapper_config": {
+                                "plugins": ["working"],
+                                "plugin_specs": {
+                                    "working": f"{__name__}:WorkingPlugin",
+                                    "exploding": f"{__name__}:ExplodingPlugin",
+                                },
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            step = ActivatedPerceptionStep(read_perception_activation(path))
+
+        pending = step.status()
+        self.assertEqual(pending["plugin_report"]["selected_plugin_ids"], ["working"])
+        self.assertEqual(pending["plugin_report"]["applied_plugin_ids"], ["working"])
+        self.assertIsNone(pending["plugin_report"]["plugins"][0]["duration_ms"])
+        self.assertEqual(pending["last_plugin_runs"], [])
+
+        result = step(
+            DecisionFrameContext(
+                frame_id="frame-1",
+                frame_index=3,
+                timestamp_ms=10,
+                sensor_snapshot=_snapshot(_array_reading()),
+            )
+        )
+        executed = step.status()
+        record = executed["plugin_report"]["plugins"][0]
+        self.assertEqual(record["plugin_id"], "working")
+        self.assertEqual(record["implementation_id"], "working-test-v0")
+        self.assertGreaterEqual(record["duration_ms"], 0)
+        self.assertIsNone(record["error"])
+        self.assertEqual(
+            set(record),
+            {"plugin_id", "implementation_id", "duration_ms", "error"},
+        )
+        self.assertEqual(executed["last_plugin_runs"][0]["status"], "ok")
+        self.assertEqual(executed["last_plugin_runs"][0]["duration_ms"], record["duration_ms"])
+        self.assertEqual(result.plugin_runs[0].implementation_id, "working-test-v0")
+        self.assertEqual(step.mapper.plugins[0].plugin_id, "working-test-v0")
+
+        step.mapper.plugin_manager.select(["exploding"])
+        waiting = step.status()
+        self.assertEqual(waiting["plugin_report"]["selected_plugin_ids"], ["exploding"])
+        self.assertEqual(waiting["plugin_report"]["applied_plugin_ids"], ["working"])
+        self.assertEqual(waiting["plugin_report"]["plugins"][0]["plugin_id"], "working")
+        self.assertEqual(
+            waiting["plugin_report"]["plugins"][0]["duration_ms"],
+            record["duration_ms"],
+        )
+        self.assertEqual(waiting["last_plugin_runs"][0]["plugin_id"], "working")
+
+        failed = step(
+            DecisionFrameContext(
+                frame_id="frame-2",
+                frame_index=4,
+                timestamp_ms=20,
+                sensor_snapshot=_snapshot(_array_reading()),
+            )
+        )
+        reported = step.status()
+        failed_record = reported["plugin_report"]["plugins"][0]
+        self.assertEqual(reported["plugin_report"]["applied_plugin_ids"], ["exploding"])
+        self.assertEqual(reported["plugin_report"]["selected_plugin_ids"], ["exploding"])
+        self.assertEqual(failed_record["plugin_id"], "exploding")
+        self.assertEqual(failed_record["implementation_id"], "exploding-test-v0")
+        self.assertGreaterEqual(failed_record["duration_ms"], 0)
+        self.assertIn("expected test failure", failed_record["error"])
+        self.assertNotIn("status", failed_record)
+        self.assertEqual(reported["last_plugin_runs"][0]["status"], "error")
+        self.assertEqual(reported["last_plugin_runs"][0]["plugin_id"], "exploding")
+        self.assertEqual(failed.plugin_runs[0].plugin_id, "exploding")
+        self.assertEqual(step.mapper.plugins[0].plugin_id, "exploding-test-v0")
+
+    def test_step_status_omits_plugin_report_without_a_plugin_manager(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "automa_perception_activation_v0",
+                        "perception": {
+                            "algorithm": "test-observer",
+                            "mapper_spec": PERCEPTION_MAPPER_SPEC,
+                            "mapper_config": {
+                                "plugins": ["working"],
+                                "plugin_specs": {
+                                    "working": f"{__name__}:WorkingPlugin",
+                                },
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            step = ActivatedPerceptionStep(read_perception_activation(path))
+        step.mapper = type("BareMapper", (), {"plugin_id": "bare"})()
+        status = step.status()
+        self.assertNotIn("plugin_report", status)
+        self.assertEqual(status["algorithm"], "test-observer")
+        self.assertEqual(status["last_plugin_runs"], [])
 
 
 if __name__ == "__main__":

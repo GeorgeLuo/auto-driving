@@ -7,7 +7,11 @@ from dataclasses import dataclass, replace
 from threading import RLock
 from typing import Any, Callable
 
-from autonomy.plugins import PluginManager, PluginSelectionRuntime
+from autonomy.plugins import (
+    PluginManager,
+    PluginSelectionRuntime,
+    plugin_report as build_plugin_report,
+)
 from autonomy.perception.evidence import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -109,7 +113,34 @@ class PluginPerceptionMapper:
         with self._runtime_lock:
             return self._describe_schema()
 
+    def plugin_report(self) -> dict[str, Any]:
+        """Report catalog, requested, and published plugins.
+
+        Duration and error stay null here. The perception step overlays the
+        last run onto these applied records.
+        """
+
+        with self._runtime_lock:
+            return self._plugin_report()
+
+    def _plugin_report(self) -> dict[str, Any]:
+        records = [
+            {
+                "plugin_id": definition.plugin_id,
+                "implementation_id": plugin.plugin_id,
+                "duration_ms": None,
+                "error": None,
+            }
+            for definition, plugin in self._selection_runtime.applied
+        ]
+        return build_plugin_report(
+            self.plugin_manager,
+            self._selection_runtime.applied,
+            records,
+        )
+
     def _describe_schema(self) -> dict[str, Any]:
+        report = self._plugin_report()
         component_consumers: dict[str, list[str]] = {}
         component_providers: dict[str, str] = {}
         plugin_schemas = []
@@ -137,6 +168,8 @@ class PluginPerceptionMapper:
             "configuration": {
                 "plugins": list(self.plugin_ids),
                 "available_plugins": sorted(item.plugin_id for item in available),
+                "selected_plugin_ids": list(report["selected_plugin_ids"]),
+                "applied_plugin_ids": list(report["applied_plugin_ids"]),
                 "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
                 "plugin_configs": {
                     item.plugin_id: deepcopy(dict(item.config)) for item in available

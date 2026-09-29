@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from autonomy.decision import read_memory_activation
+from autonomy.memory import read_memory_activation
 from autonomy.runtime import read_decision_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.decision import ensure_vehicle_decision_activation

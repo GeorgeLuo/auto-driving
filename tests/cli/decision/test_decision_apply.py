@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from autonomy.decision.memory import canonical_json_bytes, canonical_json_utf8
+from autonomy.memory.values import canonical_json_bytes, canonical_json_utf8
 from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
 from cli.automa_cli.decision import ENGINE_ID, apply_vehicle_decision
 from tests.support.cli_runner import run_automa

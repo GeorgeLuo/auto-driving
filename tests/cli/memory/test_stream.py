@@ -53,6 +53,19 @@ class MemoryStreamTests(unittest.TestCase):
                             "max_age_ms": 10000,
                             "eviction_policy": "oldest_first",
                         },
+                        "plugin_report": {
+                            "available_plugin_ids": ["bounded_evidence", "other"],
+                            "selected_plugin_ids": ["other"],
+                            "applied_plugin_ids": ["bounded_evidence"],
+                            "plugins": [
+                                {
+                                    "plugin_id": "bounded_evidence",
+                                    "implementation_id": "bounded_evidence",
+                                    "duration_ms": 3.0,
+                                    "error": None,
+                                }
+                            ],
+                        },
                     }
                 },
             },
@@ -67,6 +80,8 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(live["implementation_id"], "bounded_evidence")
         self.assertEqual(live["last_record_count"], 7)
         self.assertTrue(live["has_memory"])
+        self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
+        self.assertEqual(live["plugin_report"]["applied_plugin_ids"], ["bounded_evidence"])
 
     def test_probe_physical_memory_absent_is_actionable(self) -> None:
         vehicle = {
@@ -540,6 +555,10 @@ class MemoryStreamTests(unittest.TestCase):
                                 "update_count": 12,
                                 "reset_count": 1,
                                 "failure_count": 0,
+                                "plugin_report": {
+                                    "selected_plugin_ids": ["other"],
+                                    "applied_plugin_ids": ["bounded_evidence"],
+                                },
                             },
                         },
                     }
@@ -561,6 +580,8 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(live["status"], "live")
         self.assertEqual(live["last_record_count"], 5)
         self.assertEqual(live["worker_status"], "running")
+        self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
+        self.assertEqual(live["plugin_report"]["applied_plugin_ids"], ["bounded_evidence"])
 
     def test_cli_stream_memory_once_help_wired(self) -> None:
         result = run_automa("vehicles", "stream", "help", check=False)

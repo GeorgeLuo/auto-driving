@@ -5,12 +5,12 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Callable
 
-from autonomy.memory import SharedMemory
+from autonomy.memory.values import MemorySnapshot
 from autonomy.perception import PerceptionText
 from autonomy.runtime.engine import AutonomyControl
+from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import SensorSnapshot
 
-from .memory import MemorySnapshot
 from .observation import Observation, observation_from_perception
 
 

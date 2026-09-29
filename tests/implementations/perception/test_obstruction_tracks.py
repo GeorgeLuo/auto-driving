@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.perception.mappers import PluginPerceptionMapper
+from autonomy.perception.plugin_runner import PluginPerceptionMapper
 from implementations.perception.catalog import PERCEPTION_ALGORITHMS
 
 

@@ -69,7 +69,7 @@ directory:
 ## Project Layout
 
 - `autonomy/` contains sensor- and environment-agnostic vehicle, perception,
-  decision, and runtime contracts plus generic orchestration. It contains no
+  memory, decision, and runtime contracts plus generic orchestration. It contains no
   perception algorithms.
 - `implementations/` contains concrete vehicle adapters, perception plugins,
   runtime hosts, and bounded operations.

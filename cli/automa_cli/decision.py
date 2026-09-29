@@ -24,7 +24,6 @@ from autonomy.decision import (
     SHADOW_AUTHORITY_RESULT_SCHEMA,
     SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     SELECTOR_ID,
-    canonical_json_utf8,
 )
 from autonomy.decision.action_plan import ActionPlan, PlanContribution, select_action_plan
 from autonomy.decision.action_proposal import (
@@ -33,10 +32,6 @@ from autonomy.decision.action_proposal import (
     ProposedVehicleCommand,
 )
 from autonomy.decision.decision_data import ComponentEnvelope, DecisionDataSource
-from autonomy.decision.memory import (
-    MEMORY_SNAPSHOT_SCHEMA,
-    MemorySnapshot,
-)
 from autonomy.decision.observation import OBSERVATION_SCHEMA, Observation
 from autonomy.decision.shadow_authority import (
     AUTHORIZED_IDLE_REASON,
@@ -46,6 +41,11 @@ from autonomy.decision.shadow_authority import (
 )
 from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
 from autonomy.decision.shadow_runner import ENGINE_ID
+from autonomy.memory.values import (
+    MEMORY_SNAPSHOT_SCHEMA,
+    MemorySnapshot,
+    canonical_json_utf8,
+)
 from autonomy.runtime import AutonomyManager, read_decision_activation
 from implementations.decision.catalog import (
     create_shadow_proposals_engine,

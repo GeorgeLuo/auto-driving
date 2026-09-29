@@ -7,7 +7,7 @@ from pathlib import Path
 
 from autonomy.decision import DecisionCycle, DecisionFrameContext, DecisionSteps, Observation
 from autonomy.memory import ActivatedMemoryStep, read_memory_activation
-from autonomy.decision.memory import error_memory_snapshot
+from autonomy.memory.values import error_memory_snapshot
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     BoundedEvidenceLedger,

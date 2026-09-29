@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
-from autonomy.perception.mappers import PluginPerceptionMapper
+from autonomy.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
 from cli.automa_cli.perception_evaluation import (

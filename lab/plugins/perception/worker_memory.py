@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 import pickle
 
-from autonomy.memory import SharedMemory
+from autonomy.shared_memory import SharedMemory
 
 
 def encode_shared_memory(shared_memory: SharedMemory | None) -> str | None:

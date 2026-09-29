@@ -922,7 +922,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             "        if CountingMemory.constructions > 1:\n"
             "            raise RuntimeError('memory constructed twice')\n"
             "        CountingMemory.built = self\n"
-            "        from autonomy.decision import empty_memory_snapshot\n"
+            "        from autonomy.memory.values import empty_memory_snapshot\n"
             "        from autonomy.memory.activation import bounds_from_config\n"
             "        self.implementation_id = 'counting_memory'\n"
             "        self._bounds = bounds_from_config(config)\n"

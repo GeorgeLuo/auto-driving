@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal, Protocol, TypeVar, runtime_checkable
 
-from autonomy.memory import SharedMemory
+from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import SensorReading, SensorSnapshot
 
 from .evidence import PerceivedThing, PerceptionSignal

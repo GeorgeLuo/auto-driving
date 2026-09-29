@@ -10,7 +10,9 @@ from threading import RLock
 from typing import Any
 
 from autonomy.decision.cycle import DecisionFrameContext, MemoryUpdateError
-from autonomy.decision.memory import (
+from autonomy.decision.observation import Observation
+from autonomy.memory.plugin import MemoryImplementation
+from autonomy.memory.values import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
     MemorySnapshot,
     detach_memory_snapshot,
@@ -19,9 +21,7 @@ from autonomy.decision.memory import (
     serialized_mapping_bytes,
     serialized_memory_snapshot_bytes,
 )
-from autonomy.decision.observation import Observation
-from autonomy.decision.plugin import MemoryImplementation
-from autonomy.memory import SharedMemory
+from autonomy.shared_memory import SharedMemory
 from autonomy.plugins import (
     PluginDefinition,
     PluginManager,

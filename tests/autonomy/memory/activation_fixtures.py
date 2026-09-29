@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from autonomy.decision import (
+from autonomy.memory.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
@@ -160,7 +160,7 @@ class _NonJsonPropertyMemory(_RecordingMemory):
     """Returns a healthy snapshot with a non-JSON property value."""
 
     def update(self, context, observation):
-        from autonomy.decision import (
+        from autonomy.memory.values import (
             MemoryProvenance,
             MemorySnapshot,
             RetainedEvidence,
@@ -229,7 +229,7 @@ class _SelfContradictingBoundsMemory(_RecordingMemory):
     """Advertises a tight serialized ceiling but returns an oversized empty snapshot."""
 
     def update(self, context, observation):
-        from autonomy.decision import MemoryBounds, empty_memory_snapshot
+        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
 
         del observation
         tight = MemoryBounds(
@@ -256,7 +256,7 @@ class _NormalizationInflatesSizeMemory(_RecordingMemory):
     """Snapshot fits its short eviction_policy but is rejected for policy mismatch."""
 
     def update(self, context, observation):
-        from autonomy.decision import MemoryBounds, empty_memory_snapshot
+        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
 
         del observation
         short_bounds = MemoryBounds(
@@ -281,7 +281,7 @@ class _TighterDeclaredSizeMemory(_RecordingMemory):
     """Same policy label; declared size fields are smaller so normalize grows the body."""
 
     def update(self, context, observation):
-        from autonomy.decision import MemoryBounds, empty_memory_snapshot
+        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
 
         del observation
         tighter = MemoryBounds(
@@ -311,7 +311,7 @@ class _NearCeilingThenFailMemory(_RecordingMemory):
         self._updates_seen = 0
 
     def update(self, context, observation):
-        from autonomy.decision import (
+        from autonomy.memory.values import (
             empty_memory_snapshot,
             serialized_memory_snapshot_bytes,
         )

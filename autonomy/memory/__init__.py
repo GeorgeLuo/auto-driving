@@ -1,53 +1,89 @@
-"""Host-owned shared memory for sequential steps and plugins.
+"""Memory-step activation, selection, runner, protocol, and value contracts.
 
-A host supplies one mutable mapping for a run; absent access is None. Parameters
-and fields that carry this mapping are named shared_memory. Producers own their
-keys and include timing in values where needed. Writes are visible to subsequent
-consumers in execution order. Hosts own reset and synchronization; this mapping
-imposes no retention policy or domain-specific schema.
-
-Plugins must be replaceable between frames without changing results. All
-history affecting later frames belongs here, including previous image buffers,
-identity allocation, counters, and smoothing state. Configuration and reusable
-model resources may remain on instances. Plugins own namespacing, bounds,
-discontinuity handling, and when a completed update is committed. Hosts pass
-one map in execution order and clear/replace it at run boundaries; they do not
-interpret plugin histories. Values may be Python records or arrays, not only
-JSON. A memory snapshot is a plugin's evidence view, not the entire shared map.
-
-Memory implementations may publish their retained evidence at
-"decision.snapshot". The decision cycle reads the memory step's result but
-does not write that key. A memory plugin may publish a current-cycle Observation
-at "decision.observation" for subsequent steps. Other producers may use their
-own keys; the existing evidence reducer does not evict those entries.
+``SharedMemory`` is the host map defined in ``autonomy.shared_memory``,
+re-exported as the same object. Runner, protocol, and activation load on first
+use because they import the decision cycle, which imports these values.
 """
 
-from collections.abc import MutableMapping
 from importlib import import_module
 from typing import Any
 
-SharedMemory = MutableMapping[str, Any]
+from autonomy.shared_memory import SharedMemory
 
+from .values import (
+    DEFAULT_MAX_DIAGNOSTIC_CHARS,
+    DEFAULT_MAX_PROPERTY_BYTES,
+    DEFAULT_MAX_SERIALIZED_BYTES,
+    MEMORY_HEALTH_VALUES,
+    MEMORY_SNAPSHOT_SCHEMA,
+    MIN_MAX_SERIALIZED_BYTES,
+    MemoryBounds,
+    MemoryHealth,
+    MemoryProvenance,
+    MemorySnapshot,
+    RetainedEvidence,
+    canonical_json_bytes,
+    canonical_json_utf8,
+    detach_memory_snapshot,
+    empty_memory_snapshot,
+    ensure_strict_json_value,
+    error_memory_snapshot,
+    serialized_mapping_bytes,
+    serialized_memory_snapshot_bytes,
+    unavailable_memory_snapshot,
+)
 
-_ACTIVATION_EXPORTS = (
+_LAZY_EXPORTS = {
+    "MEMORY_ACTIVATION_SCHEMA": "activation",
+    "ActivatedMemoryStep": "activation",
+    "MemoryActivation": "activation",
+    "MemoryImplementation": "plugin",
+    "PluginMemoryRunner": "plugin_runner",
+    "instantiate_memory_implementation": "activation",
+    "load_memory_implementation": "activation",
+    "load_memory_step_if_present": "activation",
+    "read_memory_activation": "activation",
+}
+
+__all__ = [
+    "SharedMemory",
+    "DEFAULT_MAX_DIAGNOSTIC_CHARS",
+    "DEFAULT_MAX_PROPERTY_BYTES",
+    "DEFAULT_MAX_SERIALIZED_BYTES",
     "MEMORY_ACTIVATION_SCHEMA",
+    "MEMORY_HEALTH_VALUES",
+    "MEMORY_SNAPSHOT_SCHEMA",
+    "MIN_MAX_SERIALIZED_BYTES",
     "ActivatedMemoryStep",
-    "PluginMemoryRunner",
     "MemoryActivation",
+    "MemoryBounds",
+    "MemoryHealth",
+    "MemoryImplementation",
+    "MemoryProvenance",
+    "MemorySnapshot",
+    "PluginMemoryRunner",
+    "RetainedEvidence",
+    "canonical_json_bytes",
+    "canonical_json_utf8",
+    "detach_memory_snapshot",
+    "empty_memory_snapshot",
+    "ensure_strict_json_value",
+    "error_memory_snapshot",
     "instantiate_memory_implementation",
     "load_memory_implementation",
     "load_memory_step_if_present",
     "read_memory_activation",
-)
-
-__all__ = ["SharedMemory", *_ACTIVATION_EXPORTS]
+    "serialized_mapping_bytes",
+    "serialized_memory_snapshot_bytes",
+    "unavailable_memory_snapshot",
+]
 
 
 def __getattr__(name: str) -> Any:
-    """Load activation APIs lazily to keep decision and memory contracts acyclic."""
-    if name not in _ACTIVATION_EXPORTS:
+    module_name = _LAZY_EXPORTS.get(name)
+    if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    activation = import_module(".activation", __name__)
-    value = getattr(activation, name)
+    module = import_module(f".{module_name}", __name__)
+    value = getattr(module, name)
     globals()[name] = value
     return value

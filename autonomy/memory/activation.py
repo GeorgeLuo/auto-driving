@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
 
-from autonomy.decision.memory import (
+from autonomy.memory.plugin import MemoryImplementation
+from autonomy.memory.values import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
     MemoryBounds,
@@ -21,7 +22,6 @@ from autonomy.decision.memory import (
     error_memory_snapshot,
     serialized_memory_snapshot_bytes,
 )
-from autonomy.decision.plugin import MemoryImplementation
 from autonomy.memory.selection import memory_plugin_manager
 
 if TYPE_CHECKING:

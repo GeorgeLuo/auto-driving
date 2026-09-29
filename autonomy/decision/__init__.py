@@ -1,4 +1,8 @@
-"""Generic observation contracts, memory values, and decision cycle steps."""
+"""Observation contracts and decision cycle steps.
+
+Memory values and ``MemoryImplementation`` are defined under ``autonomy.memory``
+and re-exported here.
+"""
 
 from .cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
@@ -30,7 +34,6 @@ from .memory import (
     unavailable_memory_snapshot,
 )
 from .observation import OBSERVATION_SCHEMA, Observation, observation_from_perception
-from .plugin import MemoryImplementation
 from .shadow_ids import ShadowCycleInputError
 from .decision_data import (
     DECISION_DATA_SOURCE_SCHEMA,
@@ -66,10 +69,20 @@ _MEMORY_ACTIVATION_EXPORTS = (
 
 
 def __getattr__(name: str):
-    """Preserve the old decision-level imports during the public path migration."""
+    """Load memory activation and protocol on first use.
+
+    The protocol imports this package, so it cannot be imported while the
+    package itself is still starting.
+    """
+    if name == "MemoryImplementation":
+        from autonomy.memory.plugin import MemoryImplementation
+
+        globals()[name] = MemoryImplementation
+        return MemoryImplementation
     if name not in _MEMORY_ACTIVATION_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     from autonomy.memory import activation
+
     value = getattr(activation, name)
     globals()[name] = value
     return value

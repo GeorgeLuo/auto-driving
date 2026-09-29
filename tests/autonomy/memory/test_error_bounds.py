@@ -36,7 +36,7 @@ class MemoryActivationTests(unittest.TestCase):
                     )
             finally:
                 step.implementation.update = original_update  # type: ignore[method-assign]
-            from autonomy.decision import DEFAULT_MAX_DIAGNOSTIC_CHARS
+            from autonomy.memory.values import DEFAULT_MAX_DIAGNOSTIC_CHARS
             # last_error/status must also be bounded (Chase worker publishes this).
             status = step.status()
             self.assertIsNotNone(status["last_error"])
@@ -122,7 +122,7 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertEqual(snapshot.health, "empty")
             self.assertTrue(snapshot.epoch_id.startswith("epoch-reset-failed-"))
             self.assertEqual(len(snapshot.epoch_id.split("-")[-1]), 10)
-            from autonomy.decision import serialized_memory_snapshot_bytes
+            from autonomy.memory.values import serialized_memory_snapshot_bytes
 
             self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
             self.assertIn("reset exploded", step.last_error or "")

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from autonomy.memory import SharedMemory
+from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import SensorSnapshot
 
 from .interface import PerceptionRequest

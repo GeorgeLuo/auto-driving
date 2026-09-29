@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision.memory import (
+from autonomy.memory.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,

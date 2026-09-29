@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from autonomy.perception import build_perception_request
-from autonomy.perception.mappers import PluginPerceptionMapper
+from autonomy.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
 from implementations.perception.components import (

@@ -49,7 +49,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "implementations/perception/traversability/plugin.py",
                 "implementations/perception/preparation/vlm.py",
                 "implementations/perception/motion/tracks.py",
-                "autonomy/perception/mappers/plugin_runner.py",
+                "autonomy/perception/plugin_runner.py",
                 "bundle-manifest.json",
             ):
                 self.assertTrue((bundle_root / relative).exists(), relative)

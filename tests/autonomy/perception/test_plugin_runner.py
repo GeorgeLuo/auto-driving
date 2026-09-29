@@ -21,7 +21,7 @@ from autonomy.perception import (
     build_perception_request,
     read_perception_activation,
 )
-from autonomy.perception.mappers import PluginPerceptionMapper
+from autonomy.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.perception.selection import perception_plugin_manager
 from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot

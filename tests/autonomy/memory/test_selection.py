@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
+from pathlib import Path
 
 from autonomy.decision import DecisionFrameContext, Observation
 from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from autonomy.memory.activation import memory_manager_from_activation, memory_selection_config
 from autonomy.memory.selection import memory_plugin_manager
 from tests.autonomy.memory.activation_fixtures import _RecordingMemory, _valid_payload, _write_payload
 
@@ -30,6 +33,63 @@ def _manager():
 
 
 class MemorySelectionTests(unittest.TestCase):
+    def test_explicit_activation_normalizes_definitions_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            path.write_text(json.dumps({
+                "schema": "automa_memory_activation_v0",
+                "memory": {
+                    "plugins": ["second"],
+                    "plugin_specs": {"first": SPEC, "second": SPEC},
+                    "plugin_configs": {"second": {"implementation_id": "second"}},
+                    # Legacy staging fields do not constrain the selected plugin.
+                    "implementation_id": "stale",
+                    "implementation_spec": "not.installed:Missing",
+                    "implementation_config": {"max_serialized_bytes": 1},
+                },
+            }), encoding="utf-8")
+            activation = read_memory_activation(path)
+            self.assertEqual(
+                [definition.plugin_id for definition in activation.available_definitions],
+                ["first", "second"],
+            )
+            self.assertEqual(
+                [definition.plugin_id for definition in activation.selected_definitions],
+                ["second"],
+            )
+            self.assertEqual(activation.implementation_spec, SPEC)
+            activation.payload["memory"]["plugin_specs"]["second"] = "not.installed:Missing"
+            self.assertEqual(memory_selection_config(activation)["plugin_specs"]["second"], SPEC)
+            step = ActivatedMemoryStep(activation)
+            self.assertEqual(step.reset({}).implementation_id, "second")
+            self.assertEqual(memory_manager_from_activation(activation).available_ids, ("first", "second"))
+
+            # The same selection also works without any legacy fields.
+            plugin_only = {
+                "schema": "automa_memory_activation_v0",
+                "memory": {
+                    "plugins": ["second"],
+                    "plugin_specs": {"second": SPEC},
+                    "plugin_configs": {"second": {"implementation_id": "second"}},
+                },
+            }
+            path.write_text(json.dumps(plugin_only), encoding="utf-8")
+            step = ActivatedMemoryStep(read_memory_activation(path))
+            self.assertEqual(step.reset({}).implementation_id, "second")
+
+    def test_plugin_only_activation_supports_an_empty_selection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            path.write_text(json.dumps({
+                "schema": "automa_memory_activation_v0",
+                "memory": {"plugins": [], "plugin_specs": {"first": SPEC}},
+            }), encoding="utf-8")
+            activation = read_memory_activation(path)
+            step = ActivatedMemoryStep(activation)
+            self.assertEqual(step.plugin_ids, ())
+            self.assertEqual(step.status()["available_plugins"], ["first"])
+            self.assertIsNone(step.snapshot())
+
     def test_status_reports_unselected_catalog_plugins_and_can_enable_them(self):
         manager = _manager()
         step = ActivatedMemoryStep(plugin_manager=manager)

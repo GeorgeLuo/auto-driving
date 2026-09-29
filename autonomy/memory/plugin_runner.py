@@ -32,7 +32,7 @@ from .activation import (
     framework_error_identity,
     framework_fallback_timestamp_ms,
     framework_reset_identity,
-    load_memory_implementation,
+    instantiate_memory_implementation,
     memory_manager_from_activation,
 )
 
@@ -79,19 +79,11 @@ class PluginMemoryRunner:
         return self.plugins[0].implementation if len(self.plugins) == 1 else None
 
     def _load_plugin(self, definition: PluginDefinition) -> _MemoryPluginRuntime:
-        config = deepcopy(dict(definition.config))
         return _MemoryPluginRuntime(
-            MemoryActivation(
-                implementation_id=definition.plugin_id,
-                implementation_spec=definition.entrypoint,
-                implementation_config=config,
-                bounds=bounds_from_config(config),
-                source_path=(
-                    self.activation.source_path if self.activation else Path("memory-manager")
-                ),
-                payload={},
+            definition,
+            source_path=(
+                self.activation.source_path if self.activation else definition.source or Path("memory-manager")
             ),
-            plugin_id=definition.plugin_id,
         )
 
     def _apply_selection(self, shared_memory: SharedMemory | None = None) -> None:
@@ -170,10 +162,10 @@ class PluginMemoryRunner:
     def status(self) -> dict[str, Any]:
         with self._runtime_lock:
             last = self.last_snapshot
-            final = self.plugins[-1].activation if self.plugins else None
+            final = self.plugins[-1] if self.plugins else None
             return {
                 "implementation_id": final.implementation_id if final else None,
-                "implementation_spec": final.implementation_spec if final else None,
+                "implementation_spec": final.definition.entrypoint if final else None,
                 "activation": str(self.activation.source_path) if self.activation else None,
                 "bounds": final.bounds.to_dict() if final else None,
                 "available_plugins": sorted(self.plugin_manager.available_ids),
@@ -199,15 +191,16 @@ class _MemoryPluginRuntime:
     observations are treated as read-only inputs; update failures stop the cycle.
     """
 
-    def __init__(self, activation: MemoryActivation, *, plugin_id: str) -> None:
-        self.plugin_id = plugin_id
-        self.implementation = load_memory_implementation(activation)
-        # Snapshot identity follows the loaded class. The catalog plugin_id
-        # stays on this runtime and is not required to match.
-        implementation_id = self.implementation.implementation_id
-        if activation.implementation_id != implementation_id:
-            activation = replace(activation, implementation_id=implementation_id)
-        self.activation = activation
+    def __init__(self, definition: PluginDefinition, *, source_path: Path) -> None:
+        self.definition = definition
+        self.plugin_id = definition.plugin_id
+        self.source_path = source_path
+        config = deepcopy(dict(definition.config))
+        self.bounds = bounds_from_config(config)
+        self.implementation = instantiate_memory_implementation(definition.entrypoint, config)
+        # Snapshot identity follows the loaded class. The catalog plugin ID is
+        # retained separately for selection and attribution.
+        self.implementation_id = self.implementation.implementation_id
         self.last_snapshot: MemorySnapshot | None = None
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
@@ -300,10 +293,10 @@ class _MemoryPluginRuntime:
         # Callers that need snapshot metadata read the published MemorySnapshot.
         return {
             "plugin_id": self.plugin_id,
-            "implementation_id": self.activation.implementation_id,
-            "implementation_spec": self.activation.implementation_spec,
-            "activation": str(self.activation.source_path),
-            "bounds": self.activation.bounds.to_dict(),
+            "implementation_id": self.implementation_id,
+            "implementation_spec": self.definition.entrypoint,
+            "activation": str(self.source_path),
+            "bounds": self.bounds.to_dict(),
             "update_count": self.update_count,
             "reset_count": self.reset_count,
             "failure_count": self.failure_count,
@@ -327,14 +320,14 @@ class _MemoryPluginRuntime:
             )
         if snapshot.implementation_id not in (
             None,
-            self.activation.implementation_id,
+            self.implementation_id,
         ):
             raise ValueError(
                 "memory snapshot implementation_id "
-                f"{snapshot.implementation_id!r} does not match activation "
-                f"{self.activation.implementation_id!r}"
+                f"{snapshot.implementation_id!r} does not match loaded implementation "
+                f"{self.implementation_id!r}"
             )
-        configured = self.activation.bounds
+        configured = self.bounds
         declared = snapshot.bounds
         if declared.max_records > configured.max_records:
             raise ValueError(
@@ -429,7 +422,7 @@ class _MemoryPluginRuntime:
     def _bound_diagnostic(self, message: str) -> str:
         """Truncate diagnostics once for last_error, status, and fallbacks."""
 
-        limit = self.activation.bounds.max_serialized_bytes
+        limit = self.bounds.max_serialized_bytes
         # Keep status/worker-facing text modest even when snapshot ceiling is large.
         budget = DEFAULT_MAX_DIAGNOSTIC_CHARS
         if limit is not None:
@@ -468,7 +461,7 @@ class _MemoryPluginRuntime:
         Identity and timestamp width match the shapes validated at activation.
         """
 
-        configured = self.activation.bounds
+        configured = self.bounds
         limit = configured.max_serialized_bytes
         created_at_ms = framework_fallback_timestamp_ms()
         safe_impl_id = FRAMEWORK_FALLBACK_IMPLEMENTATION_ID
@@ -537,7 +530,7 @@ class _MemoryPluginRuntime:
         include_metadata: bool,
         created_at_ms: int,
     ) -> MemorySnapshot:
-        configured = self.activation.bounds
+        configured = self.bounds
         if health == "error":
             metadata: dict[str, Any] = {}
             if include_metadata:

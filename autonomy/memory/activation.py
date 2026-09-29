@@ -6,11 +6,11 @@ import importlib
 import json
 import time
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from autonomy.plugins import PluginManager
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
 
 from autonomy.decision.memory import (
     DEFAULT_MAX_PROPERTY_BYTES,
@@ -43,42 +43,86 @@ MAX_FALLBACK_TIMESTAMP_MS = 9_999_999_999_999
 
 @dataclass(frozen=True)
 class MemoryActivation:
-    implementation_id: str
-    implementation_spec: str
-    implementation_config: dict[str, Any]
-    bounds: MemoryBounds
+    """An activation document with one resolved snapshot of its plugin selection."""
+
+    implementation_id: str | None
+    implementation_spec: str | None
+    implementation_config: dict[str, Any] | None
+    bounds: MemoryBounds | None
     source_path: Path
     payload: dict[str, Any]
+    available_definitions: tuple[PluginDefinition, ...] = field(init=False, repr=False)
+    selected_definitions: tuple[PluginDefinition, ...] = field(init=False, repr=False)
+    _selection_config: dict[str, Any] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        memory = self.payload.get("memory")
+        if not isinstance(memory, dict):
+            raise ValueError(f"memory activation has no memory section: {self.source_path}")
+        explicit = "plugins" in memory or "plugin_specs" in memory
+        if explicit:
+            plugins = memory.get("plugins")
+            specs = memory.get("plugin_specs")
+            configs = memory.get("plugin_configs", {})
+            if not isinstance(plugins, list) or not all(isinstance(item, str) for item in plugins):
+                raise ValueError("memory.plugins must be a list of plugin IDs")
+            if not isinstance(specs, dict) or not isinstance(configs, dict):
+                raise ValueError("memory plugin_specs and plugin_configs must be objects")
+            selection_config = deepcopy(
+                {"plugins": plugins, "plugin_specs": specs, "plugin_configs": configs}
+            )
+        else:
+            if not isinstance(self.implementation_id, str) or not self.implementation_id.strip():
+                raise ValueError(f"memory activation has no implementation_id: {self.source_path}")
+            if not isinstance(self.implementation_spec, str) or not self.implementation_spec.strip():
+                raise ValueError(f"memory activation has no implementation_spec: {self.source_path}")
+            if not isinstance(self.implementation_config, dict):
+                raise ValueError(f"memory activation has invalid implementation_config: {self.source_path}")
+            selection_config = {
+                "plugins": [self.implementation_id.strip()],
+                "plugin_specs": {
+                    self.implementation_id.strip(): self.implementation_spec.strip()
+                },
+                "plugin_configs": {
+                    self.implementation_id.strip(): deepcopy(self.implementation_config)
+                },
+            }
+
+        manager = memory_plugin_manager(
+            selection_config["plugin_specs"], selection_config["plugin_configs"]
+        )
+        manager.select(selection_config["plugins"])
+        object.__setattr__(self, "available_definitions", manager.available)
+        object.__setattr__(self, "selected_definitions", manager.selected)
+        object.__setattr__(self, "_selection_config", selection_config)
+
+        if explicit:
+            # Old single-implementation fields may remain in the document as
+            # staging metadata. The selected definitions own execution.
+            final = manager.selected[-1] if manager.selected else None
+            config = dict(final.config) if final is not None else {}
+            object.__setattr__(self, "implementation_id", final.plugin_id if final else None)
+            object.__setattr__(self, "implementation_spec", final.entrypoint if final else None)
+            object.__setattr__(self, "implementation_config", deepcopy(config))
+            object.__setattr__(self, "bounds", bounds_from_config(config))
+        else:
+            config = deepcopy(self.implementation_config)
+            object.__setattr__(self, "implementation_id", self.implementation_id.strip())
+            object.__setattr__(self, "implementation_spec", self.implementation_spec.strip())
+            object.__setattr__(self, "implementation_config", config)
+            if self.bounds is None:
+                object.__setattr__(self, "bounds", bounds_from_config(config))
 
 
 def memory_selection_config(activation: MemoryActivation) -> dict[str, Any]:
-    """Adapt legacy single-implementation documents to the ordered catalog shape.
+    """Return the selection normalized when the activation was constructed."""
 
-    Explicit plugin fields are authoritative, including an empty selection.
-    Legacy fields remain staging metadata once plugin fields are present.
-    """
-
-    memory = activation.payload.get("memory", {})
-    if "plugins" in memory or "plugin_specs" in memory:
-        plugins = memory.get("plugins")
-        specs = memory.get("plugin_specs")
-        configs = memory.get("plugin_configs", {})
-        if not isinstance(plugins, list) or not all(isinstance(item, str) for item in plugins):
-            raise ValueError("memory.plugins must be a list of plugin IDs")
-        if not isinstance(specs, dict) or not isinstance(configs, dict):
-            raise ValueError("memory plugin_specs and plugin_configs must be objects")
-        return deepcopy({"plugins": plugins, "plugin_specs": specs, "plugin_configs": configs})
-    return {
-        "plugins": [activation.implementation_id],
-        "plugin_specs": {activation.implementation_id: activation.implementation_spec},
-        "plugin_configs": {activation.implementation_id: deepcopy(activation.implementation_config)},
-    }
+    return deepcopy(activation._selection_config)
 
 
 def memory_manager_from_activation(activation: MemoryActivation) -> PluginManager:
-    config = memory_selection_config(activation)
-    manager = memory_plugin_manager(config["plugin_specs"], config["plugin_configs"])
-    manager.select(config["plugins"])
+    manager = PluginManager("memory", LocalPluginCatalog(activation.available_definitions))
+    manager.select(activation.selected_definitions)
     return manager
 
 
@@ -94,23 +138,11 @@ def read_memory_activation(path: Path) -> MemoryActivation:
     if not isinstance(memory, dict):
         raise ValueError(f"memory activation has no memory section: {path}")
 
-    implementation_id = memory.get("implementation_id")
-    implementation_spec = memory.get("implementation_spec")
-    implementation_config = memory.get("implementation_config")
-    if not isinstance(implementation_id, str) or not implementation_id.strip():
-        raise ValueError(f"memory activation has no implementation_id: {path}")
-    if not isinstance(implementation_spec, str) or not implementation_spec.strip():
-        raise ValueError(f"memory activation has no implementation_spec: {path}")
-    if not isinstance(implementation_config, dict):
-        raise ValueError(f"memory activation has invalid implementation_config: {path}")
-
-    config = deepcopy(implementation_config)
-    bounds = bounds_from_config(config)
     return MemoryActivation(
-        implementation_id=implementation_id.strip(),
-        implementation_spec=implementation_spec.strip(),
-        implementation_config=config,
-        bounds=bounds,
+        implementation_id=memory.get("implementation_id"),
+        implementation_spec=memory.get("implementation_spec"),
+        implementation_config=memory.get("implementation_config"),
+        bounds=None,
         source_path=path,
         payload=payload,
     )
@@ -249,6 +281,8 @@ def load_memory_implementation(
     *,
     reload_module: bool = False,
 ) -> MemoryImplementation:
+    if activation.implementation_spec is None or activation.implementation_config is None:
+        raise ValueError("memory activation selects no implementation")
     return instantiate_memory_implementation(
         activation.implementation_spec,
         activation.implementation_config,

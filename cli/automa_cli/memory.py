@@ -8,7 +8,8 @@ import json
 import os
 import stat as stat_mod
 import time
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -195,15 +196,16 @@ def set_vehicle_memory_plugin(
         changed = after != before
         if changed:
             config["plugins"] = after
-            activation.payload["memory"].update(config)
+            candidate_payload = deepcopy(activation.payload)
+            candidate_payload["memory"].update(config)
             # Validate the whole candidate selection before publishing the edit.
-            load_memory_step_from_bundle(activation)
-            activation.payload["memory"]["last_plugin_change"] = {
+            load_memory_step_from_bundle(replace(activation, payload=candidate_payload))
+            candidate_payload["memory"]["last_plugin_change"] = {
                 "plugin": plugin_id,
                 "enabled": enabled,
                 "changed_at_ms": int(time.time() * 1000),
             }
-            _write_json_atomically(activation_path, activation.payload)
+            _write_json_atomically(activation_path, candidate_payload)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not change memory plugins: {exc}")
     payload = {

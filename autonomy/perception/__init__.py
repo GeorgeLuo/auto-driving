@@ -1,8 +1,7 @@
 """Sensor-to-evidence contracts.
 
 A perception plugin's ``perceive`` returns an evidence batch. The framework
-combines batches into the step result. That result is current evidence, not
-the cycle's observation record and not retained evidence.
+combines batches into the step result. That result is current evidence.
 """
 
 from .evidence import (

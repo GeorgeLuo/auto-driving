@@ -1,7 +1,6 @@
 """Retained-evidence values produced by ``remember``.
 
-A ``MemorySnapshot`` records what remains relevant across cycles. It is not
-the host map ``SharedMemory``, a world model, or an action policy. Concrete
+A ``MemorySnapshot`` records what remains relevant across cycles. Concrete
 reducers live under implementations/; this module owns only the inspectable
 value contract and lifecycle fields.
 """
@@ -214,7 +213,7 @@ class MemorySnapshot:
     """Detached retained evidence returned by ``remember``.
 
     This is the memory step's output, including the value published at
-    ``shared_memory["decision.snapshot"]``. It is not the host map.
+    ``shared_memory["decision.snapshot"]``.
     """
 
     memory_id: str

@@ -54,8 +54,7 @@ class PerceptionPluginRun:
 class PerceptionText:
     """Current evidence for the perception step, with a rendered text view.
 
-    The framework builds this from plugin evidence batches. It is not an
-    ``Observation`` and not a ``MemorySnapshot``.
+    The framework builds this from plugin evidence batches.
     """
 
     schema: str

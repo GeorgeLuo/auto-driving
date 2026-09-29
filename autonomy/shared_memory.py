@@ -13,9 +13,8 @@ model resources may remain on instances. Plugins own namespacing, bounds,
 discontinuity handling, and when a completed update is committed. Hosts pass
 one map in execution order and clear/replace it at run boundaries; they do not
 interpret plugin histories. Values may be Python records or arrays, not only
-JSON. A memory snapshot is retained evidence from the memory step, not this map.
+JSON. A memory snapshot is retained evidence from the memory step.
 A perception plugin's ``memory_required`` flag means that plugin needs this map.
-It does not configure the retained-evidence memory step.
 
 Memory implementations may publish their retained evidence at
 "decision.snapshot". The decision cycle reads the memory step's result but

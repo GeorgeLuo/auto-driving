@@ -406,7 +406,7 @@ class BoundedEvidenceLedger:
     """Remember implementation that publishes retained evidence into the host map.
 
     The snapshot is ``shared_memory["decision.snapshot"]``. Other keys in the
-    map belong to other producers; this ledger does not own the map.
+    map belong to other producers.
     """
 
     implementation_id = "bounded_evidence"

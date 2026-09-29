@@ -13,10 +13,9 @@ Plugins are stateless between frames. Keep previous images, track identities,
 smoothing, and other temporal history in `inputs.shared_memory`, under plugin-owned
 keys. Configuration and reusable model resources can remain on the instance.
 `state_mode` describes the temporal input horizon (`stateless`, `pairwise`, or
-`windowed`); it does not permit private history. Set `memory_required=True` when
+`windowed`). Set `memory_required=True` when
 the algorithm needs the host map, and implement `reset(shared_memory)` to remove
-only that plugin's keys. That flag does not configure the retained-evidence
-memory step. Missing required inputs invoke this reset hook.
+only that plugin's keys. Missing required inputs invoke this reset hook.
 Plugins own history bounds and successful/warm-up/error commit decisions.
 
 Hosts supply one map for a sequence and clear or replace it for a new run.

@@ -1,9 +1,9 @@
 """Retained-evidence reducer used by the cycle's ``remember`` operation.
 
 Concrete reducers live under implementations/. ``update`` performs remember
-and returns a ``MemorySnapshot``. That snapshot is not the host map. The
-stable contract is only update, reset, and snapshot. Framework code owns
-activation loading, timing, status, and failure isolation.
+and returns a ``MemorySnapshot``. The stable contract is only update, reset,
+and snapshot. Framework code owns activation loading, timing, status, and
+failure isolation.
 """
 
 from __future__ import annotations

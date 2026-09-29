@@ -39,8 +39,8 @@ def timestamp_ms() -> int:
 class DecisionFrameContext:
     """Inputs for one cycle tick.
 
-    ``shared_memory`` is the host-owned map. Retained evidence is not stored
-    on this object; ``remember`` returns it as a ``MemorySnapshot``.
+    ``shared_memory`` is the host-owned map. ``remember`` returns retained
+    evidence as a ``MemorySnapshot``.
     """
 
     frame_id: str
@@ -88,8 +88,7 @@ class DecisionSteps:
     """The cycle operations. An absent callable skips that operation.
 
     ``perceive``, ``observe``, and ``remember`` are the perception, observation,
-    and memory steps. ``choose_action`` is the action composition. It does not
-    by itself add a proposal, planning, or action-gate plugin.
+    and memory steps. ``choose_action`` is the action composition.
     """
 
     perceive: PerceiveStep | None = None
@@ -103,8 +102,7 @@ class DecisionCycleResult:
     """Records from one cycle tick.
 
     ``perception`` is current evidence, ``observation`` is the current-frame
-    record, and ``memory`` is retained evidence. The host map stays on the
-    context and is not a field of this result.
+    record, and ``memory`` is retained evidence.
     """
 
     context: DecisionFrameContext

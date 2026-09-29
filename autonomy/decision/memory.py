@@ -1,6 +1,6 @@
 """Retained-evidence values.
 
-Defined in ``autonomy.memory.values``. These objects are not the host map.
+Defined in ``autonomy.memory.values``. Names imported here are those objects.
 """
 
 from autonomy.memory.values import (

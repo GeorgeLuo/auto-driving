@@ -1,8 +1,7 @@
 """Current decision input view passed to proposal.
 
 The observation envelope is the current-frame record. The memory envelope is
-detached retained evidence, not the host map. Proposal still receives this
-view rather than ``shared_memory``.
+detached retained evidence.
 """
 
 from __future__ import annotations
@@ -429,7 +428,7 @@ class DecisionDataSource:
     """Detached decision input for one proposal call.
 
     ``observation`` is the current-frame record. ``memory`` is retained
-    evidence. Neither field is the host map.
+    evidence.
     """
 
     frame_id: str

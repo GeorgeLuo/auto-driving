@@ -1,8 +1,8 @@
 """Cycle records and re-exports of retained-evidence values.
 
 ``Observation`` is the current-frame record produced by ``observe``. Names
-re-exported from ``autonomy.memory`` are that retained evidence and the
-``remember`` operation, not the host map ``SharedMemory``.
+re-exported from ``autonomy.memory`` are retained evidence and the
+``remember`` operation.
 """
 
 from .cycle import (

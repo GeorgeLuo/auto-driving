@@ -16,8 +16,8 @@ from .frame_analysis import observe_rgb_frame
 class FrameObservationPlugin:
     """Perception plugin that reports the current camera frame.
 
-    This is not the observation step. ``perceive`` returns frame evidence;
-    the cycle's ``observe`` adapts perception output into an ``Observation``.
+    ``perceive`` returns frame evidence. The cycle's ``observe`` adapts that
+    evidence into an ``Observation``.
     """
 
     plugin_id = "frame-observation-v0"

@@ -83,10 +83,7 @@ class PerceivedThing:
 
 @dataclass(frozen=True)
 class PerceptionSignal:
-    """One scalar or boolean evidence signal from a perception plugin.
-
-    This is current evidence, not the cycle's observation record.
-    """
+    """One scalar or boolean evidence signal from a perception plugin."""
 
     signal_id: str
     value: bool | int | float | str | None

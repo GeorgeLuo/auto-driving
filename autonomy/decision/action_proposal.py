@@ -1,8 +1,7 @@
 """Candidate command returned by proposal.
 
 ``ActionProposal`` is one plugin's candidate for one cycle, with its command
-and supporting evidence. This module does not select a candidate or authorize
-control.
+and supporting evidence.
 """
 
 from __future__ import annotations

@@ -19,8 +19,7 @@ def timestamp_ms() -> int:
 class Observation:
     """Current-frame record assembled from perception evidence and sensor context.
 
-    This is the observation step's output. It is not a perception evidence
-    batch and it is not retained evidence.
+    This is the observation step's output.
     """
 
     observation_id: str

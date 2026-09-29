@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import importlib
 import time
+from copy import deepcopy
 from dataclasses import dataclass, replace
+from threading import RLock
 from typing import Any, Callable
 
+from autonomy.plugins import PluginManager, PluginSelectionRuntime
 from autonomy.perception.evidence import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -25,6 +28,7 @@ from autonomy.perception.plugin import (
     PerceptionPluginWarmingUp,
 )
 from autonomy.perception.rendering import signal_line, thing_line
+from autonomy.perception.selection import perception_plugin_manager
 
 
 ComponentProvider = Callable[[PerceptionRequest, PerceptionPluginInput], Any]
@@ -40,7 +44,7 @@ class _PluginExecution:
 
 
 class PluginPerceptionMapper:
-    """Generic runner that injects inputs and owns plugin execution mechanics."""
+    """Run the manager's selected perception plugins once per sensor frame."""
 
     plugin_id = "autonomy.perception.plugin-runner-v0"
 
@@ -50,6 +54,7 @@ class PluginPerceptionMapper:
         plugins: list[str] | tuple[str, ...] | None = None,
         plugin_specs: dict[str, str] | None = None,
         plugin_configs: dict[str, dict[str, Any]] | None = None,
+        plugin_manager: PluginManager | None = None,
     ) -> None:
         specs = dict(plugin_specs or {})
         configs = {
@@ -59,47 +64,55 @@ class PluginPerceptionMapper:
         plugin_ids = tuple(() if plugins is None else plugins)
         if len(plugin_ids) != len(set(plugin_ids)):
             raise ValueError("configured perception plugin ids must be unique")
-        unknown = [plugin_id for plugin_id in plugin_ids if plugin_id not in specs]
-        if unknown:
-            available = ", ".join(sorted(specs))
-            raise ValueError(f"Unknown perception plugin(s): {unknown}. Available: {available}.")
-        self.plugin_specs = specs
-        self.plugin_configs = configs
-        self.plugin_ids = plugin_ids
-        self.plugins = tuple(
-            _instantiate_plugin(
-                plugin_id,
-                self.plugin_specs[plugin_id],
-                self.plugin_configs.get(plugin_id, {}),
+        if plugin_manager is None:
+            plugin_manager = perception_plugin_manager(specs, configs)
+            plugin_manager.select(plugin_ids)
+        elif plugins is not None:
+            raise ValueError(
+                "select plugins through plugin_manager when one is provided"
             )
-            for plugin_id in self.plugin_ids
-        )
-        runtime_ids = [plugin.plugin_id for plugin in self.plugins]
-        if len(runtime_ids) != len(set(runtime_ids)):
-            raise ValueError("perception plugin runtime ids must be unique")
+        if not isinstance(plugin_manager, PluginManager):
+            raise TypeError("plugin_manager must be a PluginManager")
+        if plugin_manager.step != "perception":
+            raise ValueError(
+                f"plugin_manager is scoped to {plugin_manager.step!r}, not 'perception'"
+            )
+
+        self.plugin_manager = plugin_manager
+        self._selection_runtime = PluginSelectionRuntime(plugin_manager)
+        self._runtime_lock = RLock()
+        self.plugin_ids: tuple[str, ...] = ()
+        self.plugins: tuple[Any, ...] = ()
         self._component_providers: dict[str, ComponentProvider] = {}
         self._component_provider_specs: dict[str, str] = {}
-        for plugin in self.plugins:
-            for item in plugin.contract.inputs:
-                existing = self._component_provider_specs.get(item.component_id)
-                if existing is not None and existing != item.provider_spec:
-                    raise ValueError(
-                        f"component {item.component_id!r} declares conflicting providers: "
-                        f"{existing!r} and {item.provider_spec!r}"
-                    )
-                self._component_provider_specs[item.component_id] = item.provider_spec
-        for provider_spec in sorted(set(self._component_provider_specs.values())):
-            self._component_provider(provider_spec)
+        self._apply_selection()
+
+    @property
+    def plugin_specs(self) -> dict[str, str]:
+        return {item.plugin_id: item.entrypoint for item in self.plugin_manager.available}
+
+    @property
+    def plugin_configs(self) -> dict[str, dict[str, Any]]:
+        return {
+            item.plugin_id: deepcopy(dict(item.config))
+            for item in self.plugin_manager.available
+        }
 
     def reset(self, shared_memory=None) -> None:
-        for plugin in self.plugins:
-            _reset_plugin(plugin, shared_memory)
+        with self._runtime_lock:
+            for plugin in self.plugins:
+                _reset_plugin(plugin, shared_memory)
 
     def describe_schema(self) -> dict[str, Any]:
+        with self._runtime_lock:
+            return self._describe_schema()
+
+    def _describe_schema(self) -> dict[str, Any]:
         component_consumers: dict[str, list[str]] = {}
         component_providers: dict[str, str] = {}
         plugin_schemas = []
-        for configured_id, plugin in zip(self.plugin_ids, self.plugins, strict=True):
+        available = self.plugin_manager.available
+        for definition, plugin in self._selection_runtime.applied:
             contract = plugin.contract
             for item in contract.inputs:
                 component_consumers.setdefault(item.component_id, []).append(plugin.plugin_id)
@@ -107,8 +120,8 @@ class PluginPerceptionMapper:
             plugin_schemas.append(
                 {
                     "plugin_id": plugin.plugin_id,
-                    "spec": self.plugin_specs[configured_id],
-                    "config": dict(self.plugin_configs.get(configured_id, {})),
+                    "spec": definition.entrypoint,
+                    "config": deepcopy(dict(definition.config)),
                     "contract": contract.to_dict(),
                 }
             )
@@ -118,9 +131,11 @@ class PluginPerceptionMapper:
             "mapper": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "configuration": {
                 "plugins": list(self.plugin_ids),
-                "available_plugins": sorted(self.plugin_specs),
-                "plugin_specs": dict(self.plugin_specs),
-                "plugin_configs": dict(self.plugin_configs),
+                "available_plugins": sorted(item.plugin_id for item in available),
+                "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
+                "plugin_configs": {
+                    item.plugin_id: deepcopy(dict(item.config)) for item in available
+                },
             },
             "inputs": [
                 {
@@ -160,6 +175,12 @@ class PluginPerceptionMapper:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
+        with self._runtime_lock:
+            # Core snapshots the manager's selection once for this sensor frame.
+            self._apply_selection(request.shared_memory)
+            return self._perceive_selected(request)
+
+    def _perceive_selected(self, request: PerceptionRequest) -> PerceptionText:
         lines = [
             f"schema={PERCEPTION_TEXT_SCHEMA}",
             f"plugin={self.plugin_id}",
@@ -230,6 +251,63 @@ class PluginPerceptionMapper:
             artifacts=artifacts,
             limits=tuple(dict.fromkeys(limits)),
         )
+
+    def _apply_selection(
+        self,
+        shared_memory=None,
+    ) -> None:
+        candidate_provider_specs: dict[str, str] | None = None
+        candidate_providers: dict[str, ComponentProvider] | None = None
+
+        def validate(candidate_plugins: tuple[Any, ...]) -> None:
+            nonlocal candidate_provider_specs, candidate_providers
+            candidate_provider_specs = {}
+            candidate_providers = {}
+            runtime_ids = [plugin.plugin_id for plugin in candidate_plugins]
+            if len(runtime_ids) != len(set(runtime_ids)):
+                raise ValueError("perception plugin runtime ids must be unique")
+
+            for plugin in candidate_plugins:
+                for item in plugin.contract.inputs:
+                    existing = candidate_provider_specs.get(item.component_id)
+                    if existing is not None and existing != item.provider_spec:
+                        raise ValueError(
+                            f"component {item.component_id!r} declares conflicting providers: "
+                            f"{existing!r} and {item.provider_spec!r}"
+                        )
+                    candidate_provider_specs[item.component_id] = item.provider_spec
+
+            for provider_spec in sorted(set(candidate_provider_specs.values())):
+                provider = self._component_providers.get(provider_spec)
+                if provider is None:
+                    provider = _load_symbol(provider_spec)
+                if not callable(provider):
+                    raise TypeError(
+                        f"component provider {provider_spec!r} is not callable"
+                    )
+                candidate_providers[provider_spec] = provider
+
+        applied = self._selection_runtime.apply(
+            load=lambda definition: _instantiate_plugin(
+                definition.plugin_id,
+                definition.entrypoint,
+                dict(definition.config),
+            ),
+            validate=validate,
+            reset=lambda plugin: _reset_plugin(plugin, shared_memory),
+        )
+        if candidate_provider_specs is None or candidate_providers is None:
+            return
+
+        selected = tuple(definition for definition, _plugin in applied)
+        candidate_plugins = tuple(plugin for _definition, plugin in applied)
+
+        # Publish only after all newly selected plugins and their providers
+        # have been constructed and validated.
+        self.plugin_ids = tuple(definition.plugin_id for definition in selected)
+        self.plugins = candidate_plugins
+        self._component_provider_specs = candidate_provider_specs
+        self._component_providers = candidate_providers
 
     def _execute_plugin(self, plugin: Any, request: PerceptionRequest) -> _PluginExecution:
         started = time.perf_counter()

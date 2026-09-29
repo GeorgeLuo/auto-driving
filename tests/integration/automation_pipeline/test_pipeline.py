@@ -5,7 +5,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
-from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
+from cli.automa_cli.perception import _load_mapper, set_vehicle_perception_plugin
+from implementations.perception.catalog import (
+    PERCEPTION_MAPPER_SPEC,
+    PERCEPTION_PLUGIN_SPECS,
+)
 from tests.integration.automation_pipeline.pipeline_fixtures import (
     _FakeCar,
     _SlowMapper,
@@ -14,6 +19,109 @@ from tests.integration.automation_pipeline.pipeline_fixtures import (
 
 
 class AutomationLivePipelineTests(unittest.TestCase):
+    def test_cli_plugin_enable_disable_updates_running_mapper_on_next_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            bundle = controller_bundle_paths(runtime_root / vehicle_id)
+            sync_controller_bundle(bundle, output=None)
+            _write_activations(bundle)
+
+            activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
+            activation = json.loads(activation_path.read_text(encoding="utf-8"))
+            activation["perception"] = {
+                "algorithm": "lightweight_observer",
+                "mapper_spec": PERCEPTION_MAPPER_SPEC,
+                "mapper_config": {
+                    "plugins": ["frame"],
+                    "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
+                },
+            }
+            activation_path.write_text(
+                json.dumps(activation, indent=2, sort_keys=True), encoding="utf-8"
+            )
+
+            vehicle = {
+                "id": vehicle_id,
+                "provider": "chase-sim",
+                "connection": {"ws_url": "ws://unused"},
+                "status": {
+                    "passive_capture": {
+                        "status": "available",
+                        "session_preservation": {
+                            "preserved": True,
+                            "unknown_fields": [],
+                            "changed_fields": [],
+                        },
+                    }
+                },
+            }
+            applied_selections: list[tuple[str, ...]] = []
+            cli_updates = []
+
+            def load_running_mapper(mapper_spec, mapper_config, *, bundle_root=None):
+                mapper = _load_mapper(
+                    mapper_spec, mapper_config, bundle_root=bundle_root
+                )
+                perceive = mapper.perceive
+
+                def perceive_with_cli_updates(request):
+                    result = perceive(request)
+                    applied_selections.append(tuple(mapper.plugin_ids))
+                    if len(applied_selections) == 1:
+                        cli_updates.append(
+                            set_vehicle_perception_plugin(
+                                vehicle_id=vehicle_id,
+                                plugin_id="floor_plane",
+                                enabled=True,
+                                json_output=True,
+                            )
+                        )
+                    elif len(applied_selections) == 2:
+                        cli_updates.append(
+                            set_vehicle_perception_plugin(
+                                vehicle_id=vehicle_id,
+                                plugin_id="frame",
+                                enabled=False,
+                                json_output=True,
+                            )
+                        )
+                    return result
+
+                mapper.perceive = perceive_with_cli_updates
+                return mapper
+
+            with (
+                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.perception.RUNTIME_ROOT", runtime_root),
+                patch(
+                    "cli.automa_cli.automation.discover_active_vehicles",
+                    return_value={},
+                ),
+                patch(
+                    "cli.automa_cli.automation.find_vehicle_by_id",
+                    return_value=(vehicle, None),
+                ),
+                patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
+                patch(
+                    "cli.automa_cli.automation._load_mapper",
+                    side_effect=load_running_mapper,
+                ),
+            ):
+                result = run_vehicle_automation(
+                    vehicle_id=vehicle_id,
+                    interval_s=0.4,
+                    frames=3,
+                    take_control=False,
+                )
+
+            self.assertEqual(result.exit_code, 0, result.message)
+            self.assertEqual(
+                applied_selections,
+                [("frame",), ("frame", "floor_plane"), ("floor_plane",)],
+            )
+            self.assertEqual([update.exit_code for update in cli_updates], [0, 0])
+
     def test_capture_does_not_wait_for_slow_perception_and_latest_frame_wins(
         self,
     ) -> None:

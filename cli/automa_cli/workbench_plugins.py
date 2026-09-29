@@ -21,7 +21,10 @@ from typing import Any, Iterator, Sequence
 
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionMapper
 from autonomy.perception.activation import instantiate_perception_mapper
+from autonomy.plugins import PluginDefinition, PluginManager
 from implementations.perception.catalog import (
+    DEFAULT_PERCEPTION_ALGORITHM,
+    PERCEPTION_ALGORITHMS,
     PERCEPTION_MAPPER_SPEC,
     PERCEPTION_PLUGIN_SPECS,
 )
@@ -129,6 +132,41 @@ class PluginCatalog:
             "plugins": [item.to_dict(active_ids=active_ids) for item in self.plugins],
         }
 
+    def list(self, step: str) -> tuple[PluginDefinition, ...]:
+        """Expose the selectable catalog to the core manager without imports."""
+
+        if step != "perception":
+            return ()
+        if self.error:
+            raise PluginCatalogError(self.error)
+        if not self.valid:
+            raise PluginCatalogError("plugin catalog is invalid: duplicate plugin id")
+        return tuple(self.resolve(step, item.plugin_id) for item in self.plugins if item.ready)
+
+    def resolve(self, step: str, reference: str | Path) -> PluginDefinition:
+        """Adapt discovered manifests to the common selection resolver."""
+
+        if step != "perception":
+            raise PluginCatalogError(f"unsupported plugin step {step!r}")
+        descriptor = next(
+            (item for item in self.plugins if item.plugin_id == reference), None
+        )
+        if descriptor is None:
+            raise PluginCatalogError(f"unknown plugin id(s): {reference}")
+        if not descriptor.ready:
+            raise PluginCatalogError(
+                f"unavailable plugin id(s): {reference}: "
+                f"{descriptor.unavailable_reason or 'unavailable'}"
+            )
+        if not descriptor.entrypoint:
+            raise PluginCatalogError(f"plugin {reference!r} has no entrypoint")
+        return PluginDefinition(
+            step="perception",
+            plugin_id=descriptor.plugin_id,
+            entrypoint=descriptor.entrypoint,
+            config=descriptor.config,
+        )
+
     def normalize_selection(
         self,
         active_ids: Sequence[str] | None,
@@ -149,73 +187,38 @@ class PluginCatalog:
             raise PluginCatalogError("active_plugin_ids must contain non-empty strings")
         if len(values) != len(set(values)):
             raise PluginCatalogError("active_plugin_ids must not contain duplicates")
-        by_id = {item.plugin_id: item for item in self.plugins}
-        unknown = sorted(set(values) - set(by_id))
-        if unknown:
-            raise PluginCatalogError(
-                "unknown plugin id(s): " + ", ".join(unknown)
-            )
-        unavailable = sorted(
-            value for value in values if not by_id[value].ready
-        )
-        if unavailable:
-            reasons = "; ".join(
-                f"{value}: {by_id[value].unavailable_reason or 'unavailable'}"
-                for value in unavailable
-            )
-            raise PluginCatalogError(f"unavailable plugin id(s): {reasons}")
+        manager = PluginManager("perception", self)
+        manager.select(values)
         # Keep the keyword for caller compatibility. An empty normalized
         # selection is the explicit raw-capture mode regardless of catalog
         # root: replay still displays frames, but no perception plugin runs.
         order = {item.plugin_id: index for index, item in enumerate(self.plugins)}
-        return tuple(sorted(values, key=lambda value: order[value]))
+        return tuple(sorted(manager.selected_ids, key=lambda value: order[value]))
 
     def build_mapper(self, active_ids: Sequence[str]) -> PerceptionMapper:
         """Instantiate exactly the selected core-runtime manifest plugins."""
 
         selected = self.normalize_selection(active_ids, require_explicit_selection=False)
-        descriptors = {item.plugin_id: item for item in self.plugins}
-        plugin_ids = list(selected)
-        plugin_specs: dict[str, str] = {}
-        plugin_configs: dict[str, dict[str, Any]] = {}
-
-        for plugin_id in plugin_ids:
-            descriptor = descriptors.get(plugin_id)
-            if descriptor is None:
-                spec = PERCEPTION_PLUGIN_SPECS.get(plugin_id)
-                if spec is None:
-                    raise PluginCatalogError(f"plugin {plugin_id!r} is not in the catalog")
-                plugin_specs[plugin_id] = spec
-                plugin_configs[plugin_id] = {}
-            else:
-                if not descriptor.ready:
-                    raise PluginCatalogError(
-                        f"plugin {plugin_id!r} is unavailable: "
-                        f"{descriptor.unavailable_reason or 'not ready'}"
-                    )
-                if not descriptor.entrypoint:
-                    raise PluginCatalogError(f"plugin {plugin_id!r} has no entrypoint")
-                plugin_specs[plugin_id] = descriptor.entrypoint
-                plugin_configs[plugin_id] = dict(descriptor.config)
+        manager = PluginManager("perception", self)
+        manager.select(selected)
+        plugin_ids = list(manager.selected_ids)
 
         if self.root is not None:
             with _import_root(self.root):
                 mapper = instantiate_perception_mapper(
-                    PERCEPTION_MAPPER_SPEC,
-                    {
-                        "plugins": plugin_ids,
-                        "plugin_specs": plugin_specs,
-                        "plugin_configs": plugin_configs,
-                    },
+                    PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
                 )
+            perceive = mapper.perceive
+
+            def perceive_in_root(request):
+                # Later manager selections can import previously unused packages.
+                with _import_root(self.root):
+                    return perceive(request)
+
+            mapper.perceive = perceive_in_root
         else:
             mapper = instantiate_perception_mapper(
-                PERCEPTION_MAPPER_SPEC,
-                {
-                    "plugins": plugin_ids,
-                    "plugin_specs": plugin_specs,
-                    "plugin_configs": plugin_configs,
-                },
+                PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
             )
 
         # Runtime classes use implementation ids (for example
@@ -237,8 +240,13 @@ class PluginCatalog:
 
 
 def packaged_plugin_catalog() -> PluginCatalog:
-    """Return the backward-compatible packaged lightweight catalog."""
+    """Expose every packaged plugin while keeping the algorithm's defaults."""
 
+    defaults = PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]["mapper_config"]
+    default_ids = defaults["plugins"]
+    # Defaults retain their existing display/execution order. Other entries are
+    # available choices, not additional default selections.
+    plugin_ids = list(dict.fromkeys([*default_ids, *sorted(PERCEPTION_PLUGIN_SPECS)]))
     descriptors = tuple(
         PluginDescriptor(
             plugin_id=plugin_id,
@@ -253,11 +261,14 @@ def packaged_plugin_catalog() -> PluginCatalog:
             manifest_relative_path=f"packaged/{plugin_id}",
             manifest_path=None,
             entrypoint=PERCEPTION_PLUGIN_SPECS[plugin_id],
-            config={},
+            config=dict(defaults.get("plugin_configs", {}).get(plugin_id, {})),
             memory={},
             output={
                 "schema": PERCEPTION_TEXT_SCHEMA,
-                "kind": "sensor_frame" if plugin_id == "frame" else "floor_boundary",
+                "kind": {
+                    "frame": "sensor_frame",
+                    "floor_plane": "floor_boundary",
+                }.get(plugin_id, "perception_evidence"),
             },
             inputs=[
                 {
@@ -272,9 +283,9 @@ def packaged_plugin_catalog() -> PluginCatalog:
             runtime={"python": "core", "support": "packaged"},
             status="ready",
             source="packaged",
-            default=True,
+            default=plugin_id in default_ids,
         )
-        for plugin_id in ("frame", "floor_plane")
+        for plugin_id in plugin_ids
     )
     return _make_catalog(None, descriptors, explicit_root=False)
 

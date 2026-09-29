@@ -83,6 +83,63 @@ PASSIVE_RUN_DYNAMIC_FIELDS = (
 )
 
 
+def _sync_live_perception_plugin_selection(
+    mapper: Any,
+    activation_path: Path,
+    *,
+    mapper_spec: str,
+    mapper_config: dict[str, Any],
+) -> None:
+    """Apply CLI selection edits to a running manager at a frame boundary."""
+
+    manager = getattr(mapper, "plugin_manager", None)
+    select = getattr(manager, "select", None)
+    selected_ids = getattr(manager, "selected_ids", None)
+    if not callable(select) or not isinstance(selected_ids, (list, tuple)):
+        return
+
+    try:
+        activation = json.loads(activation_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(activation, dict):
+        return
+    perception = activation.get("perception")
+    if (
+        not isinstance(perception, dict)
+        or perception.get("mapper_spec") != mapper_spec
+    ):
+        return
+    live_config = perception.get("mapper_config")
+    if not isinstance(live_config, dict):
+        return
+
+    # The CLI changes only the selected IDs. Keep a running mapper on its
+    # loaded plugin definitions and configs if a new activation was staged.
+    loaded_static_config = {
+        key: value for key, value in mapper_config.items() if key != "plugins"
+    }
+    live_static_config = {
+        key: value for key, value in live_config.items() if key != "plugins"
+    }
+    if live_static_config != loaded_static_config:
+        return
+
+    plugin_ids = live_config.get("plugins")
+    if not isinstance(plugin_ids, list) or not all(
+        isinstance(plugin_id, str) for plugin_id in plugin_ids
+    ):
+        return
+    if tuple(plugin_ids) == tuple(selected_ids):
+        return
+    try:
+        select(plugin_ids)
+    except Exception:
+        # A bad or stale selection must leave the currently applied plugins
+        # available to the next frame.
+        return
+
+
 @dataclass(frozen=True)
 class CommandResult:
     exit_code: int
@@ -222,6 +279,12 @@ def run_vehicle_automation(
         if context.sensor_snapshot is None:
             mapper.reset(context.shared_memory)
             return None
+        _sync_live_perception_plugin_selection(
+            mapper,
+            manifest_path,
+            mapper_spec=mapper_spec,
+            mapper_config=mapper_config,
+        )
         output_dir_text = context.metadata.get("perception_output_dir")
         output_dir = (
             Path(output_dir_text)

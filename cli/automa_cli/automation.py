@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import queue
@@ -82,6 +83,18 @@ PASSIVE_RUN_DYNAMIC_FIELDS = (
     "playback",
     "control_input",
 )
+
+
+def _execution_plugin_report(owner: Any) -> dict[str, Any] | None:
+    """Copy a step's common plugin envelope, when that step publishes one."""
+
+    report_for = getattr(owner, "plugin_report", None)
+    if not callable(report_for):
+        return None
+    report = report_for()
+    if not isinstance(report, dict):
+        return None
+    return copy.deepcopy(report)
 
 
 def _sync_live_perception_plugin_selection(
@@ -403,6 +416,7 @@ def run_vehicle_automation(
             "activation": display_path(manifest_path),
             "mapper_spec": mapper_spec,
             "mapper_config": mapper_config,
+            "plugin_report": _execution_plugin_report(mapper),
         },
         "decision": {
             "activation": display_path(Path(bundle["decision_runtime_dir"]) / "active.json"),
@@ -638,6 +652,10 @@ def run_vehicle_automation(
         else:
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
+        perception_plugin_report = _execution_plugin_report(mapper)
+        memory_plugin_report = (
+            _execution_plugin_report(memory_step) if memory_step is not None else None
+        )
 
         control_record = {
             **cycle_result.control.to_dict(),
@@ -669,6 +687,8 @@ def run_vehicle_automation(
             "capture_to_perception_ms": perception_completed_at_ms - snapshot.completed_at_ms,
             "sensor_snapshot": snapshot.to_dict(),
             "perception": perception_dict,
+            "perception_plugin_report": perception_plugin_report,
+            "memory_plugin_report": memory_plugin_report,
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
@@ -798,6 +818,9 @@ def run_vehicle_automation(
                     "implementation_spec": memory_step.status()["implementation_spec"],
                     "status": memory_step.status(),
                 }
+            perception_state = state.get("perception")
+            if isinstance(perception_state, dict):
+                perception_state["plugin_report"] = copy.deepcopy(perception_plugin_report)
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
 

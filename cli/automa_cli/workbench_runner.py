@@ -123,6 +123,18 @@ def _default_memory_step(companion: dict[str, Any] | None = None) -> PluginMemor
     return PluginMemoryRunner(activation)
 
 
+def _plugin_report(owner: Any) -> dict[str, Any] | None:
+    """Copy a step's common plugin envelope, when that step publishes one."""
+
+    report_for = getattr(owner, "plugin_report", None)
+    if not callable(report_for):
+        return None
+    report = report_for()
+    if not isinstance(report, dict):
+        return None
+    return copy.deepcopy(report)
+
+
 def _safe_status(value: Any) -> str:
     return str(value or "").strip().lower()
 
@@ -718,6 +730,8 @@ class ImageReplayRunner:
                 pipeline["run_active_plugin_ids"] = list(normalized)
                 pipeline["active_plugin_ids"] = list(normalized)
                 pipeline["memory_implementation"] = self._memory_implementation_id()
+                pipeline["perception_plugin_report"] = _plugin_report(self._mapper)
+                pipeline["memory_plugin_report"] = _plugin_report(self._memory_step)
             self._state["failure"] = None
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
@@ -867,11 +881,15 @@ class ImageReplayRunner:
         )
 
     def _memory_implementation_id(self) -> str:
-        step = self._memory_step
-        manager = getattr(step, "plugin_manager", None)
-        selected = getattr(manager, "selected_ids", None)
-        if selected:
-            return str(selected[-1])
+        """Implementation id of the published memory plugin, not its catalog id."""
+
+        step = getattr(self, "_memory_step", None)
+        report = _plugin_report(step)
+        plugins = report.get("plugins") if isinstance(report, dict) else None
+        if isinstance(plugins, list) and plugins:
+            implementation_id = plugins[-1].get("implementation_id")
+            if implementation_id:
+                return str(implementation_id)
         activation = getattr(step, "activation", None)
         implementation_id = getattr(activation, "implementation_id", None)
         if implementation_id:
@@ -1218,6 +1236,8 @@ class ImageReplayRunner:
                     host_application=None,
                 )
                 decision_payload = decision_result.to_dict()
+                perception_plugin_report = _plugin_report(mapper)
+                memory_plugin_report = _plugin_report(memory_step)
                 perception_payload = (
                     result.perception.to_dict() if result.perception else None
                 )
@@ -1252,6 +1272,14 @@ class ImageReplayRunner:
                         result=result,
                         previous_memory=previous_memory,
                     )
+                    detail["perception_plugin_report"] = perception_plugin_report
+                    detail["memory_plugin_report"] = memory_plugin_report
+                    pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
+                    pipeline["memory_implementation"] = self._memory_implementation_id()
+                    pipeline["perception_plugin_report"] = copy.deepcopy(
+                        perception_plugin_report
+                    )
+                    pipeline["memory_plugin_report"] = copy.deepcopy(memory_plugin_report)
                     detail["summary"] = copy.deepcopy(self._state["summary"])
                     detail["decision"] = copy.deepcopy(decision_payload)
                     self._history[frame.frame_id] = detail
@@ -1519,6 +1547,8 @@ class ImageReplayRunner:
                     else "manifest_plugin_selection"
                 ),
                 "memory_implementation": self._memory_implementation_id(),
+                "perception_plugin_report": _plugin_report(getattr(self, "_mapper", None)),
+                "memory_plugin_report": _plugin_report(getattr(self, "_memory_step", None)),
                 "observation_adapter": "autonomy.decision.observation.observation_from_perception",
                 "decision_cycle": "autonomy.decision.cycle.DecisionCycle",
                 "decision_engine": ENGINE_ID,

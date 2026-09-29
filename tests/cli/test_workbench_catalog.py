@@ -369,6 +369,10 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             timeline_len = len(paused["timeline"])
             first_id = paused["current_frame"]["frame_id"]
             self.assertEqual(_plugin_ids(paused["perception"]), ["classical_regions"])
+            recorded_report = runner.frame_detail(first_id, run_id=run_id)[
+                "perception_plugin_report"
+            ]
+            self.assertEqual(recorded_report["applied_plugin_ids"], ["classical_regions"])
 
             both = runner.dispatch(
                 "select_plugins",
@@ -386,6 +390,16 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
                 ["classical_regions"],
+            )
+            self.assertEqual(
+                runner.frame_detail(first_id, run_id=run_id)["perception_plugin_report"],
+                recorded_report,
+            )
+            self.assertEqual(
+                both["machine_detail"]["pipeline"]["perception_plugin_report"][
+                    "applied_plugin_ids"
+                ],
+                ["floor_continuity", "classical_regions"],
             )
 
             none = runner.dispatch(
@@ -463,6 +477,12 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
             self.assertEqual(
                 both["machine_detail"]["pipeline"]["memory_implementation"],
+                "bounded_evidence",
+            )
+            self.assertEqual(
+                both["machine_detail"]["pipeline"]["memory_plugin_report"]["plugins"][0][
+                    "implementation_id"
+                ],
                 "bounded_evidence",
             )
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
@@ -649,9 +669,24 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 memory_step.plugins[0].implementation.bounds.max_records, 7
             )
             self.assertIsNot(memory_step.plugins[0], previous_ledger)
+            live_memory = selected["machine_detail"]["pipeline"]["memory_plugin_report"]
             self.assertEqual(
                 selected["machine_detail"]["pipeline"]["memory_implementation"],
-                "narrow.bounded_evidence",
+                "bounded_evidence",
+            )
+            self.assertEqual(live_memory["applied_plugin_ids"], ["narrow.bounded_evidence"])
+            self.assertEqual(live_memory["plugins"][0]["plugin_id"], "narrow.bounded_evidence")
+            self.assertEqual(
+                live_memory["plugins"][0]["implementation_id"], "bounded_evidence"
+            )
+            recorded_memory = runner.frame_detail(first_id, run_id=run_id)[
+                "memory_plugin_report"
+            ]
+            self.assertEqual(
+                recorded_memory["applied_plugin_ids"], ["bounded_evidence"]
+            )
+            self.assertEqual(
+                recorded_memory["plugins"][0]["implementation_id"], "bounded_evidence"
             )
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
 

@@ -121,6 +121,21 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 [("frame",), ("frame", "floor_plane"), ("floor_plane",)],
             )
             self.assertEqual([update.exit_code for update in cli_updates], [0, 0])
+            automation_dir = Path(bundle["runtime_dir"]) / "automation"
+            state = json.loads(
+                (automation_dir / "state.json").read_text(encoding="utf-8")
+            )
+            report = state["perception"]["plugin_report"]
+            self.assertEqual(state["perception"]["mapper_spec"], PERCEPTION_MAPPER_SPEC)
+            self.assertEqual(report["applied_plugin_ids"], ["floor_plane"])
+            self.assertEqual(report["plugins"][0]["plugin_id"], "floor_plane")
+            self.assertTrue(report["plugins"][0]["implementation_id"])
+            self.assertIsNotNone(report["plugins"][0]["duration_ms"])
+            latest = json.loads(
+                (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(latest["perception_plugin_report"], report)
+            self.assertIn("memory_plugin_report", latest)
 
     def test_capture_does_not_wait_for_slow_perception_and_latest_frame_wins(
         self,

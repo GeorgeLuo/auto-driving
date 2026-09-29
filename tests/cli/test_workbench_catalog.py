@@ -96,7 +96,16 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         )
         self.assertEqual(
             catalog.normalize_selection(["floor_continuity", "classical_regions"]),
-            ("classical_regions", "floor_continuity"),
+            ("floor_continuity", "classical_regions"),
+        )
+        mapper = catalog.build_mapper(["floor_continuity", "classical_regions"])
+        self.assertEqual(mapper.plugin_ids, ("floor_continuity", "classical_regions"))
+        perception = mapper.perceive(PerceptionRequest(SensorSnapshot(
+            read_id="ordered", readings={}, started_at_ms=100, completed_at_ms=100,
+        )))
+        self.assertEqual(
+            [run.plugin_id for run in perception.plugin_runs],
+            ["floor_continuity", "classical_regions"],
         )
         self.assertEqual(catalog.normalize_selection([]), ())
 
@@ -221,14 +230,17 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             both = runner.dispatch(
                 "select_plugins",
                 run_id=run_id,
-                active_plugin_ids=["classical_regions", "floor_continuity"],
+                active_plugin_ids=["floor_continuity", "classical_regions"],
             )
             self.assertEqual(both["phase"], "paused")
             self.assertEqual(both["position"], position)
             self.assertEqual(len(both["timeline"]), timeline_len)
             self.assertEqual(
+                both["run_active_plugin_ids"], ["floor_continuity", "classical_regions"]
+            )
+            self.assertEqual(
                 [run["plugin_id"] for run in both["perception"]["plugin_runs"]],
-                ["classical_regions", "floor_continuity"],
+                ["floor_continuity", "classical_regions"],
             )
 
             none = runner.dispatch(

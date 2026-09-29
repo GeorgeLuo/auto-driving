@@ -173,7 +173,7 @@ class PluginCatalog:
         *,
         require_explicit_selection: bool | None = None,
     ) -> tuple[str, ...]:
-        """Validate and normalize ids in deterministic catalog order."""
+        """Validate ids while preserving the core manager's selection order."""
 
         if self.error:
             raise PluginCatalogError(self.error)
@@ -192,8 +192,7 @@ class PluginCatalog:
         # Keep the keyword for caller compatibility. An empty normalized
         # selection is the explicit raw-capture mode regardless of catalog
         # root: replay still displays frames, but no perception plugin runs.
-        order = {item.plugin_id: index for index, item in enumerate(self.plugins)}
-        return tuple(sorted(manager.selected_ids, key=lambda value: order[value]))
+        return manager.selected_ids
 
     def build_mapper(self, active_ids: Sequence[str]) -> PerceptionMapper:
         """Instantiate exactly the selected core-runtime manifest plugins."""

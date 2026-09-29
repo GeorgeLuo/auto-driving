@@ -52,6 +52,13 @@ class DependencyBoundaryTests(unittest.TestCase):
         self.assertEqual(dependency_violations, [])
         self.assertEqual(sensor_policy_violations, [])
 
+    def test_stable_autonomy_does_not_name_implementation_modules(self) -> None:
+        violations: list[str] = []
+        for path in (ROOT / "autonomy").rglob("*.py"):
+            if "implementations." in path.read_text(encoding="utf-8"):
+                violations.append(str(path.relative_to(ROOT)))
+        self.assertEqual(violations, [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

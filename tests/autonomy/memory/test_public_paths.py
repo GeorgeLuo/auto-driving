@@ -26,8 +26,11 @@ from autonomy.memory.selection import memory_plugin_manager
 from autonomy.memory.values import MemorySnapshot
 from autonomy.decision import (
     ActivatedMemoryStep as DecisionActivatedMemoryStep,
+    DecisionCycle,
     MemoryImplementation as DecisionPackageProtocol,
     MemorySnapshot as DecisionPackageSnapshot,
+    Observation,
+    ShadowProposalsEngine,
     read_memory_activation as decision_read_memory_activation,
 )
 from autonomy.decision.activation import (
@@ -47,7 +50,16 @@ from autonomy.perception.mappers import PluginPerceptionMapper as MapperPackageC
 from autonomy.perception.mappers.plugin_runner import (
     PluginPerceptionMapper as MapperModuleClass,
 )
+from autonomy.decision.cycle import DecisionCycle as DirectDecisionCycle
+from autonomy.decision.observation import Observation as DirectObservation
+from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
+from autonomy.perception import PerceptionMapper, PerceptionPluginContract
+from autonomy.perception.interface import PerceptionMapper as DirectPerceptionMapper
+from autonomy.perception.plugin import PerceptionPluginContract as DirectPluginContract
 from autonomy.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.runtime import AutonomyManager, IdleAutonomyEngine
+from autonomy.runtime.engine import IdleAutonomyEngine as DirectIdleEngine
+from autonomy.runtime.manager import AutonomyManager as DirectManager
 
 spec = importlib.import_module("autonomy.perception.mappers.plugin_runner")
 assert spec.PluginPerceptionMapper is PluginPerceptionMapper
@@ -62,6 +74,13 @@ assert DecisionModuleMemoryActivation is MemoryActivation is DirectMemoryActivat
 assert decision_read_memory_activation is read_memory_activation is direct_read_memory_activation
 assert decision_bounds_from_config is direct_bounds_from_config
 assert HostSharedMemory is SharedMemory
+assert DecisionCycle is DirectDecisionCycle
+assert Observation is DirectObservation
+assert ShadowProposalsEngine is DirectShadowEngine
+assert PerceptionMapper is DirectPerceptionMapper
+assert PerceptionPluginContract is DirectPluginContract
+assert IdleAutonomyEngine is DirectIdleEngine
+assert AutonomyManager is DirectManager
 assert MemoryActivation is not None and memory_plugin_manager is not None
 """
 

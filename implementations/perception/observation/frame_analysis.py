@@ -1,3 +1,8 @@
+"""Camera-frame measurements for the frame perception plugin.
+
+These helpers do not implement the cycle's ``observe`` step.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

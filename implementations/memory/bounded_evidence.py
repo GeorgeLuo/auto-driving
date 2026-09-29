@@ -403,7 +403,11 @@ def reduce_evidence(
 
 
 class BoundedEvidenceLedger:
-    """Memory implementation whose retained evidence lives in the shared map."""
+    """Remember implementation that publishes retained evidence into the host map.
+
+    The snapshot is ``shared_memory["decision.snapshot"]``. Other keys in the
+    map belong to other producers; this ledger does not own the map.
+    """
 
     implementation_id = "bounded_evidence"
 

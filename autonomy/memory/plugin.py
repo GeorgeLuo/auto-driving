@@ -1,8 +1,9 @@
-"""Narrow memory implementation shape used by the decision cycle.
+"""Retained-evidence reducer used by the cycle's ``remember`` operation.
 
-Concrete reducers live under implementations/. The stable contract is only
-update, reset, and snapshot. Framework code owns activation loading, timing,
-status, and failure isolation.
+Concrete reducers live under implementations/. ``update`` performs remember
+and returns a ``MemorySnapshot``. That snapshot is not the host map. The
+stable contract is only update, reset, and snapshot. Framework code owns
+activation loading, timing, status, and failure isolation.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from autonomy.shared_memory import SharedMemory
 
 @runtime_checkable
 class MemoryImplementation(Protocol):
-    """Loadable memory reducer with explicit lifecycle methods."""
+    """Loadable retained-evidence reducer. ``update`` performs ``remember``."""
 
     implementation_id: str
 
@@ -26,10 +27,10 @@ class MemoryImplementation(Protocol):
         context: DecisionFrameContext,
         observation: Observation | None,
     ) -> MemorySnapshot:
-        """Ingest one observation and return the detached retained state."""
+        """Remember one observation and return detached retained evidence."""
 
     def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
-        """Begin a new epoch; map-backed reducers use the supplied host map."""
+        """Begin a new epoch. Reducers that keep history use the host map."""
 
     def snapshot(self) -> MemorySnapshot:
-        """Return the detached state, including the initial empty state."""
+        """Return detached retained evidence, including the initial empty snapshot."""

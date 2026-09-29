@@ -1,6 +1,6 @@
-"""Memory value contracts.
+"""Retained-evidence values.
 
-Defined in ``autonomy.memory.values``. Names imported here are those objects.
+Defined in ``autonomy.memory.values``. These objects are not the host map.
 """
 
 from autonomy.memory.values import (

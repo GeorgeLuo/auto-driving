@@ -1,7 +1,8 @@
-"""Observation contracts and decision cycle steps.
+"""Cycle records and re-exports of retained-evidence values.
 
-Memory values and ``MemoryImplementation`` are defined under ``autonomy.memory``
-and re-exported here.
+``Observation`` is the current-frame record produced by ``observe``. Names
+re-exported from ``autonomy.memory`` are that retained evidence and the
+``remember`` operation, not the host map ``SharedMemory``.
 """
 
 from .cycle import (

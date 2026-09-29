@@ -50,18 +50,21 @@ class PerceptionPluginInput:
 
 @dataclass(frozen=True)
 class PerceptionPluginContract:
-    """Declarative algorithm requirements and externally visible meaning.
+    """What one perception plugin accepts and what its evidence means.
 
-    All plugins are stateless between calls: temporal history belongs in the
-    host map. Instances may retain configuration and reusable model resources.
-    ``state_mode`` describes the algorithm's temporal horizon. Plugins requiring
-    history declare ``memory_required`` and implement ``reset(shared_memory)`` to drop
-    only their own keys. They own history shape, bounds, and commit policy.
+    Plugins do not keep temporal history on the instance. History that later
+    frames must see lives in the host map, ``shared_memory``. Instances may
+    retain configuration and reusable model resources. ``state_mode`` is only
+    that temporal horizon. ``memory_required`` means the plugin needs the host
+    map; it does not mean a retained-evidence memory step is configured.
+    Plugins that set it implement ``reset(shared_memory)`` and drop only their
+    own keys. They own history shape, bounds, and commit policy.
     """
 
     inputs: tuple[PerceptionPluginInput, ...] = ()
     # Temporal input horizon; never permission for instance-owned history.
     state_mode: PluginStateMode = "stateless"
+    # Host-map access. Not a switch for the retained-evidence memory step.
     memory_required: bool = False
     description: str = ""
     assumptions: tuple[str, ...] = ()

@@ -207,7 +207,7 @@ class PluginPerceptionMapper:
                 "records": [
                     {
                         "record": "signals[]",
-                        "meaning": "structured boolean or scalar observations",
+                        "meaning": "structured boolean or scalar evidence signals",
                     },
                     {
                         "record": "things[]",

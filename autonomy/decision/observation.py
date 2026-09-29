@@ -17,7 +17,11 @@ def timestamp_ms() -> int:
 
 @dataclass(frozen=True)
 class Observation:
-    """Decision-facing representation of current sensory evidence."""
+    """Current-frame record assembled from perception evidence and sensor context.
+
+    This is the observation step's output. It is not a perception evidence
+    batch and it is not retained evidence.
+    """
 
     observation_id: str
     created_at_ms: int
@@ -98,7 +102,7 @@ def observation_from_perception(
     metadata: dict[str, Any] | None = None,
     created_at_ms: int | None = None,
 ) -> Observation:
-    """Adapt perception evidence into the stable decision observation shape."""
+    """Default ``observe`` step: perception evidence plus the sensor snapshot."""
 
     snapshot_dict = sensor_snapshot.to_dict() if sensor_snapshot is not None else {}
     observation_created_at_ms = (

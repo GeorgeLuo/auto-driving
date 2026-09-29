@@ -26,7 +26,7 @@ PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
 PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
     "lightweight_observer": {
         "description": (
-            "Lightweight generic observer: frame facts, visible floor, and "
+            "Lightweight perception: frame facts, visible floor, and "
             "first-hit floor boundaries."
         ),
         "mapper_spec": PERCEPTION_MAPPER_SPEC,

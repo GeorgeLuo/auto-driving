@@ -1,8 +1,10 @@
-"""Memory-step activation, selection, runner, protocol, and value contracts.
+"""Observation-to-retained-evidence contracts.
 
-``SharedMemory`` is the host map defined in ``autonomy.shared_memory``,
-re-exported as the same object. Runner, protocol, and activation load on first
-use because they import the decision cycle, which imports these values.
+``remember`` is the cycle operation. A reducer's ``update`` performs it and
+returns a ``MemorySnapshot``. ``SharedMemory`` is the host map defined in
+``autonomy.shared_memory``, re-exported as the same object; it is not the
+snapshot. Runner, protocol, and activation load on first use because they
+import the decision cycle, which imports these values.
 """
 
 from importlib import import_module

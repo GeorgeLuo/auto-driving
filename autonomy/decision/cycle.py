@@ -1,3 +1,11 @@
+"""Decision-cycle ordering and the records passed between its operations.
+
+``perceive`` returns current evidence. ``observe`` adapts that evidence and
+the sensor context into the current-frame record. ``remember`` returns
+retained evidence. ``choose_action`` runs the existing action composition.
+``shared_memory`` on the frame context is the host-owned map.
+"""
+
 from __future__ import annotations
 
 import time
@@ -29,7 +37,11 @@ def timestamp_ms() -> int:
 
 @dataclass(frozen=True)
 class DecisionFrameContext:
-    """Inputs and metadata for one controller-cycle tick."""
+    """Inputs for one cycle tick.
+
+    ``shared_memory`` is the host-owned map. Retained evidence is not stored
+    on this object; ``remember`` returns it as a ``MemorySnapshot``.
+    """
 
     frame_id: str
     frame_index: int
@@ -73,7 +85,12 @@ ActionStep = Callable[
 
 @dataclass(frozen=True)
 class DecisionSteps:
-    """Optional steps; memory plugins own retained-evidence transformations."""
+    """The cycle operations. An absent callable skips that operation.
+
+    ``perceive``, ``observe``, and ``remember`` are the perception, observation,
+    and memory steps. ``choose_action`` is the action composition. It does not
+    by itself add a proposal, planning, or action-gate plugin.
+    """
 
     perceive: PerceiveStep | None = None
     observe: ObserveStep | None = None
@@ -83,7 +100,12 @@ class DecisionSteps:
 
 @dataclass(frozen=True)
 class DecisionCycleResult:
-    """Inspectable result of one controller-cycle tick."""
+    """Records from one cycle tick.
+
+    ``perception`` is current evidence, ``observation`` is the current-frame
+    record, and ``memory`` is retained evidence. The host map stays on the
+    context and is not a field of this result.
+    """
 
     context: DecisionFrameContext
     perception: PerceptionText | None
@@ -114,7 +136,12 @@ class DecisionCycleResult:
 
 
 class DecisionCycle:
-    """No-op friendly decision cycle with optional steps."""
+    """Run perceive, observe, remember, then choose_action.
+
+    Missing operations are skipped. ``remember`` returns a ``MemorySnapshot``
+    or ``None``. A memory plugin may still replace the current observation
+    through ``shared_memory["decision.observation"]``.
+    """
 
     def __init__(
         self,

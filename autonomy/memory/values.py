@@ -1,9 +1,9 @@
-"""Stable memory values for retained decision evidence.
+"""Retained-evidence values produced by ``remember``.
 
-Memory records what attributed observation evidence remains relevant across
-cycles. It is not a world model, semantic identity layer, or action policy.
-Concrete reducers live under implementations/; this module owns only the
-inspectable value contract and lifecycle fields.
+A ``MemorySnapshot`` records what remains relevant across cycles. It is not
+the host map ``SharedMemory``, a world model, or an action policy. Concrete
+reducers live under implementations/; this module owns only the inspectable
+value contract and lifecycle fields.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ class MemoryProvenance:
 
 @dataclass(frozen=True)
 class RetainedEvidence:
-    """One bounded retained claim derived from prior observation evidence."""
+    """One retained-evidence record derived from an observation."""
 
     record_id: str
     kind: str
@@ -211,9 +211,10 @@ class MemoryBounds:
 
 @dataclass(frozen=True)
 class MemorySnapshot:
-    """Detached retained evidence after one cycle update or reset.
+    """Detached retained evidence returned by ``remember``.
 
-    Instances are the value published at shared_memory["decision.snapshot"].
+    This is the memory step's output, including the value published at
+    ``shared_memory["decision.snapshot"]``. It is not the host map.
     """
 
     memory_id: str

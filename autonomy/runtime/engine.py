@@ -8,7 +8,12 @@ from autonomy.vehicle import clamp_unit
 
 @dataclass(frozen=True)
 class AutonomySnapshot:
-    """Inputs made available to one onboard autonomy engine step."""
+    """Inputs for one engine step.
+
+    ``perception`` is current evidence, ``observation`` is the current-frame
+    record, and ``memory`` is retained evidence. This snapshot does not carry
+    the host map.
+    """
 
     sensor_snapshot: Any = None
     perception: Any = None

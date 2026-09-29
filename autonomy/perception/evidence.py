@@ -83,7 +83,10 @@ class PerceivedThing:
 
 @dataclass(frozen=True)
 class PerceptionSignal:
-    """One structured scalar or boolean observation emitted by a plugin."""
+    """One scalar or boolean evidence signal from a perception plugin.
+
+    This is current evidence, not the cycle's observation record.
+    """
 
     signal_id: str
     value: bool | int | float | str | None
@@ -119,7 +122,7 @@ class PerceptionSignal:
 
 @dataclass(frozen=True)
 class PerceptionEvidenceBatch:
-    """The narrow output of one plugin's algorithm implementation."""
+    """Evidence returned by one perception plugin's ``perceive`` call."""
 
     signals: tuple[PerceptionSignal, ...] = ()
     things: tuple[PerceivedThing, ...] = ()

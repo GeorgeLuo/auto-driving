@@ -1,4 +1,9 @@
-"""Immutable DecisionDataSource for shadow action proposals (M006-01)."""
+"""Current decision input view passed to proposal.
+
+The observation envelope is the current-frame record. The memory envelope is
+detached retained evidence, not the host map. Proposal still receives this
+view rather than ``shared_memory``.
+"""
 
 from __future__ import annotations
 
@@ -421,7 +426,11 @@ def default_capabilities(
 
 @dataclass(frozen=True)
 class DecisionDataSource:
-    """Immutable cycle-aligned decision inputs for proposal plugins."""
+    """Detached decision input for one proposal call.
+
+    ``observation`` is the current-frame record. ``memory`` is retained
+    evidence. Neither field is the host map.
+    """
 
     frame_id: str
     frame_index: int

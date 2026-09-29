@@ -1,4 +1,9 @@
-"""ActionProposal and ProposedVehicleCommand contracts (M006-02)."""
+"""Candidate command returned by proposal.
+
+``ActionProposal`` is one plugin's candidate for one cycle, with its command
+and supporting evidence. This module does not select a candidate or authorize
+control.
+"""
 
 from __future__ import annotations
 
@@ -182,7 +187,7 @@ class SourceRef:
 
 @dataclass(frozen=True)
 class ActionProposal:
-    """Bounded, serializable action proposal from one plugin for one cycle."""
+    """One proposal plugin's candidate command and supporting evidence."""
 
     plugin_id: str
     frame_id: str

@@ -52,7 +52,11 @@ class PerceptionPluginRun:
 
 @dataclass(frozen=True)
 class PerceptionText:
-    """Structured perception evidence with a framework-rendered text view."""
+    """Current evidence for the perception step, with a rendered text view.
+
+    The framework builds this from plugin evidence batches. It is not an
+    ``Observation`` and not a ``MemorySnapshot``.
+    """
 
     schema: str
     plugin_id: str
@@ -163,7 +167,7 @@ class PerceptionRequest:
 
 @runtime_checkable
 class PerceptionMapper(Protocol):
-    """Self-contained mapper from vehicle sensors to perception evidence."""
+    """Whole perception step: sensors in, current evidence out."""
 
     plugin_id: str
 

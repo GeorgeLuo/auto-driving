@@ -5,13 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision import (
-    DecisionFrameContext,
-    DecisionSteps,
-    MemoryUpdateError,
-    load_memory_step_if_present,
-    read_memory_activation,
-)
+from autonomy.decision import DecisionFrameContext, DecisionSteps, MemoryUpdateError
+from autonomy.memory import load_memory_step_if_present, read_memory_activation
 from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.memory.catalog import build_memory_activation_payload

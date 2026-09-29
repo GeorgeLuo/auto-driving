@@ -11,15 +11,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision import (
-    ActivatedMemoryStep,
     DecisionCycle,
     DecisionFrameContext,
     DecisionSteps,
-    MemoryActivation,
     Observation,
     observation_from_perception,
 )
-from autonomy.decision.activation import bounds_from_config
+from autonomy.memory import ActivatedMemoryStep, MemoryActivation
+from autonomy.memory.activation import bounds_from_config
 from autonomy.decision.shadow_runner import ENGINE_ID
 from autonomy.perception import (
     PerceptionMapper,

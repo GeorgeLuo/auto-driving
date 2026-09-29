@@ -23,6 +23,30 @@ own keys; the existing evidence reducer does not evict those entries.
 """
 
 from collections.abc import MutableMapping
+from importlib import import_module
 from typing import Any
 
 SharedMemory = MutableMapping[str, Any]
+
+
+_ACTIVATION_EXPORTS = (
+    "MEMORY_ACTIVATION_SCHEMA",
+    "ActivatedMemoryStep",
+    "MemoryActivation",
+    "instantiate_memory_implementation",
+    "load_memory_implementation",
+    "load_memory_step_if_present",
+    "read_memory_activation",
+)
+
+__all__ = ["SharedMemory", *_ACTIVATION_EXPORTS]
+
+
+def __getattr__(name: str) -> Any:
+    """Load activation APIs lazily to keep decision and memory contracts acyclic."""
+    if name not in _ACTIVATION_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    activation = import_module(".activation", __name__)
+    value = getattr(activation, name)
+    globals()[name] = value
+    return value

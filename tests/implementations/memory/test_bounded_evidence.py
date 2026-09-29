@@ -5,14 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision import (
-    ActivatedMemoryStep,
-    DecisionFrameContext,
-    DecisionSteps,
-    DecisionCycle,
-    Observation,
-    read_memory_activation,
-)
+from autonomy.decision import DecisionCycle, DecisionFrameContext, DecisionSteps, Observation
+from autonomy.memory import ActivatedMemoryStep, read_memory_activation
 from autonomy.decision.memory import error_memory_snapshot
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,

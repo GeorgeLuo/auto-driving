@@ -2,13 +2,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from autonomy.decision import (
-    MEMORY_ACTIVATION_SCHEMA,
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
     RetainedEvidence,
     empty_memory_snapshot,
 )
+from autonomy.memory import MEMORY_ACTIVATION_SCHEMA
 from autonomy.perception import ViewLocation
 
 
@@ -370,7 +370,7 @@ def _valid_payload() -> dict:
         "memory": {
             "implementation_id": "recording_test",
             "implementation_spec": (
-                "tests.autonomy.decision.memory_activation_fixtures:_RecordingMemory"
+                "tests.autonomy.memory.activation_fixtures:_RecordingMemory"
             ),
             "implementation_config": {
                 "max_records": 4,

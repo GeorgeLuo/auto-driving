@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 from autonomy.memory import SharedMemory
-from autonomy.decision.activation import ActivatedMemoryStep
+from autonomy.memory import ActivatedMemoryStep
 from autonomy.decision.cycle import (
     DecisionCycle,
     DecisionCycleResult,

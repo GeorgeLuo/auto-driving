@@ -12,12 +12,8 @@ from typing import Any, Callable, TextIO
 from urllib.parse import quote, urljoin
 from urllib.request import urlopen
 
-from autonomy.decision import (
-    ActivatedMemoryStep,
-    DecisionFrameContext,
-    Observation,
-    read_memory_activation,
-)
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory import ActivatedMemoryStep, read_memory_activation
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,

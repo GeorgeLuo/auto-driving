@@ -12,14 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import (
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory import (
     MEMORY_ACTIVATION_SCHEMA,
     ActivatedMemoryStep,
-    DecisionFrameContext,
-    Observation,
     read_memory_activation,
 )
-from autonomy.decision.activation import (
+from autonomy.memory.activation import (
     bounds_from_config,
     memory_manager_from_activation,
     memory_selection_config,

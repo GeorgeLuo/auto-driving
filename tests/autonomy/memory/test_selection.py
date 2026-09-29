@@ -3,9 +3,10 @@ from __future__ import annotations
 import tempfile
 import unittest
 
-from autonomy.decision import ActivatedMemoryStep, DecisionFrameContext, Observation, read_memory_activation
-from autonomy.decision.selection import memory_plugin_manager
-from tests.autonomy.decision.memory_activation_fixtures import _RecordingMemory, _valid_payload, _write_payload
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from autonomy.memory.selection import memory_plugin_manager
+from tests.autonomy.memory.activation_fixtures import _RecordingMemory, _valid_payload, _write_payload
 
 
 class _OrderedMemory(_RecordingMemory):
@@ -18,7 +19,7 @@ class _OrderedMemory(_RecordingMemory):
         return super().update(context, observation)
 
 
-SPEC = "tests.autonomy.decision.test_memory_selection:_OrderedMemory"
+SPEC = "tests.autonomy.memory.test_selection:_OrderedMemory"
 
 
 def _manager():

@@ -13,12 +13,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision.activation import (
-    ActivatedMemoryStep,
-    MemoryActivation,
-    memory_selection_config,
-    read_memory_activation,
-)
+from autonomy.memory import ActivatedMemoryStep, MemoryActivation, read_memory_activation
+from autonomy.memory.activation import memory_selection_config
 
 _STAGED_BUNDLE_IMPORT_LOCK = threading.RLock()
 

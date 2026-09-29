@@ -465,7 +465,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             else:
                 try:
                     from autonomy.runtime import apply_decision_activation, read_decision_activation
-                    from autonomy.decision import DecisionSteps, load_memory_step_if_present
+                    from autonomy.decision import DecisionSteps
+                    from autonomy.memory import load_memory_step_if_present
                     from autonomy.perception import ActivatedPerceptionStep, read_perception_activation
                     from autonomy.runtime.cycle_host import AutonomyCycleHost
                     from implementations.runtime.donkeycar.donkey_part import (

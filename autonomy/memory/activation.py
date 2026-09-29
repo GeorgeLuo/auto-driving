@@ -14,8 +14,8 @@ from typing import Any
 from autonomy.memory import SharedMemory
 from autonomy.plugins import PluginDefinition, PluginManager, PluginSelectionRuntime
 
-from .cycle import DecisionFrameContext, MemoryUpdateError
-from .memory import (
+from autonomy.decision.cycle import DecisionFrameContext, MemoryUpdateError
+from autonomy.decision.memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
@@ -27,9 +27,9 @@ from .memory import (
     serialized_mapping_bytes,
     serialized_memory_snapshot_bytes,
 )
-from .observation import Observation
-from .plugin import MemoryImplementation
-from .selection import memory_plugin_manager
+from autonomy.decision.observation import Observation
+from autonomy.decision.plugin import MemoryImplementation
+from autonomy.memory.selection import memory_plugin_manager
 
 
 MEMORY_ACTIVATION_SCHEMA = "automa_memory_activation_v0"

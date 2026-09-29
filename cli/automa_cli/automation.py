@@ -17,12 +17,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import (
-    DecisionFrameContext,
-    DecisionSteps,
-    read_memory_activation,
-)
-from autonomy.decision.activation import memory_selection_config
+from autonomy.decision import DecisionFrameContext, DecisionSteps
+from autonomy.memory import read_memory_activation
+from autonomy.memory.activation import memory_selection_config
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost

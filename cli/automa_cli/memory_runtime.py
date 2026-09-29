@@ -13,24 +13,24 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from autonomy.memory import ActivatedMemoryStep, MemoryActivation, read_memory_activation
+from autonomy.memory import PluginMemoryRunner, MemoryActivation, read_memory_activation
 from autonomy.memory.activation import memory_selection_config
 
 _STAGED_BUNDLE_IMPORT_LOCK = threading.RLock()
 
 
-def load_memory_step_from_bundle(activation: MemoryActivation) -> ActivatedMemoryStep:
+def load_memory_step_from_bundle(activation: MemoryActivation) -> PluginMemoryRunner:
     bundle = activation.payload.get("controller_bundle", {})
     root = bundle.get("root_dir") if isinstance(bundle, dict) else None
     if not root:
-        return ActivatedMemoryStep(activation)
+        return PluginMemoryRunner(activation)
     if not Path(root).is_dir():
         raise FileNotFoundError(f"Controller bundle is missing: {root}")
     import_context = _StagedBundleImportContext(Path(root))
     # Implementations come from the staged bundle; autonomy values must retain
     # the host's class identity for DecisionCycle's MemorySnapshot checks.
     with import_context.activate():
-        step = ActivatedMemoryStep(activation)
+        step = PluginMemoryRunner(activation)
     for method_name in ("update", "reset", "snapshot"):
         method = getattr(step, method_name)
 
@@ -43,7 +43,7 @@ def load_memory_step_from_bundle(activation: MemoryActivation) -> ActivatedMemor
 
 
 def _sync_live_memory_plugin_selection(
-    step: ActivatedMemoryStep,
+    step: PluginMemoryRunner,
     activation_path: Path,
     *,
     loaded_config: dict[str, Any],

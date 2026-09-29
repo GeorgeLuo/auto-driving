@@ -15,7 +15,7 @@ from typing import Any, TextIO
 from autonomy.decision import DecisionFrameContext, Observation
 from autonomy.memory import (
     MEMORY_ACTIVATION_SCHEMA,
-    ActivatedMemoryStep,
+    PluginMemoryRunner,
     read_memory_activation,
 )
 from autonomy.memory.activation import (
@@ -363,7 +363,7 @@ def replay_vehicle_memory(
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    step: ActivatedMemoryStep | None = None
+    step: PluginMemoryRunner | None = None
     selected_implementation = implementation_id
     activation_source: str
 
@@ -380,12 +380,12 @@ def replay_vehicle_memory(
             implementation_id=implementation_id,
             bundle=bundle,
         ) as temp_activation:
-            step = ActivatedMemoryStep(read_memory_activation(temp_activation))
+            step = PluginMemoryRunner(read_memory_activation(temp_activation))
             activation_source = f"ephemeral:{implementation_id}"
             selected_implementation = implementation_id
             run_a = _run_memory_sequence(step=step, frames=frames)
             if verify_twice:
-                step_b = ActivatedMemoryStep(read_memory_activation(temp_activation))
+                step_b = PluginMemoryRunner(read_memory_activation(temp_activation))
                 run_b = _run_memory_sequence(step=step_b, frames=frames)
             else:
                 run_b = run_a
@@ -1113,7 +1113,7 @@ def _normalize_sequence_frame(
 
 def _run_memory_sequence(
     *,
-    step: ActivatedMemoryStep,
+    step: PluginMemoryRunner,
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
     # Fresh epoch for this pass (step already reset on construction).

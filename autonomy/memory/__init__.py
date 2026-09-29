@@ -32,6 +32,7 @@ SharedMemory = MutableMapping[str, Any]
 _ACTIVATION_EXPORTS = (
     "MEMORY_ACTIVATION_SCHEMA",
     "ActivatedMemoryStep",
+    "PluginMemoryRunner",
     "MemoryActivation",
     "instantiate_memory_implementation",
     "load_memory_implementation",

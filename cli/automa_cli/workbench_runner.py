@@ -17,7 +17,7 @@ from autonomy.decision import (
     Observation,
     observation_from_perception,
 )
-from autonomy.memory import ActivatedMemoryStep, MemoryActivation
+from autonomy.memory import PluginMemoryRunner, MemoryActivation
 from autonomy.memory.activation import bounds_from_config
 from autonomy.decision.shadow_runner import ENGINE_ID
 from autonomy.perception import (
@@ -103,7 +103,7 @@ def _default_mapper() -> PerceptionMapper:
     )
 
 
-def _default_memory_step(companion: dict[str, Any] | None = None) -> ActivatedMemoryStep:
+def _default_memory_step(companion: dict[str, Any] | None = None) -> PluginMemoryRunner:
     payload = build_memory_activation_payload(DEFAULT_MEMORY_IMPLEMENTATION)
     section = payload["memory"]
     if companion:
@@ -119,7 +119,7 @@ def _default_memory_step(companion: dict[str, Any] | None = None) -> ActivatedMe
         source_path=Path("workbench-plugin-memory"),
         payload=payload,
     )
-    return ActivatedMemoryStep(activation)
+    return PluginMemoryRunner(activation)
 
 
 def _safe_status(value: Any) -> str:
@@ -718,7 +718,7 @@ class ImageReplayRunner:
                     if previous_mapper is not None:
                         previous_mapper.reset()
                     if previous_memory_step is not None:
-                        if isinstance(previous_memory_step, ActivatedMemoryStep):
+                        if isinstance(previous_memory_step, PluginMemoryRunner):
                             previous_memory_step.reset(self._shared_memory)
                         else:
                             previous_memory_step.reset()
@@ -1259,7 +1259,7 @@ class ImageReplayRunner:
                 mapper_status = f"error: {type(exc).__name__}: {exc}"
         if self._memory_step is not None:
             try:
-                if isinstance(self._memory_step, ActivatedMemoryStep):
+                if isinstance(self._memory_step, PluginMemoryRunner):
                     self._memory_step.reset(self._shared_memory)
                 else:
                     self._memory_step.reset()

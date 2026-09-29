@@ -12,15 +12,20 @@ class MemoryPublicPathTests(unittest.TestCase):
 from autonomy.memory import (
     ActivatedMemoryStep,
     MemoryActivation,
+    PluginMemoryRunner,
     SharedMemory,
     read_memory_activation,
 )
+from autonomy.memory.activation import ActivatedMemoryStep as ActivationMemoryStep
+from autonomy.memory.plugin_runner import PluginMemoryRunner as DirectPluginMemoryRunner
 from autonomy.memory.selection import memory_plugin_manager
 from autonomy.decision import (
     ActivatedMemoryStep as DecisionActivatedMemoryStep,
     read_memory_activation as decision_read_memory_activation,
 )
 assert DecisionActivatedMemoryStep is ActivatedMemoryStep
+assert ActivationMemoryStep is ActivatedMemoryStep is PluginMemoryRunner
+assert DirectPluginMemoryRunner is PluginMemoryRunner
 assert decision_read_memory_activation is read_memory_activation
 assert SharedMemory is not None and MemoryActivation is not None
 assert memory_plugin_manager is not None

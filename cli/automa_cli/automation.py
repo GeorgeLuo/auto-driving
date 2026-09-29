@@ -40,6 +40,7 @@ from implementations.vehicle.chase_sim.metrics_ws import (
 )
 
 from .memory_runtime import load_memory_step_from_bundle, _sync_live_memory_plugin_selection
+from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
 from .decision import (
     invalidate_latest_decision_frame,
@@ -2465,9 +2466,7 @@ def _copy_file_atomic(source: Path, destination: Path) -> None:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    temporary.replace(path)
+    write_json_atomically(path, payload)
 
 
 def _record_decision_publish_skip(

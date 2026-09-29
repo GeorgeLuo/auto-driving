@@ -43,7 +43,8 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .memory_runtime import load_memory_step_from_bundle, _write_json_atomically
+from .memory_runtime import load_memory_step_from_bundle
+from .staged_bundle import write_json_atomically
 from .paths import ROOT, display_path, safe_path_part
 from .runtime_view import RuntimeViewServer
 from .physical_observation import (
@@ -144,7 +145,7 @@ def update_vehicle_memory(
 
     if not dry_run:
         activation_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_json_atomically(activation_path, activation)
+        write_json_atomically(activation_path, activation)
 
     entry = memory_implementation_spec(implementation_id)
     payload = {
@@ -205,7 +206,7 @@ def set_vehicle_memory_plugin(
                 "enabled": enabled,
                 "changed_at_ms": int(time.time() * 1000),
             }
-            _write_json_atomically(activation_path, candidate_payload)
+            write_json_atomically(activation_path, candidate_payload)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not change memory plugins: {exc}")
     payload = {
@@ -247,7 +248,7 @@ def ensure_vehicle_memory_activation(
             controller_bundle = {}
             activation["controller_bundle"] = controller_bundle
         controller_bundle["release"] = release_activation_summary(release)
-        _write_json_atomically(activation_path, activation)
+        write_json_atomically(activation_path, activation)
         return activation_path
 
     activation = _memory_activation(
@@ -257,7 +258,7 @@ def ensure_vehicle_memory_activation(
         release=release,
     )
     activation_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_json_atomically(activation_path, activation)
+    write_json_atomically(activation_path, activation)
     return activation_path
 
 

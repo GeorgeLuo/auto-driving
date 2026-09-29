@@ -4,10 +4,12 @@ import unittest
 from typing import Any
 
 from autonomy.plugins import (
+    LocalPluginCatalog,
     PluginDefinition,
     PluginManagementError,
     PluginManager,
     PluginSelectionRuntime,
+    plugin_report,
     replace_selection,
 )
 
@@ -21,6 +23,25 @@ def _definition(plugin_id: str, **overrides: Any) -> PluginDefinition:
     }
     payload.update(overrides)
     return PluginDefinition(**payload)
+
+
+class PluginCatalogTests(unittest.TestCase):
+    def test_availability_tracks_resolver_without_loading_or_selecting_plugins(self) -> None:
+        first = _definition("first")
+        second = _definition("second", config={"max_records": 8})
+        resolver = LocalPluginCatalog((first, second, _definition("other", step="perception")))
+        manager = PluginManager("memory", resolver)
+        self.assertEqual(manager.available, (first, second))
+        self.assertEqual(manager.selected_ids, ())
+        manager.select(["first"])
+        self.assertEqual(manager.available_ids, ("first", "second"))
+        manager.remove("first")
+        self.assertEqual(manager.available_ids, ("first", "second"))
+        third = _definition("third")
+        resolver.register(third)
+        self.assertEqual(manager.available, (first, second, third))
+        manager.add("third")
+        self.assertEqual(manager.selected, (third,))
 
 
 class ReplaceSelectionTests(unittest.TestCase):
@@ -275,6 +296,268 @@ class PluginSelectionRuntimeTests(unittest.TestCase):
 
         self.assertEqual(runtime.applied, original)
         self.assertEqual(manager.selected_ids, ("second",))
+
+    def test_prepare_loads_and_validates_without_reset(self) -> None:
+        manager = PluginManager.from_specs(
+            "perception",
+            {"kept": "implementations.example:kept", "added": "implementations.example:added"},
+        )
+        manager.select(("kept",))
+        runtime = PluginSelectionRuntime(manager)
+        kept = object()
+        added = object()
+        events: list[tuple[Any, ...]] = []
+
+        def load(definition: PluginDefinition) -> object:
+            events.append(("load", definition.plugin_id))
+            return kept if definition.plugin_id == "kept" else added
+
+        runtime.apply(load=load, reset=lambda instance: events.append(("reset", instance)))
+        manager.select(("added", "kept"))
+        prepared = runtime.prepare(
+            load=load,
+            validate=lambda instances: events.append(("validate", instances)),
+        )
+
+        self.assertEqual(
+            events,
+            [("load", "kept"), ("load", "added"), ("validate", (added, kept))],
+        )
+        self.assertIs(prepared[0][1], added)
+        self.assertIs(prepared[1][1], kept)
+        self.assertIs(runtime.applied[0][1], kept)
+        self.assertEqual(
+            tuple(definition.plugin_id for definition, _instance in runtime.applied),
+            ("kept",),
+        )
+
+    def test_commit_resets_the_prepared_instances_without_loading_again(self) -> None:
+        manager = PluginManager.from_specs(
+            "perception",
+            {
+                "kept": "implementations.example:kept",
+                "added": "implementations.example:added",
+                "later": "implementations.example:later",
+            },
+        )
+        manager.select(("kept",))
+        runtime = PluginSelectionRuntime(manager)
+        instances = {"kept": object(), "added": object(), "later": object()}
+        events: list[tuple[Any, ...]] = []
+
+        def load(definition: PluginDefinition) -> object:
+            events.append(("load", definition.plugin_id))
+            return instances[definition.plugin_id]
+
+        runtime.apply(load=load)
+        manager.select(("added",))
+        prepared = runtime.prepare(
+            load=load,
+            validate=lambda candidates: events.append(("validate", candidates)),
+        )
+        manager.select(("later",))
+        committed = runtime.commit(reset=lambda instance: events.append(("reset", instance)))
+
+        self.assertEqual(
+            events,
+            [
+                ("load", "kept"),
+                ("load", "added"),
+                ("validate", (instances["added"],)),
+                ("reset", instances["kept"]),
+            ],
+        )
+        self.assertEqual(committed, prepared)
+        self.assertIs(runtime.applied[0][1], instances["added"])
+        self.assertEqual(manager.selected_ids, ("later",))
+
+    def test_discard_leaves_applied_instances_and_commit_requires_prepare(self) -> None:
+        manager = PluginManager.from_specs(
+            "memory",
+            {
+                "current": "implementations.example:current",
+                "replacement": "implementations.example:replacement",
+            },
+        )
+        manager.select(("current",))
+        runtime = PluginSelectionRuntime(manager)
+        current = object()
+        created: list[object] = []
+        resets: list[object] = []
+
+        def load(definition: PluginDefinition) -> object:
+            if definition.plugin_id == "current":
+                return current
+            instance = object()
+            created.append(instance)
+            return instance
+
+        original = runtime.apply(load=load)
+        manager.select(("replacement",))
+        prepared = runtime.prepare(load=load)
+        candidate = prepared[0][1]
+        runtime.discard()
+
+        self.assertEqual(runtime.applied, original)
+        self.assertEqual(created, [candidate])
+        self.assertEqual(resets, [])
+        with self.assertRaisesRegex(PluginManagementError, "prepared"):
+            runtime.commit(reset=resets.append)
+        fresh = runtime.apply(load=load, reset=resets.append)
+        self.assertEqual(created, [candidate, fresh[0][1]])
+        self.assertIsNot(fresh[0][1], candidate)
+        self.assertEqual(resets, [current])
+
+    def test_failed_prepare_leaves_another_runtime_unpublished(self) -> None:
+        perception = PluginManager.from_specs(
+            "perception",
+            {
+                "temporal": "implementations.example:temporal",
+                "other": "implementations.example:other",
+            },
+        )
+        memory = PluginManager.from_specs(
+            "memory",
+            {
+                "current": "implementations.example:current",
+                "replacement": "implementations.example:replacement",
+            },
+        )
+        perception.select(("temporal",))
+        memory.select(("current",))
+        perception_runtime = PluginSelectionRuntime(perception)
+        memory_runtime = PluginSelectionRuntime(memory)
+        temporal = object()
+        current = object()
+        perception_runtime.apply(load=lambda _definition: temporal)
+        memory_original = memory_runtime.apply(load=lambda _definition: current)
+        perception.select(("other",))
+        memory.select(("replacement",))
+        perception_runtime.prepare(load=lambda _definition: object())
+
+        def fail_load(_definition: PluginDefinition) -> object:
+            raise RuntimeError("second construction failed")
+
+        with self.assertRaisesRegex(RuntimeError, "second construction failed"):
+            memory_runtime.prepare(load=fail_load)
+
+        self.assertIs(perception_runtime.applied[0][1], temporal)
+        self.assertEqual(memory_runtime.applied, memory_original)
+        perception_runtime.discard()
+        memory_runtime.discard()
+        self.assertIs(perception_runtime.applied[0][1], temporal)
+        with self.assertRaisesRegex(PluginManagementError, "prepared"):
+            perception_runtime.commit()
+
+    def test_reset_failure_does_not_publish_the_prepared_selection(self) -> None:
+        manager = PluginManager.from_specs(
+            "perception",
+            {"current": "implementations.example:current", "next": "implementations.example:next"},
+        )
+        manager.select(("current",))
+        runtime = PluginSelectionRuntime(manager)
+        original = runtime.apply(load=lambda _definition: object())
+        manager.select(("next",))
+        runtime.prepare(load=lambda _definition: object())
+
+        with self.assertRaisesRegex(RuntimeError, "reset failed"):
+            runtime.commit(
+                reset=lambda _instance: (_ for _ in ()).throw(RuntimeError("reset failed"))
+            )
+
+        self.assertEqual(runtime.applied, original)
+        with self.assertRaisesRegex(PluginManagementError, "prepared"):
+            runtime.commit()
+
+
+class PluginReportTests(unittest.TestCase):
+    def test_report_separates_selected_from_applied_records(self) -> None:
+        manager = PluginManager.from_specs(
+            "memory",
+            {
+                "first": "implementations.example:first",
+                "second": "implementations.example:second",
+                "third": "implementations.example:third",
+            },
+        )
+        manager.select(("second", "first"))
+        runtime = PluginSelectionRuntime(manager)
+        runtime.apply(load=lambda definition: definition.plugin_id)
+        manager.select(("third", "first"))
+
+        report = plugin_report(
+            manager,
+            runtime.applied,
+            [
+                {
+                    "plugin_id": "second",
+                    "implementation_id": "second-impl",
+                    "duration_ms": 1.5,
+                    "error": None,
+                    "bounds": {"max_records": 4},
+                    "last_health": "healthy",
+                    "status": "ok",
+                },
+                {
+                    "plugin_id": "third",
+                    "implementation_id": "uncommitted",
+                    "duration_ms": 9,
+                    "error": "should not appear",
+                },
+                {
+                    "plugin_id": "first",
+                    "implementation_id": "first-impl",
+                    "duration_ms": 0,
+                    "error": "kept",
+                },
+            ],
+        )
+
+        self.assertEqual(report["available_plugin_ids"], ["first", "second", "third"])
+        self.assertEqual(report["selected_plugin_ids"], ["third", "first"])
+        self.assertEqual(report["applied_plugin_ids"], ["second", "first"])
+        self.assertEqual(
+            report["plugins"],
+            [
+                {
+                    "plugin_id": "second",
+                    "implementation_id": "second-impl",
+                    "duration_ms": 1.5,
+                    "error": None,
+                },
+                {
+                    "plugin_id": "first",
+                    "implementation_id": "first-impl",
+                    "duration_ms": 0,
+                    "error": "kept",
+                },
+            ],
+        )
+        self.assertEqual(
+            set(report["plugins"][0]),
+            {"plugin_id", "implementation_id", "duration_ms", "error"},
+        )
+
+        blank = plugin_report(manager, runtime.applied)
+        self.assertEqual(blank["selected_plugin_ids"], ["third", "first"])
+        self.assertEqual(blank["applied_plugin_ids"], ["second", "first"])
+        self.assertEqual(
+            blank["plugins"],
+            [
+                {
+                    "plugin_id": "second",
+                    "implementation_id": None,
+                    "duration_ms": None,
+                    "error": None,
+                },
+                {
+                    "plugin_id": "first",
+                    "implementation_id": None,
+                    "duration_ms": None,
+                    "error": None,
+                },
+            ],
+        )
 
 
 if __name__ == "__main__":

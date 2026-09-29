@@ -91,6 +91,7 @@ class PluginPerceptionMapper:
         self._component_provider_specs: dict[str, str] = {}
         self._pending_providers: dict[str, ComponentProvider] | None = None
         self._pending_provider_specs: dict[str, str] | None = None
+        self._execution_runs: tuple[PerceptionPluginRun, ...] = ()
         self._apply_selection()
 
     @property
@@ -106,6 +107,7 @@ class PluginPerceptionMapper:
 
     def reset(self, shared_memory=None) -> None:
         with self._runtime_lock:
+            self._execution_runs = ()
             for plugin in self.plugins:
                 _reset_plugin(plugin, shared_memory)
 
@@ -114,25 +116,37 @@ class PluginPerceptionMapper:
             return self._describe_schema()
 
     def plugin_report(self) -> dict[str, Any]:
-        """Report catalog, requested, and published plugins.
+        """Report catalog, requested selection, and the last published execution.
 
-        Duration and error stay null here. The perception step overlays the
-        last run onto these applied records.
+        Timing and error come from that execution. They stay null before the
+        first run and after reset. Domain run fields stay on the perception
+        result, not in this envelope.
         """
 
         with self._runtime_lock:
             return self._plugin_report()
 
     def _plugin_report(self) -> dict[str, Any]:
-        records = [
-            {
-                "plugin_id": definition.plugin_id,
-                "implementation_id": plugin.plugin_id,
-                "duration_ms": None,
-                "error": None,
-            }
-            for definition, plugin in self._selection_runtime.applied
-        ]
+        runs = {run.plugin_id: run for run in self._execution_runs}
+        records = []
+        for definition, plugin in self._selection_runtime.applied:
+            run = runs.get(definition.plugin_id)
+            implementation_id = plugin.plugin_id
+            duration_ms = None
+            error = None
+            if run is not None:
+                if run.implementation_id:
+                    implementation_id = run.implementation_id
+                duration_ms = run.duration_ms
+                error = run.error
+            records.append(
+                {
+                    "plugin_id": definition.plugin_id,
+                    "implementation_id": implementation_id,
+                    "duration_ms": duration_ms,
+                    "error": error,
+                }
+            )
         return build_plugin_report(
             self.plugin_manager,
             self._selection_runtime.applied,
@@ -281,6 +295,7 @@ class PluginPerceptionMapper:
             )
             limits.extend(plugin.contract.limitations)
 
+        self._execution_runs = tuple(plugin_runs)
         return PerceptionText(
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,

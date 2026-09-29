@@ -168,6 +168,18 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(perception.plugin_runs[0].implementation_id, "working-test-v0")
         self.assertEqual(mapper.plugins[0].plugin_id, "working-test-v0")
         self.assertEqual(mapper.plugins[0].asserted_value, 42)
+        reported = {
+            item["plugin_id"]: item for item in mapper.plugin_report()["plugins"]
+        }
+        for run in perception.plugin_runs:
+            record = reported[run.plugin_id]
+            self.assertEqual(
+                set(record),
+                {"plugin_id", "implementation_id", "duration_ms", "error"},
+            )
+            self.assertEqual(record["implementation_id"], run.implementation_id)
+            self.assertEqual(record["duration_ms"], run.duration_ms)
+            self.assertEqual(record["error"], run.error)
 
     def test_catalog_aliases_may_share_one_implementation(self) -> None:
         manager = perception_plugin_manager(
@@ -485,6 +497,7 @@ class PluginRunnerTests(unittest.TestCase):
         )
         self.assertEqual(executed["last_plugin_runs"][0]["status"], "ok")
         self.assertEqual(executed["last_plugin_runs"][0]["duration_ms"], record["duration_ms"])
+        self.assertEqual(step.mapper.plugin_report(), executed["plugin_report"])
         self.assertEqual(result.plugin_runs[0].implementation_id, "working-test-v0")
         self.assertEqual(step.mapper.plugins[0].plugin_id, "working-test-v0")
 
@@ -520,6 +533,14 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(reported["last_plugin_runs"][0]["plugin_id"], "exploding")
         self.assertEqual(failed.plugin_runs[0].plugin_id, "exploding")
         self.assertEqual(step.mapper.plugins[0].plugin_id, "exploding-test-v0")
+        self.assertEqual(step.mapper.plugin_report(), reported["plugin_report"])
+
+        step.reset()
+        cleared = step.status()
+        self.assertEqual(cleared["last_plugin_runs"], [])
+        self.assertIsNone(cleared["plugin_report"]["plugins"][0]["duration_ms"])
+        self.assertIsNone(cleared["plugin_report"]["plugins"][0]["error"])
+        self.assertEqual(step.mapper.plugin_report(), cleared["plugin_report"])
 
     def test_step_status_omits_plugin_report_without_a_plugin_manager(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

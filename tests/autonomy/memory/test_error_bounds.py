@@ -2,13 +2,9 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from autonomy.decision import (
-    ActivatedMemoryStep,
-    DecisionFrameContext,
-    Observation,
-    read_memory_activation,
-)
-from tests.autonomy.decision.memory_activation_fixtures import (
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from tests.autonomy.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )
@@ -40,7 +36,7 @@ class MemoryActivationTests(unittest.TestCase):
                     )
             finally:
                 step.implementation.update = original_update  # type: ignore[method-assign]
-            from autonomy.decision import DEFAULT_MAX_DIAGNOSTIC_CHARS
+            from autonomy.memory.values import DEFAULT_MAX_DIAGNOSTIC_CHARS
             # last_error/status must also be bounded (Chase worker publishes this).
             status = step.status()
             self.assertIsNotNone(status["last_error"])
@@ -60,7 +56,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_NearCeilingThenFailMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_NearCeilingThenFailMemory"
             payload["memory"]["implementation_config"]["max_serialized_bytes"] = 2_000
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
@@ -126,7 +122,7 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertEqual(snapshot.health, "empty")
             self.assertTrue(snapshot.epoch_id.startswith("epoch-reset-failed-"))
             self.assertEqual(len(snapshot.epoch_id.split("-")[-1]), 10)
-            from autonomy.decision import serialized_memory_snapshot_bytes
+            from autonomy.memory.values import serialized_memory_snapshot_bytes
 
             self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
             self.assertIn("reset exploded", step.last_error or "")
@@ -136,7 +132,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_BrokenStrMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_BrokenStrMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )

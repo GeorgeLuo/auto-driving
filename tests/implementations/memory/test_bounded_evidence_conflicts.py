@@ -3,11 +3,8 @@ from __future__ import annotations
 import unittest
 from copy import deepcopy
 
-from autonomy.decision import (
-    DecisionFrameContext,
-    Observation,
-    serialized_memory_snapshot_bytes,
-)
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory.values import serialized_memory_snapshot_bytes
 from autonomy.perception import ViewLocation
 from implementations.memory.bounded_evidence import (
     CONFLICT_POLICY,

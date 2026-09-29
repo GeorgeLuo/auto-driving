@@ -1,10 +1,10 @@
 """Stable, vehicle-agnostic autonomy contracts and controller primitives.
 
-Subpackages are layered by dependency direction:
-
 - vehicle: black-box car input/output contracts
-- perception: sensor-to-evidence contracts and reusable primitives
-- decision: observation shapes, memory values, and decision cycle steps
+- perception: sensor-to-evidence contracts, activation, selection, and plugin execution
+- memory: memory-step activation, selection, runner, protocol, and value contracts
+- decision: observation shapes and the decision cycle
 - runtime: loadable engine contracts and lifecycle management
-- plugins: step-independent plugin definitions, resolution, and selection
+- plugins: step-independent plugin definitions, resolution, selection, and reporting
+- shared_memory: the host-owned map passed between steps
 """

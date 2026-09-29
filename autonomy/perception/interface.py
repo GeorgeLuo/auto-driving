@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal, Protocol, TypeVar, runtime_checkable
 
-from autonomy.memory import SharedMemory
+from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import SensorReading, SensorSnapshot
 
 from .evidence import PerceivedThing, PerceptionSignal
@@ -28,12 +28,14 @@ class PerceptionPluginRun:
     thing_count: int
     artifact_count: int
     error: str | None = None
+    implementation_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionPluginRun":
+        implementation_id = data.get("implementation_id")
         return cls(
             plugin_id=str(data.get("plugin_id") or "unknown"),
             status=str(data.get("status") or "error"),
@@ -42,6 +44,9 @@ class PerceptionPluginRun:
             thing_count=int(data.get("thing_count") or 0),
             artifact_count=int(data.get("artifact_count") or 0),
             error=str(data["error"]) if data.get("error") is not None else None,
+            implementation_id=(
+                str(implementation_id) if implementation_id else None
+            ),
         )
 
 

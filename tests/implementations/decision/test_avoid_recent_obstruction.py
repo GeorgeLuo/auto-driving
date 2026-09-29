@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision.decision_data import build_decision_data_source
-from autonomy.decision.memory import (
+from autonomy.memory.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
@@ -424,7 +424,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
     def test_missing_zone_bbox_only_is_active(self) -> None:
         """Omitted zone becomes ViewLocation 'unknown'; bbox mid_x still steers."""
 
-        from autonomy.decision.memory import (
+        from autonomy.memory.values import (
             MemoryBounds,
             MemoryProvenance,
             MemorySnapshot,

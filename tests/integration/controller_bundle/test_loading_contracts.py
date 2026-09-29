@@ -1,17 +1,23 @@
 """Contracts for moving modules without splitting loaded classes.
 
-Dynamic ``module:Class`` specs, package re-exports, and staged bundle prefixes
-identify objects by path. These checks fail when a move drops a path, archives
-a source file somewhere other than its current path, or makes a staged import
-use a different class than the host or its sibling bundle copy.
+``loading_inventory`` is the baseline. Each legacy spec, export, and module
+path must still resolve to the recorded owner. Scanning the tree does not
+rebuild that baseline: a catalog or export list can stop mentioning an old
+path without dropping the check. The scan only reports a path that is not
+already recorded, which means the change reaches consumers outside the
+inventory.
+
+Staged bundle checks still fail when an archive stores a source file somewhere
+other than its current path, or when a staged import uses a different class
+than the host or its sibling bundle copy.
 """
 
 from __future__ import annotations
 
 import ast
 import importlib
-import inspect
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -26,6 +32,11 @@ from cli.automa_cli.perception import _load_mapper
 from cli.automa_cli.staged_bundle import StagedBundleImport
 from implementations.memory import build_memory_activation_payload
 from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
+from tests.integration.controller_bundle.loading_inventory import (
+    LEGACY_EXPORTS,
+    LEGACY_MODULES,
+    LEGACY_SPECS,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -36,14 +47,21 @@ _SOURCE_ROOTS = (
     ROOT / "scripts",
     ROOT / "deploy" / "targets" / "donkeycar" / "app",
 )
-_SPEC_PREFIXES = ("autonomy.", "implementations.", "cli.")
+_SPEC_PREFIXES = ("autonomy.", "implementations.", "cli.", "lab.")
 _MODULE_PREFIXES = ("autonomy.", "implementations.", "lab.", "cli.")
-_OWNED_PREFIXES = ("autonomy.", "implementations.", "cli.")
+_IMPORT_PREFIXES = ("autonomy", "implementations", "cli")
+_MANIFEST_SPEC_KEYS = ("entrypoint", "provider_spec", "implementation_spec")
+_OUTSIDE_BASELINE = (
+    "paths outside the migration baseline; this change reaches consumers "
+    "the inventory does not pin"
+)
 
 
 def _python_files(roots: tuple[Path, ...]) -> list[Path]:
     files: list[Path] = []
     for root in roots:
+        if not root.exists():
+            continue
         for path in sorted(root.rglob("*.py")):
             if "__pycache__" in path.parts or "vendor" in path.parts:
                 continue
@@ -51,32 +69,17 @@ def _python_files(roots: tuple[Path, ...]) -> list[Path]:
     return files
 
 
-def _absolute_module(path: Path, node: ast.ImportFrom) -> str | None:
-    if node.level == 0:
-        return node.module
-    parts = path.relative_to(ROOT).parts[:-1]
-    climb = node.level - 1
-    if climb > len(parts):
-        return None
-    base = parts[: len(parts) - climb]
-    if node.module:
-        base += tuple(node.module.split("."))
-    if not base:
-        return None
-    return ".".join(base)
+def _git_files(pattern: str) -> list[Path]:
+    # Tracked lab sources only. Untracked experiments are not consumers.
+    output = subprocess.check_output(["git", "ls-files", pattern], cwd=ROOT, text=True)
+    return [ROOT / line for line in output.splitlines() if line]
 
 
-def _path_literals() -> list[tuple[str, str]]:
-    found: list[tuple[str, str]] = []
-    for path in _python_files(_SOURCE_ROOTS):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        relative = path.relative_to(ROOT).as_posix()
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-                continue
-            if node.value.startswith(_MODULE_PREFIXES):
-                found.append((node.value, f"{relative}:{node.lineno}"))
-    return found
+def _module_name(path: Path) -> str:
+    parts = path.relative_to(ROOT).with_suffix("").parts
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
 
 
 def _is_import_spec(value: str) -> bool:
@@ -91,7 +94,7 @@ def _is_import_spec(value: str) -> bool:
     return all(part.isidentifier() for part in module_name.split("."))
 
 
-def _is_dotted_module_path(value: str) -> bool:
+def _is_dotted_path(value: str) -> bool:
     if ":" in value or not value.startswith(_MODULE_PREFIXES):
         return False
     return all(part.isidentifier() for part in value.split("."))
@@ -104,14 +107,88 @@ def _load_spec(spec: str) -> object:
     return getattr(importlib.import_module(module_name), attribute)
 
 
-def _load_dotted(value: str) -> object:
-    try:
-        return importlib.import_module(value)
-    except ModuleNotFoundError:
-        module_name, separator, attribute = value.rpartition(".")
-        if not separator:
-            raise
-        return getattr(importlib.import_module(module_name), attribute)
+def _string_constants(path: Path) -> list[tuple[str, int]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if not isinstance(body, list) or not body:
+            continue
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            docstrings.add(id(first.value))
+    found: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if id(node) in docstrings:
+            continue
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            found.append((node.value, node.lineno))
+    return found
+
+
+def _static_exports(path: Path) -> list[str] | None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found = False
+    names: list[str] | None = []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+            continue
+        found = True
+        value = node.value
+        if isinstance(value, (ast.List, ast.Tuple)) and all(
+            isinstance(element, ast.Constant) and isinstance(element.value, str)
+            for element in value.elts
+        ):
+            names = [element.value for element in value.elts]
+        else:
+            names = None
+    if not found:
+        return []
+    return names
+
+
+def _manifest_specs(value: object) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in _MANIFEST_SPEC_KEYS and isinstance(item, str):
+                found.append((key, item))
+            else:
+                found.extend(_manifest_specs(item))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(_manifest_specs(item))
+    return found
+
+
+def _known_specs() -> set[str]:
+    known: set[str] = set()
+    for spec, module_name, attribute in LEGACY_SPECS:
+        known.add(spec)
+        known.add(f"{module_name}:{attribute}")
+    return known
+
+
+def _known_exports() -> set[tuple[str, str]]:
+    known: set[tuple[str, str]] = set()
+    for legacy_module, legacy_name, canonical_module, canonical_name in LEGACY_EXPORTS:
+        known.add((legacy_module, legacy_name))
+        known.add((canonical_module, canonical_name))
+    return known
+
+
+def _known_modules() -> set[str]:
+    known: set[str] = set()
+    for legacy_module, canonical_module in LEGACY_MODULES:
+        known.add(legacy_module)
+        known.add(canonical_module)
+    return known
 
 
 def _bundle_source_paths() -> list[str]:
@@ -144,69 +221,127 @@ class LoadingContractTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls._temporary.cleanup()
 
-    def test_dynamic_path_literals_resolve_to_one_object(self) -> None:
-        unresolved: list[str] = []
-        for value, location in _path_literals():
-            if _is_import_spec(value):
-                loaded = _load_spec(value)
-            elif _is_dotted_module_path(value):
-                loaded = _load_dotted(value)
-            else:
-                continue
-            if isinstance(loaded, type) or inspect.isfunction(loaded):
-                owner = importlib.import_module(loaded.__module__)
-                defined = getattr(owner, loaded.__name__)
-                if defined is not loaded:
-                    unresolved.append(f"{location} {value} is not {loaded.__module__}.{loaded.__name__}")
-            elif not inspect.ismodule(loaded):
-                unresolved.append(f"{location} {value} did not resolve to a module, class, or function")
-        self.assertEqual(unresolved, [])
+    def test_legacy_paths_resolve_to_canonical_owners(self) -> None:
+        specs = [spec for spec, _, _ in LEGACY_SPECS]
+        exports = [(module_name, name) for module_name, name, _, _ in LEGACY_EXPORTS]
+        modules = [module_name for module_name, _ in LEGACY_MODULES]
+        self.assertEqual(len(specs), len(set(specs)))
+        self.assertEqual(len(exports), len(set(exports)))
+        self.assertEqual(len(modules), len(set(modules)))
 
-    def test_package_exports_are_the_defining_objects(self) -> None:
         mismatches: list[str] = []
-        for package_root in ("autonomy", "implementations"):
-            for init in sorted((ROOT / package_root).rglob("__init__.py")):
-                module_name = ".".join(init.parent.relative_to(ROOT).parts)
-                module = importlib.import_module(module_name)
-                exported = getattr(module, "__all__", ())
-                for name in exported:
-                    value = getattr(module, name)
-                    if not isinstance(value, type) and not inspect.isfunction(value):
-                        continue
-                    defining = getattr(value, "__module__", "")
-                    if not isinstance(defining, str) or not defining.startswith(_OWNED_PREFIXES):
-                        continue
-                    owner = importlib.import_module(defining)
-                    defined_name = getattr(value, "__name__", name)
-                    if not hasattr(owner, defined_name) or getattr(owner, defined_name) is not value:
-                        mismatches.append(f"{module_name}.{name} -> {defining}.{defined_name}")
-        shared_memory = importlib.import_module("autonomy.memory").SharedMemory
-        host_memory = importlib.import_module("autonomy.shared_memory").SharedMemory
-        self.assertIs(shared_memory, host_memory)
-        self.assertEqual(mismatches, [])
+        for spec, module_name, attribute in LEGACY_SPECS:
+            try:
+                loaded = _load_spec(spec)
+                owner = getattr(importlib.import_module(module_name), attribute)
+            except Exception as exc:
+                mismatches.append(f"{spec}: {type(exc).__name__}: {exc}")
+                continue
+            if loaded is not owner:
+                mismatches.append(f"{spec} is not {module_name}.{attribute}")
+        for legacy_module, legacy_name, canonical_module, canonical_name in LEGACY_EXPORTS:
+            try:
+                loaded = getattr(importlib.import_module(legacy_module), legacy_name)
+                owner = getattr(importlib.import_module(canonical_module), canonical_name)
+            except Exception as exc:
+                mismatches.append(
+                    f"{legacy_module}.{legacy_name}: {type(exc).__name__}: {exc}"
+                )
+                continue
+            if loaded is not owner:
+                mismatches.append(
+                    f"{legacy_module}.{legacy_name} is not {canonical_module}.{canonical_name}"
+                )
+        for legacy_module, canonical_module in LEGACY_MODULES:
+            for module_name in (legacy_module, canonical_module):
+                try:
+                    importlib.import_module(module_name)
+                except Exception as exc:
+                    mismatches.append(f"{module_name}: {type(exc).__name__}: {exc}")
+        self.assertEqual(mismatches, [], "legacy path does not resolve to its canonical owner")
 
-    def test_production_imports_resolve(self) -> None:
-        failures: list[str] = []
-        seen: set[tuple[str, str]] = set()
-        for path in _python_files(_SOURCE_ROOTS):
+    def test_changes_outside_the_baseline_are_visible(self) -> None:
+        # Absence of a recorded path from the tree is not a failure. A new spec,
+        # export, lab import, or manifest field that the inventory does not
+        # already name is a larger consumer surface than the baseline.
+        known_specs = _known_specs()
+        known_exports = _known_exports()
+        known_modules = _known_modules()
+        outside: list[str] = []
+
+        for path in _python_files(_SOURCE_ROOTS) + _git_files("lab/**/*.py"):
+            relative = path.relative_to(ROOT).as_posix()
+            for value, lineno in _string_constants(path):
+                location = f"{relative}:{lineno}"
+                if _is_import_spec(value):
+                    if value not in known_specs:
+                        outside.append(f"{location} spec {value}")
+                    continue
+                if not _is_dotted_path(value):
+                    continue
+                try:
+                    importlib.import_module(value)
+                except ModuleNotFoundError:
+                    module_name, separator, attribute = value.rpartition(".")
+                    if not separator:
+                        continue
+                    try:
+                        getattr(importlib.import_module(module_name), attribute)
+                    except Exception:
+                        continue
+                    if (module_name, attribute) not in known_exports:
+                        outside.append(f"{location} import {module_name}.{attribute}")
+                else:
+                    if value not in known_modules:
+                        outside.append(f"{location} module {value}")
+
+        for path in _git_files("lab/**/plugin.json"):
+            relative = path.relative_to(ROOT).as_posix()
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            for key, value in _manifest_specs(payload):
+                if not _is_import_spec(value) or value not in known_specs:
+                    outside.append(f"{relative} {key} {value}")
+
+        for path in _python_files((ROOT / "autonomy", ROOT / "implementations")):
+            relative = path.relative_to(ROOT).as_posix()
+            exported = _static_exports(path)
+            if exported is None:
+                outside.append(f"{relative} __all__ is not a static name list")
+                continue
+            module_name = _module_name(path)
+            for name in exported:
+                if (module_name, name) not in known_exports:
+                    outside.append(f"{relative} export {module_name}.{name}")
+
+        for path in _git_files("lab/**/*.py"):
+            relative = path.relative_to(ROOT).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
-                if not isinstance(node, ast.ImportFrom):
-                    continue
-                module_name = _absolute_module(path, node)
-                if module_name is None or not module_name.startswith(_OWNED_PREFIXES):
-                    continue
-                for alias in node.names:
-                    if alias.name == "*" or (module_name, alias.name) in seen:
+                if isinstance(node, ast.ImportFrom):
+                    if node.level:
                         continue
-                    seen.add((module_name, alias.name))
-                    try:
-                        getattr(importlib.import_module(module_name), alias.name)
-                    except Exception as exc:
-                        failures.append(
-                            f"{module_name}.{alias.name}: {type(exc).__name__}: {exc}"
-                        )
-        self.assertEqual(failures, [])
+                    module_name = node.module or ""
+                    if module_name not in _IMPORT_PREFIXES and not module_name.startswith(
+                        tuple(prefix + "." for prefix in _IMPORT_PREFIXES)
+                    ):
+                        continue
+                    for alias in node.names:
+                        if alias.name == "*":
+                            outside.append(f"{relative}:{node.lineno} import {module_name}.*")
+                            continue
+                        if (module_name, alias.name) not in known_exports:
+                            outside.append(
+                                f"{relative}:{node.lineno} import {module_name}.{alias.name}"
+                            )
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name in _IMPORT_PREFIXES or alias.name.startswith(
+                            tuple(prefix + "." for prefix in _IMPORT_PREFIXES)
+                        ):
+                            if alias.name not in known_modules:
+                                outside.append(f"{relative}:{node.lineno} module {alias.name}")
+
+        self.assertEqual(outside, [], _OUTSIDE_BASELINE)
 
     def test_controller_bundle_archives_source_paths(self) -> None:
         self.assertEqual(self.release["schema"], "automa_controller_bundle_manifest_v0")

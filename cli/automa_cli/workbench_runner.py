@@ -209,7 +209,9 @@ class ImageReplayRunner:
         active_plugin_ids: list[str] | tuple[str, ...] | None,
     ) -> tuple[str, ...]:
         if active_plugin_ids is None and not self._plugin_catalog.explicit_root:
-            active_plugin_ids = ("frame", "floor_plane")
+            active_plugin_ids = tuple(
+                item.plugin_id for item in self._plugin_catalog.plugins if item.default
+            )
         if active_plugin_ids is None:
             return ()
         try:

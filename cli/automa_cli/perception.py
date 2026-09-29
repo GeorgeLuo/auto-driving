@@ -376,13 +376,13 @@ def set_vehicle_perception_plugin(
     mapper_config = _manifest_get_dict(manifest, "perception", "mapper_config")
     before = _configured_plugins({"mapper_config": mapper_config})
     try:
-        available = _available_plugins(
-            mapper_spec=mapper_spec,
-            mapper_config=mapper_config,
-            bundle_root=bundle_root,
+        manager = perception_plugin_manager(
+            mapper_config.get("plugin_specs", {}),
+            mapper_config.get("plugin_configs", {}),
         )
-    except Exception as exc:
-        return CommandResult(2, f"Could not inspect deployed mapper plugins: {exc}")
+        available = sorted(manager.available_ids)
+    except PluginManagementError as exc:
+        return CommandResult(2, f"Could not inspect deployed plugin catalog: {exc}")
     if plugin_id not in available:
         return CommandResult(
             2,
@@ -396,10 +396,6 @@ def set_vehicle_perception_plugin(
         )
 
     try:
-        manager = perception_plugin_manager(
-            mapper_config.get("plugin_specs", {}),
-            mapper_config.get("plugin_configs", {}),
-        )
         manager.select(before)
         if enabled:
             manager.add(plugin_id)
@@ -1598,26 +1594,6 @@ def _write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
-
-
-def _available_plugins(*, mapper_spec: str, mapper_config: dict[str, Any], bundle_root: Path) -> list[str]:
-    module_name, separator, _class_name = mapper_spec.partition(":")
-    if not separator:
-        raise ValueError("mapper spec must be 'module.path:ClassName'")
-
-    mapper = _load_mapper(mapper_spec, mapper_config, bundle_root=bundle_root)
-    try:
-        describe = getattr(mapper, "describe_schema", None)
-        if not callable(describe):
-            return []
-        schema = describe()
-    finally:
-        _close_mapper(mapper)
-    configuration = schema.get("configuration") if isinstance(schema, dict) else {}
-    available = configuration.get("available_plugins") if isinstance(configuration, dict) else []
-    if isinstance(available, list):
-        return sorted(str(plugin) for plugin in available)
-    return []
 
 
 def _format_plugin_update(payload: dict[str, Any]) -> str:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import time
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from threading import RLock
 from typing import Any, Callable
@@ -79,14 +80,23 @@ class PluginPerceptionMapper:
 
         self.plugin_manager = plugin_manager
         self._selection_runtime = PluginSelectionRuntime(plugin_manager)
-        self.plugin_specs = specs
-        self.plugin_configs = configs
         self._runtime_lock = RLock()
         self.plugin_ids: tuple[str, ...] = ()
         self.plugins: tuple[Any, ...] = ()
         self._component_providers: dict[str, ComponentProvider] = {}
         self._component_provider_specs: dict[str, str] = {}
         self._apply_selection()
+
+    @property
+    def plugin_specs(self) -> dict[str, str]:
+        return {item.plugin_id: item.entrypoint for item in self.plugin_manager.available}
+
+    @property
+    def plugin_configs(self) -> dict[str, dict[str, Any]]:
+        return {
+            item.plugin_id: deepcopy(dict(item.config))
+            for item in self.plugin_manager.available
+        }
 
     def reset(self, shared_memory=None) -> None:
         with self._runtime_lock:
@@ -101,7 +111,8 @@ class PluginPerceptionMapper:
         component_consumers: dict[str, list[str]] = {}
         component_providers: dict[str, str] = {}
         plugin_schemas = []
-        for configured_id, plugin in zip(self.plugin_ids, self.plugins, strict=True):
+        available = self.plugin_manager.available
+        for definition, plugin in self._selection_runtime.applied:
             contract = plugin.contract
             for item in contract.inputs:
                 component_consumers.setdefault(item.component_id, []).append(plugin.plugin_id)
@@ -109,8 +120,8 @@ class PluginPerceptionMapper:
             plugin_schemas.append(
                 {
                     "plugin_id": plugin.plugin_id,
-                    "spec": self.plugin_specs[configured_id],
-                    "config": dict(self.plugin_configs.get(configured_id, {})),
+                    "spec": definition.entrypoint,
+                    "config": deepcopy(dict(definition.config)),
                     "contract": contract.to_dict(),
                 }
             )
@@ -120,9 +131,11 @@ class PluginPerceptionMapper:
             "mapper": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "configuration": {
                 "plugins": list(self.plugin_ids),
-                "available_plugins": sorted(self.plugin_specs),
-                "plugin_specs": dict(self.plugin_specs),
-                "plugin_configs": dict(self.plugin_configs),
+                "available_plugins": sorted(item.plugin_id for item in available),
+                "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
+                "plugin_configs": {
+                    item.plugin_id: deepcopy(dict(item.config)) for item in available
+                },
             },
             "inputs": [
                 {
@@ -291,21 +304,10 @@ class PluginPerceptionMapper:
 
         # Publish only after all newly selected plugins and their providers
         # have been constructed and validated.
-        candidate_specs = dict(self.plugin_specs)
-        candidate_configs = {
-            plugin_id: dict(config)
-            for plugin_id, config in self.plugin_configs.items()
-        }
-        for definition in selected:
-            candidate_specs[definition.plugin_id] = definition.entrypoint
-            candidate_configs[definition.plugin_id] = dict(definition.config)
-
         self.plugin_ids = tuple(definition.plugin_id for definition in selected)
         self.plugins = candidate_plugins
         self._component_provider_specs = candidate_provider_specs
         self._component_providers = candidate_providers
-        self.plugin_specs = candidate_specs
-        self.plugin_configs = candidate_configs
 
     def _execute_plugin(self, plugin: Any, request: PerceptionRequest) -> _PluginExecution:
         started = time.perf_counter()

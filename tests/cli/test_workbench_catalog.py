@@ -1,6 +1,10 @@
 from __future__ import annotations
 import unittest
 from pathlib import Path
+from autonomy.perception import PerceptionRequest
+from autonomy.vehicle import SensorSnapshot
+from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from cli.automa_cli.workbench_plugins import packaged_plugin_catalog
 from cli.automa_cli.workbench import (
     PluginCatalogError,
     ReplayActionError,
@@ -15,6 +19,56 @@ from tests.cli.workbench_fixtures import (
 
 
 class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
+    def test_packaged_catalog_keeps_all_plugins_available_with_only_default_plugins_selected(self) -> None:
+        catalog = packaged_plugin_catalog()
+        self.assertEqual(set(catalog.ids), set(PERCEPTION_PLUGIN_SPECS))
+        self.assertEqual(
+            [item.plugin_id for item in catalog.plugins if item.default],
+            ["frame", "floor_plane"],
+        )
+        self.assertEqual(ImageReplayRunner().state()["active_plugin_ids"], ["frame", "floor_plane"])
+        mapper = catalog.build_mapper(["frame"])
+        self.assertIs(mapper.plugin_manager.resolver, catalog)
+        self.assertEqual(set(mapper.plugin_manager.available_ids), set(PERCEPTION_PLUGIN_SPECS))
+        original = mapper.plugins[0]
+        mapper.plugin_manager.add("floor_plane")
+        mapper.perceive(PerceptionRequest(SensorSnapshot(
+            read_id="test", readings={}, started_at_ms=100, completed_at_ms=100,
+        )))
+        self.assertEqual(mapper.plugin_ids, ("frame", "floor_plane"))
+        self.assertIs(mapper.plugins[0], original)
+        self.assertEqual(
+            set(mapper.describe_schema()["configuration"]["available_plugins"]),
+            set(PERCEPTION_PLUGIN_SPECS),
+        )
+
+    def test_workbench_can_run_packaged_plugin_outside_default_selection(self) -> None:
+        with image_source(1) as root:
+            runner = ImageReplayRunner(root, active_plugin_ids=["sim_color_targets"], cadence_ms=0)
+            runner.start()
+            state = runner.wait(10)
+        self.assertEqual(state["phase"], "completed")
+        self.assertEqual(state["run_active_plugin_ids"], ["sim_color_targets"])
+        self.assertEqual(
+            [run["plugin_id"] for run in state["perception"]["plugin_runs"]],
+            ["sim_color_targets"],
+        )
+
+    def test_manifest_runner_retains_catalog_for_later_selection_and_lazy_import(self) -> None:
+        catalog = discover_plugin_catalog(self.plugin_root)
+        mapper = catalog.build_mapper([])
+        self.assertIs(mapper.plugin_manager.resolver, catalog)
+        self.assertEqual(set(mapper.plugin_manager.available_ids), set(catalog.ready_ids))
+        self.assertNotIn("fastsam", mapper.plugin_manager.available_ids)
+        mapper.plugin_manager.add("classical_regions")
+        mapper.perceive(PerceptionRequest(SensorSnapshot(
+            read_id="test", readings={}, started_at_ms=100, completed_at_ms=100,
+        )))
+        self.assertEqual(mapper.plugin_ids, ("classical_regions",))
+        with self.assertRaises(PluginCatalogError):
+            mapper.plugin_manager.add("fastsam")
+        self.assertEqual(mapper.plugin_manager.selected_ids, ("classical_regions",))
+
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(
         self,
     ) -> None:

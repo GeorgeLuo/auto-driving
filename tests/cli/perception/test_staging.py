@@ -334,6 +334,48 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["algorithm"], "visual_observer")
         self.assertEqual(payload["manifest"]["provider"], "picar")
 
+    def test_plugin_catalog_allows_disabling_unloadable_selection_before_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            bundle = controller_bundle_paths(runtime_root / "test-car")
+            sync_controller_bundle(bundle, output=None)
+            path = Path(bundle["perception_runtime_dir"]) / "active.json"
+            write_json(path, {
+                "schema": "automa_perception_activation_v0",
+                "controller_bundle": bundle,
+                "perception": {
+                    "algorithm": "custom",
+                    "mapper_spec": PERCEPTION_MAPPER_SPEC,
+                    "mapper_config": {
+                        "plugins": ["missing"],
+                        "plugin_specs": {
+                            "frame": PERCEPTION_PLUGIN_SPECS["frame"],
+                            "missing": "implementations.perception.not_installed:Plugin",
+                        },
+                    },
+                },
+            })
+            disabled = run_automa(
+                "vehicles", "perception", "disable", "--id", "test-car", "missing", "--json",
+                runtime_root=runtime_root,
+            )
+            payload = json.loads(disabled.stdout)
+            self.assertEqual(payload["available_plugins"], ["frame", "missing"])
+            self.assertEqual(payload["plugins_after"], [])
+            saved = path.read_text()
+            rejected = run_automa(
+                "vehicles", "perception", "enable", "--id", "test-car", "missing",
+                runtime_root=runtime_root, check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("fail to load", rejected.stdout)
+            self.assertEqual(path.read_text(), saved)
+            enabled = run_automa(
+                "vehicles", "perception", "enable", "--id", "test-car", "frame", "--json",
+                runtime_root=runtime_root,
+            )
+            self.assertEqual(json.loads(enabled.stdout)["plugins_after"], ["frame"])
+
     def test_perception_plugin_enable_disable_edits_active_activation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

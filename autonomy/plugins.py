@@ -73,6 +73,13 @@ class PluginDefinition:
 class PluginResolver(Protocol):
     """An ID or file resolver; a remote catalog can provide this later."""
 
+    def list(self, step: str) -> tuple[PluginDefinition, ...]:
+        """List selectable catalog definitions without constructing plugins.
+
+        Explicit file references can also be resolved but are not enumerated.
+        """
+        ...
+
     def resolve(self, step: str, reference: PluginReference) -> PluginDefinition: ...
 
 
@@ -146,6 +153,16 @@ class PluginManager:
             for plugin_id, entrypoint in specs.items()
         )
         return cls(step, catalog)
+
+    @property
+    def available(self) -> tuple[PluginDefinition, ...]:
+        """The resolver's catalog, independent of selected or applied plugins."""
+
+        return tuple(self.resolver.list(self.step))
+
+    @property
+    def available_ids(self) -> tuple[str, ...]:
+        return tuple(definition.plugin_id for definition in self.available)
 
     @property
     def selected(self) -> tuple[PluginDefinition, ...]:

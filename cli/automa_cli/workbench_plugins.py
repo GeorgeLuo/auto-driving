@@ -23,6 +23,8 @@ from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionMapper
 from autonomy.perception.activation import instantiate_perception_mapper
 from autonomy.plugins import PluginDefinition, PluginManager
 from implementations.perception.catalog import (
+    DEFAULT_PERCEPTION_ALGORITHM,
+    PERCEPTION_ALGORITHMS,
     PERCEPTION_MAPPER_SPEC,
     PERCEPTION_PLUGIN_SPECS,
 )
@@ -130,6 +132,17 @@ class PluginCatalog:
             "plugins": [item.to_dict(active_ids=active_ids) for item in self.plugins],
         }
 
+    def list(self, step: str) -> tuple[PluginDefinition, ...]:
+        """Expose the selectable catalog to the core manager without imports."""
+
+        if step != "perception":
+            return ()
+        if self.error:
+            raise PluginCatalogError(self.error)
+        if not self.valid:
+            raise PluginCatalogError("plugin catalog is invalid: duplicate plugin id")
+        return tuple(self.resolve(step, item.plugin_id) for item in self.plugins if item.ready)
+
     def resolve(self, step: str, reference: str | Path) -> PluginDefinition:
         """Adapt discovered manifests to the common selection resolver."""
 
@@ -186,29 +199,26 @@ class PluginCatalog:
         """Instantiate exactly the selected core-runtime manifest plugins."""
 
         selected = self.normalize_selection(active_ids, require_explicit_selection=False)
-        definitions = PluginManager("perception", self).select(selected)
-        plugin_ids = [item.plugin_id for item in definitions]
-        plugin_specs = {item.plugin_id: item.entrypoint for item in definitions}
-        plugin_configs = {item.plugin_id: dict(item.config) for item in definitions}
+        manager = PluginManager("perception", self)
+        manager.select(selected)
+        plugin_ids = list(manager.selected_ids)
 
         if self.root is not None:
             with _import_root(self.root):
                 mapper = instantiate_perception_mapper(
-                    PERCEPTION_MAPPER_SPEC,
-                    {
-                        "plugins": plugin_ids,
-                        "plugin_specs": plugin_specs,
-                        "plugin_configs": plugin_configs,
-                    },
+                    PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
                 )
+            perceive = mapper.perceive
+
+            def perceive_in_root(request):
+                # Later manager selections can import previously unused packages.
+                with _import_root(self.root):
+                    return perceive(request)
+
+            mapper.perceive = perceive_in_root
         else:
             mapper = instantiate_perception_mapper(
-                PERCEPTION_MAPPER_SPEC,
-                {
-                    "plugins": plugin_ids,
-                    "plugin_specs": plugin_specs,
-                    "plugin_configs": plugin_configs,
-                },
+                PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
             )
 
         # Runtime classes use implementation ids (for example
@@ -230,8 +240,13 @@ class PluginCatalog:
 
 
 def packaged_plugin_catalog() -> PluginCatalog:
-    """Return the backward-compatible packaged lightweight catalog."""
+    """Expose every packaged plugin while keeping the algorithm's defaults."""
 
+    defaults = PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]["mapper_config"]
+    default_ids = defaults["plugins"]
+    # Defaults retain their existing display/execution order. Other entries are
+    # available choices, not additional default selections.
+    plugin_ids = list(dict.fromkeys([*default_ids, *sorted(PERCEPTION_PLUGIN_SPECS)]))
     descriptors = tuple(
         PluginDescriptor(
             plugin_id=plugin_id,
@@ -246,11 +261,14 @@ def packaged_plugin_catalog() -> PluginCatalog:
             manifest_relative_path=f"packaged/{plugin_id}",
             manifest_path=None,
             entrypoint=PERCEPTION_PLUGIN_SPECS[plugin_id],
-            config={},
+            config=dict(defaults.get("plugin_configs", {}).get(plugin_id, {})),
             memory={},
             output={
                 "schema": PERCEPTION_TEXT_SCHEMA,
-                "kind": "sensor_frame" if plugin_id == "frame" else "floor_boundary",
+                "kind": {
+                    "frame": "sensor_frame",
+                    "floor_plane": "floor_boundary",
+                }.get(plugin_id, "perception_evidence"),
             },
             inputs=[
                 {
@@ -265,9 +283,9 @@ def packaged_plugin_catalog() -> PluginCatalog:
             runtime={"python": "core", "support": "packaged"},
             status="ready",
             source="packaged",
-            default=True,
+            default=plugin_id in default_ids,
         )
-        for plugin_id in ("frame", "floor_plane")
+        for plugin_id in plugin_ids
     )
     return _make_catalog(None, descriptors, explicit_root=False)
 

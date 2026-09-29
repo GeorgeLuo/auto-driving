@@ -4,6 +4,7 @@ import unittest
 from typing import Any
 
 from autonomy.plugins import (
+    LocalPluginCatalog,
     PluginDefinition,
     PluginManagementError,
     PluginManager,
@@ -21,6 +22,25 @@ def _definition(plugin_id: str, **overrides: Any) -> PluginDefinition:
     }
     payload.update(overrides)
     return PluginDefinition(**payload)
+
+
+class PluginCatalogTests(unittest.TestCase):
+    def test_availability_tracks_resolver_without_loading_or_selecting_plugins(self) -> None:
+        first = _definition("first")
+        second = _definition("second", config={"max_records": 8})
+        resolver = LocalPluginCatalog((first, second, _definition("other", step="perception")))
+        manager = PluginManager("memory", resolver)
+        self.assertEqual(manager.available, (first, second))
+        self.assertEqual(manager.selected_ids, ())
+        manager.select(["first"])
+        self.assertEqual(manager.available_ids, ("first", "second"))
+        manager.remove("first")
+        self.assertEqual(manager.available_ids, ("first", "second"))
+        third = _definition("third")
+        resolver.register(third)
+        self.assertEqual(manager.available, (first, second, third))
+        manager.add("third")
+        self.assertEqual(manager.selected, (third,))
 
 
 class ReplaceSelectionTests(unittest.TestCase):

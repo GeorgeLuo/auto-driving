@@ -18,7 +18,7 @@ from autonomy.decision.action_proposal import (
     SourceRef,
 )
 from autonomy.decision.decision_data import DecisionDataSource
-from autonomy.decision.memory import MemorySnapshot, RetainedEvidence
+from autonomy.memory.values import MemorySnapshot, RetainedEvidence
 
 PLUGIN_ID = "avoid_recent_obstruction"
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")

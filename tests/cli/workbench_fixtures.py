@@ -16,7 +16,7 @@ from autonomy.perception import (
     PerceivedThing,
     ViewLocation,
 )
-from autonomy.decision.memory import MemoryBounds, MemorySnapshot
+from autonomy.memory.values import MemoryBounds, MemorySnapshot
 from cli.automa_cli.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
     WorkbenchServer,

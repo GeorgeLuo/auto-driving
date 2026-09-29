@@ -7,7 +7,7 @@ from autonomy.decision.action_proposal import (
     SourceRef,
     synthetic_error_proposal,
 )
-from autonomy.decision.memory import canonical_json_bytes
+from autonomy.memory.values import canonical_json_bytes
 from autonomy.decision.shadow_authority import proposed_equals_authorized
 from autonomy.decision.shadow_ids import ShadowCycleInputError
 from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine

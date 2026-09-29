@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from autonomy.perception import build_perception_request
-from autonomy.perception.mappers import PluginPerceptionMapper
+from autonomy.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
 from implementations.perception.components import (
@@ -106,7 +106,9 @@ class CameraComponentTests(unittest.TestCase):
         schema = _mapper("frame").describe_schema()
 
         self.assertEqual(schema["inputs"][0]["component_id"], FRONT_CAMERA_COMPONENT)
-        self.assertEqual(schema["inputs"][0]["required_by"], ["frame-observation-v0"])
+        self.assertEqual(schema["inputs"][0]["required_by"], ["frame"])
+        self.assertEqual(schema["plugins"][0]["plugin_id"], "frame")
+        self.assertEqual(schema["plugins"][0]["implementation_id"], "frame-observation-v0")
         self.assertEqual(schema["plugins"][0]["contract"]["inputs"][0]["name"], "frame")
 
 

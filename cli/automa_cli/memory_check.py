@@ -12,12 +12,8 @@ from typing import Any, Callable, TextIO
 from urllib.parse import quote, urljoin
 from urllib.request import urlopen
 
-from autonomy.decision import (
-    ActivatedMemoryStep,
-    DecisionFrameContext,
-    Observation,
-    read_memory_activation,
-)
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory import PluginMemoryRunner, read_memory_activation
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
@@ -2773,7 +2769,7 @@ def _load_check_step(
     vehicle_id: str,
     implementation_id: str,
     force_ephemeral: bool,
-) -> tuple[ActivatedMemoryStep, str]:
+) -> tuple[PluginMemoryRunner, str]:
     # Check uses fixed short max_age so expiry is deterministic offline.
     # force_ephemeral reserved for future staged-activation variants.
     del force_ephemeral
@@ -2798,7 +2794,7 @@ def _load_check_step(
     handle.close()
     path = Path(handle.name)
     try:
-        step = ActivatedMemoryStep(read_memory_activation(path))
+        step = PluginMemoryRunner(read_memory_activation(path))
     finally:
         try:
             path.unlink(missing_ok=True)
@@ -2808,7 +2804,7 @@ def _load_check_step(
 
 
 def _feed_frames(
-    step: ActivatedMemoryStep,
+    step: PluginMemoryRunner,
     frames: list[dict[str, Any]],
     shared_memory: dict[str, Any],
 ) -> dict[str, Any]:

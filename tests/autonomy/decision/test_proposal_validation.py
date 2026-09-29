@@ -5,7 +5,7 @@ from autonomy.decision.action_proposal import (
     ProposedVehicleCommand,
     SourceRef,
 )
-from autonomy.decision.memory import canonical_json_bytes
+from autonomy.memory.values import canonical_json_bytes
 from autonomy.decision.shadow_ids import ShadowCycleInputError
 from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine
 from implementations.decision.catalog import create_shadow_proposals_engine

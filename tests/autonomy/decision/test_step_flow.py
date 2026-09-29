@@ -9,10 +9,12 @@ from autonomy.decision import (
     DecisionCycle,
     DecisionFrameContext,
     DecisionSteps,
+    Observation,
+)
+from autonomy.memory.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
-    Observation,
     RetainedEvidence,
 )
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText, ViewLocation

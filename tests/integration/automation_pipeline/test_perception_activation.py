@@ -71,8 +71,13 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(step_status["last_duration_ms"], 0.0)
         self.assertEqual(
             [run["plugin_id"] for run in step_status["last_plugin_runs"]],
-            ["frame-observation-v0"],
+            ["frame"],
         )
+        self.assertEqual(
+            step_status["last_plugin_runs"][0]["implementation_id"],
+            "frame-observation-v0",
+        )
+        self.assertEqual(step.mapper.plugins[0].plugin_id, "frame-observation-v0")
 
         manager = AutonomyManager()
         manager.register_status_provider("perception", step.status)

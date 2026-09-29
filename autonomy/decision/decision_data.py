@@ -8,7 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from autonomy.decision.memory import (
+from autonomy.memory.values import (
     MemorySnapshot,
     canonical_json_bytes,
     detach_memory_snapshot,

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from autonomy.decision.action_proposal import ActionProposal
-from autonomy.decision.memory import canonical_json_bytes
+from autonomy.memory.values import canonical_json_bytes
 from autonomy.decision.shadow_ids import (
     deep_freeze,
     frozen_mapping_to_dict,

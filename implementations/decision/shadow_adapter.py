@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from autonomy.decision.decision_data import ComponentEnvelope, omit_forbidden_channel_keys
-from autonomy.decision.memory import MemorySnapshot
+from autonomy.memory.values import MemorySnapshot
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON, authorized_idle_control
 from autonomy.decision.shadow_ids import ShadowCycleInputError

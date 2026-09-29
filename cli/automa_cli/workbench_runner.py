@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 import threading
 import time
@@ -51,6 +52,7 @@ from .workbench_contract import (
 from .workbench_plugins import (
     PluginCatalog,
     PluginCatalogError,
+    _import_root,
     discover_plugin_catalog,
 )
 from .workbench_source import (
@@ -123,14 +125,46 @@ def _default_memory_step(companion: dict[str, Any] | None = None) -> PluginMemor
     return PluginMemoryRunner(activation)
 
 
-def _memory_definitions(
-    catalog: PluginCatalog,
-) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
-    """Packaged memory plugins plus every perception-catalog companion.
+def _memory_config_signature(spec: str, config: dict[str, Any]) -> tuple[str, str]:
+    try:
+        encoded = json.dumps(config, sort_keys=True)
+    except (TypeError, ValueError) as exc:
+        raise PluginCatalogError(
+            f"memory implementation config is not JSON-comparable: {exc}"
+        ) from exc
+    return spec, encoded
 
-    The workbench selects among these definitions for the life of a run.
-    Companions that are not active stay in the catalog so a later manager
-    selection can load them without building another activation.
+
+def _register_memory_definition(
+    specs: dict[str, str],
+    configs: dict[str, dict[str, Any]],
+    catalog_id: str,
+    spec: str,
+    config: dict[str, Any],
+) -> None:
+    """Add a definition without letting traversal order replace another one."""
+
+    existing_spec = specs.get(catalog_id)
+    if existing_spec is None:
+        specs[catalog_id] = spec
+        configs[catalog_id] = copy.deepcopy(config)
+        return
+    existing = _memory_config_signature(existing_spec, configs[catalog_id])
+    if existing != _memory_config_signature(spec, config):
+        raise PluginCatalogError(
+            f"memory catalog id {catalog_id!r} conflicts with an existing definition"
+        )
+
+
+def _memory_catalog(
+    catalog: PluginCatalog,
+) -> tuple[dict[str, str], dict[str, dict[str, Any]], dict[str, str]]:
+    """Packaged memory plugins plus companion definitions with stable identities.
+
+    Packaged configuration is never overwritten. Companions that share an
+    implementation id keep that id only when they declare the same entrypoint
+    and configuration. A different configuration gets its own catalog id, so
+    discovery order cannot choose which config is active.
     """
 
     specs: dict[str, str] = {}
@@ -139,39 +173,105 @@ def _memory_definitions(
         specs[implementation_id] = str(entry["implementation_spec"])
         configs[implementation_id] = copy.deepcopy(dict(entry["default_config"]))
     default_config = copy.deepcopy(configs[DEFAULT_MEMORY_IMPLEMENTATION])
+    companions: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
     for descriptor in catalog.plugins:
         companion = descriptor.memory
         if not companion:
             continue
         implementation_id = str(companion["implementation_id"])
         spec = str(companion["implementation_spec"])
-        existing = specs.get(implementation_id)
-        if existing is not None and existing != spec:
+        if implementation_id in MEMORY_IMPLEMENTATIONS:
+            config = copy.deepcopy(configs[implementation_id])
+        else:
+            config = copy.deepcopy(default_config)
+        config.update(dict(companion.get("implementation_config") or {}))
+        companions.setdefault(implementation_id, []).append(
+            (descriptor.plugin_id, spec, config)
+        )
+
+    perception_memory_ids: dict[str, str] = {}
+    for implementation_id in sorted(companions):
+        entries = companions[implementation_id]
+        entry_specs = {spec for _plugin_id, spec, _config in entries}
+        packaged_spec = specs.get(implementation_id)
+        if packaged_spec is not None:
+            entry_specs.add(packaged_spec)
+        if len(entry_specs) > 1:
             raise PluginCatalogError(
                 f"memory implementation {implementation_id!r} has conflicting entrypoints"
             )
-        specs[implementation_id] = spec
-        config = copy.deepcopy(
-            configs[implementation_id]
-            if implementation_id in MEMORY_IMPLEMENTATIONS
-            else default_config
+        spec = next(iter(entry_specs))
+        groups: dict[tuple[str, str], set[str]] = {}
+        configs_by_signature: dict[tuple[str, str], dict[str, Any]] = {}
+        for plugin_id, entry_spec, config in entries:
+            signature = _memory_config_signature(entry_spec, config)
+            groups.setdefault(signature, set()).add(plugin_id)
+            configs_by_signature[signature] = config
+        packaged_signature = (
+            _memory_config_signature(packaged_spec, configs[implementation_id])
+            if packaged_spec is not None
+            else None
         )
-        config.update(dict(companion.get("implementation_config") or {}))
-        configs[implementation_id] = config
-    return specs, configs
+        if packaged_signature is not None and set(groups) == {packaged_signature}:
+            for plugin_id in groups[packaged_signature]:
+                perception_memory_ids[plugin_id] = implementation_id
+            continue
+        if packaged_spec is None and len(groups) == 1:
+            signature = next(iter(groups))
+            _register_memory_definition(
+                specs,
+                configs,
+                implementation_id,
+                spec,
+                configs_by_signature[signature],
+            )
+            for plugin_id in groups[signature]:
+                perception_memory_ids[plugin_id] = implementation_id
+            continue
+        grouped = sorted(
+            (
+                tuple(sorted(owners)),
+                signature,
+                configs_by_signature[signature],
+            )
+            for signature, owners in groups.items()
+        )
+        for owners, signature, config in grouped:
+            if packaged_signature is not None and signature == packaged_signature:
+                for plugin_id in owners:
+                    perception_memory_ids[plugin_id] = implementation_id
+                continue
+            catalog_id = ".".join((*owners, implementation_id))
+            _register_memory_definition(specs, configs, catalog_id, signature[0], config)
+            for plugin_id in owners:
+                perception_memory_ids[plugin_id] = catalog_id
+    return specs, configs, perception_memory_ids
+
+
+def _selected_memory_id(
+    perception_memory_ids: dict[str, str],
+    selected_plugin_ids: tuple[str, ...],
+) -> str:
+    owners = [
+        plugin_id
+        for plugin_id in selected_plugin_ids
+        if plugin_id in perception_memory_ids
+    ]
+    if len(owners) > 1:
+        raise PluginCatalogError("selected plugins declare multiple memory companions")
+    if owners:
+        return perception_memory_ids[owners[0]]
+    return DEFAULT_MEMORY_IMPLEMENTATION
 
 
 def _memory_runner(
     catalog: PluginCatalog,
     selected_plugin_ids: tuple[str, ...],
-) -> PluginMemoryRunner:
+) -> tuple[PluginMemoryRunner, dict[str, str]]:
     """Build one memory runner whose catalog outlives the current selection."""
 
-    specs, configs = _memory_definitions(catalog)
-    companion = catalog.memory_for_selection(selected_plugin_ids)
-    selected = (
-        str(companion["implementation_id"]) if companion else DEFAULT_MEMORY_IMPLEMENTATION
-    )
+    specs, configs, perception_memory_ids = _memory_catalog(catalog)
+    selected = _selected_memory_id(perception_memory_ids, selected_plugin_ids)
     if selected not in specs:
         raise PluginCatalogError(f"unknown memory implementation {selected!r}")
     activation = MemoryActivation(
@@ -189,7 +289,7 @@ def _memory_runner(
             },
         },
     )
-    return PluginMemoryRunner(activation)
+    return PluginMemoryRunner(activation), perception_memory_ids
 
 
 def _safe_status(value: Any) -> str:
@@ -258,6 +358,7 @@ class ImageReplayRunner:
             else None
         )
         self._active_plugin_ids = self._initial_plugin_selection(active_plugin_ids)
+        self._perception_memory_ids: dict[str, str] = {}
         self._state = self._initial_state()
 
     @property
@@ -794,7 +895,11 @@ class ImageReplayRunner:
             return copy.deepcopy(self._state)
 
     def _apply_manager_selection_locked(self, normalized: tuple[str, ...]) -> None:
-        """Select on the running managers without rebuilding the replay."""
+        """Select on the running managers without rebuilding the replay.
+
+        Construction is attempted before the new selection is published.
+        Recorded frames stay as they are; the next unseen frame executes it.
+        """
 
         perception_manager = getattr(self._mapper, "plugin_manager", None)
         perception_select = getattr(perception_manager, "select", None)
@@ -811,19 +916,36 @@ class ImageReplayRunner:
             tuple(perception_manager.selected_ids) if use_perception else None
         )
         previous_memory = tuple(memory_manager.selected_ids) if use_memory else None
+        perception_committed = False
+        memory_committed = False
         try:
             memory_id = self._memory_plugin_id(normalized) if use_memory else None
+            if use_memory:
+                self._probe_memory_replacement_locked(
+                    memory_step, memory_manager, memory_id
+                )
             if use_perception:
                 perception_select(normalized)
+                self._apply_perception_selection_locked()
+                perception_committed = True
             if use_memory:
                 memory_select((memory_id,))
-            if use_perception and self._state["phase"] == "paused":
-                self._refresh_paused_perception_locked()
+                self._call_in_plugin_root(
+                    lambda: memory_step._apply_selection(self._shared_memory)
+                )
+                memory_committed = True
         except Exception as exc:  # noqa: BLE001 - selection boundary
-            if use_perception and previous_perception is not None:
-                perception_select(previous_perception)
-            if use_memory and previous_memory is not None:
-                memory_select(previous_memory)
+            self._restore_manager_selection_locked(
+                use_perception=use_perception,
+                perception_select=perception_select,
+                previous_perception=previous_perception,
+                perception_committed=perception_committed,
+                use_memory=use_memory,
+                memory_select=memory_select,
+                memory_step=memory_step,
+                previous_memory=previous_memory,
+                memory_committed=memory_committed,
+            )
             message = str(exc)
             self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
             self._state["failure_boundary"] = "plugin_catalog"
@@ -834,72 +956,75 @@ class ImageReplayRunner:
                 state=self.state(),
             ) from exc
 
-    def _refresh_paused_perception_locked(self) -> None:
-        """Re-perceive the paused frame so its evidence matches the selection.
+    def _probe_memory_replacement_locked(
+        self,
+        memory_step: PluginMemoryRunner,
+        memory_manager: Any,
+        memory_id: str,
+    ) -> None:
+        """Construct a new memory plugin without publishing or resetting it."""
 
-        Memory and decision for that frame stay as recorded. Re-running them
-        would apply the retained history twice. The next frame picks up both
-        managers; reset is what starts a fresh replay.
-        """
+        definition = memory_manager.resolver.resolve(memory_manager.step, memory_id)
+        applied = memory_step._selection_runtime.applied
+        if len(applied) == 1 and applied[0][0] == definition:
+            return
+        self._call_in_plugin_root(lambda: memory_step._load_plugin(definition))
 
-        current = self._state.get("current_frame")
-        feed = self._feed
+    def _apply_perception_selection_locked(self) -> None:
         mapper = self._mapper
-        if not isinstance(current, dict) or feed is None or mapper is None:
+        apply = getattr(mapper, "_apply_selection", None)
+        if not callable(apply):
             return
-        frame = next(
-            (item for item in feed.frames if item.frame_id == current.get("frame_id")),
-            None,
-        )
-        if frame is None:
-            return
-        if frame.absent or frame.image_path is None:
-            payload = None
-            status = None
-        else:
-            snapshot = _snapshot_for_frame(frame)
-            if snapshot is None:
-                payload = None
-                status = None
-            else:
-                perception = mapper.perceive(
-                    build_perception_request(
-                        snapshot,
-                        shared_memory=self._shared_memory,
-                        metadata={
-                            "source": WORKBENCH_SEQUENCE_ID,
-                            "source_id": frame.source_id,
-                            "sequence_index": frame.position,
-                        },
+        # perceive() is wrapped with the plugin root; direct apply is not.
+        self._call_in_plugin_root(lambda: apply(self._shared_memory))
+
+    def _restore_manager_selection_locked(
+        self,
+        *,
+        use_perception: bool,
+        perception_select: Any,
+        previous_perception: tuple[str, ...] | None,
+        perception_committed: bool,
+        use_memory: bool,
+        memory_select: Any,
+        memory_step: Any,
+        previous_memory: tuple[str, ...] | None,
+        memory_committed: bool,
+    ) -> None:
+        try:
+            if (
+                use_perception
+                and previous_perception is not None
+                and callable(perception_select)
+            ):
+                perception_select(previous_perception)
+                if perception_committed:
+                    self._apply_perception_selection_locked()
+            if use_memory and previous_memory is not None and callable(memory_select):
+                memory_select(previous_memory)
+                if memory_committed:
+                    self._call_in_plugin_root(
+                        lambda: memory_step._apply_selection(self._shared_memory)
                     )
-                )
-                payload = perception.to_dict()
-                status = perception.status
-        self._state["perception"] = payload
-        cached = self._history.get(frame.frame_id)
-        if isinstance(cached, dict):
-            cached["perception"] = copy.deepcopy(payload)
-            cached["perception_status"] = status
-        for item in self._state.get("timeline", ()):
-            existing = item.get("frame") if isinstance(item, dict) else None
-            if isinstance(existing, dict) and existing.get("frame_id") == frame.frame_id:
-                item["perception_status"] = status
-                break
-        summary = self._state.get("summary")
-        if isinstance(summary, dict):
-            summary["perception_status"] = status
-            if isinstance(payload, dict):
-                summary["perception_things"] = len(payload.get("things") or ())
-                summary["perception_signals"] = len(payload.get("signals") or ())
-            else:
-                summary["perception_things"] = 0
-                summary["perception_signals"] = 0
+        except Exception:  # noqa: BLE001 - restore must not hide the selection error
+            if (
+                use_perception
+                and previous_perception is not None
+                and callable(perception_select)
+            ):
+                perception_select(previous_perception)
+            if use_memory and previous_memory is not None and callable(memory_select):
+                memory_select(previous_memory)
+
+    def _call_in_plugin_root(self, operation: Callable[[], Any]) -> Any:
+        root = self._plugin_catalog.root
+        if root is None:
+            return operation()
+        with _import_root(root):
+            return operation()
 
     def _memory_plugin_id(self, selected_plugin_ids: tuple[str, ...]) -> str:
-        companion = self._plugin_catalog.memory_for_selection(selected_plugin_ids)
-        if companion:
-            return str(companion["implementation_id"])
-        return DEFAULT_MEMORY_IMPLEMENTATION
+        return _selected_memory_id(self._perception_memory_ids, selected_plugin_ids)
 
     def _build_mapper_for_selection(
         self,
@@ -911,8 +1036,13 @@ class ImageReplayRunner:
 
     def _build_memory_step_for_selection(self, selected_plugin_ids: tuple[str, ...]) -> Any:
         if self.memory_step_factory is not None:
+            self._perception_memory_ids = {}
             return self.memory_step_factory()
-        return _memory_runner(self._plugin_catalog, selected_plugin_ids)
+        runner, perception_memory_ids = _memory_runner(
+            self._plugin_catalog, selected_plugin_ids
+        )
+        self._perception_memory_ids = perception_memory_ids
+        return runner
 
     def _memory_implementation_id(self) -> str:
         step = self._memory_step

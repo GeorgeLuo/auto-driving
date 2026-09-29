@@ -126,6 +126,29 @@ def _empty_plugin_source(class_name: str, implementation_id: str) -> str:
     )
 
 
+def _temporal_source(implementation_id: str) -> str:
+    return (
+        "from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract\n"
+        "\n"
+        "class TemporalPlugin:\n"
+        f"    plugin_id = {implementation_id!r}\n"
+        "    contract = PerceptionPluginContract()\n"
+        "\n"
+        "    def __init__(self):\n"
+        "        self.frames = []\n"
+        "\n"
+        "    def perceive(self, inputs):\n"
+        "        self.frames.append(inputs.frame_id)\n"
+        "        shared = inputs.shared_memory.setdefault('temporal.frames', [])\n"
+        "        shared.append(inputs.frame_id)\n"
+        "        return PerceptionEvidenceBatch()\n"
+    )
+
+
+def _install_memory_module(root: Path, plugin_id: str, source: str) -> None:
+    (root / plugin_id / "src" / "memory.py").write_text(source, encoding="utf-8")
+
+
 class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
     def test_packaged_catalog_keeps_all_plugins_available_with_only_default_plugins_selected(self) -> None:
         catalog = packaged_plugin_catalog()
@@ -867,4 +890,182 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 _plugin_ids(stepped["perception"]),
                 ["temporal", "classical_regions"],
             )
+            runner.dispatch("cancel", run_id=run_id)
+
+    def test_memory_replacement_applies_the_prepared_instance_once(self) -> None:
+        _install_plugin(
+            self.plugin_root,
+            "counting_temporal",
+            "TemporalPlugin",
+            _temporal_source("counting-temporal-v0"),
+        )
+        _install_plugin(
+            self.plugin_root,
+            "counting_companion",
+            "CompanionPlugin",
+            _empty_plugin_source("CompanionPlugin", "counting-companion-v0"),
+            memory={
+                "implementation_id": "counting_memory",
+                "implementation_spec": "counting_companion.src.memory:CountingMemory",
+                "implementation_config": {},
+            },
+        )
+        _install_memory_module(
+            self.plugin_root,
+            "counting_companion",
+            "class CountingMemory:\n"
+            "    constructions = 0\n"
+            "    built = None\n"
+            "\n"
+            "    def __init__(self, **config):\n"
+            "        CountingMemory.constructions += 1\n"
+            "        if CountingMemory.constructions > 1:\n"
+            "            raise RuntimeError('memory constructed twice')\n"
+            "        CountingMemory.built = self\n"
+            "        from autonomy.decision import empty_memory_snapshot\n"
+            "        from autonomy.memory.activation import bounds_from_config\n"
+            "        self.implementation_id = 'counting_memory'\n"
+            "        self._bounds = bounds_from_config(config)\n"
+            "        self._snapshot = empty_memory_snapshot(\n"
+            "            memory_id='counting-memory',\n"
+            "            epoch_id='counting-epoch-0',\n"
+            "            bounds=self._bounds,\n"
+            "            created_at_ms=0,\n"
+            "            implementation_id=self.implementation_id,\n"
+            "        )\n"
+            "\n"
+            "    def update(self, context, observation):\n"
+            "        del context, observation\n"
+            "        return self._snapshot\n"
+            "\n"
+            "    def reset(self, shared_memory=None):\n"
+            "        del shared_memory\n"
+            "        return self._snapshot\n"
+            "\n"
+            "    def snapshot(self):\n"
+            "        return self._snapshot\n",
+        )
+        with image_source(3) as root:
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=self.plugin_root,
+                cadence_ms=30000,
+            )
+            runner.dispatch(
+                "select_plugins",
+                active_plugin_ids=["counting_temporal"],
+            )
+            run_id, paused = _pause_after_first_frame(runner)
+            first_id = paused["current_frame"]["frame_id"]
+            mapper = runner._mapper
+            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["counting_temporal"]
+            frames = retained.frames
+            shared = runner._shared_memory["temporal.frames"]
+            self.assertEqual(frames, [first_id])
+            self.assertEqual(shared, [first_id])
+
+            selected = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=["counting_temporal", "counting_companion"],
+            )
+
+            implementation = runner._memory_step.plugins[0].implementation
+            self.assertEqual(selected["phase"], "paused")
+            self.assertEqual(implementation.constructions, 1)
+            self.assertIs(implementation.built, implementation)
+            self.assertEqual(
+                runner._memory_step.plugin_manager.selected_ids,
+                ("counting_memory",),
+            )
+            self.assertIs(
+                dict(zip(mapper.plugin_ids, mapper.plugins))["counting_temporal"],
+                retained,
+            )
+            self.assertEqual(mapper.plugin_ids, ("counting_temporal", "counting_companion"))
+            self.assertIs(retained.frames, frames)
+            self.assertEqual(frames, [first_id])
+            self.assertIs(runner._shared_memory["temporal.frames"], shared)
+            self.assertEqual(_plugin_ids(selected["perception"]), ["counting_temporal"])
+            runner.dispatch("cancel", run_id=run_id)
+
+    def test_failed_memory_replacement_keeps_temporal_instance_history(self) -> None:
+        _install_plugin(
+            self.plugin_root,
+            "failing_temporal",
+            "TemporalPlugin",
+            _temporal_source("failing-temporal-v0"),
+        )
+        _install_plugin(
+            self.plugin_root,
+            "failing_companion",
+            "CompanionPlugin",
+            _empty_plugin_source("CompanionPlugin", "failing-companion-v0"),
+            memory={
+                "implementation_id": "failing_memory",
+                "implementation_spec": "failing_companion.src.memory:FailingMemory",
+                "implementation_config": {},
+            },
+        )
+        _install_memory_module(
+            self.plugin_root,
+            "failing_companion",
+            "class FailingMemory:\n"
+            "    def __init__(self, **config):\n"
+            "        del config\n"
+            "        raise RuntimeError('memory constructor failed')\n",
+        )
+        with image_source(3) as root:
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=self.plugin_root,
+                cadence_ms=30000,
+            )
+            runner.dispatch(
+                "select_plugins",
+                active_plugin_ids=["failing_temporal"],
+            )
+            run_id, paused = _pause_after_first_frame(runner)
+            first_id = paused["current_frame"]["frame_id"]
+            mapper = runner._mapper
+            memory_step = runner._memory_step
+            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["failing_temporal"]
+            frames = retained.frames
+            shared = runner._shared_memory["temporal.frames"]
+            memory_plugin = memory_step.plugins[0]
+            snapshot = runner._shared_memory.get("decision.snapshot")
+            self.assertEqual(frames, [first_id])
+            self.assertEqual(shared, [first_id])
+
+            with self.assertRaises(ReplayActionError) as caught:
+                runner.dispatch(
+                    "select_plugins",
+                    run_id=run_id,
+                    active_plugin_ids=["failing_companion"],
+                )
+
+            self.assertEqual(caught.exception.boundary, "plugin_catalog")
+            self.assertIn("memory constructor failed", str(caught.exception))
+            state = runner.state()
+            self.assertEqual(state["phase"], "paused")
+            self.assertEqual(state["run_active_plugin_ids"], ["failing_temporal"])
+            self.assertEqual(mapper.plugin_manager.selected_ids, ("failing_temporal",))
+            applied = dict(zip(mapper.plugin_ids, mapper.plugins))
+            self.assertIs(applied["failing_temporal"], retained)
+            self.assertIs(retained.frames, frames)
+            self.assertEqual(frames, [first_id])
+            self.assertIs(runner._shared_memory["temporal.frames"], shared)
+            self.assertEqual(shared, [first_id])
+            self.assertIs(memory_step.plugins[0], memory_plugin)
+            self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
+            self.assertIs(runner._shared_memory.get("decision.snapshot"), snapshot)
+
+            stepped = runner.dispatch("step", run_id=run_id)
+            self.assertEqual(stepped["phase"], "paused")
+            self.assertIs(applied["failing_temporal"], retained)
+            second_id = stepped["current_frame"]["frame_id"]
+            self.assertNotEqual(second_id, first_id)
+            self.assertEqual(frames, [first_id, second_id])
+            self.assertEqual(shared, [first_id, second_id])
+            self.assertEqual(_plugin_ids(stepped["perception"]), ["failing_temporal"])
             runner.dispatch("cancel", run_id=run_id)

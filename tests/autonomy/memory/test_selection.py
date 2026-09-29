@@ -12,6 +12,14 @@ from autonomy.memory.selection import memory_plugin_manager
 from tests.autonomy.memory.activation_fixtures import _RecordingMemory, _valid_payload, _write_payload
 
 
+class _OnceMemory(_RecordingMemory):
+    constructions = 0
+
+    def __init__(self, **config):
+        type(self).constructions += 1
+        super().__init__(**config)
+
+
 class _OrderedMemory(_RecordingMemory):
     def update(self, context, observation):
         context.shared_memory.setdefault("execution_order", []).append(self.implementation_id)
@@ -180,3 +188,28 @@ class MemorySelectionTests(unittest.TestCase):
             self.assertEqual(step.plugin_ids, ("first", "second"))
             self.assertEqual(step.reset({}).implementation_id, "second")
             self.assertEqual([item["reset_count"] for item in step.status()["plugins"]], [1, 1])
+
+    def test_prepare_selection_constructs_a_replacement_once(self):
+        _OnceMemory.constructions = 0
+        manager = memory_plugin_manager(
+            {"first": SPEC, "second": f"{__name__}:_OnceMemory"},
+            {
+                "first": {"implementation_id": "first"},
+                "second": {"implementation_id": "second"},
+            },
+        )
+        manager.select(["first"])
+        step = ActivatedMemoryStep(plugin_manager=manager)
+        original = step.plugins[0]
+        manager.select(["second"])
+
+        step.prepare_selection()
+
+        self.assertEqual(_OnceMemory.constructions, 1)
+        self.assertIs(step.plugins[0], original)
+        self.assertEqual(original.reset_count, 0)
+        step.commit_selection()
+        self.assertEqual(_OnceMemory.constructions, 1)
+        self.assertEqual(step.plugin_ids, ("second",))
+        self.assertEqual(step.plugins[0].implementation.implementation_id, "second")
+        self.assertEqual(original.reset_count, 1)

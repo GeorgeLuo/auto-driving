@@ -86,13 +86,40 @@ class PluginMemoryRunner:
             ),
         )
 
+    def prepare_selection(self) -> None:
+        """Load the manager selection without resetting or publishing it."""
+
+        with self._runtime_lock:
+            self._prepare_selection()
+
+    def commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
+        """Reset removed plugins and publish the prepared selection."""
+
+        with self._runtime_lock:
+            self._commit_selection(shared_memory)
+
+    def discard_selection(self) -> None:
+        """Drop a prepared selection without resetting published plugins."""
+
+        with self._runtime_lock:
+            self._discard_selection()
+
     def _apply_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        applied = self._selection_runtime.apply(
-            load=self._load_plugin,
+        self._prepare_selection()
+        self._commit_selection(shared_memory)
+
+    def _prepare_selection(self) -> None:
+        self._selection_runtime.prepare(load=self._load_plugin)
+
+    def _commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
+        applied = self._selection_runtime.commit(
             reset=lambda plugin: plugin.reset(shared_memory),
         )
         self.plugin_ids = tuple(definition.plugin_id for definition, _plugin in applied)
         self.plugins = tuple(plugin for _definition, plugin in applied)
+
+    def _discard_selection(self) -> None:
+        self._selection_runtime.discard()
 
     def __call__(
         self, context: DecisionFrameContext, observation: Observation | None,

@@ -85,6 +85,8 @@ class PluginPerceptionMapper:
         self.plugins: tuple[Any, ...] = ()
         self._component_providers: dict[str, ComponentProvider] = {}
         self._component_provider_specs: dict[str, str] = {}
+        self._pending_providers: dict[str, ComponentProvider] | None = None
+        self._pending_provider_specs: dict[str, str] | None = None
         self._apply_selection()
 
     @property
@@ -259,10 +261,32 @@ class PluginPerceptionMapper:
             limits=tuple(dict.fromkeys(limits)),
         )
 
+    def prepare_selection(self) -> None:
+        """Load and validate the manager selection without resetting or publishing."""
+
+        with self._runtime_lock:
+            self._prepare_selection()
+
+    def commit_selection(self, shared_memory=None) -> None:
+        """Reset removed plugins and publish the prepared selection."""
+
+        with self._runtime_lock:
+            self._commit_selection(shared_memory)
+
+    def discard_selection(self) -> None:
+        """Drop a prepared selection without resetting published plugins."""
+
+        with self._runtime_lock:
+            self._discard_selection()
+
     def _apply_selection(
         self,
         shared_memory=None,
     ) -> None:
+        self._prepare_selection()
+        self._commit_selection(shared_memory)
+
+    def _prepare_selection(self) -> None:
         candidate_provider_specs: dict[str, str] | None = None
         candidate_providers: dict[str, ComponentProvider] | None = None
 
@@ -291,27 +315,40 @@ class PluginPerceptionMapper:
                     )
                 candidate_providers[provider_spec] = provider
 
-        applied = self._selection_runtime.apply(
+        self._selection_runtime.prepare(
             load=lambda definition: _instantiate_plugin(
                 definition.plugin_id,
                 definition.entrypoint,
                 dict(definition.config),
             ),
             validate=validate,
+        )
+        # Retain providers with the prepared instances. Publish happens on commit,
+        # and an unchanged selection leaves these unset so commit does not republish.
+        self._pending_provider_specs = candidate_provider_specs
+        self._pending_providers = candidate_providers
+
+    def _commit_selection(self, shared_memory=None) -> None:
+        specs = self._pending_provider_specs
+        providers = self._pending_providers
+        self._pending_provider_specs = None
+        self._pending_providers = None
+        applied = self._selection_runtime.commit(
             reset=lambda plugin: _reset_plugin(plugin, shared_memory),
         )
-        if candidate_provider_specs is None or candidate_providers is None:
+        if specs is None or providers is None:
             return
 
-        selected = tuple(definition for definition, _plugin in applied)
-        candidate_plugins = tuple(plugin for _definition, plugin in applied)
+        # Publish only after prepared plugins and their providers have been validated.
+        self.plugin_ids = tuple(definition.plugin_id for definition, _plugin in applied)
+        self.plugins = tuple(plugin for _definition, plugin in applied)
+        self._component_provider_specs = specs
+        self._component_providers = providers
 
-        # Publish only after all newly selected plugins and their providers
-        # have been constructed and validated.
-        self.plugin_ids = tuple(definition.plugin_id for definition in selected)
-        self.plugins = candidate_plugins
-        self._component_provider_specs = candidate_provider_specs
-        self._component_providers = candidate_providers
+    def _discard_selection(self) -> None:
+        self._selection_runtime.discard()
+        self._pending_provider_specs = None
+        self._pending_providers = None
 
     def _execute_plugin(
         self,

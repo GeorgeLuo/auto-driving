@@ -897,11 +897,13 @@ class ImageReplayRunner:
     def _apply_manager_selection_locked(self, normalized: tuple[str, ...]) -> None:
         """Select on the running managers without rebuilding the replay.
 
-        Construction is attempted before the new selection is published.
-        Recorded frames stay as they are; the next unseen frame executes it.
+        Both steps are constructed and validated before either replacement is
+        reset or published. Recorded frames stay as they are; the next unseen
+        frame executes the new selection.
         """
 
-        perception_manager = getattr(self._mapper, "plugin_manager", None)
+        mapper = self._mapper
+        perception_manager = getattr(mapper, "plugin_manager", None)
         perception_select = getattr(perception_manager, "select", None)
         memory_step = self._memory_step
         memory_manager = getattr(memory_step, "plugin_manager", None)
@@ -912,39 +914,49 @@ class ImageReplayRunner:
             and memory_manager is not None
             and callable(memory_select)
         )
+        prepare_perception = (
+            getattr(mapper, "prepare_selection", None) if use_perception else None
+        )
+        commit_perception = (
+            getattr(mapper, "commit_selection", None) if use_perception else None
+        )
+        discard_perception = (
+            getattr(mapper, "discard_selection", None) if use_perception else None
+        )
+        perception_lifecycle = callable(prepare_perception) and callable(commit_perception)
         previous_perception = (
             tuple(perception_manager.selected_ids) if use_perception else None
         )
         previous_memory = tuple(memory_manager.selected_ids) if use_memory else None
-        perception_committed = False
-        memory_committed = False
         try:
             memory_id = self._memory_plugin_id(normalized) if use_memory else None
-            if use_memory:
-                self._probe_memory_replacement_locked(
-                    memory_step, memory_manager, memory_id
-                )
-            if use_perception:
-                perception_select(normalized)
-                self._apply_perception_selection_locked()
-                perception_committed = True
-            if use_memory:
-                memory_select((memory_id,))
-                self._call_in_plugin_root(
-                    lambda: memory_step._apply_selection(self._shared_memory)
-                )
-                memory_committed = True
+
+            def replace() -> None:
+                if use_perception:
+                    perception_select(normalized)
+                if use_memory:
+                    memory_select((memory_id,))
+                if perception_lifecycle:
+                    prepare_perception()
+                if use_memory:
+                    memory_step.prepare_selection()
+                if perception_lifecycle:
+                    commit_perception(self._shared_memory)
+                if use_memory:
+                    memory_step.commit_selection(self._shared_memory)
+
+            # perceive() is wrapped with the plugin root; selection is not.
+            self._call_in_plugin_root(replace)
         except Exception as exc:  # noqa: BLE001 - selection boundary
             self._restore_manager_selection_locked(
                 use_perception=use_perception,
                 perception_select=perception_select,
                 previous_perception=previous_perception,
-                perception_committed=perception_committed,
+                discard_perception=discard_perception,
                 use_memory=use_memory,
                 memory_select=memory_select,
-                memory_step=memory_step,
                 previous_memory=previous_memory,
-                memory_committed=memory_committed,
+                discard_memory=memory_step.discard_selection if use_memory else None,
             )
             message = str(exc)
             self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
@@ -956,56 +968,37 @@ class ImageReplayRunner:
                 state=self.state(),
             ) from exc
 
-    def _probe_memory_replacement_locked(
-        self,
-        memory_step: PluginMemoryRunner,
-        memory_manager: Any,
-        memory_id: str,
-    ) -> None:
-        """Construct a new memory plugin without publishing or resetting it."""
-
-        definition = memory_manager.resolver.resolve(memory_manager.step, memory_id)
-        applied = memory_step._selection_runtime.applied
-        if len(applied) == 1 and applied[0][0] == definition:
-            return
-        self._call_in_plugin_root(lambda: memory_step._load_plugin(definition))
-
-    def _apply_perception_selection_locked(self) -> None:
-        mapper = self._mapper
-        apply = getattr(mapper, "_apply_selection", None)
-        if not callable(apply):
-            return
-        # perceive() is wrapped with the plugin root; direct apply is not.
-        self._call_in_plugin_root(lambda: apply(self._shared_memory))
-
     def _restore_manager_selection_locked(
         self,
         *,
         use_perception: bool,
         perception_select: Any,
         previous_perception: tuple[str, ...] | None,
-        perception_committed: bool,
+        discard_perception: Any,
         use_memory: bool,
         memory_select: Any,
-        memory_step: Any,
         previous_memory: tuple[str, ...] | None,
-        memory_committed: bool,
+        discard_memory: Any,
     ) -> None:
+        """Drop unpublished candidates and put the previous ids back.
+
+        Reapplying the previous definitions would construct new instances and
+        drop history that the failed replacement never committed.
+        """
+
         try:
+            if callable(discard_perception):
+                discard_perception()
+            if callable(discard_memory):
+                discard_memory()
             if (
                 use_perception
                 and previous_perception is not None
                 and callable(perception_select)
             ):
                 perception_select(previous_perception)
-                if perception_committed:
-                    self._apply_perception_selection_locked()
             if use_memory and previous_memory is not None and callable(memory_select):
                 memory_select(previous_memory)
-                if memory_committed:
-                    self._call_in_plugin_root(
-                        lambda: memory_step._apply_selection(self._shared_memory)
-                    )
         except Exception:  # noqa: BLE001 - restore must not hide the selection error
             if (
                 use_perception

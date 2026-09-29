@@ -17,6 +17,7 @@ from autonomy.perception import (
 )
 from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.perception.selection import perception_plugin_manager
+from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
 
@@ -335,6 +336,52 @@ class PluginRunnerTests(unittest.TestCase):
             )
         finally:
             SelectionChangingPlugin.manager = None
+
+    def test_prepare_selection_publishes_the_same_instances_on_commit(self) -> None:
+        manager = perception_plugin_manager(
+            {
+                "working": f"{__name__}:WorkingPlugin",
+                "unavailable": f"{__name__}:UnavailablePlugin",
+            }
+        )
+        manager.select(["working"])
+        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        working = mapper.plugins[0]
+        manager.select(["unavailable"])
+
+        mapper.prepare_selection()
+
+        self.assertEqual(mapper.plugin_ids, ("working",))
+        self.assertIs(mapper.plugins[0], working)
+        self.assertEqual(working.reset_count, 0)
+        mapper.commit_selection()
+        self.assertEqual(mapper.plugin_ids, ("unavailable",))
+        self.assertIsNot(mapper.plugins[0], working)
+        self.assertEqual(working.reset_count, 1)
+
+    def test_discarded_selection_leaves_the_published_plugin(self) -> None:
+        manager = perception_plugin_manager(
+            {
+                "working": f"{__name__}:WorkingPlugin",
+                "unavailable": f"{__name__}:UnavailablePlugin",
+            }
+        )
+        manager.select(["working"])
+        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        working = mapper.plugins[0]
+        manager.select(["unavailable"])
+        mapper.prepare_selection()
+        mapper.discard_selection()
+
+        self.assertIs(mapper.plugins[0], working)
+        self.assertEqual(working.reset_count, 0)
+        with self.assertRaisesRegex(PluginManagementError, "prepared"):
+            mapper.commit_selection()
+        self.assertIs(mapper.plugins[0], working)
+        manager.select(["working"])
+        mapper.perceive(build_perception_request(_snapshot(_array_reading(), "frame-2")))
+        self.assertIs(mapper.plugins[0], working)
+        self.assertEqual(working.reset_count, 0)
 
 
 if __name__ == "__main__":

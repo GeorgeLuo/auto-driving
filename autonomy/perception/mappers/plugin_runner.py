@@ -270,11 +270,6 @@ class PluginPerceptionMapper:
             nonlocal candidate_provider_specs, candidate_providers
             candidate_provider_specs = {}
             candidate_providers = {}
-            implementation_ids = [plugin.plugin_id for plugin in candidate_plugins]
-            if len(implementation_ids) != len(set(implementation_ids)):
-                raise ValueError(
-                    "perception plugin implementation ids must be unique"
-                )
 
             for plugin in candidate_plugins:
                 for item in plugin.contract.inputs:

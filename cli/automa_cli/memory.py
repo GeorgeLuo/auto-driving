@@ -307,7 +307,10 @@ def get_vehicle_memory_info(
             "available_plugins": sorted(item.plugin_id for item in available),
             "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
             "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
-            "implementation_id": final.plugin_id if final else None,
+            "plugin_id": final.plugin_id if final else None,
+            "implementation_id": (
+                _packaged_implementation_id(final.entrypoint) if final else None
+            ),
             "implementation_spec": final.entrypoint if final else None,
             "implementation_config": dict(final.config) if final else None,
             "bounds": bounds_from_config(dict(final.config)).to_dict() if final else None,
@@ -2030,23 +2033,41 @@ def _memory_activation(
     return activation
 
 
+def _packaged_implementation_id(entrypoint: str | None) -> str | None:
+    """Return the packaged implementation id for an entrypoint, without loading it."""
+
+    if not isinstance(entrypoint, str) or not entrypoint:
+        return None
+    for implementation_id in available_memory_implementation_ids():
+        entry = memory_implementation_spec(implementation_id)
+        if entry["implementation_spec"] == entrypoint:
+            return entry["implementation_id"]
+    return None
+
+
 def _format_memory_info(payload: dict[str, Any]) -> str:
     activation = payload["activation"]
     bounds = activation.get("bounds") if isinstance(activation.get("bounds"), dict) else {}
-    lines = [
-        f"Memory: {payload['vehicle_id']} -> {activation.get('implementation_id', 'unknown')}",
-        f"Implementation: {activation.get('implementation_spec', 'unknown')}",
-        f"Activation: {activation['path']}",
-        (
-            f"Bounds: max_records={bounds.get('max_records')} "
-            f"max_age_ms={bounds.get('max_age_ms')} "
-            f"eviction={bounds.get('eviction_policy')}"
-        ),
-        f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
-        f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
-        "Lifecycle: update / reset / snapshot",
-        "Identity claims: false",
-    ]
+    plugin_id = activation.get("plugin_id") or "none"
+    implementation_id = activation.get("implementation_id")
+    lines = [f"Memory: {payload['vehicle_id']} -> {plugin_id}"]
+    if implementation_id and implementation_id != plugin_id:
+        lines.append(f"Implementation id: {implementation_id}")
+    lines.extend(
+        [
+            f"Implementation: {activation.get('implementation_spec', 'unknown')}",
+            f"Activation: {activation['path']}",
+            (
+                f"Bounds: max_records={bounds.get('max_records')} "
+                f"max_age_ms={bounds.get('max_age_ms')} "
+                f"eviction={bounds.get('eviction_policy')}"
+            ),
+            f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
+            f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
+            "Lifecycle: update / reset / snapshot",
+            "Identity claims: false",
+        ]
+    )
     live = payload.get("live")
     if isinstance(live, dict):
         lines.append("")

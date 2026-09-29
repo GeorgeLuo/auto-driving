@@ -59,6 +59,7 @@ class MemoryCommandTests(unittest.TestCase):
 
             info_payload = json.loads(info.stdout)
             self.assertEqual(info_payload["schema"], "vehicle_memory_info_v0")
+            self.assertEqual(info_payload["activation"]["plugin_id"], "bounded_evidence")
             self.assertEqual(
                 info_payload["activation"]["implementation_id"],
                 "bounded_evidence",
@@ -90,7 +91,11 @@ class MemoryCommandTests(unittest.TestCase):
                 activation = json.loads(info.stdout)["activation"]
                 self.assertEqual(activation["plugins"], selected)
                 self.assertEqual(activation["available_plugins"], ["bounded_evidence"])
-                self.assertEqual(activation["implementation_id"], selected[-1] if selected else None)
+                self.assertEqual(activation["plugin_id"], selected[-1] if selected else None)
+                self.assertEqual(
+                    activation["implementation_id"],
+                    "bounded_evidence" if selected else None,
+                )
                 if command == "disable" and changed:
                     replay = run_automa(
                         "vehicles", "memory", "replay", str(RECURRENCE_SOURCE),
@@ -100,6 +105,43 @@ class MemoryCommandTests(unittest.TestCase):
                     self.assertEqual(result["plugin_ids"], [])
                     self.assertEqual(result["final"], {})
                     self.assertTrue(result["deterministic"])
+
+    def test_info_keeps_catalog_alias_distinct_from_packaged_implementation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            run_automa(
+                "vehicles", "update", "memory", "--id", "test-car", runtime_root=runtime_root
+            )
+            path = runtime_root / "test-car/bundle/runtime/memory/active.json"
+            activation = json.loads(path.read_text())
+            memory = activation["memory"]
+            spec = memory["plugin_specs"]["bounded_evidence"]
+            memory["plugin_specs"]["ledger"] = spec
+            memory["plugin_configs"]["ledger"] = dict(memory["plugin_configs"]["bounded_evidence"])
+            memory["plugins"] = ["ledger"]
+            path.write_text(json.dumps(activation), encoding="utf-8")
+
+            info = run_automa(
+                "vehicles", "info", "memory", "--id", "test-car", "--json",
+                runtime_root=runtime_root,
+            )
+            reported = json.loads(info.stdout)["activation"]
+            self.assertEqual(reported["plugin_id"], "ledger")
+            self.assertEqual(reported["plugins"], ["ledger"])
+            self.assertEqual(reported["implementation_id"], "bounded_evidence")
+            self.assertEqual(reported["implementation_spec"], spec)
+
+            memory["plugin_specs"]["custom"] = "not.installed:Missing"
+            memory["plugin_configs"]["custom"] = {}
+            memory["plugins"] = ["custom"]
+            path.write_text(json.dumps(activation), encoding="utf-8")
+            unknown = run_automa(
+                "vehicles", "info", "memory", "--id", "test-car", "--json",
+                runtime_root=runtime_root,
+            )
+            unknown_activation = json.loads(unknown.stdout)["activation"]
+            self.assertEqual(unknown_activation["plugin_id"], "custom")
+            self.assertIsNone(unknown_activation["implementation_id"])
 
     def test_info_and_selection_share_staged_catalog_without_loading_unselected_plugins(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

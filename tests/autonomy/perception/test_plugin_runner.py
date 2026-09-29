@@ -162,6 +162,36 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(mapper.plugins[0].plugin_id, "working-test-v0")
         self.assertEqual(mapper.plugins[0].asserted_value, 42)
 
+    def test_catalog_aliases_may_share_one_implementation(self) -> None:
+        manager = perception_plugin_manager(
+            {
+                "first_frame": f"{__name__}:WorkingPlugin",
+                "second_frame": f"{__name__}:WorkingPlugin",
+            }
+        )
+        manager.select(["first_frame", "second_frame"])
+        mapper = PluginPerceptionMapper(plugin_manager=manager)
+
+        perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+
+        self.assertEqual(mapper.plugin_ids, ("first_frame", "second_frame"))
+        self.assertEqual(
+            [plugin.plugin_id for plugin in mapper.plugins],
+            ["working-test-v0", "working-test-v0"],
+        )
+        self.assertEqual(
+            [run.plugin_id for run in perception.plugin_runs],
+            ["first_frame", "second_frame"],
+        )
+        self.assertEqual(
+            [run.implementation_id for run in perception.plugin_runs],
+            ["working-test-v0", "working-test-v0"],
+        )
+        self.assertEqual(
+            [signal.source_plugin_id for signal in perception.signals],
+            ["first_frame", "second_frame"],
+        )
+
     def test_runner_reset_is_optional_and_invokes_stateful_hook_when_present(self) -> None:
         mapper = PluginPerceptionMapper(
             plugins=["working", "frame"],

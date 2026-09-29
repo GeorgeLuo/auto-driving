@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from autonomy.perception import build_perception_request
-from autonomy.perception.mappers import PluginPerceptionMapper
+from autonomy.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
 from implementations.perception.components import camera_component_id
@@ -150,7 +150,7 @@ class PerceptionPluginTests(unittest.TestCase):
                     shared_memory=memory,
                 )
             )
-            key = "motion-tracks-v0/scene_tracks"
+            key = "motion_tracks/scene_tracks"
             self.assertIn(key, result.artifacts)
             self.assertTrue(Path(result.artifacts[key]).is_file())
 

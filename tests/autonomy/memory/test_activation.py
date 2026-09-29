@@ -1,15 +1,9 @@
 from __future__ import annotations
 import tempfile
 import unittest
-from autonomy.decision import (
-    ActivatedMemoryStep,
-    DecisionCycle,
-    DecisionFrameContext,
-    DecisionSteps,
-    Observation,
-    read_memory_activation,
-)
-from tests.autonomy.decision.memory_activation_fixtures import (
+from autonomy.decision import DecisionCycle, DecisionFrameContext, DecisionSteps, Observation
+from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from tests.autonomy.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )
@@ -87,7 +81,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_OverCapacityMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_OverCapacityMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -102,7 +96,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_WeakAgeMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_WeakAgeMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -117,7 +111,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_MutatingSharedSnapshotMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_MutatingSharedSnapshotMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )

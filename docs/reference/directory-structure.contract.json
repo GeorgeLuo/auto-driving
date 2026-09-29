@@ -34,21 +34,27 @@
             "path": "autonomy/perception/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Sensor-agnostic perception contracts, component context, evidence shapes, activation, and generic plugin execution. All component adapters and perception algorithms live outside autonomy/.",
+            "responsibility": "Sensor-agnostic perception contracts, component context, evidence shapes, activation, selection, and generic plugin execution. All component adapters and perception algorithms live outside autonomy/.",
             "children": [
               {
                 "path": "autonomy/perception/mappers/",
                 "category": "core",
                 "commit_policy": "source",
-                "responsibility": "Generic plugin-chain execution that aggregates plugin-declared component queries without knowing component types or perception meanings."
+                "responsibility": "Compatibility import path for existing mapper specs. Plugin execution lives in autonomy/perception/."
               }
             ]
+          },
+          {
+            "path": "autonomy/memory/",
+            "category": "core",
+            "commit_policy": "source",
+            "responsibility": "Memory-step activation, selection, runner, protocol, and value contracts. The host shared map is not owned by this step."
           },
           {
             "path": "autonomy/decision/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Generic observe, memory, action, and snapshot cycle with optional stages."
+            "responsibility": "Observation contracts and the decision cycle, including optional action stages. Memory activation, protocol, and values live under autonomy/memory/."
           },
           {
             "path": "autonomy/runtime/",
@@ -150,7 +156,7 @@
             "path": "implementations/memory/",
             "category": "implementation",
             "commit_policy": "source",
-            "responsibility": "Concrete memory reducers selected by runtime/memory activation. Stable values and activation loading remain under autonomy/decision/."
+            "responsibility": "Concrete memory reducers selected by runtime/memory activation. Stable values, protocol, and activation loading live under autonomy/memory/."
           },
           {
             "path": "implementations/runtime/",

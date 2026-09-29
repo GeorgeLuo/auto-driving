@@ -2,13 +2,9 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from autonomy.decision import (
-    ActivatedMemoryStep,
-    DecisionFrameContext,
-    Observation,
-    read_memory_activation,
-)
-from tests.autonomy.decision.memory_activation_fixtures import (
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from tests.autonomy.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )
@@ -20,7 +16,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_SelfContradictingBoundsMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_SelfContradictingBoundsMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -37,7 +33,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"]["implementation_config"]["eviction_policy"] = "p" * 140
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_NormalizationInflatesSizeMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_NormalizationInflatesSizeMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -62,7 +58,7 @@ class MemoryActivationTests(unittest.TestCase):
             ] = "oldest_first"
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_TighterDeclaredSizeMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_TighterDeclaredSizeMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -78,7 +74,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.decision.memory_activation_fixtures:_NonJsonPropertyMemory"
+            ] = "tests.autonomy.memory.activation_fixtures:_NonJsonPropertyMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -128,14 +124,20 @@ class MemoryActivationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid implementation_config"):
                 read_memory_activation(_write_payload(tmp, payload))
 
-    def test_implementation_id_mismatch_is_rejected_at_load(self) -> None:
+    def test_catalog_id_may_differ_from_implementation_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"]["implementation_id"] = "other_id"
-            with self.assertRaisesRegex(ValueError, "implementation_id mismatch"):
-                ActivatedMemoryStep(
-                    read_memory_activation(_write_payload(tmp, payload))
-                )
+            step = ActivatedMemoryStep(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            self.assertEqual(step.plugin_ids, ("other_id",))
+            self.assertEqual(step.implementation.implementation_id, "recording_test")
+            status = step.status()
+            self.assertEqual(status["implementation_id"], "recording_test")
+            self.assertEqual(status["plugins"][0]["plugin_id"], "other_id")
+            self.assertEqual(status["plugins"][0]["implementation_id"], "recording_test")
+            self.assertEqual(step.snapshot().implementation_id, "recording_test")
 
     def test_selected_config_is_detached_from_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

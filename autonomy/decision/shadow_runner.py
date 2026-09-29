@@ -20,7 +20,7 @@ from autonomy.decision.decision_data import (
     default_capabilities,
     ready_envelope,
 )
-from autonomy.decision.memory import MemorySnapshot, canonical_json_bytes
+from autonomy.memory.values import MemorySnapshot, canonical_json_bytes
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import (
     ShadowDecisionCycleResult,

@@ -5,13 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision import (
-    DecisionFrameContext,
-    DecisionSteps,
-    MemoryUpdateError,
-    load_memory_step_if_present,
-    read_memory_activation,
-)
+from autonomy.decision import DecisionFrameContext, DecisionSteps, MemoryUpdateError
+from autonomy.memory import load_memory_step_if_present, read_memory_activation
 from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.memory.catalog import build_memory_activation_payload
@@ -51,7 +46,7 @@ class _RecordingMemory:
         max_serialized_bytes: int | None = 262_144,
         **_ignored,
     ) -> None:
-        from autonomy.decision import MemoryBounds, empty_memory_snapshot
+        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
 
         self.implementation_id = implementation_id
         self.bounds = MemoryBounds(
@@ -66,7 +61,7 @@ class _RecordingMemory:
         self._snapshot = self.reset()
 
     def update(self, context, observation):
-        from autonomy.decision import (
+        from autonomy.memory.values import (
             MemoryProvenance,
             MemorySnapshot,
             RetainedEvidence,
@@ -111,7 +106,7 @@ class _RecordingMemory:
         return self._snapshot
 
     def reset(self, shared_memory=None):
-        from autonomy.decision import empty_memory_snapshot
+        from autonomy.memory.values import empty_memory_snapshot
 
         del shared_memory
         self.epoch += 1
@@ -297,7 +292,8 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
     def test_host_shares_context_and_delivers_memory_updated_observation(self) -> None:
         from dataclasses import replace
-        from autonomy.decision import Observation, MemoryBounds, empty_memory_snapshot
+        from autonomy.decision import Observation
+        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
         seen = []
 
         def observe(context, perception):

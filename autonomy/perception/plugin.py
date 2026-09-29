@@ -7,7 +7,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Literal, Mapping, Protocol, TypeVar, runtime_checkable
 
-from autonomy.memory import SharedMemory
+from autonomy.shared_memory import SharedMemory
 
 from .evidence import PerceptionEvidenceBatch
 

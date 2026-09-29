@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from autonomy.perception import build_perception_request  # noqa: E402
-from autonomy.perception.mappers import PluginPerceptionMapper  # noqa: E402
+from autonomy.perception.plugin_runner import PluginPerceptionMapper  # noqa: E402
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot  # noqa: E402
 from lab.plugins.perception.worker_memory import decode_shared_memory, encode_shared_memory  # noqa: E402
 

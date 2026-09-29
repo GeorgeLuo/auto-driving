@@ -26,3 +26,5 @@ from collections.abc import MutableMapping
 from typing import Any
 
 SharedMemory = MutableMapping[str, Any]
+
+__all__ = ["SharedMemory"]

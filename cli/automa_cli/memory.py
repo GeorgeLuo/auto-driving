@@ -183,7 +183,7 @@ def set_vehicle_memory_plugin(
         activation = read_memory_activation(activation_path)
         config = memory_selection_config(activation)
         manager = memory_manager_from_activation(activation)
-        available = sorted(config["plugin_specs"])
+        available = sorted(manager.available_ids)
         if plugin_id not in available:
             return CommandResult(2, f"Unknown memory plugin {plugin_id!r}. Available: {', '.join(available)}.")
         before = list(manager.selected_ids)
@@ -282,8 +282,8 @@ def get_vehicle_memory_info(
 
     try:
         activation = read_memory_activation(activation_path)
-        selection = memory_selection_config(activation)
         manager = memory_manager_from_activation(activation)
+        available = manager.available
         final = manager.selected[-1] if manager.selected else None
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         return CommandResult(
@@ -304,9 +304,9 @@ def get_vehicle_memory_info(
         "activation": {
             "path": display_path(activation_path),
             "plugins": list(manager.selected_ids),
-            "available_plugins": sorted(selection["plugin_specs"]),
-            "plugin_specs": selection["plugin_specs"],
-            "plugin_configs": selection["plugin_configs"],
+            "available_plugins": sorted(item.plugin_id for item in available),
+            "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
+            "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
             "implementation_id": final.plugin_id if final else None,
             "implementation_spec": final.entrypoint if final else None,
             "implementation_config": dict(final.config) if final else None,

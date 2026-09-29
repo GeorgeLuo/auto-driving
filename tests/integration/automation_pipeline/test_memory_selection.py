@@ -94,6 +94,11 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual([edit.exit_code for edit in edits], [0, 0, 0, 0], [edit.message for edit in edits])
+            self.assertEqual(
+                [json.loads(edit.message)["available_plugins"] for edit in edits],
+                [["bounded_evidence", "second"]] * len(edits),
+            )
+            self.assertEqual(steps[0].status()["available_plugins"], ["bounded_evidence", "second"])
             self.assertEqual(applied, [
                 ("bounded_evidence",), ("bounded_evidence", "second"), ("second",), (), ("bounded_evidence",),
             ])

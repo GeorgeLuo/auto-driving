@@ -101,6 +101,34 @@ class MemoryCommandTests(unittest.TestCase):
                     self.assertEqual(result["final"], {})
                     self.assertTrue(result["deterministic"])
 
+    def test_info_and_selection_share_staged_catalog_without_loading_unselected_plugins(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            run_automa("vehicles", "update", "memory", "--id", "test-car", runtime_root=runtime_root)
+            path = runtime_root / "test-car/bundle/runtime/memory/active.json"
+            activation = json.loads(path.read_text())
+            activation["memory"]["plugin_specs"]["missing"] = "implementations.memory.not_installed:Plugin"
+            path.write_text(json.dumps(activation))
+            info = run_automa(
+                "vehicles", "info", "memory", "--id", "test-car", "--json",
+                runtime_root=runtime_root,
+            )
+            expected = ["bounded_evidence", "missing"]
+            self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
+            disabled = run_automa(
+                "vehicles", "memory", "disable", "--id", "test-car", "missing", "--json",
+                runtime_root=runtime_root,
+            )
+            self.assertEqual(json.loads(disabled.stdout)["available_plugins"], expected)
+            self.assertFalse(json.loads(disabled.stdout)["changed"])
+            saved = path.read_text()
+            rejected = run_automa(
+                "vehicles", "memory", "enable", "--id", "test-car", "missing",
+                runtime_root=runtime_root, check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertEqual(path.read_text(), saved)
+
     def test_memory_update_dry_run_does_not_write_activation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

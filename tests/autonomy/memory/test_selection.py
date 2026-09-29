@@ -30,6 +30,20 @@ def _manager():
 
 
 class MemorySelectionTests(unittest.TestCase):
+    def test_status_reports_unselected_catalog_plugins_and_can_enable_them(self):
+        manager = _manager()
+        step = ActivatedMemoryStep(plugin_manager=manager)
+        self.assertEqual(step.status()["available_plugins"], ["first", "second"])
+        self.assertEqual(step.plugins, ())
+        manager.add("second")
+        snapshot = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
+        self.assertEqual(snapshot.implementation_id, "second")
+        self.assertEqual(step.status()["available_plugins"], ["first", "second"])
+        manager.remove("second")
+        step.update(DecisionFrameContext("frame-2", 2, 200, shared_memory={}), None)
+        self.assertEqual(step.status()["available_plugins"], ["first", "second"])
+        self.assertEqual(step.plugins, ())
+
     def test_manager_selection_runs_in_order_and_last_output_reaches_decision(self):
         manager = _manager()
         manager.select(["first", "second"])

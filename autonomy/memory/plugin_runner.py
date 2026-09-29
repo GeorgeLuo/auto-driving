@@ -171,6 +171,7 @@ class PluginMemoryRunner:
                 "implementation_spec": final.implementation_spec if final else None,
                 "activation": str(self.activation.source_path) if self.activation else None,
                 "bounds": final.bounds.to_dict() if final else None,
+                "available_plugins": sorted(self.plugin_manager.available_ids),
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),
                 "plugins": [plugin.status() for plugin in self.plugins],

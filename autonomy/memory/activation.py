@@ -252,7 +252,6 @@ def load_memory_implementation(
     return instantiate_memory_implementation(
         activation.implementation_spec,
         activation.implementation_config,
-        expected_implementation_id=activation.implementation_id,
         reload_module=reload_module,
     )
 
@@ -275,7 +274,6 @@ def instantiate_memory_implementation(
     implementation_spec: str,
     implementation_config: dict[str, Any],
     *,
-    expected_implementation_id: str | None = None,
     reload_module: bool = False,
 ) -> MemoryImplementation:
     module_name, separator, class_name = implementation_spec.partition(":")
@@ -295,14 +293,6 @@ def instantiate_memory_implementation(
     if not isinstance(implementation.implementation_id, str) or not implementation.implementation_id.strip():
         raise TypeError(
             f"memory implementation must declare a non-empty implementation_id: {implementation_spec}"
-        )
-    if (
-        expected_implementation_id is not None
-        and implementation.implementation_id != expected_implementation_id
-    ):
-        raise ValueError(
-            "memory implementation_id mismatch: activation declares "
-            f"{expected_implementation_id!r} but loaded {implementation.implementation_id!r}"
         )
     return implementation
 

@@ -124,14 +124,20 @@ class MemoryActivationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid implementation_config"):
                 read_memory_activation(_write_payload(tmp, payload))
 
-    def test_implementation_id_mismatch_is_rejected_at_load(self) -> None:
+    def test_catalog_id_may_differ_from_implementation_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"]["implementation_id"] = "other_id"
-            with self.assertRaisesRegex(ValueError, "implementation_id mismatch"):
-                ActivatedMemoryStep(
-                    read_memory_activation(_write_payload(tmp, payload))
-                )
+            step = ActivatedMemoryStep(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            self.assertEqual(step.plugin_ids, ("other_id",))
+            self.assertEqual(step.implementation.implementation_id, "recording_test")
+            status = step.status()
+            self.assertEqual(status["implementation_id"], "recording_test")
+            self.assertEqual(status["plugins"][0]["plugin_id"], "other_id")
+            self.assertEqual(status["plugins"][0]["implementation_id"], "recording_test")
+            self.assertEqual(step.snapshot().implementation_id, "recording_test")
 
     def test_selected_config_is_detached_from_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

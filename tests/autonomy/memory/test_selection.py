@@ -94,6 +94,17 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertNotIn("decision.snapshot", shared)
         self.assertEqual(step.status()["plugin_ids"], [])
 
+    def test_selection_id_stays_distinct_from_implementation_id(self):
+        manager = memory_plugin_manager({"ledger": SPEC}, {"ledger": {}})
+        manager.select(["ledger"])
+        step = ActivatedMemoryStep(plugin_manager=manager)
+        self.assertEqual(step.plugin_ids, ("ledger",))
+        self.assertEqual(step.plugins[0].implementation.implementation_id, "recording_test")
+        plugin_status = step.status()["plugins"][0]
+        self.assertEqual(plugin_status["plugin_id"], "ledger")
+        self.assertEqual(plugin_status["implementation_id"], "recording_test")
+        self.assertEqual(step.snapshot().implementation_id, "recording_test")
+
     def test_legacy_activation_seeds_manager_and_explicit_selection_overrides_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()

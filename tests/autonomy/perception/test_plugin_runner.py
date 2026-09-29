@@ -155,8 +155,11 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual([run.status for run in perception.plugin_runs], ["ok", "error"])
         self.assertTrue(all(run.duration_ms >= 0 for run in perception.plugin_runs))
         self.assertIn("RuntimeError: expected test failure", perception.plugin_runs[1].error or "")
-        self.assertEqual(perception.signals[0].source_plugin_id, "working-test-v0")
-        self.assertEqual(perception.things[0].source_plugin_id, "working-test-v0")
+        self.assertEqual(perception.signals[0].source_plugin_id, "working")
+        self.assertEqual(perception.things[0].source_plugin_id, "working")
+        self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
+        self.assertEqual(perception.plugin_runs[0].implementation_id, "working-test-v0")
+        self.assertEqual(mapper.plugins[0].plugin_id, "working-test-v0")
         self.assertEqual(mapper.plugins[0].asserted_value, 42)
 
     def test_runner_reset_is_optional_and_invokes_stateful_hook_when_present(self) -> None:
@@ -226,7 +229,7 @@ class PluginRunnerTests(unittest.TestCase):
         first = mapper.perceive(
             build_perception_request(_snapshot(_array_reading(), "frame-1"))
         )
-        self.assertEqual([run.plugin_id for run in first.plugin_runs], ["working-test-v0"])
+        self.assertEqual([run.plugin_id for run in first.plugin_runs], ["working"])
 
         manager.add("unavailable")
         self.assertEqual(mapper.plugin_ids, ("working",))
@@ -235,7 +238,7 @@ class PluginRunnerTests(unittest.TestCase):
         )
         self.assertEqual(
             [run.plugin_id for run in second.plugin_runs],
-            ["working-test-v0", "unavailable-test-v0"],
+            ["working", "unavailable"],
         )
         self.assertIs(mapper.plugins[0], working)
 
@@ -244,7 +247,7 @@ class PluginRunnerTests(unittest.TestCase):
             build_perception_request(_snapshot(_array_reading(), "frame-3"))
         )
         self.assertEqual(
-            [run.plugin_id for run in third.plugin_runs], ["unavailable-test-v0"]
+            [run.plugin_id for run in third.plugin_runs], ["unavailable"]
         )
         self.assertNotIn("test_ready", [signal.name for signal in third.signals])
         self.assertEqual(working.reset_count, 1)
@@ -272,7 +275,7 @@ class PluginRunnerTests(unittest.TestCase):
         recovered = mapper.perceive(
             build_perception_request(_snapshot(_array_reading(), "frame-2"))
         )
-        self.assertEqual([run.plugin_id for run in recovered.plugin_runs], ["working-test-v0"])
+        self.assertEqual([run.plugin_id for run in recovered.plugin_runs], ["working"])
         self.assertIs(mapper.plugins[0], working)
 
     def test_selection_change_during_perceive_applies_on_the_next_frame(self) -> None:
@@ -295,10 +298,10 @@ class PluginRunnerTests(unittest.TestCase):
 
             self.assertEqual(
                 [run.plugin_id for run in first.plugin_runs],
-                ["selection-changing-v0", "working-test-v0"],
+                ["selection_changing", "working"],
             )
             self.assertEqual(
-                [run.plugin_id for run in second.plugin_runs], ["working-test-v0"]
+                [run.plugin_id for run in second.plugin_runs], ["working"]
             )
         finally:
             SelectionChangingPlugin.manager = None

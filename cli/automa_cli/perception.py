@@ -1285,9 +1285,17 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
                 if isinstance(inputs, list) and inputs
                 else "none"
             )
+            catalog_id = plugin.get("plugin_id", "unknown")
+            implementation_id = plugin.get("implementation_id")
+            implementation_text = (
+                f" implementation={implementation_id}"
+                if implementation_id and implementation_id != catalog_id
+                else ""
+            )
             lines.append(
-                f"- {plugin.get('plugin_id', 'unknown')} "
-                f"[{contract.get('state_mode', 'unknown')}] components={component_text}"
+                f"- {catalog_id} "
+                f"[{contract.get('state_mode', 'unknown')}] "
+                f"components={component_text}{implementation_text}"
             )
 
     output_schema = schema.get("output") if isinstance(schema.get("output"), dict) else {}

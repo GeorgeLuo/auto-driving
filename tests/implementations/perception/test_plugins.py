@@ -150,7 +150,7 @@ class PerceptionPluginTests(unittest.TestCase):
                     shared_memory=memory,
                 )
             )
-            key = "motion-tracks-v0/scene_tracks"
+            key = "motion_tracks/scene_tracks"
             self.assertIn(key, result.artifacts)
             self.assertTrue(Path(result.artifacts[key]).is_file())
 

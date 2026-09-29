@@ -10,6 +10,7 @@ class ObstructionTracksProductionTests(unittest.TestCase):
     def test_catalog_constructs_obstruction_observer(self) -> None:
         config = PERCEPTION_ALGORITHMS["obstruction_observer"]["mapper_config"]
         mapper = PluginPerceptionMapper(**config)
+        self.assertEqual(mapper.plugin_ids, ("frame", "floor_plane", "obstruction_tracks"))
         self.assertEqual(
             [plugin.plugin_id for plugin in mapper.plugins],
             ["frame-observation-v0", "floor-plane-v0", "multi-obstruction-tracks-v0"],

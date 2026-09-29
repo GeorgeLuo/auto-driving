@@ -115,11 +115,14 @@ class PluginPerceptionMapper:
         for definition, plugin in self._selection_runtime.applied:
             contract = plugin.contract
             for item in contract.inputs:
-                component_consumers.setdefault(item.component_id, []).append(plugin.plugin_id)
+                component_consumers.setdefault(item.component_id, []).append(
+                    definition.plugin_id
+                )
                 component_providers[item.component_id] = item.provider_spec
             plugin_schemas.append(
                 {
-                    "plugin_id": plugin.plugin_id,
+                    "plugin_id": definition.plugin_id,
+                    "implementation_id": plugin.plugin_id,
                     "spec": definition.entrypoint,
                     "config": deepcopy(dict(definition.config)),
                     "contract": contract.to_dict(),
@@ -193,36 +196,40 @@ class PluginPerceptionMapper:
         limits: list[str] = []
         plugin_runs: list[PerceptionPluginRun] = []
 
-        for plugin in self.plugins:
-            execution = self._execute_plugin(plugin, request)
+        # Catalog plugin_id attributes results. The instance plugin_id is the
+        # implementation identity and is not rewritten to repair provenance.
+        for definition, plugin in self._selection_runtime.applied:
+            catalog_id = definition.plugin_id
+            execution = self._execute_plugin(plugin, request, catalog_id)
             attributed_signals = tuple(
-                replace(signal, source_plugin_id=plugin.plugin_id)
+                replace(signal, source_plugin_id=catalog_id)
                 for signal in execution.batch.signals
             )
             attributed_things = tuple(
-                replace(thing, source_plugin_id=plugin.plugin_id)
+                replace(thing, source_plugin_id=catalog_id)
                 for thing in execution.batch.things
             )
             plugin_runs.append(
                 PerceptionPluginRun(
-                    plugin_id=plugin.plugin_id,
+                    plugin_id=catalog_id,
                     status=execution.status,
                     duration_ms=execution.duration_ms,
                     signal_count=len(attributed_signals),
                     thing_count=len(attributed_things),
                     artifact_count=len(execution.artifacts),
                     error=execution.error,
+                    implementation_id=plugin.plugin_id,
                 )
             )
             lines.append(
-                f"plugin_run id={plugin.plugin_id} status={execution.status} "
+                f"plugin_run id={catalog_id} status={execution.status} "
                 f"duration_ms={execution.duration_ms:.3f} "
                 f"signals={len(attributed_signals)} things={len(attributed_things)} "
                 f"artifacts={len(execution.artifacts)}"
             )
             if execution.error:
                 lines.append(
-                    f"plugin_status id={plugin.plugin_id} status={execution.status} "
+                    f"plugin_status id={catalog_id} status={execution.status} "
                     f"detail={_line_value(execution.error)}"
                 )
             lines.extend(signal_line(signal) for signal in attributed_signals)
@@ -230,10 +237,10 @@ class PluginPerceptionMapper:
             signals.extend(attributed_signals)
             things.extend(attributed_things)
             if execution.batch.measurements:
-                measurements[plugin.plugin_id] = dict(execution.batch.measurements)
+                measurements[catalog_id] = dict(execution.batch.measurements)
             artifacts.update(
                 {
-                    f"{plugin.plugin_id}/{artifact_id}": path
+                    f"{catalog_id}/{artifact_id}": path
                     for artifact_id, path in execution.artifacts.items()
                 }
             )
@@ -263,9 +270,11 @@ class PluginPerceptionMapper:
             nonlocal candidate_provider_specs, candidate_providers
             candidate_provider_specs = {}
             candidate_providers = {}
-            runtime_ids = [plugin.plugin_id for plugin in candidate_plugins]
-            if len(runtime_ids) != len(set(runtime_ids)):
-                raise ValueError("perception plugin runtime ids must be unique")
+            implementation_ids = [plugin.plugin_id for plugin in candidate_plugins]
+            if len(implementation_ids) != len(set(implementation_ids)):
+                raise ValueError(
+                    "perception plugin implementation ids must be unique"
+                )
 
             for plugin in candidate_plugins:
                 for item in plugin.contract.inputs:
@@ -309,11 +318,16 @@ class PluginPerceptionMapper:
         self._component_provider_specs = candidate_provider_specs
         self._component_providers = candidate_providers
 
-    def _execute_plugin(self, plugin: Any, request: PerceptionRequest) -> _PluginExecution:
+    def _execute_plugin(
+        self,
+        plugin: Any,
+        request: PerceptionRequest,
+        catalog_id: str,
+    ) -> _PluginExecution:
         started = time.perf_counter()
         diagnostics = PerceptionDiagnosticSink(
             output_dir=request.output_dir,
-            plugin_id=plugin.plugin_id,
+            plugin_id=catalog_id,
             allowed_artifacts=plugin.contract.diagnostic_artifacts,
         )
         if plugin.contract.diagnostics_required and not diagnostics.enabled:
@@ -347,7 +361,7 @@ class PluginPerceptionMapper:
             batch = plugin.perceive(inputs)
             if not isinstance(batch, PerceptionEvidenceBatch):
                 raise TypeError(
-                    f"plugin {plugin.plugin_id!r} must return PerceptionEvidenceBatch"
+                    f"plugin {catalog_id!r} must return PerceptionEvidenceBatch"
                 )
             status: PluginResultStatus = (
                 "ok"

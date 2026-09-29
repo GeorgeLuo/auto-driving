@@ -80,14 +80,19 @@ class PluginMemoryRunner:
 
     def _load_plugin(self, definition: PluginDefinition) -> _MemoryPluginRuntime:
         config = deepcopy(dict(definition.config))
-        return _MemoryPluginRuntime(MemoryActivation(
-            implementation_id=definition.plugin_id,
-            implementation_spec=definition.entrypoint,
-            implementation_config=config,
-            bounds=bounds_from_config(config),
-            source_path=self.activation.source_path if self.activation else Path("memory-manager"),
-            payload={},
-        ))
+        return _MemoryPluginRuntime(
+            MemoryActivation(
+                implementation_id=definition.plugin_id,
+                implementation_spec=definition.entrypoint,
+                implementation_config=config,
+                bounds=bounds_from_config(config),
+                source_path=(
+                    self.activation.source_path if self.activation else Path("memory-manager")
+                ),
+                payload={},
+            ),
+            plugin_id=definition.plugin_id,
+        )
 
     def _apply_selection(self, shared_memory: SharedMemory | None = None) -> None:
         applied = self._selection_runtime.apply(
@@ -194,9 +199,15 @@ class _MemoryPluginRuntime:
     observations are treated as read-only inputs; update failures stop the cycle.
     """
 
-    def __init__(self, activation: MemoryActivation) -> None:
-        self.activation = activation
+    def __init__(self, activation: MemoryActivation, *, plugin_id: str) -> None:
+        self.plugin_id = plugin_id
         self.implementation = load_memory_implementation(activation)
+        # Snapshot identity follows the loaded class. The catalog plugin_id
+        # stays on this runtime and is not required to match.
+        implementation_id = self.implementation.implementation_id
+        if activation.implementation_id != implementation_id:
+            activation = replace(activation, implementation_id=implementation_id)
+        self.activation = activation
         self.last_snapshot: MemorySnapshot | None = None
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
@@ -288,6 +299,7 @@ class _MemoryPluginRuntime:
         # telemetry keys (for example capacity eviction counters) into status.
         # Callers that need snapshot metadata read the published MemorySnapshot.
         return {
+            "plugin_id": self.plugin_id,
             "implementation_id": self.activation.implementation_id,
             "implementation_spec": self.activation.implementation_spec,
             "activation": str(self.activation.source_path),

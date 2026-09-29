@@ -201,7 +201,6 @@ class PluginCatalog:
         selected = self.normalize_selection(active_ids, require_explicit_selection=False)
         manager = PluginManager("perception", self)
         manager.select(selected)
-        plugin_ids = list(manager.selected_ids)
 
         if self.root is not None:
             with _import_root(self.root):
@@ -220,13 +219,6 @@ class PluginCatalog:
             mapper = instantiate_perception_mapper(
                 PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
             )
-
-        # Runtime classes use implementation ids (for example
-        # ``floor-continuity-v1``).  The workbench's stable public provenance is
-        # the manifest/catalog id, so alias the instantiated objects after the
-        # mapper has validated their contracts.
-        for configured_id, plugin in zip(plugin_ids, mapper.plugins, strict=True):
-            plugin.plugin_id = configured_id
         return mapper
 
     def memory_for_selection(self, active_ids: Sequence[str]) -> dict[str, Any] | None:

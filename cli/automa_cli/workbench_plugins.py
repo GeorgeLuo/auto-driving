@@ -9,6 +9,7 @@ plugin happens only after the operator selects its catalog id for a replay.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 import os
@@ -21,7 +22,11 @@ from typing import Any, Iterator, Sequence
 
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionMapper
 from autonomy.perception.activation import instantiate_perception_mapper
-from autonomy.plugins import PluginDefinition, PluginManager
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
+from implementations.memory.catalog import (
+    DEFAULT_MEMORY_IMPLEMENTATION,
+    MEMORY_IMPLEMENTATIONS,
+)
 from implementations.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
@@ -41,6 +46,154 @@ class PluginCatalogError(ValueError):
     """A bounded catalog or selection boundary failure."""
 
     boundary = "plugin_catalog"
+
+
+def _memory_config_signature(spec: str, config: dict[str, Any]) -> tuple[str, str]:
+    try:
+        encoded = json.dumps(config, sort_keys=True)
+    except (TypeError, ValueError) as exc:
+        raise PluginCatalogError(
+            f"memory implementation config is not JSON-comparable: {exc}"
+        ) from exc
+    return spec, encoded
+
+
+def _register_memory_definition(
+    specs: dict[str, str],
+    configs: dict[str, dict[str, Any]],
+    catalog_id: str,
+    spec: str,
+    config: dict[str, Any],
+) -> None:
+    """Add a definition without letting traversal order replace another one."""
+
+    existing_spec = specs.get(catalog_id)
+    if existing_spec is None:
+        specs[catalog_id] = spec
+        configs[catalog_id] = copy.deepcopy(config)
+        return
+    existing = _memory_config_signature(existing_spec, configs[catalog_id])
+    if existing != _memory_config_signature(spec, config):
+        raise PluginCatalogError(
+            f"memory catalog id {catalog_id!r} conflicts with an existing definition"
+        )
+
+
+def _memory_definitions(
+    plugins: tuple[PluginDescriptor, ...] | Sequence[PluginDescriptor],
+) -> tuple[tuple[PluginDefinition, ...], dict[str, str]]:
+    """Packaged memory plugins plus companion definitions with stable identities.
+
+    Packaged configuration is never overwritten. Companions that share an
+    implementation id keep that id only when they declare the same entrypoint
+    and configuration. A different configuration gets its own catalog id, so
+    discovery order cannot choose which config is active.
+    """
+
+    specs: dict[str, str] = {}
+    configs: dict[str, dict[str, Any]] = {}
+    for implementation_id, entry in MEMORY_IMPLEMENTATIONS.items():
+        specs[implementation_id] = str(entry["implementation_spec"])
+        configs[implementation_id] = copy.deepcopy(dict(entry["default_config"]))
+    default_config = copy.deepcopy(configs[DEFAULT_MEMORY_IMPLEMENTATION])
+    companions: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
+    for descriptor in plugins:
+        companion = descriptor.memory
+        if not companion:
+            continue
+        implementation_id = str(companion["implementation_id"])
+        spec = str(companion["implementation_spec"])
+        if implementation_id in MEMORY_IMPLEMENTATIONS:
+            config = copy.deepcopy(configs[implementation_id])
+        else:
+            config = copy.deepcopy(default_config)
+        config.update(dict(companion.get("implementation_config") or {}))
+        companions.setdefault(implementation_id, []).append(
+            (descriptor.plugin_id, spec, config)
+        )
+
+    perception_memory_ids: dict[str, str] = {}
+    for implementation_id in sorted(companions):
+        entries = companions[implementation_id]
+        entry_specs = {spec for _plugin_id, spec, _config in entries}
+        packaged_spec = specs.get(implementation_id)
+        if packaged_spec is not None:
+            entry_specs.add(packaged_spec)
+        if len(entry_specs) > 1:
+            raise PluginCatalogError(
+                f"memory implementation {implementation_id!r} has conflicting entrypoints"
+            )
+        spec = next(iter(entry_specs))
+        groups: dict[tuple[str, str], set[str]] = {}
+        configs_by_signature: dict[tuple[str, str], dict[str, Any]] = {}
+        for plugin_id, entry_spec, config in entries:
+            signature = _memory_config_signature(entry_spec, config)
+            groups.setdefault(signature, set()).add(plugin_id)
+            configs_by_signature[signature] = config
+        packaged_signature = (
+            _memory_config_signature(packaged_spec, configs[implementation_id])
+            if packaged_spec is not None
+            else None
+        )
+        if packaged_signature is not None and set(groups) == {packaged_signature}:
+            for plugin_id in groups[packaged_signature]:
+                perception_memory_ids[plugin_id] = implementation_id
+            continue
+        if packaged_spec is None and len(groups) == 1:
+            signature = next(iter(groups))
+            _register_memory_definition(
+                specs,
+                configs,
+                implementation_id,
+                spec,
+                configs_by_signature[signature],
+            )
+            for plugin_id in groups[signature]:
+                perception_memory_ids[plugin_id] = implementation_id
+            continue
+        grouped = sorted(
+            (
+                tuple(sorted(owners)),
+                signature,
+                configs_by_signature[signature],
+            )
+            for signature, owners in groups.items()
+        )
+        for owners, signature, config in grouped:
+            if packaged_signature is not None and signature == packaged_signature:
+                for plugin_id in owners:
+                    perception_memory_ids[plugin_id] = implementation_id
+                continue
+            catalog_id = ".".join((*owners, implementation_id))
+            _register_memory_definition(specs, configs, catalog_id, signature[0], config)
+            for plugin_id in owners:
+                perception_memory_ids[plugin_id] = catalog_id
+    definitions = tuple(
+        PluginDefinition(
+            step="memory",
+            plugin_id=plugin_id,
+            entrypoint=spec,
+            config=configs[plugin_id],
+        )
+        for plugin_id, spec in specs.items()
+    )
+    return definitions, perception_memory_ids
+
+
+def _selected_memory_id(
+    perception_memory_ids: dict[str, str],
+    selected_plugin_ids: tuple[str, ...],
+) -> str:
+    owners = [
+        plugin_id
+        for plugin_id in selected_plugin_ids
+        if plugin_id in perception_memory_ids
+    ]
+    if len(owners) > 1:
+        raise PluginCatalogError("selected plugins declare multiple memory companions")
+    if owners:
+        return perception_memory_ids[owners[0]]
+    return DEFAULT_MEMORY_IMPLEMENTATION
 
 
 @dataclass(frozen=True)
@@ -220,14 +373,32 @@ class PluginCatalog:
             )
         return mapper
 
-    def memory_for_selection(self, active_ids: Sequence[str]) -> dict[str, Any] | None:
-        """Return the memory companion declared by the selected plugins."""
+    def memory_catalog(self) -> tuple[tuple[PluginDefinition, ...], dict[str, str]]:
+        """Packaged memory definitions plus companion aliases for this catalog.
 
-        selected = set(self.normalize_selection(active_ids))
-        companions = [item.memory for item in self.plugins if item.plugin_id in selected and item.memory]
-        if len(companions) > 1:
-            raise PluginCatalogError("selected plugins declare multiple memory companions")
-        return dict(companions[0]) if companions else None
+        The mapping sends each perception plugin that declares a companion to
+        the memory catalog id for that entrypoint and configuration. Packaged
+        configuration is never overwritten.
+        """
+
+        return _memory_definitions(self.plugins)
+
+    def memory_id_for_selection(self, selected_plugin_ids: Sequence[str]) -> str:
+        """Catalog id of the one selected companion, or the packaged default."""
+
+        _definitions, perception_memory_ids = self.memory_catalog()
+        return _selected_memory_id(perception_memory_ids, tuple(selected_plugin_ids))
+
+    def memory_manager(self, selected_plugin_ids: Sequence[str]) -> PluginManager:
+        """A core memory manager for this catalog and perception selection."""
+
+        definitions, perception_memory_ids = self.memory_catalog()
+        selected = _selected_memory_id(perception_memory_ids, tuple(selected_plugin_ids))
+        if selected not in {item.plugin_id for item in definitions}:
+            raise PluginCatalogError(f"unknown memory implementation {selected!r}")
+        manager = PluginManager("memory", LocalPluginCatalog(definitions))
+        manager.select((selected,))
+        return manager
 
 
 def packaged_plugin_catalog() -> PluginCatalog:

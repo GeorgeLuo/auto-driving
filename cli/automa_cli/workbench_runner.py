@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import json
 import os
 import threading
 import time
@@ -19,7 +18,7 @@ from autonomy.decision import (
     observation_from_perception,
 )
 from autonomy.memory import PluginMemoryRunner, MemoryActivation
-from autonomy.memory.activation import MEMORY_ACTIVATION_SCHEMA, bounds_from_config
+from autonomy.memory.activation import bounds_from_config
 from autonomy.decision.shadow_runner import ENGINE_ID
 from autonomy.perception import (
     PerceptionMapper,
@@ -31,7 +30,6 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapsh
 from implementations.decision.catalog import create_shadow_proposals_engine
 from implementations.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
-    MEMORY_IMPLEMENTATIONS,
     build_memory_activation_payload,
 )
 from implementations.perception.catalog import (
@@ -125,173 +123,6 @@ def _default_memory_step(companion: dict[str, Any] | None = None) -> PluginMemor
     return PluginMemoryRunner(activation)
 
 
-def _memory_config_signature(spec: str, config: dict[str, Any]) -> tuple[str, str]:
-    try:
-        encoded = json.dumps(config, sort_keys=True)
-    except (TypeError, ValueError) as exc:
-        raise PluginCatalogError(
-            f"memory implementation config is not JSON-comparable: {exc}"
-        ) from exc
-    return spec, encoded
-
-
-def _register_memory_definition(
-    specs: dict[str, str],
-    configs: dict[str, dict[str, Any]],
-    catalog_id: str,
-    spec: str,
-    config: dict[str, Any],
-) -> None:
-    """Add a definition without letting traversal order replace another one."""
-
-    existing_spec = specs.get(catalog_id)
-    if existing_spec is None:
-        specs[catalog_id] = spec
-        configs[catalog_id] = copy.deepcopy(config)
-        return
-    existing = _memory_config_signature(existing_spec, configs[catalog_id])
-    if existing != _memory_config_signature(spec, config):
-        raise PluginCatalogError(
-            f"memory catalog id {catalog_id!r} conflicts with an existing definition"
-        )
-
-
-def _memory_catalog(
-    catalog: PluginCatalog,
-) -> tuple[dict[str, str], dict[str, dict[str, Any]], dict[str, str]]:
-    """Packaged memory plugins plus companion definitions with stable identities.
-
-    Packaged configuration is never overwritten. Companions that share an
-    implementation id keep that id only when they declare the same entrypoint
-    and configuration. A different configuration gets its own catalog id, so
-    discovery order cannot choose which config is active.
-    """
-
-    specs: dict[str, str] = {}
-    configs: dict[str, dict[str, Any]] = {}
-    for implementation_id, entry in MEMORY_IMPLEMENTATIONS.items():
-        specs[implementation_id] = str(entry["implementation_spec"])
-        configs[implementation_id] = copy.deepcopy(dict(entry["default_config"]))
-    default_config = copy.deepcopy(configs[DEFAULT_MEMORY_IMPLEMENTATION])
-    companions: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
-    for descriptor in catalog.plugins:
-        companion = descriptor.memory
-        if not companion:
-            continue
-        implementation_id = str(companion["implementation_id"])
-        spec = str(companion["implementation_spec"])
-        if implementation_id in MEMORY_IMPLEMENTATIONS:
-            config = copy.deepcopy(configs[implementation_id])
-        else:
-            config = copy.deepcopy(default_config)
-        config.update(dict(companion.get("implementation_config") or {}))
-        companions.setdefault(implementation_id, []).append(
-            (descriptor.plugin_id, spec, config)
-        )
-
-    perception_memory_ids: dict[str, str] = {}
-    for implementation_id in sorted(companions):
-        entries = companions[implementation_id]
-        entry_specs = {spec for _plugin_id, spec, _config in entries}
-        packaged_spec = specs.get(implementation_id)
-        if packaged_spec is not None:
-            entry_specs.add(packaged_spec)
-        if len(entry_specs) > 1:
-            raise PluginCatalogError(
-                f"memory implementation {implementation_id!r} has conflicting entrypoints"
-            )
-        spec = next(iter(entry_specs))
-        groups: dict[tuple[str, str], set[str]] = {}
-        configs_by_signature: dict[tuple[str, str], dict[str, Any]] = {}
-        for plugin_id, entry_spec, config in entries:
-            signature = _memory_config_signature(entry_spec, config)
-            groups.setdefault(signature, set()).add(plugin_id)
-            configs_by_signature[signature] = config
-        packaged_signature = (
-            _memory_config_signature(packaged_spec, configs[implementation_id])
-            if packaged_spec is not None
-            else None
-        )
-        if packaged_signature is not None and set(groups) == {packaged_signature}:
-            for plugin_id in groups[packaged_signature]:
-                perception_memory_ids[plugin_id] = implementation_id
-            continue
-        if packaged_spec is None and len(groups) == 1:
-            signature = next(iter(groups))
-            _register_memory_definition(
-                specs,
-                configs,
-                implementation_id,
-                spec,
-                configs_by_signature[signature],
-            )
-            for plugin_id in groups[signature]:
-                perception_memory_ids[plugin_id] = implementation_id
-            continue
-        grouped = sorted(
-            (
-                tuple(sorted(owners)),
-                signature,
-                configs_by_signature[signature],
-            )
-            for signature, owners in groups.items()
-        )
-        for owners, signature, config in grouped:
-            if packaged_signature is not None and signature == packaged_signature:
-                for plugin_id in owners:
-                    perception_memory_ids[plugin_id] = implementation_id
-                continue
-            catalog_id = ".".join((*owners, implementation_id))
-            _register_memory_definition(specs, configs, catalog_id, signature[0], config)
-            for plugin_id in owners:
-                perception_memory_ids[plugin_id] = catalog_id
-    return specs, configs, perception_memory_ids
-
-
-def _selected_memory_id(
-    perception_memory_ids: dict[str, str],
-    selected_plugin_ids: tuple[str, ...],
-) -> str:
-    owners = [
-        plugin_id
-        for plugin_id in selected_plugin_ids
-        if plugin_id in perception_memory_ids
-    ]
-    if len(owners) > 1:
-        raise PluginCatalogError("selected plugins declare multiple memory companions")
-    if owners:
-        return perception_memory_ids[owners[0]]
-    return DEFAULT_MEMORY_IMPLEMENTATION
-
-
-def _memory_runner(
-    catalog: PluginCatalog,
-    selected_plugin_ids: tuple[str, ...],
-) -> tuple[PluginMemoryRunner, dict[str, str]]:
-    """Build one memory runner whose catalog outlives the current selection."""
-
-    specs, configs, perception_memory_ids = _memory_catalog(catalog)
-    selected = _selected_memory_id(perception_memory_ids, selected_plugin_ids)
-    if selected not in specs:
-        raise PluginCatalogError(f"unknown memory implementation {selected!r}")
-    activation = MemoryActivation(
-        implementation_id=None,
-        implementation_spec=None,
-        implementation_config=None,
-        bounds=None,
-        source_path=Path("workbench-plugin-memory"),
-        payload={
-            "schema": MEMORY_ACTIVATION_SCHEMA,
-            "memory": {
-                "plugins": [selected],
-                "plugin_specs": specs,
-                "plugin_configs": configs,
-            },
-        },
-    )
-    return PluginMemoryRunner(activation), perception_memory_ids
-
-
 def _safe_status(value: Any) -> str:
     return str(value or "").strip().lower()
 
@@ -358,7 +189,6 @@ class ImageReplayRunner:
             else None
         )
         self._active_plugin_ids = self._initial_plugin_selection(active_plugin_ids)
-        self._perception_memory_ids: dict[str, str] = {}
         self._state = self._initial_state()
 
     @property
@@ -1017,7 +847,9 @@ class ImageReplayRunner:
             return operation()
 
     def _memory_plugin_id(self, selected_plugin_ids: tuple[str, ...]) -> str:
-        return _selected_memory_id(self._perception_memory_ids, selected_plugin_ids)
+        if self.memory_step_factory is not None:
+            return DEFAULT_MEMORY_IMPLEMENTATION
+        return self._plugin_catalog.memory_id_for_selection(selected_plugin_ids)
 
     def _build_mapper_for_selection(
         self,
@@ -1029,13 +861,10 @@ class ImageReplayRunner:
 
     def _build_memory_step_for_selection(self, selected_plugin_ids: tuple[str, ...]) -> Any:
         if self.memory_step_factory is not None:
-            self._perception_memory_ids = {}
             return self.memory_step_factory()
-        runner, perception_memory_ids = _memory_runner(
-            self._plugin_catalog, selected_plugin_ids
+        return PluginMemoryRunner(
+            plugin_manager=self._plugin_catalog.memory_manager(selected_plugin_ids)
         )
-        self._perception_memory_ids = perception_memory_ids
-        return runner
 
     def _memory_implementation_id(self) -> str:
         step = self._memory_step

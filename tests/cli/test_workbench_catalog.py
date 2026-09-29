@@ -10,7 +10,6 @@ from cli.automa_cli.workbench_plugins import (
     PluginDescriptor,
     packaged_plugin_catalog,
 )
-from cli.automa_cli.workbench_runner import _memory_catalog
 from cli.automa_cli.workbench import (
     PluginCatalogError,
     ReplayActionError,
@@ -267,9 +266,16 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         catalog = discover_plugin_catalog(
             Path(__file__).resolve().parents[2] / "lab/plugins/perception"
         )
-        companion = catalog.memory_for_selection(["multi_obstruction_tracks"])
-        self.assertEqual(companion["implementation_id"], "multi_obstruction_tracks")
-        self.assertIsNone(catalog.memory_for_selection(["classical_regions"]))
+        selected = catalog.memory_manager(("multi_obstruction_tracks",))
+        self.assertEqual(selected.selected_ids, ("multi_obstruction_tracks",))
+        self.assertEqual(
+            selected.selected[0].entrypoint,
+            "lab.plugins.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory",
+        )
+        self.assertEqual(
+            catalog.memory_id_for_selection(("classical_regions",)),
+            "bounded_evidence",
+        )
 
     def test_explicit_catalog_allows_raw_capture_and_live_replacement(self) -> None:
         with image_source(3) as root:
@@ -521,10 +527,11 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 config={"max_records": 9},
             ),
         ]
-        forward = _memory_catalog(_catalog(*plugins))
-        reverse = _memory_catalog(_catalog(*reversed(plugins)))
+        forward = _catalog(*plugins).memory_catalog()
+        reverse = _catalog(*reversed(plugins)).memory_catalog()
         self.assertEqual(forward, reverse)
-        _specs, configs, mapping = forward
+        definitions, mapping = forward
+        configs = {item.plugin_id: item.config for item in definitions}
         self.assertEqual(mapping["plain"], "bounded_evidence")
         self.assertEqual(mapping["explicit_default"], "bounded_evidence")
         self.assertEqual(mapping["narrow"], "narrow.bounded_evidence")
@@ -539,17 +546,18 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         self.assertEqual(mapping["shared_b"], "tracks")
         self.assertEqual(mapping["left"], "left.split")
         self.assertEqual(mapping["right"], "right.split")
-        self.assertNotIn("split", _specs)
+        self.assertNotIn("split", configs)
 
-        empty_specs, empty_configs, empty_mapping = _memory_catalog(_catalog())
+        empty_definitions, empty_mapping = _catalog().memory_catalog()
+        empty_configs = {item.plugin_id: item.config for item in empty_definitions}
         self.assertEqual(empty_mapping, {})
         self.assertEqual(empty_configs["bounded_evidence"]["max_records"], 32)
-        self.assertIn("bounded_evidence", empty_specs)
+        self.assertIn("bounded_evidence", empty_configs)
 
         lab = discover_plugin_catalog(
             Path(__file__).resolve().parents[2] / "lab/plugins/perception"
         )
-        _lab_specs, _lab_configs, lab_mapping = _memory_catalog(lab)
+        lab_definitions, lab_mapping = lab.memory_catalog()
         self.assertEqual(
             {
                 lab_mapping["multi_obstruction_tracks"],
@@ -559,35 +567,32 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             {"multi_obstruction_tracks"},
         )
         self.assertNotIn(
-            "composite_box_fusion.multi_obstruction_tracks", _lab_specs
+            "composite_box_fusion.multi_obstruction_tracks",
+            {item.plugin_id for item in lab_definitions},
         )
 
     def test_memory_catalog_rejects_conflicting_entrypoints(self) -> None:
         with self.assertRaises(PluginCatalogError) as conflicting:
-            _memory_catalog(
-                _catalog(
-                    _memory_descriptor(
-                        "one",
-                        implementation_id="custom",
-                        spec="example.memory:One",
-                    ),
-                    _memory_descriptor(
-                        "two",
-                        implementation_id="custom",
-                        spec="example.memory:Two",
-                    ),
-                )
-            )
+            _catalog(
+                _memory_descriptor(
+                    "one",
+                    implementation_id="custom",
+                    spec="example.memory:One",
+                ),
+                _memory_descriptor(
+                    "two",
+                    implementation_id="custom",
+                    spec="example.memory:Two",
+                ),
+            ).memory_catalog()
         self.assertIn("conflicting entrypoints", str(conflicting.exception))
         with self.assertRaises(PluginCatalogError) as packaged:
-            _memory_catalog(
-                _catalog(
-                    _memory_descriptor(
-                        "replacement",
-                        spec="example.memory:OtherLedger",
-                    )
+            _catalog(
+                _memory_descriptor(
+                    "replacement",
+                    spec="example.memory:OtherLedger",
                 )
-            )
+            ).memory_catalog()
         self.assertIn("conflicting entrypoints", str(packaged.exception))
 
     def test_unselected_companion_does_not_change_active_memory_config(self) -> None:

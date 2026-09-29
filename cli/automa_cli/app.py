@@ -30,6 +30,7 @@ from .memory import (
     get_vehicle_memory_info,
     replay_vehicle_memory,
     reset_vehicle_memory,
+    set_vehicle_memory_plugin,
     stream_vehicle_memory,
     update_vehicle_memory,
 )
@@ -649,7 +650,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_control = vehicle_commands.add_parser(
         "memory",
-        help="Operate vehicle memory (reset, replay, check; stage via update memory).",
+        help="Operate vehicle memory (enable, disable, reset, replay, check).",
     )
     memory_control.set_defaults(handler=_handle_vehicles_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -658,6 +659,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show memory-level commands.",
     )
     memory_help.set_defaults(handler=_handle_vehicles_memory_help)
+    for action in ("enable", "disable"):
+        selection = memory_commands.add_parser(
+            action, help=f"{action.capitalize()} a staged memory plugin for the next local automation cycle.",
+        )
+        selection.add_argument("--id", required=True, dest="vehicle_id")
+        selection.add_argument("plugin_id", help="Plugin ID from vehicles info memory.")
+        selection.add_argument("--json", action="store_true")
+        selection.set_defaults(handler=_handle_vehicles_memory_plugin, enabled=action == "enable")
     memory_reset = memory_commands.add_parser(
         "reset",
         help="Reset live memory to a new empty epoch on Chase or PiCar.",
@@ -2180,6 +2189,7 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles memory commands",
                 "",
+                "- enable / disable  change selected memory plugins for the next local cycle",
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- replay  feed a fixed observation sequence offline; report digest; optional --record",
                 "- check   present/dropout/expiry/reset gates (Chase offline or Pi live); optional --record",
@@ -2195,6 +2205,18 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _handle_vehicles_memory_plugin(args: argparse.Namespace) -> int:
+    result = set_vehicle_memory_plugin(
+        vehicle_id=args.vehicle_id,
+        plugin_id=args.plugin_id,
+        enabled=args.enabled,
+        json_output=args.json,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
 
 
 def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:

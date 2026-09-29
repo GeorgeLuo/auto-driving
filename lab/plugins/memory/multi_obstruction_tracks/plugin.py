@@ -14,10 +14,10 @@ from dataclasses import replace
 from uuid import uuid4
 
 from autonomy.decision.cycle import DecisionFrameContext
-from autonomy.decision.activation import bounds_from_config
-from autonomy.decision.memory import MemorySnapshot, detach_memory_snapshot, empty_memory_snapshot
 from autonomy.decision.observation import Observation
-from autonomy.memory import SharedMemory
+from autonomy.memory.activation import bounds_from_config
+from autonomy.memory.values import MemorySnapshot, detach_memory_snapshot, empty_memory_snapshot
+from autonomy.shared_memory import SharedMemory
 
 from autonomy.perception import PerceivedThing, PerceptionSignal, build_perception_request
 from implementations.memory.bounded_evidence import reduce_evidence

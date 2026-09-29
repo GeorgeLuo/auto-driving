@@ -6,11 +6,10 @@ from autonomy.decision import (
     DecisionCycle,
     DecisionFrameContext,
     DecisionSteps,
-    MemoryBounds,
     MemoryUpdateError,
-    empty_memory_snapshot,
     Observation,
 )
+from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
 from autonomy.runtime import AutonomyControl
 

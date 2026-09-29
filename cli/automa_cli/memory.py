@@ -8,18 +8,23 @@ import json
 import os
 import stat as stat_mod
 import time
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import (
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory import (
     MEMORY_ACTIVATION_SCHEMA,
-    ActivatedMemoryStep,
-    DecisionFrameContext,
-    Observation,
-    load_memory_step_if_present,
+    PluginMemoryRunner,
     read_memory_activation,
 )
+from autonomy.memory.activation import (
+    bounds_from_config,
+    memory_manager_from_activation,
+    memory_selection_config,
+)
+
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
@@ -38,6 +43,8 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
+from .memory_runtime import load_memory_step_from_bundle
+from .staged_bundle import write_json_atomically
 from .paths import ROOT, display_path, safe_path_part
 from .runtime_view import RuntimeViewServer
 from .physical_observation import (
@@ -138,10 +145,7 @@ def update_vehicle_memory(
 
     if not dry_run:
         activation_path.parent.mkdir(parents=True, exist_ok=True)
-        activation_path.write_text(
-            json.dumps(activation, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        write_json_atomically(activation_path, activation)
 
     entry = memory_implementation_spec(implementation_id)
     payload = {
@@ -168,6 +172,65 @@ def update_vehicle_memory(
     )
 
 
+def set_vehicle_memory_plugin(
+    *,
+    vehicle_id: str,
+    plugin_id: str,
+    enabled: bool,
+    json_output: bool = False,
+) -> CommandResult:
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
+    try:
+        activation = read_memory_activation(activation_path)
+        config = memory_selection_config(activation)
+        manager = memory_manager_from_activation(activation)
+        available = sorted(manager.available_ids)
+        if plugin_id not in available:
+            return CommandResult(2, f"Unknown memory plugin {plugin_id!r}. Available: {', '.join(available)}.")
+        before = list(manager.selected_ids)
+        if enabled:
+            manager.add(plugin_id)
+        else:
+            manager.remove(plugin_id)
+        after = list(manager.selected_ids)
+        changed = after != before
+        if changed:
+            config["plugins"] = after
+            candidate_payload = deepcopy(activation.payload)
+            candidate_payload["memory"].update(config)
+            # Validate the whole candidate selection before publishing the edit.
+            load_memory_step_from_bundle(replace(activation, payload=candidate_payload))
+            candidate_payload["memory"]["last_plugin_change"] = {
+                "plugin": plugin_id,
+                "enabled": enabled,
+                "changed_at_ms": int(time.time() * 1000),
+            }
+            write_json_atomically(activation_path, candidate_payload)
+    except Exception as exc:  # Plugin construction is a CLI preflight boundary.
+        return CommandResult(2, f"Could not change memory plugins: {exc}")
+    payload = {
+        "schema": "vehicle_memory_plugin_update_v0",
+        "vehicle_id": vehicle_id,
+        "activation": display_path(activation_path),
+        "plugin": plugin_id,
+        "enabled": enabled,
+        "changed": changed,
+        "plugins_before": before,
+        "plugins_after": after,
+        "available_plugins": available,
+    }
+    if json_output:
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    action = "enabled" if enabled else "disabled"
+    return CommandResult(0, "\n".join([
+        f"{'Updated' if changed else 'Unchanged'}: {plugin_id} {action} for {vehicle_id}",
+        f"Activation: {display_path(activation_path)}",
+        f"Enabled plugins: {', '.join(after) or 'none'}",
+        "A running local automation applies this change on its next memory cycle.",
+    ]))
+
+
 def ensure_vehicle_memory_activation(
     *,
     vehicle_id: str,
@@ -185,10 +248,7 @@ def ensure_vehicle_memory_activation(
             controller_bundle = {}
             activation["controller_bundle"] = controller_bundle
         controller_bundle["release"] = release_activation_summary(release)
-        activation_path.write_text(
-            json.dumps(activation, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        write_json_atomically(activation_path, activation)
         return activation_path
 
     activation = _memory_activation(
@@ -198,10 +258,7 @@ def ensure_vehicle_memory_activation(
         release=release,
     )
     activation_path.parent.mkdir(parents=True, exist_ok=True)
-    activation_path.write_text(
-        json.dumps(activation, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
+    write_json_atomically(activation_path, activation)
     return activation_path
 
 
@@ -228,6 +285,9 @@ def get_vehicle_memory_info(
 
     try:
         activation = read_memory_activation(activation_path)
+        manager = memory_manager_from_activation(activation)
+        available = manager.available
+        final = manager.selected[-1] if manager.selected else None
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         return CommandResult(
             2,
@@ -246,10 +306,17 @@ def get_vehicle_memory_info(
         "vehicle_id": vehicle_id,
         "activation": {
             "path": display_path(activation_path),
-            "implementation_id": activation.implementation_id,
-            "implementation_spec": activation.implementation_spec,
-            "implementation_config": activation.implementation_config,
-            "bounds": activation.bounds.to_dict(),
+            "plugins": list(manager.selected_ids),
+            "available_plugins": sorted(item.plugin_id for item in available),
+            "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
+            "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
+            "plugin_id": final.plugin_id if final else None,
+            "implementation_id": (
+                _packaged_implementation_id(final.entrypoint) if final else None
+            ),
+            "implementation_spec": final.entrypoint if final else None,
+            "implementation_config": dict(final.config) if final else None,
+            "bounds": bounds_from_config(dict(final.config)).to_dict() if final else None,
         },
         "description": memory.get("description"),
         "controller_bundle": activation.payload.get("controller_bundle"),
@@ -302,7 +369,7 @@ def replay_vehicle_memory(
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    step: ActivatedMemoryStep | None = None
+    step: PluginMemoryRunner | None = None
     selected_implementation = implementation_id
     activation_source: str
 
@@ -319,12 +386,12 @@ def replay_vehicle_memory(
             implementation_id=implementation_id,
             bundle=bundle,
         ) as temp_activation:
-            step = ActivatedMemoryStep(read_memory_activation(temp_activation))
+            step = PluginMemoryRunner(read_memory_activation(temp_activation))
             activation_source = f"ephemeral:{implementation_id}"
             selected_implementation = implementation_id
             run_a = _run_memory_sequence(step=step, frames=frames)
             if verify_twice:
-                step_b = ActivatedMemoryStep(read_memory_activation(temp_activation))
+                step_b = PluginMemoryRunner(read_memory_activation(temp_activation))
                 run_b = _run_memory_sequence(step=step_b, frames=frames)
             else:
                 run_b = run_a
@@ -342,24 +409,17 @@ def replay_vehicle_memory(
                 ),
             )
         try:
-            step = load_memory_step_if_present(activation_path)
+            step = load_memory_step_from_bundle(read_memory_activation(activation_path))
         except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
             return CommandResult(
                 2,
                 f"Could not load memory activation {display_path(activation_path)}: {exc}",
             )
-        if step is None:
-            return CommandResult(
-                2,
-                f"Memory activation is missing or empty at {display_path(activation_path)}.",
-            )
         activation_source = display_path(activation_path)
-        selected_implementation = step.activation.implementation_id
+        selected_implementation = step.status()["implementation_id"]
         run_a = _run_memory_sequence(step=step, frames=frames)
         if verify_twice:
-            step_b = load_memory_step_if_present(activation_path)
-            if step_b is None:
-                return CommandResult(2, "Could not reload memory activation for determinism check.")
+            step_b = load_memory_step_from_bundle(read_memory_activation(activation_path))
             run_b = _run_memory_sequence(step=step_b, frames=frames)
         else:
             run_b = run_a
@@ -371,6 +431,7 @@ def replay_vehicle_memory(
         "sequence": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
         "frame_count": len(frames),
         "implementation_id": selected_implementation,
+        "plugin_ids": list(step.plugin_ids),
         "activation": activation_source,
         "digest": run_a["digest"],
         "deterministic": deterministic,
@@ -1058,7 +1119,7 @@ def _normalize_sequence_frame(
 
 def _run_memory_sequence(
     *,
-    step: ActivatedMemoryStep,
+    step: PluginMemoryRunner,
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
     # Fresh epoch for this pass (step already reset on construction).
@@ -1080,12 +1141,12 @@ def _run_memory_sequence(
                 "frame_id": context.frame_id,
                 "frame_index": context.frame_index,
                 "timestamp_ms": context.timestamp_ms,
-                "health": snapshot.health,
-                "record_count": snapshot.record_count,
-                "epoch_id": snapshot.epoch_id,
+                "health": snapshot.health if snapshot else None,
+                "record_count": snapshot.record_count if snapshot else 0,
+                "epoch_id": snapshot.epoch_id if snapshot else None,
             }
         )
-    final = final_snapshot.to_dict()
+    final = final_snapshot.to_dict() if final_snapshot else {}
     return {
         "final": final,
         "per_frame": per_frame,
@@ -1668,6 +1729,10 @@ def _probe_physical_memory(
         "implementation_id": memory.get("implementation_id"),
         "implementation_spec": memory.get("implementation_spec"),
         "activation": memory.get("activation"),
+        "plugin_ids": memory.get("plugin_ids", []),
+        "selected_plugin_ids": memory.get("selected_plugin_ids", []),
+        "plugins": memory.get("plugins", []),
+        "plugin_report": memory.get("plugin_report"),
         "bounds": memory.get("bounds"),
         "last_health": memory.get("last_health"),
         "last_epoch_id": memory.get("last_epoch_id"),
@@ -1769,6 +1834,10 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "implementation_spec": memory.get("implementation_spec")
         or status_block.get("implementation_spec"),
         "activation": memory.get("activation") or status_block.get("activation"),
+        "plugin_ids": status_block.get("plugin_ids", []),
+        "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
+        "plugins": status_block.get("plugins", []),
+        "plugin_report": status_block.get("plugin_report"),
         "bounds": status_block.get("bounds"),
         "last_health": status_block.get("last_health"),
         "last_epoch_id": status_block.get("last_epoch_id"),
@@ -1957,24 +2026,53 @@ def _memory_activation(
             "implementation_config": dict(base["memory"]["implementation_config"]),
         },
     }
+    entries = {
+        plugin_id: memory_implementation_spec(plugin_id)
+        for plugin_id in available_memory_implementation_ids()
+    }
+    activation["memory"].update({
+        "plugins": [implementation_id],
+        "plugin_specs": {plugin_id: item["implementation_spec"] for plugin_id, item in entries.items()},
+        "plugin_configs": {plugin_id: item["default_config"] for plugin_id, item in entries.items()},
+    })
     return activation
+
+
+def _packaged_implementation_id(entrypoint: str | None) -> str | None:
+    """Return the packaged implementation id for an entrypoint, without loading it."""
+
+    if not isinstance(entrypoint, str) or not entrypoint:
+        return None
+    for implementation_id in available_memory_implementation_ids():
+        entry = memory_implementation_spec(implementation_id)
+        if entry["implementation_spec"] == entrypoint:
+            return entry["implementation_id"]
+    return None
 
 
 def _format_memory_info(payload: dict[str, Any]) -> str:
     activation = payload["activation"]
     bounds = activation.get("bounds") if isinstance(activation.get("bounds"), dict) else {}
-    lines = [
-        f"Memory: {payload['vehicle_id']} -> {activation.get('implementation_id', 'unknown')}",
-        f"Implementation: {activation.get('implementation_spec', 'unknown')}",
-        f"Activation: {activation['path']}",
-        (
-            f"Bounds: max_records={bounds.get('max_records')} "
-            f"max_age_ms={bounds.get('max_age_ms')} "
-            f"eviction={bounds.get('eviction_policy')}"
-        ),
-        "Lifecycle: update / reset / snapshot",
-        "Identity claims: false",
-    ]
+    plugin_id = activation.get("plugin_id") or "none"
+    implementation_id = activation.get("implementation_id")
+    lines = [f"Memory: {payload['vehicle_id']} -> {plugin_id}"]
+    if implementation_id and implementation_id != plugin_id:
+        lines.append(f"Implementation id: {implementation_id}")
+    lines.extend(
+        [
+            f"Implementation: {activation.get('implementation_spec', 'unknown')}",
+            f"Activation: {activation['path']}",
+            (
+                f"Bounds: max_records={bounds.get('max_records')} "
+                f"max_age_ms={bounds.get('max_age_ms')} "
+                f"eviction={bounds.get('eviction_policy')}"
+            ),
+            f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
+            f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
+            "Lifecycle: update / reset / snapshot",
+            "Identity claims: false",
+        ]
+    )
     live = payload.get("live")
     if isinstance(live, dict):
         lines.append("")
@@ -1996,7 +2094,8 @@ def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
     if status == "live":
         lines.extend(
             [
-                f"Implementation: {live.get('implementation_id') or 'unknown'}",
+                f"Implementation: {live.get('implementation_id') or 'none'}",
+                f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}",
                 (
                     f"Health: {live.get('last_health') or 'unknown'} "
                     f"epoch={live.get('last_epoch_id') or '-'} "

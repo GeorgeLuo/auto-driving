@@ -9,7 +9,7 @@ from copy import deepcopy
 from types import MappingProxyType
 from typing import Any
 
-from autonomy.decision.memory import ensure_strict_json_value
+from autonomy.memory.values import ensure_strict_json_value
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 MAX_ID_LEN = 64

@@ -69,7 +69,7 @@ directory:
 ## Project Layout
 
 - `autonomy/` contains sensor- and environment-agnostic vehicle, perception,
-  decision, and runtime contracts plus generic orchestration. It contains no
+  memory, decision, and runtime contracts plus generic orchestration. It contains no
   perception algorithms.
 - `implementations/` contains concrete vehicle adapters, perception plugins,
   runtime hosts, and bounded operations.
@@ -114,6 +114,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched perception view (link to Memory map). |
 | `vehicles stream memory` | Inspects live memory as a key→value ledger (terminal + local `/memory` map page on PiCar). Keys are `record_id`s; click a key to see the retained value. |
+| `vehicles memory enable / disable` | Select staged memory plugins; a running local automation applies the change on its next cycle. Multiple plugins run in selection order. |
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
 | `vehicles memory replay` | Offline: feeds a fixed observation sequence through staged (or ephemeral) memory and reports a stable end-state digest. Writes no history by default; pass `--record` for a bounded provenance extract under `lab/runs/memory-replay/`. |
 | `vehicles memory check` | Lifecycle gates: present retention, dropout survival, max-age expiry, and reset (no movement). Chase/offline uses a phase script; PiCar samples live publications with placement prompts. Optional `--record` writes report + extract (and Pi JPEGs) under `lab/runs/memory-check/`. |
@@ -312,14 +313,14 @@ promotion decision moves them into `implementations/`.
 ### Perception Plugins
 
 The staged perception schema reports the available and enabled plugins. Enable
-or disable one plugin at a time, then restart the worker so it imports the new
-chain:
+or disable one plugin at a time. A running worker applies the updated selection
+at the next perception frame; if automation is stopped, it uses the selection
+the next time it starts:
 
 ```sh
 ./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles perception enable --id chase-sim-chaser floor_plane
 ./cli/automa vehicles perception disable --id chase-sim-chaser sim_color_targets
-./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
 
 ## Physical PiRacer Workflow

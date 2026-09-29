@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from autonomy.memory import SharedMemory
-from autonomy.decision.activation import ActivatedMemoryStep
+from autonomy.memory import PluginMemoryRunner
+from autonomy.shared_memory import SharedMemory
 from autonomy.decision.cycle import (
     DecisionCycle,
     DecisionCycleResult,
@@ -69,7 +69,7 @@ class AutonomyCycleHost:
             raise TypeError("configured memory step does not support reset")
         snapshot = (
             reset(self.shared_memory)
-            if isinstance(remember, ActivatedMemoryStep)
+            if isinstance(remember, PluginMemoryRunner)
             else reset()
         )
         self.shared_memory.clear()

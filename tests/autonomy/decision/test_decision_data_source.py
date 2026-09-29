@@ -13,7 +13,7 @@ from autonomy.decision.decision_data import (
     ready_envelope,
     unavailable_envelope,
 )
-from autonomy.decision.memory import (
+from autonomy.memory.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
@@ -254,7 +254,7 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.status, "ready")
 
     def test_rejects_evaluator_and_map_metadata(self) -> None:
-        from autonomy.decision.memory import canonical_json_bytes
+        from autonomy.memory.values import canonical_json_bytes
 
         with self.assertRaises(ValueError):
             build_decision_data_source(

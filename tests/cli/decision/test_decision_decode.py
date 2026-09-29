@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 import unittest
-from autonomy.decision.memory import canonical_json_bytes, canonical_json_utf8
+from autonomy.memory.values import canonical_json_bytes, canonical_json_utf8
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
     strict_decode_apply_memory,

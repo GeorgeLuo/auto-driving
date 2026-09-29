@@ -6,7 +6,7 @@ from autonomy.perception import PERCEPTION_TEXT_SCHEMA
 
 
 PERCEPTION_MAPPER_SPEC = (
-    "autonomy.perception.mappers.plugin_runner:PluginPerceptionMapper"
+    "autonomy.perception.plugin_runner:PluginPerceptionMapper"
 )
 DEFAULT_PERCEPTION_ALGORITHM = "lightweight_observer"
 

@@ -135,7 +135,7 @@ class ActivatedPerceptionStep:
 
     def status(self) -> dict[str, Any]:
         output = self.last_output
-        return {
+        payload: dict[str, Any] = {
             "algorithm": self.activation.algorithm,
             "mapper_spec": self.activation.mapper_spec,
             "last_status": output.status if output is not None else None,
@@ -150,3 +150,24 @@ class ActivatedPerceptionStep:
                 else []
             ),
         }
+        report = _published_plugin_report(self.mapper)
+        if report is not None:
+            payload["plugin_report"] = report
+        return payload
+
+
+def _published_plugin_report(mapper: Any) -> dict[str, Any] | None:
+    """Return the mapper's execution report, or omit it for other mappers.
+
+    The mapper owns the envelope. This does not rebuild it from domain runs.
+    """
+
+    if getattr(mapper, "plugin_manager", None) is None:
+        return None
+    report_for = getattr(mapper, "plugin_report", None)
+    if not callable(report_for):
+        return None
+    report = report_for()
+    if not isinstance(report, dict):
+        return None
+    return report

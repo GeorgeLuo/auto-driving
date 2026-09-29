@@ -79,13 +79,11 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
     def test_publication_includes_memory_snapshot_when_step_present(self) -> None:
-        from autonomy.decision import (
-            DecisionFrameContext,
-            DecisionSteps,
+        from autonomy.decision import DecisionFrameContext, DecisionSteps, Observation
+        from autonomy.memory.values import (
             MemoryBounds,
             MemoryProvenance,
             MemorySnapshot,
-            Observation,
             RetainedEvidence,
         )
         from autonomy.perception import ViewLocation

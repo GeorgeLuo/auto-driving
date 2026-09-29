@@ -20,14 +20,13 @@ from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
-from autonomy.decision import (
+from autonomy.decision import DecisionFrameContext, Observation
+from autonomy.memory.values import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
-    DecisionFrameContext,
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
-    Observation,
     RetainedEvidence,
     detach_memory_snapshot,
     empty_memory_snapshot,
@@ -35,7 +34,7 @@ from autonomy.decision import (
     serialized_mapping_bytes,
     serialized_memory_snapshot_bytes,
 )
-from autonomy.memory import SharedMemory
+from autonomy.shared_memory import SharedMemory
 from autonomy.perception import ViewLocation
 
 CONFLICT_POLICY = "bounded_evidence_structural_v2"

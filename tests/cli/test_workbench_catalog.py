@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import unittest
 from pathlib import Path
 from autonomy.perception import PerceptionRequest
@@ -145,7 +146,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=self.plugin_root,
-                cadence_ms=1000,
+                cadence_ms=0,
             )
             raw_started = runner.start()
             self.assertEqual(raw_started["phase"], "running")
@@ -163,9 +164,13 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 run_id=raw_started["run_id"],
                 active_plugin_ids=["classical_regions"],
             )
-            started = runner.start()
+            started = runner.start(cadence_ms=30000)
             run_id = started["run_id"]
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            _wait_until(lambda: runner.state()["position"] == 1)
+            before = runner.state()
+            first_id = before["timeline"][0]["frame"]["frame_id"]
+            mapper = runner._mapper
+            runner._shared_memory["retention-marker"] = "kept"
             selected = runner.dispatch(
                 "select_plugins",
                 run_id=run_id,
@@ -173,14 +178,23 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], ["floor_continuity"])
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            self.assertIs(runner._mapper, mapper)
+            self.assertEqual(runner._shared_memory.get("retention-marker"), "kept")
+            self.assertEqual(selected["timeline"][0]["frame"]["frame_id"], first_id)
+            retained = runner.frame_detail(first_id, run_id=run_id)
+            self.assertEqual(
+                [run["plugin_id"] for run in retained["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
             paused = runner.dispatch("pause", run_id=run_id)
             self.assertEqual(paused["phase"], "paused")
-            first_detail = runner.frame_detail(
-                paused["timeline"][0]["frame"]["frame_id"], run_id=run_id
-            )
+            if paused["position"] == before["position"]:
+                paused = runner.dispatch("step", run_id=run_id)
+            latest_id = paused["timeline"][-1]["frame"]["frame_id"]
+            self.assertNotEqual(latest_id, first_id)
+            latest = runner.frame_detail(latest_id, run_id=run_id)
             self.assertEqual(
-                [run["plugin_id"] for run in first_detail["perception"]["plugin_runs"]],
+                [run["plugin_id"] for run in latest["perception"]["plugin_runs"]],
                 ["floor_continuity"],
             )
             with self.assertRaises(ReplayActionError):
@@ -192,16 +206,14 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 runner.state()["run_active_plugin_ids"], ["floor_continuity"]
             )
-            stepped = runner.dispatch("step", run_id=run_id)
-            second_detail = runner.frame_detail(
-                stepped["timeline"][1]["frame"]["frame_id"], run_id=run_id
-            )
             self.assertEqual(
                 [
                     run["plugin_id"]
-                    for run in second_detail["perception"]["plugin_runs"]
+                    for run in runner.frame_detail(first_id, run_id=run_id)["perception"][
+                        "plugin_runs"
+                    ]
                 ],
-                ["floor_continuity"],
+                ["classical_regions"],
             )
             runner.dispatch("cancel", run_id=run_id)
 
@@ -263,6 +275,118 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 ["floor_continuity"],
             )
             runner.dispatch("cancel", run_id=run_id)
+
+    def test_paused_selection_retains_instances_until_reset(self) -> None:
+        marker_root = self.plugin_root / "marker"
+        source = marker_root / "src"
+        source.mkdir(parents=True)
+        (marker_root / "__init__.py").write_text("", encoding="utf-8")
+        (source / "__init__.py").write_text("", encoding="utf-8")
+        (source / "plugin.py").write_text(
+            "from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract\n"
+            "\n"
+            "class MarkerPlugin:\n"
+            "    plugin_id = 'marker-plugin-v0'\n"
+            "    contract = PerceptionPluginContract()\n"
+            "\n"
+            "    def perceive(self, inputs):\n"
+            "        return PerceptionEvidenceBatch()\n",
+            encoding="utf-8",
+        )
+        (marker_root / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "schema": "automa_lab_perception_plugin_v0",
+                    "id": "marker",
+                    "name": "Marker",
+                    "description": "Empty evidence used to observe selection retention.",
+                    "memory": {
+                        "implementation_id": "marker_memory",
+                        "implementation_spec": "marker.memory:MarkerMemory",
+                    },
+                    "plugin": {
+                        "entrypoint": "marker.src.plugin:MarkerPlugin",
+                        "config": {},
+                    },
+                    "inputs": [
+                        {
+                            "name": "frame",
+                            "component_id": "camera.rgb:front_camera",
+                            "provider_spec": (
+                                "implementations.perception.components.camera:"
+                                "provide_camera_frame"
+                            ),
+                        }
+                    ],
+                    "runtime": {"python": "core"},
+                    "output": {
+                        "schema": "perception_text_v2",
+                        "kind": "marker",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        with image_source(3) as root:
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=self.plugin_root,
+                cadence_ms=30000,
+            )
+            runner.dispatch(
+                "select_plugins",
+                active_plugin_ids=["classical_regions"],
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            _wait_until(lambda: runner.state()["position"] == 1)
+            paused = runner.dispatch("pause", run_id=run_id)
+            mapper = runner._mapper
+            memory_step = runner._memory_step
+            engine = runner._decision_engine
+            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"]
+            memory_plugin = memory_step.plugins[0]
+            self.assertIn("bounded_evidence", memory_step.plugin_manager.available_ids)
+            self.assertIn("marker_memory", memory_step.plugin_manager.available_ids)
+            self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
+            runner._shared_memory["retention-marker"] = "kept"
+
+            both = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=["marker", "classical_regions"],
+            )
+            self.assertEqual(both["phase"], "paused")
+            self.assertEqual(both["position"], paused["position"])
+            self.assertEqual(len(both["timeline"]), len(paused["timeline"]))
+            self.assertIs(runner._mapper, mapper)
+            self.assertIs(runner._memory_step, memory_step)
+            self.assertIs(runner._decision_engine, engine)
+            applied = dict(zip(mapper.plugin_ids, mapper.plugins))
+            self.assertEqual(list(applied), ["marker", "classical_regions"])
+            self.assertIs(applied["classical_regions"], retained)
+            self.assertEqual(
+                [run["plugin_id"] for run in both["perception"]["plugin_runs"]],
+                ["marker", "classical_regions"],
+            )
+            self.assertEqual(
+                both["perception"]["plugin_runs"][0]["implementation_id"],
+                "marker-plugin-v0",
+            )
+            self.assertEqual(
+                memory_step.plugin_manager.selected_ids, ("marker_memory",)
+            )
+            self.assertIs(memory_step.plugins[0], memory_plugin)
+            self.assertEqual(
+                both["machine_detail"]["pipeline"]["memory_implementation"],
+                "marker_memory",
+            )
+            self.assertEqual(runner._shared_memory["retention-marker"], "kept")
+
+            reset = runner.dispatch("reset", run_id=run_id)
+            self.assertEqual(reset["phase"], "idle")
+            self.assertEqual(reset["timeline"], [])
+            self.assertEqual(runner._shared_memory, {})
 
     def test_catalog_rejects_unavailable_and_duplicate_selection(self) -> None:
         catalog = discover_plugin_catalog(self.plugin_root)

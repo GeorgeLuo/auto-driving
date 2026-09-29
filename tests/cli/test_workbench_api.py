@@ -124,7 +124,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
 
     def test_loopback_api_allows_live_plugin_selection_at_frame_boundary(self) -> None:
         with image_source(3) as root:
-            runner = ImageReplayRunner(cadence_ms=5000)
+            runner = ImageReplayRunner(cadence_ms=30000)
             base = serve_workbench(self, runner)
             plugin_root = str(self.plugin_root.resolve())
 
@@ -143,11 +143,13 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                     "source_dir": str(root),
                     "plugin_dir": plugin_root,
                     "active_plugin_ids": ["classical_regions"],
-                    "cadence_ms": 5000,
+                    "cadence_ms": 30000,
                 }
             )
             run_id = started["state"]["run_id"]
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            _wait_until(lambda: runner.state()["position"] == 1)
+            before = runner.state()
+            first_id = before["timeline"][0]["frame"]["frame_id"]
             selected = post(
                 {
                     "action": "select_plugins",
@@ -158,26 +160,35 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 selected["state"]["run_active_plugin_ids"], ["floor_continuity"]
             )
-            self.assertEqual(selected["state"]["timeline"], [])
+            self.assertEqual(
+                selected["state"]["timeline"][0]["frame"]["frame_id"], first_id
+            )
+            retained = runner.frame_detail(first_id, run_id=run_id)
+            self.assertEqual(
+                [run["plugin_id"] for run in retained["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
             paused = post({"action": "pause", "run_id": run_id})
             self.assertEqual(paused["state"]["phase"], "paused")
-            stepped = post({"action": "step", "run_id": run_id})
-            first_id = stepped["state"]["timeline"][0]["frame"]["frame_id"]
-            first_detail = runner.frame_detail(first_id, run_id=run_id)
+            if paused["state"]["position"] == before["position"]:
+                paused = post({"action": "step", "run_id": run_id})
+            latest_id = paused["state"]["timeline"][-1]["frame"]["frame_id"]
+            latest = runner.frame_detail(latest_id, run_id=run_id)
 
+        self.assertNotEqual(latest_id, first_id)
         self.assertEqual(
-            [run["plugin_id"] for run in first_detail["perception"]["plugin_runs"]],
+            [run["plugin_id"] for run in latest["perception"]["plugin_runs"]],
             ["floor_continuity"],
         )
-        self.assertEqual(stepped["state"]["phase"], "paused")
+        self.assertEqual(paused["state"]["phase"], "paused")
         post({"action": "cancel", "run_id": run_id})
 
-    def test_running_empty_selection_starts_fresh_replay(self) -> None:
+    def test_running_empty_selection_keeps_recorded_frames(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=self.plugin_root,
-                cadence_ms=5000,
+                cadence_ms=30000,
             )
             runner.dispatch(
                 "select_plugins",
@@ -185,8 +196,9 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             started = runner.start()
             run_id = started["run_id"]
-            _wait_until(lambda: runner.state().get("current_frame") is not None)
+            _wait_until(lambda: runner.state()["position"] == 1)
             before = runner.state()
+            first_id = before["timeline"][0]["frame"]["frame_id"]
             self.assertEqual(
                 [run["plugin_id"] for run in before["perception"]["plugin_runs"]],
                 ["classical_regions"],
@@ -198,13 +210,26 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], [])
-            self.assertIsNone(selected["perception"])
-            self.assertEqual(selected["timeline"], [])
+            self.assertEqual(selected["timeline"][0]["frame"]["frame_id"], first_id)
+            retained = runner.frame_detail(first_id, run_id=run_id)
+            self.assertEqual(
+                [run["plugin_id"] for run in retained["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
             paused = runner.dispatch("pause", run_id=run_id)
-            self.assertIsNone(paused["perception"])
-            stepped = runner.dispatch("step", run_id=run_id)
-            self.assertEqual(list(stepped["perception"]["plugin_runs"] or ()), [])
-            self.assertEqual(stepped["perception"]["status"], "empty")
+            if paused["position"] == before["position"]:
+                paused = runner.dispatch("step", run_id=run_id)
+            self.assertEqual(list(paused["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(paused["perception"]["status"], "empty")
+            self.assertEqual(
+                [
+                    run["plugin_id"]
+                    for run in runner.frame_detail(first_id, run_id=run_id)["perception"][
+                        "plugin_runs"
+                    ]
+                ],
+                ["classical_regions"],
+            )
             runner.dispatch("cancel", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(

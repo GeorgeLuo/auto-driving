@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
-from autonomy.decision import canonical_json_utf8
+from autonomy.memory.values import canonical_json_utf8
 from implementations.decision.catalog import create_shadow_proposals_engine
 from implementations.decision.config import default_engine_config
 from implementations.decision.inspection import prepare_inspection_scenarios

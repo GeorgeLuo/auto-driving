@@ -11,15 +11,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision import (
-    ActivatedMemoryStep,
     DecisionCycle,
     DecisionFrameContext,
     DecisionSteps,
-    MemoryActivation,
     Observation,
     observation_from_perception,
 )
-from autonomy.decision.activation import bounds_from_config
+from autonomy.memory import PluginMemoryRunner, MemoryActivation
+from autonomy.memory.activation import bounds_from_config
 from autonomy.decision.shadow_runner import ENGINE_ID
 from autonomy.perception import (
     PerceptionMapper,
@@ -51,6 +50,7 @@ from .workbench_contract import (
 from .workbench_plugins import (
     PluginCatalog,
     PluginCatalogError,
+    _import_root,
     discover_plugin_catalog,
 )
 from .workbench_source import (
@@ -104,7 +104,7 @@ def _default_mapper() -> PerceptionMapper:
     )
 
 
-def _default_memory_step(companion: dict[str, Any] | None = None) -> ActivatedMemoryStep:
+def _default_memory_step(companion: dict[str, Any] | None = None) -> PluginMemoryRunner:
     payload = build_memory_activation_payload(DEFAULT_MEMORY_IMPLEMENTATION)
     section = payload["memory"]
     if companion:
@@ -120,7 +120,19 @@ def _default_memory_step(companion: dict[str, Any] | None = None) -> ActivatedMe
         source_path=Path("workbench-plugin-memory"),
         payload=payload,
     )
-    return ActivatedMemoryStep(activation)
+    return PluginMemoryRunner(activation)
+
+
+def _plugin_report(owner: Any) -> dict[str, Any] | None:
+    """Copy a step's common plugin envelope, when that step publishes one."""
+
+    report_for = getattr(owner, "plugin_report", None)
+    if not callable(report_for):
+        return None
+    report = report_for()
+    if not isinstance(report, dict):
+        return None
+    return copy.deepcopy(report)
 
 
 def _safe_status(value: Any) -> str:
@@ -209,7 +221,9 @@ class ImageReplayRunner:
         active_plugin_ids: list[str] | tuple[str, ...] | None,
     ) -> tuple[str, ...]:
         if active_plugin_ids is None and not self._plugin_catalog.explicit_root:
-            active_plugin_ids = ("frame", "floor_plane")
+            active_plugin_ids = tuple(
+                item.plugin_id for item in self._plugin_catalog.plugins if item.default
+            )
         if active_plugin_ids is None:
             return ()
         try:
@@ -702,57 +716,11 @@ class ImageReplayRunner:
                 ) from exc
 
             # The action lock serializes this boundary with frame processing.
-            # Build and reset before publishing the new mapper so a failed
-            # instantiation leaves the effective selection and old mapper
-            # untouched.
-            if active_phase and (
-                normalized != self._active_plugin_ids or self._mapper is None
-            ):
-                next_mapper = None
-                next_memory_step = None
-                previous_mapper = self._mapper
-                previous_memory_step = self._memory_step
-                try:
-                    next_mapper = self._build_mapper_for_selection(normalized)
-                    next_memory_step = self._build_memory_step_for_selection(normalized)
-                    next_decision_engine = create_shadow_proposals_engine()
-                    if previous_mapper is not None:
-                        previous_mapper.reset()
-                    if previous_memory_step is not None:
-                        if isinstance(previous_memory_step, ActivatedMemoryStep):
-                            previous_memory_step.reset(self._shared_memory)
-                        else:
-                            previous_memory_step.reset()
-                except Exception as exc:  # noqa: BLE001 - selection boundary
-                    if next_mapper is not None:
-                        try:
-                            next_mapper.reset()
-                        except Exception:
-                            pass
-                    message = str(exc)
-                    self._state["failure"] = {
-                        "message": message,
-                        "boundary": "plugin_catalog",
-                    }
-                    self._state["failure_boundary"] = "plugin_catalog"
-                    raise ReplayActionError(
-                        message,
-                        status_code=422,
-                        boundary="plugin_catalog",
-                        state=self.state(),
-                    ) from exc
-                self._mapper = next_mapper
-                self._memory_step = next_memory_step
-                self._decision_engine = next_decision_engine
-                self._shared_memory = {}
-
-            selection_changed = normalized != self._active_plugin_ids
-            current = self._state.get("current_frame")
-            current_position = (
-                current.get("position")
-                if selection_changed and self._state["phase"] == "paused" and isinstance(current, dict)
-                else None
-            )
+            # Managers built at start already hold the catalog. Selecting on
+            # them lets core retain unchanged instances. Reset, not selection,
+            # is the fresh-replay boundary.
+            if active_phase and normalized != self._active_plugin_ids:
+                self._apply_manager_selection_locked(normalized)
             self._active_plugin_ids = normalized
             self._apply_plugin_configuration_locked()
             if active_phase:
@@ -762,38 +730,140 @@ class ImageReplayRunner:
                 pipeline["run_active_plugin_ids"] = list(normalized)
                 pipeline["active_plugin_ids"] = list(normalized)
                 pipeline["memory_implementation"] = self._memory_implementation_id()
-            if active_phase and selection_changed:
-                self._history.clear()
-                self._state["timeline"] = []
-                self._state["position"] = 0
-                self._state["current_frame"] = None
-                self._state["perception"] = None
-                self._state["observation"] = None
-                self._state["memory"] = None
-                self._state["decision"] = None
-                self._state["progress"]["completed"] = 0
-                self._state["progress"]["percent"] = 0.0
-                self._state["summary"] = self._summary(frames_completed=0)
+                pipeline["perception_plugin_report"] = _plugin_report(self._mapper)
+                pipeline["memory_plugin_report"] = _plugin_report(self._memory_step)
             self._state["failure"] = None
             self._state["failure_boundary"] = None
-            replay_frames = ()
-            run_id = None
-            generation = None
-            if (
-                current_position is not None
-                and self._feed is not None
-            ):
-                replay_frames = self._feed.frames[:int(current_position) + 1]
-                run_id = str(self._state["run_id"])
-                generation = self._generation
             self._record_action_locked("select_plugins")
             self._condition.notify_all()
-            if not replay_frames:
-                return copy.deepcopy(self._state)
-        for frame in replay_frames:
-            self._process_one(run_id, generation, frame, allow_paused=True)
-        with self._lock:
             return copy.deepcopy(self._state)
+
+    def _apply_manager_selection_locked(self, normalized: tuple[str, ...]) -> None:
+        """Select on the running managers without rebuilding the replay.
+
+        Both steps are constructed and validated before either replacement is
+        reset or published. Recorded frames stay as they are; the next unseen
+        frame executes the new selection.
+        """
+
+        mapper = self._mapper
+        perception_manager = getattr(mapper, "plugin_manager", None)
+        perception_select = getattr(perception_manager, "select", None)
+        memory_step = self._memory_step
+        memory_manager = getattr(memory_step, "plugin_manager", None)
+        memory_select = getattr(memory_manager, "select", None)
+        use_perception = perception_manager is not None and callable(perception_select)
+        use_memory = (
+            isinstance(memory_step, PluginMemoryRunner)
+            and memory_manager is not None
+            and callable(memory_select)
+        )
+        prepare_perception = (
+            getattr(mapper, "prepare_selection", None) if use_perception else None
+        )
+        commit_perception = (
+            getattr(mapper, "commit_selection", None) if use_perception else None
+        )
+        discard_perception = (
+            getattr(mapper, "discard_selection", None) if use_perception else None
+        )
+        perception_lifecycle = callable(prepare_perception) and callable(commit_perception)
+        previous_perception = (
+            tuple(perception_manager.selected_ids) if use_perception else None
+        )
+        previous_memory = tuple(memory_manager.selected_ids) if use_memory else None
+        try:
+            memory_id = self._memory_plugin_id(normalized) if use_memory else None
+
+            def replace() -> None:
+                if use_perception:
+                    perception_select(normalized)
+                if use_memory:
+                    memory_select((memory_id,))
+                if perception_lifecycle:
+                    prepare_perception()
+                if use_memory:
+                    memory_step.prepare_selection()
+                if perception_lifecycle:
+                    commit_perception(self._shared_memory)
+                if use_memory:
+                    memory_step.commit_selection(self._shared_memory)
+
+            # perceive() is wrapped with the plugin root; selection is not.
+            self._call_in_plugin_root(replace)
+        except Exception as exc:  # noqa: BLE001 - selection boundary
+            self._restore_manager_selection_locked(
+                use_perception=use_perception,
+                perception_select=perception_select,
+                previous_perception=previous_perception,
+                discard_perception=discard_perception,
+                use_memory=use_memory,
+                memory_select=memory_select,
+                previous_memory=previous_memory,
+                discard_memory=memory_step.discard_selection if use_memory else None,
+            )
+            message = str(exc)
+            self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
+            self._state["failure_boundary"] = "plugin_catalog"
+            raise ReplayActionError(
+                message,
+                status_code=422,
+                boundary="plugin_catalog",
+                state=self.state(),
+            ) from exc
+
+    def _restore_manager_selection_locked(
+        self,
+        *,
+        use_perception: bool,
+        perception_select: Any,
+        previous_perception: tuple[str, ...] | None,
+        discard_perception: Any,
+        use_memory: bool,
+        memory_select: Any,
+        previous_memory: tuple[str, ...] | None,
+        discard_memory: Any,
+    ) -> None:
+        """Drop unpublished candidates and put the previous ids back.
+
+        Reapplying the previous definitions would construct new instances and
+        drop history that the failed replacement never committed.
+        """
+
+        try:
+            if callable(discard_perception):
+                discard_perception()
+            if callable(discard_memory):
+                discard_memory()
+            if (
+                use_perception
+                and previous_perception is not None
+                and callable(perception_select)
+            ):
+                perception_select(previous_perception)
+            if use_memory and previous_memory is not None and callable(memory_select):
+                memory_select(previous_memory)
+        except Exception:  # noqa: BLE001 - restore must not hide the selection error
+            if (
+                use_perception
+                and previous_perception is not None
+                and callable(perception_select)
+            ):
+                perception_select(previous_perception)
+            if use_memory and previous_memory is not None and callable(memory_select):
+                memory_select(previous_memory)
+
+    def _call_in_plugin_root(self, operation: Callable[[], Any]) -> Any:
+        root = self._plugin_catalog.root
+        if root is None:
+            return operation()
+        with _import_root(root):
+            return operation()
+
+    def _memory_plugin_id(self, selected_plugin_ids: tuple[str, ...]) -> str:
+        if self.memory_step_factory is not None:
+            return DEFAULT_MEMORY_IMPLEMENTATION
+        return self._plugin_catalog.memory_id_for_selection(selected_plugin_ids)
 
     def _build_mapper_for_selection(
         self,
@@ -806,15 +876,27 @@ class ImageReplayRunner:
     def _build_memory_step_for_selection(self, selected_plugin_ids: tuple[str, ...]) -> Any:
         if self.memory_step_factory is not None:
             return self.memory_step_factory()
-        return _default_memory_step(self._plugin_catalog.memory_for_selection(selected_plugin_ids))
+        return PluginMemoryRunner(
+            plugin_manager=self._plugin_catalog.memory_manager(selected_plugin_ids)
+        )
 
     def _memory_implementation_id(self) -> str:
-        activation = getattr(self._memory_step, "activation", None)
-        if activation is not None:
-            return str(activation.implementation_id)
-        selected = set(self._active_plugin_ids)
+        """Implementation id of the published memory plugin, not its catalog id."""
+
+        step = getattr(self, "_memory_step", None)
+        report = _plugin_report(step)
+        plugins = report.get("plugins") if isinstance(report, dict) else None
+        if isinstance(plugins, list) and plugins:
+            implementation_id = plugins[-1].get("implementation_id")
+            if implementation_id:
+                return str(implementation_id)
+        activation = getattr(step, "activation", None)
+        implementation_id = getattr(activation, "implementation_id", None)
+        if implementation_id:
+            return str(implementation_id)
+        selected_ids = set(self._active_plugin_ids)
         for descriptor in self._plugin_catalog.plugins:
-            if descriptor.plugin_id in selected and descriptor.memory:
+            if descriptor.plugin_id in selected_ids and descriptor.memory:
                 return str(descriptor.memory["implementation_id"])
         return DEFAULT_MEMORY_IMPLEMENTATION
 
@@ -1154,6 +1236,8 @@ class ImageReplayRunner:
                     host_application=None,
                 )
                 decision_payload = decision_result.to_dict()
+                perception_plugin_report = _plugin_report(mapper)
+                memory_plugin_report = _plugin_report(memory_step)
                 perception_payload = (
                     result.perception.to_dict() if result.perception else None
                 )
@@ -1188,6 +1272,14 @@ class ImageReplayRunner:
                         result=result,
                         previous_memory=previous_memory,
                     )
+                    detail["perception_plugin_report"] = perception_plugin_report
+                    detail["memory_plugin_report"] = memory_plugin_report
+                    pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
+                    pipeline["memory_implementation"] = self._memory_implementation_id()
+                    pipeline["perception_plugin_report"] = copy.deepcopy(
+                        perception_plugin_report
+                    )
+                    pipeline["memory_plugin_report"] = copy.deepcopy(memory_plugin_report)
                     detail["summary"] = copy.deepcopy(self._state["summary"])
                     detail["decision"] = copy.deepcopy(decision_payload)
                     self._history[frame.frame_id] = detail
@@ -1260,7 +1352,7 @@ class ImageReplayRunner:
                 mapper_status = f"error: {type(exc).__name__}: {exc}"
         if self._memory_step is not None:
             try:
-                if isinstance(self._memory_step, ActivatedMemoryStep):
+                if isinstance(self._memory_step, PluginMemoryRunner):
                     self._memory_step.reset(self._shared_memory)
                 else:
                     self._memory_step.reset()
@@ -1455,6 +1547,8 @@ class ImageReplayRunner:
                     else "manifest_plugin_selection"
                 ),
                 "memory_implementation": self._memory_implementation_id(),
+                "perception_plugin_report": _plugin_report(getattr(self, "_mapper", None)),
+                "memory_plugin_report": _plugin_report(getattr(self, "_memory_step", None)),
                 "observation_adapter": "autonomy.decision.observation.observation_from_perception",
                 "decision_cycle": "autonomy.decision.cycle.DecisionCycle",
                 "decision_engine": ENGINE_ID,

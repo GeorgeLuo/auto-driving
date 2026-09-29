@@ -20,8 +20,9 @@ from typing import Any, TextIO
 from autonomy.decision import (
     DecisionFrameContext,
     DecisionSteps,
-    load_memory_step_if_present,
+    read_memory_activation,
 )
+from autonomy.decision.activation import memory_selection_config
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -41,6 +42,7 @@ from implementations.vehicle.chase_sim.metrics_ws import (
     compare_chase_session_fingerprints,
 )
 
+from .memory_runtime import load_memory_step_from_bundle, _sync_live_memory_plugin_selection
 from .bundles import controller_bundle_paths
 from .decision import (
     invalidate_latest_decision_frame,
@@ -252,7 +254,9 @@ def run_vehicle_automation(
     memory_step = None
     if memory_activation_path.exists():
         try:
-            memory_step = load_memory_step_if_present(memory_activation_path)
+            memory_activation = read_memory_activation(memory_activation_path)
+            memory_config = memory_selection_config(memory_activation)
+            memory_step = load_memory_step_from_bundle(memory_activation)
         except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
             return CommandResult(
                 2,
@@ -350,8 +354,8 @@ def run_vehicle_automation(
         "memory": (
             {
                 "activation": display_path(memory_activation_path),
-                "implementation_id": memory_step.activation.implementation_id,
-                "implementation_spec": memory_step.activation.implementation_spec,
+                "implementation_id": memory_step.status()["implementation_id"],
+                "implementation_spec": memory_step.status()["implementation_spec"],
                 "status": memory_step.status(),
             }
             if memory_step is not None
@@ -487,8 +491,8 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_step.activation.implementation_id,
-                    "implementation_spec": memory_step.activation.implementation_spec,
+                    "implementation_id": memory_step.status()["implementation_id"],
+                    "implementation_spec": memory_step.status()["implementation_spec"],
                     "status": memory_step.status(),
                 }
             state["updated_at_ms"] = _timestamp_ms()
@@ -506,6 +510,10 @@ def run_vehicle_automation(
             raise ValueError(f"{context.frame_id} has no sensor snapshot")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
+        if memory_step is not None:
+            _sync_live_memory_plugin_selection(
+                memory_step, memory_activation_path, loaded_config=memory_config,
+            )
         cycle_result = cycle_host.run(context)
         # Publish the accepted shadow frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
@@ -725,8 +733,8 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_step.activation.implementation_id,
-                    "implementation_spec": memory_step.activation.implementation_spec,
+                    "implementation_id": memory_step.status()["implementation_id"],
+                    "implementation_spec": memory_step.status()["implementation_spec"],
                     "status": memory_step.status(),
                 }
             state["updated_at_ms"] = _timestamp_ms()

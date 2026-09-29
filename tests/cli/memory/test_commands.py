@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from tests.support.cli_runner import run_automa
+from tests.cli.memory.replay_fixtures import RECURRENCE_SOURCE
 
 
 class MemoryCommandTests(unittest.TestCase):
@@ -64,6 +65,41 @@ class MemoryCommandTests(unittest.TestCase):
             )
             self.assertEqual(info_payload["activation"]["bounds"]["max_records"], 32)
             self.assertFalse(info_payload["lifecycle"]["claims_identity"])
+
+    def test_memory_enable_disable_commands_round_trip_through_info(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            run_automa("vehicles", "update", "memory", "--id", "test-car", runtime_root=runtime_root)
+            for command, selected, changed in (
+                ("disable", [], True),
+                ("disable", [], False),
+                ("enable", ["bounded_evidence"], True),
+                ("enable", ["bounded_evidence"], False),
+            ):
+                result = run_automa(
+                    "vehicles", "memory", command, "--id", "test-car", "bounded_evidence", "--json",
+                    runtime_root=runtime_root,
+                )
+                payload = json.loads(result.stdout)
+                self.assertEqual(payload["plugins_after"], selected)
+                self.assertEqual(payload["changed"], changed)
+                info = run_automa(
+                    "vehicles", "info", "memory", "--id", "test-car", "--json",
+                    runtime_root=runtime_root,
+                )
+                activation = json.loads(info.stdout)["activation"]
+                self.assertEqual(activation["plugins"], selected)
+                self.assertEqual(activation["available_plugins"], ["bounded_evidence"])
+                self.assertEqual(activation["implementation_id"], selected[-1] if selected else None)
+                if command == "disable" and changed:
+                    replay = run_automa(
+                        "vehicles", "memory", "replay", str(RECURRENCE_SOURCE),
+                        "--id", "test-car", "--json", runtime_root=runtime_root,
+                    )
+                    result = json.loads(replay.stdout)
+                    self.assertEqual(result["plugin_ids"], [])
+                    self.assertEqual(result["final"], {})
+                    self.assertTrue(result["deterministic"])
 
     def test_memory_update_dry_run_does_not_write_activation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

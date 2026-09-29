@@ -8,9 +8,11 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from autonomy.memory import SharedMemory
+from autonomy.plugins import PluginDefinition, PluginManager, PluginSelectionRuntime
 
 from .cycle import DecisionFrameContext, MemoryUpdateError
 from .memory import (
@@ -27,6 +29,7 @@ from .memory import (
 )
 from .observation import Observation
 from .plugin import MemoryImplementation
+from .selection import memory_plugin_manager
 
 
 MEMORY_ACTIVATION_SCHEMA = "automa_memory_activation_v0"
@@ -50,6 +53,37 @@ class MemoryActivation:
     bounds: MemoryBounds
     source_path: Path
     payload: dict[str, Any]
+
+
+def memory_selection_config(activation: MemoryActivation) -> dict[str, Any]:
+    """Adapt legacy single-implementation documents to the ordered catalog shape.
+
+    Explicit plugin fields are authoritative, including an empty selection.
+    Legacy fields remain staging metadata once plugin fields are present.
+    """
+
+    memory = activation.payload.get("memory", {})
+    if "plugins" in memory or "plugin_specs" in memory:
+        plugins = memory.get("plugins")
+        specs = memory.get("plugin_specs")
+        configs = memory.get("plugin_configs", {})
+        if not isinstance(plugins, list) or not all(isinstance(item, str) for item in plugins):
+            raise ValueError("memory.plugins must be a list of plugin IDs")
+        if not isinstance(specs, dict) or not isinstance(configs, dict):
+            raise ValueError("memory plugin_specs and plugin_configs must be objects")
+        return deepcopy({"plugins": plugins, "plugin_specs": specs, "plugin_configs": configs})
+    return {
+        "plugins": [activation.implementation_id],
+        "plugin_specs": {activation.implementation_id: activation.implementation_spec},
+        "plugin_configs": {activation.implementation_id: deepcopy(activation.implementation_config)},
+    }
+
+
+def memory_manager_from_activation(activation: MemoryActivation) -> PluginManager:
+    config = memory_selection_config(activation)
+    manager = memory_plugin_manager(config["plugin_specs"], config["plugin_configs"])
+    manager.select(config["plugins"])
+    return manager
 
 
 def read_memory_activation(path: Path) -> MemoryActivation:
@@ -276,7 +310,155 @@ def instantiate_memory_implementation(
 
 
 class ActivatedMemoryStep:
-    """Decision-cycle memory step backed by one activated implementation.
+    """Run the manager's selected memory plugins once per decision cycle.
+
+    Plugins run in selection order on the same host map. The last snapshot is
+    the decision-facing value; the framework does not merge retention policies.
+    """
+
+    def __init__(
+        self,
+        activation: MemoryActivation | None = None,
+        *,
+        plugin_manager: PluginManager | None = None,
+    ) -> None:
+        if plugin_manager is None:
+            if activation is None:
+                raise ValueError("memory requires an activation or plugin_manager")
+            plugin_manager = memory_manager_from_activation(activation)
+        if not isinstance(plugin_manager, PluginManager):
+            raise TypeError("plugin_manager must be a PluginManager")
+        if plugin_manager.step != "memory":
+            raise ValueError(f"plugin_manager is scoped to {plugin_manager.step!r}, not 'memory'")
+        self.activation = activation
+        self.plugin_manager = plugin_manager
+        self._selection_runtime = PluginSelectionRuntime(plugin_manager)
+        self._runtime_lock = RLock()
+        self.plugin_ids: tuple[str, ...] = ()
+        self.plugins: tuple[_MemoryPluginRuntime, ...] = ()
+        self.last_snapshot: MemorySnapshot | None = None
+        self.last_duration_ms: float | None = None
+        self.last_error: str | None = None
+        self.update_count = 0
+        self.reset_count = 0
+        self.failure_count = 0
+        self._apply_selection()
+        self.snapshot()
+
+    @property
+    def implementation(self) -> MemoryImplementation | None:
+        """Compatibility access for callers inspecting a single applied plugin."""
+        return self.plugins[0].implementation if len(self.plugins) == 1 else None
+
+    def _load_plugin(self, definition: PluginDefinition) -> _MemoryPluginRuntime:
+        config = deepcopy(dict(definition.config))
+        return _MemoryPluginRuntime(MemoryActivation(
+            implementation_id=definition.plugin_id,
+            implementation_spec=definition.entrypoint,
+            implementation_config=config,
+            bounds=bounds_from_config(config),
+            source_path=self.activation.source_path if self.activation else Path("memory-manager"),
+            payload={},
+        ))
+
+    def _apply_selection(self, shared_memory: SharedMemory | None = None) -> None:
+        applied = self._selection_runtime.apply(
+            load=self._load_plugin,
+            reset=lambda plugin: plugin.reset(shared_memory),
+        )
+        self.plugin_ids = tuple(definition.plugin_id for definition, _plugin in applied)
+        self.plugins = tuple(plugin for _definition, plugin in applied)
+
+    def __call__(
+        self, context: DecisionFrameContext, observation: Observation | None,
+    ) -> MemorySnapshot | None:
+        return self.update(context, observation)
+
+    def update(
+        self, context: DecisionFrameContext, observation: Observation | None,
+    ) -> MemorySnapshot | None:
+        with self._runtime_lock:
+            self._apply_selection(context.shared_memory)
+            started = time.perf_counter()
+            self.last_error = None
+            snapshot = None
+            try:
+                for plugin in self.plugins:
+                    snapshot = plugin.update(context, observation)
+                    if context.shared_memory is not None:
+                        context.shared_memory["decision.snapshot"] = snapshot
+                if not self.plugins and context.shared_memory is not None:
+                    context.shared_memory.pop("decision.snapshot", None)
+                    context.shared_memory.pop("decision.observation", None)
+            except Exception:
+                self.failure_count += 1
+                self.last_error = plugin.last_error
+                raise
+            finally:
+                self.update_count += 1
+                self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+            return self._publish_snapshot(snapshot)
+
+    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot | None:
+        with self._runtime_lock:
+            started = time.perf_counter()
+            self.last_error = None
+            snapshot = None
+            for plugin in self.plugins:
+                failures = plugin.failure_count
+                snapshot = plugin.reset(shared_memory)
+                self.failure_count += plugin.failure_count - failures
+                self.last_error = plugin.last_error or self.last_error
+            if shared_memory is not None:
+                if snapshot is None:
+                    shared_memory.pop("decision.snapshot", None)
+                else:
+                    shared_memory["decision.snapshot"] = snapshot
+            self.reset_count += 1
+            self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+            return self._publish_snapshot(snapshot)
+
+    def snapshot(self) -> MemorySnapshot | None:
+        with self._runtime_lock:
+            # The final plugin owns the shared decision-facing snapshot.
+            snapshot = None
+            if self.plugins:
+                plugin = self.plugins[-1]
+                failures = plugin.failure_count
+                snapshot = plugin.snapshot()
+                self.failure_count += plugin.failure_count - failures
+                self.last_error = plugin.last_error
+            return self._publish_snapshot(snapshot)
+
+    def _publish_snapshot(self, snapshot: MemorySnapshot | None) -> MemorySnapshot | None:
+        self.last_snapshot = detach_memory_snapshot(snapshot) if snapshot is not None else None
+        return detach_memory_snapshot(snapshot) if snapshot is not None else None
+
+    def status(self) -> dict[str, Any]:
+        with self._runtime_lock:
+            last = self.last_snapshot
+            final = self.plugins[-1].activation if self.plugins else None
+            return {
+                "implementation_id": final.implementation_id if final else None,
+                "implementation_spec": final.implementation_spec if final else None,
+                "activation": str(self.activation.source_path) if self.activation else None,
+                "bounds": final.bounds.to_dict() if final else None,
+                "selected_plugin_ids": list(self.plugin_manager.selected_ids),
+                "plugin_ids": list(self.plugin_ids),
+                "plugins": [plugin.status() for plugin in self.plugins],
+                "update_count": self.update_count,
+                "reset_count": self.reset_count,
+                "failure_count": self.failure_count,
+                "last_duration_ms": self.last_duration_ms,
+                "last_error": self.last_error,
+                "last_health": last.health if last else None,
+                "last_epoch_id": last.epoch_id if last else None,
+                "last_record_count": last.record_count if last else None,
+            }
+
+
+class _MemoryPluginRuntime:
+    """Memory-specific execution and snapshot validation for one applied plugin.
 
     The framework owns load, reset, timing, status, and validation.
     Implementations only express update/reset/snapshot policy. Source

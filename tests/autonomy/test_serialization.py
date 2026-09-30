@@ -55,32 +55,43 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(ensure_strict_json_value({1: "a"}), {"1": "a"})
 
     def test_strict_rejection_messages_stay_wrapped_once(self) -> None:
+        strict_prefix = "value is not strictly JSON-serializable: "
+
         with self.assertRaises(ValueError) as nan_error:
             canonical_json_utf8(float("nan"))
+        nan_cause = nan_error.exception.__cause__
+        self.assertIsInstance(nan_cause, ValueError)
         self.assertEqual(
             str(nan_error.exception),
-            "value is not strictly JSON-serializable: ValueError: "
-            "Out of range float values are not JSON compliant: nan",
+            f"{strict_prefix}{type(nan_cause).__name__}: {nan_cause}",
         )
-        self.assertIsInstance(nan_error.exception.__cause__, ValueError)
+        self.assertNotIn(strict_prefix, str(nan_cause))
 
         with self.assertRaises(ValueError) as set_error:
             canonical_json_size_bytes({1})
+        set_cause = set_error.exception.__cause__
+        self.assertIsInstance(set_cause, TypeError)
         self.assertEqual(
             str(set_error.exception),
-            "value is not strictly JSON-serializable: TypeError: "
-            "Object of type set is not JSON serializable",
+            f"{strict_prefix}{type(set_cause).__name__}: {set_cause}",
         )
-        self.assertIsInstance(set_error.exception.__cause__, TypeError)
+        self.assertNotIn(strict_prefix, str(set_cause))
 
         with self.assertRaises(ValueError) as freeze_error:
             deep_freeze(float("nan"), field_name="metadata")
+        freeze_cause = freeze_error.exception.__cause__
+        self.assertIsInstance(freeze_cause, ValueError)
         self.assertEqual(
             str(freeze_error.exception),
-            "metadata is not strict JSON: value is not strictly JSON-serializable: "
-            "ValueError: Out of range float values are not JSON compliant: nan",
+            f"metadata is not strict JSON: {freeze_cause}",
         )
-        self.assertIsInstance(freeze_error.exception.__cause__, ValueError)
+        json_cause = freeze_cause.__cause__
+        self.assertIsInstance(json_cause, ValueError)
+        self.assertEqual(
+            str(freeze_cause),
+            f"{strict_prefix}{type(json_cause).__name__}: {json_cause}",
+        )
+        self.assertNotIn(strict_prefix, str(json_cause))
 
     def test_freeze_preserves_object_and_array_identity(self) -> None:
         frozen = deep_freeze({"a": [], "b": {}})

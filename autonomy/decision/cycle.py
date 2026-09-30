@@ -85,10 +85,13 @@ ActionStep = Callable[
 
 @dataclass(frozen=True)
 class DecisionSteps:
-    """The cycle operations. An absent callable skips that operation.
+    """The cycle operations.
 
     ``perceive``, ``observe``, and ``remember`` are the perception, observation,
-    and memory steps. ``choose_action`` is the action composition.
+    and memory steps. ``choose_action`` is the action composition. ``observe``
+    overrides the default adaptation of perception evidence into the
+    current-frame record. Omitting ``observe`` leaves that default in place
+    when perception evidence is present.
     """
 
     perceive: PerceiveStep | None = None
@@ -136,9 +139,10 @@ class DecisionCycleResult:
 class DecisionCycle:
     """Run perceive, observe, remember, then choose_action.
 
-    Missing operations are skipped. ``remember`` returns a ``MemorySnapshot``
-    or ``None``. A memory plugin may still replace the current observation
-    through ``shared_memory["decision.observation"]``.
+    ``observe`` overrides the default adaptation. Omitting it leaves that
+    default in place when perception evidence is present. ``remember`` returns
+    a ``MemorySnapshot`` or ``None``. A memory plugin may still replace the
+    current observation through ``shared_memory["decision.observation"]``.
     """
 
     def __init__(

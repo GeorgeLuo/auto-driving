@@ -5,11 +5,13 @@ Replays the bright high-rate capture through the workbench with lab plugins
 that extract signals, including one that names the camera by its legacy spec
 and brings its own lab memory. The run is reduced to a fingerprint of per-frame
 statuses, selected proposals, memory changes, and per-plugin signal and thing
-counts. Timing fields are left out. A second pass serves the workbench and
-changes the plugin selection through its API.
+counts. Timing fields are left out. The same replay at a git ref, run in a
+temporary worktree, is the reference, so no recorded output is kept in the
+repository. A second pass serves the workbench and changes the plugin selection
+through its API.
 
-    scripts/validation/workbench_e2e.py --write-baseline   # record current behavior
-    scripts/validation/workbench_e2e.py                    # compare against it
+    scripts/validation/workbench_e2e.py                    # compare against the branch point
+    scripts/validation/workbench_e2e.py --against main     # compare against another ref
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import json
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -28,21 +31,41 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121"
 PLUGIN_DIR = ROOT / "lab/plugins/perception"
 PLUGINS = ("multi_obstruction_tracks", "floor_continuity", "classical_regions")
-BASELINE = Path(__file__).with_name("workbench_e2e_baseline.json")
 
 
-def run_replay() -> dict:
+def run_replay(checkout: Path = ROOT) -> dict:
+    """Replay the capture with the CLI and plugins of ``checkout``."""
+
     command = [
-        sys.executable, str(ROOT / "cli/automa"), "vehicles", "workbench", "replay", str(SOURCE),
-        "--plugin-dir", str(PLUGIN_DIR), "--cadence-ms", "0", "--json",
+        sys.executable, str(checkout / "cli/automa"), "vehicles", "workbench", "replay", str(SOURCE),
+        "--plugin-dir", str(checkout / PLUGIN_DIR.relative_to(ROOT)), "--cadence-ms", "0", "--json",
     ]
     for plugin_id in PLUGINS:
         command += ["--plugin", plugin_id]
-    completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
+    completed = subprocess.run(command, cwd=checkout, capture_output=True, text=True, check=False)
     if completed.returncode != 0:
         sys.stderr.write(completed.stderr)
-        raise SystemExit(f"workbench replay exited {completed.returncode}")
+        raise SystemExit(f"workbench replay in {checkout} exited {completed.returncode}")
     return json.loads(completed.stdout)
+
+
+def git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+
+def replay_at(ref: str) -> dict:
+    """Replay the capture in a temporary worktree checked out at ``ref``."""
+
+    commit = git("rev-parse", "--verify", f"{ref}^{{commit}}")
+    with tempfile.TemporaryDirectory(prefix="workbench-e2e-") as scratch:
+        checkout = Path(scratch) / "checkout"
+        git("worktree", "add", "--detach", str(checkout), commit)
+        try:
+            return run_replay(checkout)
+        finally:
+            git("worktree", "remove", "--force", str(checkout))
 
 
 def check_selector() -> list[str]:
@@ -194,23 +217,22 @@ def compare(expected: dict, actual: dict) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--write-baseline", action="store_true", help="Record the current run as the baseline.")
-    parser.add_argument("--baseline", type=Path, default=BASELINE)
+    parser.add_argument(
+        "--against", metavar="REF",
+        help="Git ref to compare against (default: where HEAD branched from origin/main).",
+    )
     args = parser.parse_args()
 
+    ref = args.against or git("merge-base", "HEAD", "origin/main")
+    expected = fingerprint(replay_at(ref))
     actual = fingerprint(run_replay())
-    if args.write_baseline:
-        args.baseline.write_text(json.dumps(actual, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-        print(f"baseline written: {args.baseline} ({len(actual['frames'])} frames)")
-        return 0
-    expected = json.loads(args.baseline.read_text(encoding="utf-8"))
     differences = compare(expected, actual) + check_selector()
     if differences:
-        print(f"{len(differences)} difference(s) from {args.baseline}:")
+        print(f"{len(differences)} difference(s) from {ref}:")
         print("\n".join(differences[:40]))
         return 1
     print(
-        f"matches baseline: {len(actual['frames'])} frames, {len(actual['plugin_runs'])} plugins; "
+        f"matches {ref}: {len(actual['frames'])} frames, {len(actual['plugin_runs'])} plugins; "
         "plugin selection reprocesses frames"
     )
     return 0

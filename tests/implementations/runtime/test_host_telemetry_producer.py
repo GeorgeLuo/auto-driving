@@ -58,8 +58,8 @@ def _store(clock: _Clock | None = None, *, max_records: int = 256) -> HostTeleme
         vehicle_id="piracer",
         source_id="donkeycar:piracer",
         run_id="donkey-run-test",
-        generation_id="shadow-proposals:1000",
-        activation_engine_id="shadow-proposals",
+        generation_id="hold-action:1000",
+        activation_engine_id="hold-action",
         activation_activated_at_ms=1_000,
         clock=active_clock,
         max_records=max_records,
@@ -124,10 +124,10 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 "piracer",
                 "donkeycar:piracer",
                 "donkey-run-test",
-                "shadow-proposals:1000",
-                "shadow-proposals",
+                "hold-action:1000",
+                "hold-action",
                 1_000,
-                "shadow-proposals:1000",
+                "hold-action:1000",
             ),
         )
         self.assertEqual(record["source_frame"], _frame(1))
@@ -141,10 +141,10 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 "piracer",
                 "donkeycar:piracer",
                 "donkey-run-test",
-                "shadow-proposals:1000",
-                "shadow-proposals",
+                "hold-action:1000",
+                "hold-action",
                 1_000,
-                "shadow-proposals:1000",
+                "hold-action:1000",
                 "donkey_frame_000001",
                 1,
                 10_000,
@@ -163,8 +163,8 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 vehicle_id="piracer",
                 source_id="donkeycar:piracer",
                 run_id="donkey-run-test",
-                generation_id="shadow-proposals:1000",
-                activation_engine_id="shadow-proposals",
+                generation_id="hold-action:1000",
+                activation_engine_id="hold-action",
                 activation_activated_at_ms=1_000,
                 activation_generation_id="other-generation",
             )
@@ -430,7 +430,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 "timestamp_ms",
                 return_value=10_000,
             ),
-            patch("autonomy.decision.cycle.timestamp_ms", return_value=10_000),
+            patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
             patch("autonomy.runtime.manager.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(
@@ -472,7 +472,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         )
         with (
             patch.object(module, "timestamp_ms", return_value=10_000),
-            patch("autonomy.decision.cycle.timestamp_ms", return_value=10_000),
+            patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
             patch("autonomy.runtime.manager.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(

@@ -10,7 +10,9 @@ from implementations.operations.capture_pulse_sequence import (
     safe_label_suffix,
 )
 from implementations.operations.artifact_writers import write_contact_sheet, write_diff_artifact, write_json
-from implementations.perception.observation import compare_frame_pair
+from implementations.decision_cycle.perception.frame_observation.frame_analysis import (
+    compare_frame_pair,
+)
 from autonomy.vehicle import CarInterface
 
 from .scoring import check_startup_action_result

@@ -9,14 +9,15 @@ from tempfile import TemporaryDirectory
 from typing import Iterator
 from urllib.request import Request, urlopen
 from PIL import Image
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
+)
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
     PerceivedThing,
     ViewLocation,
 )
-from autonomy.decision.memory import MemoryBounds, MemorySnapshot
 from cli.automa_cli.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
     WorkbenchServer,
@@ -187,15 +188,8 @@ class BlockingSecondMapper(FixtureMapper):
 
 
 class ErrorMemory:
-    def __call__(self, context, observation) -> MemorySnapshot:
-        return MemorySnapshot(
-            memory_id="error-memory",
-            epoch_id="epoch-1",
-            health="error",
-            bounds=MemoryBounds(max_records=4),
-            created_at_ms=0,
-            error="injected memory failure",
-        )
+    def __call__(self, context, observation) -> None:
+        raise RuntimeError("injected memory failure")
 
     def reset(self, shared_memory=None) -> None:
         return None

@@ -636,7 +636,7 @@
           <div class="sidebar-group-body">
             <span id="pluginSelectionSummary" class="muted">no catalog</span>
             <div id="pluginCatalog" class="plugin-catalog">
-              <p class="muted help">The packaged lightweight catalog will appear here.</p>
+              <p class="muted help">Packaged plugins will appear here.</p>
             </div>
             <div id="pluginDigest" class="digest muted"></div>
           </div>
@@ -1644,8 +1644,8 @@
         setText("decisionProposed", proposed && Object.keys(proposed).length
           ? "steering=" + text(proposed.steering, "—") + " throttle=" + text(proposed.throttle, "—")
           : "none");
-        setText("decisionAuthority", authority.proposed_applied === false
-          ? "shadow idle · applied=false" : "unavailable");
+        setText("decisionAuthority", typeof authority.proposed_applied === "boolean"
+          ? text(authority.gate_id, "gate") + " · applied=" + authority.proposed_applied : "unavailable");
         setText("decisionReason", cycle.reason || (plan.reason || "—"));
         var sourceRefs = [];
         candidates.forEach(function (candidate) {

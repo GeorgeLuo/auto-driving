@@ -11,14 +11,19 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
-    PerceptionPluginContract,
-    PerceptionPluginInputs,
     ViewLocation,
 )
-from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
+from autonomy.decision_cycle.perception.plugin import (
+    PerceptionPluginContract,
+    PerceptionPluginInputs,
+)
+from implementations.decision_cycle.perception.components.camera import (
+    CameraFrame,
+    FRONT_CAMERA_RGB_INPUT,
+)
 from lab.plugins.perception.classical_regions.src.plugin import _detect_regions
 from lab.plugins.perception.floor_continuity.src.model import (
     FloorContinuityConfig,

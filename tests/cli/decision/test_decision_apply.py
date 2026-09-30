@@ -5,19 +5,19 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from autonomy.decision.memory import canonical_json_bytes, canonical_json_utf8
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
+from autonomy.serialization import canonical_json_bytes, canonical_json_utf8
+from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
 from cli.automa_cli.decision import ENGINE_ID, apply_vehicle_decision
 from tests.support.cli_runner import run_automa
-from tests.cli.decision.shadow_decision_surfaces_fixtures import (
+from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
     NO_MEM_RUN,
-    ShadowDecisionSurfaceFixture,
+    DecisionSurfaceFixture,
 )
 
 
-class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase):
-    def test_apply_requires_id_and_shadow_engine(self) -> None:
+class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
+    def test_apply_requires_id_and_hold_engine(self) -> None:
         missing = apply_vehicle_decision(
             vehicle_id=None,
             from_run=ACTIVE_RUN,
@@ -68,7 +68,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         self.assertFalse(frame0["proposed_applied"])
         self.assertEqual(
             frame0["authorized_output"]["reason"],
-            AUTHORIZED_IDLE_REASON,
+            HOLD_IDLE_REASON,
         )
         self.assertIsNotNone(frame0["proposed"])
         self.assertNotEqual(frame0["proposed"]["steering"], 0.0)

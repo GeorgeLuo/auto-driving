@@ -4,9 +4,17 @@ import unittest
 from functools import partial
 from urllib.parse import urlencode
 from urllib.request import urlopen
-from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract, PerceptionSignal
-from autonomy.perception.mappers import PluginPerceptionMapper
-from autonomy.decision.memory import MemorySnapshot
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceptionEvidenceBatch,
+    PerceptionSignal,
+)
+from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from cli.automa_cli.memory_report import memory_state
+from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+    LEDGER_KEY,
+    EvidenceLedger,
+)
 from cli.automa_cli.workbench_runner import _default_memory_step
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
@@ -28,7 +36,7 @@ class RecordingMapper(FixtureMapper):
 
     def perceive(self, request):
         self.legacy_handoff.append("prior_memory" in request.metadata)
-        self.priors.append(request.shared_memory.get("decision.snapshot"))
+        self.priors.append(request.shared_memory.get(LEDGER_KEY))
         return super().perceive(request)
 
 
@@ -42,7 +50,7 @@ class SharedMemoryProbe:
     def perceive(self, inputs):
         shared_memory = inputs.shared_memory
         self.reads.append((
-            shared_memory.get("decision.snapshot"),
+            shared_memory.get(LEDGER_KEY),
             shared_memory.get("test.step"),
         ))
         shared_memory["test.perception"] = inputs.frame_id
@@ -56,7 +64,7 @@ class WorkbenchTests(unittest.TestCase):
             plugin_specs={"probe": f"{__name__}:SharedMemoryProbe"},
         )
         step_reads = []
-        snapshots = []
+        reports = []
         published = []
 
         def memory_factory():
@@ -66,10 +74,10 @@ class WorkbenchTests(unittest.TestCase):
                 def __call__(self, context, observation):
                     step_reads.append(context.shared_memory["test.perception"])
                     context.shared_memory["test.step"] = context.frame_id
-                    snapshot = step(context, observation)
-                    snapshots.append(snapshot)
-                    published.append(context.shared_memory["decision.snapshot"])
-                    return snapshot
+                    report = step(context, observation)
+                    reports.append(report)
+                    published.append(context.shared_memory[LEDGER_KEY])
+                    return report
 
                 def reset(self):
                     return step.reset()
@@ -88,7 +96,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["memory"], snapshots[-1].to_dict())
+            self.assertEqual(completed["memory"], memory_state(reports[-1]))
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))
@@ -156,7 +164,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed["phase"], "completed")
         self.assertEqual(len(mapper.priors), 2)
         self.assertIsNone(mapper.priors[0])
-        self.assertIsInstance(mapper.priors[1], MemorySnapshot)
+        self.assertIsInstance(mapper.priors[1], EvidenceLedger)
         self.assertEqual(mapper.legacy_handoff, [False, False])
 
     def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
@@ -209,7 +217,7 @@ class WorkbenchTests(unittest.TestCase):
         with self.assertRaises(ReplayActionError):
             idle.dispatch("seek", run_id="missing", position=0)
 
-    def test_loop_playback_rewinds_instead_of_completing(self) -> None:
+    def test_loop_playback_reprocesses_the_capture_each_pass(self) -> None:
         with image_source(2) as root:
             mapper = FixtureMapper()
             runner = ImageReplayRunner(
@@ -221,13 +229,11 @@ class WorkbenchTests(unittest.TestCase):
             started = runner.start()
             run_id = started["run_id"]
             self.assertTrue(started["controls"]["loop"])
-            _wait_until(
-                lambda: runner.state()["machine_detail"]["last_transition"]["action"] == "loop"
-            )
+            # Each pass runs both frames through the pipelines again.
+            _wait_until(lambda: len(mapper.calls) >= 4)
             live = runner.state()
             self.assertEqual(live["phase"], "running")
             self.assertLessEqual(len(live["timeline"]), 2)
-            self.assertEqual(len(mapper.calls), 2)
             runner.dispatch("set_loop", run_id=run_id, loop=False)
             finished = runner.wait(5)
             self.assertEqual(finished["phase"], "completed")

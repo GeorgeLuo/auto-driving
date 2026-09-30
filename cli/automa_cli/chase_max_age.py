@@ -9,6 +9,8 @@ from typing import Any, Callable
 
 from implementations.vehicle.chase_sim.frame_identity import format_chase_frame_id
 
+from .memory_report import memory_state
+
 # Always-on camera/floor evidence keeps refreshing and is not a max-age proof.
 _ALWAYS_ON_KEY_MARKERS = (
     "front_camera_frame",
@@ -49,18 +51,18 @@ def frame_simulation_epoch(frame: dict[str, Any]) -> str | None:
                 meta_epoch = metadata.get("simulation_epoch")
                 if meta_epoch is not None and str(meta_epoch).strip():
                     return str(meta_epoch).strip()
-    shadow = frame.get("shadow_reference")
-    if isinstance(shadow, dict):
-        shadow_epoch = shadow.get("simulation_epoch")
-        if shadow_epoch is not None and str(shadow_epoch).strip():
-            return str(shadow_epoch).strip()
+    reference = frame.get("chaser_reference")
+    if isinstance(reference, dict):
+        reference_epoch = reference.get("simulation_epoch")
+        if reference_epoch is not None and str(reference_epoch).strip():
+            return str(reference_epoch).strip()
     return None
 
 
 def frame_memory_epoch_id(frame: dict[str, Any]) -> str | None:
     """Memory generation identity published on the evaluation frame."""
 
-    memory = frame.get("memory")
+    memory = memory_state(frame.get("memory"))
     if not isinstance(memory, dict):
         return None
     epoch = str(memory.get("epoch_id") or "").strip()
@@ -82,7 +84,7 @@ def frame_worker_pid(frame: dict[str, Any]) -> int | None:
 def frame_capacity_eviction_count(frame: dict[str, Any]) -> int | None:
     """Authoritative capacity-eviction total from frame memory metadata."""
 
-    memory = frame.get("memory")
+    memory = memory_state(frame.get("memory"))
     if not isinstance(memory, dict):
         return None
     metadata = memory.get("metadata")
@@ -116,9 +118,8 @@ def extract_chase_lifecycle_keys(frames: list[dict[str, Any]]) -> set[str]:
             observed_index[containing_frame_id] = containing_index
         observed_index[format_chase_frame_id(containing_index)] = containing_index
 
-        # Evaluation frames serialize retained evidence from
-        # shared_memory["decision.snapshot"].
-        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else None
+        # Evaluation frames record the memory report; read the last plugin's state.
+        memory = memory_state(frame.get("memory"))
         if memory is None:
             continue
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
@@ -214,7 +215,7 @@ def lifecycle_key_anchors_ms(
         if not isinstance(frame, dict):
             continue
         frame_ts = _optional_int(frame.get("timestamp_ms"))
-        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else None
+        memory = memory_state(frame.get("memory"))
         if memory is None:
             continue
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
@@ -269,11 +270,11 @@ def frame_control_is_strict_zero(frame: dict[str, Any]) -> tuple[bool, str | Non
 
 
 def require_valid_memory(frame: dict[str, Any]) -> dict[str, Any]:
-    """Memory must be a dict with a list records field (may be empty)."""
+    """Frame memory must report a plugin state with a list records field (may be empty)."""
 
     if "memory" not in frame:
         raise ValueError("frame is missing memory")
-    memory = frame.get("memory")
+    memory = memory_state(frame.get("memory"))
     if not isinstance(memory, dict):
         raise ValueError("frame.memory is not an object")
     if "records" not in memory:
@@ -304,7 +305,7 @@ def require_chase_max_age_identity(
     Continuity requires an immutable automation ``run_id`` (not just memory epoch
     strings, which restart at ``epoch-1``), matching frame/probe memory epochs,
     and a capacity-eviction counter baseline taken from the correlated frame's
-    published ``MemorySnapshot.metadata`` (not from step/probe status).
+    memory plugin state metadata (not from step/probe status).
     """
 
     if not isinstance(probe, dict):
@@ -370,7 +371,7 @@ def require_chase_max_age_identity(
         raise ValueError(
             f"frame.worker_pid does not match probe.worker_pid ({frame_pid} != {pid})"
         )
-    # Capacity eviction telemetry is implementation-published snapshot metadata.
+    # Capacity eviction telemetry is plugin-published memory state metadata.
     # The CLI max-age proof reads it from frames only so autonomy/ stays generic.
     frame_evictions = frame_capacity_eviction_count(frame)
     if frame_evictions is None or frame_evictions < 0:
@@ -876,7 +877,7 @@ def wait_for_chase_memory_key_expiry(
                 headroom_proven=False,
             )
 
-        # Authoritative capacity-eviction counter from frame MemorySnapshot
+        # Authoritative capacity-eviction counter from the frame's memory state
         # metadata survives unsampled intermediate frames: any increase during
         # the wait voids a pure max-age claim. Read only from the correlated
         # frame (not step/probe status) so autonomy stays generic.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import queue
@@ -17,12 +18,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import (
-    DecisionFrameContext,
-    DecisionSteps,
-    load_memory_step_if_present,
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.memory.activation import (
+    read_memory_activation,
+    memory_selection_config,
 )
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
+from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
@@ -41,11 +44,14 @@ from implementations.vehicle.chase_sim.metrics_ws import (
     compare_chase_session_fingerprints,
 )
 
+from .memory_runtime import load_memory_step_from_bundle, _sync_live_memory_plugin_selection
+from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
 from .decision import (
     invalidate_latest_decision_frame,
     load_decision_activation,
-    publish_shadow_decision_frame,
+    PROPOSAL_ENGINE_IDS,
+    publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
 from .perception import (
@@ -84,6 +90,75 @@ PASSIVE_RUN_DYNAMIC_FIELDS = (
 )
 
 
+def _execution_plugin_report(owner: Any) -> dict[str, Any] | None:
+    """Copy a step's common plugin envelope, when that step publishes one."""
+
+    report_for = getattr(owner, "plugin_report", None)
+    if not callable(report_for):
+        return None
+    report = report_for()
+    if not isinstance(report, dict):
+        return None
+    return copy.deepcopy(report)
+
+
+def _sync_live_perception_plugin_selection(
+    mapper: Any,
+    activation_path: Path,
+    *,
+    mapper_spec: str,
+    mapper_config: dict[str, Any],
+) -> None:
+    """Apply CLI selection edits to a running manager at a frame boundary."""
+
+    manager = getattr(mapper, "plugin_manager", None)
+    select = getattr(manager, "select", None)
+    selected_ids = getattr(manager, "selected_ids", None)
+    if not callable(select) or not isinstance(selected_ids, (list, tuple)):
+        return
+
+    try:
+        activation = json.loads(activation_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(activation, dict):
+        return
+    perception = activation.get("perception")
+    if (
+        not isinstance(perception, dict)
+        or perception.get("mapper_spec") != mapper_spec
+    ):
+        return
+    live_config = perception.get("mapper_config")
+    if not isinstance(live_config, dict):
+        return
+
+    # The CLI changes only the selected IDs. Keep a running mapper on its
+    # loaded plugin definitions and configs if a new activation was staged.
+    loaded_static_config = {
+        key: value for key, value in mapper_config.items() if key != "plugins"
+    }
+    live_static_config = {
+        key: value for key, value in live_config.items() if key != "plugins"
+    }
+    if live_static_config != loaded_static_config:
+        return
+
+    plugin_ids = live_config.get("plugins")
+    if not isinstance(plugin_ids, list) or not all(
+        isinstance(plugin_id, str) for plugin_id in plugin_ids
+    ):
+        return
+    if tuple(plugin_ids) == tuple(selected_ids):
+        return
+    try:
+        select(plugin_ids)
+    except Exception:
+        # A bad or stale selection must leave the currently applied plugins
+        # available to the next frame.
+        return
+
+
 @dataclass(frozen=True)
 class CommandResult:
     exit_code: int
@@ -94,8 +169,8 @@ class CommandResult:
 class _PendingAutomationFrame:
     context: DecisionFrameContext
     front_path: Path
-    # Evaluator-only shadow reference; never fed into the decision cycle.
-    shadow_reference: dict[str, Any] | None = None
+    # Evaluator-only chaser reference; never fed into the decision cycle.
+    chaser_reference: dict[str, Any] | None = None
 
 
 def run_vehicle_automation(
@@ -223,6 +298,12 @@ def run_vehicle_automation(
         if context.sensor_snapshot is None:
             mapper.reset(context.shared_memory)
             return None
+        _sync_live_perception_plugin_selection(
+            mapper,
+            manifest_path,
+            mapper_spec=mapper_spec,
+            mapper_config=mapper_config,
+        )
         output_dir_text = context.metadata.get("perception_output_dir")
         output_dir = (
             Path(output_dir_text)
@@ -252,7 +333,9 @@ def run_vehicle_automation(
     memory_step = None
     if memory_activation_path.exists():
         try:
-            memory_step = load_memory_step_if_present(memory_activation_path)
+            memory_activation = read_memory_activation(memory_activation_path)
+            memory_config = memory_selection_config(memory_activation)
+            memory_step = load_memory_step_from_bundle(memory_activation)
         except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
             return CommandResult(
                 2,
@@ -300,7 +383,7 @@ def run_vehicle_automation(
             worker_pid=os.getpid(),
             decision_activation=(
                 decision_activation
-                if decision_config.get("engine_id") == "shadow-proposals"
+                if decision_config.get("engine_id") in PROPOSAL_ENGINE_IDS
                 else None
             ),
             decision_activation_path=Path(bundle["decision_runtime_dir"]) / "active.json",
@@ -338,6 +421,7 @@ def run_vehicle_automation(
             "activation": display_path(manifest_path),
             "mapper_spec": mapper_spec,
             "mapper_config": mapper_config,
+            "plugin_report": _execution_plugin_report(mapper),
         },
         "decision": {
             "activation": display_path(Path(bundle["decision_runtime_dir"]) / "active.json"),
@@ -350,8 +434,8 @@ def run_vehicle_automation(
         "memory": (
             {
                 "activation": display_path(memory_activation_path),
-                "implementation_id": memory_step.activation.implementation_id,
-                "implementation_spec": memory_step.activation.implementation_spec,
+                "implementation_id": memory_step.status()["implementation_id"],
+                "implementation_spec": memory_step.status()["implementation_spec"],
                 "status": memory_step.status(),
             }
             if memory_step is not None
@@ -463,13 +547,13 @@ def run_vehicle_automation(
             }
         else:
             try:
-                snapshot = cycle_host.reset_memory()
+                report = cycle_host.reset_memory()
                 result = {
                     "schema": "automa_memory_reset_result_v0",
                     "ok": True,
                     "status": "reset",
                     "token": token,
-                    "snapshot": snapshot.to_dict() if snapshot is not None and hasattr(snapshot, "to_dict") else None,
+                    "report": report,
                     "memory": memory_step.status(),
                     "completed_at_ms": _timestamp_ms(),
                 }
@@ -487,8 +571,8 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_step.activation.implementation_id,
-                    "implementation_spec": memory_step.activation.implementation_spec,
+                    "implementation_id": memory_step.status()["implementation_id"],
+                    "implementation_spec": memory_step.status()["implementation_spec"],
                     "status": memory_step.status(),
                 }
             state["updated_at_ms"] = _timestamp_ms()
@@ -506,14 +590,17 @@ def run_vehicle_automation(
             raise ValueError(f"{context.frame_id} has no sensor snapshot")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
+        if memory_step is not None:
+            _sync_live_memory_plugin_selection(
+                memory_step, memory_activation_path, loaded_config=memory_config,
+            )
         cycle_result = cycle_host.run(context)
-        # Publish the accepted shadow frame first. The server-owned decision
+        # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False
         try:
-            engine = cycle_host.manager.engine
-            last_cycle = getattr(engine, "last_cycle_result", None)
-            published = publish_shadow_decision_frame(
+            last_cycle = cycle_result.action
+            published = publish_decision_frame(
                 cycle_result=last_cycle,
                 context_frame_id=context.frame_id,
                 vehicle_id=vehicle_id,
@@ -525,10 +612,10 @@ def run_vehicle_automation(
             )
             if (
                 not published
-                and str(decision_config.get("engine_id") or "") == "shadow-proposals"
+                and str(decision_config.get("engine_id") or "") in PROPOSAL_ENGINE_IDS
             ):
-                # Count for workers that staged shadow at start (including after
-                # restage invalidation where live activation no longer matches).
+                # Count for workers that staged a proposal engine at start (including
+                # after restage invalidation where live activation no longer matches).
                 reason = (
                     "gate_rejected"
                     if last_cycle is None
@@ -569,6 +656,10 @@ def run_vehicle_automation(
         else:
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
+        perception_plugin_report = _execution_plugin_report(mapper)
+        memory_plugin_report = (
+            _execution_plugin_report(memory_step) if memory_step is not None else None
+        )
 
         control_record = {
             **cycle_result.control.to_dict(),
@@ -600,13 +691,13 @@ def run_vehicle_automation(
             "capture_to_perception_ms": perception_completed_at_ms - snapshot.completed_at_ms,
             "sensor_snapshot": snapshot.to_dict(),
             "perception": perception_dict,
+            "perception_plugin_report": perception_plugin_report,
+            "memory_plugin_report": memory_plugin_report,
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
-            # Retained evidence from shared_memory["decision.snapshot"].
-            "memory": cycle_result.memory.to_dict()
-            if cycle_result.memory is not None
-            else None,
+            # The memory step's report of each plugin's state.
+            "memory": copy.deepcopy(cycle_result.memory),
             "control": control_record,
             "engine": cycle_host.manager.status(),
             "decision_cycle": cycle_result.to_dict(),
@@ -614,17 +705,17 @@ def run_vehicle_automation(
             "control_source": state["control_source"],
             "control_application": state["control_application"],
         }
-        # Shadow reference is evaluator-only: sibling of candidate results, not an input.
-        if isinstance(pending.shadow_reference, dict):
-            frame_record["shadow_reference"] = pending.shadow_reference
-            frame_record["shadow_alignment"] = {
-                "aligned": pending.shadow_reference.get("simulator_frame_index")
+        # The chaser reference is evaluator-only: sibling of candidate results, not an input.
+        if isinstance(pending.chaser_reference, dict):
+            frame_record["chaser_reference"] = pending.chaser_reference
+            frame_record["reference_alignment"] = {
+                "aligned": pending.chaser_reference.get("simulator_frame_index")
                 == simulator_frame_index
-                and pending.shadow_reference.get("simulation_epoch") == simulation_epoch,
+                and pending.chaser_reference.get("simulation_epoch") == simulation_epoch,
                 "candidate_frame_index": simulator_frame_index,
-                "shadow_frame_index": pending.shadow_reference.get("simulator_frame_index"),
+                "reference_frame_index": pending.chaser_reference.get("simulator_frame_index"),
                 "candidate_simulation_epoch": simulation_epoch,
-                "shadow_simulation_epoch": pending.shadow_reference.get("simulation_epoch"),
+                "reference_simulation_epoch": pending.chaser_reference.get("simulation_epoch"),
             }
         if view_server is not None:
             try:
@@ -694,11 +785,11 @@ def run_vehicle_automation(
                 "signals": len(perception.signals) if perception is not None else 0,
                 "control": control_record,
                 "engine": cycle_host.manager.status().get("engine"),
-                "shadow_aligned": bool(
-                    isinstance(pending.shadow_reference, dict)
-                    and pending.shadow_reference.get("simulator_frame_index")
+                "reference_aligned": bool(
+                    isinstance(pending.chaser_reference, dict)
+                    and pending.chaser_reference.get("simulator_frame_index")
                     == simulator_frame_index
-                    and pending.shadow_reference.get("simulation_epoch") == simulation_epoch
+                    and pending.chaser_reference.get("simulation_epoch") == simulation_epoch
                 ),
             }
             state["engine"] = cycle_host.manager.status()
@@ -725,10 +816,13 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_step.activation.implementation_id,
-                    "implementation_spec": memory_step.activation.implementation_spec,
+                    "implementation_id": memory_step.status()["implementation_id"],
+                    "implementation_spec": memory_step.status()["implementation_spec"],
                     "status": memory_step.status(),
                 }
+            perception_state = state.get("perception")
+            if isinstance(perception_state, dict):
+                perception_state["plugin_report"] = copy.deepcopy(perception_plugin_report)
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
 
@@ -907,25 +1001,25 @@ def run_vehicle_automation(
                 frame_index = int(simulator_frame_index)
                 frame_id = format_chase_frame_id(frame_index)
             else:
-                # Fail closed for live Chase: local counters cannot align shadow refs.
+                # Fail closed for live Chase: local counters cannot align chaser references.
                 raise ValueError(
                     "Chase sensor capture missing simulator frameIndex; "
-                    "cannot assign camera-derived frame identity for shadow alignment"
+                    "cannot assign camera-derived frame identity for reference alignment"
                 )
             simulation_epoch = simulator_epoch_from_snapshot(snapshot)
             if simulation_epoch is None:
                 raise ValueError(
                     "Chase sensor capture missing simulationEpoch; "
-                    "cannot establish atomic run identity for shadow alignment"
+                    "cannot establish atomic run identity for reference alignment"
                 )
             # Align SensorSnapshot.read_id with simulator identity (capture used a provisional id).
             if snapshot.read_id != frame_id:
                 snapshot = replace(snapshot, read_id=frame_id)
             if record:
                 perception_output_dir = perception_dir / frame_id
-            shadow_reference = None
-            if hasattr(car, "last_capture_shadow_reference"):
-                shadow_reference = getattr(car, "last_capture_shadow_reference", None)
+            chaser_reference = None
+            if hasattr(car, "last_capture_chaser_reference"):
+                chaser_reference = getattr(car, "last_capture_chaser_reference", None)
 
             front_reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
             front_path = (
@@ -966,8 +1060,8 @@ def run_vehicle_automation(
                 "sensor_snapshot": snapshot.to_dict(),
             }
             # Evaluator-only: never placed on DecisionFrameContext / observation.
-            if isinstance(shadow_reference, dict):
-                capture_record["shadow_reference"] = shadow_reference
+            if isinstance(chaser_reference, dict):
+                capture_record["chaser_reference"] = chaser_reference
             if view_server is not None:
                 try:
                     view_server.perception.publish_frame(frame_path=front_path, frame_record=capture_record)
@@ -1006,7 +1100,7 @@ def run_vehicle_automation(
                 _PendingAutomationFrame(
                     context=context,
                     front_path=front_path,
-                    shadow_reference=shadow_reference if isinstance(shadow_reference, dict) else None,
+                    chaser_reference=chaser_reference if isinstance(chaser_reference, dict) else None,
                 )
             )
 
@@ -1021,9 +1115,9 @@ def run_vehicle_automation(
                     "captured_at_ms": snapshot.completed_at_ms,
                     "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
                     "front_camera": display_path(latest_front_camera_path if not record else front_path),
-                    "shadow_aligned": isinstance(shadow_reference, dict)
-                    and shadow_reference.get("simulator_frame_index") == frame_index
-                    and shadow_reference.get("simulation_epoch") == simulation_epoch,
+                    "reference_aligned": isinstance(chaser_reference, dict)
+                    and chaser_reference.get("simulator_frame_index") == frame_index
+                    and chaser_reference.get("simulation_epoch") == simulation_epoch,
                 }
                 state["updated_at_ms"] = _timestamp_ms()
                 _write_json(state_path, state)
@@ -2397,9 +2491,7 @@ def _copy_file_atomic(source: Path, destination: Path) -> None:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    temporary.replace(path)
+    write_json_atomically(path, payload)
 
 
 def _record_decision_publish_skip(
@@ -2409,7 +2501,7 @@ def _record_decision_publish_skip(
     *,
     reason: str,
 ) -> None:
-    """Count a non-fatal shadow latest-frame publish skip (never raises).
+    """Count a non-fatal decision latest-frame publish skip (never raises).
 
     State persistence is best-effort. In-memory counters are updated first so a
     later successful state write still reflects the skip even if an intermediate
@@ -2459,7 +2551,7 @@ def _read_latest_decision_frame_for_view(
         frame.get("frame_id") != frame_id
         or frame.get("run_id") != run_id
         or frame.get("worker_pid") != worker_pid
-        or frame.get("activation_engine_id") != "shadow-proposals"
+        or frame.get("activation_engine_id") not in PROPOSAL_ENGINE_IDS
         or frame.get("activation_activated_at_ms") != activation_activated_at_ms
     ):
         return None

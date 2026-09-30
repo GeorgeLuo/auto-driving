@@ -24,7 +24,7 @@ from tests.implementations.vehicle.chase_frame_identity_fixtures import (
 
 
 class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
-    def test_read_sensors_uses_one_atomic_query_and_keeps_shadow_outside_snapshot(
+    def test_read_sensors_uses_one_atomic_query_and_keeps_reference_outside_snapshot(
         self,
     ) -> None:
         car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
@@ -92,7 +92,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             snapshot.readings[FRONT_CAMERA_SENSOR_ID].metadata["content_type"],
             "image/png",
         )
-        self.assertNotIn("shadow_reference", snapshot.metadata)
+        self.assertNotIn("chaser_reference", snapshot.metadata)
         self.assertNotIn("visibleWallCount", str(snapshot.to_dict()))
         self.assertNotIn("actor-control-reference", str(snapshot.to_dict()))
         self.assertEqual(
@@ -125,7 +125,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                     image_extension="png",
                 )
             )
-        self.assertIsNone(car.last_capture_shadow_reference)
+        self.assertIsNone(car.last_capture_chaser_reference)
         self.assertEqual(car.last_simulator_frame_index, 10)
         self.assertEqual(car.last_evaluator_reference["status"], "invalid")
         self.assertEqual(
@@ -159,7 +159,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                 )
             )
 
-        self.assertIsNone(car.last_capture_shadow_reference)
+        self.assertIsNone(car.last_capture_chaser_reference)
         self.assertEqual(car.last_evaluator_reference["status"], "unavailable")
         self.assertEqual(
             snapshot.readings[FRONT_CAMERA_SENSOR_ID].metadata["evaluator_reference"],

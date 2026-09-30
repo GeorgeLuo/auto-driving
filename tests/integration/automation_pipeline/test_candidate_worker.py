@@ -10,7 +10,8 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
+from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import lab_plugins
 from cli.automa_cli.lab_plugins import LabPerceptionMapper, candidate_status, discover_candidates
@@ -30,7 +31,7 @@ class CandidateWorkerIntegrationTests(unittest.TestCase):
                 "name": "Fixture candidate",
                 "description": "Test-only candidate using an existing lightweight plugin.",
                 "plugin": {
-                    "entrypoint": "implementations.perception.observation.plugin:FrameObservationPlugin",
+                    "entrypoint": "implementations.decision_cycle.perception.frame_observation.plugin:FrameObservationPlugin",
                     "config": {},
                 },
                 "runtime": {"python": ".venv/bin/python"},

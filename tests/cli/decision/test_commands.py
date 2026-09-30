@@ -84,10 +84,10 @@ class DecisionCommandTests(unittest.TestCase):
         self.assertEqual(decision["engine_id"], "obstacle-avoidance")
         self.assertEqual(
             decision["engine_spec"],
-            "implementations.decision.live_adapter:ObstacleAvoidanceAutonomyEngine",
+            "implementations.runtime.engines.mode_gated_action:ModeGatedActionEngine",
         )
 
-    def test_shadow_info_probe_is_read_only_without_a_runtime_producer(self) -> None:
+    def test_info_probe_is_read_only_without_a_runtime_producer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             update = run_automa(
@@ -97,7 +97,7 @@ class DecisionCommandTests(unittest.TestCase):
                 "--id",
                 "chase-sim-chaser",
                 "--engine",
-                "shadow-proposals",
+                "hold-action",
                 "--json",
                 runtime_root=runtime_root,
             )
@@ -123,7 +123,7 @@ class DecisionCommandTests(unittest.TestCase):
             self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
             payload = json.loads(info.stdout)
             self.assertEqual(payload["schema"], "vehicle_decision_info_v0")
-            self.assertEqual(payload["activation"]["engine_id"], "shadow-proposals")
+            self.assertEqual(payload["activation"]["engine_id"], "hold-action")
             combined = payload["combined_view"]
             self.assertFalse(combined["available"])
             self.assertEqual(combined["status"], "unavailable")

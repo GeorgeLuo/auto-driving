@@ -1,4 +1,4 @@
-"""Read-only live projection of accepted shadow decision cycles.
+"""Read-only live projection of accepted decision cycles.
 
 The runtime server owns this short-lived view.  It receives an accepted
 ``vehicle_decision_stream_frame_v0`` and the already-published capture bytes
@@ -95,7 +95,7 @@ def _evidence_projection(
     transaction_id: str,
     frame_id: str,
     observation: Any,
-    memory: Any,
+    evidence_input: Any,
 ) -> dict[str, Any]:
     """Project only evidence that is exactly attributable to the current image.
 
@@ -109,12 +109,11 @@ def _evidence_projection(
         if isinstance(observation, dict) and observation.get("status") == "ready"
         else None
     )
-    memory_value = (
-        memory.get("value")
-        if isinstance(memory, dict) and memory.get("status") == "ready"
+    records = (
+        evidence_input.get("value")
+        if isinstance(evidence_input, dict) and evidence_input.get("status") == "ready"
         else None
     )
-    records = memory_value.get("records") if isinstance(memory_value, dict) else None
     raw_records = records if isinstance(records, list) else []
     observation_id = (
         observation_value.get("observation_id")
@@ -623,14 +622,13 @@ class DecisionView:
         source = cycle.get("source") if isinstance(cycle, dict) else None
         authority = transaction.stream_frame.get("authority_summary")
         observation = source.get("observation") if isinstance(source, dict) else None
-        # Serialized retained evidence from shared_memory["decision.snapshot"],
-        # carried through the cycle publication.
-        memory = source.get("memory") if isinstance(source, dict) else None
+        # The audit copy of the retained evidence the proposals read.
+        evidence_input = source.get("evidence") if isinstance(source, dict) else None
         evidence = _evidence_projection(
             transaction_id=transaction.transaction_id,
             frame_id=transaction.frame_record["frame_id"],
             observation=observation,
-            memory=memory,
+            evidence_input=evidence_input,
         )
         return {
             "schema": DECISION_VIEW_SCHEMA,
@@ -662,7 +660,7 @@ class DecisionView:
             "provenance": {
                 "sensor_snapshot": _json_copy(transaction.frame_record.get("sensor_snapshot")),
                 "observation": _json_copy(observation),
-                "memory": _json_copy(memory),
+                "evidence": _json_copy(evidence_input),
             },
             "evidence": evidence,
             "authority": _json_copy(authority) if isinstance(authority, dict) else None,

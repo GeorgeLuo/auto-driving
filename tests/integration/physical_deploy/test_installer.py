@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from autonomy.decision import read_memory_activation
+from autonomy.decision_cycle.memory.activation import read_memory_activation
 from autonomy.runtime import read_decision_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.decision import ensure_vehicle_decision_activation
@@ -20,7 +20,7 @@ from cli.automa_cli.deploy import (
 )
 from cli.automa_cli.memory import ensure_vehicle_memory_activation
 from cli.automa_cli.perception import ensure_vehicle_perception_activation
-from implementations.perception.catalog import PERCEPTION_ALGORITHMS
+from implementations.decision_cycle.perception.catalog import PERCEPTION_ALGORITHMS
 
 
 class PhysicalDeployTests(unittest.TestCase):

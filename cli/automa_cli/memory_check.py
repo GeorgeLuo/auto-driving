@@ -12,13 +12,11 @@ from typing import Any, Callable, TextIO
 from urllib.parse import quote, urljoin
 from urllib.request import urlopen
 
-from autonomy.decision import (
-    ActivatedMemoryStep,
-    DecisionFrameContext,
-    Observation,
-    read_memory_activation,
-)
-from implementations.memory import (
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import read_memory_activation
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
     build_memory_activation_payload,
@@ -27,7 +25,7 @@ from implementations.memory import (
 from implementations.vehicle.chase_sim.frame_identity import (
     coerce_simulator_frame_index,
     format_chase_frame_id,
-    score_shadow_alignment_batch,
+    score_reference_alignment_batch,
 )
 
 from .automation import _automation_dir
@@ -41,11 +39,12 @@ from .chase_max_age import (
 )
 from .memory import (
     build_memory_provenance_rows,
-    memory_snapshot_digest,
+    memory_state_digest,
     post_memory_reset,
     probe_live_memory,
     render_memory_provenance_extract_html,
 )
+from .memory_report import memory_state
 from .paths import ROOT, display_path, safe_path_part
 from .perception_view import get_perception_view_status
 from .physical_observation import (
@@ -104,7 +103,7 @@ def run_vehicle_memory_check(
 ) -> CommandResult:
     """Run present/dropout/expiry/reset gates through activated memory.
 
-    - Chase-sim (discovered): live automation frames + shadow reference alignment.
+    - Chase-sim (discovered): live automation frames + chaser reference alignment.
     - Offline staging ids: process-local phase script.
     - PiCar: scores the **live onboard** step via publication.memory and
       onboard reset (no forced dropout, no ephemeral local reducer). Recorded
@@ -152,7 +151,7 @@ def run_vehicle_memory_check(
             vehicle_id
         )
         if automation_ready:
-            return run_chase_shadow_memory_check(
+            return run_chase_reference_memory_check(
                 vehicle_id=vehicle_id,
                 implementation_id=implementation_id,
                 record=record,
@@ -169,7 +168,7 @@ def run_vehicle_memory_check(
                 load_frame_image=load_frame_image,
             )
         # Discovered Chase without a running automation worker: keep the offline
-        # phase script for unit/dev use, but do not claim live shadow success.
+        # phase script for unit/dev use, but do not claim live reference success.
         return run_offline_memory_check(
             vehicle_id=vehicle_id,
             provider="chase-sim",
@@ -180,7 +179,7 @@ def run_vehicle_memory_check(
             output_root=output_root,
             safety_note=(
                 "Chase automation worker is not running; offline phase script only. "
-                "Start observe-only automation for live simulator frameIndex + shadow alignment "
+                "Start observe-only automation for live simulator frameIndex + reference alignment "
                 "(scenario chaser-depth-obstacles)."
             ),
         )
@@ -211,7 +210,7 @@ def _chase_automation_worker_running(vehicle_id: str) -> bool:
     return str(state.get("status") or "") == "running"
 
 
-def run_chase_shadow_memory_check(
+def run_chase_reference_memory_check(
     *,
     vehicle_id: str,
     implementation_id: str | None = None,
@@ -231,7 +230,7 @@ def run_chase_shadow_memory_check(
     """Score live Chase automation frames for identity, retention, max-age, reset.
 
     Requires a running automation worker. Candidate cycle results must carry
-    ``simulator_frame_index`` and an evaluator-only ``shadow_reference`` with the
+    ``simulator_frame_index`` and an evaluator-only ``chaser_reference`` with the
     same index. After retained-prior evidence is observed, lifecycle keys must
     leave live memory under max-age **without** reset. Map/debug never enter
     observation or memory inputs.
@@ -294,9 +293,9 @@ def run_chase_shadow_memory_check(
                 f"Chase memory reset failed: {reset_payload.get('error') or reset_payload}"
             )
         after_probe = do_probe()
-        reset_snapshot = chase_reset_snapshot_from_payload(reset_payload)
+        reset_state = chase_reset_state_from_payload(reset_payload)
         reset_score = score_live_reset(
-            reset_snapshot=reset_snapshot,
+            reset_state=reset_state,
             prior_epoch=prior_epoch,
             prior_reset_count=prior_reset_count,
             after_probe=after_probe if isinstance(after_probe, dict) else {},
@@ -308,11 +307,11 @@ def run_chase_shadow_memory_check(
                 after_probe=after_probe if isinstance(after_probe, dict) else {},
                 fallback_reason=str(reset_score.get("reason") or ""),
             )
-        return reset_payload, after_probe, reset_snapshot, reset_score
+        return reset_payload, after_probe, reset_state, reset_score
 
     _emit(
         output,
-        "Memory check (Chase shadow: identity → alignment → provenance → "
+        "Memory check (Chase reference: identity → alignment → provenance → "
         "max-age expiry → reset)",
     )
     _emit(output, f"vehicle: {vehicle_id}")
@@ -346,7 +345,7 @@ def run_chase_shadow_memory_check(
         (
             boundary_reset_payload,
             boundary_after_probe,
-            boundary_snapshot,
+            boundary_state,
             boundary_score,
         ) = reset_and_score(probe)
     except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
@@ -383,7 +382,7 @@ def run_chase_shadow_memory_check(
             2,
             "\n".join(
                 [
-                    f"Chase shadow check collected only {len(frames)} automation frame(s); need ≥{min_frames}.",
+                    f"Chase reference check collected only {len(frames)} automation frame(s); need ≥{min_frames}.",
                     "Ensure automation is running observe-only against a live Play session",
                     f"(scenario chaser-depth-obstacles) and writing {display_path(latest_json_path)}.",
                 ]
@@ -404,20 +403,20 @@ def run_chase_shadow_memory_check(
         except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
             return CommandResult(2, f"Could not record exact Chase source frames: {exc}")
 
-    alignment = score_shadow_alignment_batch(frames, min_frames=max(2, int(min_frames)))
+    alignment = score_reference_alignment_batch(frames, min_frames=max(2, int(min_frames)))
     phase_results.append(
         {
-            "phase": "shadow_alignment",
+            "phase": "reference_alignment",
             "passed": bool(alignment.get("passed")),
             "score": alignment,
             "frame_count": len(frames),
             "live_frame_ids": [frame.get("frame_id") for frame in frames],
-            "lifecycle_source": "live_automation_worker+shadow_reference",
+            "lifecycle_source": "live_automation_worker+chaser_reference",
         }
     )
     _emit(
         output,
-        f"phase: shadow_alignment  "
+        f"phase: reference_alignment  "
         f"{'PASS' if alignment.get('passed') else 'FAIL'}  "
         f"frames={alignment.get('frame_count')} aligned={alignment.get('aligned_count')}",
     )
@@ -466,10 +465,10 @@ def run_chase_shadow_memory_check(
         f"{observe_score.get('reason')}",
     )
 
-    isolation_score = score_shadow_reference_isolation(frames)
+    isolation_score = score_chaser_reference_isolation(frames)
     phase_results.append(
         {
-            "phase": "shadow_isolation",
+            "phase": "reference_isolation",
             "passed": bool(isolation_score.get("passed")),
             "score": isolation_score,
             "frame_count": len(frames),
@@ -478,7 +477,7 @@ def run_chase_shadow_memory_check(
     )
     _emit(
         output,
-        f"phase: shadow_isolation  "
+        f"phase: reference_isolation  "
         f"{'PASS' if isolation_score.get('passed') else 'FAIL'}  "
         f"{isolation_score.get('reason')}",
     )
@@ -527,7 +526,7 @@ def run_chase_shadow_memory_check(
             "\n".join(
                 [
                     f"Memory check: {vehicle_id}  FAIL",
-                    "Provider: chase-sim (live shadow)",
+                    "Provider: chase-sim (live reference)",
                     f"max_age_expiry: {reason}",
                 ]
             ),
@@ -726,7 +725,7 @@ def run_chase_shadow_memory_check(
 
     try:
         before_final_probe = do_probe()
-        reset_payload, after_probe, reset_snapshot, reset_score = reset_and_score(
+        reset_payload, after_probe, reset_state, reset_score = reset_and_score(
             before_final_probe
         )
     except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
@@ -749,13 +748,13 @@ def run_chase_shadow_memory_check(
     )
 
     passed = all(bool(item.get("passed")) for item in phase_results)
-    present_snapshot = {}
+    present_state = {}
     for frame in reversed(frames):
-        memory = frame.get("memory")
+        memory = memory_state(frame.get("memory"))
         if isinstance(memory, dict) and memory.get("records"):
-            present_snapshot = memory
+            present_state = memory
             break
-    provenance_rows = build_memory_provenance_rows(final=present_snapshot, frames=frames)
+    provenance_rows = build_memory_provenance_rows(final=present_state, frames=frames)
 
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
@@ -766,9 +765,9 @@ def run_chase_shadow_memory_check(
         "passed": passed,
         "phases": [item["phase"] for item in phase_results],
         "phase_results": phase_results,
-        "present_snapshot": present_snapshot,
-        "final_snapshot": reset_snapshot if isinstance(reset_snapshot, dict) else {},
-        "history_boundary_snapshot": boundary_snapshot,
+        "present_state": present_state,
+        "final_state": reset_state if isinstance(reset_state, dict) else {},
+        "history_boundary_state": boundary_state,
         "provenance_rows": provenance_rows,
         "frames_sampled": [
             {
@@ -776,11 +775,11 @@ def run_chase_shadow_memory_check(
                 "frame_index": frame.get("frame_index"),
                 "simulator_frame_index": frame.get("simulator_frame_index"),
                 "simulation_epoch": frame.get("simulation_epoch"),
-                "shadow_aligned": (frame.get("shadow_alignment") or {}).get("aligned")
-                if isinstance(frame.get("shadow_alignment"), dict)
+                "reference_aligned": (frame.get("reference_alignment") or {}).get("aligned")
+                if isinstance(frame.get("reference_alignment"), dict)
                 else (
-                    isinstance(frame.get("shadow_reference"), dict)
-                    and frame.get("shadow_reference", {}).get("simulator_frame_index")
+                    isinstance(frame.get("chaser_reference"), dict)
+                    and frame.get("chaser_reference", {}).get("simulator_frame_index")
                     == frame.get("simulator_frame_index")
                 ),
             }
@@ -807,7 +806,7 @@ def run_chase_shadow_memory_check(
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
     lines = [
         f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
-        f"Provider: chase-sim (live shadow)",
+        f"Provider: chase-sim (live reference)",
         f"Implementation: {selected}",
         f"Frames sampled: {len(frames)}",
         f"Phases: {', '.join(item['phase'] + ('✓' if item['passed'] else '✗') for item in phase_results)}",
@@ -815,30 +814,29 @@ def run_chase_shadow_memory_check(
     return CommandResult(exit_code, "\n".join(lines))
 
 
-def chase_reset_snapshot_from_payload(reset_payload: dict[str, Any]) -> dict[str, Any]:
-    """Normalize Chase worker reset result into an empty-state snapshot mapping."""
+def chase_reset_state_from_payload(reset_payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Chase worker reset result into an empty-state memory mapping."""
 
-    snapshot = reset_payload.get("snapshot")
-    if isinstance(snapshot, dict) and (
-        snapshot.get("health") in {"empty", "unavailable"}
-        or snapshot.get("record_count") == 0
-        or snapshot.get("records") == []
+    state = memory_state(reset_payload.get("report"))
+    if isinstance(state, dict) and (
+        state.get("health") in {"empty", "unavailable"}
+        or state.get("record_count") == 0
+        or state.get("records") == []
     ):
         return {
-            "health": str(snapshot.get("health") or "empty"),
-            "record_count": int(snapshot.get("record_count") or 0),
-            "records": list(snapshot.get("records") or []),
-            "epoch_id": snapshot.get("epoch_id"),
+            "health": str(state.get("health") or "empty"),
+            "record_count": int(state.get("record_count") or 0),
+            "records": list(state.get("records") or []),
+            "epoch_id": state.get("epoch_id"),
         }
 
     memory = reset_payload.get("memory")
     if isinstance(memory, dict):
-        status = memory.get("status") if isinstance(memory.get("status"), dict) else memory
+        status_block = memory.get("status") if isinstance(memory.get("status"), dict) else memory
+        status = memory_state(status_block)
         if isinstance(status, dict):
-            health = status.get("last_health") or status.get("health") or "empty"
-            count = status.get("last_record_count")
-            if count is None:
-                count = status.get("record_count")
+            health = status.get("health") or "empty"
+            count = status.get("record_count")
             try:
                 count_i = int(count if count is not None else 0)
             except (TypeError, ValueError):
@@ -847,7 +845,7 @@ def chase_reset_snapshot_from_payload(reset_payload: dict[str, Any]) -> dict[str
                 "health": str(health or "empty"),
                 "record_count": count_i,
                 "records": [],
-                "epoch_id": status.get("last_epoch_id") or status.get("epoch_id"),
+                "epoch_id": status.get("epoch_id"),
             }
 
     return {"health": "empty", "record_count": 0, "records": [], "epoch_id": None}
@@ -995,7 +993,7 @@ def collect_chase_automation_frames(
 
 
 def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any]:
-    """Require every memory snapshot to cite an observed current/prior frame."""
+    """Require every memory state to cite an observed current/prior frame."""
 
     all_sampled: dict[str, int] = {}
     for frame in frames:
@@ -1032,7 +1030,7 @@ def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any
             observed[containing_frame_id] = containing_index
         observed[format_chase_frame_id(containing_index)] = containing_index
 
-        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else {}
+        memory = memory_state(frame.get("memory")) or {}
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
         if not records:
             continue
@@ -1109,7 +1107,7 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
     - action_policy=observe_only
     - control_application=not_applied
     - zero steering/throttle on published control
-    - shadow chaser_control_source is not a WebSocket authority
+    - reference chaser_control_source is not a WebSocket authority
     """
 
     violations: list[str] = []
@@ -1123,12 +1121,12 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
         application = str(frame.get("control_application") or "")
         control_value = frame.get("control")
         control = control_value if isinstance(control_value, dict) else None
-        shadow = (
-            frame.get("shadow_reference")
-            if isinstance(frame.get("shadow_reference"), dict)
+        reference = (
+            frame.get("chaser_reference")
+            if isinstance(frame.get("chaser_reference"), dict)
             else {}
         )
-        shadow_source = str(shadow.get("chaser_control_source") or "").lower()
+        reference_source = str(reference.get("chaser_control_source") or "").lower()
 
         if control_source != "simulator":
             violations.append(f"{frame_id}:control_source={control_source or 'missing'}")
@@ -1156,14 +1154,14 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
                 elif abs(float(value)) > 1e-9:
                     violations.append(f"{frame_id}:control.{axis}={value}")
         # Built-in/simulator/keyboard/ai retain scenario authority; any WS path is forbidden.
-        if not shadow_source:
-            violations.append(f"{frame_id}:shadow.chaser_control_source=missing")
+        if not reference_source:
+            violations.append(f"{frame_id}:reference.chaser_control_source=missing")
         elif (
-            shadow_source in {"ws", "websocket", "external_ws", "external"}
-            or "ws" in shadow_source
-            or shadow_source.startswith("external")
+            reference_source in {"ws", "websocket", "external_ws", "external"}
+            or "ws" in reference_source
+            or reference_source.startswith("external")
         ):
-            violations.append(f"{frame_id}:shadow.chaser_control_source={shadow_source}")
+            violations.append(f"{frame_id}:reference.chaser_control_source={reference_source}")
 
     passed = bool(frames) and not violations
     return {
@@ -1239,13 +1237,13 @@ def derive_chase_safety_from_frames(
             if isinstance(frame, dict) and frame.get("control_application")
         }
     )
-    shadow_sources = sorted(
+    reference_sources = sorted(
         {
-            str((frame.get("shadow_reference") or {}).get("chaser_control_source") or "")
+            str((frame.get("chaser_reference") or {}).get("chaser_control_source") or "")
             for frame in frames
             if isinstance(frame, dict)
-            and isinstance(frame.get("shadow_reference"), dict)
-            and (frame.get("shadow_reference") or {}).get("chaser_control_source")
+            and isinstance(frame.get("chaser_reference"), dict)
+            and (frame.get("chaser_reference") or {}).get("chaser_control_source")
         }
     )
     observe_ok = bool(observe_score.get("passed"))
@@ -1256,7 +1254,7 @@ def derive_chase_safety_from_frames(
         "control_sources": control_sources,
         "action_policies": action_policies,
         "control_applications": applications,
-        "shadow_chaser_control_sources": shadow_sources,
+        "reference_chaser_control_sources": reference_sources,
         "action_policy": action_policies[0] if len(action_policies) == 1 else action_policies,
         "control_source": control_sources[0] if len(control_sources) == 1 else control_sources,
         "rewritten_engine_idle": (
@@ -1265,48 +1263,48 @@ def derive_chase_safety_from_frames(
             and applications == ["not_applied"]
         ),
         "simulator_retains_authority": observe_ok and control_sources == ["simulator"],
-        "lifecycle_source": "live_automation_worker+shadow_reference",
+        "lifecycle_source": "live_automation_worker+chaser_reference",
         "forced_dropout": False,
         "ephemeral_local_reducer": False,
-        "shadow_alignment_passed": bool(alignment_score.get("passed")),
+        "reference_alignment_passed": bool(alignment_score.get("passed")),
         "scenario_note": (
             "Live Chase automation frames preserve simulator frameIndex and pair "
-            "candidate cycle results with exact-identity evaluator-only shadow_reference. "
+            "candidate cycle results with exact-identity evaluator-only chaser_reference. "
             "Safety conclusions are derived from sampled frame control_source, "
-            "action_policy, control_application, and shadow authority."
+            "action_policy, control_application, and chaser reference control source."
         ),
     }
 
 
-def score_shadow_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, Any]:
-    """Shadow/debug must not appear inside observation or memory record inputs."""
+def score_chaser_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, Any]:
+    """Evaluator references and debug data must not appear in observation or memory record inputs."""
 
     leaks: list[str] = []
     for frame in frames:
         observation = frame.get("observation") if isinstance(frame.get("observation"), dict) else {}
-        if "shadow_reference" in observation:
-            leaks.append(f"{frame.get('frame_id')}:observation.shadow_reference")
+        if "chaser_reference" in observation:
+            leaks.append(f"{frame.get('frame_id')}:observation.chaser_reference")
         sensor = observation.get("sensor_snapshot")
         if isinstance(sensor, dict):
             meta = sensor.get("metadata") if isinstance(sensor.get("metadata"), dict) else {}
-            if "shadow_reference" in meta:
+            if "chaser_reference" in meta:
                 leaks.append(f"{frame.get('frame_id')}:observation.sensor_snapshot.metadata")
-        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else {}
+        memory = memory_state(frame.get("memory")) or {}
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
         for record in records:
             if not isinstance(record, dict):
                 continue
             blob = json.dumps(record, sort_keys=True, default=str)
-            if "shadow_reference" in blob or "chase_shadow_reference_" in blob:
+            if "chaser_reference" in blob or "chase_chaser_reference_" in blob:
                 leaks.append(f"{record.get('record_id')}:memory_record")
     passed = not leaks
     return {
         "passed": passed,
         "leaks": leaks[:12],
         "reason": (
-            "shadow_reference stays evaluator-only (absent from observation/memory inputs)"
+            "chaser_reference stays evaluator-only (absent from observation/memory inputs)"
             if passed
-            else f"shadow/debug leaked into controller inputs: {leaks[:5]}"
+            else f"evaluator reference/debug leaked into controller inputs: {leaks[:5]}"
         ),
     }
 
@@ -1363,10 +1361,10 @@ def run_offline_memory_check(
         name = str(phase["name"])
         _emit(output, f"phase: {name}")
         if name == "reset":
-            snapshot = step.reset(shared_memory)
+            fresh = step.reset(shared_memory)
             shared_memory.clear()
-            shared_memory["decision.snapshot"] = snapshot
-            final = snapshot.to_dict()
+            shared_memory.update(fresh)
+            final = memory_state(step.report()) or {}
             frames_for_phase: list[dict[str, Any]] = []
         else:
             frames_for_phase = list(phase.get("frames") or [])
@@ -1398,7 +1396,7 @@ def run_offline_memory_check(
             "health": final.get("health"),
             "record_count": final.get("record_count"),
             "epoch_id": final.get("epoch_id"),
-            "digest": memory_snapshot_digest(final),
+            "digest": memory_state_digest(final),
             "record_ids": sorted(
                 str(record.get("record_id"))
                 for record in (final.get("records") or [])
@@ -1409,7 +1407,7 @@ def run_offline_memory_check(
                 None if live_control is None else bool(live_control.get("control_zero"))
             ),
             "live_frame_ids": list(phase.get("live_frame_ids") or []),
-            "snapshot": final,
+            "state": final,
         }
         if live_control is not None and not live_control.get("control_zero"):
             phase_result["passed"] = False
@@ -1430,12 +1428,12 @@ def run_offline_memory_check(
 
     passed = all(bool(item.get("passed")) for item in phase_results)
     present_phase = next((item for item in phase_results if item["phase"] == "present"), None)
-    present_snapshot = (
-        present_phase.get("snapshot")
-        if isinstance(present_phase, dict) and isinstance(present_phase.get("snapshot"), dict)
+    present_state = (
+        present_phase.get("state")
+        if isinstance(present_phase, dict) and isinstance(present_phase.get("state"), dict)
         else {}
     )
-    provenance_rows = build_memory_provenance_rows(final=present_snapshot, frames=all_frames)
+    provenance_rows = build_memory_provenance_rows(final=present_state, frames=all_frames)
 
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
@@ -1446,11 +1444,11 @@ def run_offline_memory_check(
         "passed": passed,
         "phases": ["present", "dropout", "expiry", "reset"],
         "phase_results": [
-            {key: value for key, value in item.items() if key != "snapshot"}
+            {key: value for key, value in item.items() if key != "state"}
             for item in phase_results
         ],
-        "present_snapshot": present_snapshot,
-        "final_snapshot": phase_results[-1]["snapshot"] if phase_results else {},
+        "present_state": present_state,
+        "final_state": phase_results[-1]["state"] if phase_results else {},
         "provenance_rows": provenance_rows,
         "safety": {
             "movement_commands_sent": False,
@@ -1639,7 +1637,7 @@ def run_physical_memory_check(
         if live_memory is None:
             return CommandResult(
                 2,
-                f"{placement}: publication has no memory snapshot. "
+                f"{placement}: publication has no memory report. "
                 "Deploy memory activation (core+autonomy) so the onboard step is live.",
             )
         _emit(
@@ -1822,15 +1820,15 @@ def run_physical_memory_check(
         )
     # Empty-state evidence comes from the atomic reset response, not a later probe
     # (the always-on cycle can repopulate memory before the next publication).
-    reset_snapshot = reset_payload.get("snapshot")
-    if not isinstance(reset_snapshot, dict):
+    reset_state = memory_state(reset_payload.get("report"))
+    if not isinstance(reset_state, dict):
         return CommandResult(
             2,
-            "reset: onboard reset response missing empty snapshot payload",
+            "reset: onboard reset response missing its memory report",
         )
     after_live = do_probe()
     reset_score = score_live_reset(
-        reset_snapshot=reset_snapshot,
+        reset_state=reset_state,
         prior_epoch=prior_epoch,
         prior_reset_count=prior_reset_count,
         after_probe=after_live if isinstance(after_live, dict) else {},
@@ -1839,7 +1837,7 @@ def run_physical_memory_check(
         _phase_result(
             "reset",
             reset_score,
-            reset_snapshot,
+            reset_state,
             live_control=None,
             live_frame_ids=[],
             source="live_onboard_reset+probe",
@@ -1849,8 +1847,8 @@ def run_physical_memory_check(
     _emit_phase(output, phase_results[-1])
 
     passed = all(bool(item.get("passed")) for item in phase_results)
-    present_snapshot = present_mem
-    provenance_rows = build_memory_provenance_rows(final=present_snapshot, frames=all_frames)
+    present_state = present_mem
+    provenance_rows = build_memory_provenance_rows(final=present_state, frames=all_frames)
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
@@ -1860,8 +1858,8 @@ def run_physical_memory_check(
         "passed": passed,
         "phases": ["present", "dropout", "expiry", "reset"],
         "phase_results": phase_results,
-        "present_snapshot": present_snapshot,
-        "final_snapshot": reset_snapshot,
+        "present_state": present_state,
+        "final_state": reset_state,
         "provenance_rows": provenance_rows,
         "safety": {
             "movement_commands_sent": False,
@@ -1907,12 +1905,9 @@ def run_physical_memory_check(
 
 
 def live_memory_from_publication(publication: dict[str, Any]) -> dict[str, Any] | None:
-    """Extract retained evidence from a publication.
+    """Extract the last memory plugin's state from a publication's memory report."""
 
-    The snapshot originates at shared_memory["decision.snapshot"].
-    """
-
-    memory = publication.get("memory")
+    memory = memory_state(publication.get("memory"))
     if not isinstance(memory, dict):
         return None
     # Normalize count if only records are present.
@@ -1922,7 +1917,7 @@ def live_memory_from_publication(publication: dict[str, Any]) -> dict[str, Any] 
 
 
 def live_memory_from_probe(probe: dict[str, Any]) -> dict[str, Any] | None:
-    """Build a snapshot-like dict from vehicle_memory_live_v0 probe fields."""
+    """Build a memory-state dict from vehicle_memory_live_v0 probe fields."""
 
     if not isinstance(probe, dict):
         return None
@@ -2033,33 +2028,33 @@ def observation_evidence_keys(publication: dict[str, Any]) -> set[str]:
 
 def score_live_reset(
     *,
-    reset_snapshot: dict[str, Any],
+    reset_state: dict[str, Any],
     prior_epoch: str | None,
     prior_reset_count: int | None,
     after_probe: dict[str, Any],
 ) -> dict[str, Any]:
-    """Score empty-state from the atomic reset snapshot; transition from probe.
+    """Score empty-state from the atomic reset state; transition from probe.
 
     The always-on cycle may repopulate memory before a later probe, so the probe
     is used only for epoch/reset_count transition — not emptiness.
     """
 
     records = (
-        reset_snapshot.get("records") if isinstance(reset_snapshot.get("records"), list) else []
+        reset_state.get("records") if isinstance(reset_state.get("records"), list) else []
     )
     try:
-        count = int(reset_snapshot.get("record_count") if reset_snapshot.get("record_count") is not None else len(records))
+        count = int(reset_state.get("record_count") if reset_state.get("record_count") is not None else len(records))
     except (TypeError, ValueError):
         count = len(records)
-    health = str(reset_snapshot.get("health") or "")
+    health = str(reset_state.get("health") or "")
     empty_ok = count == 0 and health in {"empty", "unavailable"} and not records
 
-    snapshot_epoch = str(reset_snapshot.get("epoch_id") or "")
-    after_epoch = str(after_probe.get("last_epoch_id") or snapshot_epoch or "")
+    state_epoch = str(reset_state.get("epoch_id") or "")
+    after_epoch = str(after_probe.get("last_epoch_id") or state_epoch or "")
     epoch_changed = bool(prior_epoch) and bool(after_epoch) and after_epoch != prior_epoch
     # Reset response epoch alone can also prove transition if probe is lagging.
-    snapshot_epoch_changed = (
-        bool(prior_epoch) and bool(snapshot_epoch) and snapshot_epoch != prior_epoch
+    state_epoch_changed = (
+        bool(prior_epoch) and bool(state_epoch) and state_epoch != prior_epoch
     )
     reset_count = after_probe.get("reset_count")
     count_bumped = False
@@ -2068,20 +2063,20 @@ def score_live_reset(
             count_bumped = int(reset_count) > int(prior_reset_count)
         except (TypeError, ValueError):
             count_bumped = False
-    transition_ok = epoch_changed or snapshot_epoch_changed or count_bumped
+    transition_ok = epoch_changed or state_epoch_changed or count_bumped
 
     if not empty_ok:
         return {
             "passed": False,
             "reason": (
-                "onboard reset snapshot was not empty "
+                "onboard reset state was not empty "
                 f"(health={health!r} record_count={count})"
             ),
             "prior_epoch": prior_epoch,
-            "epoch_id": after_epoch or snapshot_epoch,
+            "epoch_id": after_epoch or state_epoch,
             "prior_reset_count": prior_reset_count,
             "reset_count": reset_count,
-            "record_ids": sorted(record_ids_from_memory(reset_snapshot)),
+            "record_ids": sorted(record_ids_from_memory(reset_state)),
         }
     if not transition_ok:
         return {
@@ -2089,11 +2084,11 @@ def score_live_reset(
             "reason": (
                 "reset did not show epoch_id or reset_count transition on the live host "
                 f"(prior_epoch={prior_epoch!r} after_epoch={after_epoch!r} "
-                f"snapshot_epoch={snapshot_epoch!r} "
+                f"state_epoch={state_epoch!r} "
                 f"prior_reset_count={prior_reset_count} after_reset_count={reset_count})"
             ),
             "prior_epoch": prior_epoch,
-            "epoch_id": after_epoch or snapshot_epoch,
+            "epoch_id": after_epoch or state_epoch,
             "prior_reset_count": prior_reset_count,
             "reset_count": reset_count,
             "record_ids": [],
@@ -2101,11 +2096,11 @@ def score_live_reset(
     return {
         "passed": True,
         "reason": (
-            "onboard reset returned empty snapshot with epoch/reset_count transition "
+            "onboard reset returned empty state with epoch/reset_count transition "
             "(post-reset probe may already show repopulated always-on evidence)"
         ),
         "prior_epoch": prior_epoch,
-        "epoch_id": after_epoch or snapshot_epoch,
+        "epoch_id": after_epoch or state_epoch,
         "prior_reset_count": prior_reset_count,
         "reset_count": reset_count,
         "record_ids": [],
@@ -2123,7 +2118,7 @@ def wait_for_live_key_expiry(
     timeout_s: float,
     poll_timeout_s: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Poll live publications until present keys leave the onboard memory snapshot."""
+    """Poll live publications until present keys leave the onboard memory state."""
 
     deadline = time.monotonic() + max(1.0, float(timeout_s))
     last_frame_id = previous_frame_id
@@ -2202,14 +2197,14 @@ def _phase_result(
         "health": final.get("health"),
         "record_count": final.get("record_count"),
         "epoch_id": final.get("epoch_id"),
-        "digest": memory_snapshot_digest(final) if isinstance(final, dict) else None,
+        "digest": memory_state_digest(final) if isinstance(final, dict) else None,
         "record_ids": sorted(record_ids_from_memory(final)),
         "live_control_zero": (
             None if live_control is None else bool(live_control.get("control_zero"))
         ),
         "live_frame_ids": live_frame_ids,
         "lifecycle_source": source,
-        "snapshot": final,
+        "state": final,
     }
     if extra:
         payload.update(extra)
@@ -2469,7 +2464,7 @@ def score_memory_check_phase(
             "reason": (
                 "retained at least one thing key from present observations"
                 if passed
-                else "expected healthy snapshot with retained thing keys after present"
+                else "expected healthy state with retained thing keys after present"
             ),
             "record_ids": sorted(record_ids),
         }
@@ -2521,7 +2516,7 @@ def score_memory_check_phase(
             "reason": (
                 "reset produced a new empty epoch"
                 if passed
-                else "expected empty snapshot with new epoch_id after reset"
+                else "expected empty state with new epoch_id after reset"
             ),
             "prior_epoch": prior_epoch,
             "epoch_id": epoch,
@@ -2579,9 +2574,9 @@ def write_memory_check_record(
     record_dir = Path(output_root) / run_id
     record_dir.mkdir(parents=True, exist_ok=False)
 
-    present_snapshot = (
-        report.get("present_snapshot")
-        if isinstance(report.get("present_snapshot"), dict)
+    present_state = (
+        report.get("present_state")
+        if isinstance(report.get("present_state"), dict)
         else {}
     )
     provenance_rows = (
@@ -2591,7 +2586,7 @@ def write_memory_check_record(
     )
     per_frame = []
     for frame in all_frames:
-        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else {}
+        memory = memory_state(frame.get("memory")) or {}
         per_frame.append(
             {
                 "frame_id": frame.get("frame_id"),
@@ -2610,9 +2605,9 @@ def write_memory_check_record(
         ]
     extract_payload = {
         "implementation_id": report.get("implementation_id"),
-        "digest": memory_snapshot_digest(present_snapshot) if present_snapshot else "",
+        "digest": memory_state_digest(present_state) if present_state else "",
         "frame_count": len(all_frames),
-        "final": present_snapshot,
+        "final": present_state,
         "per_frame": per_frame,
     }
     (record_dir / "sequence.json").write_text(
@@ -2637,7 +2632,7 @@ def write_memory_check_record(
         encoding="utf-8",
     )
     (record_dir / "present_memory.json").write_text(
-        json.dumps(present_snapshot, indent=2, sort_keys=True, default=str),
+        json.dumps(present_state, indent=2, sort_keys=True, default=str),
         encoding="utf-8",
     )
     image_paths: dict[str, str] = {}
@@ -2747,7 +2742,7 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
         )
         if max_age_passed:
             notes.append(
-                "The live Chase check covers history boundary, atomic shadow alignment, "
+                "The live Chase check covers history boundary, atomic reference alignment, "
                 "ordered provenance, max-age expiry without reset, observe-only isolation, "
                 "and reset."
             )
@@ -2758,7 +2753,7 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
             )
         else:
             notes.append(
-                "The live Chase check covers history boundary, atomic shadow alignment, "
+                "The live Chase check covers history boundary, atomic reference alignment, "
                 "ordered provenance, observe-only isolation, and reset."
             )
     else:
@@ -2773,7 +2768,7 @@ def _load_check_step(
     vehicle_id: str,
     implementation_id: str,
     force_ephemeral: bool,
-) -> tuple[ActivatedMemoryStep, str]:
+) -> tuple[PluginMemoryRunner, str]:
     # Check uses fixed short max_age so expiry is deterministic offline.
     # force_ephemeral reserved for future staged-activation variants.
     del force_ephemeral
@@ -2798,7 +2793,7 @@ def _load_check_step(
     handle.close()
     path = Path(handle.name)
     try:
-        step = ActivatedMemoryStep(read_memory_activation(path))
+        step = PluginMemoryRunner(read_memory_activation(path))
     finally:
         try:
             path.unlink(missing_ok=True)
@@ -2808,11 +2803,11 @@ def _load_check_step(
 
 
 def _feed_frames(
-    step: ActivatedMemoryStep,
+    step: PluginMemoryRunner,
     frames: list[dict[str, Any]],
     shared_memory: dict[str, Any],
 ) -> dict[str, Any]:
-    snapshot = step.snapshot()
+    report = step.report()
     for frame in frames:
         observation = Observation.from_dict(frame["observation"])
         context = DecisionFrameContext(
@@ -2821,8 +2816,8 @@ def _feed_frames(
             timestamp_ms=int(frame["timestamp_ms"]),
             shared_memory=shared_memory,
         )
-        snapshot = step.update(context, observation)
-    return snapshot.to_dict()
+        report = step.update(context, observation)
+    return memory_state(report) or {}
 
 
 def _emit(output: TextIO | None, message: str) -> None:

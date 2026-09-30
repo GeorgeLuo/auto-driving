@@ -460,7 +460,7 @@
       if (!rows.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = latest?.memory ? "No keys in this filter." : "No memory snapshot in publication yet.";
+        empty.textContent = latest?.memory ? "No keys in this filter." : "No memory report in publication yet.";
         keyList.append(empty);
         return;
       }
@@ -495,7 +495,7 @@
           valueBody.hidden = true;
           valueEmpty.textContent = latest?.memory
             ? "Click a key on the left to inspect its mapped value."
-            : "Waiting for a memory snapshot.";
+            : "Waiting for a memory report.";
         }
         return;
       }

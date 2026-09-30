@@ -8,7 +8,10 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.perception import PerceivedThing, ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceivedThing,
+    ViewLocation,
+)
 
 def _working_rgb(rgb: np.ndarray, working_width: int) -> np.ndarray:
     source_height, source_width = rgb.shape[:2]

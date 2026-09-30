@@ -4,21 +4,20 @@ import importlib
 import json
 import os
 import shutil
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
-from autonomy.perception import (
-    build_perception_request,
-    instantiate_perception_mapper,
-)
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.activation import instantiate_perception_mapper
+from autonomy.decision_cycle.perception.selection import perception_plugin_manager
+from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
     available_perception_algorithm_ids,
@@ -35,6 +34,7 @@ from .bundles import (
 from .decision import ensure_vehicle_decision_activation
 from .lab_plugins import PerceptionCandidate, candidate_status, get_candidate
 from .paths import display_path, safe_path_part
+from .staged_bundle import StagedBundleImport, write_json_atomically
 from .perception_view import get_perception_view_status
 from .physical_observation import (
     LATEST_FRAME_PATH,
@@ -55,9 +55,12 @@ from .vehicles import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "perception"
+PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "decision_cycle" / "perception"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 LAB_CANDIDATE_MAPPER_SPEC = "cli.automa_cli.lab_plugins:LabPerceptionMapper"
+# The staged mapper is an autonomy class, so the bundle supplies autonomy as
+# well as implementations. Memory does not swap autonomy.
+_BUNDLE_PREFIXES = ("autonomy", "implementations")
 
 
 @dataclass(frozen=True)
@@ -368,13 +371,13 @@ def set_vehicle_perception_plugin(
     mapper_config = _manifest_get_dict(manifest, "perception", "mapper_config")
     before = _configured_plugins({"mapper_config": mapper_config})
     try:
-        available = _available_plugins(
-            mapper_spec=mapper_spec,
-            mapper_config=mapper_config,
-            bundle_root=bundle_root,
+        manager = perception_plugin_manager(
+            mapper_config.get("plugin_specs", {}),
+            mapper_config.get("plugin_configs", {}),
         )
-    except Exception as exc:
-        return CommandResult(2, f"Could not inspect deployed mapper plugins: {exc}")
+        available = sorted(manager.available_ids)
+    except PluginManagementError as exc:
+        return CommandResult(2, f"Could not inspect deployed plugin catalog: {exc}")
     if plugin_id not in available:
         return CommandResult(
             2,
@@ -387,14 +390,16 @@ def set_vehicle_perception_plugin(
             ),
         )
 
-    after = list(before)
-    changed = False
-    if enabled and plugin_id not in after:
-        after.append(plugin_id)
-        changed = True
-    elif not enabled and plugin_id in after:
-        after = [plugin for plugin in after if plugin != plugin_id]
-        changed = True
+    try:
+        manager.select(before)
+        if enabled:
+            manager.add(plugin_id)
+        else:
+            manager.remove(plugin_id)
+        after = list(manager.selected_ids)
+    except PluginManagementError as exc:
+        return CommandResult(2, str(exc))
+    changed = after != before
 
     if changed:
         mapper_config["plugins"] = after
@@ -415,7 +420,7 @@ def set_vehicle_perception_plugin(
             "enabled": enabled,
             "changed_at_ms": int(time.time() * 1000),
         }
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        write_json_atomically(manifest_path, manifest)
 
     payload = {
         "schema": "vehicle_perception_plugin_update_v0",
@@ -1031,21 +1036,10 @@ def _instantiate_mapper_from_bundle(
     mapper_config: dict[str, Any],
     bundle_root: Path,
 ):
-    """Construct a staged mapper while all of its imports resolve to one bundle."""
+    """Construct a staged mapper and retain its bundle import context."""
 
-    bundle_root_text = str(bundle_root)
-    staged_prefixes = ("autonomy", "implementations")
-    cached = {
-        name: module
-        for name, module in list(sys.modules.items())
-        if name in staged_prefixes or any(name.startswith(f"{prefix}.") for prefix in staged_prefixes)
-    }
-    for name in cached:
-        sys.modules.pop(name, None)
-    previous_dont_write_bytecode = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True
-    sys.path.insert(0, bundle_root_text)
-    try:
+    import_context = StagedBundleImport(bundle_root, _BUNDLE_PREFIXES)
+    with import_context.activate():
         module = importlib.import_module(module_name)
         mapper_cls = getattr(module, class_name)
         mapper = mapper_cls(**mapper_config)
@@ -1056,19 +1050,19 @@ def _instantiate_mapper_from_bundle(
                     f"does not implement {method_name}()"
                 )
         mapper.reset()
-    finally:
-        sys.dont_write_bytecode = previous_dont_write_bytecode
-        try:
-            sys.path.remove(bundle_root_text)
-        except ValueError:
-            pass
-        for name in [
-            name
-            for name in list(sys.modules)
-            if name in staged_prefixes or any(name.startswith(f"{prefix}.") for prefix in staged_prefixes)
-        ]:
-            sys.modules.pop(name, None)
-        sys.modules.update(cached)
+
+    manager = getattr(mapper, "plugin_manager", None)
+    if callable(getattr(manager, "select", None)):
+        for method_name in ("reset", "describe_schema", "perceive", "close"):
+            method = getattr(mapper, method_name, None)
+            if not callable(method):
+                continue
+
+            def invoke_in_bundle(*args, _method=method, **kwargs):
+                with import_context.activate():
+                    return _method(*args, **kwargs)
+
+            setattr(mapper, method_name, invoke_in_bundle)
     return mapper
 
 
@@ -1237,9 +1231,17 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
                 if isinstance(inputs, list) and inputs
                 else "none"
             )
+            catalog_id = plugin.get("plugin_id", "unknown")
+            implementation_id = plugin.get("implementation_id")
+            implementation_text = (
+                f" implementation={implementation_id}"
+                if implementation_id and implementation_id != catalog_id
+                else ""
+            )
             lines.append(
-                f"- {plugin.get('plugin_id', 'unknown')} "
-                f"[{contract.get('state_mode', 'unknown')}] components={component_text}"
+                f"- {catalog_id} "
+                f"[{contract.get('state_mode', 'unknown')}] "
+                f"components={component_text}{implementation_text}"
             )
 
     output_schema = schema.get("output") if isinstance(schema.get("output"), dict) else {}
@@ -1527,26 +1529,6 @@ def _configured_plugins(activation: dict[str, Any]) -> list[str]:
     return [str(plugin) for plugin in plugins]
 
 
-def _available_plugins(*, mapper_spec: str, mapper_config: dict[str, Any], bundle_root: Path) -> list[str]:
-    module_name, separator, _class_name = mapper_spec.partition(":")
-    if not separator:
-        raise ValueError("mapper spec must be 'module.path:ClassName'")
-
-    mapper = _load_mapper(mapper_spec, mapper_config, bundle_root=bundle_root)
-    try:
-        describe = getattr(mapper, "describe_schema", None)
-        if not callable(describe):
-            return []
-        schema = describe()
-    finally:
-        _close_mapper(mapper)
-    configuration = schema.get("configuration") if isinstance(schema, dict) else {}
-    available = configuration.get("available_plugins") if isinstance(configuration, dict) else []
-    if isinstance(available, list):
-        return sorted(str(plugin) for plugin in available)
-    return []
-
-
 def _format_plugin_update(payload: dict[str, Any]) -> str:
     action = "enabled" if payload["enabled"] else "disabled"
     status = "Updated" if payload["changed"] else "No change"
@@ -1555,5 +1537,6 @@ def _format_plugin_update(payload: dict[str, Any]) -> str:
             f"{status}: {payload['plugin']} {action} for {payload['vehicle_id']}",
             f"Activation: {payload['activation']}",
             f"Enabled plugins: {', '.join(payload['plugins_after']) or 'none'}",
+            "A running automation applies this change on its next perception frame.",
         ]
     )

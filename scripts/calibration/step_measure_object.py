@@ -19,7 +19,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from implementations.vehicle.picar.defaults import get_default_local_car_base_url
-from implementations.perception.features import analyze_tracked_sequence
+from implementations.decision_cycle.perception.algorithms.features.feature_sequence import (
+    analyze_tracked_sequence,
+)
 
 
 @dataclass

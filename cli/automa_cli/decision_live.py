@@ -8,6 +8,7 @@ import webbrowser
 from dataclasses import dataclass
 from typing import Any, TextIO
 
+from autonomy.decision_cycle.memory.plugin_runner import MEMORY_REPORT_SCHEMA
 from .decision import (
     CommandResult,
     DecisionSurfaceError,
@@ -99,15 +100,15 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         else None
     )
     observation_value = observation_value if isinstance(observation_value, dict) else None
-    # Serialized retained evidence from shared_memory["decision.snapshot"] in
-    # the published cycle source.
-    memory = source.get("memory") if isinstance(source, dict) else None
-    memory_value = (
-        memory.get("value")
-        if isinstance(memory, dict) and memory.get("status") == "ready"
+    # The audit copy of the retained evidence the proposals read, from the
+    # published cycle source.
+    evidence = source.get("evidence") if isinstance(source, dict) else None
+    evidence_value = (
+        evidence.get("value")
+        if isinstance(evidence, dict) and evidence.get("status") == "ready"
         else None
     )
-    memory_value = memory_value if isinstance(memory_value, dict) else None
+    evidence_value = evidence_value if isinstance(evidence_value, list) else None
     sensor_snapshot = (
         observation_value.get("sensor_snapshot")
         if isinstance(observation_value, dict)
@@ -152,7 +153,22 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         ),
         "perception": perception,
         "observation": observation_value,
-        "memory": memory_value,
+        # The publication carries the evidence the decision read, not the memory
+        # step's report; present it as one labeled entry for the memory panel.
+        "memory": (
+            {
+                "schema": MEMORY_REPORT_SCHEMA,
+                "plugins": [
+                    {
+                        "plugin_id": "decision_evidence",
+                        "implementation_id": None,
+                        "state": {"records": evidence_value, "record_count": len(evidence_value)},
+                    }
+                ],
+            }
+            if evidence_value is not None
+            else None
+        ),
         "algorithm": (
             observation_value.get("perception_plugin_id")
             if isinstance(observation_value, dict)
@@ -323,7 +339,7 @@ def run_live_decision_monitor(
             print(
                 f"Live decision view: {view_url}\n"
                 f"Vehicle: {resolved.vehicle_id} ({resolved.base_url})\n"
-                "Read-only shadow view; no vehicle commands are sent. Ctrl-C stops it.",
+                "Read-only decision view; no vehicle commands are sent. Ctrl-C stops it.",
                 file=output,
                 flush=True,
             )

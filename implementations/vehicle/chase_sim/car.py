@@ -260,9 +260,9 @@ class ChaseSimCar(CarInterface):
         self.ws_url = (ws_url or get_default_chase_ui_ws_url()).strip() or DEFAULT_CHASE_UI_WS_URL
         self.timeout_s = float(timeout_s)
         self.client = MetricsUiWsClient(self.ws_url, timeout_s=self.timeout_s)
-        # Evaluator-only shadow reference from the most recent capture. Not part of
+        # Evaluator-only chaser reference from the most recent capture. Not part of
         # SensorSnapshot so it never enters observation/memory inputs.
-        self._last_capture_shadow_reference: dict[str, Any] | None = None
+        self._last_capture_chaser_reference: dict[str, Any] | None = None
         self._last_evaluator_reference: dict[str, Any] = {
             "status": "unavailable",
             "reason": "not_captured",
@@ -502,10 +502,10 @@ class ChaseSimCar(CarInterface):
         }
 
     @property
-    def last_capture_shadow_reference(self) -> dict[str, Any] | None:
-        """Evaluator-only shadow reference from the most recent front-camera capture."""
+    def last_capture_chaser_reference(self) -> dict[str, Any] | None:
+        """Evaluator-only chaser reference from the most recent front-camera capture."""
 
-        return self._last_capture_shadow_reference
+        return self._last_capture_chaser_reference
 
     @property
     def last_simulator_frame_index(self) -> int | None:
@@ -671,7 +671,7 @@ class ChaseSimCar(CarInterface):
             raw_image = raw_sensor.get("image") if isinstance(raw_sensor, dict) else None
             result["image"] = dict(raw_image) if isinstance(raw_image, dict) else None
 
-        self._last_capture_shadow_reference = (
+        self._last_capture_chaser_reference = (
             evaluator.get("reference")
             if evaluator.get("status") == "available"
             and isinstance(evaluator.get("reference"), dict)
@@ -929,7 +929,7 @@ class ChaseSimCar(CarInterface):
                 else None
             )
 
-        self._last_capture_shadow_reference = (
+        self._last_capture_chaser_reference = (
             evaluator.get("reference")
             if isinstance(evaluator, dict)
             and evaluator.get("status") == "available"
@@ -1132,7 +1132,7 @@ class ChaseSimCar(CarInterface):
         _reject_unsupported_sensors(request)
         started_ms = _timestamp_ms()
         readings: dict[str, SensorReading] = {}
-        self._last_capture_shadow_reference = None
+        self._last_capture_chaser_reference = None
         self._last_evaluator_reference = {
             "status": "unavailable",
             "reason": "not_captured",

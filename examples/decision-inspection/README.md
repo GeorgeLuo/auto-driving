@@ -1,8 +1,8 @@
 # Decision inspector
 
 This sample is one synthetic saved observation/memory input with an obstruction.
-The inspector computes both side scenarios with the packaged shadow decision
-engine. It does not capture images, start automation, or send vehicle commands.
+The inspector computes both side scenarios with the packaged proposal
+composition. It does not capture images, start automation, or send vehicle commands.
 
 From the repository root:
 
@@ -20,9 +20,9 @@ To get the same artifacts without starting a server:
 ./cli/automa vehicles decision inspect --from-run examples/decision-inspection --json
 ```
 
-Supply any saved `automa_decision_apply_sequence_v0` file or directory containing
+Supply any saved `automa_decision_apply_sequence_v1` file or directory containing
 `sequence.json`. Use `--frame N` to select its zero-based frame position.
-Use `--id <vehicle>` to read a staged shadow engine configuration; omit it to
+Use `--id <vehicle>` to read a staged hold-action configuration; omit it to
 use packaged defaults without staging a vehicle. `--port N` selects a preferred
 local port. Ctrl-C stops the inspector.
 

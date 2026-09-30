@@ -9,7 +9,7 @@ import numpy as np
 from autonomy.runtime.manager import AutonomyManager
 from cli.automa_cli.decision import DECISION_ENGINES, ENGINE_ID
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
+from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
 from implementations.runtime.donkeycar import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
@@ -20,7 +20,7 @@ from implementations.runtime.donkeycar import (
 
 
 class ObservationPublicationTests(unittest.TestCase):
-    def _shadow_part(self) -> AutonomyPilotPart:
+    def _hold_part(self) -> AutonomyPilotPart:
         manager = AutonomyManager(
             default_engine_spec=ADAPTER_ENGINE_SPEC,
             default_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
@@ -75,32 +75,20 @@ class ObservationPublicationTests(unittest.TestCase):
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
-        self.assertEqual(payload["control"]["reason"], "stable-idle-engine")
+        self.assertEqual(payload["control"]["reason"], "engine-idle")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
-    def test_publication_includes_memory_snapshot_when_step_present(self) -> None:
-        from autonomy.decision import (
-            DecisionFrameContext,
-            DecisionSteps,
-            MemoryBounds,
-            MemoryProvenance,
-            MemorySnapshot,
-            Observation,
-            RetainedEvidence,
-        )
-        from autonomy.perception import ViewLocation
+    def test_publication_includes_the_memory_report_when_step_present(self) -> None:
+        from autonomy.decision_cycle.context import DecisionFrameContext
+        from autonomy.decision_cycle.cycle import DecisionSteps
+        from autonomy.decision_cycle.observation.values import Observation
+        from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+        from autonomy.decision_cycle.perception.evidence.values import ViewLocation
         from autonomy.runtime.cycle_host import AutonomyCycleHost
 
         def remember(context, observation):
             del observation
-            return MemorySnapshot(
-                memory_id="mem-1",
-                epoch_id="epoch-1",
-                health="healthy",
-                bounds=MemoryBounds(max_records=4),
-                created_at_ms=context.timestamp_ms,
-                records=(
-                    RetainedEvidence(
+            record = RetainedEvidence(
                         record_id="thing:boundary",
                         kind="floor_boundary",
                         label="boundary",
@@ -118,10 +106,21 @@ class ObservationPublicationTests(unittest.TestCase):
                             zone="center",
                             bbox_xyxy_norm=(0.2, 0.3, 0.5, 0.8),
                         ),
-                    ),
-                ),
-                implementation_id="bounded_evidence",
             )
+            return {
+                "schema": "memory_report_v0",
+                "plugins": [
+                    {
+                        "plugin_id": "bounded_evidence",
+                        "implementation_id": "bounded_evidence",
+                        "state": {
+                            "health": "healthy",
+                            "record_count": 1,
+                            "records": [record.to_dict()],
+                        },
+                    }
+                ],
+            }
 
         host = AutonomyCycleHost(steps=DecisionSteps(remember=remember))
         part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
@@ -129,9 +128,10 @@ class ObservationPublicationTests(unittest.TestCase):
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
         self.assertIsNotNone(payload["memory"])
-        self.assertEqual(payload["memory"]["health"], "healthy")
-        self.assertEqual(payload["memory"]["record_count"], 1)
-        self.assertEqual(payload["memory"]["records"][0]["kind"], "floor_boundary")
+        state = payload["memory"]["plugins"][0]["state"]
+        self.assertEqual(state["health"], "healthy")
+        self.assertEqual(state["record_count"], 1)
+        self.assertEqual(state["records"][0]["kind"], "floor_boundary")
 
         jpeg, frame_meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)
@@ -177,7 +177,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(meta["health"], "unavailable")
 
     def test_decision_publication_keeps_source_identity_and_cycle_atomic(self) -> None:
-        part = self._shadow_part()
+        part = self._hold_part()
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         assert part.latest_snapshot is not None
@@ -226,8 +226,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertFalse(expired["ok"])
         self.assertEqual(expired["reason"], "expired")
 
-        manager = part.host.manager
-        manager.engine.reset()
+        # A reload replaces the engine, which retires its result.
+        part.host.manager.reload_engine()
         reset = part.publish_decision_latest(now_ms=completed_at_ms)
         self.assertFalse(reset["ok"])
         self.assertEqual(reset["reason"], "reset")

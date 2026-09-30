@@ -5,18 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
+from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
 from cli.automa_cli.decision import apply_vehicle_decision
 from tests.support.cli_runner import run_automa
-from tests.cli.decision.shadow_decision_surfaces_fixtures import (
+from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
     NO_MEM_RUN,
-    ShadowDecisionSurfaceFixture,
+    DecisionSurfaceFixture,
     TWO_FRAME_RUN,
 )
 
 
-class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase):
+class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_apply_record_root_setup_failure_uses_stable_cli_error(self) -> None:
         self._stage()
         with tempfile.TemporaryDirectory() as tmp:
@@ -96,7 +96,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         payload = json.loads(result.message)
         frame0 = payload["digest"]["frames"][0]
         self.assertFalse(frame0["proposed_applied"])
-        self.assertEqual(frame0["authorized_output"]["reason"], AUTHORIZED_IDLE_REASON)
+        self.assertEqual(frame0["authorized_output"]["reason"], HOLD_IDLE_REASON)
 
     def test_apply_duplicate_frame_id_and_vehicle_mismatch(self) -> None:
         self._stage()

@@ -9,6 +9,9 @@ from tests.cli.memory.chase_max_age_fixtures import (
     _live_probe,
 )
 
+from cli.automa_cli.memory_report import memory_state
+from tests.support.memory_fixtures import memory_report
+
 
 class ChaseMaxAgeIntegrationTests(unittest.TestCase):
     def test_chase_max_age_expiry_timeout_is_fail_closed(self) -> None:
@@ -95,21 +98,21 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             return {
                 "ok": True,
                 "status": "reset",
-                "snapshot": {
+                "report": memory_report({
                     "health": "empty",
                     "record_count": 0,
                     "records": [],
                     "epoch_id": "memory-epoch-2",
-                },
+                }),
             }
 
         # Collection + wait frames must share the probed memory epoch.
         def load_latest_with_epoch() -> dict:
             frame = load_latest()
-            memory = dict(frame.get("memory") or {})
-            memory["epoch_id"] = "memory-epoch-1"
+            state = dict(memory_state(frame.get("memory")) or {})
+            state["epoch_id"] = "memory-epoch-1"
             frame = dict(frame)
-            frame["memory"] = memory
+            frame["memory"] = memory_report(state)
             return frame
 
         with mock.patch(

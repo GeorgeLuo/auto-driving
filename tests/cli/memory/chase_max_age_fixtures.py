@@ -1,6 +1,8 @@
 from __future__ import annotations
 from cli.automa_cli.chase_max_age import ChaseMaxAgeIdentity
 
+from tests.support.memory_fixtures import memory_report
+
 
 def _chase_frame(
     index: int,
@@ -32,8 +34,8 @@ def _chase_frame(
             "steering": 0.0,
             "throttle": 0.0,
         },
-        "shadow_reference": {
-            "schema": "chase_shadow_reference_v1",
+        "chaser_reference": {
+            "schema": "chaser_reference_v1",
             "evaluator_only": True,
             "simulator_frame_index": index,
             "simulation_epoch": simulation_epoch,
@@ -52,7 +54,7 @@ def _chase_frame(
                 }
             },
         },
-        "memory": {
+        "memory": memory_report({
             "health": "healthy" if records else "empty",
             "record_count": len(records),
             "records": records,
@@ -60,7 +62,7 @@ def _chase_frame(
             "metadata": {
                 "capacity_eviction_count": capacity_eviction_count,
             },
-        },
+        }),
     }
     if not omit_observe_only:
         frame["control_application"] = "not_applied"

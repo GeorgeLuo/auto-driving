@@ -13,13 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.perception import build_perception_request
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorReading, SensorSnapshot
 
 from .lab_plugins import LabPerceptionMapper, candidate_status, discover_candidates
 from .paths import ROOT, display_path, safe_path_part
 from .perception_evaluation import evaluate_perception_frames, write_review_html
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
     PERCEPTION_MAPPER_SPEC,

@@ -7,12 +7,19 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext, DecisionSteps
-from autonomy.perception import ActivatedPerceptionStep, read_perception_activation
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.perception.activation import (
+    ActivatedPerceptionStep,
+    read_perception_activation,
+)
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.perception.catalog import (
+    PERCEPTION_MAPPER_SPEC,
+    PERCEPTION_PLUGIN_SPECS,
+)
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 
@@ -71,8 +78,13 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(step_status["last_duration_ms"], 0.0)
         self.assertEqual(
             [run["plugin_id"] for run in step_status["last_plugin_runs"]],
-            ["frame-observation-v0"],
+            ["frame"],
         )
+        self.assertEqual(
+            step_status["last_plugin_runs"][0]["implementation_id"],
+            "frame-observation-v0",
+        )
+        self.assertEqual(step.mapper.plugins[0].plugin_id, "frame-observation-v0")
 
         manager = AutonomyManager()
         manager.register_status_provider("perception", step.status)

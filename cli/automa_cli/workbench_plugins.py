@@ -9,6 +9,7 @@ plugin happens only after the operator selects its catalog id for a replay.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 import os
@@ -19,9 +20,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionMapper
-from autonomy.perception.activation import instantiate_perception_mapper
-from implementations.perception.catalog import (
+from autonomy.decision_cycle.perception.interface import (
+    PERCEPTION_TEXT_SCHEMA,
+    PerceptionMapper,
+)
+from autonomy.decision_cycle.perception.activation import instantiate_perception_mapper
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
+from implementations.decision_cycle.memory.catalog import (
+    DEFAULT_MEMORY_IMPLEMENTATION,
+    MEMORY_IMPLEMENTATIONS,
+)
+from implementations.decision_cycle.perception.catalog import (
+    DEFAULT_PERCEPTION_ALGORITHM,
+    PERCEPTION_ALGORITHMS,
     PERCEPTION_MAPPER_SPEC,
     PERCEPTION_PLUGIN_SPECS,
 )
@@ -29,7 +40,7 @@ from implementations.perception.catalog import (
 
 PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog_v1"
 PLUGIN_MANIFEST_SCHEMA = "automa_lab_perception_plugin_v0"
-DEFAULT_PLUGIN_ROOT_ID = "packaged:implementations.perception.catalog"
+DEFAULT_PLUGIN_ROOT_ID = "packaged:implementations.decision_cycle.perception.catalog"
 _SAFE_PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _SAFE_SYMBOL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -38,6 +49,154 @@ class PluginCatalogError(ValueError):
     """A bounded catalog or selection boundary failure."""
 
     boundary = "plugin_catalog"
+
+
+def _memory_config_signature(spec: str, config: dict[str, Any]) -> tuple[str, str]:
+    try:
+        encoded = json.dumps(config, sort_keys=True)
+    except (TypeError, ValueError) as exc:
+        raise PluginCatalogError(
+            f"memory implementation config is not JSON-comparable: {exc}"
+        ) from exc
+    return spec, encoded
+
+
+def _register_memory_definition(
+    specs: dict[str, str],
+    configs: dict[str, dict[str, Any]],
+    catalog_id: str,
+    spec: str,
+    config: dict[str, Any],
+) -> None:
+    """Add a definition without letting traversal order replace another one."""
+
+    existing_spec = specs.get(catalog_id)
+    if existing_spec is None:
+        specs[catalog_id] = spec
+        configs[catalog_id] = copy.deepcopy(config)
+        return
+    existing = _memory_config_signature(existing_spec, configs[catalog_id])
+    if existing != _memory_config_signature(spec, config):
+        raise PluginCatalogError(
+            f"memory catalog id {catalog_id!r} conflicts with an existing definition"
+        )
+
+
+def _memory_definitions(
+    plugins: tuple[PluginDescriptor, ...] | Sequence[PluginDescriptor],
+) -> tuple[tuple[PluginDefinition, ...], dict[str, str]]:
+    """Packaged memory plugins plus companion definitions with stable identities.
+
+    Packaged configuration is never overwritten. Companions that share an
+    implementation id keep that id only when they declare the same entrypoint
+    and configuration. A different configuration gets its own catalog id, so
+    discovery order cannot choose which config is active.
+    """
+
+    specs: dict[str, str] = {}
+    configs: dict[str, dict[str, Any]] = {}
+    for implementation_id, entry in MEMORY_IMPLEMENTATIONS.items():
+        specs[implementation_id] = str(entry["implementation_spec"])
+        configs[implementation_id] = copy.deepcopy(dict(entry["default_config"]))
+    default_config = copy.deepcopy(configs[DEFAULT_MEMORY_IMPLEMENTATION])
+    companions: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
+    for descriptor in plugins:
+        companion = descriptor.memory
+        if not companion:
+            continue
+        implementation_id = str(companion["implementation_id"])
+        spec = str(companion["implementation_spec"])
+        if implementation_id in MEMORY_IMPLEMENTATIONS:
+            config = copy.deepcopy(configs[implementation_id])
+        else:
+            config = copy.deepcopy(default_config)
+        config.update(dict(companion.get("implementation_config") or {}))
+        companions.setdefault(implementation_id, []).append(
+            (descriptor.plugin_id, spec, config)
+        )
+
+    perception_memory_ids: dict[str, str] = {}
+    for implementation_id in sorted(companions):
+        entries = companions[implementation_id]
+        entry_specs = {spec for _plugin_id, spec, _config in entries}
+        packaged_spec = specs.get(implementation_id)
+        if packaged_spec is not None:
+            entry_specs.add(packaged_spec)
+        if len(entry_specs) > 1:
+            raise PluginCatalogError(
+                f"memory implementation {implementation_id!r} has conflicting entrypoints"
+            )
+        spec = next(iter(entry_specs))
+        groups: dict[tuple[str, str], set[str]] = {}
+        configs_by_signature: dict[tuple[str, str], dict[str, Any]] = {}
+        for plugin_id, entry_spec, config in entries:
+            signature = _memory_config_signature(entry_spec, config)
+            groups.setdefault(signature, set()).add(plugin_id)
+            configs_by_signature[signature] = config
+        packaged_signature = (
+            _memory_config_signature(packaged_spec, configs[implementation_id])
+            if packaged_spec is not None
+            else None
+        )
+        if packaged_signature is not None and set(groups) == {packaged_signature}:
+            for plugin_id in groups[packaged_signature]:
+                perception_memory_ids[plugin_id] = implementation_id
+            continue
+        if packaged_spec is None and len(groups) == 1:
+            signature = next(iter(groups))
+            _register_memory_definition(
+                specs,
+                configs,
+                implementation_id,
+                spec,
+                configs_by_signature[signature],
+            )
+            for plugin_id in groups[signature]:
+                perception_memory_ids[plugin_id] = implementation_id
+            continue
+        grouped = sorted(
+            (
+                tuple(sorted(owners)),
+                signature,
+                configs_by_signature[signature],
+            )
+            for signature, owners in groups.items()
+        )
+        for owners, signature, config in grouped:
+            if packaged_signature is not None and signature == packaged_signature:
+                for plugin_id in owners:
+                    perception_memory_ids[plugin_id] = implementation_id
+                continue
+            catalog_id = ".".join((*owners, implementation_id))
+            _register_memory_definition(specs, configs, catalog_id, signature[0], config)
+            for plugin_id in owners:
+                perception_memory_ids[plugin_id] = catalog_id
+    definitions = tuple(
+        PluginDefinition(
+            step="memory",
+            plugin_id=plugin_id,
+            entrypoint=spec,
+            config=configs[plugin_id],
+        )
+        for plugin_id, spec in specs.items()
+    )
+    return definitions, perception_memory_ids
+
+
+def _selected_memory_id(
+    perception_memory_ids: dict[str, str],
+    selected_plugin_ids: tuple[str, ...],
+) -> str:
+    owners = [
+        plugin_id
+        for plugin_id in selected_plugin_ids
+        if plugin_id in perception_memory_ids
+    ]
+    if len(owners) > 1:
+        raise PluginCatalogError("selected plugins declare multiple memory companions")
+    if owners:
+        return perception_memory_ids[owners[0]]
+    return DEFAULT_MEMORY_IMPLEMENTATION
 
 
 @dataclass(frozen=True)
@@ -129,13 +288,48 @@ class PluginCatalog:
             "plugins": [item.to_dict(active_ids=active_ids) for item in self.plugins],
         }
 
+    def list(self, step: str) -> tuple[PluginDefinition, ...]:
+        """Expose the selectable catalog to the core manager without imports."""
+
+        if step != "perception":
+            return ()
+        if self.error:
+            raise PluginCatalogError(self.error)
+        if not self.valid:
+            raise PluginCatalogError("plugin catalog is invalid: duplicate plugin id")
+        return tuple(self.resolve(step, item.plugin_id) for item in self.plugins if item.ready)
+
+    def resolve(self, step: str, reference: str | Path) -> PluginDefinition:
+        """Adapt discovered manifests to the common selection resolver."""
+
+        if step != "perception":
+            raise PluginCatalogError(f"unsupported plugin step {step!r}")
+        descriptor = next(
+            (item for item in self.plugins if item.plugin_id == reference), None
+        )
+        if descriptor is None:
+            raise PluginCatalogError(f"unknown plugin id(s): {reference}")
+        if not descriptor.ready:
+            raise PluginCatalogError(
+                f"unavailable plugin id(s): {reference}: "
+                f"{descriptor.unavailable_reason or 'unavailable'}"
+            )
+        if not descriptor.entrypoint:
+            raise PluginCatalogError(f"plugin {reference!r} has no entrypoint")
+        return PluginDefinition(
+            step="perception",
+            plugin_id=descriptor.plugin_id,
+            entrypoint=descriptor.entrypoint,
+            config=descriptor.config,
+        )
+
     def normalize_selection(
         self,
         active_ids: Sequence[str] | None,
         *,
         require_explicit_selection: bool | None = None,
     ) -> tuple[str, ...]:
-        """Validate and normalize ids in deterministic catalog order."""
+        """Validate ids while preserving the core manager's selection order."""
 
         if self.error:
             raise PluginCatalogError(self.error)
@@ -149,96 +343,75 @@ class PluginCatalog:
             raise PluginCatalogError("active_plugin_ids must contain non-empty strings")
         if len(values) != len(set(values)):
             raise PluginCatalogError("active_plugin_ids must not contain duplicates")
-        by_id = {item.plugin_id: item for item in self.plugins}
-        unknown = sorted(set(values) - set(by_id))
-        if unknown:
-            raise PluginCatalogError(
-                "unknown plugin id(s): " + ", ".join(unknown)
-            )
-        unavailable = sorted(
-            value for value in values if not by_id[value].ready
-        )
-        if unavailable:
-            reasons = "; ".join(
-                f"{value}: {by_id[value].unavailable_reason or 'unavailable'}"
-                for value in unavailable
-            )
-            raise PluginCatalogError(f"unavailable plugin id(s): {reasons}")
+        manager = PluginManager("perception", self)
+        manager.select(values)
         # Keep the keyword for caller compatibility. An empty normalized
         # selection is the explicit raw-capture mode regardless of catalog
         # root: replay still displays frames, but no perception plugin runs.
-        order = {item.plugin_id: index for index, item in enumerate(self.plugins)}
-        return tuple(sorted(values, key=lambda value: order[value]))
+        return manager.selected_ids
 
     def build_mapper(self, active_ids: Sequence[str]) -> PerceptionMapper:
         """Instantiate exactly the selected core-runtime manifest plugins."""
 
         selected = self.normalize_selection(active_ids, require_explicit_selection=False)
-        descriptors = {item.plugin_id: item for item in self.plugins}
-        plugin_ids = list(selected)
-        plugin_specs: dict[str, str] = {}
-        plugin_configs: dict[str, dict[str, Any]] = {}
-
-        for plugin_id in plugin_ids:
-            descriptor = descriptors.get(plugin_id)
-            if descriptor is None:
-                spec = PERCEPTION_PLUGIN_SPECS.get(plugin_id)
-                if spec is None:
-                    raise PluginCatalogError(f"plugin {plugin_id!r} is not in the catalog")
-                plugin_specs[plugin_id] = spec
-                plugin_configs[plugin_id] = {}
-            else:
-                if not descriptor.ready:
-                    raise PluginCatalogError(
-                        f"plugin {plugin_id!r} is unavailable: "
-                        f"{descriptor.unavailable_reason or 'not ready'}"
-                    )
-                if not descriptor.entrypoint:
-                    raise PluginCatalogError(f"plugin {plugin_id!r} has no entrypoint")
-                plugin_specs[plugin_id] = descriptor.entrypoint
-                plugin_configs[plugin_id] = dict(descriptor.config)
+        manager = PluginManager("perception", self)
+        manager.select(selected)
 
         if self.root is not None:
             with _import_root(self.root):
                 mapper = instantiate_perception_mapper(
-                    PERCEPTION_MAPPER_SPEC,
-                    {
-                        "plugins": plugin_ids,
-                        "plugin_specs": plugin_specs,
-                        "plugin_configs": plugin_configs,
-                    },
+                    PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
                 )
+            perceive = mapper.perceive
+
+            def perceive_in_root(request):
+                # Later manager selections can import previously unused packages.
+                with _import_root(self.root):
+                    return perceive(request)
+
+            mapper.perceive = perceive_in_root
         else:
             mapper = instantiate_perception_mapper(
-                PERCEPTION_MAPPER_SPEC,
-                {
-                    "plugins": plugin_ids,
-                    "plugin_specs": plugin_specs,
-                    "plugin_configs": plugin_configs,
-                },
+                PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
             )
-
-        # Runtime classes use implementation ids (for example
-        # ``floor-continuity-v1``).  The workbench's stable public provenance is
-        # the manifest/catalog id, so alias the instantiated objects after the
-        # mapper has validated their contracts.
-        for configured_id, plugin in zip(plugin_ids, mapper.plugins, strict=True):
-            plugin.plugin_id = configured_id
         return mapper
 
-    def memory_for_selection(self, active_ids: Sequence[str]) -> dict[str, Any] | None:
-        """Return the memory companion declared by the selected plugins."""
+    def memory_catalog(self) -> tuple[tuple[PluginDefinition, ...], dict[str, str]]:
+        """Packaged memory definitions plus companion aliases for this catalog.
 
-        selected = set(self.normalize_selection(active_ids))
-        companions = [item.memory for item in self.plugins if item.plugin_id in selected and item.memory]
-        if len(companions) > 1:
-            raise PluginCatalogError("selected plugins declare multiple memory companions")
-        return dict(companions[0]) if companions else None
+        The mapping sends each perception plugin that declares a companion to
+        the memory catalog id for that entrypoint and configuration. Packaged
+        configuration is never overwritten.
+        """
+
+        return _memory_definitions(self.plugins)
+
+    def memory_id_for_selection(self, selected_plugin_ids: Sequence[str]) -> str:
+        """Catalog id of the one selected companion, or the packaged default."""
+
+        _definitions, perception_memory_ids = self.memory_catalog()
+        return _selected_memory_id(perception_memory_ids, tuple(selected_plugin_ids))
+
+    def memory_manager(self, selected_plugin_ids: Sequence[str]) -> PluginManager:
+        """A core memory manager for this catalog and perception selection."""
+
+        definitions, perception_memory_ids = self.memory_catalog()
+        selected = _selected_memory_id(perception_memory_ids, tuple(selected_plugin_ids))
+        if selected not in {item.plugin_id for item in definitions}:
+            raise PluginCatalogError(f"unknown memory implementation {selected!r}")
+        manager = PluginManager("memory", LocalPluginCatalog(definitions))
+        manager.select((selected,))
+        return manager
 
 
 def packaged_plugin_catalog() -> PluginCatalog:
-    """Return the backward-compatible packaged lightweight catalog."""
+    """Expose every packaged plugin while keeping the algorithm's defaults."""
 
+    defaults = PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]["mapper_config"]
+    default_ids = defaults["plugins"]
+    # Defaults retain their existing display/execution order. Other entries are
+    # available choices, not additional default selections.
+    plugin_ids = list(dict.fromkeys([*default_ids, *sorted(PERCEPTION_PLUGIN_SPECS)]))
     descriptors = tuple(
         PluginDescriptor(
             plugin_id=plugin_id,
@@ -253,18 +426,21 @@ def packaged_plugin_catalog() -> PluginCatalog:
             manifest_relative_path=f"packaged/{plugin_id}",
             manifest_path=None,
             entrypoint=PERCEPTION_PLUGIN_SPECS[plugin_id],
-            config={},
+            config=dict(defaults.get("plugin_configs", {}).get(plugin_id, {})),
             memory={},
             output={
                 "schema": PERCEPTION_TEXT_SCHEMA,
-                "kind": "sensor_frame" if plugin_id == "frame" else "floor_boundary",
+                "kind": {
+                    "frame": "sensor_frame",
+                    "floor_plane": "floor_boundary",
+                }.get(plugin_id, "perception_evidence"),
             },
             inputs=[
                 {
                     "name": "frame",
                     "component_id": "camera.rgb:front_camera",
                     "provider_spec": (
-                        "implementations.perception.components.camera:provide_camera_frame"
+                        "implementations.decision_cycle.perception.components.camera:provide_camera_frame"
                     ),
                 }
             ],
@@ -272,9 +448,9 @@ def packaged_plugin_catalog() -> PluginCatalog:
             runtime={"python": "core", "support": "packaged"},
             status="ready",
             source="packaged",
-            default=True,
+            default=plugin_id in default_ids,
         )
-        for plugin_id in ("frame", "floor_plane")
+        for plugin_id in plugin_ids
     )
     return _make_catalog(None, descriptors, explicit_root=False)
 
@@ -387,7 +563,11 @@ def _error_catalog(root: Path | None, message: str) -> PluginCatalog:
 
 
 def _manifest_paths(root: Path) -> Iterator[Path]:
-    """Yield manifest files while pruning directory symlinks."""
+    """Yield manifest files while pruning directory symlinks.
+
+    A directory with a manifest is a plugin package; its models, sources and
+    run outputs are not searched for further plugins.
+    """
 
     def onerror(_error: OSError) -> None:
         return None
@@ -396,9 +576,10 @@ def _manifest_paths(root: Path) -> Iterator[Path]:
         root, topdown=True, followlinks=False, onerror=onerror
     ):
         current_path = Path(current)
-        for name in sorted(files):
-            if name == "plugin.json":
-                yield current_path / name
+        if "plugin.json" in files:
+            directories.clear()
+            yield current_path / "plugin.json"
+            continue
         symlink_dirs = []
         for name in list(directories):
             path = current_path / name
@@ -643,33 +824,19 @@ def _entrypoint_origin(root: Path, entrypoint: str) -> Path | None:
     module_name, _, _class_name = entrypoint.partition(":")
     if not module_name or not _SAFE_MODULE.fullmatch(module_name):
         return None
-    relative = Path(*module_name.split("."))
-    candidates = (root / (str(relative) + ".py"), root / relative / "__init__.py")
-    for candidate in candidates:
-        if candidate.is_file():
-            try:
-                return candidate.resolve()
-            except OSError:
-                return None
     # Module-style manifests in the repository are rooted above the declared
-    # plugin directory (for example ``lab.plugins.perception.foo``).  Resolve
-    # those identities by suffix search rather than importing a parent package;
+    # plugin directory (for example ``lab.plugins.perception.foo``). Resolve
+    # them by dropping leading packages rather than importing a parent package;
     # discovery must not execute unselected plugin code.
-    module_parts = tuple(module_name.split("."))
-    tail = module_parts[-3:] if len(module_parts) >= 3 else module_parts
-    for candidate in sorted(root.rglob("*.py")):
-        try:
-            relative_parts = candidate.relative_to(root).parts
-        except ValueError:
-            continue
-        if len(relative_parts) >= len(tail) and tuple(relative_parts[-len(tail):]) == (
-            *tail[:-1],
-            f"{tail[-1]}.py",
-        ):
-            try:
-                return candidate.resolve()
-            except OSError:
-                return None
+    module_parts = module_name.split(".")
+    for start in range(len(module_parts)):
+        relative = Path(*module_parts[start:])
+        for candidate in (root / (str(relative) + ".py"), root / relative / "__init__.py"):
+            if candidate.is_file():
+                try:
+                    return candidate.resolve()
+                except OSError:
+                    return None
     return None
 
 

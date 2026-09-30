@@ -30,16 +30,17 @@ from .memory import (
     get_vehicle_memory_info,
     replay_vehicle_memory,
     reset_vehicle_memory,
+    set_vehicle_memory_plugin,
     stream_vehicle_memory,
     update_vehicle_memory,
 )
 from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
-from implementations.memory import (
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
 )
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     available_perception_algorithm_ids,
 )
@@ -508,15 +509,16 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live memory snapshots (one JSON object per refresh).",
+        help="Print machine-readable live memory probes (one JSON object per refresh).",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
     decision_stream = stream_commands.add_parser(
         "decision",
-        help="Show the latest shadow decision frame (generation-scoped latest replacement).",
+        help="Show the latest decision frame (generation-scoped latest replacement).",
         description=(
-            "Read automation/latest_decision.json for the staged shadow-proposals engine. "
+            "Read automation/latest_decision.json for the staged hold-action or "
+            "obstacle-avoidance engine. "
             "Accepts only generation-matched frames from a running live worker within the "
             "configured max age. No history is written. Use --once for a single accepted frame."
         ),
@@ -566,21 +568,21 @@ def build_parser() -> argparse.ArgumentParser:
     decision_help.set_defaults(handler=_handle_vehicles_decision_help)
     decision_inspect = decision_control_commands.add_parser(
         "inspect", help="Open an offline decision inspector for a saved input sequence.",
-        description="Compute left/right shadow scenarios from one saved frame. No live worker or capture is needed.",
+        description="Compute left/right proposal scenarios from one saved frame. No live worker or capture is needed.",
     )
     decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
     decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
-    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged shadow configuration; otherwise use packaged defaults.")
+    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged hold-action configuration; otherwise use packaged defaults.")
     decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
     decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
     decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts and exit without starting a server.")
     decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
     decision_apply = decision_control_commands.add_parser(
         "apply",
-        help="Replay a recorded decision sequence through staged shadow-proposals offline.",
+        help="Replay a recorded decision sequence through staged hold-action offline.",
         description=(
             "Feed a recorded observation+memory sequence through the vehicle's staged "
-            "shadow-proposals activation. Requires --id. Reports a deterministic digest "
+            "hold-action activation. Requires --id. Reports a deterministic digest "
             "(canonical_json_utf8 byte equality across two passes). Writes no files unless "
             "--record is passed for exact-frame HTML under lab/runs/decision-apply/."
         ),
@@ -595,7 +597,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--from-run",
         required=True,
         dest="from_run",
-        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v0).",
+        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v1).",
     )
     decision_apply.add_argument(
         "--json",
@@ -618,7 +620,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Adapt the PiCar decision publication into the same RuntimeViewServer "
             "decision page used by Chase, with matched image-relative evidence and "
-            "proposed versus authorized shadow output. It sends no vehicle commands."
+            "proposed versus authorized output. It sends no vehicle commands."
         ),
     )
     decision_live.add_argument(
@@ -649,7 +651,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_control = vehicle_commands.add_parser(
         "memory",
-        help="Operate vehicle memory (reset, replay, check; stage via update memory).",
+        help="Operate vehicle memory (enable, disable, reset, replay, check).",
     )
     memory_control.set_defaults(handler=_handle_vehicles_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -658,6 +660,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show memory-level commands.",
     )
     memory_help.set_defaults(handler=_handle_vehicles_memory_help)
+    for action in ("enable", "disable"):
+        selection = memory_commands.add_parser(
+            action, help=f"{action.capitalize()} a staged memory plugin for the next local automation cycle.",
+        )
+        selection.add_argument("--id", required=True, dest="vehicle_id")
+        selection.add_argument("plugin_id", help="Plugin ID from vehicles info memory.")
+        selection.add_argument("--json", action="store_true")
+        selection.set_defaults(handler=_handle_vehicles_memory_plugin, enabled=action == "enable")
     memory_reset = memory_commands.add_parser(
         "reset",
         help="Reset live memory to a new empty epoch on Chase or PiCar.",
@@ -750,7 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
         description=(
             "Evaluate memory lifecycle gates: present, dropout, max-age expiry, and reset. "
-            "Chase (live automation) scores shadow identity/alignment, retained-prior "
+            "Chase (live automation) scores chaser-reference identity/alignment, retained-prior "
             "provenance, max-age expiry without reset, observe-only control, and reset. "
             "Offline ids use a phase script. PiCar scores the live onboard step from "
             "publication.memory (no forced dropout, no local ephemeral reducer), waits "
@@ -834,7 +844,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Run the bounded decision playback workbench against an ordered "
             "local image directory. The server owns source ordering, perception, "
-            "observation, bounded memory, shadow decision state, and any selected "
+            "observation, bounded memory, decision state, and any selected "
             "manifest-backed plugins. "
             "Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
@@ -2125,7 +2135,7 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "- live    read-only local browser monitor for a live PiCar publication",
                 "- help    show this summary",
                 "",
-                "Stage inspection-only proposals with: ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
+                "Stage inspection-only proposals with: ./cli/automa vehicles update decision --id <vehicle> --engine hold-action",
                 "Stage the live PiCar happy path with: ./cli/automa vehicles update decision --id <vehicle> --engine obstacle-avoidance",
                 "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
                 "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
@@ -2180,6 +2190,7 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles memory commands",
                 "",
+                "- enable / disable  change selected memory plugins for the next local cycle",
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- replay  feed a fixed observation sequence offline; report digest; optional --record",
                 "- check   present/dropout/expiry/reset gates (Chase offline or Pi live); optional --record",
@@ -2195,6 +2206,18 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _handle_vehicles_memory_plugin(args: argparse.Namespace) -> int:
+    result = set_vehicle_memory_plugin(
+        vehicle_id=args.vehicle_id,
+        plugin_id=args.plugin_id,
+        enabled=args.enabled,
+        json_output=args.json,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
 
 
 def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:

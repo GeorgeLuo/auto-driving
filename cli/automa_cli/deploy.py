@@ -14,7 +14,10 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from implementations.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+from implementations.decision_cycle.perception.catalog import (
+    DEFAULT_PERCEPTION_ALGORITHM,
+)
+from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_IMPLEMENTATION
 from implementations.vehicle.picar.defaults import (
     get_default_local_car_base_url,
     get_default_local_car_id,
@@ -36,7 +39,6 @@ from .memory import ensure_vehicle_memory_activation
 from .paths import display_path, safe_path_part
 from .perception import ensure_vehicle_perception_activation
 from .vehicles import discover_active_vehicles, find_vehicle_by_id
-from implementations.memory import DEFAULT_MEMORY_IMPLEMENTATION
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -594,8 +596,8 @@ def _write_remote_activation_files(
         "root_dir": remote_app_root,
         "autonomy_dir": f"{remote_app_root}/autonomy",
         "implementations_dir": f"{remote_app_root}/implementations",
-        "perception_dir": f"{remote_app_root}/implementations/perception",
-        "decision_dir": f"{remote_app_root}/implementations/decision",
+        "perception_dir": f"{remote_app_root}/implementations/decision_cycle/perception",
+        "decision_dir": f"{remote_app_root}/implementations/runtime/engines",
         "runtime_dir": f"{remote_app_root}/runtime",
         "perception_runtime_dir": f"{remote_app_root}/runtime/perception",
         "decision_runtime_dir": f"{remote_app_root}/runtime/decision",

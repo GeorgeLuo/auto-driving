@@ -17,13 +17,18 @@ import requests  # type: ignore[import-untyped]
 
 from lab.plugins.perception.worker_memory import decode_shared_memory, encode_shared_memory
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
-    PerceptionComponentUnavailable,
-    PerceptionRequest,
     PerceptionText,
 )
-from implementations.perception.components import FRONT_CAMERA_RGB_INPUT, provide_camera_frame
+from autonomy.decision_cycle.perception.components.interface import (
+    PerceptionComponentUnavailable,
+)
+from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from implementations.decision_cycle.perception.components.camera import (
+    FRONT_CAMERA_RGB_INPUT,
+    provide_camera_frame,
+)
 
 from .paths import ROOT, display_path, safe_path_part
 

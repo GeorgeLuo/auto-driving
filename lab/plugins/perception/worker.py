@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.perception import build_perception_request  # noqa: E402
-from autonomy.perception.mappers import PluginPerceptionMapper  # noqa: E402
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot  # noqa: E402
 from lab.plugins.perception.worker_memory import decode_shared_memory, encode_shared_memory  # noqa: E402
 
@@ -36,7 +36,7 @@ def main() -> int:
         if not isinstance(override, dict):
             raise ValueError("--config-json must decode to an object")
         config.update(override)
-    frame_spec = "implementations.perception.observation.plugin:FrameObservationPlugin"
+    frame_spec = "implementations.decision_cycle.perception.frame_observation.plugin:FrameObservationPlugin"
     candidate_spec = str(plugin["entrypoint"])
     if candidate_spec == frame_spec:
         plugin_ids = [candidate_id]

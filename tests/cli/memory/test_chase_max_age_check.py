@@ -11,9 +11,12 @@ from tests.cli.memory.chase_max_age_fixtures import (
     _live_probe,
 )
 
+from cli.automa_cli.memory_report import memory_state
+from tests.support.memory_fixtures import memory_report
+
 
 class ChaseMaxAgeIntegrationTests(unittest.TestCase):
-    def test_chase_shadow_path_includes_max_age_expiry_and_record(self) -> None:
+    def test_chase_reference_path_includes_max_age_expiry_and_record(self) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-chaser",
             "provider": "chase-sim",
@@ -90,7 +93,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 # Rebuild so collection frames pick up post-reset worker epoch.
                 template = frames[cursor["n"]]
                 cursor["n"] += 1
-                records = list((template.get("memory") or {}).get("records") or [])
+                records = list((memory_state(template.get("memory")) or {}).get("records") or [])
                 return _frame_with_current_epoch(
                     int(template["simulator_frame_index"]),
                     records,
@@ -152,7 +155,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             return {
                 "ok": True,
                 "status": "reset",
-                "snapshot": {
+                "report": memory_report({
                     "health": "empty",
                     "record_count": 0,
                     "records": [],
@@ -160,7 +163,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                     "metadata": {
                         "capacity_eviction_count": worker["capacity_eviction_count"],
                     },
-                },
+                }),
             }
 
         recorded_images: list[str] = []
@@ -268,12 +271,12 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             return {
                 "ok": True,
                 "status": "reset",
-                "snapshot": {
+                "report": memory_report({
                     "health": "empty",
                     "record_count": 0,
                     "records": [],
                     "epoch_id": "e2",
-                },
+                }),
             }
 
         with mock.patch(

@@ -40,18 +40,38 @@ class MemoryStreamTests(unittest.TestCase):
                     "memory": {
                         "implementation_id": "bounded_evidence",
                         "implementation_spec": (
-                            "implementations.memory.bounded_evidence:BoundedEvidenceLedger"
+                            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
                         ),
-                        "last_health": "healthy",
-                        "last_epoch_id": "epoch-2",
-                        "last_record_count": 7,
+                        "plugins": [
+                            {
+                                "plugin_id": "bounded_evidence",
+                                "state": {
+                                    "health": "healthy",
+                                    "epoch_id": "epoch-2",
+                                    "record_count": 7,
+                                    "bounds": {
+                                        "max_records": 32,
+                                        "max_age_ms": 10000,
+                                        "eviction_policy": "oldest_first",
+                                    },
+                                },
+                            }
+                        ],
                         "update_count": 12,
                         "reset_count": 1,
                         "failure_count": 0,
-                        "bounds": {
-                            "max_records": 32,
-                            "max_age_ms": 10000,
-                            "eviction_policy": "oldest_first",
+                        "plugin_report": {
+                            "available_plugin_ids": ["bounded_evidence", "other"],
+                            "selected_plugin_ids": ["other"],
+                            "applied_plugin_ids": ["bounded_evidence"],
+                            "plugins": [
+                                {
+                                    "plugin_id": "bounded_evidence",
+                                    "implementation_id": "bounded_evidence",
+                                    "duration_ms": 3.0,
+                                    "error": None,
+                                }
+                            ],
                         },
                     }
                 },
@@ -67,6 +87,8 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(live["implementation_id"], "bounded_evidence")
         self.assertEqual(live["last_record_count"], 7)
         self.assertTrue(live["has_memory"])
+        self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
+        self.assertEqual(live["plugin_report"]["applied_plugin_ids"], ["bounded_evidence"])
 
     def test_probe_physical_memory_absent_is_actionable(self) -> None:
         vehicle = {
@@ -107,8 +129,12 @@ class MemoryStreamTests(unittest.TestCase):
                 "components": {
                     "memory": {
                         "implementation_id": "bounded_evidence",
-                        "last_health": "healthy",
-                        "last_record_count": 3,
+                        "plugins": [
+                            {
+                                "plugin_id": "bounded_evidence",
+                                "state": {"health": "healthy", "record_count": 3},
+                            }
+                        ],
                         "update_count": 4,
                         "reset_count": 1,
                         "failure_count": 0,
@@ -257,9 +283,16 @@ class MemoryStreamTests(unittest.TestCase):
                         "memory": {
                             "implementation_id": "bounded_evidence",
                             "status": {
-                                "last_health": "healthy",
-                                "last_record_count": 3,
-                                "last_epoch_id": "epoch-1",
+                                "plugins": [
+                                    {
+                                        "plugin_id": "bounded_evidence",
+                                        "state": {
+                                            "health": "healthy",
+                                            "record_count": 3,
+                                            "epoch_id": "epoch-1",
+                                        },
+                                    }
+                                ],
                                 "update_count": 9,
                             },
                         },
@@ -534,12 +567,23 @@ class MemoryStreamTests(unittest.TestCase):
                         "memory": {
                             "implementation_id": "bounded_evidence",
                             "status": {
-                                "last_health": "healthy",
-                                "last_record_count": 5,
-                                "last_epoch_id": "epoch-3",
+                                "plugins": [
+                                    {
+                                        "plugin_id": "bounded_evidence",
+                                        "state": {
+                                            "health": "healthy",
+                                            "record_count": 5,
+                                            "epoch_id": "epoch-3",
+                                        },
+                                    }
+                                ],
                                 "update_count": 12,
                                 "reset_count": 1,
                                 "failure_count": 0,
+                                "plugin_report": {
+                                    "selected_plugin_ids": ["other"],
+                                    "applied_plugin_ids": ["bounded_evidence"],
+                                },
                             },
                         },
                     }
@@ -561,6 +605,8 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(live["status"], "live")
         self.assertEqual(live["last_record_count"], 5)
         self.assertEqual(live["worker_status"], "running")
+        self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
+        self.assertEqual(live["plugin_report"]["applied_plugin_ids"], ["bounded_evidence"])
 
     def test_cli_stream_memory_once_help_wired(self) -> None:
         result = run_automa("vehicles", "stream", "help", check=False)

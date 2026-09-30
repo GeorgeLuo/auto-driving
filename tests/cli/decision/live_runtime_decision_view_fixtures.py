@@ -2,21 +2,22 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
-from autonomy.decision import ComponentEnvelope
+from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
+from implementations.runtime.engines.catalog import create_action_composition
 from cli.automa_cli import decision as decision_module
 from cli.automa_cli.decision import (
     ENGINE_ID,
     build_decision_stream_frame,
-    strict_decode_apply_memory,
+    strict_decode_apply_evidence,
     strict_decode_apply_observation,
     update_vehicle_decision,
 )
 from cli.automa_cli.runtime_view import RuntimeViewServer
-from implementations.decision.catalog import create_shadow_proposals_engine
 
 
 SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
@@ -70,14 +71,15 @@ class LiveRuntimeDecisionViewFixture:
             raw = json.loads(
                 (ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8")
             )["frames"][0]
-        cycle, _control = create_shadow_proposals_engine().run_cycle(
+        cycle = create_action_composition().run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
             observation=strict_decode_apply_observation(raw["observation"]),
-            memory=strict_decode_apply_memory(raw["memory"]),
+            shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
             host_application=host_application,
         )
+        _control = cycle.control
         return build_decision_stream_frame(
             cycle,
             vehicle_id="chase-sim-chaser",
@@ -93,7 +95,7 @@ class LiveRuntimeDecisionViewFixture:
                 "frames"
             ][0]
         )
-        record = raw["memory"]["records"][0]
+        record = raw["evidence"][0]
         provenance = record["provenance"]
         thing = {
             "thing_id": provenance["evidence_id"],

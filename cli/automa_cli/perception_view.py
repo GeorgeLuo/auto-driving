@@ -10,6 +10,8 @@ from typing import Any
 from urllib.parse import quote, urljoin, urlparse
 from urllib.request import urlopen
 
+from .memory_report import memory_state
+
 from PIL import Image
 
 VIEW_SCHEMA = "automa_perception_view_v1"
@@ -260,10 +262,8 @@ def _publication_payload(
     source = perception_record or {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
-    # Retained evidence from shared_memory["decision.snapshot"], carried on
-    # the frame record.
-    memory = source.get("memory")
-    memory = memory if isinstance(memory, dict) else None
+    # The last memory plugin's state from the frame record's memory report.
+    memory = memory_state(source.get("memory"))
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,

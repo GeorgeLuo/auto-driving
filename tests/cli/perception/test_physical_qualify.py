@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autonomy.perception import PerceptionText
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from cli.automa_cli.physical_qualify import (
     _compare_metrics,
     _perception_to_score_payload,

@@ -1,22 +1,25 @@
-"""Names that stay fixed while cycle vocabulary is clarified.
+"""Step slots and serialized names of the cycle records.
 
-Descriptions distinguish perception evidence, the observation record, retained
-evidence, and the host map. These identifiers are the compatibility boundary.
+Perception evidence, the observation record, and retained evidence are
+serialized; the host map is not.
 """
 
 from __future__ import annotations
 
 import unittest
 
-from autonomy.decision.action_proposal import ACTION_PROPOSAL_SCHEMA
-from autonomy.decision.cycle import DecisionCycleResult, DecisionFrameContext, DecisionSteps
-from autonomy.decision.decision_data import DECISION_DATA_SOURCE_SCHEMA, DecisionDataSource
-from autonomy.decision.observation import OBSERVATION_SCHEMA
-from autonomy.memory.values import MEMORY_SNAPSHOT_SCHEMA
-from autonomy.perception.plugin import PerceptionPluginContract
+from autonomy.decision_cycle.proposal.values import ACTION_PROPOSAL_SCHEMA
+from autonomy.decision_cycle.cycle import DecisionCycleResult, DecisionSteps
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.proposal.inputs import DECISION_DATA_SOURCE_SCHEMA, DecisionDataSource
+from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
+from autonomy.decision_cycle.memory.snapshots.values import MEMORY_SNAPSHOT_SCHEMA
+from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
-from implementations.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
-from implementations.perception.observation.plugin import FrameObservationPlugin
+from implementations.decision_cycle.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+from implementations.decision_cycle.perception.frame_observation.plugin import (
+    FrameObservationPlugin,
+)
 
 
 class CycleVocabularyTests(unittest.TestCase):

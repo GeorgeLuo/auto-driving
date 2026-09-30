@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from autonomy.decision import DecisionFrameContext, Observation
 from autonomy.memory import ActivatedMemoryStep, read_memory_activation
-from tests.autonomy.memory.activation_fixtures import (
+from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )
@@ -56,7 +56,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.memory.activation_fixtures:_NearCeilingThenFailMemory"
+            ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_NearCeilingThenFailMemory"
             payload["memory"]["implementation_config"]["max_serialized_bytes"] = 2_000
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
@@ -132,7 +132,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.memory.activation_fixtures:_BrokenStrMemory"
+            ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_BrokenStrMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )

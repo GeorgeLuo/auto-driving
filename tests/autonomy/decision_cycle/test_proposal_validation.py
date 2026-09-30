@@ -9,7 +9,7 @@ from autonomy.memory.values import canonical_json_bytes
 from autonomy.decision.shadow_ids import ShadowCycleInputError
 from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine
 from implementations.decision.catalog import create_shadow_proposals_engine
-from tests.autonomy.decision.action_proposal_plan_fixtures import (
+from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
 

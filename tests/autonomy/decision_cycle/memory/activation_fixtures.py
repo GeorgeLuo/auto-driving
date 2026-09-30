@@ -370,7 +370,7 @@ def _valid_payload() -> dict:
         "memory": {
             "implementation_id": "recording_test",
             "implementation_spec": (
-                "tests.autonomy.memory.activation_fixtures:_RecordingMemory"
+                "tests.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
             ),
             "implementation_config": {
                 "max_records": 4,

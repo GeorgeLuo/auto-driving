@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from autonomy.decision import DecisionFrameContext, Observation
 from autonomy.memory import ActivatedMemoryStep, read_memory_activation
-from tests.autonomy.memory.activation_fixtures import (
+from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )
@@ -16,7 +16,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.memory.activation_fixtures:_SelfContradictingBoundsMemory"
+            ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_SelfContradictingBoundsMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -33,7 +33,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"]["implementation_config"]["eviction_policy"] = "p" * 140
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.memory.activation_fixtures:_NormalizationInflatesSizeMemory"
+            ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_NormalizationInflatesSizeMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -58,7 +58,7 @@ class MemoryActivationTests(unittest.TestCase):
             ] = "oldest_first"
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.memory.activation_fixtures:_TighterDeclaredSizeMemory"
+            ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_TighterDeclaredSizeMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )
@@ -74,7 +74,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"][
                 "implementation_spec"
-            ] = "tests.autonomy.memory.activation_fixtures:_NonJsonPropertyMemory"
+            ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_NonJsonPropertyMemory"
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, payload))
             )

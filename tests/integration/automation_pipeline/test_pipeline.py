@@ -209,11 +209,11 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertEqual(latest["simulation_epoch"], "chase-run:test")
             self.assertEqual(latest["frame_id"], "chase_frame_000107")
             self.assertEqual(
-                latest["shadow_reference"]["simulator_frame_index"],
+                latest["chaser_reference"]["simulator_frame_index"],
                 latest["simulator_frame_index"],
             )
             self.assertIs(latest["control"]["applied"], False)
-            self.assertNotIn("shadow_reference", latest.get("observation") or {})
+            self.assertNotIn("chaser_reference", latest.get("observation") or {})
             self.assertEqual(
                 list(
                     (automation_dir / "latest" / "frames").glob(

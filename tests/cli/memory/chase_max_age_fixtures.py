@@ -32,8 +32,8 @@ def _chase_frame(
             "steering": 0.0,
             "throttle": 0.0,
         },
-        "shadow_reference": {
-            "schema": "chase_shadow_reference_v1",
+        "chaser_reference": {
+            "schema": "chaser_reference_v1",
             "evaluator_only": True,
             "simulator_frame_index": index,
             "simulation_epoch": simulation_epoch,

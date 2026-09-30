@@ -169,8 +169,8 @@ class CommandResult:
 class _PendingAutomationFrame:
     context: DecisionFrameContext
     front_path: Path
-    # Evaluator-only shadow reference; never fed into the decision cycle.
-    shadow_reference: dict[str, Any] | None = None
+    # Evaluator-only chaser reference; never fed into the decision cycle.
+    chaser_reference: dict[str, Any] | None = None
 
 
 def run_vehicle_automation(
@@ -707,17 +707,17 @@ def run_vehicle_automation(
             "control_source": state["control_source"],
             "control_application": state["control_application"],
         }
-        # Shadow reference is evaluator-only: sibling of candidate results, not an input.
-        if isinstance(pending.shadow_reference, dict):
-            frame_record["shadow_reference"] = pending.shadow_reference
-            frame_record["shadow_alignment"] = {
-                "aligned": pending.shadow_reference.get("simulator_frame_index")
+        # The chaser reference is evaluator-only: sibling of candidate results, not an input.
+        if isinstance(pending.chaser_reference, dict):
+            frame_record["chaser_reference"] = pending.chaser_reference
+            frame_record["reference_alignment"] = {
+                "aligned": pending.chaser_reference.get("simulator_frame_index")
                 == simulator_frame_index
-                and pending.shadow_reference.get("simulation_epoch") == simulation_epoch,
+                and pending.chaser_reference.get("simulation_epoch") == simulation_epoch,
                 "candidate_frame_index": simulator_frame_index,
-                "shadow_frame_index": pending.shadow_reference.get("simulator_frame_index"),
+                "reference_frame_index": pending.chaser_reference.get("simulator_frame_index"),
                 "candidate_simulation_epoch": simulation_epoch,
-                "shadow_simulation_epoch": pending.shadow_reference.get("simulation_epoch"),
+                "reference_simulation_epoch": pending.chaser_reference.get("simulation_epoch"),
             }
         if view_server is not None:
             try:
@@ -787,11 +787,11 @@ def run_vehicle_automation(
                 "signals": len(perception.signals) if perception is not None else 0,
                 "control": control_record,
                 "engine": cycle_host.manager.status().get("engine"),
-                "shadow_aligned": bool(
-                    isinstance(pending.shadow_reference, dict)
-                    and pending.shadow_reference.get("simulator_frame_index")
+                "reference_aligned": bool(
+                    isinstance(pending.chaser_reference, dict)
+                    and pending.chaser_reference.get("simulator_frame_index")
                     == simulator_frame_index
-                    and pending.shadow_reference.get("simulation_epoch") == simulation_epoch
+                    and pending.chaser_reference.get("simulation_epoch") == simulation_epoch
                 ),
             }
             state["engine"] = cycle_host.manager.status()
@@ -1003,25 +1003,25 @@ def run_vehicle_automation(
                 frame_index = int(simulator_frame_index)
                 frame_id = format_chase_frame_id(frame_index)
             else:
-                # Fail closed for live Chase: local counters cannot align shadow refs.
+                # Fail closed for live Chase: local counters cannot align chaser references.
                 raise ValueError(
                     "Chase sensor capture missing simulator frameIndex; "
-                    "cannot assign camera-derived frame identity for shadow alignment"
+                    "cannot assign camera-derived frame identity for reference alignment"
                 )
             simulation_epoch = simulator_epoch_from_snapshot(snapshot)
             if simulation_epoch is None:
                 raise ValueError(
                     "Chase sensor capture missing simulationEpoch; "
-                    "cannot establish atomic run identity for shadow alignment"
+                    "cannot establish atomic run identity for reference alignment"
                 )
             # Align SensorSnapshot.read_id with simulator identity (capture used a provisional id).
             if snapshot.read_id != frame_id:
                 snapshot = replace(snapshot, read_id=frame_id)
             if record:
                 perception_output_dir = perception_dir / frame_id
-            shadow_reference = None
-            if hasattr(car, "last_capture_shadow_reference"):
-                shadow_reference = getattr(car, "last_capture_shadow_reference", None)
+            chaser_reference = None
+            if hasattr(car, "last_capture_chaser_reference"):
+                chaser_reference = getattr(car, "last_capture_chaser_reference", None)
 
             front_reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
             front_path = (
@@ -1062,8 +1062,8 @@ def run_vehicle_automation(
                 "sensor_snapshot": snapshot.to_dict(),
             }
             # Evaluator-only: never placed on DecisionFrameContext / observation.
-            if isinstance(shadow_reference, dict):
-                capture_record["shadow_reference"] = shadow_reference
+            if isinstance(chaser_reference, dict):
+                capture_record["chaser_reference"] = chaser_reference
             if view_server is not None:
                 try:
                     view_server.perception.publish_frame(frame_path=front_path, frame_record=capture_record)
@@ -1102,7 +1102,7 @@ def run_vehicle_automation(
                 _PendingAutomationFrame(
                     context=context,
                     front_path=front_path,
-                    shadow_reference=shadow_reference if isinstance(shadow_reference, dict) else None,
+                    chaser_reference=chaser_reference if isinstance(chaser_reference, dict) else None,
                 )
             )
 
@@ -1117,9 +1117,9 @@ def run_vehicle_automation(
                     "captured_at_ms": snapshot.completed_at_ms,
                     "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
                     "front_camera": display_path(latest_front_camera_path if not record else front_path),
-                    "shadow_aligned": isinstance(shadow_reference, dict)
-                    and shadow_reference.get("simulator_frame_index") == frame_index
-                    and shadow_reference.get("simulation_epoch") == simulation_epoch,
+                    "reference_aligned": isinstance(chaser_reference, dict)
+                    and chaser_reference.get("simulator_frame_index") == frame_index
+                    and chaser_reference.get("simulation_epoch") == simulation_epoch,
                 }
                 state["updated_at_ms"] = _timestamp_ms()
                 _write_json(state_path, state)

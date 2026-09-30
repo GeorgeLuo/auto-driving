@@ -49,11 +49,11 @@ def frame_simulation_epoch(frame: dict[str, Any]) -> str | None:
                 meta_epoch = metadata.get("simulation_epoch")
                 if meta_epoch is not None and str(meta_epoch).strip():
                     return str(meta_epoch).strip()
-    shadow = frame.get("shadow_reference")
-    if isinstance(shadow, dict):
-        shadow_epoch = shadow.get("simulation_epoch")
-        if shadow_epoch is not None and str(shadow_epoch).strip():
-            return str(shadow_epoch).strip()
+    reference = frame.get("chaser_reference")
+    if isinstance(reference, dict):
+        reference_epoch = reference.get("simulation_epoch")
+        if reference_epoch is not None and str(reference_epoch).strip():
+            return str(reference_epoch).strip()
     return None
 
 

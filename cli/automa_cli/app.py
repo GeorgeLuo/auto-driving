@@ -760,7 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
         description=(
             "Evaluate memory lifecycle gates: present, dropout, max-age expiry, and reset. "
-            "Chase (live automation) scores shadow identity/alignment, retained-prior "
+            "Chase (live automation) scores chaser-reference identity/alignment, retained-prior "
             "provenance, max-age expiry without reset, observe-only control, and reset. "
             "Offline ids use a phase script. PiCar scores the live onboard step from "
             "publication.memory (no forced dropout, no local ephemeral reducer), waits "

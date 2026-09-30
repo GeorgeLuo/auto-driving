@@ -492,7 +492,7 @@ index 8af4669..232d5df 100644
 +
 +
 +class AutonomyDecisionLatestAPI(AutonomyAPIBase):
-+    """Publish the current shadow decision from the same onboard owner."""
++    """Publish the current decision from the same onboard owner."""
 +
 +    def get(self):
 +        publisher = getattr(self.application, "observation_publisher", None)

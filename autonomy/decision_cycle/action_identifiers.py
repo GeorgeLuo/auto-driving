@@ -1,7 +1,7 @@
 """Identifier grammar for action inputs, proposals, and plans.
 
 Frame, plugin, proposal, and plan identifiers share one ASCII pattern.
-``ShadowCycleInputError`` rejects an invalid cycle identity before the action
+``ActionInputError`` rejects an invalid cycle identity before the action
 composition promises a result; ``ActionProposalMatrixError`` rejects an
 admitted candidate that fails lifecycle re-validation.
 """
@@ -15,7 +15,7 @@ MAX_ID_LEN = 64
 MAX_SAFE_INT = 9_007_199_254_740_991  # 2**53 - 1
 
 
-class ShadowCycleInputError(ValueError):
+class ActionInputError(ValueError):
     """Raised when cycle identity is invalid before a cycle result is promised."""
 
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 import json
 import unittest
 from copy import deepcopy
-from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
-from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
+from implementations.runtime.engines.catalog import create_action_composition
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
     DECISION_ENGINES,
@@ -13,13 +13,13 @@ from cli.automa_cli.decision import (
     strict_decode_apply_memory,
     strict_decode_apply_observation,
 )
-from tests.cli.decision.shadow_decision_surfaces_fixtures import (
+from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
-    ShadowDecisionSurfaceFixture,
+    DecisionSurfaceFixture,
 )
 
 
-class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase):
+class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_build_stream_frame_no_applied_control(self) -> None:
         cycle = self._sample_cycle()
         frame = build_decision_stream_frame(
@@ -36,7 +36,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         self.assertFalse(frame["authority_summary"]["proposed_applied"])
         self.assertEqual(
             frame["authority_summary"]["authorized_output"]["reason"],
-            AUTHORIZED_IDLE_REASON,
+            HOLD_IDLE_REASON,
         )
         self.assertIsNotNone(frame["authority_summary"]["proposed"])
         self.assertNotEqual(frame["authority_summary"]["proposed"]["steering"], 0.0)
@@ -277,7 +277,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
                 )
             self.assertEqual(ctx.exception.error, "latest_frame_invalid")
 
-        # envelope: cycle.schema must be exact shadow_decision_cycle_result_v0
+        # envelope: cycle.schema must be exact action_result_v0
         bad_cycle = dict(frame)
         bad_cycle["cycle"] = dict(frame["cycle"])
         bad_cycle["cycle"]["schema"] = "bogus_cycle_v0"
@@ -454,11 +454,11 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         # Aggregate cycle alignment: valid nested objects that do not form one cycle.
         from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
         from implementations.runtime.engines.catalog import (
-            create_shadow_proposals_engine,
+            create_action_composition,
         )
 
-        engine = create_shadow_proposals_engine()
-        cycle2, _ = engine.run_cycle(
+        engine = create_action_composition()
+        cycle2 = engine.run(
             frame_id="frame_002",
             frame_index=2,
             timestamp_ms=2000,

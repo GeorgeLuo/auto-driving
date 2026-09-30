@@ -155,8 +155,8 @@ class DecisionDataSourceTests(unittest.TestCase):
 
     def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
         from autonomy.decision_cycle.action import (
-            ShadowProposalsConfig,
-            ShadowProposalsEngine,
+            ProposalConfig,
+            ActionComposition,
         )
         from autonomy.decision_cycle.proposal.values import ActionProposal
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
@@ -199,13 +199,13 @@ class DecisionDataSourceTests(unittest.TestCase):
                 available=False,
             )
 
-        engine = ShadowProposalsEngine(
-            config=ShadowProposalsConfig(
+        engine = ActionComposition(
+            config=ProposalConfig(
                 enabled_plugins=("a", "b"),
             ),
             plugins={"a": plugin_a, "b": plugin_b},
         )
-        engine.run_cycle(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        engine.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
         self.assertEqual(len(seen), 2)
         # Peer still sees original frozen capabilities, not a mutated mapping.
         self.assertEqual(seen[0], seen[1])
@@ -219,11 +219,11 @@ class DecisionDataSourceTests(unittest.TestCase):
 
         # Cycle must not return ok with a non-replayable source.
         from implementations.runtime.engines.catalog import (
-            create_shadow_proposals_engine,
+            create_action_composition,
         )
 
         with self.assertRaises(TypeError):
-            create_shadow_proposals_engine().run_cycle(
+            create_action_composition().run(
                 frame_id="f",
                 frame_index=0,
                 timestamp_ms=1,
@@ -474,12 +474,13 @@ class DecisionDataSourceTests(unittest.TestCase):
 
     def test_runner_default_observation_not_configured(self) -> None:
         from implementations.runtime.engines.catalog import (
-            create_shadow_proposals_engine,
+            create_action_composition,
         )
 
-        result, control = create_shadow_proposals_engine().run_cycle(
+        result = create_action_composition().run(
             frame_id="f", frame_index=0, timestamp_ms=1
         )
+        control = result.control
         self.assertEqual(result.status, "ok")
         assert result.source is not None
         self.assertEqual(result.source.observation.status, "unavailable")
@@ -548,21 +549,22 @@ class DecisionDataSourceTests(unittest.TestCase):
     def test_runner_observation_dict_and_error_paths(self) -> None:
         from autonomy.decision_cycle.observation.values import Observation
         from implementations.runtime.engines.catalog import (
-            create_shadow_proposals_engine,
+            create_action_composition,
         )
 
-        engine = create_shadow_proposals_engine()
+        engine = create_action_composition()
         obs = Observation(
             observation_id="obs-runner",
             created_at_ms=1,
             sensor_snapshot={},
         )
-        result, control = engine.run_cycle(
+        result = engine.run(
             frame_id="f",
             frame_index=0,
             timestamp_ms=1,
             observation=obs.to_dict(),
         )
+        control = result.control
         self.assertEqual(result.status, "ok")
         assert result.source is not None
         self.assertEqual(result.source.observation.status, "ready")
@@ -572,12 +574,13 @@ class DecisionDataSourceTests(unittest.TestCase):
         )
         self.assertEqual(control.steering, 0.0)
 
-        err_result, err_control = engine.run_cycle(
+        err_result = engine.run(
             frame_id="f",
             frame_index=0,
             timestamp_ms=1,
             observation_error="camera_failed",
         )
+        err_control = err_result.control
         self.assertEqual(err_result.status, "ok")
         assert err_result.source is not None
         self.assertEqual(err_result.source.observation.status, "error")

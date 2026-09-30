@@ -6,9 +6,9 @@ from autonomy.decision_cycle.proposal.values import (
     SourceRef,
 )
 from autonomy.serialization import canonical_json_bytes
-from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
-from autonomy.decision_cycle.action import ShadowProposalsConfig, ShadowProposalsEngine
-from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from autonomy.decision_cycle.action_identifiers import ActionInputError
+from autonomy.decision_cycle.action import ProposalConfig, ActionComposition
+from implementations.runtime.engines.catalog import create_action_composition
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
@@ -41,9 +41,9 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(env.to_dict()["value"], {"empty": {}, "arr": []})
 
     def test_frame_id_65_chars_raises(self) -> None:
-        engine = create_shadow_proposals_engine()
-        with self.assertRaises(ShadowCycleInputError):
-            engine.run_cycle(frame_id="f" * 65, frame_index=0, timestamp_ms=1)
+        engine = create_action_composition()
+        with self.assertRaises(ActionInputError):
+            engine.run(frame_id="f" * 65, frame_index=0, timestamp_ms=1)
 
     def test_vehicle_action_not_valid_command(self) -> None:
         from autonomy.vehicle import VehicleAction
@@ -108,39 +108,41 @@ class RunnerBoundaryTests(unittest.TestCase):
             self.assertGreater(canonical_json_bytes(proposal.to_dict()), 4096)
             return proposal
 
-        engine = ShadowProposalsEngine(
-            config=ShadowProposalsConfig(
+        engine = ActionComposition(
+            config=ProposalConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
             ),
             plugins={"avoid_recent_obstruction": corrupt},
         )
-        result, control = engine.run_cycle(
+        result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1
         )
+        control = result.control
         self.assertEqual(result.status, "engine_error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertIsNone(result.plan)
         self.assertEqual(
-            result.authority.authorized_output["reason"], "shadow-only-idle"
+            result.authority.authorized_output["reason"], "hold-idle"
         )
         self.assertEqual(control.steering, 0.0)
 
     def test_select_action_plan_failure_is_plan_invariant(self) -> None:
         from unittest.mock import patch
 
-        engine = create_shadow_proposals_engine()
+        engine = create_action_composition()
         with patch(
             "autonomy.decision_cycle.action.select_action_plan",
             side_effect=ValueError("plan broken"),
         ):
-            result, control = engine.run_cycle(
+            result = engine.run(
                 frame_id="frame_001", frame_index=0, timestamp_ms=1
             )
+            control = result.control
         self.assertEqual(result.status, "engine_error")
         self.assertEqual(result.reason, "action_plan_invariant_violated")
         self.assertIsNone(result.plan)
         self.assertEqual(
-            result.authority.authorized_output["reason"], "shadow-only-idle"
+            result.authority.authorized_output["reason"], "hold-idle"
         )
         self.assertEqual(control.steering, 0.0)
 
@@ -164,13 +166,13 @@ class RunnerBoundaryTests(unittest.TestCase):
             object.__setattr__(proposal, "available", True)
             return proposal
 
-        engine = ShadowProposalsEngine(
-            config=ShadowProposalsConfig(
+        engine = ActionComposition(
+            config=ProposalConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
             ),
             plugins={"avoid_recent_obstruction": corrupt_matrix},
         )
-        result, _ = engine.run_cycle(
+        result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1
         )
         self.assertEqual(result.status, "engine_error")
@@ -232,15 +234,16 @@ class RunnerBoundaryTests(unittest.TestCase):
             object.__setattr__(proposal, "available", "false")  # type: ignore[arg-type]
             return proposal
 
-        engine = ShadowProposalsEngine(
-            config=ShadowProposalsConfig(
+        engine = ActionComposition(
+            config=ProposalConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
             ),
             plugins={"avoid_recent_obstruction": bad_available},
         )
-        result, control = engine.run_cycle(
+        result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1
         )
+        control = result.control
         self.assertEqual(result.status, "engine_error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertIsNone(result.plan)
@@ -302,7 +305,7 @@ class RunnerBoundaryTests(unittest.TestCase):
                 confidence=0.0,
                 reason="none",
                 command=None,
-                assumptions="shadow_only",  # type: ignore[arg-type]
+                assumptions="image_relative_only",  # type: ignore[arg-type]
                 available=False,
             )
         with self.assertRaises(TypeError):
@@ -372,15 +375,16 @@ class RunnerBoundaryTests(unittest.TestCase):
         def active(source: DecisionDataSource) -> ActionProposal:
             return _active_proposal(frame_id=source.frame_id, steering=0.35)
 
-        engine = ShadowProposalsEngine(
-            config=ShadowProposalsConfig(
+        engine = ActionComposition(
+            config=ProposalConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
             ),
             plugins={"avoid_recent_obstruction": active},
         )
-        result, control = engine.run_cycle(
+        result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1
         )
+        control = result.control
         self.assertEqual(result.status, "ok")
         assert result.plan is not None
         selected = result.plan.selected_candidate()

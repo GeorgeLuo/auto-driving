@@ -15,7 +15,7 @@ from autonomy.decision_cycle.proposal.inputs import DECISION_DATA_SOURCE_SCHEMA,
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
 from autonomy.decision_cycle.memory.snapshots.values import MEMORY_SNAPSHOT_SCHEMA
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
-from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
+from autonomy.runtime.engine import AutonomyControl
 from implementations.decision_cycle.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
 from implementations.decision_cycle.perception.frame_observation.plugin import (
     FrameObservationPlugin,
@@ -26,7 +26,7 @@ class CycleVocabularyTests(unittest.TestCase):
     def test_cycle_operations_keep_their_slots(self) -> None:
         self.assertEqual(
             tuple(DecisionSteps.__dataclass_fields__),
-            ("perceive", "observe", "remember", "choose_action"),
+            ("perceive", "observe", "remember", "act"),
         )
 
     def test_memory_required_remains_the_host_map_field(self) -> None:
@@ -61,7 +61,6 @@ class CycleVocabularyTests(unittest.TestCase):
         self.assertIn("memory", DecisionDataSource.__dataclass_fields__)
         self.assertIn("observation", DecisionDataSource.__dataclass_fields__)
         self.assertNotIn("shared_memory", DecisionDataSource.__dataclass_fields__)
-        self.assertNotIn("shared_memory", AutonomySnapshot.__dataclass_fields__)
         self.assertIn("shared_memory", DecisionFrameContext.__dataclass_fields__)
 
         result = DecisionCycleResult(
@@ -69,6 +68,7 @@ class CycleVocabularyTests(unittest.TestCase):
             perception=None,
             observation=None,
             memory=None,
+            action=None,
             control=AutonomyControl(),
             started_at_ms=0,
             completed_at_ms=0,
@@ -85,6 +85,7 @@ class CycleVocabularyTests(unittest.TestCase):
                 "perception",
                 "observation",
                 "memory",
+                "action",
                 "control",
             },
         )

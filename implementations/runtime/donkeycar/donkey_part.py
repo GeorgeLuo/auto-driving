@@ -193,6 +193,12 @@ class AutonomyPilotPart:
         self._inflight_frame_id: str | None = None
         self._cycle_thread: threading.Thread | None = None
         self.latest_snapshot: LatestObservationSnapshot | None = None
+        # The last cycle's ActionResult, the engine that produced it, and
+        # whether that cycle failed. A reload replaces the engine, which
+        # retires the result.
+        self._current_action: Any | None = None
+        self._current_action_engine: Any | None = None
+        self._last_cycle_failed = False
         self.latest_camera_frame: LatestCameraFrame | None = None
         self._last_pilot_steering = 0.0
         self._last_pilot_throttle = 0.0
@@ -280,7 +286,7 @@ class AutonomyPilotPart:
             return self._publication_from_locked_state(read_at_ms=read_at_ms)
 
     def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        """Return the publisher-owned current shadow result at read time.
+        """Return the publisher-owned current action result at read time.
 
         The decision record is retained inside the same locked snapshot as the
         camera frame. Read-time freshness is calculated from the producer's
@@ -623,20 +629,25 @@ class AutonomyPilotPart:
             return "decision_identity_invalid"
         return None
 
-    def _current_decision_result(self) -> Any | None:
-        """Read the current result from the active engine without inventing one."""
+    def _active_engine(self) -> Any | None:
+        return getattr(getattr(self.host, "manager", None), "engine", None)
 
-        manager = getattr(self.host, "manager", None)
-        engine = getattr(manager, "engine", None)
-        getter = getattr(engine, "get_current_cycle_result", None)
-        if callable(getter):
-            try:
-                return getter()
-            except Exception:
-                return None
-        # Keep compatibility with same-owner test/fallback engines that expose
-        # only the adapter's legacy diagnostic attribute.
-        return getattr(engine, "last_cycle_result", None)
+    def _current_decision_result(self) -> Any | None:
+        """Return the last cycle's action while the engine that produced it is active."""
+
+        if self._current_action_engine is not self._active_engine():
+            return None
+        return self._current_action
+
+    def _current_decision_failed(self) -> bool:
+        return self._last_cycle_failed and self._current_action_engine is self._active_engine()
+
+    def _record_current_action(self, action: Any | None, *, failed: bool) -> None:
+        self._current_action = action
+        self._current_action_engine = self._active_engine()
+        self._last_cycle_failed = failed or (
+            action is not None and getattr(action, "status", "ok") != "ok"
+        )
 
     def _capture_decision_publication(
         self,
@@ -647,7 +658,7 @@ class AutonomyPilotPart:
         published_at_ms: int,
         status: str,
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """Capture a detached, identity-decorated typed shadow cycle."""
+        """Capture a detached, identity-decorated typed action result."""
 
         if status != "ok":
             return None, "failed_step"
@@ -655,9 +666,7 @@ class AutonomyPilotPart:
             return None, self._decision_identity_error
         result = self._current_decision_result()
         if result is None:
-            manager = getattr(self.host, "manager", None)
-            engine = getattr(manager, "engine", None)
-            if getattr(engine, "last_cycle_error_reason", None):
+            if self._current_decision_failed():
                 return None, "failed_step"
             return None, "missing_result"
         if getattr(result, "status", "ok") != "ok":
@@ -738,16 +747,13 @@ class AutonomyPilotPart:
                 reason=snap.decision_error or "unavailable",
                 read_at_ms=read_at_ms,
             )
-        # A reset/reload clears the adapter's current result. Never replay the
-        # detached result retained by a prior camera snapshot.
+        # A reset/reload replaces the engine and retires its result. Never
+        # replay the detached result retained by a prior camera snapshot.
         current = self._current_decision_result()
         if current is None or getattr(current, "status", "ok") != "ok":
-            manager = getattr(self.host, "manager", None)
-            engine = getattr(manager, "engine", None)
             reason = (
                 "failed_step"
-                if getattr(engine, "last_cycle_error_reason", None) == "failed_step"
-                or current is not None
+                if self._current_decision_failed() or current is not None
                 else "reset"
             )
             return self._decision_unavailable(reason=reason, read_at_ms=read_at_ms)
@@ -874,12 +880,14 @@ class AutonomyPilotPart:
                 )
                 control = cycle_result.control
                 cycle_dict = cycle_result.to_dict()
+                self._record_current_action(cycle_result.action, failed=False)
                 completed_at_ms = cycle_result.completed_at_ms
                 duration_ms = cycle_result.duration_ms
                 status = "ok"
                 error = None
             except Exception as exc:
                 logger.exception("Autonomy decision cycle failed for frame %s", frame_id)
+                self._record_current_action(None, failed=True)
                 control = AutonomyControl(reason="observation-cycle-error")
                 if isinstance(exc, MemoryUpdateError):
                     with self._lock:

@@ -1,30 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from autonomy.vehicle import clamp_unit
 
-
-@dataclass(frozen=True)
-class AutonomySnapshot:
-    """Inputs for one engine step.
-
-    ``perception`` is current evidence, ``observation`` is the current-frame
-    record, and ``memory`` is retained evidence.
-    """
-
-    sensor_snapshot: Any = None
-    perception: Any = None
-    observation: Any = None
-    # Retained evidence published at shared_memory["decision.snapshot"].
-    memory: Any = None
-    cycle: dict[str, Any] = field(default_factory=dict)
-    mode: str = "user"
-    user_steering: float = 0.0
-    user_throttle: float = 0.0
-    timestamp_ms: int = 0
-    metadata: dict[str, Any] = field(default_factory=dict)
+if TYPE_CHECKING:
+    from autonomy.decision_cycle.context import DecisionFrameContext
+    from autonomy.decision_cycle.result import ActionResult
 
 
 @dataclass(frozen=True)
@@ -47,10 +30,7 @@ class AutonomyControl:
 
 
 class IdleAutonomyEngine:
-    """Stable default engine that always holds position."""
-
-    def __init__(self, reason: str = "stable-idle-engine") -> None:
-        self.reason = reason
+    """Stable default engine: it proposes nothing, so the cycle holds position."""
 
     def reset(self) -> None:
         return None
@@ -61,18 +41,9 @@ class IdleAutonomyEngine:
             "engine_id": "idle",
             "engine_spec": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "purpose": "Safe default that always holds position.",
-            "inputs": [
-                "sensor_snapshot",
-                "perception",
-                "observation",
-                "memory",
-                "cycle",
-                "mode",
-                "user_steering",
-                "user_throttle",
-            ],
+            "inputs": ["context", "perception", "observation", "memory"],
             "output": {
-                "type": "AutonomyControl",
+                "type": "ActionResult | None",
                 "movement": "always idle",
             },
             "steps": {
@@ -81,25 +52,23 @@ class IdleAutonomyEngine:
             },
         }
 
-    def step(self, snapshot: AutonomySnapshot) -> AutonomyControl:
-        return AutonomyControl(
-            steering=0.0,
-            throttle=0.0,
-            confidence=1.0,
-            reason=self.reason,
-            metadata={
-                "mode": snapshot.mode,
-                "has_sensor_snapshot": snapshot.sensor_snapshot is not None,
-                "has_perception": snapshot.perception is not None,
-                "has_observation": snapshot.observation is not None,
-                "has_memory": snapshot.memory is not None,
-            },
-        )
+    def act(
+        self,
+        context: "DecisionFrameContext",
+        perception: Any,
+        observation: Any,
+        memory: Any,
+    ) -> "ActionResult | None":
+        return None
 
 
 @runtime_checkable
 class AutonomyEngine(Protocol):
-    """Standard onboard controller shape for loadable autonomy engines."""
+    """Standard onboard controller shape for loadable autonomy engines.
+
+    ``act`` is the decision cycle's action step: it returns the cycle's
+    ``ActionResult``, or ``None`` when the engine takes no action.
+    """
 
     def reset(self) -> None:
         ...
@@ -107,5 +76,11 @@ class AutonomyEngine(Protocol):
     def describe_schema(self) -> dict[str, Any]:
         ...
 
-    def step(self, snapshot: AutonomySnapshot) -> AutonomyControl:
+    def act(
+        self,
+        context: "DecisionFrameContext",
+        perception: Any,
+        observation: Any,
+        memory: Any,
+    ) -> "ActionResult | None":
         ...

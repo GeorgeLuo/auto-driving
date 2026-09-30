@@ -28,7 +28,6 @@ DEFAULT_FORWARD_THROTTLE = 0.60
 BASE_ASSUMPTIONS = (
     "no_object_identity",
     "image_relative_only",
-    "shadow_only",
     "single_primary_record",
 )
 

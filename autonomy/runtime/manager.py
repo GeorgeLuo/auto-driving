@@ -4,9 +4,13 @@ import importlib
 import threading
 import time
 import traceback
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from .engine import AutonomyControl, AutonomySnapshot
+from .engine import AutonomyControl
+
+if TYPE_CHECKING:
+    from autonomy.decision_cycle.context import DecisionFrameContext
+    from autonomy.decision_cycle.result import ActionResult
 
 
 DEFAULT_ENGINE_SPEC = "autonomy.runtime.engine:IdleAutonomyEngine"
@@ -95,36 +99,62 @@ class AutonomyManager:
             reload_module=True,
         )
 
-    def step(self, snapshot: AutonomySnapshot) -> AutonomyControl:
+    def act(
+        self,
+        context: "DecisionFrameContext",
+        perception: Any,
+        observation: Any,
+        memory: Any,
+    ) -> "ActionResult | None":
+        """Run the loaded engine as the cycle's action step.
+
+        An engine exception is recorded and becomes a fail-closed
+        ``engine_internal_error`` result that holds position.
+        """
+
+        from autonomy.decision_cycle.result import ActionResult
+
         with self._lock:
             engine = self.engine
             engine_spec = self.engine_spec
 
         if engine is None:
-            return AutonomyControl(reason="engine-not-loaded")
+            with self._lock:
+                self.last_control = AutonomyControl(reason="engine-not-loaded")
+            return None
 
         try:
-            control = engine.step(snapshot)
-            if not isinstance(control, AutonomyControl):
-                raise TypeError("autonomy engine step must return AutonomyControl")
+            action = engine.act(context, perception, observation, memory)
+            if action is not None and not isinstance(action, ActionResult):
+                raise TypeError("autonomy engine act must return ActionResult or None")
         except Exception as exc:
             with self._lock:
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc),
                 ).strip()
-                self.last_control = AutonomyControl(
-                    reason="engine-error",
-                    metadata={"engine": engine_spec, "error": self.last_error},
+            action = _engine_error_result(context)
+            with self._lock:
+                self.last_control = (
+                    action.control
+                    if action is not None
+                    else AutonomyControl(
+                        reason="engine-error",
+                        metadata={"engine": engine_spec, "error": self.last_error},
+                    )
                 )
-                return self.last_control
+            return action
 
         with self._lock:
             self.step_count += 1
             self.last_step_at_ms = timestamp_ms()
             self.last_error = None
-            self.last_control = control
-            return control
+            self.last_control = (
+                action.control
+                if action is not None
+                else AutonomyControl(confidence=1.0, reason="engine-idle")
+            )
+            return action
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -169,3 +199,17 @@ class AutonomyManager:
             module = importlib.reload(module)
         engine_cls = getattr(module, class_name)
         return engine_cls(**engine_config)
+
+
+def _engine_error_result(context: Any) -> "ActionResult | None":
+    from autonomy.decision_cycle.action import error_result
+
+    try:
+        return error_result(
+            frame_id=context.frame_id,
+            reason="engine_internal_error",
+            drive_mode_gate=context.mode if isinstance(context.mode, str) else "unknown",
+        )
+    except Exception:
+        # An invalid frame identity cannot carry a result; the cycle holds idle.
+        return None

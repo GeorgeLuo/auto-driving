@@ -12,7 +12,6 @@ from autonomy.decision_cycle.cycle import (
     DecisionFrameContext,
     DecisionSteps,
 )
-from .engine import AutonomySnapshot
 from .manager import AutonomyManager
 
 
@@ -26,12 +25,13 @@ class AutonomyCycleHost:
         steps: DecisionSteps | None = None,
     ) -> None:
         configured_steps = steps or DecisionSteps()
-        if configured_steps.choose_action is not None:
+        if configured_steps.act is not None:
             raise ValueError("AutonomyCycleHost owns the decision action step")
 
         self.manager = manager or AutonomyManager()
         self.cycle = DecisionCycle(
-            replace(configured_steps, choose_action=self._choose_action),
+            replace(configured_steps, act=self.manager.act),
+            idle_reason="engine-idle",
         )
         self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
@@ -76,29 +76,3 @@ class AutonomyCycleHost:
         self.shared_memory.clear()
         publish_snapshot(self.shared_memory, snapshot)
         return snapshot
-
-    def _choose_action(
-        self,
-        context,
-        perception,
-        observation,
-        memory,
-    ):
-        # memory is retained evidence from shared_memory["decision.snapshot"].
-        return self.manager.step(
-            AutonomySnapshot(
-                sensor_snapshot=context.sensor_snapshot,
-                perception=perception,
-                observation=observation,
-                memory=memory,
-                cycle={
-                    "frame_id": context.frame_id,
-                    "frame_index": context.frame_index,
-                },
-                mode=context.mode,
-                user_steering=context.user_steering,
-                user_throttle=context.user_throttle,
-                timestamp_ms=context.timestamp_ms,
-                metadata=dict(context.metadata),
-            )
-        )

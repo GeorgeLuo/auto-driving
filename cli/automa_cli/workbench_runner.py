@@ -19,14 +19,14 @@ from autonomy.decision_cycle.memory.activation import (
     MemoryActivation,
     bounds_from_config,
 )
-from autonomy.decision_cycle.action import ENGINE_ID
 from autonomy.decision_cycle.perception.interface import (
     PerceptionMapper,
     PerceptionText,
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.activation import instantiate_perception_mapper
-from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from implementations.runtime.engines.catalog import create_action_composition
+from implementations.runtime.engines.hold_action import ENGINE_ID
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
@@ -416,7 +416,7 @@ class ImageReplayRunner:
                     )
                     mapper = self._build_mapper_for_selection(selected_plugin_ids)
                     memory_step = self._build_memory_step_for_selection(selected_plugin_ids)
-                    decision_engine = create_shadow_proposals_engine()
+                    decision_engine = create_action_composition()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "startup"),
@@ -781,7 +781,7 @@ class ImageReplayRunner:
         selected = self._active_plugin_ids
         mapper = self._build_mapper_for_selection(selected)
         memory_step = self._build_memory_step_for_selection(selected)
-        decision_engine = create_shadow_proposals_engine()
+        decision_engine = create_action_composition()
         self._cleanup_locked()
         self._mapper = mapper
         self._memory_step = memory_step
@@ -1288,20 +1288,10 @@ class ImageReplayRunner:
                         perceive=perceive,
                         observe=observe,
                         remember=memory_step,
+                        act=decision_engine.act,
                     ),
-                    idle_reason="workbench-observation-only",
                 ).run(context)
-                decision_result, _authorized_control = decision_engine.run_cycle(
-                    frame_id=frame.frame_id,
-                    frame_index=frame.frame_index,
-                    timestamp_ms=frame.timestamp_ms,
-                    observation=result.observation,
-                    observation_error=None,
-                    # Retained evidence from shared_memory["decision.snapshot"].
-                    memory=result.memory,
-                    host_application=None,
-                )
-                decision_payload = decision_result.to_dict()
+                decision_payload = result.action.to_dict()
                 perception_plugin_report = _plugin_report(mapper)
                 memory_plugin_report = _plugin_report(memory_step)
                 perception_payload = (
@@ -1725,7 +1715,7 @@ class ImageReplayRunner:
         return {
             **document,
             "engine_id": ENGINE_ID,
-            "authority_mode": "shadow_only",
+            "gate_id": getattr(getattr(self._decision_engine, "gate", None), "gate_id", None),
             "proposed_applied": False,
         }
 

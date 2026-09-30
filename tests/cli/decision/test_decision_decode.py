@@ -8,13 +8,13 @@ from cli.automa_cli.decision import (
     strict_decode_apply_observation,
 )
 from tests.support.cli_runner import run_automa
-from tests.cli.decision.shadow_decision_surfaces_fixtures import (
+from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
-    ShadowDecisionSurfaceFixture,
+    DecisionSurfaceFixture,
 )
 
 
-class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase):
+class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_strict_decode_rejects_malformations(self) -> None:
         from cli.automa_cli.decision import DecisionSurfaceError
 
@@ -102,7 +102,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         self.assertEqual(canonical_json_bytes(a), canonical_json_bytes(b))
         self.assertNotEqual(canonical_json_utf8(a), canonical_json_utf8(b))
 
-    def test_cli_update_shadow_engine_choice(self) -> None:
+    def test_cli_update_hold_engine_choice(self) -> None:
         result = run_automa(
             "vehicles",
             "update",
@@ -110,7 +110,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
             "--id",
             "chase-sim-chaser",
             "--engine",
-            "shadow-proposals",
+            "hold-action",
             "--json",
             runtime_root=self.runtime_root,
         )

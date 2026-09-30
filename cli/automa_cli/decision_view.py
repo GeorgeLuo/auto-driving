@@ -1,4 +1,4 @@
-"""Read-only live projection of accepted shadow decision cycles.
+"""Read-only live projection of accepted decision cycles.
 
 The runtime server owns this short-lived view.  It receives an accepted
 ``vehicle_decision_stream_frame_v0`` and the already-published capture bytes

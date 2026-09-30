@@ -8,10 +8,11 @@ from autonomy.decision_cycle.proposal.values import (
     synthetic_error_proposal,
 )
 from autonomy.serialization import canonical_json_bytes
-from autonomy.decision_cycle.action_gate.hold import proposed_equals_authorized
-from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
-from autonomy.decision_cycle.action import ShadowProposalsConfig, ShadowProposalsEngine
-from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from autonomy.decision_cycle.action_gate.hold import idle_output
+from autonomy.decision_cycle.action_gate.values import proposed_equals_authorized
+from autonomy.decision_cycle.action_identifiers import ActionInputError
+from autonomy.decision_cycle.action import ProposalConfig, ActionComposition
+from implementations.runtime.engines.catalog import create_action_composition
 from implementations.runtime.engines.config import ObstacleAvoidanceConfig
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
@@ -26,17 +27,18 @@ class ActionProposalMatrixTests(unittest.TestCase):
                     SourceRef(kind=kind, id="removed-step-output")
 
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
-        engine = ShadowProposalsEngine(
-            config=ShadowProposalsConfig(enabled_plugins=("cruise",)),
+        engine = ActionComposition(
+            config=ProposalConfig(enabled_plugins=("cruise",)),
             plugins={
                 "cruise": lambda source: _active_proposal(
                     plugin_id="cruise", frame_id=source.frame_id
                 )
             },
         )
-        result, control = engine.run_cycle(
+        result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1000
         )
+        control = result.control
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.plan.selected_candidate().plugin_id, "cruise")
         self.assertEqual(control.throttle, 0.0)
@@ -82,11 +84,15 @@ class ActionProposalMatrixTests(unittest.TestCase):
             )
 
     def test_proposed_equals_authorized_table(self) -> None:
-        self.assertTrue(proposed_equals_authorized(None))
+        idle = idle_output()
+        self.assertTrue(proposed_equals_authorized(None, idle))
         zero = ProposedVehicleCommand(steering=0.0, throttle=0.0, gear="hold")
-        self.assertTrue(proposed_equals_authorized(zero))
+        self.assertTrue(proposed_equals_authorized(zero, idle))
         nonzero = ProposedVehicleCommand(steering=0.35, throttle=0.0, gear="hold")
-        self.assertFalse(proposed_equals_authorized(nonzero))
+        self.assertFalse(proposed_equals_authorized(nonzero, idle))
+        applied = {"steering": 0.35, "throttle": 0.0, "confidence": 0.9, "reason": "x"}
+        self.assertTrue(proposed_equals_authorized(nonzero, applied))
+        self.assertFalse(proposed_equals_authorized(None, applied))
 
 
 class SelectorTests(unittest.TestCase):
@@ -114,9 +120,9 @@ class SelectorTests(unittest.TestCase):
 
 class RunnerBoundaryTests(unittest.TestCase):
     def test_invalid_frame_id_raises_before_cycle_result(self) -> None:
-        engine = create_shadow_proposals_engine()
-        with self.assertRaises(ShadowCycleInputError):
-            engine.run_cycle(frame_id="😀", frame_index=0, timestamp_ms=1)
+        engine = create_action_composition()
+        with self.assertRaises(ActionInputError):
+            engine.run(frame_id="😀", frame_index=0, timestamp_ms=1)
 
     def test_prior_frame_proposal_not_selected(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
@@ -126,15 +132,16 @@ class RunnerBoundaryTests(unittest.TestCase):
         def bad_plugin(source: DecisionDataSource) -> ActionProposal:
             return stale  # wrong frame
 
-        engine = ShadowProposalsEngine(
-            config=ShadowProposalsConfig(
+        engine = ActionComposition(
+            config=ProposalConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
             ),
             plugins={"avoid_recent_obstruction": bad_plugin},
         )
-        result, control = engine.run_cycle(
+        result = engine.run(
             frame_id="frame_002", frame_index=2, timestamp_ms=2000
         )
+        control = result.control
         self.assertEqual(result.status, "ok")
         self.assertIsNotNone(result.plan)
         assert result.plan is not None
@@ -148,7 +155,7 @@ class RunnerBoundaryTests(unittest.TestCase):
 
     def test_empty_enabled_plugins_rejects_activation(self) -> None:
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(enabled_plugins=())
+            ProposalConfig(enabled_plugins=())
 
     def test_max_legal_plan_builds(self) -> None:
         # Four *exact* 4096-byte proposals with max 64-char plugin ids, max
@@ -319,18 +326,19 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
 
     def test_host_application_bad_type_is_engine_error(self) -> None:
-        engine = create_shadow_proposals_engine()
-        result, control = engine.run_cycle(
+        engine = create_action_composition()
+        result = engine.run(
             frame_id="frame_001",
             frame_index=0,
             timestamp_ms=1,
             host_application="bad",  # type: ignore[arg-type]
         )
+        control = result.control
         self.assertEqual(result.status, "engine_error")
         self.assertEqual(result.reason, "engine_internal_error")
         self.assertIsNone(result.plan)
         self.assertEqual(
-            result.authority.authorized_output["reason"], "shadow-only-idle"
+            result.authority.authorized_output["reason"], "hold-idle"
         )
         self.assertFalse(result.authority.proposed_applied)
         self.assertEqual(control.steering, 0.0)
@@ -363,22 +371,22 @@ class RunnerBoundaryTests(unittest.TestCase):
 
     def test_invalid_activation_configs(self) -> None:
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(enabled_plugins=("a", "a"))
+            ProposalConfig(enabled_plugins=("a", "a"))
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(
+            ProposalConfig(
                 enabled_plugins=("a", "b", "c", "d", "e"),
             )
         # String is not a list of ids (would otherwise char-iterate).
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(enabled_plugins="avoid_recent_obstruction")  # type: ignore[arg-type]
+            ProposalConfig(enabled_plugins="avoid_recent_obstruction")  # type: ignore[arg-type]
         # Unknown id rejects at production catalog activation, not via self-declared known set.
         with self.assertRaises(ValueError):
-            create_shadow_proposals_engine(
+            create_action_composition(
                 ObstacleAvoidanceConfig(enabled_plugins=("ghost",))
             )
         with self.assertRaises(ValueError):
-            ShadowProposalsEngine(
-                config=ShadowProposalsConfig(enabled_plugins=("ghost",)),
+            ActionComposition(
+                config=ProposalConfig(enabled_plugins=("ghost",)),
                 plugins={},
             )
 
@@ -400,15 +408,16 @@ class RunnerBoundaryTests(unittest.TestCase):
             (boom, "plugin_exception"),
         ):
             with self.subTest(reason=reason):
-                engine = ShadowProposalsEngine(
-                    config=ShadowProposalsConfig(
+                engine = ActionComposition(
+                    config=ProposalConfig(
                         enabled_plugins=("avoid_recent_obstruction",),
                     ),
                     plugins={"avoid_recent_obstruction": plugin_fn},
                 )
-                result, control = engine.run_cycle(
+                result = engine.run(
                     frame_id="frame_001", frame_index=0, timestamp_ms=1
                 )
+                control = result.control
                 self.assertEqual(result.status, "ok")
                 assert result.plan is not None
                 self.assertEqual(len(result.plan.candidates), 1)

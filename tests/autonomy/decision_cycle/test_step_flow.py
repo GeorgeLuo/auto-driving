@@ -23,6 +23,7 @@ from autonomy.decision_cycle.perception.interface import (
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.runtime import AutonomyControl
+from tests.support.action_fixtures import fixed_control_composition
 
 
 class DecisionStageFlowTests(unittest.TestCase):
@@ -83,6 +84,7 @@ class DecisionStageFlowTests(unittest.TestCase):
             confidence=0.9,
             reason="path-clear",
         )
+        composition = fixed_control_composition(control)
         step_calls: list[tuple[str, tuple[int, ...]]] = []
 
         def record(step: str, *values: object) -> None:
@@ -100,27 +102,32 @@ class DecisionStageFlowTests(unittest.TestCase):
             record("remember", received_context, received_observation)
             return memory
 
-        def choose_action(
+        def act(
             received_context,
             received_perception,
             received_observation,
             received_memory,
         ):
             record(
-                "choose_action",
+                "act",
                 received_context,
                 received_perception,
                 received_observation,
                 received_memory,
             )
-            return control
+            return composition.act(
+                received_context,
+                received_perception,
+                received_observation,
+                received_memory,
+            )
 
         cycle = DecisionCycle(
             DecisionSteps(
                 perceive=perceive,
                 observe=observe,
                 remember=remember,
-                choose_action=choose_action,
+                act=act,
             )
         )
 
@@ -137,7 +144,7 @@ class DecisionStageFlowTests(unittest.TestCase):
                 ("observe", (id(context), id(perception))),
                 ("remember", (id(context), id(observation))),
                 (
-                    "choose_action",
+                    "act",
                     (
                         id(context),
                         id(perception),
@@ -159,6 +166,8 @@ class DecisionStageFlowTests(unittest.TestCase):
         self.assertEqual(serialized["context"]["frame_id"], "frame_007")
         self.assertEqual(serialized["memory"], memory.to_dict())
         self.assertEqual(serialized["control"], control.to_dict())
+        self.assertEqual(serialized["action"], result.action.to_dict())
+        self.assertEqual(serialized["action"]["frame_id"], "frame_007")
         self.assertNotIn("patterns", serialized)
         self.assertNotIn("projections", serialized)
         json.dumps(serialized)

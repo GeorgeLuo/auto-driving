@@ -12,11 +12,12 @@ from autonomy.decision_cycle.memory.activation import (
     load_memory_step_if_present,
     read_memory_activation,
 )
-from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
+from autonomy.runtime import AutonomyControl, AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.memory.catalog import (
     build_memory_activation_payload,
 )
+from tests.support.action_fixtures import fixed_control_composition
 
 
 class _PushyEngine:
@@ -30,14 +31,17 @@ class _PushyEngine:
             "engine_spec": "tests:_PushyEngine",
         }
 
-    def step(self, snapshot: AutonomySnapshot) -> AutonomyControl:
-        self.last_snapshot = snapshot
-        return AutonomyControl(
-            steering=0.7,
-            throttle=0.4,
-            confidence=1.0,
-            reason="pushy-test-engine",
-        )
+    def act(self, context, perception, observation, memory):
+        self.last_memory = memory
+        self.last_observation = observation
+        return fixed_control_composition(
+            AutonomyControl(
+                steering=0.7,
+                throttle=0.4,
+                confidence=1.0,
+                reason="pushy-test-engine",
+            )
+        ).act(context, perception, observation, memory)
 
 
 class _RecordingMemory:
@@ -190,8 +194,8 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             result.memory.metadata["engine_mutated"] = True
             if result.memory.records:
                 result.memory.records[0].properties["tamper"] = True
-            if hasattr(engine, "last_snapshot") and engine.last_snapshot.memory is not None:
-                engine.last_snapshot.memory.metadata["via_engine"] = True
+            if getattr(engine, "last_memory", None) is not None:
+                engine.last_memory.metadata["via_engine"] = True
             self.assertNotIn("engine_mutated", owned.metadata)
             self.assertNotIn("via_engine", owned.metadata)
             if owned.records:
@@ -220,8 +224,8 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             self.assertIsNotNone(result.memory)
             self.assertEqual(result.control.reason, "pushy-test-engine")
             self.assertTrue(result.control.steering > 0.0)
-            self.assertIsNotNone(manager.engine.last_snapshot.memory)
-            self.assertIs(manager.engine.last_snapshot.memory, result.memory)
+            self.assertIsNotNone(manager.engine.last_memory)
+            self.assertIs(manager.engine.last_memory, result.memory)
 
             status = host.status()
             self.assertEqual(status["memory"]["implementation_id"], "recording_test")
@@ -250,18 +254,18 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
                 host.run(
                     DecisionFrameContext(frame_id="frame_x", frame_index=0, timestamp_ms=1)
                 )
-            self.assertFalse(hasattr(manager.engine, "last_snapshot"))
+            self.assertFalse(hasattr(manager.engine, "last_memory"))
             self.assertIsNone(host.last_result)
 
-    def test_idle_engine_reports_has_memory(self) -> None:
+    def test_idle_engine_holds_while_memory_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = load_memory_step_if_present(_write_activation(Path(tmp)))
             host = AutonomyCycleHost(steps=DecisionSteps(remember=step))
             result = host.run(
                 DecisionFrameContext(frame_id="frame_i", frame_index=0, timestamp_ms=1)
             )
-            self.assertEqual(result.control.reason, "stable-idle-engine")
-            self.assertTrue(result.control.metadata["has_memory"])
+            self.assertEqual(result.control.reason, "engine-idle")
+            self.assertIsNone(result.action)
             self.assertIsNotNone(result.memory)
 
     def test_host_reset_memory_clears_records_and_bumps_epoch(self) -> None:
@@ -329,7 +333,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
         for index in range(2):
             result = host.run(DecisionFrameContext(f"frame-{index}", index, index))
             self.assertEqual(result.observation.summary, ("updated",))
-            self.assertEqual(manager.engine.last_snapshot.observation.summary, ("updated",))
+            self.assertEqual(manager.engine.last_observation.summary, ("updated",))
             self.assertIs(result.memory, host.shared_memory["decision.snapshot"])
         self.assertEqual(seen, [None, "frame-0"])
 

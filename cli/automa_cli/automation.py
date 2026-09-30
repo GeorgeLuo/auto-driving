@@ -50,7 +50,8 @@ from .bundles import controller_bundle_paths
 from .decision import (
     invalidate_latest_decision_frame,
     load_decision_activation,
-    publish_shadow_decision_frame,
+    PROPOSAL_ENGINE_IDS,
+    publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
 from .perception import (
@@ -382,7 +383,7 @@ def run_vehicle_automation(
             worker_pid=os.getpid(),
             decision_activation=(
                 decision_activation
-                if decision_config.get("engine_id") == "shadow-proposals"
+                if decision_config.get("engine_id") in PROPOSAL_ENGINE_IDS
                 else None
             ),
             decision_activation_path=Path(bundle["decision_runtime_dir"]) / "active.json",
@@ -594,13 +595,12 @@ def run_vehicle_automation(
                 memory_step, memory_activation_path, loaded_config=memory_config,
             )
         cycle_result = cycle_host.run(context)
-        # Publish the accepted shadow frame first. The server-owned decision
+        # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False
         try:
-            engine = cycle_host.manager.engine
-            last_cycle = getattr(engine, "last_cycle_result", None)
-            published = publish_shadow_decision_frame(
+            last_cycle = cycle_result.action
+            published = publish_decision_frame(
                 cycle_result=last_cycle,
                 context_frame_id=context.frame_id,
                 vehicle_id=vehicle_id,
@@ -612,10 +612,10 @@ def run_vehicle_automation(
             )
             if (
                 not published
-                and str(decision_config.get("engine_id") or "") == "shadow-proposals"
+                and str(decision_config.get("engine_id") or "") in PROPOSAL_ENGINE_IDS
             ):
-                # Count for workers that staged shadow at start (including after
-                # restage invalidation where live activation no longer matches).
+                # Count for workers that staged a proposal engine at start (including
+                # after restage invalidation where live activation no longer matches).
                 reason = (
                     "gate_rejected"
                     if last_cycle is None
@@ -2503,7 +2503,7 @@ def _record_decision_publish_skip(
     *,
     reason: str,
 ) -> None:
-    """Count a non-fatal shadow latest-frame publish skip (never raises).
+    """Count a non-fatal decision latest-frame publish skip (never raises).
 
     State persistence is best-effort. In-memory counters are updated first so a
     later successful state write still reflects the skip even if an intermediate
@@ -2553,7 +2553,7 @@ def _read_latest_decision_frame_for_view(
         frame.get("frame_id") != frame_id
         or frame.get("run_id") != run_id
         or frame.get("worker_pid") != worker_pid
-        or frame.get("activation_engine_id") != "shadow-proposals"
+        or frame.get("activation_engine_id") not in PROPOSAL_ENGINE_IDS
         or frame.get("activation_activated_at_ms") != activation_activated_at_ms
     ):
         return None

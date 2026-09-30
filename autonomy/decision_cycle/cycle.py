@@ -2,7 +2,8 @@
 
 ``perceive`` returns current evidence. ``observe`` adapts that evidence and
 the sensor context into the current-frame record. ``remember`` returns
-retained evidence. ``choose_action`` runs the existing action composition.
+retained evidence. ``act`` proposes, plans, and gates the cycle's action and
+returns an ``ActionResult`` whose control the cycle applies.
 ``shared_memory`` on the frame context is the host-owned map.
 """
 
@@ -19,6 +20,7 @@ from autonomy.decision_cycle.observation.step import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.decision_cycle.result import ActionResult
 from autonomy.runtime.engine import AutonomyControl
 
 
@@ -42,7 +44,7 @@ ActionStep = Callable[
         Observation | None,
         MemorySnapshot | None,
     ],
-    AutonomyControl | None,
+    ActionResult | None,
 ]
 
 
@@ -51,7 +53,7 @@ class DecisionSteps:
     """The cycle operations.
 
     ``perceive``, ``observe``, and ``remember`` are the perception, observation,
-    and memory steps. ``choose_action`` is the action composition. ``observe``
+    and memory steps. ``act`` is the action composition. ``observe``
     overrides the default adaptation of perception evidence into the
     current-frame record. Omitting ``observe`` leaves that default in place
     when perception evidence is present.
@@ -60,7 +62,7 @@ class DecisionSteps:
     perceive: PerceiveStep | None = None
     observe: ObserveStep | None = None
     remember: MemoryStep | None = None
-    choose_action: ActionStep | None = None
+    act: ActionStep | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +78,7 @@ class DecisionCycleResult:
     observation: Observation | None
     # Retained evidence also published at shared_memory["decision.snapshot"].
     memory: MemorySnapshot | None
+    action: ActionResult | None
     control: AutonomyControl
     started_at_ms: int
     completed_at_ms: int
@@ -95,12 +98,13 @@ class DecisionCycleResult:
             "perception": self.perception.to_dict() if self.perception is not None else None,
             "observation": self.observation.to_dict() if self.observation is not None else None,
             "memory": _to_plain_data(self.memory),
+            "action": self.action.to_dict() if self.action is not None else None,
             "control": self.control.to_dict(),
         }
 
 
 class DecisionCycle:
-    """Run perceive, observe, remember, then choose_action.
+    """Run perceive, observe, remember, then act.
 
     ``observe`` overrides the default adaptation. Omitting it leaves that
     default in place when perception evidence is present. ``remember`` returns
@@ -148,21 +152,24 @@ class DecisionCycle:
                 detail = "unprintable error"
             raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
         observation = observation_after_memory(context.shared_memory, observation, memory)
-        control = (
-            self.steps.choose_action(context, perception, observation, memory)
-            if self.steps.choose_action
+        action = (
+            self.steps.act(context, perception, observation, memory)
+            if self.steps.act
             else None
         )
-        if control is None:
+        if action is None:
             control = AutonomyControl(confidence=1.0, reason=self.idle_reason)
-        elif not isinstance(control, AutonomyControl):
-            raise TypeError("decision action step must return AutonomyControl or None")
+        elif isinstance(action, ActionResult):
+            control = action.control
+        else:
+            raise TypeError("decision action step must return ActionResult or None")
 
         return DecisionCycleResult(
             context=context,
             perception=perception,
             observation=observation,
             memory=memory,
+            action=action,
             control=control,
             started_at_ms=started_at_ms,
             completed_at_ms=timestamp_ms(),

@@ -48,11 +48,11 @@ def _record(
         "vehicle_id": "piracer",
         "source_id": "donkeycar:piracer",
         "run_id": "run-1",
-        "generation_id": "shadow-proposals:1000",
+        "generation_id": "hold-action:1000",
         "activation": {
-            "engine_id": "shadow-proposals",
+            "engine_id": "hold-action",
             "activated_at_ms": 1_000,
-            "generation_id": "shadow-proposals:1000",
+            "generation_id": "hold-action:1000",
         },
         "source_frame": {
             "frame_id": frame_id,
@@ -98,17 +98,17 @@ def _decision(*, source_frame: dict | None = None) -> dict:
             "vehicle_id": "piracer",
             "source_id": "donkeycar:piracer",
             "run_id": "run-1",
-            "activation_engine_id": "shadow-proposals",
+            "activation_engine_id": "hold-action",
             "activation_activated_at_ms": 1_000,
-            "generation_id": "shadow-proposals:1000",
+            "generation_id": "hold-action:1000",
             "frame_id": frame["frame_id"],
             "frame_index": frame["frame_index"],
             "timestamp_ms": frame["captured_at_ms"],
             "published_at_ms": 9_500,
             "activation": {
-                "engine_id": "shadow-proposals",
+                "engine_id": "hold-action",
                 "activated_at_ms": 1_000,
-                "generation_id": "shadow-proposals:1000",
+                "generation_id": "hold-action:1000",
             },
             "source_frame": copy.deepcopy(frame),
             "cycle": {"source": {"source_frame": copy.deepcopy(frame)}},
@@ -120,7 +120,7 @@ def _physical_publication() -> dict:
     decision = _decision()["decision"]
     decision["activation"]["engine_config"] = {}
     decision["cycle"] = {
-        "schema": "shadow_decision_cycle_result_v0",
+        "schema": "action_result_v0",
         "status": "ok",
         "frame_id": "frame-1",
         "source": {

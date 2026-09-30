@@ -1,4 +1,4 @@
-"""Configuration for the packaged obstruction proposal, shared by live and shadow execution."""
+"""Configuration for the packaged obstruction proposal, shared by the hold and mode-gated engines."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from autonomy.decision_cycle.action import ShadowProposalsConfig
+from autonomy.decision_cycle.action import ProposalConfig
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
     PLUGIN_ID,
@@ -20,7 +20,7 @@ DEFAULT_ENABLED_PLUGINS = (PLUGIN_ID,)
 
 
 @dataclass(frozen=True)
-class ObstacleAvoidanceConfig(ShadowProposalsConfig):
+class ObstacleAvoidanceConfig(ProposalConfig):
     """Implementation-owned defaults; core only receives the selected plugin IDs."""
 
     enabled_plugins: tuple[str, ...] = DEFAULT_ENABLED_PLUGINS

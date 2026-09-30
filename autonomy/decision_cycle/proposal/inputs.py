@@ -117,7 +117,7 @@ def omit_forbidden_channel_keys(value: Any) -> Any:
     """Copy a JSON-like tree without privileged origin keys.
 
     DecisionDataSource still fail-closes if those keys remain. Callers that
-    adapt live captures for the shadow engine must strip them first.
+    adapt live captures for the action composition must strip them first.
     """
 
     if isinstance(value, dict):

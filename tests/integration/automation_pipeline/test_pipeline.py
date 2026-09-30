@@ -261,7 +261,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
                 patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
                 patch(
-                    "cli.automa_cli.automation.publish_shadow_decision_frame",
+                    "cli.automa_cli.automation.publish_decision_frame",
                     return_value=True,
                 ),
                 patch(
@@ -333,7 +333,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
                 patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
                 patch(
-                    "cli.automa_cli.automation.publish_shadow_decision_frame",
+                    "cli.automa_cli.automation.publish_decision_frame",
                     return_value=True,
                 ),
                 patch(
@@ -409,7 +409,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
                 patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
                 patch(
-                    "cli.automa_cli.automation.publish_shadow_decision_frame",
+                    "cli.automa_cli.automation.publish_decision_frame",
                     return_value=True,
                 ),
                 patch(

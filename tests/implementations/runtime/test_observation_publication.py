@@ -20,7 +20,7 @@ from implementations.runtime.donkeycar import (
 
 
 class ObservationPublicationTests(unittest.TestCase):
-    def _shadow_part(self) -> AutonomyPilotPart:
+    def _hold_part(self) -> AutonomyPilotPart:
         manager = AutonomyManager(
             default_engine_spec=ADAPTER_ENGINE_SPEC,
             default_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
@@ -75,7 +75,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
-        self.assertEqual(payload["control"]["reason"], "stable-idle-engine")
+        self.assertEqual(payload["control"]["reason"], "engine-idle")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
     def test_publication_includes_memory_snapshot_when_step_present(self) -> None:
@@ -177,7 +177,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(meta["health"], "unavailable")
 
     def test_decision_publication_keeps_source_identity_and_cycle_atomic(self) -> None:
-        part = self._shadow_part()
+        part = self._hold_part()
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         assert part.latest_snapshot is not None
@@ -226,8 +226,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertFalse(expired["ok"])
         self.assertEqual(expired["reason"], "expired")
 
-        manager = part.host.manager
-        manager.engine.reset()
+        # A reload replaces the engine, which retires its result.
+        part.host.manager.reload_engine()
         reset = part.publish_decision_latest(now_ms=completed_at_ms)
         self.assertFalse(reset["ok"])
         self.assertEqual(reset["reason"], "reset")

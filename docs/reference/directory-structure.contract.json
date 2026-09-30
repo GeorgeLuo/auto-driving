@@ -34,7 +34,7 @@
             "path": "autonomy/decision_cycle/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Decision-cycle contracts and framework execution, grouped by step. perception/ and memory/ hold each step's plugin contract, selection, activation, and execution, with supporting concepts beneath. observation/ holds the current-frame record and default observe step; proposal/ the proposal inputs and candidate values; planning/ plan values and the built-in selector; action_gate/ the fixed hold gate. At the root: the cycle input (context.py), the action composition (action.py), its aggregate result and engine error reasons (result.py, errors.py), and the action identifier grammar (action_identifiers.py). Cycle ordering lives in cycle.py."
+            "responsibility": "Decision-cycle contracts and framework execution, grouped by step. perception/ and memory/ hold each step's plugin contract, selection, activation, and execution, with supporting concepts beneath. observation/ holds the current-frame record and default observe step; proposal/ the proposal inputs and candidate values; planning/ plan values and the built-in selector; action_gate/ the gate contract, its authority record, and the hold gate. At the root: the cycle input (context.py), the action composition (action.py), its aggregate result and engine error reasons (result.py, errors.py), and the action identifier grammar (action_identifiers.py). Cycle ordering lives in cycle.py."
           },
           {
             "path": "autonomy/runtime/",
@@ -162,7 +162,7 @@
                 "path": "implementations/runtime/engines/",
                 "category": "runtime-implementation",
                 "commit_policy": "source",
-                "responsibility": "Loadable automation engines, their catalog, configuration, and offline inspection. hold_action runs the action composition and always returns idle control; mode_gated_action applies the selected proposal only in permitted drive modes."
+                "responsibility": "Loadable automation engines, their catalog, configuration, and offline inspection. hold_action runs the action composition through the hold gate, which always authorizes idle control; mode_gated_action's mode gate applies the selected proposal only in permitted drive modes and records that it did."
               }
             ]
           },

@@ -278,7 +278,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
 
-    def test_runner_persists_frame_correlated_shadow_decision_playback(self) -> None:
+    def test_runner_persists_frame_correlated_decision_playback(self) -> None:
         with image_source(2) as root:
             mapper = DecisionFixtureMapper()
             runner = ImageReplayRunner(
@@ -312,7 +312,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(first_decision["authority"]["proposed_applied"])
         self.assertEqual(
             state["machine_detail"]["pipeline"]["decision_engine"],
-            "shadow-proposals",
+            "hold-action",
         )
         decision_config = state["machine_detail"]["pipeline"]["decision_config"]
         self.assertFalse(decision_config["proposed_applied"])

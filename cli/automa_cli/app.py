@@ -515,9 +515,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_stream = stream_commands.add_parser(
         "decision",
-        help="Show the latest shadow decision frame (generation-scoped latest replacement).",
+        help="Show the latest decision frame (generation-scoped latest replacement).",
         description=(
-            "Read automation/latest_decision.json for the staged shadow-proposals engine. "
+            "Read automation/latest_decision.json for the staged hold-action or "
+            "obstacle-avoidance engine. "
             "Accepts only generation-matched frames from a running live worker within the "
             "configured max age. No history is written. Use --once for a single accepted frame."
         ),
@@ -567,21 +568,21 @@ def build_parser() -> argparse.ArgumentParser:
     decision_help.set_defaults(handler=_handle_vehicles_decision_help)
     decision_inspect = decision_control_commands.add_parser(
         "inspect", help="Open an offline decision inspector for a saved input sequence.",
-        description="Compute left/right shadow scenarios from one saved frame. No live worker or capture is needed.",
+        description="Compute left/right proposal scenarios from one saved frame. No live worker or capture is needed.",
     )
     decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
     decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
-    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged shadow configuration; otherwise use packaged defaults.")
+    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged hold-action configuration; otherwise use packaged defaults.")
     decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
     decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
     decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts and exit without starting a server.")
     decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
     decision_apply = decision_control_commands.add_parser(
         "apply",
-        help="Replay a recorded decision sequence through staged shadow-proposals offline.",
+        help="Replay a recorded decision sequence through staged hold-action offline.",
         description=(
             "Feed a recorded observation+memory sequence through the vehicle's staged "
-            "shadow-proposals activation. Requires --id. Reports a deterministic digest "
+            "hold-action activation. Requires --id. Reports a deterministic digest "
             "(canonical_json_utf8 byte equality across two passes). Writes no files unless "
             "--record is passed for exact-frame HTML under lab/runs/decision-apply/."
         ),
@@ -619,7 +620,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Adapt the PiCar decision publication into the same RuntimeViewServer "
             "decision page used by Chase, with matched image-relative evidence and "
-            "proposed versus authorized shadow output. It sends no vehicle commands."
+            "proposed versus authorized output. It sends no vehicle commands."
         ),
     )
     decision_live.add_argument(
@@ -843,7 +844,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Run the bounded decision playback workbench against an ordered "
             "local image directory. The server owns source ordering, perception, "
-            "observation, bounded memory, shadow decision state, and any selected "
+            "observation, bounded memory, decision state, and any selected "
             "manifest-backed plugins. "
             "Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
@@ -2134,7 +2135,7 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "- live    read-only local browser monitor for a live PiCar publication",
                 "- help    show this summary",
                 "",
-                "Stage inspection-only proposals with: ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
+                "Stage inspection-only proposals with: ./cli/automa vehicles update decision --id <vehicle> --engine hold-action",
                 "Stage the live PiCar happy path with: ./cli/automa vehicles update decision --id <vehicle> --engine obstacle-avoidance",
                 "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
                 "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",

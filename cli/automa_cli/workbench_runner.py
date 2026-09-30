@@ -717,11 +717,15 @@ class ImageReplayRunner:
 
             # The action lock serializes this boundary with frame processing.
             # Managers built at start already hold the catalog. Selecting on
-            # them lets core retain unchanged instances. Reset, not selection,
-            # is the fresh-replay boundary.
-            if active_phase and normalized != self._active_plugin_ids:
+            # them lets core retain unchanged instances. Cached frames from
+            # another selection are stale; the displayed frame runs again now.
+            reprocess = None
+            changed = active_phase and normalized != self._active_plugin_ids
+            if changed:
                 self._apply_manager_selection_locked(normalized)
             self._active_plugin_ids = normalized
+            if changed:
+                reprocess = self._rewind_to_displayed_frame_locked()
             self._apply_plugin_configuration_locked()
             if active_phase:
                 self._state["run_active_plugin_ids"] = list(normalized)
@@ -736,7 +740,65 @@ class ImageReplayRunner:
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
             self._condition.notify_all()
-            return copy.deepcopy(self._state)
+            paused = self._state["phase"] == "paused"
+            run_id = str(self._state["run_id"])
+            generation = self._generation
+        # A running replay picks the frame up on its next tick; a paused one
+        # shows the new selection now.
+        if reprocess is not None and paused:
+            self._process_one(run_id, generation, reprocess, allow_paused=True)
+        return self.state()
+
+    def _rewind_to_displayed_frame_locked(self) -> ReplayFrame | None:
+        """Point the replay back at the displayed frame and return it."""
+
+        feed = self._feed
+        position = max(int(self._state["position"]) - 1, 0)
+        if feed is None or position >= len(feed.frames):
+            return None
+        self._set_position_locked(position)
+        return feed.frames[position]
+
+    def _cached_frame_locked(self, frame: ReplayFrame) -> dict[str, Any] | None:
+        """Return the frame's recorded result if the current selection made it.
+
+        A frame recorded under another plugin selection runs again wherever
+        the replay lands on it.
+        """
+
+        detail = self._history.get(frame.frame_id)
+        if detail is None or detail.get("active_plugin_ids") != list(self._active_plugin_ids):
+            return None
+        return detail
+
+    def _restart_capture_locked(self) -> None:
+        """Start another pass over the capture with fresh pipelines.
+
+        Each loop reprocesses every frame with the current selection instead
+        of replaying the previous pass.
+        """
+
+        selected = self._active_plugin_ids
+        mapper = self._build_mapper_for_selection(selected)
+        memory_step = self._build_memory_step_for_selection(selected)
+        decision_engine = create_shadow_proposals_engine()
+        self._cleanup_locked()
+        self._mapper = mapper
+        self._memory_step = memory_step
+        self._decision_engine = decision_engine
+        self._shared_memory = {}
+        self._history.clear()
+        self._state["timeline"] = []
+        self._set_position_locked(0)
+        self._record_action_locked("loop")
+
+    def _set_position_locked(self, position: int) -> None:
+        self._state["position"] = position
+        total = len(self._feed.frames) if self._feed else 0
+        self._state["progress"]["completed"] = position
+        self._state["progress"]["percent"] = (
+            round((position / total) * 100.0, 2) if total else 0.0
+        )
 
     def _apply_manager_selection_locked(self, normalized: tuple[str, ...]) -> None:
         """Select on the running managers without rebuilding the replay.
@@ -919,8 +981,7 @@ class ImageReplayRunner:
             return
         if self._loop:
             if self._state["phase"] == "running":
-                self._state["position"] = 0
-                self._record_action_locked("loop")
+                self._restart_capture_locked()
             return
         self._complete_locked()
 
@@ -956,7 +1017,7 @@ class ImageReplayRunner:
             generation = self._generation
             if self._state["position"] >= len(self._feed.frames):
                 if self._loop:
-                    self._state["position"] = 0
+                    self._restart_capture_locked()
                 else:
                     self._complete_locked()
                     return copy.deepcopy(self._state)
@@ -993,14 +1054,20 @@ class ImageReplayRunner:
             run_id = str(self._state["run_id"])
             generation = self._generation
             frame = self._feed.frames[position]
-            cached = self._history.get(frame.frame_id)
+            cached = self._cached_frame_locked(frame)
             if cached is not None:
                 self._apply_cached_frame_locked(frame, cached)
                 self._record_action_locked("seek", position=position)
                 return copy.deepcopy(self._state)
-            # A future seek must advance the live steps through every unseen
-            # source frame so their state matches the displayed result.
-            unseen = self._feed.frames[len(self._history):position + 1]
+            if frame.frame_id in self._history:
+                # Recorded under another selection: run only this frame again.
+                self._set_position_locked(position)
+                unseen = [frame]
+            else:
+                # A future seek must advance the live steps through every
+                # unseen source frame so their state matches the displayed result.
+                self._set_position_locked(len(self._history))
+                unseen = self._feed.frames[len(self._history):position + 1]
         for next_frame in unseen:
             self._process_one(run_id, generation, next_frame, allow_paused=True)
             with self._lock:
@@ -1102,8 +1169,7 @@ class ImageReplayRunner:
                     return
                 if position >= len(feed.frames):
                     if self._loop:
-                        self._state["position"] = 0
-                        self._record_action_locked("loop")
+                        self._restart_capture_locked()
                         continue
                     self._complete_locked()
                     return
@@ -1159,12 +1225,12 @@ class ImageReplayRunner:
                     or frame.position != int(self._state["position"])
                 ):
                     return False
-                cached = self._history.get(frame.frame_id)
+                cached = self._cached_frame_locked(frame)
                 if cached is not None:
                     self._apply_cached_frame_locked(frame, cached)
                     self._condition.notify_all()
                     return True
-                if frame.position != len(self._history):
+                if frame.position > len(self._history):
                     raise RuntimeError("replay frame would skip uncached source frames")
                 mapper = self._mapper
                 memory_step = self._memory_step
@@ -1282,6 +1348,7 @@ class ImageReplayRunner:
                     pipeline["memory_plugin_report"] = copy.deepcopy(memory_plugin_report)
                     detail["summary"] = copy.deepcopy(self._state["summary"])
                     detail["decision"] = copy.deepcopy(decision_payload)
+                    detail["active_plugin_ids"] = list(self._active_plugin_ids)
                     self._history[frame.frame_id] = detail
                     self._upsert_timeline_locked(detail)
                     self._state["position"] = frame.position + 1

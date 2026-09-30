@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.memory_fixtures import memory_report
+
 
 def _always_on_things_signals(*, with_boundary: bool) -> tuple[list[dict], list[dict]]:
     """Camera/floor evidence that remains present even after object removal."""
@@ -122,7 +124,7 @@ def _live_publication(
             "things": things,
             "signals": signals,
         },
-        "memory": {
+        "memory": memory_report({
             "health": memory_health,
             "record_count": len(memory_records),
             "records": memory_records,
@@ -133,5 +135,5 @@ def _live_publication(
                 "max_age_ms": max_age_ms,
                 "eviction_policy": "oldest_first",
             },
-        },
+        }),
     }

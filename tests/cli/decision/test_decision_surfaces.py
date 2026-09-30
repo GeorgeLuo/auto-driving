@@ -49,7 +49,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             proposals["decision_inputs"],
             [
                 "observation",
-                "memory",
+                "shared_memory",
                 "capabilities",
                 "prior_host_applied_command",
             ],

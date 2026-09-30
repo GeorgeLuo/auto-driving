@@ -12,6 +12,7 @@ from cli.automa_cli.chase_max_age import (
 from tests.cli.memory.chase_max_age_fixtures import (
     _chase_frame,
 )
+from tests.support.memory_fixtures import memory_report
 
 
 class ChaseMaxAgeUnitTests(unittest.TestCase):
@@ -162,13 +163,13 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
             bare = _chase_frame(
                 1, [], memory_epoch_id="e1", run_id="run-a", worker_pid=7
             )
-            bare["memory"] = {
+            bare["memory"] = memory_report({
                 "health": "empty",
                 "record_count": 0,
                 "records": [],
                 "epoch_id": "e1",
                 "metadata": {},
-            }
+            })
             require_chase_max_age_identity(
                 {
                     "status": "live",

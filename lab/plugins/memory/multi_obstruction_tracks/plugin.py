@@ -7,6 +7,8 @@ This plugin associates candidates, retains obstacle records for the
 observation used by Workbench. Optical flow reads the current camera frame
 using the same luminance transform. All cross-frame state lives in the host's
 shared map; the tracker and evidence reducer are recreated for each update.
+The retained-evidence ledger is kept at ``LEDGER_KEY`` and its records are
+published at ``EVIDENCE_KEY``, where ``avoid_recent_obstruction`` reads them.
 """
 from __future__ import annotations
 
@@ -15,12 +17,6 @@ from uuid import uuid4
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.activation import bounds_from_config
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemorySnapshot,
-    detach_memory_snapshot,
-    empty_memory_snapshot,
-)
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionSignal,
@@ -28,6 +24,13 @@ from autonomy.decision_cycle.perception.evidence.values import (
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.shared_memory import SharedMemory
 
+from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+    EVIDENCE_KEY,
+    EvidenceLedger,
+    bounds_from_config,
+    detach_ledger,
+    empty_ledger,
+)
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
     reduce_evidence,
 )
@@ -37,6 +40,9 @@ from implementations.decision_cycle.perception.components.camera import (
 )
 from lab.plugins.perception.multi_obstruction_tracks.src.plugin import normalize_gray, _mean_confidence
 from .tracker import ObstructionTrackState
+
+
+LEDGER_KEY = "multi_obstruction_tracks.ledger"
 
 
 class MultiObstructionMemory:
@@ -50,51 +56,52 @@ class MultiObstructionMemory:
     def __init__(self, **config):
         self.config = config
         self.bounds = bounds_from_config(config)
-        self._shared_memory = None  # Reference to the host's map, never a private copy.
-        self._empty = empty_memory_snapshot(
+        self._empty = empty_ledger(
             memory_id="memory-reset-1", epoch_id="epoch-1", bounds=self.bounds,
             created_at_ms=0, implementation_id=self.implementation_id,
         )
 
-    def snapshot(self) -> MemorySnapshot:
-        snapshot = self._empty
-        if self._shared_memory is not None:
-            snapshot = self._shared_memory.get("decision.snapshot") or self._empty
-        return detach_memory_snapshot(snapshot)
+    def ledger(self, shared_memory: SharedMemory | None) -> EvidenceLedger:
+        current = shared_memory.get(LEDGER_KEY) if shared_memory is not None else None
+        return detach_ledger(current if isinstance(current, EvidenceLedger) else self._empty)
 
-    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
-        if shared_memory is not None:
-            self._shared_memory = shared_memory
-        if self._shared_memory is None:
-            raise ValueError("tracking memory reset requires a shared-memory map")
+    def status(self, shared_memory: SharedMemory | None) -> dict:
+        return self.ledger(shared_memory).to_dict()
+
+    def reset(self, shared_memory: SharedMemory) -> None:
         epoch = f"epoch-{uuid4().hex}"
         for key in (*self.history_keys, "decision.observation"):
-            self._shared_memory.pop(key, None)
-        self._shared_memory["decision.snapshot"] = replace(
-            self._empty, memory_id=f"memory-reset-{epoch}", epoch_id=epoch,
+            shared_memory.pop(key, None)
+        self._publish(
+            shared_memory,
+            replace(self._empty, memory_id=f"memory-reset-{epoch}", epoch_id=epoch),
         )
-        return self.snapshot()
 
-    def _retain_evidence(self, context, observation):
-        snapshot = reduce_evidence(
-            self.snapshot(), context, observation,
-            implementation_id=self.implementation_id, **self.config,
+    def _publish(self, shared_memory: SharedMemory, ledger: EvidenceLedger) -> None:
+        shared_memory[LEDGER_KEY] = ledger
+        shared_memory[EVIDENCE_KEY] = ledger.records
+
+    def _retain_evidence(self, context, observation) -> None:
+        self._publish(
+            context.shared_memory,
+            reduce_evidence(
+                self.ledger(context.shared_memory), context, observation,
+                implementation_id=self.implementation_id, **self.config,
+            ),
         )
-        context.shared_memory["decision.snapshot"] = snapshot
-        return snapshot
 
-    def update(self, context: DecisionFrameContext, observation: Observation | None) -> MemorySnapshot:
+    def update(self, context: DecisionFrameContext, observation: Observation | None) -> None:
         shared_memory = context.shared_memory
         if shared_memory is None:
             raise ValueError("tracking memory requires a host shared-memory map")
-        self._shared_memory = shared_memory
         shared_memory.pop("decision.observation", None)
         marker = next((signal for signal in observation.signals
                        if signal.get("signal_id") == "multi_obstruction_candidates"), None) if observation else None
         if marker is None:
             for key in self.history_keys:
                 shared_memory.pop(key, None)
-            return self._retain_evidence(context, observation)
+            self._retain_evidence(context, observation)
+            return
 
         properties = marker["properties"]
         config = properties["tracking_config"]
@@ -162,9 +169,8 @@ class MultiObstructionMemory:
             metadata={**observation.metadata, "tracking": measurements,
                       "tracking_implementation": self.implementation_id},
         )
-        snapshot = self._retain_evidence(context, tracked_observation)
+        self._retain_evidence(context, tracked_observation)
         shared_memory["multi_obstruction_tracks.history"] = lookback_tracks
         shared_memory["multi_obstruction_tracks.previous_gray"] = gray
         shared_memory["multi_obstruction_tracks.next_track_id"] = tracker._next_track_id
         shared_memory["decision.observation"] = tracked_observation
-        return snapshot

@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import os
 import unittest
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import urlopen
@@ -13,7 +14,7 @@ from cli.automa_cli.decision import (
     ENGINE_ID,
     get_vehicle_decision_info,
     publish_decision_frame,
-    strict_decode_apply_memory,
+    strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
@@ -133,7 +134,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
             observation=strict_decode_apply_observation(raw["observation"]),
-            memory=strict_decode_apply_memory(raw["memory"]),
+            shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
         )
         _control = cycle.control
         self.assertTrue(
@@ -202,7 +203,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertEqual(projected["reason"], "")
         self.assertEqual(
             projected["record"],
-            payload["provenance"]["memory"]["value"]["records"][0],
+            payload["provenance"]["evidence"]["value"][0],
         )
 
     def test_unmatched_retained_evidence_preserves_provenance_without_overlay(
@@ -256,7 +257,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertIsNone(projected["record"])
                 self.assertEqual(
                     projected["provenance"],
-                    payload["provenance"]["memory"]["value"]["records"][0][
+                    payload["provenance"]["evidence"]["value"][0][
                         "provenance"
                     ],
                 )

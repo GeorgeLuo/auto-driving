@@ -6,12 +6,7 @@ import copy
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemoryBounds,
-    MemoryProvenance,
-    MemorySnapshot,
-    RetainedEvidence,
-)
+from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from cli.automa_cli.decision import (
@@ -22,18 +17,13 @@ from cli.automa_cli.decision import (
     _require_stream_frame_envelope,
     build_decision_stream_frame,
 )
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.runtime.engines.config import default_engine_config
 from implementations.runtime.engines.mode_gated_action import ModeGatedActionEngine
 
 
-def _left_obstruction() -> MemorySnapshot:
-    return MemorySnapshot(
-        memory_id="memory-1",
-        epoch_id="epoch-1",
-        health="healthy",
-        bounds=MemoryBounds(max_records=16, max_age_ms=10_000),
-        created_at_ms=1000,
-        records=(
+def _left_obstruction() -> tuple[RetainedEvidence, ...]:
+    return (
             RetainedEvidence(
                 record_id="thing:1:boundary",
                 kind="floor_boundary",
@@ -53,17 +43,20 @@ def _left_obstruction() -> MemorySnapshot:
                 ),
                 properties={},
             ),
-        ),
-        implementation_id="bounded_evidence",
     )
 
 
 def _applied_frame() -> dict:
     action = ModeGatedActionEngine().act(
-        DecisionFrameContext(frame_id="frame-1", frame_index=1, timestamp_ms=1000, mode="local"),
+        DecisionFrameContext(
+            frame_id="frame-1",
+            frame_index=1,
+            timestamp_ms=1000,
+            mode="local",
+            shared_memory={EVIDENCE_KEY: _left_obstruction()},
+        ),
         None,
         Observation(observation_id="obs-1", created_at_ms=1000, sensor_snapshot={}, summary=("t",)),
-        _left_obstruction(),
     )
     assert action.authority.proposed_applied
     return build_decision_stream_frame(

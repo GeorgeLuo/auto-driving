@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
@@ -10,7 +11,7 @@ from implementations.runtime.engines.catalog import create_action_composition
 from cli.automa_cli.decision import (
     DECISION_ENGINES,
     ENGINE_ID,
-    strict_decode_apply_memory,
+    strict_decode_apply_evidence,
     strict_decode_apply_observation,
     update_vehicle_decision,
 )
@@ -58,9 +59,9 @@ class DecisionSurfaceFixture:
                 "observation"
             ]
         )
-        mem = strict_decode_apply_memory(
+        evidence = strict_decode_apply_evidence(
             json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
-                "memory"
+                "evidence"
             ]
         )
         cycle = engine.run(
@@ -68,7 +69,7 @@ class DecisionSurfaceFixture:
             frame_index=1,
             timestamp_ms=1000,
             observation=obs,
-            memory=mem,
+            shared_memory={EVIDENCE_KEY: evidence},
         )
         control = cycle.control
         self.assertEqual(control.reason, HOLD_IDLE_REASON)

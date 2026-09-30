@@ -207,7 +207,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
             observation=strict_decode_apply_observation(raw["observation"]),
-            memory=None,
         )
         idle = build_decision_stream_frame(
             idle_cycle,
@@ -455,7 +454,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 created_at_ms=1000,
                 sensor_snapshot={},
             ),
-            None,
         )
         self.assertEqual(first.control.reason, HOLD_IDLE_REASON)
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
@@ -480,7 +478,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         # for a later frame.
         bad = manager.act(
             DecisionFrameContext(frame_id="!!!", frame_index=2, timestamp_ms=2000),
-            None,
             None,
             None,
         )

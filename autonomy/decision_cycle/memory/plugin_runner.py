@@ -15,12 +15,8 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.activation import MemoryActivation, memory_manager_from_activation
 from autonomy.decision_cycle.memory.execution.plugin_runtime import MemoryPluginRuntime
 from autonomy.decision_cycle.memory.plugin import MemoryImplementation
-from autonomy.decision_cycle.memory.publication import (
-    publish_reset_snapshot,
-    publish_snapshot,
-    withdraw_publication,
-)
-from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot, detach_memory_snapshot
+from autonomy.decision_cycle.memory.publication import withdraw_publication
+from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.plugins import (
     PluginDefinition,
@@ -34,8 +30,10 @@ from autonomy.shared_memory import SharedMemory
 class PluginMemoryRunner:
     """Run the manager's selected memory plugins once per decision cycle.
 
-    Plugins run in selection order on the same host map. The last snapshot is
-    the decision-facing value; the framework does not merge retention policies.
+    Plugins run in selection order on the same host map, and each plugin's
+    runtime publishes its accepted value before the next plugin runs. The final
+    plugin's value is the decision-facing one; the framework does not merge
+    retention policies.
     """
 
     def __init__(
@@ -58,14 +56,12 @@ class PluginMemoryRunner:
         self._runtime_lock = RLock()
         self.plugin_ids: tuple[str, ...] = ()
         self.plugins: tuple[MemoryPluginRuntime, ...] = ()
-        self.last_snapshot: MemorySnapshot | None = None
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
         self.update_count = 0
         self.reset_count = 0
         self.failure_count = 0
         self._apply_selection()
-        self.snapshot()
 
     @property
     def implementation(self) -> MemoryImplementation | None:
@@ -131,8 +127,6 @@ class PluginMemoryRunner:
             try:
                 for plugin in self.plugins:
                     snapshot = plugin.update(context, observation)
-                    if context.shared_memory is not None:
-                        publish_snapshot(context.shared_memory, snapshot)
                 if not self.plugins and context.shared_memory is not None:
                     withdraw_publication(context.shared_memory)
             except Exception:
@@ -142,7 +136,7 @@ class PluginMemoryRunner:
             finally:
                 self.update_count += 1
                 self.last_duration_ms = (time.perf_counter() - started) * 1000.0
-            return self._publish_snapshot(snapshot)
+            return snapshot
 
     def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot | None:
         with self._runtime_lock:
@@ -154,11 +148,11 @@ class PluginMemoryRunner:
                 snapshot = plugin.reset(shared_memory)
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error or self.last_error
-            if shared_memory is not None:
-                publish_reset_snapshot(shared_memory, snapshot)
+            if not self.plugins and shared_memory is not None:
+                withdraw_publication(shared_memory)
             self.reset_count += 1
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
-            return self._publish_snapshot(snapshot)
+            return snapshot
 
     def snapshot(self) -> MemorySnapshot | None:
         with self._runtime_lock:
@@ -170,11 +164,7 @@ class PluginMemoryRunner:
                 snapshot = plugin.snapshot()
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error
-            return self._publish_snapshot(snapshot)
-
-    def _publish_snapshot(self, snapshot: MemorySnapshot | None) -> MemorySnapshot | None:
-        self.last_snapshot = detach_memory_snapshot(snapshot) if snapshot is not None else None
-        return detach_memory_snapshot(snapshot) if snapshot is not None else None
+            return snapshot
 
     def plugin_report(self) -> dict[str, Any]:
         """Report catalog, requested, and published plugins for applied instances."""
@@ -200,7 +190,6 @@ class PluginMemoryRunner:
 
     def status(self) -> dict[str, Any]:
         with self._runtime_lock:
-            last = self.last_snapshot
             final = self.plugins[-1] if self.plugins else None
             return {
                 "implementation_id": final.implementation_id if final else None,
@@ -217,7 +206,7 @@ class PluginMemoryRunner:
                 "failure_count": self.failure_count,
                 "last_duration_ms": self.last_duration_ms,
                 "last_error": self.last_error,
-                "last_health": last.health if last else None,
-                "last_epoch_id": last.epoch_id if last else None,
-                "last_record_count": last.record_count if last else None,
+                "last_health": final.last_health if final else None,
+                "last_epoch_id": final.last_epoch_id if final else None,
+                "last_record_count": final.last_record_count if final else None,
             }

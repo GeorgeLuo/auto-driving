@@ -16,9 +16,9 @@ interpret plugin histories. Values may be Python records or arrays, not only
 JSON. A memory snapshot is retained evidence from the memory step.
 A perception plugin's ``memory_required`` flag means that plugin needs this map.
 
-Memory implementations may publish their retained evidence at
-"decision.snapshot". The decision cycle reads the memory step's result but
-does not write that key. A memory plugin may publish a current-cycle Observation
+The memory framework publishes each memory plugin's accepted retained evidence
+at "decision.snapshot"; plugins read their previous value there. The decision
+cycle reads the memory step's result but does not write that key. A memory plugin may publish a current-cycle Observation
 at "decision.observation" for subsequent steps. Other producers may use their
 own keys; the existing evidence reducer does not evict those entries.
 """

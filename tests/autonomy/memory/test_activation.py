@@ -53,7 +53,7 @@ class MemoryActivationTests(unittest.TestCase):
             context = DecisionFrameContext("frame_2", 2, 200)
             observation = Observation("obs_2", 190, {})
             step.update(context, observation)
-            self.assertEqual(step.last_snapshot.health, "healthy")
+            self.assertEqual(step.status()["last_health"], "healthy")
 
             reset = step.reset()
             self.assertEqual(reset.health, "empty")
@@ -125,24 +125,23 @@ class MemoryActivationTests(unittest.TestCase):
             if second.records:
                 self.assertNotIn("width", second.records[0].properties)
 
-    def test_caller_mutation_does_not_affect_step_owned_last_snapshot(self) -> None:
+    def test_caller_mutation_does_not_affect_published_value(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = ActivatedMemoryStep(
                 read_memory_activation(_write_payload(tmp, _valid_payload()))
             )
+            shared = {}
             returned = step.update(
-                DecisionFrameContext("frame_7", 7, 700),
+                DecisionFrameContext("frame_7", 7, 700, shared_memory=shared),
                 Observation("obs_7", 690, {}),
             )
-            self.assertIsNot(returned, step.last_snapshot)
+            published = shared["decision.snapshot"]
+            self.assertIsNot(returned, published)
+            self.assertEqual(returned, published)
             returned.metadata["caller"] = "mutated"
             if returned.records:
                 returned.records[0].properties["extra"] = 1
-            owned = step.last_snapshot
-            assert owned is not None
-            self.assertNotIn("caller", owned.metadata)
-            if owned.records:
-                self.assertNotIn("extra", owned.records[0].properties)
-            reread = step.snapshot()
-            self.assertIsNot(reread, step.last_snapshot)
-            self.assertNotIn("caller", reread.metadata)
+            self.assertNotIn("caller", published.metadata)
+            if published.records:
+                self.assertNotIn("extra", published.records[0].properties)
+            self.assertNotIn("caller", step.snapshot().metadata)

@@ -34,6 +34,7 @@ from autonomy.memory.values import (
     serialized_mapping_bytes,
     serialized_memory_snapshot_bytes,
 )
+from autonomy.decision_cycle.memory.publication import SNAPSHOT_KEY
 from autonomy.shared_memory import SharedMemory
 from autonomy.perception import ViewLocation
 
@@ -403,10 +404,11 @@ def reduce_evidence(
 
 
 class BoundedEvidenceLedger:
-    """Remember implementation that publishes retained evidence into the host map.
+    """Remember implementation that keeps bounded retained evidence.
 
-    The snapshot is ``shared_memory["decision.snapshot"]``. Other keys in the
-    map belong to other producers.
+    The framework publishes each accepted value at ``SNAPSHOT_KEY``; the ledger
+    reads its previous value there and owns ``EPOCH_COUNTER_KEY``. Other keys
+    in the map belong to other producers.
     """
 
     implementation_id = "bounded_evidence"
@@ -420,7 +422,7 @@ class BoundedEvidenceLedger:
 
     def snapshot(self) -> MemorySnapshot:
         current = (
-            self._shared_memory.get("decision.snapshot") if self._shared_memory is not None else None
+            self._shared_memory.get(SNAPSHOT_KEY) if self._shared_memory is not None else None
         )
         return detach_memory_snapshot(current or self._empty)
 
@@ -436,7 +438,7 @@ class BoundedEvidenceLedger:
         ) + 1
         epoch = f"epoch-{next_epoch}"
         self._shared_memory[EPOCH_COUNTER_KEY] = next_epoch
-        self._shared_memory["decision.snapshot"] = replace(
+        return replace(
             self._empty,
             memory_id=f"memory-reset-{next_epoch}",
             epoch_id=epoch,
@@ -446,7 +448,6 @@ class BoundedEvidenceLedger:
                 "policy=bounded_evidence_recency",
             ),
         )
-        return self.snapshot()
 
     def update(
         self,
@@ -464,15 +465,13 @@ class BoundedEvidenceLedger:
         context.shared_memory[EPOCH_COUNTER_KEY] = epoch_number
         if previous.health == "error":
             previous = replace(self._empty, epoch_id=f"epoch-{epoch_number}")
-        snapshot = reduce_evidence(
+        return reduce_evidence(
             previous,
             context,
             observation,
             implementation_id=self.implementation_id,
             **self.config,
         )
-        context.shared_memory["decision.snapshot"] = snapshot
-        return detach_memory_snapshot(snapshot)
 
 
 def _numbered_epoch(epoch_id: str) -> int:

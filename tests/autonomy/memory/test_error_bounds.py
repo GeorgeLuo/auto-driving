@@ -72,7 +72,7 @@ class MemoryActivationTests(unittest.TestCase):
                     DecisionFrameContext("frame_b", 2, 200),
                     Observation("obs_b", 190, {}),
                 )
-            self.assertEqual(step.last_snapshot, first)
+            self.assertEqual(step.status()["last_epoch_id"], first.epoch_id)
 
     def test_reset_failure_preserves_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

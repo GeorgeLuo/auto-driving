@@ -432,7 +432,7 @@ for legacy, owner, class_name in (
         step = load_memory_step_from_bundle(read_memory_activation(activation_path))
 
         self.assertIsNot(type(step.implementation), host_ledger)
-        self.assertIs(type(step.last_snapshot), host_snapshot)
+        self.assertIs(type(step.snapshot()), host_snapshot)
         # autonomy stays imported from the host. Its package __path__ is the
         # host tree, including submodules imported for the first time here.
         with StagedBundleImport(self.bundle_root, MEMORY_BUNDLE_PREFIXES).activate():

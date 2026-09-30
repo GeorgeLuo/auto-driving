@@ -7,7 +7,6 @@ from autonomy.decision_cycle.memory.publication import (
     OBSERVATION_KEY,
     SNAPSHOT_KEY,
     observation_after_memory,
-    publish_reset_snapshot,
     publish_snapshot,
     withdraw_publication,
 )
@@ -39,13 +38,6 @@ class MemoryPublicationTests(unittest.TestCase):
         shared = {}
         publish_snapshot(shared, None)
         self.assertEqual(shared, {SNAPSHOT_KEY: None})
-
-    def test_reset_without_snapshot_withdraws_only_the_snapshot(self) -> None:
-        shared = {SNAPSHOT_KEY: self.snapshot, OBSERVATION_KEY: self.replacement}
-        publish_reset_snapshot(shared, None)
-        self.assertEqual(shared, {OBSERVATION_KEY: self.replacement})
-        publish_reset_snapshot(shared, self.snapshot)
-        self.assertIs(shared[SNAPSHOT_KEY], self.snapshot)
 
     def test_withdraw_publication(self) -> None:
         shared = {SNAPSHOT_KEY: self.snapshot, OBSERVATION_KEY: self.replacement, "other": 1}

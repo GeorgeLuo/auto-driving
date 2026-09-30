@@ -132,6 +132,16 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(shared["decision.snapshot"], snapshot)
         self.assertEqual([item["update_count"] for item in step.status()["plugins"]], [1, 1])
 
+    def test_reset_without_a_map_publishes_to_the_last_map(self):
+        manager = _manager()
+        manager.select(["first"])
+        step = ActivatedMemoryStep(plugin_manager=manager)
+        shared = {}
+        step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory=shared), Observation("obs-1", 90, {}))
+        reset = step.reset()
+        self.assertEqual(shared["decision.snapshot"], reset)
+        self.assertEqual(step.status()["last_epoch_id"], reset.epoch_id)
+
     def test_selection_changes_reuse_retained_plugins_and_reset_removed_plugins(self):
         manager = _manager()
         manager.select(["first", "second"])

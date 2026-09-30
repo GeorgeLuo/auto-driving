@@ -1,6 +1,7 @@
 """Memory publication in the host-owned shared memory.
 
-The memory step publishes its retained evidence at ``SNAPSHOT_KEY``. A memory
+The memory framework publishes each plugin's accepted retained evidence at
+``SNAPSHOT_KEY``; plugins read their previous value there. A memory
 plugin may also publish a current-cycle ``Observation`` at ``OBSERVATION_KEY``;
 the cycle uses it in place of the current observation for subsequent steps
 when it describes the same observation and memory did not fail.
@@ -20,15 +21,6 @@ def publish_snapshot(shared_memory: SharedMemory, snapshot: MemorySnapshot | Non
     """Publish ``snapshot`` as the retained evidence, including ``None``."""
 
     shared_memory[SNAPSHOT_KEY] = snapshot
-
-
-def publish_reset_snapshot(shared_memory: SharedMemory, snapshot: MemorySnapshot | None) -> None:
-    """Publish a reset result; no snapshot withdraws the published one."""
-
-    if snapshot is None:
-        shared_memory.pop(SNAPSHOT_KEY, None)
-    else:
-        shared_memory[SNAPSHOT_KEY] = snapshot
 
 
 def withdraw_publication(shared_memory: SharedMemory) -> None:

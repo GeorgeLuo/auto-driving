@@ -1,9 +1,10 @@
 """Execution of one applied memory plugin.
 
 ``MemoryPluginRuntime`` loads the plugin, runs its update, reset, and snapshot
-calls with timing and status, and validates each snapshot against the
-configured bounds. Update failures raise ``MemoryUpdateError``; other failures
-publish a framework fallback snapshot.
+calls with timing and status, and validates each returned value against the
+configured bounds. The runtime is the only writer of the published value:
+update and reset publish the accepted value, or a framework fallback when reset
+fails, at ``decision.snapshot``. Update failures raise ``MemoryUpdateError``.
 """
 
 from __future__ import annotations
@@ -57,15 +58,19 @@ class MemoryPluginRuntime:
         # Snapshot identity follows the loaded class. The catalog plugin ID is
         # retained separately for selection and attribution.
         self.implementation_id = self.implementation.implementation_id
-        self.last_snapshot: MemorySnapshot | None = None
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
+        self.last_health: str | None = None
+        self.last_epoch_id: str | None = None
+        self.last_record_count: int | None = None
         self.update_count = 0
         self.reset_count = 0
         self.failure_count = 0
+        # The map the plugin last worked in; reset without a map publishes here.
+        self._shared_memory: SharedMemory | None = None
         # The host map is not available during construction; inspect the
-        # implementation's initial snapshot without counting a real reset.
-        self.last_snapshot = self.snapshot()
+        # implementation's initial value without counting a real reset.
+        self.snapshot()
 
     def __call__(
         self,
@@ -80,6 +85,8 @@ class MemoryPluginRuntime:
         observation: Observation | None,
     ) -> MemorySnapshot:
         started = time.perf_counter()
+        if context.shared_memory is not None:
+            self._shared_memory = context.shared_memory
         try:
             # Observation evidence is separate from the host-owned shared map
             # available through context.shared_memory.
@@ -95,10 +102,12 @@ class MemoryPluginRuntime:
         finally:
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
             self.update_count += 1
-        return self._publish_snapshot(owned)
+        return self._publish(owned, context.shared_memory)
 
     def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
         started = time.perf_counter()
+        if shared_memory is not None:
+            self._shared_memory = shared_memory
         try:
             snapshot = (
                 self.implementation.reset(shared_memory)
@@ -128,9 +137,7 @@ class MemoryPluginRuntime:
             )
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
-        if shared_memory is not None:
-            publish_snapshot(shared_memory, owned)
-        return self._publish_snapshot(owned)
+        return self._publish(owned, self._shared_memory)
 
     def snapshot(self) -> MemorySnapshot:
         try:
@@ -140,10 +147,9 @@ class MemoryPluginRuntime:
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(format_exception_safely(exc))
             owned = self._error_snapshot(self.last_error)
-        return self._publish_snapshot(owned)
+        return self._publish(owned, None)
 
     def status(self) -> dict[str, Any]:
-        last = self.last_snapshot
         # Keep this step generic: do not promote implementation-specific
         # telemetry keys (for example capacity eviction counters) into status.
         # Callers that need snapshot metadata read the published MemorySnapshot.
@@ -158,9 +164,9 @@ class MemoryPluginRuntime:
             "failure_count": self.failure_count,
             "last_duration_ms": self.last_duration_ms,
             "last_error": self.last_error,
-            "last_health": last.health if last is not None else None,
-            "last_epoch_id": last.epoch_id if last is not None else None,
-            "last_record_count": last.record_count if last is not None else None,
+            "last_health": self.last_health,
+            "last_epoch_id": self.last_epoch_id,
+            "last_record_count": self.last_record_count,
         }
 
     def _accept_snapshot(
@@ -257,7 +263,7 @@ class MemoryPluginRuntime:
         if detached.bounds == configured:
             normalized = detached
         else:
-            normalized = detach_memory_snapshot(replace(detached, bounds=configured))
+            normalized = replace(detached, bounds=configured)
         final_size = serialized_memory_snapshot_bytes(normalized)
         if (
             configured.max_serialized_bytes is not None
@@ -269,10 +275,14 @@ class MemoryPluginRuntime:
             )
         return normalized
 
-    def _publish_snapshot(self, owned: MemorySnapshot) -> MemorySnapshot:
-        """Store step-owned state and return a second detached caller copy."""
+    def _publish(self, owned: MemorySnapshot, shared_memory: SharedMemory | None) -> MemorySnapshot:
+        """Record status, publish the owned value, and return a caller copy."""
 
-        self.last_snapshot = owned
+        self.last_health = owned.health
+        self.last_epoch_id = owned.epoch_id
+        self.last_record_count = owned.record_count
+        if shared_memory is not None:
+            publish_snapshot(shared_memory, owned)
         return detach_memory_snapshot(owned)
 
     def _bound_diagnostic(self, message: str) -> str:
@@ -286,7 +296,6 @@ class MemoryPluginRuntime:
         return _truncate_text(str(message), budget)
 
     def _error_snapshot(self, error: str) -> MemorySnapshot:
-        previous = self.last_snapshot
         # Identity is framework-owned and fixed-width. Never reuse prior epoch_id /
         # memory_id values — a near-ceiling accepted snapshot can make those
         # fields too large for a failure fallback under the same byte limit.
@@ -298,7 +307,7 @@ class MemoryPluginRuntime:
             error=error,
             summary_prefix="memory_error",
             metadata_key="error",
-            previous_health=previous.health if previous is not None else None,
+            previous_health=self.last_health,
         )
 
     def _bounded_fallback_snapshot(
@@ -353,7 +362,7 @@ class MemoryPluginRuntime:
                 created_at_ms=created_at_ms,
             )
             if limit is None or serialized_memory_snapshot_bytes(candidate) <= limit:
-                return detach_memory_snapshot(candidate)
+                return candidate
 
         # Last resort: same shared shape measured at activation time.
         candidate = build_minimal_framework_fallback(
@@ -370,7 +379,7 @@ class MemoryPluginRuntime:
                 "framework could not construct a failure snapshot under "
                 f"max_serialized_bytes={limit}"
             )
-        return detach_memory_snapshot(candidate)
+        return candidate
 
     def _build_fallback_candidate(
         self,

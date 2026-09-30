@@ -560,7 +560,11 @@ def _error_catalog(root: Path | None, message: str) -> PluginCatalog:
 
 
 def _manifest_paths(root: Path) -> Iterator[Path]:
-    """Yield manifest files while pruning directory symlinks."""
+    """Yield manifest files while pruning directory symlinks.
+
+    A directory with a manifest is a plugin package; its models, sources and
+    run outputs are not searched for further plugins.
+    """
 
     def onerror(_error: OSError) -> None:
         return None
@@ -569,9 +573,10 @@ def _manifest_paths(root: Path) -> Iterator[Path]:
         root, topdown=True, followlinks=False, onerror=onerror
     ):
         current_path = Path(current)
-        for name in sorted(files):
-            if name == "plugin.json":
-                yield current_path / name
+        if "plugin.json" in files:
+            directories.clear()
+            yield current_path / "plugin.json"
+            continue
         symlink_dirs = []
         for name in list(directories):
             path = current_path / name
@@ -816,33 +821,19 @@ def _entrypoint_origin(root: Path, entrypoint: str) -> Path | None:
     module_name, _, _class_name = entrypoint.partition(":")
     if not module_name or not _SAFE_MODULE.fullmatch(module_name):
         return None
-    relative = Path(*module_name.split("."))
-    candidates = (root / (str(relative) + ".py"), root / relative / "__init__.py")
-    for candidate in candidates:
-        if candidate.is_file():
-            try:
-                return candidate.resolve()
-            except OSError:
-                return None
     # Module-style manifests in the repository are rooted above the declared
-    # plugin directory (for example ``lab.plugins.perception.foo``).  Resolve
-    # those identities by suffix search rather than importing a parent package;
+    # plugin directory (for example ``lab.plugins.perception.foo``). Resolve
+    # them by dropping leading packages rather than importing a parent package;
     # discovery must not execute unselected plugin code.
-    module_parts = tuple(module_name.split("."))
-    tail = module_parts[-3:] if len(module_parts) >= 3 else module_parts
-    for candidate in sorted(root.rglob("*.py")):
-        try:
-            relative_parts = candidate.relative_to(root).parts
-        except ValueError:
-            continue
-        if len(relative_parts) >= len(tail) and tuple(relative_parts[-len(tail):]) == (
-            *tail[:-1],
-            f"{tail[-1]}.py",
-        ):
-            try:
-                return candidate.resolve()
-            except OSError:
-                return None
+    module_parts = module_name.split(".")
+    for start in range(len(module_parts)):
+        relative = Path(*module_parts[start:])
+        for candidate in (root / (str(relative) + ".py"), root / relative / "__init__.py"):
+            if candidate.is_file():
+                try:
+                    return candidate.resolve()
+                except OSError:
+                    return None
     return None
 
 

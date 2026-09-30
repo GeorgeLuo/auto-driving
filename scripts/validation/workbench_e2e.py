@@ -49,8 +49,9 @@ def check_selector() -> list[str]:
     """Serve the workbench and change the selection the way the page does.
 
     A paused selection reprocesses the displayed frame, seeking shows earlier
-    frames with the current selection, a running selection reaches
-    the next frame, and a loop pass runs with the current selection.
+    frames with the current selection, seeking past the recorded frames lands
+    there, a running selection reaches the next frame, and a loop pass runs
+    with the current selection.
     """
 
     with socket.socket() as probe:
@@ -104,6 +105,10 @@ def check_selector() -> list[str]:
         sought = act(action="seek", run_id=run_id, position=0)
         if runs(sought) != ["floor_continuity"]:
             problems.append(f"seek to a frame recorded earlier showed {runs(sought)}")
+        target = len(sought["timeline"]) + 10
+        ahead = act(action="seek", run_id=run_id, position=target)
+        if ahead["position"] != target + 1 or runs(ahead) != ["floor_continuity"]:
+            problems.append(f"seek past recorded frames to {target} landed at {ahead['position'] - 1}")
         act(action="resume", run_id=run_id)
         act(action="select_plugins", run_id=run_id, active_plugin_ids=["classical_regions"])
         running = wait_for(lambda s: runs(s) == ["classical_regions"], timeout=30)

@@ -1066,6 +1066,7 @@ class ImageReplayRunner:
             else:
                 # A future seek must advance the live steps through every
                 # unseen source frame so their state matches the displayed result.
+                self._set_position_locked(len(self._history))
                 unseen = self._feed.frames[len(self._history):position + 1]
         for next_frame in unseen:
             self._process_one(run_id, generation, next_frame, allow_paused=True)

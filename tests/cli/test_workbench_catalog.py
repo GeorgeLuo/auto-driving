@@ -199,6 +199,19 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             mapper.plugin_manager.add("fastsam")
         self.assertEqual(mapper.plugin_manager.selected_ids, ("classical_regions",))
 
+    def test_manifest_discovery_does_not_search_inside_plugin_packages(self) -> None:
+        nested = self.plugin_root / "classical_regions" / "runs" / "copy"
+        nested.mkdir(parents=True)
+        (nested / "plugin.json").write_text(
+            (self.plugin_root / "classical_regions" / "plugin.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        catalog = discover_plugin_catalog(self.plugin_root)
+        self.assertEqual(
+            [item.plugin_id for item in catalog.plugins].count("classical_regions"), 1
+        )
+        self.assertIn("classical_regions", catalog.ready_ids)
+
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(
         self,
     ) -> None:
@@ -417,7 +430,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             runner.dispatch("cancel", run_id=run_id)
 
     def test_seek_shows_frames_with_the_current_selection(self) -> None:
-        with image_source(3) as root:
+        with image_source(4) as root:
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=self.plugin_root,
@@ -447,6 +460,12 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
 
             again = runner.dispatch("seek", run_id=run_id, position=0)
             self.assertEqual(_plugin_ids(again["perception"]), ["floor_continuity"])
+
+            # Past the recorded frames, from an earlier position.
+            ahead = runner.dispatch("seek", run_id=run_id, position=2)
+            self.assertEqual(ahead["position"], 3)
+            self.assertEqual(len(ahead["timeline"]), 3)
+            self.assertEqual(_plugin_ids(ahead["perception"]), ["floor_continuity"])
             runner.dispatch("cancel", run_id=run_id)
 
     def test_paused_selection_retains_instances_and_reprocesses(self) -> None:

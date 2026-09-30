@@ -78,29 +78,17 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["control"]["reason"], "engine-idle")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
-    def test_publication_includes_memory_snapshot_when_step_present(self) -> None:
+    def test_publication_includes_the_memory_report_when_step_present(self) -> None:
         from autonomy.decision_cycle.context import DecisionFrameContext
         from autonomy.decision_cycle.cycle import DecisionSteps
         from autonomy.decision_cycle.observation.values import Observation
-        from autonomy.decision_cycle.memory.snapshots.values import (
-            MemoryBounds,
-            MemoryProvenance,
-            MemorySnapshot,
-            RetainedEvidence,
-        )
+        from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
         from autonomy.runtime.cycle_host import AutonomyCycleHost
 
         def remember(context, observation):
             del observation
-            return MemorySnapshot(
-                memory_id="mem-1",
-                epoch_id="epoch-1",
-                health="healthy",
-                bounds=MemoryBounds(max_records=4),
-                created_at_ms=context.timestamp_ms,
-                records=(
-                    RetainedEvidence(
+            record = RetainedEvidence(
                         record_id="thing:boundary",
                         kind="floor_boundary",
                         label="boundary",
@@ -118,10 +106,21 @@ class ObservationPublicationTests(unittest.TestCase):
                             zone="center",
                             bbox_xyxy_norm=(0.2, 0.3, 0.5, 0.8),
                         ),
-                    ),
-                ),
-                implementation_id="bounded_evidence",
             )
+            return {
+                "schema": "memory_report_v0",
+                "plugins": [
+                    {
+                        "plugin_id": "bounded_evidence",
+                        "implementation_id": "bounded_evidence",
+                        "state": {
+                            "health": "healthy",
+                            "record_count": 1,
+                            "records": [record.to_dict()],
+                        },
+                    }
+                ],
+            }
 
         host = AutonomyCycleHost(steps=DecisionSteps(remember=remember))
         part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
@@ -129,9 +128,10 @@ class ObservationPublicationTests(unittest.TestCase):
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
         self.assertIsNotNone(payload["memory"])
-        self.assertEqual(payload["memory"]["health"], "healthy")
-        self.assertEqual(payload["memory"]["record_count"], 1)
-        self.assertEqual(payload["memory"]["records"][0]["kind"], "floor_boundary")
+        state = payload["memory"]["plugins"][0]["state"]
+        self.assertEqual(state["health"], "healthy")
+        self.assertEqual(state["record_count"], 1)
+        self.assertEqual(state["records"][0]["kind"], "floor_boundary")
 
         jpeg, frame_meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)

@@ -4,13 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemoryBounds,
-    MemoryProvenance,
-    MemorySnapshot,
-    RetainedEvidence,
-    empty_memory_snapshot,
-)
+from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
@@ -26,59 +21,50 @@ from autonomy.runtime.manager import AutonomyManager
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 
-def _memory(
+def _records(
     zone: str | None = None,
     *,
     frame_id: str = "frame-1",
     updated_at_ms: int = 1000,
-) -> MemorySnapshot:
-    bounds = MemoryBounds(max_records=16, max_age_ms=10_000)
+) -> tuple[RetainedEvidence, ...]:
     if zone is None:
-        return empty_memory_snapshot(
-            memory_id="memory-1",
-            epoch_id="epoch-1",
-            created_at_ms=updated_at_ms,
-            bounds=bounds,
-            implementation_id="bounded_evidence",
-        )
-    return MemorySnapshot(
-        memory_id="memory-1",
-        epoch_id="epoch-1",
-        health="healthy",
-        bounds=bounds,
-        created_at_ms=updated_at_ms,
-        records=(
-            RetainedEvidence(
-                record_id="thing:1:boundary",
-                kind="floor_boundary",
-                label="floor boundary",
-                confidence=0.8,
-                provenance=MemoryProvenance(
-                    observation_id="obs-1",
-                    evidence_id="boundary",
-                    coordinate_frame="image",
-                    observed_at_ms=updated_at_ms,
-                    updated_at_ms=updated_at_ms,
-                    source_plugin_id="floor-plane-v0",
-                    frame_id=frame_id,
-                ),
-                location=ViewLocation(
-                    frame="image",
-                    zone=zone,
-                    bbox_xyxy_norm=(0.0, 0.4, 0.2, 0.8)
-                    if zone == "left"
-                    else (0.8, 0.4, 1.0, 0.8),
-                ),
-                properties={},
+        return ()
+    return (
+        RetainedEvidence(
+            record_id="thing:1:boundary",
+            kind="floor_boundary",
+            label="floor boundary",
+            confidence=0.8,
+            provenance=MemoryProvenance(
+                observation_id="obs-1",
+                evidence_id="boundary",
+                coordinate_frame="image",
+                observed_at_ms=updated_at_ms,
+                updated_at_ms=updated_at_ms,
+                source_plugin_id="floor-plane-v0",
+                frame_id=frame_id,
             ),
+            location=ViewLocation(
+                frame="image",
+                zone=zone,
+                bbox_xyxy_norm=(0.0, 0.4, 0.2, 0.8)
+                if zone == "left"
+                else (0.8, 0.4, 1.0, 0.8),
+            ),
+            properties={},
         ),
-        implementation_id="bounded_evidence",
     )
 
 
 def _act(*, zone: str | None, mode: str):
     return ModeGatedActionEngine().act(
-        DecisionFrameContext(frame_id="frame-1", frame_index=1, timestamp_ms=1000, mode=mode),
+        DecisionFrameContext(
+            frame_id="frame-1",
+            frame_index=1,
+            timestamp_ms=1000,
+            mode=mode,
+            shared_memory={EVIDENCE_KEY: _records(zone)},
+        ),
         None,
         Observation(
             observation_id="obs-1",
@@ -86,7 +72,6 @@ def _act(*, zone: str | None, mode: str):
             sensor_snapshot={},
             summary=("test",),
         ),
-        _memory(zone),
     )
 
 
@@ -148,11 +133,12 @@ class ModeGatedActionTests(unittest.TestCase):
 
         def remember(context, observation):  # noqa: ANN001 - test step
             del observation
-            return _memory(
+            context.shared_memory[EVIDENCE_KEY] = _records(
                 "left",
                 frame_id=context.frame_id,
                 updated_at_ms=context.timestamp_ms,
             )
+            return {"schema": "memory_report_v0", "plugins": []}
 
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(

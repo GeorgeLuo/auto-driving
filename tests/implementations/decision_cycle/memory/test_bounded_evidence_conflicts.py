@@ -5,8 +5,8 @@ from copy import deepcopy
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.snapshots.values import (
-    serialized_memory_snapshot_bytes,
+from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+    serialized_ledger_bytes,
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
@@ -502,7 +502,7 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(conflict.metadata["last_update_conflict_count"], 1)
         self.assertEqual(conflict.metadata["conflict_count"], 1)
         for _ in range(2):
-            snap = ledger.snapshot()
+            snap = ledger.ledger()
             self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
             self.assertEqual(snap.metadata["conflict_count"], 1)
         clean = ledger.update(_ctx("f3", 3, 300), None)
@@ -565,7 +565,7 @@ class ConflictMatrixTests(unittest.TestCase):
                 ),
             ),
         )
-        self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 1024)
+        self.assertLessEqual(serialized_ledger_bytes(snapshot), 1024)
         self.assertEqual(snapshot.metadata["last_update_drop_count"], 20)
         self.assertGreater(snapshot.metadata["last_update_drops_omitted"], 0)
 
@@ -719,7 +719,7 @@ class ConflictMatrixTests(unittest.TestCase):
             _observation("o1", created_at_ms=90, things=(_thing(),)),
         )
         snap.metadata["conflict_count"] = 99
-        again = ledger.snapshot()
+        again = ledger.ledger()
         self.assertEqual(again.metadata["conflict_count"], 0)
 
 

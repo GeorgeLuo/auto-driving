@@ -4,12 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemoryBounds,
-    MemoryProvenance,
-    MemorySnapshot,
-    RetainedEvidence,
-)
+from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
@@ -32,14 +28,11 @@ def _observation() -> Observation:
     )
 
 
-def _memory(zone: str = "left") -> MemorySnapshot:
-    return MemorySnapshot(
-        memory_id="m1",
-        epoch_id="e1",
-        health="healthy",
-        bounds=MemoryBounds(max_records=16, max_age_ms=10_000),
-        created_at_ms=1000,
-        records=(
+def _memory(zone: str = "left") -> dict:
+    """A host map where memory published one retained record."""
+
+    return {
+        EVIDENCE_KEY: (
             RetainedEvidence(
                 record_id="thing:1:a",
                 kind="floor_boundary",
@@ -62,12 +55,12 @@ def _memory(zone: str = "left") -> MemorySnapshot:
                 properties={},
             ),
         ),
-        implementation_id="bounded_evidence",
-    )
+    }
 
 
-def _context(frame_id: str = "frame_001") -> DecisionFrameContext:
+def _context(frame_id: str = "frame_001", shared_memory: dict | None = None) -> DecisionFrameContext:
     return DecisionFrameContext(
+        shared_memory=shared_memory,
         frame_id=frame_id,
         frame_index=1,
         timestamp_ms=1000,
@@ -121,13 +114,13 @@ class HoldActionTests(unittest.TestCase):
             },
             summary=("line",),
         )
-        action = HoldActionEngine().act(_context(), None, observation, _memory())
+        action = HoldActionEngine().act(_context(shared_memory=_memory()), None, observation)
         self.assertEqual(action.control.reason, HOLD_IDLE_REASON)
         self.assertEqual(action.status, "ok")
         self.assertNotEqual(action.reason, "decision_data_source_invalid")
 
     def test_nonzero_proposal_is_held_idle(self) -> None:
-        action = HoldActionEngine().act(_context(), None, _observation(), _memory())
+        action = HoldActionEngine().act(_context(shared_memory=_memory()), None, _observation())
         self.assertIsInstance(action.control, AutonomyControl)
         self.assertEqual(action.control.steering, 0.0)
         self.assertEqual(action.control.throttle, 0.0)
@@ -144,7 +137,7 @@ class HoldActionTests(unittest.TestCase):
     def test_invalid_frame_identity_is_recorded_and_holds_idle(self) -> None:
         manager = AutonomyManager(default_engine_spec=ADAPTER_ENGINE_SPEC)
 
-        self.assertIsNone(manager.act(_context("bad frame!"), None, _observation(), _memory()))
+        self.assertIsNone(manager.act(_context("bad frame!", _memory()), None, _observation()))
         self.assertIn("ActionInputError", manager.last_error or "")
         self.assertEqual(manager.error_count, 1)
 
@@ -155,7 +148,7 @@ class HoldActionTests(unittest.TestCase):
             HoldActionEngine(enabled_plugins=[])
 
     def test_unavailable_memory_idle_plan(self) -> None:
-        action = HoldActionEngine().act(_context(), None, _observation(), None)
+        action = HoldActionEngine().act(_context(shared_memory={}), None, _observation())
         self.assertEqual(action.control.reason, HOLD_IDLE_REASON)
         self.assertEqual(action.status, "ok")
         assert action.plan is not None

@@ -316,9 +316,11 @@ class WorkbenchTests(unittest.TestCase):
         )
         decision_config = state["machine_detail"]["pipeline"]["decision_config"]
         self.assertFalse(decision_config["proposed_applied"])
-        self.assertEqual(decision_config["steer_magnitude"], 1.0)
+        self.assertEqual(decision_config["plugins"], ["avoid_recent_obstruction"])
+        proposal_config = decision_config["plugin_configs"]["avoid_recent_obstruction"]
+        self.assertEqual(proposal_config["steer_magnitude"], 1.0)
         self.assertEqual(
-            decision_config["accepted_kinds"],
+            proposal_config["accepted_kinds"],
             ["floor_boundary", "obstacle", "obstruction_evidence"],
         )
 

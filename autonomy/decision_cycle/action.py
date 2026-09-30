@@ -3,9 +3,9 @@
 ``ActionComposition`` builds the proposal input, invokes the configured
 proposal plugins with the host map, admits their candidates, selects a plan,
 and asks its gate for the control to apply. The gate's authority record states whether that
-control is the selected command. The proposal protocol, configuration,
-admission, and invocation stay in this module until the proposal step has its
-own plugin files.
+control is the selected command. The plugins map is the proposal selection;
+``autonomy.decision_cycle.proposal.selection`` resolves and loads it through
+the common plugin manager. Admission and invocation stay in this module.
 """
 
 from __future__ import annotations
@@ -49,26 +49,6 @@ class ProposalPlugin(Protocol):
     """Return one proposal from the detached source and the host map."""
 
     def __call__(self, source: DecisionDataSource, shared_memory: SharedMemory) -> ActionProposal: ...
-
-
-@dataclass(frozen=True)
-class ProposalConfig:
-    """Activation config. Catalog membership is owned by the engine factory / plugins map."""
-
-    enabled_plugins: tuple[str, ...]
-
-    def __post_init__(self) -> None:
-        # Require real sequences of ids — reject str (char-iter) and other coercible shapes.
-        if type(self.enabled_plugins) not in (list, tuple):
-            raise ValueError("enabled_plugins must be a list or tuple of plugin ids")
-        plugins = tuple(self.enabled_plugins)
-        if not 1 <= len(plugins) <= 4:
-            raise ValueError("enabled_plugins must contain 1..4 entries")
-        if len(plugins) != len(set(plugins)):
-            raise ValueError("enabled_plugins must be unique")
-        for plugin_id in plugins:
-            require_ascii_id(plugin_id, field_name="plugin_id")
-        object.__setattr__(self, "enabled_plugins", plugins)
 
 
 def _admit_candidate(
@@ -135,7 +115,7 @@ def _admit_candidate(
 class ActionComposition:
     """Propose, plan, and gate one cycle's action."""
 
-    config: ProposalConfig
+    # The selected proposal plugins by plugin ID. Any number, including none.
     plugins: dict[str, ProposalPlugin]
     gate: ActionGate = field(default_factory=HoldGate)
     # Shared-memory key whose retained evidence the result keeps for audit.
@@ -144,18 +124,17 @@ class ActionComposition:
     reported_config: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        # Activation membership is the plugins map (catalog), not a self-declared set.
         if not isinstance(self.plugins, dict):
             raise TypeError("plugins must be a dict of plugin_id -> callable")
-        for plugin_id in self.config.enabled_plugins:
-            if plugin_id not in self.plugins:
-                raise ValueError(f"unknown plugin_id {plugin_id!r}")
+        for plugin_id, plugin in self.plugins.items():
+            require_ascii_id(plugin_id, field_name="plugin_id")
+            if not callable(plugin):
+                raise TypeError(f"proposal plugin {plugin_id!r} is not callable")
 
     @classmethod
     def create(
         cls,
         *,
-        config: ProposalConfig,
         plugins: dict[str, ProposalPlugin],
         gate: ActionGate | None = None,
         evidence_key: str | None = None,
@@ -163,7 +142,6 @@ class ActionComposition:
         """Build a composition with caller-provided plugins (implementations own wiring)."""
 
         return cls(
-            config=config,
             plugins=plugins,
             gate=gate or HoldGate(),
             evidence_key=evidence_key,
@@ -288,20 +266,8 @@ class ActionComposition:
         plugin_memory: SharedMemory = shared_memory if shared_memory is not None else {}
         candidates: list[ActionProposal] = []
         try:
-            for plugin_id in sorted(self.config.enabled_plugins):
-                plugin = self.plugins.get(plugin_id)
-                if plugin is None:
-                    try:
-                        candidates.append(
-                            synthetic_error_proposal(
-                                plugin_id=plugin_id,
-                                frame_id=frame_id,
-                                reason="plugin_invalid_return",
-                            )
-                        )
-                    except Exception:
-                        return fail("synthetic_error_proposal_failed", source=source)
-                    continue
+            for plugin_id in sorted(self.plugins):
+                plugin = self.plugins[plugin_id]
                 raised: BaseException | None = None
                 returned: object = None
                 try:
@@ -324,7 +290,7 @@ class ActionComposition:
                 except Exception:
                     return fail("synthetic_error_proposal_failed", source=source)
 
-            if len(candidates) != len(self.config.enabled_plugins):
+            if len(candidates) != len(self.plugins):
                 return fail("action_plan_invariant_violated", source=source)
             try:
                 plan = select_action_plan(

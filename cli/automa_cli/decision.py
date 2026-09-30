@@ -681,12 +681,12 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
     engine_config = decision.get("engine_config") if isinstance(decision.get("engine_config"), dict) else {}
     proposals: dict[str, Any] | None = None
     if engine_id in PROPOSAL_ENGINE_IDS:
-        plugins = engine_config.get("enabled_plugins")
+        plugins = engine_config.get("plugins")
         if not isinstance(plugins, list):
-            plugins = list(default_engine_config()["enabled_plugins"])
+            plugins = list(default_engine_config()["plugins"])
         proposals = {
             "decision_inputs": list(PROPOSAL_DECISION_INPUTS),
-            "enabled_plugins": list(plugins),
+            "plugins": list(plugins),
             "selector_id": SELECTOR_ID,
             "output_schemas": {
                 "action_proposal": ACTION_PROPOSAL_SCHEMA,
@@ -2065,12 +2065,12 @@ def _require_runner_plan_alignment(
             "ok cycle must include an action plan.",
             details={"field": "cycle.plan"},
         )
-    expected_plugins = tuple(sorted(config["enabled_plugins"]))
+    expected_plugins = tuple(sorted(config["plugins"]))
     actual_plugins = tuple(candidate.plugin_id for candidate in plan.candidates)
     if actual_plugins != expected_plugins:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "cycle.plan candidates must match activation enabled_plugins exactly.",
+            "cycle.plan candidates must match the activation's selected proposal plugins exactly.",
             details={
                 "field": "cycle.plan.candidates",
                 "expected_plugins": list(expected_plugins),
@@ -3617,7 +3617,7 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
                 "",
                 "Proposal decision:",
                 f"- inputs: {', '.join(proposals.get('decision_inputs') or [])}",
-                f"- enabled_plugins: {', '.join(proposals.get('enabled_plugins') or [])}",
+                f"- plugins: {', '.join(proposals.get('plugins') or []) or '(none)'}",
                 f"- selector: {proposals.get('selector_id')}",
                 f"- output_schemas: {json.dumps(proposals.get('output_schemas') or {}, sort_keys=True)}",
                 (

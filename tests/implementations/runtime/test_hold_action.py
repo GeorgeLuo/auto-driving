@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import PLUGIN_SPEC
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
@@ -73,14 +74,19 @@ class HoldActionTests(unittest.TestCase):
         manager = AutonomyManager(
             default_engine_spec=ADAPTER_ENGINE_SPEC,
             default_engine_config={
-                "enabled_plugins": ["avoid_recent_obstruction"],
-                "accepted_kinds": [
-                    "floor_boundary",
-                    "obstacle",
-                    "obstruction_evidence",
-                ],
-                "retained_max_age_ms": 1000,
-                "steer_magnitude": 0.35,
+                "plugins": ["avoid_recent_obstruction"],
+                "plugin_specs": {"avoid_recent_obstruction": PLUGIN_SPEC},
+                "plugin_configs": {
+                    "avoid_recent_obstruction": {
+                        "accepted_kinds": [
+                            "floor_boundary",
+                            "obstacle",
+                            "obstruction_evidence",
+                        ],
+                        "retained_max_age_ms": 1000,
+                        "steer_magnitude": 0.35,
+                    }
+                },
             },
         )
         self.assertIsInstance(manager.engine, HoldActionEngine)
@@ -142,10 +148,27 @@ class HoldActionTests(unittest.TestCase):
         self.assertEqual(manager.error_count, 1)
 
     def test_invalid_config_fails_closed(self) -> None:
+        specs = {"avoid_recent_obstruction": PLUGIN_SPEC}
         with self.assertRaises(ValueError):
-            HoldActionEngine(steer_magnitude=0.0)
+            HoldActionEngine(
+                plugins=["avoid_recent_obstruction"],
+                plugin_specs=specs,
+                plugin_configs={"avoid_recent_obstruction": {"steer_magnitude": 0.0}},
+            )
         with self.assertRaises(ValueError):
-            HoldActionEngine(enabled_plugins=[])
+            HoldActionEngine(plugins=["ghost"], plugin_specs=specs)
+        with self.assertRaises(ValueError):
+            HoldActionEngine(enabled_plugins=["avoid_recent_obstruction"])
+
+    def test_empty_selection_holds_idle(self) -> None:
+        action = HoldActionEngine(plugins=[], plugin_specs={}).act(
+            _context(), None, _observation()
+        )
+        self.assertEqual(action.status, "ok")
+        assert action.plan is not None
+        self.assertEqual(action.plan.status, "idle")
+        self.assertEqual(action.plan.candidates, ())
+        self.assertEqual(action.control.reason, HOLD_IDLE_REASON)
 
     def test_unavailable_memory_idle_plan(self) -> None:
         action = HoldActionEngine().act(_context(shared_memory={}), None, _observation())

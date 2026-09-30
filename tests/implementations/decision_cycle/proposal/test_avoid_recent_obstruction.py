@@ -7,9 +7,10 @@ import unittest
 from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from implementations.runtime.engines.config import ObstacleAvoidanceConfig
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
+    PLUGIN_ID,
+    AvoidRecentObstruction,
     propose as _propose,
 )
 
@@ -403,16 +404,28 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(p.command.gear, "forward")
 
     def test_invalid_avoidance_configuration(self) -> None:
-        with self.assertRaises(ValueError):
-            ObstacleAvoidanceConfig(steer_magnitude=-0.1)
-        with self.assertRaises(ValueError):
-            ObstacleAvoidanceConfig(steer_magnitude=1.1)
-        with self.assertRaises(ValueError):
-            ObstacleAvoidanceConfig(steer_magnitude=0)
-        with self.assertRaises(ValueError):
-            ObstacleAvoidanceConfig(steer_magnitude=float("nan"))
-        with self.assertRaises(ValueError):
-            ObstacleAvoidanceConfig(accepted_kinds="obstacle")  # type: ignore[arg-type]
+        for kwargs in (
+            {"steer_magnitude": -0.1},
+            {"steer_magnitude": 1.1},
+            {"steer_magnitude": 0},
+            {"steer_magnitude": float("nan")},
+            {"accepted_kinds": "obstacle"},
+            {"accepted_kinds": []},
+            {"retained_max_age_ms": True},
+            {"retained_max_age_ms": 0},
+        ):
+            with self.subTest(**{key: repr(value) for key, value in kwargs.items()}):
+                with self.assertRaises(ValueError):
+                    AvoidRecentObstruction(**kwargs)
+
+    def test_loaded_plugin_matches_propose(self) -> None:
+        plugin = AvoidRecentObstruction(steer_magnitude=0.5)
+        self.assertEqual(plugin.plugin_id, PLUGIN_ID)
+        inputs = _source((_record(zone="left"),))
+        self.assertEqual(
+            plugin(*inputs).to_dict(),
+            propose(inputs, steer_magnitude=0.5).to_dict(),
+        )
 
 
 if __name__ == "__main__":

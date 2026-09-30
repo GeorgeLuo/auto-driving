@@ -14,10 +14,10 @@ from typing import Any, Literal
 
 from autonomy.memory.values import (
     MemorySnapshot,
-    canonical_json_bytes,
     detach_memory_snapshot,
     empty_memory_snapshot,
 )
+from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_ids import (
     _is_json_primitive,
@@ -482,7 +482,7 @@ class DecisionDataSource:
             raise TypeError("metadata must be a dict (JSON object)")
         _reject_forbidden_channel_keys(self.metadata, path="metadata")
         metadata = deep_freeze(self.metadata)
-        meta_bytes = canonical_json_bytes(frozen_mapping_to_dict(metadata))
+        meta_bytes = canonical_json_size_bytes(frozen_mapping_to_dict(metadata))
         if meta_bytes > MAX_SOURCE_METADATA_BYTES:
             raise ValueError(
                 f"DecisionDataSource metadata exceeds {MAX_SOURCE_METADATA_BYTES} bytes"
@@ -492,7 +492,7 @@ class DecisionDataSource:
         # and reject privileged channels anywhere in the serialized tree.
         try:
             plain = self.to_dict()
-            canonical_json_bytes(plain)
+            canonical_json_size_bytes(plain)
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"DecisionDataSource must be strictly JSON-serializable: {exc}"

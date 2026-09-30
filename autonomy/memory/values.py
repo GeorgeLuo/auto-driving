@@ -7,13 +7,18 @@ value contract and lifecycle fields.
 
 from __future__ import annotations
 
-import json
 import math
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 from autonomy.perception.evidence import ViewLocation
+from autonomy.serialization import (
+    canonical_json_bytes,
+    canonical_json_size_bytes,
+    canonical_json_utf8,
+    ensure_strict_json_value,
+)
 
 
 MEMORY_SNAPSHOT_SCHEMA = "decision_memory_snapshot_v0"
@@ -326,58 +331,16 @@ def detach_memory_snapshot(snapshot: "MemorySnapshot") -> "MemorySnapshot":
     return MemorySnapshot.from_dict(snapshot.to_dict())
 
 
-def canonical_json_utf8(value: Any) -> bytes:
-    """UTF-8 bytes of strict canonical JSON (sorted keys, compact separators).
-
-    Rejects non-JSON types and non-finite numbers. Use this for digests and
-    equality; use ``canonical_json_bytes`` only for size ceilings.
-    """
-
-    try:
-        return json.dumps(
-            value,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"value is not strictly JSON-serializable: {type(exc).__name__}: {exc}"
-        ) from exc
-
-
-def canonical_json_bytes(value: Any) -> int:
-    """UTF-8 byte length of strict canonical JSON.
-
-    Rejects non-JSON types and non-finite numbers. Callers must not retain values
-    that cannot be measured with this path. Equal lengths are not equal content.
-    """
-
-    return len(canonical_json_utf8(value))
-
-
-def ensure_strict_json_value(value: Any) -> Any:
-    """Round-trip through strict JSON or raise ValueError."""
-
-    try:
-        text = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        return json.loads(text)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"value is not strictly JSON-serializable: {type(exc).__name__}: {exc}"
-        ) from exc
-
-
 def serialized_memory_snapshot_bytes(snapshot: "MemorySnapshot") -> int:
     """UTF-8 byte length of the compact strict JSON form of a snapshot."""
 
-    return canonical_json_bytes(snapshot.to_dict())
+    return canonical_json_size_bytes(snapshot.to_dict())
 
 
 def serialized_mapping_bytes(value: Any) -> int:
     """UTF-8 byte length of a compact strict JSON mapping (for property bags)."""
 
-    return canonical_json_bytes(value)
+    return canonical_json_size_bytes(value)
 
 
 def empty_memory_snapshot(

@@ -20,7 +20,8 @@ from autonomy.decision.decision_data import (
     default_capabilities,
     ready_envelope,
 )
-from autonomy.memory.values import MemorySnapshot, canonical_json_bytes
+from autonomy.memory.values import MemorySnapshot
+from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import (
     ShadowDecisionCycleResult,
@@ -96,7 +97,7 @@ def _admit_candidate(
     # so post-construction mutation of nested storage cannot inflate candidates.
     try:
         plain = returned.to_dict()
-        size = canonical_json_bytes(plain)
+        size = canonical_json_size_bytes(plain)
         if size > MAX_PROPOSAL_BYTES:
             raise ActionProposalMatrixError(
                 f"admitted proposal serializes to {size} bytes; max {MAX_PROPOSAL_BYTES}"

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from autonomy.decision.action_proposal import ActionProposal
-from autonomy.memory.values import canonical_json_bytes
+from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision.shadow_ids import (
     deep_freeze,
     frozen_mapping_to_dict,
@@ -117,7 +117,7 @@ class ActionPlan:
             raise TypeError("metadata must be a dict (JSON object)")
         metadata = deep_freeze(self.metadata)
         meta_plain = frozen_mapping_to_dict(metadata)
-        if canonical_json_bytes(meta_plain) > MAX_PLAN_METADATA_BYTES:
+        if canonical_json_size_bytes(meta_plain) > MAX_PLAN_METADATA_BYTES:
             raise ValueError(
                 f"plan metadata exceeds {MAX_PLAN_METADATA_BYTES} bytes"
             )
@@ -126,7 +126,7 @@ class ActionPlan:
             raise ValueError(
                 f"schema must be {ACTION_PLAN_SCHEMA!r}; got {self.schema!r}"
             )
-        size = canonical_json_bytes(self.to_dict())
+        size = canonical_json_size_bytes(self.to_dict())
         if size > MAX_PLAN_BYTES:
             raise ValueError(
                 f"ActionPlan serializes to {size} bytes; max {MAX_PLAN_BYTES}"

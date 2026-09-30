@@ -11,7 +11,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from autonomy.memory.values import canonical_json_bytes
+from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision.shadow_ids import (
     deep_freeze,
     frozen_mapping_to_dict,
@@ -291,7 +291,7 @@ class ActionProposal:
             raise TypeError("metadata must be a dict (JSON object)")
         metadata = deep_freeze(self.metadata)
         meta_plain = frozen_mapping_to_dict(metadata)
-        if canonical_json_bytes(meta_plain) > MAX_PROPOSAL_METADATA_BYTES:
+        if canonical_json_size_bytes(meta_plain) > MAX_PROPOSAL_METADATA_BYTES:
             raise ValueError(
                 f"proposal metadata exceeds {MAX_PROPOSAL_METADATA_BYTES} bytes"
             )
@@ -300,7 +300,7 @@ class ActionProposal:
             raise ValueError(
                 f"schema must be {ACTION_PROPOSAL_SCHEMA!r}; got {self.schema!r}"
             )
-        size = canonical_json_bytes(self.to_dict())
+        size = canonical_json_size_bytes(self.to_dict())
         if size > MAX_PROPOSAL_BYTES:
             raise ValueError(
                 f"ActionProposal serializes to {size} bytes; max {MAX_PROPOSAL_BYTES}"

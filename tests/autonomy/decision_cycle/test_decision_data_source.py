@@ -110,7 +110,6 @@ class DecisionDataSourceTests(unittest.TestCase):
 
     def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
         from autonomy.decision_cycle.action import (
-            ProposalConfig,
             ActionComposition,
         )
         from autonomy.decision_cycle.proposal.values import ActionProposal
@@ -155,9 +154,6 @@ class DecisionDataSourceTests(unittest.TestCase):
             )
 
         engine = ActionComposition(
-            config=ProposalConfig(
-                enabled_plugins=("a", "b"),
-            ),
             plugins={"a": plugin_a, "b": plugin_b},
         )
         engine.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)

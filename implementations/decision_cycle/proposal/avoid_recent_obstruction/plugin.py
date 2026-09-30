@@ -20,9 +20,13 @@ from autonomy.decision_cycle.proposal.values import (
 )
 from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
+from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 
 PLUGIN_ID = "avoid_recent_obstruction"
+PLUGIN_SPEC = (
+    "implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin:AvoidRecentObstruction"
+)
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
 DEFAULT_RETAINED_MAX_AGE_MS = 1000
 DEFAULT_STEER_MAGNITUDE = 1.0
@@ -437,3 +441,57 @@ def propose(
         )
 
     return _inactive(source, "no_accepted_obstruction_evidence")
+
+
+class AvoidRecentObstruction:
+    """Loadable proposal plugin: ``propose`` bound to validated settings."""
+
+    plugin_id = PLUGIN_ID
+
+    def __init__(
+        self,
+        *,
+        accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
+        retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
+        steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
+        evidence_key: str = EVIDENCE_KEY,
+    ) -> None:
+        if type(accepted_kinds) not in (list, tuple):
+            raise ValueError("accepted_kinds must be a list or tuple of kind ids")
+        kinds = tuple(accepted_kinds)
+        if not kinds or len(kinds) > 8:
+            raise ValueError("accepted_kinds must contain 1..8 entries")
+        if len(kinds) != len(set(kinds)):
+            raise ValueError("accepted_kinds must be unique")
+        for kind in kinds:
+            require_ascii_id(kind, field_name="accepted_kind")
+        if type(retained_max_age_ms) is not int:
+            raise ValueError("retained_max_age_ms must be a non-bool int")
+        if not 1 <= retained_max_age_ms <= 60_000:
+            raise ValueError("retained_max_age_ms must be in 1..60000")
+        try:
+            magnitude = float(steer_magnitude)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("steer_magnitude must be numeric") from exc
+        if not math.isfinite(magnitude) or not (0.0 < magnitude <= 1.0):
+            raise ValueError("steer_magnitude must satisfy 0 < value <= 1")
+        if not isinstance(evidence_key, str) or not evidence_key.strip():
+            raise ValueError("evidence_key must be a non-empty string")
+        self.accepted_kinds = kinds
+        self.retained_max_age_ms = retained_max_age_ms
+        self.steer_magnitude = magnitude
+        self.evidence_key = evidence_key
+
+    def __call__(
+        self,
+        source: DecisionDataSource,
+        shared_memory: Mapping[str, Any] | None = None,
+    ) -> ActionProposal:
+        return propose(
+            source,
+            shared_memory,
+            evidence_key=self.evidence_key,
+            accepted_kinds=self.accepted_kinds,
+            retained_max_age_ms=self.retained_max_age_ms,
+            steer_magnitude=self.steer_magnitude,
+        )

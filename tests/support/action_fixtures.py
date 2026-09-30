@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from autonomy.decision_cycle.action import ActionComposition, ProposalConfig
+from autonomy.decision_cycle.action import ActionComposition
 from autonomy.decision_cycle.action_gate.values import GateDecision
 from autonomy.runtime.engine import AutonomyControl
 
@@ -26,7 +26,6 @@ def fixed_control_composition(
     """One plugin that returns nothing, so the plan is idle and the gate decides."""
 
     return ActionComposition(
-        config=ProposalConfig(enabled_plugins=("noop",)),
         plugins={"noop": lambda source, shared_memory: None},
         gate=FixedGate(control, gate_id),
     )

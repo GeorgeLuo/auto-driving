@@ -2,8 +2,10 @@
 
 ``ActionPlan`` records the candidates for one cycle and, when one is
 selected, that proposal and its single contribution. Its validation holds
-the candidate cap and contribution restrictions for every plan, whichever
-code constructs it.
+the contribution restrictions for every plan, whichever code constructs it.
+The number of candidates is the number of selected proposal plugins; each
+candidate is bounded by its own proposal limits. With no candidates the plan
+is idle.
 """
 
 from __future__ import annotations
@@ -27,8 +29,6 @@ ACTION_PLAN_SCHEMA = "action_plan_v0"
 # Serialized ID of the built-in selector, select_highest_confidence_plan.
 SELECTOR_ID = "deterministic_first_active"
 MAX_PLAN_METADATA_BYTES = 1024
-MAX_PLAN_BYTES = 24_576
-MAX_CANDIDATES = 4
 
 
 @dataclass(frozen=True)
@@ -77,8 +77,6 @@ class ActionPlan:
         if self.selector_id != SELECTOR_ID:
             raise ValueError(f"selector_id must be {SELECTOR_ID}")
         candidates = tuple(self.candidates)
-        if not 1 <= len(candidates) <= MAX_CANDIDATES:
-            raise ValueError("candidates count must be in 1..4")
         plugin_ids = [c.plugin_id for c in candidates]
         if len(plugin_ids) != len(set(plugin_ids)):
             raise ValueError("candidates must have unique plugin_id values")
@@ -133,11 +131,6 @@ class ActionPlan:
         if self.schema != ACTION_PLAN_SCHEMA:
             raise ValueError(
                 f"schema must be {ACTION_PLAN_SCHEMA!r}; got {self.schema!r}"
-            )
-        size = canonical_json_size_bytes(self.to_dict())
-        if size > MAX_PLAN_BYTES:
-            raise ValueError(
-                f"ActionPlan serializes to {size} bytes; max {MAX_PLAN_BYTES}"
             )
 
     def selected_candidate(self) -> ActionProposal | None:

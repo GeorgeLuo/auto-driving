@@ -7,7 +7,7 @@ from autonomy.decision_cycle.proposal.values import (
 )
 from autonomy.serialization import canonical_json_bytes
 from autonomy.decision_cycle.action_identifiers import ActionInputError
-from autonomy.decision_cycle.action import ProposalConfig, ActionComposition
+from autonomy.decision_cycle.action import ActionComposition
 from implementations.runtime.engines.catalog import create_action_composition
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
@@ -109,9 +109,6 @@ class RunnerBoundaryTests(unittest.TestCase):
             return proposal
 
         engine = ActionComposition(
-            config=ProposalConfig(
-                enabled_plugins=("avoid_recent_obstruction",),
-            ),
             plugins={"avoid_recent_obstruction": corrupt},
         )
         result = engine.run(
@@ -167,9 +164,6 @@ class RunnerBoundaryTests(unittest.TestCase):
             return proposal
 
         engine = ActionComposition(
-            config=ProposalConfig(
-                enabled_plugins=("avoid_recent_obstruction",),
-            ),
             plugins={"avoid_recent_obstruction": corrupt_matrix},
         )
         result = engine.run(
@@ -235,9 +229,6 @@ class RunnerBoundaryTests(unittest.TestCase):
             return proposal
 
         engine = ActionComposition(
-            config=ProposalConfig(
-                enabled_plugins=("avoid_recent_obstruction",),
-            ),
             plugins={"avoid_recent_obstruction": bad_available},
         )
         result = engine.run(
@@ -376,9 +367,6 @@ class RunnerBoundaryTests(unittest.TestCase):
             return _active_proposal(frame_id=source.frame_id, steering=0.35)
 
         engine = ActionComposition(
-            config=ProposalConfig(
-                enabled_plugins=("avoid_recent_obstruction",),
-            ),
             plugins={"avoid_recent_obstruction": active},
         )
         result = engine.run(

@@ -6,7 +6,7 @@ import copy
 from collections.abc import Mapping
 from typing import Any
 
-from implementations.runtime.engines.config import parse_engine_config
+from implementations.runtime.engines.catalog import create_action_composition
 
 
 def prepare_inspection_scenarios(
@@ -15,7 +15,12 @@ def prepare_inspection_scenarios(
 ) -> dict[str, dict[str, Any]]:
     """Place recorded retained evidence on each side and name the scenarios."""
 
-    cfg = parse_engine_config(config)
+    # Reposition only evidence some selected proposal accepts.
+    accepted_kinds = {
+        kind
+        for plugin in create_action_composition(config).plugins.values()
+        for kind in getattr(plugin, "accepted_kinds", ())
+    }
     scenarios: dict[str, dict[str, Any]] = {}
     for side in ("left", "right"):
         scenario_evidence = copy.deepcopy(list(evidence))
@@ -25,7 +30,7 @@ def prepare_inspection_scenarios(
             if (
                 isinstance(location, dict)
                 and location.get("frame") == "image"
-                and record.get("kind") in cfg.accepted_kinds
+                and record.get("kind") in accepted_kinds
             ):
                 location.update(zone=side, bbox_xyxy_norm=None, polygon_xy_norm=None)
                 changed.append(str(record.get("record_id")))

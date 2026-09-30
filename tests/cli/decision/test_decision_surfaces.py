@@ -29,12 +29,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual(
             set(payload["manifest"]["decision"]["engine_config"].keys()),
-            {
-                "enabled_plugins",
-                "accepted_kinds",
-                "retained_max_age_ms",
-                "steer_magnitude",
-            },
+            {"plugins", "plugin_specs", "plugin_configs"},
         )
 
         info = get_vehicle_decision_info(
@@ -54,7 +49,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 "prior_host_applied_command",
             ],
         )
-        self.assertEqual(proposals["enabled_plugins"], ["avoid_recent_obstruction"])
+        self.assertEqual(proposals["plugins"], ["avoid_recent_obstruction"])
         self.assertEqual(proposals["selector_id"], "deterministic_first_active")
         self.assertEqual(proposals["authority"]["proposed_applied"], False)
         self.assertEqual(proposals["authority"]["gate_id"], "hold")

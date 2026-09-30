@@ -11,9 +11,10 @@ from autonomy.serialization import canonical_json_bytes
 from autonomy.decision_cycle.action_gate.hold import idle_output
 from autonomy.decision_cycle.action_gate.values import proposed_equals_authorized
 from autonomy.decision_cycle.action_identifiers import ActionInputError
-from autonomy.decision_cycle.action import ProposalConfig, ActionComposition
+from autonomy.decision_cycle.action import ActionComposition
 from implementations.runtime.engines.catalog import create_action_composition
-from implementations.runtime.engines.config import ObstacleAvoidanceConfig
+from autonomy.decision_cycle.proposal.selection import proposal_manager_from_config
+from implementations.runtime.engines.config import default_engine_config
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
@@ -28,7 +29,6 @@ class ActionProposalMatrixTests(unittest.TestCase):
 
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
         engine = ActionComposition(
-            config=ProposalConfig(enabled_plugins=("cruise",)),
             plugins={
                 "cruise": lambda source, shared_memory: _active_proposal(
                     plugin_id="cruise", frame_id=source.frame_id
@@ -133,9 +133,6 @@ class RunnerBoundaryTests(unittest.TestCase):
             return stale  # wrong frame
 
         engine = ActionComposition(
-            config=ProposalConfig(
-                enabled_plugins=("avoid_recent_obstruction",),
-            ),
             plugins={"avoid_recent_obstruction": bad_plugin},
         )
         result = engine.run(
@@ -153,14 +150,23 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertFalse(result.authority.proposed_applied)
         self.assertEqual(control.steering, 0.0)
 
-    def test_empty_enabled_plugins_rejects_activation(self) -> None:
-        with self.assertRaises(ValueError):
-            ProposalConfig(enabled_plugins=())
+    def test_empty_selection_plans_idle_and_holds(self) -> None:
+        result = ActionComposition(plugins={}).run(
+            frame_id="frame_001", frame_index=0, timestamp_ms=1
+        )
+        self.assertEqual(result.status, "ok")
+        assert result.plan is not None
+        self.assertEqual(result.plan.status, "idle")
+        self.assertEqual(result.plan.candidates, ())
+        self.assertFalse(result.authority.proposed_applied)
+        self.assertEqual(result.control.steering, 0.0)
+        self.assertEqual(result.control.throttle, 0.0)
 
-    def test_max_legal_plan_builds(self) -> None:
-        # Four *exact* 4096-byte proposals with max 64-char plugin ids, max
-        # frame_id, max timestamp, and exact 1024-byte plan metadata.
-        plugins = [f"p{i}" + ("x" * 62) for i in range(4)]
+    def test_plan_takes_more_than_four_max_size_candidates(self) -> None:
+        # Six *exact* 4096-byte proposals with max 64-char plugin ids, max
+        # frame_id, max timestamp, and exact 1024-byte plan metadata. Each
+        # candidate is bounded on its own; the plan has no count limit.
+        plugins = [f"p{i}" + ("x" * 62) for i in range(6)]
         self.assertTrue(all(len(plugin_id) == 64 for plugin_id in plugins))
         frame = "f" * 64
         candidates = []
@@ -226,8 +232,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             candidates=candidates,
             metadata=plan_metadata,
         )
-        size = canonical_json_bytes(plan.to_dict())
-        self.assertLessEqual(size, 24_576)
+        self.assertEqual(len(plan.candidates), 6)
         self.assertEqual(plan.status, "selected")
         self.assertTrue(plan.selected_proposal_id.endswith(":" + frame))
         self.assertEqual(canonical_json_bytes(plan.to_dict()["metadata"]), 1024)
@@ -370,25 +375,41 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
 
     def test_invalid_activation_configs(self) -> None:
+        def selection(plugins):
+            return dict(default_engine_config(), plugins=plugins)
+
         with self.assertRaises(ValueError):
-            ProposalConfig(enabled_plugins=("a", "a"))
-        with self.assertRaises(ValueError):
-            ProposalConfig(
-                enabled_plugins=("a", "b", "c", "d", "e"),
-            )
+            proposal_manager_from_config(selection(["avoid_recent_obstruction"] * 2))
         # String is not a list of ids (would otherwise char-iterate).
         with self.assertRaises(ValueError):
-            ProposalConfig(enabled_plugins="avoid_recent_obstruction")  # type: ignore[arg-type]
-        # Unknown id rejects at production catalog activation, not via self-declared known set.
+            proposal_manager_from_config(selection("avoid_recent_obstruction"))
+        # Unknown ids reject against the selection's specs, not a self-declared known set.
         with self.assertRaises(ValueError):
-            create_action_composition(
-                ObstacleAvoidanceConfig(enabled_plugins=("ghost",))
-            )
+            create_action_composition(selection(["ghost"]))
         with self.assertRaises(ValueError):
-            ActionComposition(
-                config=ProposalConfig(enabled_plugins=("ghost",)),
-                plugins={},
-            )
+            create_action_composition({"enabled_plugins": ["avoid_recent_obstruction"]})
+        with self.assertRaises(ValueError):
+            ActionComposition(plugins={"not an id!": lambda source, shared_memory: None})
+        with self.assertRaises(TypeError):
+            ActionComposition(plugins={"avoid_recent_obstruction": "not callable"})  # type: ignore[dict-item]
+
+    def test_more_than_four_plugins_each_propose(self) -> None:
+        ids = [f"p{index}" for index in range(6)]
+        engine = ActionComposition(
+            plugins={
+                plugin_id: (
+                    lambda source, shared_memory, plugin_id=plugin_id: _active_proposal(
+                        plugin_id=plugin_id, frame_id=source.frame_id
+                    )
+                )
+                for plugin_id in ids
+            },
+        )
+        result = engine.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        self.assertEqual(result.status, "ok")
+        assert result.plan is not None
+        self.assertEqual([c.plugin_id for c in result.plan.candidates], ids)
+        self.assertEqual(result.plan.status, "selected")
 
     def test_plugin_none_wrong_id_and_exception(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
@@ -409,9 +430,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         ):
             with self.subTest(reason=reason):
                 engine = ActionComposition(
-                    config=ProposalConfig(
-                        enabled_plugins=("avoid_recent_obstruction",),
-                    ),
                     plugins={"avoid_recent_obstruction": plugin_fn},
                 )
                 result = engine.run(

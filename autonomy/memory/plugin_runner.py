@@ -9,7 +9,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from autonomy.decision.cycle import DecisionFrameContext, MemoryUpdateError
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision.observation import Observation
 from autonomy.memory.plugin import MemoryImplementation
 from autonomy.memory.values import (

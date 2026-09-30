@@ -5,13 +5,13 @@ re-exported from ``autonomy.memory`` are retained evidence and the
 ``remember`` operation.
 """
 
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from .cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
     DecisionCycleResult,
-    DecisionFrameContext,
     DecisionSteps,
-    MemoryUpdateError,
 )
 from .memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,

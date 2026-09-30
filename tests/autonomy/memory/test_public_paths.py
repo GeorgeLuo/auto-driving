@@ -50,7 +50,13 @@ from autonomy.perception.mappers import PluginPerceptionMapper as MapperPackageC
 from autonomy.perception.mappers.plugin_runner import (
     PluginPerceptionMapper as MapperModuleClass,
 )
+from autonomy.decision import DecisionFrameContext as PackageContext
+from autonomy.decision import MemoryUpdateError as PackageMemoryError
 from autonomy.decision.cycle import DecisionCycle as DirectDecisionCycle
+from autonomy.decision.cycle import DecisionFrameContext as CycleContext
+from autonomy.decision.cycle import MemoryUpdateError as CycleMemoryError
+from autonomy.decision_cycle.context import DecisionFrameContext as ContextRecord
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError as MemoryError
 from autonomy.decision.observation import Observation as DirectObservation
 from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
 from autonomy.perception import PerceptionMapper, PerceptionPluginContract
@@ -75,6 +81,8 @@ assert decision_read_memory_activation is read_memory_activation is direct_read_
 assert decision_bounds_from_config is direct_bounds_from_config
 assert HostSharedMemory is SharedMemory
 assert DecisionCycle is DirectDecisionCycle
+assert PackageContext is CycleContext is ContextRecord
+assert PackageMemoryError is CycleMemoryError is MemoryError
 assert Observation is DirectObservation
 assert ShadowProposalsEngine is DirectShadowEngine
 assert PerceptionMapper is DirectPerceptionMapper
@@ -93,6 +101,9 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.memory",
             "import autonomy.perception",
             "import autonomy.memory.plugin",
+            "import autonomy.memory.plugin_runner",
+            "import autonomy.decision_cycle.context",
+            "import autonomy.decision_cycle.memory.errors",
             "import autonomy.perception.mappers.plugin_runner",
             "from autonomy.decision.activation import MemoryActivation",
         )

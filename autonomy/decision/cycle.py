@@ -9,15 +9,14 @@ retained evidence. ``choose_action`` runs the existing action composition.
 from __future__ import annotations
 
 import time
-from copy import deepcopy
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Callable
 
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.memory.values import MemorySnapshot
 from autonomy.perception import PerceptionText
 from autonomy.runtime.engine import AutonomyControl
-from autonomy.shared_memory import SharedMemory
-from autonomy.vehicle import SensorSnapshot
 
 from .observation import Observation, observation_from_perception
 
@@ -25,45 +24,8 @@ from .observation import Observation, observation_from_perception
 DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v0"
 
 
-class MemoryUpdateError(RuntimeError):
-    """A memory update failed, so this decision cycle cannot continue."""
-
-    boundary = "memory"
-
-
 def timestamp_ms() -> int:
     return int(time.time() * 1000)
-
-
-@dataclass(frozen=True)
-class DecisionFrameContext:
-    """Inputs for one cycle tick.
-
-    ``shared_memory`` is the host-owned map. ``remember`` returns retained
-    evidence as a ``MemorySnapshot``.
-    """
-
-    frame_id: str
-    frame_index: int
-    timestamp_ms: int
-    sensor_snapshot: SensorSnapshot | None = None
-    mode: str = "autonomy"
-    user_steering: float = 0.0
-    user_throttle: float = 0.0
-    metadata: dict[str, Any] = field(default_factory=dict)
-    shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "frame_id": self.frame_id,
-            "frame_index": self.frame_index,
-            "timestamp_ms": self.timestamp_ms,
-            "sensor_snapshot": self.sensor_snapshot.to_dict() if self.sensor_snapshot is not None else None,
-            "mode": self.mode,
-            "user_steering": self.user_steering,
-            "user_throttle": self.user_throttle,
-            "metadata": deepcopy(self.metadata),
-        }
 
 
 PerceiveStep = Callable[[DecisionFrameContext], PerceptionText | None]

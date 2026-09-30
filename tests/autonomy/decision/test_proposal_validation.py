@@ -128,7 +128,7 @@ class RunnerBoundaryTests(unittest.TestCase):
 
         engine = create_shadow_proposals_engine()
         with patch(
-            "autonomy.decision.shadow_runner.select_action_plan",
+            "autonomy.decision_cycle.action.select_action_plan",
             side_effect=ValueError("plan broken"),
         ):
             result, control = engine.run_cycle(

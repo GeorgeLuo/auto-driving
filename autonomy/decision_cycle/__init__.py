@@ -8,7 +8,8 @@ reads, ``proposal.values`` its candidate commands, and
 ``action_identifiers`` the identifier grammar for action inputs, proposals,
 and plans. ``planning`` holds plan values and the built-in selector, and
 ``action_gate.hold`` the fixed idle gate. ``result`` is the aggregate action
-result and ``errors`` its engine error reasons.
+result and ``errors`` its engine error reasons. ``action`` composes proposal,
+planning, and the hold gate for one cycle.
 Ordering of perceive, observe, remember, and choose_action stays in
 ``autonomy.decision.cycle``.
 """

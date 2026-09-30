@@ -59,7 +59,7 @@ from autonomy.decision_cycle.result import (
     SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     ShadowDecisionCycleResult,
 )
-from .shadow_runner import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
+from autonomy.decision_cycle.action import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
 from autonomy.memory.activation import (
     MEMORY_ACTIVATION_SCHEMA,
     ActivatedMemoryStep,

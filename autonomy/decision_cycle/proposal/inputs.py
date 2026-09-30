@@ -574,7 +574,6 @@ def build_decision_data_source(
     )
 
 
-# Re-export for tests that need empty snapshots without importing memory helpers deeply.
 __all__ = [
     "COMPONENT_STATUSES",
     "ComponentEnvelope",

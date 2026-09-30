@@ -84,7 +84,7 @@ class DecisionCommandTests(unittest.TestCase):
         self.assertEqual(decision["engine_id"], "obstacle-avoidance")
         self.assertEqual(
             decision["engine_spec"],
-            "implementations.decision.live_adapter:ObstacleAvoidanceAutonomyEngine",
+            "implementations.runtime.engines.mode_gated_action:ObstacleAvoidanceAutonomyEngine",
         )
 
     def test_shadow_info_probe_is_read_only_without_a_runtime_producer(self) -> None:

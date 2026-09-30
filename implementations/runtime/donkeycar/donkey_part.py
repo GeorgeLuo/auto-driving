@@ -9,8 +9,9 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from autonomy.decision import DecisionFrameContext, MemoryUpdateError
-from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.engine import AutonomyControl
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot

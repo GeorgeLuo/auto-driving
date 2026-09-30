@@ -1,16 +1,26 @@
-"""Observation contracts and decision cycle steps.
+"""Cycle records and re-exports of retained-evidence values.
 
-Memory values and ``MemoryImplementation`` are defined under ``autonomy.memory``
-and re-exported here.
+``Observation`` is the current-frame record produced by ``observe``. Names
+re-exported from ``autonomy.memory`` are retained evidence and the
+``remember`` operation.
 """
 
-from .cycle import (
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
+from autonomy.decision_cycle.proposal.values import (
+    ACTION_PROPOSAL_SCHEMA,
+    ActionProposal,
+    ProposedVehicleCommand,
+    SourceRef,
+)
+from autonomy.decision_cycle.planning.selector import select_action_plan
+from autonomy.decision_cycle.planning.values import ACTION_PLAN_SCHEMA, SELECTOR_ID, ActionPlan
+from autonomy.decision_cycle.cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
     DecisionCycleResult,
-    DecisionFrameContext,
     DecisionSteps,
-    MemoryUpdateError,
 )
 from .memory import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
@@ -33,59 +43,33 @@ from .memory import (
     serialized_memory_snapshot_bytes,
     unavailable_memory_snapshot,
 )
-from .observation import OBSERVATION_SCHEMA, Observation, observation_from_perception
-from .shadow_ids import ShadowCycleInputError
-from .decision_data import (
+from autonomy.decision_cycle.observation.step import observation_from_perception
+from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
+from autonomy.decision_cycle.proposal.inputs import (
     DECISION_DATA_SOURCE_SCHEMA,
     ComponentEnvelope,
     DecisionDataSource,
     build_decision_data_source,
 )
-from .action_proposal import (
-    ACTION_PROPOSAL_SCHEMA,
-    ActionProposal,
-    ProposedVehicleCommand,
-    SourceRef,
-)
-from .action_plan import ACTION_PLAN_SCHEMA, ActionPlan, SELECTOR_ID, select_action_plan
-from .shadow_authority import (
+from autonomy.decision_cycle.action_gate.hold import (
     SHADOW_AUTHORITY_RESULT_SCHEMA,
-    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     ShadowAuthorityResult,
+)
+from autonomy.decision_cycle.result import (
+    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     ShadowDecisionCycleResult,
 )
-from .shadow_runner import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
-
-
-_MEMORY_ACTIVATION_EXPORTS = (
-    "MEMORY_ACTIVATION_SCHEMA",
-    "ActivatedMemoryStep",
-    "MemoryActivation",
-    "instantiate_memory_implementation",
-    "load_memory_implementation",
-    "load_memory_step_if_present",
-    "read_memory_activation",
+from autonomy.decision_cycle.action import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
+from autonomy.decision_cycle.memory.activation import (
+    MEMORY_ACTIVATION_SCHEMA,
+    ActivatedMemoryStep,
+    MemoryActivation,
+    instantiate_memory_implementation,
+    load_memory_implementation,
+    load_memory_step_if_present,
+    read_memory_activation,
 )
-
-
-def __getattr__(name: str):
-    """Load memory activation and protocol on first use.
-
-    The protocol imports this package, so it cannot be imported while the
-    package itself is still starting.
-    """
-    if name == "MemoryImplementation":
-        from autonomy.memory.plugin import MemoryImplementation
-
-        globals()[name] = MemoryImplementation
-        return MemoryImplementation
-    if name not in _MEMORY_ACTIVATION_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from autonomy.memory import activation
-
-    value = getattr(activation, name)
-    globals()[name] = value
-    return value
+from autonomy.decision_cycle.memory.plugin import MemoryImplementation
 
 __all__ = [
     "DECISION_CYCLE_RESULT_SCHEMA",

@@ -1,26 +1,8 @@
-from __future__ import annotations
+"""Import path for ``autonomy.decision_cycle.perception.inputs``.
 
-from pathlib import Path
-from typing import Any
+Names imported here are those objects.
+"""
 
-from autonomy.shared_memory import SharedMemory
-from autonomy.vehicle import SensorSnapshot
-
-from .interface import PerceptionRequest
-
-
-def build_perception_request(
-    snapshot: SensorSnapshot,
-    *,
-    output_dir: Path | None = None,
-    metadata: dict[str, Any] | None = None,
-    shared_memory: SharedMemory | None = None,
-) -> PerceptionRequest:
-    """Wrap a sensor snapshot without assuming which components plugins need."""
-
-    return PerceptionRequest(
-        snapshot=snapshot,
-        output_dir=output_dir,
-        metadata=dict(metadata or {}),
-        shared_memory=shared_memory,
-    )
+from autonomy.decision_cycle.perception.inputs import (
+    build_perception_request,
+)

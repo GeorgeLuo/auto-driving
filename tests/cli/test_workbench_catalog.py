@@ -22,11 +22,11 @@ from tests.cli.workbench_fixtures import (
     image_source,
 )
 
-_BOUNDED_SPEC = "implementations.memory.bounded_evidence:BoundedEvidenceLedger"
+_BOUNDED_SPEC = "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
 _FRAME_INPUT = {
     "name": "frame",
     "component_id": "camera.rgb:front_camera",
-    "provider_spec": "implementations.perception.components.camera:provide_camera_frame",
+    "provider_spec": "implementations.decision_cycle.perception.components.camera:provide_camera_frame",
 }
 
 

@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from autonomy.memory import PluginMemoryRunner
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.publication import publish_snapshot
 from autonomy.shared_memory import SharedMemory
-from autonomy.decision.cycle import (
+from autonomy.decision_cycle.cycle import (
     DecisionCycle,
     DecisionCycleResult,
     DecisionFrameContext,
@@ -73,7 +74,7 @@ class AutonomyCycleHost:
             else reset()
         )
         self.shared_memory.clear()
-        self.shared_memory["decision.snapshot"] = snapshot
+        publish_snapshot(self.shared_memory, snapshot)
         return snapshot
 
     def _choose_action(

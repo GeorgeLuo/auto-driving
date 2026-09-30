@@ -8,12 +8,16 @@ from autonomy.vehicle import clamp_unit
 
 @dataclass(frozen=True)
 class AutonomySnapshot:
-    """Inputs made available to one onboard autonomy engine step."""
+    """Inputs for one engine step.
+
+    ``perception`` is current evidence, ``observation`` is the current-frame
+    record, and ``memory`` is retained evidence.
+    """
 
     sensor_snapshot: Any = None
     perception: Any = None
     observation: Any = None
-    # Retained evidence from shared_memory["decision.snapshot"], not the shared map.
+    # Retained evidence published at shared_memory["decision.snapshot"].
     memory: Any = None
     cycle: dict[str, Any] = field(default_factory=dict)
     mode: str = "user"

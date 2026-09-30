@@ -172,15 +172,14 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             result = host.run(DecisionFrameContext("frame_1", 0, 1_000))
             assert result.memory is not None
             assert step is not None
-            self.assertIsNot(result.memory, step.last_snapshot)
+            owned = host.shared_memory["decision.snapshot"]
+            self.assertIsNot(result.memory, owned)
             # Mutate the cycle result handed to callers/engines.
             result.memory.metadata["engine_mutated"] = True
             if result.memory.records:
                 result.memory.records[0].properties["tamper"] = True
             if hasattr(engine, "last_snapshot") and engine.last_snapshot.memory is not None:
                 engine.last_snapshot.memory.metadata["via_engine"] = True
-            owned = step.last_snapshot
-            assert owned is not None
             self.assertNotIn("engine_mutated", owned.metadata)
             self.assertNotIn("via_engine", owned.metadata)
             if owned.records:

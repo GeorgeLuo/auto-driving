@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from autonomy.decision.action_plan import select_action_plan
+from autonomy.decision_cycle.planning.selector import select_action_plan
 from autonomy.decision_cycle.proposal.values import (
     MAX_PROPOSAL_BYTES,
     ActionProposal,

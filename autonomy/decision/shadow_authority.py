@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
-from autonomy.decision.action_plan import ActionPlan
+from autonomy.decision_cycle.planning.values import ActionPlan
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.decision.decision_data import (
     ComponentEnvelope,

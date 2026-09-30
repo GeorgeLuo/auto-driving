@@ -63,6 +63,12 @@ from autonomy.decision.action_proposal import ActionProposal as LegacyProposal
 from autonomy.decision.shadow_ids import ShadowCycleInputError as LegacyInputError
 from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError as CanonicalInputError
 from autonomy.decision_cycle.proposal.values import ActionProposal as CanonicalProposal
+from autonomy.decision import ActionPlan as PackagePlan
+from autonomy.decision import select_action_plan as package_select_plan
+from autonomy.decision.action_plan import ActionPlan as LegacyPlan
+from autonomy.decision.action_plan import select_action_plan as legacy_select_plan
+from autonomy.decision_cycle.planning.selector import select_highest_confidence_plan
+from autonomy.decision_cycle.planning.values import ActionPlan as CanonicalPlan
 from autonomy.decision.observation import Observation as DirectObservation
 from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
 from autonomy.perception import PerceptionMapper, PerceptionPluginContract
@@ -91,6 +97,8 @@ assert PackageContext is CycleContext is CanonicalContext
 assert PackageMemoryError is CycleMemoryError is CanonicalMemoryUpdateError
 assert PackageProposal is LegacyProposal is CanonicalProposal
 assert PackageInputError is LegacyInputError is CanonicalInputError
+assert PackagePlan is LegacyPlan is CanonicalPlan
+assert package_select_plan is legacy_select_plan is select_highest_confidence_plan
 assert Observation is DirectObservation
 assert ShadowProposalsEngine is DirectShadowEngine
 assert PerceptionMapper is DirectPerceptionMapper
@@ -114,6 +122,8 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.decision_cycle.memory.errors",
             "import autonomy.decision_cycle.action_identifiers",
             "import autonomy.decision_cycle.proposal.values",
+            "import autonomy.decision_cycle.planning.values",
+            "import autonomy.decision_cycle.planning.selector",
             "import autonomy.perception.mappers.plugin_runner",
             "from autonomy.decision.activation import MemoryActivation",
         )

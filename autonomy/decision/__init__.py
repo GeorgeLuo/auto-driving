@@ -14,6 +14,8 @@ from autonomy.decision_cycle.proposal.values import (
     ProposedVehicleCommand,
     SourceRef,
 )
+from autonomy.decision_cycle.planning.selector import select_action_plan
+from autonomy.decision_cycle.planning.values import ACTION_PLAN_SCHEMA, SELECTOR_ID, ActionPlan
 from .cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
@@ -48,7 +50,6 @@ from .decision_data import (
     DecisionDataSource,
     build_decision_data_source,
 )
-from .action_plan import ACTION_PLAN_SCHEMA, ActionPlan, SELECTOR_ID, select_action_plan
 from .shadow_authority import (
     SHADOW_AUTHORITY_RESULT_SCHEMA,
     SHADOW_DECISION_CYCLE_RESULT_SCHEMA,

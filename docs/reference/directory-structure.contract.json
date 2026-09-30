@@ -60,7 +60,7 @@
             "path": "autonomy/decision_cycle/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Canonical home of decision-cycle contracts, grouped by step. It holds the cycle input (context.py), the memory failure (memory/errors.py), proposal values (proposal/values.py), and the action identifier grammar (action_identifiers.py); other cycle and step modules still live under autonomy/decision/, autonomy/perception/, and autonomy/memory/, which keep their import paths."
+            "responsibility": "Canonical home of decision-cycle contracts, grouped by step. It holds the cycle input (context.py), the memory failure (memory/errors.py), proposal values (proposal/values.py), the action identifier grammar (action_identifiers.py), and plan values with the built-in selector (planning/); other cycle and step modules still live under autonomy/decision/, autonomy/perception/, and autonomy/memory/, which keep their import paths."
           },
           {
             "path": "autonomy/runtime/",

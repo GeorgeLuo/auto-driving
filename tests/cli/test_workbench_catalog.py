@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import unittest
+from implementations.decision_cycle.memory.bounded_evidence.ledger import LEDGER_KEY
 from pathlib import Path
 from autonomy.decision_cycle.perception.components.context import PerceptionRequest
 from autonomy.vehicle import SensorSnapshot
@@ -763,7 +764,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             memory_step = runner._memory_step
             retained = dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"]
             memory_plugin = memory_step.plugins[0]
-            snapshot = runner._shared_memory.get("decision.snapshot")
+            ledger = runner._shared_memory.get(LEDGER_KEY)
             runner._shared_memory["retention-marker"] = "kept"
 
             with self.assertRaises(ReplayActionError) as caught:
@@ -787,7 +788,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 memory_step.plugin_manager.selected_ids, ("bounded_evidence",)
             )
-            self.assertIs(runner._shared_memory.get("decision.snapshot"), snapshot)
+            self.assertIs(runner._shared_memory.get(LEDGER_KEY), ledger)
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
 
             stepped = runner.dispatch("step", run_id=run_id)
@@ -1000,28 +1001,13 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             "        if CountingMemory.constructions > 1:\n"
             "            raise RuntimeError('memory constructed twice')\n"
             "        CountingMemory.built = self\n"
-            "        from autonomy.decision_cycle.memory.snapshots.values import empty_memory_snapshot\n"
-            "        from autonomy.decision_cycle.memory.activation import bounds_from_config\n"
             "        self.implementation_id = 'counting_memory'\n"
-            "        self._bounds = bounds_from_config(config)\n"
-            "        self._snapshot = empty_memory_snapshot(\n"
-            "            memory_id='counting-memory',\n"
-            "            epoch_id='counting-epoch-0',\n"
-            "            bounds=self._bounds,\n"
-            "            created_at_ms=0,\n"
-            "            implementation_id=self.implementation_id,\n"
-            "        )\n"
             "\n"
             "    def update(self, context, observation):\n"
             "        del context, observation\n"
-            "        return self._snapshot\n"
             "\n"
-            "    def reset(self, shared_memory=None):\n"
-            "        del shared_memory\n"
-            "        return self._snapshot\n"
-            "\n"
-            "    def snapshot(self):\n"
-            "        return self._snapshot\n",
+            "    def reset(self, shared_memory):\n"
+            "        del shared_memory\n",
         )
         with image_source(3) as root:
             runner = ImageReplayRunner(
@@ -1115,7 +1101,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             frames = retained.frames
             shared = runner._shared_memory["temporal.frames"]
             memory_plugin = memory_step.plugins[0]
-            snapshot = runner._shared_memory.get("decision.snapshot")
+            ledger = runner._shared_memory.get(LEDGER_KEY)
             self.assertEqual(frames, [first_id])
             self.assertEqual(shared, [first_id])
 
@@ -1140,7 +1126,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(shared, [first_id])
             self.assertIs(memory_step.plugins[0], memory_plugin)
             self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
-            self.assertIs(runner._shared_memory.get("decision.snapshot"), snapshot)
+            self.assertIs(runner._shared_memory.get(LEDGER_KEY), ledger)
 
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")

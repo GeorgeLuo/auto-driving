@@ -20,7 +20,7 @@ To get the same artifacts without starting a server:
 ./cli/automa vehicles decision inspect --from-run examples/decision-inspection --json
 ```
 
-Supply any saved `automa_decision_apply_sequence_v0` file or directory containing
+Supply any saved `automa_decision_apply_sequence_v1` file or directory containing
 `sequence.json`. Use `--frame N` to select its zero-based frame position.
 Use `--id <vehicle>` to read a staged hold-action configuration; omit it to
 use packaged defaults without staging a vehicle. `--port N` selects a preferred

@@ -42,7 +42,7 @@ class _PushyEngine:
             "engine_spec": "tests:_PushyEngine",
         }
 
-    def act(self, context, perception, observation, memory):
+    def act(self, context, perception, observation):
         return fixed_control_composition(
             AutonomyControl(
                 steering=0.7,
@@ -50,7 +50,7 @@ class _PushyEngine:
                 confidence=1.0,
                 reason="pushy-test-engine",
             )
-        ).act(context, perception, observation, memory)
+        ).act(context, perception, observation)
 
 
 class _ExplodingHost:

@@ -4,7 +4,7 @@ import unittest
 from autonomy.serialization import canonical_json_bytes, canonical_json_utf8
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
-    strict_decode_apply_memory,
+    strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
 from tests.support.cli_runner import run_automa
@@ -45,55 +45,37 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         with self.assertRaises(DecisionSurfaceError):
             strict_decode_apply_observation(extra)
 
-        good_mem = json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
-            "memory"
+        good_evidence = json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
+            "evidence"
         ]
-        missing_created = dict(good_mem)
-        del missing_created["created_at_ms"]
         with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_memory(missing_created)
+            strict_decode_apply_evidence({"records": good_evidence})
 
-        bounds_incomplete = dict(good_mem)
-        bounds_incomplete["bounds"] = {
-            k: v for k, v in good_mem["bounds"].items() if k != "max_serialized_bytes"
+        conf_str = [dict(good_evidence[0])]
+        conf_str[0]["confidence"] = "0.8"
+        with self.assertRaises(DecisionSurfaceError):
+            strict_decode_apply_evidence(conf_str)
+
+        with self.assertRaises(DecisionSurfaceError):
+            strict_decode_apply_evidence(["nope"])
+
+        bad_location = [dict(good_evidence[0])]
+        bad_location[0]["location"] = "left"
+        with self.assertRaises(DecisionSurfaceError):
+            strict_decode_apply_evidence(bad_location)
+
+        missing_provenance_key = [dict(good_evidence[0])]
+        missing_provenance_key[0]["provenance"] = {
+            key: value
+            for key, value in good_evidence[0]["provenance"].items()
+            if key != "updated_at_ms"
         }
         with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_memory(bounds_incomplete)
-
-        bounds_str = dict(good_mem)
-        bounds_str["bounds"] = dict(good_mem["bounds"])
-        bounds_str["bounds"]["max_records"] = "2"
-        with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_memory(bounds_str)
-
-        conf_str = dict(good_mem)
-        conf_str["records"] = [dict(good_mem["records"][0])]
-        conf_str["records"][0] = dict(conf_str["records"][0])
-        conf_str["records"][0]["confidence"] = "0.8"
-        with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_memory(conf_str)
-
-        non_dict_record = dict(good_mem)
-        non_dict_record["records"] = ["nope"]
-        non_dict_record["record_count"] = 1
-        with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_memory(non_dict_record)
-
-        bad_location = dict(good_mem)
-        bad_location["records"] = [dict(good_mem["records"][0])]
-        bad_location["records"][0] = dict(bad_location["records"][0])
-        bad_location["records"][0]["location"] = "left"
-        with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_memory(bad_location)
-
-        count_mismatch = dict(good_mem)
-        count_mismatch["record_count"] = 99
-        with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_memory(count_mismatch)
+            strict_decode_apply_evidence(missing_provenance_key)
 
         # complete export accepted
         strict_decode_apply_observation(good_obs)
-        strict_decode_apply_memory(good_mem)
+        self.assertEqual(len(strict_decode_apply_evidence(good_evidence)), len(good_evidence))
 
     def test_canonical_json_utf8_not_length_only(self) -> None:
         a = {"a": 1, "b": 2}

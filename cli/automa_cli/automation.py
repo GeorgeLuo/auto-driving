@@ -547,13 +547,13 @@ def run_vehicle_automation(
             }
         else:
             try:
-                snapshot = cycle_host.reset_memory()
+                report = cycle_host.reset_memory()
                 result = {
                     "schema": "automa_memory_reset_result_v0",
                     "ok": True,
                     "status": "reset",
                     "token": token,
-                    "snapshot": snapshot.to_dict() if snapshot is not None and hasattr(snapshot, "to_dict") else None,
+                    "report": report,
                     "memory": memory_step.status(),
                     "completed_at_ms": _timestamp_ms(),
                 }
@@ -696,10 +696,8 @@ def run_vehicle_automation(
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
-            # Retained evidence from shared_memory["decision.snapshot"].
-            "memory": cycle_result.memory.to_dict()
-            if cycle_result.memory is not None
-            else None,
+            # The memory step's report of each plugin's state.
+            "memory": copy.deepcopy(cycle_result.memory),
             "control": control_record,
             "engine": cycle_host.manager.status(),
             "decision_cycle": cycle_result.to_dict(),

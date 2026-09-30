@@ -2,6 +2,8 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+from tests.support.memory_fixtures import memory_report
+
 
 class MemoryCheckTests(unittest.TestCase):
     def test_chase_reference_path_scores_live_alignment(self) -> None:
@@ -14,14 +16,14 @@ class MemoryCheckTests(unittest.TestCase):
                 "frame_id": "chase_frame_000010",
                 "simulator_frame_index": 10,
                 "simulation_epoch": "chase-run:test",
-                "memory": {
+                "memory": memory_report({
                     "records": [
                         {
                             "record_id": "thing:obstacle_000",
                             "provenance": {"frame_id": "chase_frame_000010"},
                         }
                     ]
-                },
+                }),
                 "observation": {
                     "things": [{"thing_id": "obstacle_000"}],
                     "signals": [],
@@ -37,14 +39,14 @@ class MemoryCheckTests(unittest.TestCase):
                 "frame_id": "chase_frame_000011",
                 "simulator_frame_index": 11,
                 "simulation_epoch": "chase-run:test",
-                "memory": {
+                "memory": memory_report({
                     "records": [
                         {
                             "record_id": "thing:obstacle_000",
                             "provenance": {"frame_id": "chase_frame_000010"},
                         }
                     ]
-                },
+                }),
                 "observation": {
                     "things": [{"thing_id": "obstacle_000"}],
                     "signals": [],
@@ -145,33 +147,33 @@ class MemoryCheckTests(unittest.TestCase):
         )
         self.assertTrue(moving_safety["movement_commands_sent"])
 
-    def test_chase_provenance_is_ordered_per_memory_snapshot(self) -> None:
+    def test_chase_provenance_is_ordered_per_memory_state(self) -> None:
         from cli.automa_cli.memory_check import score_chase_memory_provenance
 
         frames = [
             {
                 "frame_id": "chase_frame_000010",
                 "simulator_frame_index": 10,
-                "memory": {
+                "memory": memory_report({
                     "records": [
                         {
                             "record_id": "thing:current",
                             "provenance": {"frame_id": "chase_frame_000010"},
                         }
                     ]
-                },
+                }),
             },
             {
                 "frame_id": "chase_frame_000011",
                 "simulator_frame_index": 11,
-                "memory": {
+                "memory": memory_report({
                     "records": [
                         {
                             "record_id": "thing:retained",
                             "provenance": {"frame_id": "chase_frame_000010"},
                         }
                     ]
-                },
+                }),
             },
         ]
         score = score_chase_memory_provenance(frames)
@@ -182,14 +184,14 @@ class MemoryCheckTests(unittest.TestCase):
         future = [
             {
                 **frames[0],
-                "memory": {
+                "memory": memory_report({
                     "records": [
                         {
                             "record_id": "thing:future",
                             "provenance": {"frame_id": "chase_frame_000011"},
                         }
                     ]
-                },
+                }),
             },
             frames[1],
         ]
@@ -200,14 +202,14 @@ class MemoryCheckTests(unittest.TestCase):
         pre_boundary = [
             {
                 **frames[0],
-                "memory": {
+                "memory": memory_report({
                     "records": [
                         {
                             "record_id": "thing:stale",
                             "provenance": {"frame_id": "chase_frame_000009"},
                         }
                     ]
-                },
+                }),
             },
             frames[1],
         ]
@@ -222,7 +224,7 @@ class MemoryCheckTests(unittest.TestCase):
             return {
                 "frame_id": f"chase_frame_{index:06d}",
                 "simulator_frame_index": index,
-                "memory": {
+                "memory": memory_report({
                     "health": "healthy",
                     "records": [
                         {
@@ -232,7 +234,7 @@ class MemoryCheckTests(unittest.TestCase):
                             },
                         }
                     ],
-                },
+                }),
             }
 
         publications = [
@@ -266,12 +268,12 @@ class MemoryCheckTests(unittest.TestCase):
             {
                 "frame_id": "chase_frame_000001",
                 "simulator_frame_index": 1,
-                "memory": {"health": "empty", "records": []},
+                "memory": memory_report({"health": "empty", "records": []}),
             },
             {
                 "frame_id": "chase_frame_000002",
                 "simulator_frame_index": 2,
-                "memory": {"health": "empty", "records": []},
+                "memory": memory_report({"health": "empty", "records": []}),
             },
         ]
         score = score_chase_memory_provenance(frames)

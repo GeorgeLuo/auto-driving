@@ -1,9 +1,10 @@
 """Reference avoid_recent_obstruction proposal plugin (M006-04).
 
-Compatible with the Workbench ``multi_obstruction_tracks`` memory plugin: it
-reads retained image-located ``obstacle`` records, including the tracks that
-plugin produces. It accepts records by kind and location, regardless of which
-perception or memory implementation produced them.
+Reads retained evidence from shared memory at ``evidence_key`` (by default
+the key ``bounded_evidence`` publishes). The Workbench
+``multi_obstruction_tracks`` memory plugin publishes its tracks at the same
+key. It accepts records by kind and location, regardless of which perception
+or memory implementation produced them.
 """
 
 from __future__ import annotations
@@ -18,7 +19,8 @@ from autonomy.decision_cycle.proposal.values import (
     SourceRef,
 )
 from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
-from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import RetainedEvidence
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 
 PLUGIN_ID = "avoid_recent_obstruction"
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
@@ -187,12 +189,14 @@ def _inactive(source: DecisionDataSource, reason: str) -> ActionProposal:
 
 def propose(
     source: DecisionDataSource,
+    shared_memory: Mapping[str, Any] | None = None,
     *,
+    evidence_key: str = EVIDENCE_KEY,
     accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
     retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
     steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
 ) -> ActionProposal:
-    """Emit exactly one ActionProposal for the current DecisionDataSource."""
+    """Emit exactly one ActionProposal from the source and retained evidence."""
 
     if not isinstance(source, DecisionDataSource):
         return ActionProposal(
@@ -207,28 +211,23 @@ def propose(
             available=False,
         )
 
-    # Retained evidence from shared_memory["decision.snapshot"].
-    memory = source.memory
-    if memory.status != "ready":
-        reason = (
-            "memory_unavailable"
-            if memory.status == "unavailable"
-            else str(memory.reason or "memory_error")
-        )
+    records = shared_memory.get(evidence_key) if shared_memory is not None else None
+    if records is None:
         return ActionProposal(
             plugin_id=PLUGIN_ID,
             frame_id=source.frame_id,
             lifecycle="missing_input",
             freshness="none",
             confidence=0.0,
-            reason=reason,
+            reason="memory_unavailable",
             command=None,
             assumptions=BASE_ASSUMPTIONS,
             available=False,
         )
 
-    snapshot = memory.value
-    if not isinstance(snapshot, MemorySnapshot):
+    if not isinstance(records, (tuple, list)) or not all(
+        isinstance(record, RetainedEvidence) for record in records
+    ):
         return ActionProposal(
             plugin_id=PLUGIN_ID,
             frame_id=source.frame_id,
@@ -242,7 +241,7 @@ def propose(
         )
 
     kinds = set(accepted_kinds)
-    accepted_kind_records = [r for r in snapshot.records if r.kind in kinds]
+    accepted_kind_records = [r for r in records if r.kind in kinds]
     image_located = [
         r
         for r in accepted_kind_records

@@ -8,7 +8,7 @@ from autonomy.runtime.manager import EngineLoadError
 
 
 class MissingResetEngine:
-    def act(self, context, perception, observation, memory):
+    def act(self, context, perception, observation):
         return None
 
 
@@ -19,7 +19,7 @@ class ControlOutputEngine:
     def describe_schema(self) -> dict[str, str]:
         return {"schema": "autonomy_engine_schema_v0"}
 
-    def act(self, context, perception, observation, memory):
+    def act(self, context, perception, observation):
         return AutonomyControl(reason="not-an-action-result")
 
 
@@ -27,7 +27,7 @@ class MissingSchemaEngine:
     def reset(self) -> None:
         return None
 
-    def act(self, context, perception, observation, memory):
+    def act(self, context, perception, observation):
         return None
 
 
@@ -44,7 +44,6 @@ class EngineContractTests(unittest.TestCase):
 
         action = manager.act(
             DecisionFrameContext(frame_id="frame", frame_index=0, timestamp_ms=0),
-            None,
             None,
             None,
         )

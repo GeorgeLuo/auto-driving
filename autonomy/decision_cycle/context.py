@@ -14,8 +14,8 @@ from autonomy.vehicle import SensorSnapshot
 class DecisionFrameContext:
     """Inputs for one cycle tick.
 
-    ``shared_memory`` is the host-owned map. ``remember`` returns retained
-    evidence as a ``MemorySnapshot``.
+    ``shared_memory`` is the host-owned map that perception, memory, and
+    proposal plugins read and write.
     """
 
     frame_id: str

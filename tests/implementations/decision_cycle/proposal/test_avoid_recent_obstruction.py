@@ -5,24 +5,20 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemoryBounds,
-    MemoryProvenance,
-    MemorySnapshot,
-    RetainedEvidence,
-    empty_memory_snapshot,
-    error_memory_snapshot,
-    unavailable_memory_snapshot,
-)
+from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from implementations.runtime.engines.config import ObstacleAvoidanceConfig
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
-    propose,
+    propose as _propose,
 )
 
 
-def _bounds() -> MemoryBounds:
-    return MemoryBounds(max_records=16, max_age_ms=10_000)
+def propose(inputs, **kwargs):
+    """Call the plugin with a (source, shared_memory) pair, or a source and an empty map."""
+
+    source, shared_memory = inputs if isinstance(inputs, tuple) else (inputs, {})
+    return _propose(source, shared_memory, **kwargs)
 
 
 def _record(
@@ -63,27 +59,10 @@ def _record(
 
 
 def _source(records: tuple[RetainedEvidence, ...], *, now: int = 1000, frame: str = "frame_001"):
-    if records:
-        snap = MemorySnapshot(
-            memory_id="m",
-            epoch_id="e",
-            health="healthy",
-            bounds=_bounds(),
-            created_at_ms=now,
-            records=records,
-            implementation_id="bounded_evidence",
-        )
-    else:
-        snap = empty_memory_snapshot(
-            memory_id="m",
-            epoch_id="e",
-            created_at_ms=now,
-            bounds=_bounds(),
-            implementation_id="bounded_evidence",
-        )
-    return build_decision_data_source(
-        frame_id=frame, frame_index=1, timestamp_ms=now, memory=snap
-    )
+    """A source for the frame and a host map where memory published ``records``."""
+
+    source = build_decision_data_source(frame_id=frame, frame_index=1, timestamp_ms=now)
+    return source, {EVIDENCE_KEY: tuple(records)}
 
 
 class AvoidRecentObstructionTests(unittest.TestCase):
@@ -175,35 +154,17 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         )
         self.assertEqual(p.lifecycle, "incompatible")
 
-    def test_memory_unavailable_missing_input(self) -> None:
-        snap = unavailable_memory_snapshot(
-            memory_id="m",
-            epoch_id="e",
-            created_at_ms=1,
-            bounds=_bounds(),
-            implementation_id="bounded_evidence",
-            reason="gone",
-        )
-        source = build_decision_data_source(
-            frame_id="frame_001", frame_index=0, timestamp_ms=1, memory=snap
-        )
-        p = propose(source)
+    def test_unpublished_evidence_is_missing_input(self) -> None:
+        source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        p = propose((source, {}))
         self.assertEqual(p.lifecycle, "missing_input")
+        self.assertEqual(p.reason, "memory_unavailable")
 
-    def test_memory_error_missing_input(self) -> None:
-        snap = error_memory_snapshot(
-            memory_id="m",
-            epoch_id="e",
-            created_at_ms=1,
-            bounds=_bounds(),
-            implementation_id="bounded_evidence",
-            error="boom",
-        )
-        source = build_decision_data_source(
-            frame_id="frame_001", frame_index=0, timestamp_ms=1, memory=snap
-        )
-        p = propose(source)
-        self.assertEqual(p.lifecycle, "missing_input")
+    def test_malformed_evidence_value_is_error(self) -> None:
+        source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        p = propose((source, {EVIDENCE_KEY: "not evidence"}))
+        self.assertEqual(p.lifecycle, "error")
+        self.assertEqual(p.reason, "invalid_memory_value")
 
     def test_empty_memory_inactive(self) -> None:
         p = propose(_source(()))
@@ -324,22 +285,13 @@ class AvoidRecentObstructionTests(unittest.TestCase):
     def test_ready_malformed_capabilities_rejected_at_source(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import ready_envelope
 
-        snap = MemorySnapshot(
-            memory_id="m",
-            epoch_id="e",
-            health="healthy",
-            bounds=_bounds(),
-            created_at_ms=1000,
-            records=(_record(),),
-            implementation_id="bounded_evidence",
-        )
+        memory = {EVIDENCE_KEY: (_record(),)}
         # Non-mapping / incomplete ready capabilities fail source construction.
         with self.assertRaises((TypeError, ValueError)):
             build_decision_data_source(
                 frame_id="frame_001",
                 frame_index=0,
                 timestamp_ms=1000,
-                memory=snap,
                 capabilities=ready_envelope("not-a-dict", updated_at_ms=1000),
             )
         with self.assertRaises(ValueError):
@@ -347,7 +299,6 @@ class AvoidRecentObstructionTests(unittest.TestCase):
                 frame_id="frame_001",
                 frame_index=0,
                 timestamp_ms=1000,
-                memory=snap,
                 capabilities=ready_envelope(
                     {"max_abs_steering": 1.0}, updated_at_ms=1000
                 ),
@@ -356,25 +307,16 @@ class AvoidRecentObstructionTests(unittest.TestCase):
     def test_capabilities_unavailable_uses_configured_magnitude(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import unavailable_envelope
 
-        snap = MemorySnapshot(
-            memory_id="m",
-            epoch_id="e",
-            health="healthy",
-            bounds=_bounds(),
-            created_at_ms=1000,
-            records=(_record(),),
-            implementation_id="bounded_evidence",
-        )
+        memory = {EVIDENCE_KEY: (_record(),)}
         source = build_decision_data_source(
             frame_id="frame_001",
             frame_index=0,
             timestamp_ms=1000,
-            memory=snap,
             capabilities=unavailable_envelope(
                 "stage_not_configured", updated_at_ms=1000
             ),
         )
-        p = propose(source, steer_magnitude=0.4)
+        p = propose((source, memory), steer_magnitude=0.4)
         self.assertEqual(p.lifecycle, "fresh")
         assert p.command is not None
         self.assertAlmostEqual(p.command.steering, 0.4)
@@ -386,15 +328,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             ready_envelope,
         )
 
-        snap = MemorySnapshot(
-            memory_id="m",
-            epoch_id="e",
-            health="healthy",
-            bounds=_bounds(),
-            created_at_ms=1000,
-            records=(_record(),),
-            implementation_id="bounded_evidence",
-        )
+        memory = {EVIDENCE_KEY: (_record(),)}
         # Out-of-range / non-numeric fields rejected at source construction.
         for bad_max in (-0.1, 1.5, "high", None):
             with self.subTest(max_abs_steering=bad_max):
@@ -405,8 +339,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
                         frame_id="frame_001",
                         frame_index=0,
                         timestamp_ms=1000,
-                        memory=snap,
-                        capabilities=ready_envelope(caps, updated_at_ms=1000),
+                                capabilities=ready_envelope(caps, updated_at_ms=1000),
                     )
         # Zero is legal at source ([0,1]) but not usable for active magnitude.
         caps = default_capabilities()
@@ -415,10 +348,9 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             frame_id="frame_001",
             frame_index=0,
             timestamp_ms=1000,
-            memory=snap,
             capabilities=ready_envelope(caps, updated_at_ms=1000),
         )
-        p = propose(source)
+        p = propose((source, memory))
         self.assertEqual(p.lifecycle, "error")
         self.assertEqual(p.reason, "invalid_capabilities")
         self.assertIsNone(p.command)
@@ -426,12 +358,6 @@ class AvoidRecentObstructionTests(unittest.TestCase):
     def test_missing_zone_bbox_only_is_active(self) -> None:
         """Omitted zone becomes ViewLocation 'unknown'; bbox mid_x still steers."""
 
-        from autonomy.decision_cycle.memory.snapshots.values import (
-            MemoryBounds,
-            MemoryProvenance,
-            MemorySnapshot,
-            RetainedEvidence,
-        )
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
         location = ViewLocation.from_dict(
@@ -459,27 +385,17 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             location=location,
             properties={},
         )
-        # Round-trip through DecisionDataSource (memory detach) like production.
-        snap = MemorySnapshot(
-            memory_id="m",
-            epoch_id="e",
-            health="healthy",
-            bounds=MemoryBounds(max_records=16, max_age_ms=10_000),
-            created_at_ms=1000,
-            records=(record,),
-            implementation_id="bounded_evidence",
-        )
+        # Round-trip through the source's evidence audit copy (detach) like production.
         source = build_decision_data_source(
             frame_id="frame_001",
             frame_index=0,
             timestamp_ms=1000,
-            memory=snap,
+            evidence=(record,),
         )
-        # Detached memory must preserve canonical unknown zone.
-        assert isinstance(source.memory.value, MemorySnapshot)
-        detached_zone = source.memory.value.records[0].location.zone
+        # The detached copy must preserve the canonical unknown zone.
+        detached_zone = source.evidence.value[0].location.zone
         self.assertEqual(detached_zone, "unknown")
-        p = propose(source)
+        p = propose((source, {EVIDENCE_KEY: source.evidence.value}))
         self.assertEqual(p.lifecycle, "fresh")
         assert p.command is not None
         self.assertAlmostEqual(p.command.steering, 1.0)

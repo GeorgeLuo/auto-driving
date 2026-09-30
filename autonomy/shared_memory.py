@@ -13,14 +13,14 @@ model resources may remain on instances. Plugins own namespacing, bounds,
 discontinuity handling, and when a completed update is committed. Hosts pass
 one map in execution order and clear/replace it at run boundaries; they do not
 interpret plugin histories. Values may be Python records or arrays, not only
-JSON. A memory snapshot is retained evidence from the memory step.
-A perception plugin's ``memory_required`` flag means that plugin needs this map.
+JSON. A perception plugin's ``memory_required`` flag means that plugin needs
+this map.
 
-The memory framework publishes each memory plugin's accepted retained evidence
-at "decision.snapshot"; plugins read their previous value there. The decision
-cycle reads the memory step's result but does not write that key. A memory plugin may publish a current-cycle Observation
-at "decision.observation" for subsequent steps. Other producers may use their
-own keys; the existing evidence reducer does not evict those entries.
+Perception, memory, and proposal plugins all read and write this map. Which
+keys a plugin reads and where it publishes are the plugin's choice; plugins
+that exchange values agree on the key (for example, memory plugins that retain
+evidence publish records a proposal plugin reads). A memory plugin may publish
+a current-cycle Observation at "decision.observation" for subsequent steps.
 """
 
 from collections.abc import MutableMapping

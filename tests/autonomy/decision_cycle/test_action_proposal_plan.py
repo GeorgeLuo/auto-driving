@@ -30,7 +30,7 @@ class ActionProposalMatrixTests(unittest.TestCase):
         engine = ActionComposition(
             config=ProposalConfig(enabled_plugins=("cruise",)),
             plugins={
-                "cruise": lambda source: _active_proposal(
+                "cruise": lambda source, shared_memory: _active_proposal(
                     plugin_id="cruise", frame_id=source.frame_id
                 )
             },
@@ -129,7 +129,7 @@ class RunnerBoundaryTests(unittest.TestCase):
 
         stale = _active_proposal(frame_id="frame_001", confidence=0.99)
 
-        def bad_plugin(source: DecisionDataSource) -> ActionProposal:
+        def bad_plugin(source: DecisionDataSource, shared_memory) -> ActionProposal:
             return stale  # wrong frame
 
         engine = ActionComposition(
@@ -393,13 +393,13 @@ class RunnerBoundaryTests(unittest.TestCase):
     def test_plugin_none_wrong_id_and_exception(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
-        def return_none(source: DecisionDataSource) -> ActionProposal:
+        def return_none(source: DecisionDataSource, shared_memory) -> ActionProposal:
             return None  # type: ignore[return-value]
 
-        def wrong_id(source: DecisionDataSource) -> ActionProposal:
+        def wrong_id(source: DecisionDataSource, shared_memory) -> ActionProposal:
             return _active_proposal(plugin_id="other", frame_id=source.frame_id)
 
-        def boom(source: DecisionDataSource) -> ActionProposal:
+        def boom(source: DecisionDataSource, shared_memory) -> ActionProposal:
             raise RuntimeError("plugin crashed")
 
         for plugin_fn, reason in (

@@ -188,7 +188,7 @@ for owner, class_name in (
             self.assertIsNot(mapper_module.PluginPerceptionMapper, host_mapper)
 
     def test_staged_memory_keeps_host_autonomy_classes(self) -> None:
-        host_snapshot = importlib.import_module("autonomy.decision_cycle.memory.snapshots.values").MemorySnapshot
+        host_evidence = importlib.import_module("autonomy.decision_cycle.memory.evidence").RetainedEvidence
         host_context = importlib.import_module("autonomy.decision_cycle.context").DecisionFrameContext
         host_ledger = importlib.import_module(
             "implementations.decision_cycle.memory.bounded_evidence.plugin"
@@ -201,7 +201,6 @@ for owner, class_name in (
         step = load_memory_step_from_bundle(read_memory_activation(activation_path))
 
         self.assertIsNot(type(step.implementation), host_ledger)
-        self.assertIs(type(step.snapshot()), host_snapshot)
         # autonomy stays imported from the host. Its package __path__ is the
         # host tree, including submodules imported for the first time here.
         with StagedBundleImport(self.bundle_root, MEMORY_BUNDLE_PREFIXES).activate():
@@ -210,7 +209,7 @@ for owner, class_name in (
             )
             self.assertIn(str(self.bundle_root), staged.__file__ or "")
             self.assertIsNot(staged.BoundedEvidenceLedger, host_ledger)
-            self.assertIs(staged.MemorySnapshot, host_snapshot)
+            self.assertIs(staged.RetainedEvidence, host_evidence)
             self.assertIs(staged.DecisionFrameContext, host_context)
 
     def test_memory_staging_ignores_autonomy_files_present_only_in_the_bundle(self) -> None:

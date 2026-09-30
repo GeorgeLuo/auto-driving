@@ -18,7 +18,6 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.activation import (
     MEMORY_ACTIVATION_SCHEMA,
     read_memory_activation,
-    bounds_from_config,
     memory_manager_from_activation,
     memory_selection_config,
 )
@@ -44,6 +43,7 @@ from .bundles import (
 )
 from .memory_runtime import load_memory_step_from_bundle
 from .staged_bundle import write_json_atomically
+from .memory_report import memory_state
 from .paths import ROOT, display_path, safe_path_part
 from .runtime_view import RuntimeViewServer
 from .physical_observation import (
@@ -315,13 +315,11 @@ def get_vehicle_memory_info(
             ),
             "implementation_spec": final.entrypoint if final else None,
             "implementation_config": dict(final.config) if final else None,
-            "bounds": bounds_from_config(dict(final.config)).to_dict() if final else None,
         },
         "description": memory.get("description"),
         "controller_bundle": activation.payload.get("controller_bundle"),
         "lifecycle": {
-            "methods": ["update", "reset", "snapshot"],
-            "health": ["empty", "healthy", "unavailable", "error"],
+            "methods": ["update", "reset", "status"],
             "claims_identity": False,
         },
         "live": None,
@@ -923,7 +921,7 @@ def render_memory_provenance_extract_html(
     {''.join(frame_figures) if frame_figures else '<p class="meta">No captured frame images in this extract.</p>'}
   </div>
   <h2>Retained keys → mapped values → source observations</h2>
-  {''.join(rows_html) if rows_html else '<p class="meta">No retained records in final snapshot.</p>'}
+  {''.join(rows_html) if rows_html else '<p class="meta">No retained records in final state.</p>'}
   <h2>Sequence frames present</h2>
   <p class="meta">{html.escape(', '.join(str(frame.get('frame_id')) for frame in frames))}</p>
 </body>
@@ -1049,10 +1047,10 @@ def load_memory_observation_sequence(
     return [_normalize_sequence_frame(payload, default_index=0, source=path.name)]
 
 
-def memory_snapshot_digest(snapshot: dict[str, Any]) -> str:
-    """Stable digest of memory end-state (records + health, not process identity)."""
+def memory_state_digest(state: dict[str, Any]) -> str:
+    """Stable digest of the final plugin's memory state (records + health, not process identity)."""
 
-    records = snapshot.get("records") if isinstance(snapshot.get("records"), list) else []
+    records = state.get("records") if isinstance(state.get("records"), list) else []
     normalized_records = []
     for record in records:
         if not isinstance(record, dict):
@@ -1061,13 +1059,13 @@ def memory_snapshot_digest(snapshot: dict[str, Any]) -> str:
         normalized_records.append(json.loads(json.dumps(record, sort_keys=True, default=str)))
     normalized_records.sort(key=lambda item: str(item.get("record_id") or ""))
     body = {
-        "implementation_id": snapshot.get("implementation_id"),
-        "health": snapshot.get("health"),
-        "record_count": snapshot.get("record_count", len(normalized_records)),
-        "bounds": snapshot.get("bounds"),
+        "implementation_id": state.get("implementation_id"),
+        "health": state.get("health"),
+        "record_count": state.get("record_count", len(normalized_records)),
+        "bounds": state.get("bounds"),
         "records": normalized_records,
-        "summary": snapshot.get("summary"),
-        "metadata": snapshot.get("metadata"),
+        "summary": state.get("summary"),
+        "metadata": state.get("metadata"),
     }
     encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -1124,7 +1122,7 @@ def _run_memory_sequence(
     # Fresh epoch for this pass (step already reset on construction).
     per_frame: list[dict[str, Any]] = []
     shared_memory: dict[str, Any] = {}
-    final_snapshot = step.snapshot()
+    final = memory_state(step.report()) or {}
     for frame in frames:
         observation = Observation.from_dict(frame["observation"])
         context = DecisionFrameContext(
@@ -1133,23 +1131,21 @@ def _run_memory_sequence(
             timestamp_ms=int(frame["timestamp_ms"]),
             shared_memory=shared_memory,
         )
-        snapshot = step.update(context, observation)
-        final_snapshot = snapshot
+        final = memory_state(step.update(context, observation)) or {}
         per_frame.append(
             {
                 "frame_id": context.frame_id,
                 "frame_index": context.frame_index,
                 "timestamp_ms": context.timestamp_ms,
-                "health": snapshot.health if snapshot else None,
-                "record_count": snapshot.record_count if snapshot else 0,
-                "epoch_id": snapshot.epoch_id if snapshot else None,
+                "health": final.get("health"),
+                "record_count": final.get("record_count", 0),
+                "epoch_id": final.get("epoch_id"),
             }
         )
-    final = final_snapshot.to_dict() if final_snapshot else {}
     return {
         "final": final,
         "per_frame": per_frame,
-        "digest": memory_snapshot_digest(final),
+        "digest": memory_state_digest(final),
     }
 
 
@@ -1599,9 +1595,9 @@ def _stream_physical_memory_with_inspector(
                     lines.append("memory map: unavailable")
                 if fetch_error:
                     lines.append(f"publication: {fetch_error}")
-                # Published retained evidence from shared_memory["decision.snapshot"].
-                elif isinstance(publication, dict) and isinstance(publication.get("memory"), dict):
-                    mem = publication["memory"]
+                # The published memory report's last plugin state.
+                elif isinstance(publication, dict) and memory_state(publication.get("memory")):
+                    mem = memory_state(publication.get("memory"))
                     lines.append(
                         f"publication memory: health={mem.get('health')} "
                         f"keys={mem.get('record_count')}"
@@ -1628,7 +1624,7 @@ def probe_live_memory(
     vehicle: dict[str, Any] | None = None,
     timeout_s: float = 3.0,
 ) -> dict[str, Any]:
-    """Return a normalized live-memory snapshot without requiring stream mode."""
+    """Return a normalized live-memory probe without requiring stream mode."""
 
     if vehicle is None:
         discovery = discover_active_vehicles(
@@ -1732,10 +1728,10 @@ def _probe_physical_memory(
         "selected_plugin_ids": memory.get("selected_plugin_ids", []),
         "plugins": memory.get("plugins", []),
         "plugin_report": memory.get("plugin_report"),
-        "bounds": memory.get("bounds"),
-        "last_health": memory.get("last_health"),
-        "last_epoch_id": memory.get("last_epoch_id"),
-        "last_record_count": memory.get("last_record_count"),
+        "bounds": (memory_state(memory) or {}).get("bounds"),
+        "last_health": (memory_state(memory) or {}).get("health"),
+        "last_epoch_id": (memory_state(memory) or {}).get("epoch_id"),
+        "last_record_count": (memory_state(memory) or {}).get("record_count"),
         "last_duration_ms": memory.get("last_duration_ms"),
         "last_error": memory.get("last_error"),
         "update_count": memory.get("update_count"),
@@ -1837,10 +1833,10 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
         "plugins": status_block.get("plugins", []),
         "plugin_report": status_block.get("plugin_report"),
-        "bounds": status_block.get("bounds"),
-        "last_health": status_block.get("last_health"),
-        "last_epoch_id": status_block.get("last_epoch_id"),
-        "last_record_count": status_block.get("last_record_count"),
+        "bounds": (memory_state(status_block) or {}).get("bounds"),
+        "last_health": (memory_state(status_block) or {}).get("health"),
+        "last_epoch_id": (memory_state(status_block) or {}).get("epoch_id"),
+        "last_record_count": (memory_state(status_block) or {}).get("record_count"),
         "last_duration_ms": status_block.get("last_duration_ms"),
         "last_error": status_block.get("last_error"),
         "update_count": status_block.get("update_count"),
@@ -2068,7 +2064,7 @@ def _format_memory_info(payload: dict[str, Any]) -> str:
             ),
             f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
             f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
-            "Lifecycle: update / reset / snapshot",
+            "Lifecycle: update / reset / status",
             "Identity claims: false",
         ]
     )

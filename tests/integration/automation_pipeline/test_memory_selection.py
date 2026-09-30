@@ -68,16 +68,17 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 update = step.update
 
                 def update_with_cli_edits(context, observation):
-                    snapshot = update(context, observation)
+                    report = update(context, observation)
                     applied.append(step.plugin_ids)
-                    outputs.append(snapshot.implementation_id if snapshot else None)
+                    plugins = (report or {}).get("plugins") or []
+                    outputs.append(plugins[-1]["implementation_id"] if plugins else None)
                     if len(applied) <= len(actions):
                         plugin_id, enabled = actions[len(applied) - 1]
                         edits.append(set_vehicle_memory_plugin(
                             vehicle_id=vehicle_id, plugin_id=plugin_id,
                             enabled=enabled, json_output=True,
                         ))
-                    return snapshot
+                    return report
 
                 step.update = update_with_cli_edits
                 return step

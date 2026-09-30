@@ -10,8 +10,10 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
 from autonomy.decision_cycle.memory.activation import read_memory_activation
-from autonomy.decision_cycle.memory.snapshots.values import error_memory_snapshot
-from autonomy.decision_cycle.memory.publication import SNAPSHOT_KEY
+from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+    EVIDENCE_KEY,
+    LEDGER_KEY,
+)
 from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
@@ -75,71 +77,59 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger",
         )
 
-    def test_reset_before_update_uses_explicit_shared_map(self) -> None:
+    def test_reset_writes_a_fresh_epoch_to_the_map(self) -> None:
         ledger = BoundedEvidenceLedger()
-        with self.assertRaisesRegex(ValueError, "requires a shared-memory map"):
-            ledger.reset()
         memory = {}
-        self.assertEqual(ledger.reset(memory).epoch_id, "epoch-2")
-        self.assertEqual(ledger.reset(memory).epoch_id, "epoch-3")
-        self.assertNotIn(SNAPSHOT_KEY, memory)
+        ledger.reset(memory)
+        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-2")
+        ledger.reset(memory)
+        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-3")
+        self.assertEqual(memory[EVIDENCE_KEY], ())
 
-    def test_activated_ledger_reads_published_value_across_instances(self) -> None:
-        # The framework publishes each returned value; the test stands in for it.
+    def test_ledger_lives_in_the_map_across_instances(self) -> None:
         memory = {}
         config = {"max_records": 8, "max_age_ms": 5_000}
         first = BoundedEvidenceLedger(**config)
-        memory[SNAPSHOT_KEY] = first.update(
+        first.update(
             DecisionFrameContext("f1", 1, 100, shared_memory=memory),
             _observation("o1", created_at_ms=90, things=(_thing("a"),)),
         )
         self.assertFalse(hasattr(first, "_records"))
-        self.assertEqual(memory[SNAPSHOT_KEY].record_count, 1)
+        self.assertEqual(memory[LEDGER_KEY].record_count, 1)
+        self.assertEqual(memory[EVIDENCE_KEY], memory[LEDGER_KEY].records)
 
         recreated = BoundedEvidenceLedger(**config)
-        second = recreated.update(
+        recreated.update(
             DecisionFrameContext("f2", 2, 200, shared_memory=memory),
             _observation("o2", created_at_ms=190, things=(_thing("b"),)),
         )
-        self.assertEqual(second.record_count, 2)
-        memory[SNAPSHOT_KEY] = second
+        self.assertEqual(memory[LEDGER_KEY].record_count, 2)
+        self.assertEqual(len(memory[EVIDENCE_KEY]), 2)
 
-        reset = recreated.reset()
+        recreated.reset(memory)
+        reset = memory[LEDGER_KEY]
         self.assertEqual(reset.record_count, 0)
         self.assertEqual(reset.epoch_id, "epoch-2")
         self.assertIn("epoch_id=epoch-2", reset.summary)
+        self.assertEqual(memory[EVIDENCE_KEY], ())
+        self.assertEqual(recreated.status(memory), reset.to_dict())
 
         memory.clear()
-        after_clear = recreated.update(
-            DecisionFrameContext("f3", 3, 300, shared_memory=memory), None,
-        )
-        self.assertEqual(after_clear.record_count, 0)
+        recreated.update(DecisionFrameContext("f3", 3, 300, shared_memory=memory), None)
+        self.assertEqual(memory[LEDGER_KEY].record_count, 0)
+        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
 
-    def test_framework_error_does_not_reuse_or_propagate_error_epoch(self) -> None:
-        memory = {}
+    def test_foreign_value_at_the_ledger_key_starts_from_empty(self) -> None:
+        memory = {LEDGER_KEY: "written by another producer"}
         ledger = BoundedEvidenceLedger(max_records=8)
-        ledger.update(DecisionFrameContext("f1", 1, 100, shared_memory=memory), None)
-        memory["decision.snapshot"] = error_memory_snapshot(
-            memory_id="memory-error-1",
-            epoch_id="epoch-error-1",
-            bounds=ledger.bounds,
-            created_at_ms=100,
-            error="framework failure",
+
+        ledger.update(
+            DecisionFrameContext("f1", 1, 100, shared_memory=memory),
+            _observation("o1", created_at_ms=90, things=(_thing("a"),)),
         )
 
-        reset = ledger.reset()
-        self.assertEqual(reset.epoch_id, "epoch-2")
-
-        memory["decision.snapshot"] = error_memory_snapshot(
-            memory_id="memory-error-2",
-            epoch_id="epoch-error-2",
-            bounds=ledger.bounds,
-            created_at_ms=200,
-            error="framework failure",
-        )
-        recovered = ledger.update(DecisionFrameContext("f2", 2, 300, shared_memory=memory), None)
-        self.assertEqual(recovered.epoch_id, "epoch-2")
-        self.assertEqual(recovered.health, "empty")
+        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
+        self.assertEqual(memory[LEDGER_KEY].record_count, 1)
 
     def test_retains_things_and_signals_with_provenance(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
@@ -156,11 +146,11 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 },
             ),
         )
-        snapshot = ledger.update(context, observation)
-        self.assertEqual(snapshot.health, "healthy")
-        self.assertEqual(snapshot.record_count, 2)
-        self.assertEqual(snapshot.implementation_id, "bounded_evidence")
-        by_id = {record.record_id: record for record in snapshot.records}
+        state = ledger.update(context, observation)
+        self.assertEqual(state.health, "healthy")
+        self.assertEqual(state.record_count, 2)
+        self.assertEqual(state.implementation_id, "bounded_evidence")
+        by_id = {record.record_id: record for record in state.records}
         self.assertIn("thing:1:14:floor-plane-v0:18:floor_boundary_000", by_id)
         self.assertIn("signal:1:20:lightweight_observer:13:floor_visible", by_id)
         thing = by_id["thing:1:14:floor-plane-v0:18:floor_boundary_000"]
@@ -168,7 +158,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(thing.provenance.frame_id, "frame_1")
         self.assertEqual(thing.provenance.source_plugin_id, "floor-plane-v0")
         self.assertEqual(thing.location.zone, "left")
-        self.assertFalse(snapshot.metadata["claims_identity"])
+        self.assertFalse(state.metadata["claims_identity"])
 
     def test_recurring_evidence_updates_same_slot_without_identity_claim(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=10_000)
@@ -224,17 +214,17 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             DecisionFrameContext("f2", 2, 200),
             _observation("o2", created_at_ms=190, things=(_thing("b"),)),
         )
-        snapshot = ledger.update(
+        state = ledger.update(
             DecisionFrameContext("f3", 3, 300),
             _observation("o3", created_at_ms=290, things=(_thing("c"),)),
         )
-        ids = {record.record_id for record in snapshot.records}
+        ids = {record.record_id for record in state.records}
         self.assertEqual(
             ids,
             {"thing:1:14:floor-plane-v0:1:b", "thing:1:14:floor-plane-v0:1:c"},
         )
         self.assertNotIn("thing:1:14:floor-plane-v0:1:a", ids)
-        self.assertEqual(snapshot.metadata.get("capacity_eviction_count"), 1)
+        self.assertEqual(state.metadata.get("capacity_eviction_count"), 1)
 
     def test_reset_starts_new_empty_epoch(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=4, max_age_ms=5_000)
@@ -242,7 +232,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             DecisionFrameContext("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(_thing("a"),)),
         )
-        previous_epoch = ledger.snapshot().epoch_id
+        previous_epoch = ledger.ledger().epoch_id
         reset = ledger.reset()
         self.assertEqual(reset.health, "empty")
         self.assertEqual(reset.record_count, 0)
@@ -275,14 +265,13 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                     remember=step,
                 )
             ).run(DecisionFrameContext("frame_9", 9, 100, shared_memory=shared_memory))
-            self.assertEqual(result.memory.health, "healthy")
-            self.assertEqual(result.memory.record_count, 1)
-            self.assertEqual(result.memory.implementation_id, "bounded_evidence")
+            state = result.memory["plugins"][0]["state"]
+            self.assertEqual(state["health"], "healthy")
+            self.assertEqual(state["record_count"], 1)
+            self.assertEqual(state["implementation_id"], "bounded_evidence")
             self.assertEqual(step.status()["implementation_id"], "bounded_evidence")
-            self.assertEqual(
-                shared_memory["decision.snapshot"].to_dict(),
-                result.memory.to_dict(),
-            )
+            self.assertEqual(shared_memory[LEDGER_KEY].to_dict(), state)
+            self.assertEqual(shared_memory[EVIDENCE_KEY], shared_memory[LEDGER_KEY].records)
 
     def test_skips_false_signals_and_low_confidence(self) -> None:
         ledger = BoundedEvidenceReducer(
@@ -290,7 +279,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             max_age_ms=5_000,
             min_confidence=0.5,
         )
-        snapshot = ledger.update(
+        state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             _observation(
                 "o1",
@@ -302,7 +291,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 ),
             ),
         )
-        ids = {record.record_id for record in snapshot.records}
+        ids = {record.record_id for record in state.records}
         self.assertEqual(
             ids,
             {
@@ -323,7 +312,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         )
         first.records[0].properties["width_fraction"] = 0.99
         first.metadata["policy"] = "mutated"
-        second = ledger.snapshot()
+        second = ledger.ledger()
         self.assertEqual(second.records[0].properties["width_fraction"], 0.2)
         self.assertEqual(second.metadata["policy"], "bounded_evidence_recency")
         third = ledger.update(DecisionFrameContext("frame_2", 2, 1_100), None)
@@ -338,11 +327,11 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         huge = _thing("huge")
         huge["properties"] = {"blob": "x" * 500}
         small = _thing("small")
-        snapshot = ledger.update(
+        state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(huge, small)),
         )
-        ids = {record.record_id for record in snapshot.records}
+        ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {"thing:1:14:floor-plane-v0:5:small"})
 
     def test_plugins_with_same_local_id_do_not_collide(self) -> None:
@@ -351,16 +340,16 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         left["source_plugin_id"] = "plugin-a"
         right = _thing("shared_id", zone="right")
         right["source_plugin_id"] = "plugin-b"
-        snapshot = ledger.update(
+        state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(left, right)),
         )
-        ids = {record.record_id for record in snapshot.records}
+        ids = {record.record_id for record in state.records}
         self.assertEqual(
             ids,
             {"thing:1:8:plugin-a:9:shared_id", "thing:1:8:plugin-b:9:shared_id"},
         )
-        by_id = {record.record_id: record for record in snapshot.records}
+        by_id = {record.record_id: record for record in state.records}
         self.assertEqual(by_id["thing:1:8:plugin-a:9:shared_id"].location.zone, "left")
         self.assertEqual(by_id["thing:1:8:plugin-b:9:shared_id"].location.zone, "right")
 
@@ -380,11 +369,11 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         a["source_plugin_id"] = "plugin:a"
         b = _thing("shared", zone="right")
         b["source_plugin_id"] = "plugin_a"
-        snapshot = ledger.update(
+        state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(a, b)),
         )
-        ids = {record.record_id for record in snapshot.records}
+        ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {left, right})
 
     def test_namespace_preserves_absent_vs_literal_unknown_and_whitespace(self) -> None:
@@ -409,7 +398,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         # Observation without perception_plugin_id keeps source absent.
         unknown_plugin = _thing("shared", zone="right")
         unknown_plugin["source_plugin_id"] = "unknown"
-        snapshot = ledger.update(
+        state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             Observation(
                 observation_id="o1",
@@ -420,13 +409,13 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 things=(no_plugin, unknown_plugin),
             ),
         )
-        ids = {record.record_id for record in snapshot.records}
+        ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {absent, literal_unknown})
 
     def test_long_sequence_stays_within_record_capacity(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=10_000)
         for index in range(64):
-            snapshot = ledger.update(
+            state = ledger.update(
                 DecisionFrameContext(f"frame_{index}", index, 1_000 + index * 10),
                 _observation(
                     f"obs_{index}",
@@ -434,8 +423,8 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                     things=(_thing(f"item_{index % 20}"),),
                 ),
             )
-            self.assertLessEqual(snapshot.record_count, 8)
-        final = ledger.snapshot()
+            self.assertLessEqual(state.record_count, 8)
+        final = ledger.ledger()
         self.assertEqual(final.record_count, 8)
         self.assertEqual(final.health, "healthy")
         self.assertEqual(final.bounds.max_records, 8)
@@ -445,11 +434,11 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         bad = _thing("opaque")
         bad["properties"] = {"opaque": object()}
         good = _thing("ok")
-        snapshot = ledger.update(
+        state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(bad, good)),
         )
-        ids = {record.record_id for record in snapshot.records}
+        ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {"thing:1:14:floor-plane-v0:2:ok"})
 
     def test_reduce_evidence_rehydrates_prior_snapshot(self) -> None:

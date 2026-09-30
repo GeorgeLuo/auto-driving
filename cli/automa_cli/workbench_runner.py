@@ -15,10 +15,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.observation.step import observation_from_perception
 from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
-from autonomy.decision_cycle.memory.activation import (
-    MemoryActivation,
-    bounds_from_config,
-)
+from autonomy.decision_cycle.memory.activation import MemoryActivation
 from autonomy.decision_cycle.perception.interface import (
     PerceptionMapper,
     PerceptionText,
@@ -37,6 +34,7 @@ from implementations.decision_cycle.perception.catalog import (
     PERCEPTION_ALGORITHMS,
 )
 
+from .memory_report import memory_state
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -116,7 +114,6 @@ def _default_memory_step(companion: dict[str, Any] | None = None) -> PluginMemor
         implementation_id=str(section["implementation_id"]),
         implementation_spec=str(section["implementation_spec"]),
         implementation_config=config,
-        bounds=bounds_from_config(config),
         source_path=Path("workbench-plugin-memory"),
         payload=payload,
     )
@@ -1300,7 +1297,7 @@ class ImageReplayRunner:
                 observation_payload = (
                     result.observation.to_dict() if result.observation else None
                 )
-                memory_payload = result.memory.to_dict() if result.memory else None
+                memory_payload = copy.deepcopy(memory_state(result.memory))
                 with self._condition:
                     previous_memory = self._state.get("memory")
                     self._state["current_frame"] = frame.to_dict()
@@ -1320,7 +1317,7 @@ class ImageReplayRunner:
                     self._state["summary"] = self._summary(
                         perception=result.perception,
                         observation=result.observation,
-                        memory=result.memory,
+                        memory=memory_payload,
                         duration_ms=result.duration_ms,
                     )
                     detail = self._frame_detail(
@@ -1574,8 +1571,8 @@ class ImageReplayRunner:
             "perception_things": len(perception.things) if perception else 0,
             "perception_signals": len(perception.signals) if perception else 0,
             "observation_available": observation is not None,
-            "memory_health": memory.health if memory else None,
-            "memory_records": memory.record_count if memory else 0,
+            "memory_health": memory.get("health") if memory else None,
+            "memory_records": memory.get("record_count", 0) if memory else 0,
             "last_duration_ms": round(float(duration_ms), 3)
             if duration_ms is not None
             else None,
@@ -1652,7 +1649,7 @@ class ImageReplayRunner:
         result: Any,
         previous_memory: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        memory = result.memory.to_dict() if result.memory else None
+        memory = copy.deepcopy(memory_state(result.memory))
         previous_ids = {
             str(item.get("record_id"))
             for item in (previous_memory or {}).get("records", [])
@@ -1671,7 +1668,7 @@ class ImageReplayRunner:
             "perception_status": result.perception.status
             if result.perception
             else None,
-            "memory_record_count": result.memory.record_count if result.memory else 0,
+            "memory_record_count": (memory or {}).get("record_count", 0),
             "memory_effect": {
                 "added": sorted(current_ids - previous_ids),
                 "removed": sorted(previous_ids - current_ids),

@@ -10,17 +10,17 @@ from implementations.runtime.engines.config import parse_engine_config
 
 
 def prepare_inspection_scenarios(
-    memory: dict[str, Any],
+    evidence: list[dict[str, Any]],
     config: Mapping[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Place image evidence from shared_memory["decision.snapshot"] on each side and name the scenarios."""
+    """Place recorded retained evidence on each side and name the scenarios."""
 
     cfg = parse_engine_config(config)
     scenarios: dict[str, dict[str, Any]] = {}
     for side in ("left", "right"):
-        scenario_memory = copy.deepcopy(memory)
+        scenario_evidence = copy.deepcopy(list(evidence))
         changed: list[str] = []
-        for record in scenario_memory.get("records", []):
+        for record in scenario_evidence:
             location = record.get("location") if isinstance(record, dict) else None
             if (
                 isinstance(location, dict)
@@ -34,7 +34,7 @@ def prepare_inspection_scenarios(
                 "Selected frame has no supported retained image evidence to reposition."
             )
         scenarios[side] = {
-            "memory": scenario_memory,
+            "evidence": scenario_evidence,
             "label": f"{side.capitalize()} obstruction",
             "context": f"Obstruction on the {side}",
             "obstruction_side": side,

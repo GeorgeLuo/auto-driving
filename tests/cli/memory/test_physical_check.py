@@ -15,6 +15,8 @@ from tests.cli.memory.check_fixtures import (
     _memory_record,
 )
 
+from tests.support.memory_fixtures import memory_report
+
 
 class MemoryCheckTests(unittest.TestCase):
     def test_physical_pi_path_scores_live_onboard_memory(self) -> None:
@@ -84,12 +86,12 @@ class MemoryCheckTests(unittest.TestCase):
             return {
                 "ok": True,
                 "status": "reset",
-                "snapshot": {
+                "report": memory_report({
                     "health": "empty",
                     "record_count": 0,
                     "records": [],
                     "epoch_id": "epoch-2",
-                },
+                }),
             }
 
         def fake_probe() -> dict:
@@ -192,7 +194,7 @@ class MemoryCheckTests(unittest.TestCase):
 
     def test_score_live_reset_uses_snapshot_empty_not_probe(self) -> None:
         """Empty-state comes from reset snapshot; probe may already be repopulated."""
-        reset_snapshot = {
+        reset_state = {
             "health": "empty",
             "record_count": 0,
             "records": [],
@@ -207,7 +209,7 @@ class MemoryCheckTests(unittest.TestCase):
             "reset_count": 2,
         }
         score = score_live_reset(
-            reset_snapshot=reset_snapshot,
+            reset_state=reset_state,
             prior_epoch="epoch-1",
             prior_reset_count=1,
             after_probe=after_probe,
@@ -219,7 +221,7 @@ class MemoryCheckTests(unittest.TestCase):
 
     def test_score_live_reset_accepts_reset_count_only_transition(self) -> None:
         """OR contract: reset_count bump alone is enough when epoch is stable."""
-        reset_snapshot = {
+        reset_state = {
             "health": "empty",
             "record_count": 0,
             "records": [],
@@ -232,7 +234,7 @@ class MemoryCheckTests(unittest.TestCase):
             "reset_count": 5,
         }
         score = score_live_reset(
-            reset_snapshot=reset_snapshot,
+            reset_state=reset_state,
             prior_epoch="epoch-1",
             prior_reset_count=4,
             after_probe=after_probe,
@@ -241,7 +243,7 @@ class MemoryCheckTests(unittest.TestCase):
 
     def test_score_live_reset_rejects_nonempty_snapshot(self) -> None:
         score = score_live_reset(
-            reset_snapshot={
+            reset_state={
                 "health": "healthy",
                 "record_count": 2,
                 "records": [{"record_id": "thing:front_camera_frame"}],
@@ -288,7 +290,7 @@ class MemoryCheckTests(unittest.TestCase):
                     {"signal_id": "floor_visible", "value": True, "confidence": 0.9},
                 ],
             },
-            "memory": {
+            "memory": memory_report({
                 "health": "healthy",
                 "records": [
                     _memory_record(
@@ -298,7 +300,7 @@ class MemoryCheckTests(unittest.TestCase):
                         "signal:floor_visible", frame_id="f0", kind="signal"
                     ),
                 ],
-            },
+            }),
         }
         # Ledger skips False: no matching-frame signal record for boundary.
         dropout = {
@@ -314,7 +316,7 @@ class MemoryCheckTests(unittest.TestCase):
                     {"signal_id": "floor_visible", "value": True, "confidence": 0.9},
                 ],
             },
-            "memory": {
+            "memory": memory_report({
                 "health": "healthy",
                 "records": [
                     # Stale retention of prior frame is not currently refreshed.
@@ -325,7 +327,7 @@ class MemoryCheckTests(unittest.TestCase):
                         "signal:floor_visible", frame_id="f1", kind="signal"
                     ),
                 ],
-            },
+            }),
         }
         present_keys = currently_refreshed_memory_keys(present)
         dropout_keys = currently_refreshed_memory_keys(dropout)
@@ -356,10 +358,10 @@ class MemoryCheckTests(unittest.TestCase):
                 "things": [{"thing_id": "candidate", "confidence": 0.1}],
                 "signals": [],
             },
-            "memory": {
+            "memory": memory_report({
                 "health": "healthy",
                 "records": [_memory_record("thing:candidate", frame_id="older")],
-            },
+            }),
         }
 
         self.assertEqual(currently_refreshed_memory_keys(publication), set())

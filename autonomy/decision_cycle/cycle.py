@@ -1,8 +1,8 @@
 """Decision-cycle ordering and the records passed between its operations.
 
 ``perceive`` returns current evidence. ``observe`` adapts that evidence and
-the sensor context into the current-frame record. ``remember`` returns
-retained evidence. ``act`` proposes, plans, and gates the cycle's action and
+the sensor context into the current-frame record. ``remember`` lets memory
+plugins update the host map and returns their report. ``act`` proposes, plans, and gates the cycle's action and
 returns an ``ActionResult`` whose control the cycle applies.
 ``shared_memory`` on the frame context is the host-owned map.
 """
@@ -18,7 +18,6 @@ from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.memory.publication import observation_after_memory
 from autonomy.decision_cycle.observation.step import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.result import ActionResult
 from autonomy.runtime.engine import AutonomyControl
@@ -35,14 +34,13 @@ PerceiveStep = Callable[[DecisionFrameContext], PerceptionText | None]
 ObserveStep = Callable[[DecisionFrameContext, PerceptionText | None], Observation | None]
 MemoryStep = Callable[
     [DecisionFrameContext, Observation | None],
-    MemorySnapshot | None,
+    dict[str, Any] | None,
 ]
 ActionStep = Callable[
     [
         DecisionFrameContext,
         PerceptionText | None,
         Observation | None,
-        MemorySnapshot | None,
     ],
     ActionResult | None,
 ]
@@ -70,14 +68,14 @@ class DecisionCycleResult:
     """Records from one cycle tick.
 
     ``perception`` is current evidence, ``observation`` is the current-frame
-    record, and ``memory`` is retained evidence.
+    record, and ``memory`` is the memory step's report of plugin state.
     """
 
     context: DecisionFrameContext
     perception: PerceptionText | None
     observation: Observation | None
-    # Retained evidence also published at shared_memory["decision.snapshot"].
-    memory: MemorySnapshot | None
+    # Diagnostics only; plugins read what memory published in shared_memory.
+    memory: dict[str, Any] | None
     action: ActionResult | None
     control: AutonomyControl
     started_at_ms: int
@@ -108,8 +106,8 @@ class DecisionCycle:
 
     ``observe`` overrides the default adaptation. Omitting it leaves that
     default in place when perception evidence is present. ``remember`` returns
-    a ``MemorySnapshot`` or ``None``. A memory plugin may still replace the
-    current observation through ``shared_memory["decision.observation"]``.
+    a memory report or ``None``. A memory plugin may replace the current
+    observation through ``shared_memory["decision.observation"]``.
     """
 
     def __init__(
@@ -136,13 +134,10 @@ class DecisionCycle:
         else:
             observation = None
         try:
-            # Step return is retained evidence, also stored at
-            # shared_memory["decision.snapshot"] by the implementation.
+            # Memory plugins write the host map; the step returns a report.
             memory = self.steps.remember(context, observation) if self.steps.remember else None
-            if memory is not None and not isinstance(memory, MemorySnapshot):
-                raise TypeError("decision memory step must return MemorySnapshot or None")
-            if memory is not None and memory.health == "error":
-                raise MemoryUpdateError(memory.error or "memory step returned an error snapshot")
+            if memory is not None and not isinstance(memory, dict):
+                raise TypeError("decision memory step must return a report dict or None")
         except MemoryUpdateError:
             raise
         except Exception as exc:
@@ -151,9 +146,9 @@ class DecisionCycle:
             except Exception:
                 detail = "unprintable error"
             raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
-        observation = observation_after_memory(context.shared_memory, observation, memory)
+        observation = observation_after_memory(context.shared_memory, observation)
         action = (
-            self.steps.act(context, perception, observation, memory)
+            self.steps.act(context, perception, observation)
             if self.steps.act
             else None
         )

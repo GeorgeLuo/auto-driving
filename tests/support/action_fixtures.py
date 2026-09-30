@@ -27,6 +27,6 @@ def fixed_control_composition(
 
     return ActionComposition(
         config=ProposalConfig(enabled_plugins=("noop",)),
-        plugins={"noop": lambda source: None},
+        plugins={"noop": lambda source, shared_memory: None},
         gate=FixedGate(control, gate_id),
     )

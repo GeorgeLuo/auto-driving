@@ -1,7 +1,9 @@
 """Memory plugin selection and execution at the decision-cycle boundary.
 
 ``PluginMemoryRunner`` applies the manager's selection and runs each selected
-plugin through ``MemoryPluginRuntime`` in selection order.
+plugin through ``MemoryPluginRuntime`` in selection order. Its return value is
+a report of each plugin's own state summary for diagnostics; decisions read
+plugin-published keys in the host map, not the report.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ from autonomy.decision_cycle.memory.activation import MemoryActivation, memory_m
 from autonomy.decision_cycle.memory.execution.plugin_runtime import MemoryPluginRuntime
 from autonomy.decision_cycle.memory.plugin import MemoryImplementation
 from autonomy.decision_cycle.memory.publication import withdraw_publication
-from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.plugins import (
     PluginDefinition,
@@ -26,14 +27,15 @@ from autonomy.plugins import (
 )
 from autonomy.shared_memory import SharedMemory
 
+MEMORY_REPORT_SCHEMA = "memory_report_v0"
+
 
 class PluginMemoryRunner:
     """Run the manager's selected memory plugins once per decision cycle.
 
-    Plugins run in selection order on the same host map, and each plugin's
-    runtime publishes its accepted value before the next plugin runs. The final
-    plugin's value is the decision-facing one; the framework does not merge
-    retention policies.
+    Plugins run in selection order on the same host map. Each plugin writes its
+    own keys; where two plugins publish to the same key, the later one wins.
+    The framework does not merge retention policies.
     """
 
     def __init__(
@@ -113,20 +115,21 @@ class PluginMemoryRunner:
 
     def __call__(
         self, context: DecisionFrameContext, observation: Observation | None,
-    ) -> MemorySnapshot | None:
+    ) -> dict[str, Any]:
         return self.update(context, observation)
 
     def update(
         self, context: DecisionFrameContext, observation: Observation | None,
-    ) -> MemorySnapshot | None:
+    ) -> dict[str, Any]:
+        """Run each selected plugin in order and return the memory report."""
+
         with self._runtime_lock:
             self._apply_selection(context.shared_memory)
             started = time.perf_counter()
             self.last_error = None
-            snapshot = None
             try:
                 for plugin in self.plugins:
-                    snapshot = plugin.update(context, observation)
+                    plugin.update(context, observation)
                 if not self.plugins and context.shared_memory is not None:
                     withdraw_publication(context.shared_memory)
             except Exception:
@@ -136,35 +139,54 @@ class PluginMemoryRunner:
             finally:
                 self.update_count += 1
                 self.last_duration_ms = (time.perf_counter() - started) * 1000.0
-            return snapshot
+            return self._report()
 
-    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot | None:
+    def reset(self, shared_memory: SharedMemory | None = None) -> dict[str, Any]:
+        """Reset each plugin and return the keys the plugins wrote while resetting.
+
+        A host that clears its map at a reset restores these so plugins keep the
+        fresh state (for example a new epoch) they started.
+        """
+
         with self._runtime_lock:
             started = time.perf_counter()
             self.last_error = None
-            snapshot = None
+            before = dict(shared_memory) if shared_memory is not None else {}
             for plugin in self.plugins:
                 failures = plugin.failure_count
-                snapshot = plugin.reset(shared_memory)
+                plugin.reset(shared_memory)
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error or self.last_error
             if not self.plugins and shared_memory is not None:
                 withdraw_publication(shared_memory)
             self.reset_count += 1
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
-            return snapshot
+            if shared_memory is None:
+                return {}
+            return {
+                key: value
+                for key, value in shared_memory.items()
+                if key not in before or before[key] is not value
+            }
 
-    def snapshot(self) -> MemorySnapshot | None:
+    def report(self) -> dict[str, Any]:
+        """Each applied plugin's own state summary, as the cycle records it."""
+
         with self._runtime_lock:
-            # The final plugin owns the shared decision-facing snapshot.
-            snapshot = None
-            if self.plugins:
-                plugin = self.plugins[-1]
-                failures = plugin.failure_count
-                snapshot = plugin.snapshot()
-                self.failure_count += plugin.failure_count - failures
-                self.last_error = plugin.last_error
-            return snapshot
+            return self._report()
+
+    def _report(self) -> dict[str, Any]:
+        return {
+            "schema": MEMORY_REPORT_SCHEMA,
+            "plugins": [
+                {
+                    "plugin_id": plugin.plugin_id,
+                    "implementation_id": plugin.implementation_id,
+                    "state": plugin.plugin_status(),
+                }
+                for plugin in self.plugins
+            ],
+        }
 
     def plugin_report(self) -> dict[str, Any]:
         """Report catalog, requested, and published plugins for applied instances."""
@@ -195,7 +217,6 @@ class PluginMemoryRunner:
                 "implementation_id": final.implementation_id if final else None,
                 "implementation_spec": final.definition.entrypoint if final else None,
                 "activation": str(self.activation.source_path) if self.activation else None,
-                "bounds": final.bounds.to_dict() if final else None,
                 "available_plugins": sorted(self.plugin_manager.available_ids),
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),
@@ -206,7 +227,4 @@ class PluginMemoryRunner:
                 "failure_count": self.failure_count,
                 "last_duration_ms": self.last_duration_ms,
                 "last_error": self.last_error,
-                "last_health": final.last_health if final else None,
-                "last_epoch_id": final.last_epoch_id if final else None,
-                "last_record_count": final.last_record_count if final else None,
             }

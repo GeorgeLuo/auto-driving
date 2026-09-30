@@ -33,11 +33,11 @@ class _RejectMemory(_RecordingMemory):
 class _OrderedMemory(_RecordingMemory):
     def update(self, context, observation):
         context.shared_memory.setdefault("execution_order", []).append(self.implementation_id)
-        previous = context.shared_memory.get("decision.snapshot")
         context.shared_memory.setdefault("previous_outputs", []).append(
-            previous.implementation_id if previous else None
+            context.shared_memory.get("last_writer")
         )
-        return super().update(context, observation)
+        context.shared_memory["last_writer"] = self.implementation_id
+        super().update(context, observation)
 
 
 SPEC = "tests.autonomy.decision_cycle.memory.test_selection:_OrderedMemory"
@@ -63,7 +63,7 @@ class MemorySelectionTests(unittest.TestCase):
                     # Legacy staging fields do not constrain the selected plugin.
                     "implementation_id": "stale",
                     "implementation_spec": "not.installed:Missing",
-                    "implementation_config": {"max_serialized_bytes": 1},
+                    "implementation_config": {"fail_on_update": True},
                 },
             }), encoding="utf-8")
             activation = read_memory_activation(path)
@@ -79,7 +79,7 @@ class MemorySelectionTests(unittest.TestCase):
             activation.payload["memory"]["plugin_specs"]["second"] = "not.installed:Missing"
             self.assertEqual(memory_selection_config(activation)["plugin_specs"]["second"], SPEC)
             step = PluginMemoryRunner(activation)
-            self.assertEqual(step.reset({}).implementation_id, "second")
+            self.assertEqual(set(step.reset({})), {"second.state"})
             self.assertEqual(memory_manager_from_activation(activation).available_ids, ("first", "second"))
 
             # The same selection also works without any legacy fields.
@@ -93,7 +93,7 @@ class MemorySelectionTests(unittest.TestCase):
             }
             path.write_text(json.dumps(plugin_only), encoding="utf-8")
             step = PluginMemoryRunner(read_memory_activation(path))
-            self.assertEqual(step.reset({}).implementation_id, "second")
+            self.assertEqual(set(step.reset({})), {"second.state"})
 
     def test_plugin_only_activation_supports_an_empty_selection(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -106,7 +106,7 @@ class MemorySelectionTests(unittest.TestCase):
             step = PluginMemoryRunner(activation)
             self.assertEqual(step.plugin_ids, ())
             self.assertEqual(step.status()["available_plugins"], ["first"])
-            self.assertIsNone(step.snapshot())
+            self.assertEqual(step.report()["plugins"], [])
 
     def test_status_reports_unselected_catalog_plugins_and_can_enable_them(self):
         manager = _manager()
@@ -114,38 +114,40 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         self.assertEqual(step.plugins, ())
         manager.add("second")
-        snapshot = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
-        self.assertEqual(snapshot.implementation_id, "second")
+        report = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
+        self.assertEqual(report["plugins"][0]["implementation_id"], "second")
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         manager.remove("second")
         step.update(DecisionFrameContext("frame-2", 2, 200, shared_memory={}), None)
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         self.assertEqual(step.plugins, ())
 
-    def test_manager_selection_runs_in_order_and_last_output_reaches_decision(self):
+    def test_manager_selection_runs_in_order_and_later_plugins_see_earlier_writes(self):
         manager = _manager()
         manager.select(["first", "second"])
         step = PluginMemoryRunner(plugin_manager=manager)
         shared = {}
-        snapshot = step.update(
+        report = step.update(
             DecisionFrameContext("frame-1", 1, 100, shared_memory=shared),
             Observation("obs-1", 90, {}),
         )
         self.assertEqual(shared["execution_order"], ["first", "second"])
         self.assertEqual(shared["previous_outputs"], [None, "first"])
-        self.assertEqual(snapshot.implementation_id, "second")
-        self.assertEqual(shared["decision.snapshot"], snapshot)
+        self.assertEqual(shared["last_writer"], "second")
+        self.assertEqual(
+            [item["implementation_id"] for item in report["plugins"]], ["first", "second"]
+        )
         self.assertEqual([item["update_count"] for item in step.status()["plugins"]], [1, 1])
 
-    def test_reset_without_a_map_publishes_to_the_last_map(self):
+    def test_reset_without_a_map_resets_in_the_last_map(self):
         manager = _manager()
         manager.select(["first"])
         step = PluginMemoryRunner(plugin_manager=manager)
         shared = {}
         step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory=shared), Observation("obs-1", 90, {}))
-        reset = step.reset()
-        self.assertEqual(shared["decision.snapshot"], reset)
-        self.assertEqual(step.status()["last_epoch_id"], reset.epoch_id)
+        step.reset()
+        self.assertEqual(shared["first.state"], {"epoch": 2, "records": ()})
+        self.assertEqual(step.status()["plugins"][0]["state"]["epoch_id"], "epoch-2")
 
     def test_selection_changes_reuse_retained_plugins_and_reset_removed_plugins(self):
         manager = _manager()
@@ -174,12 +176,13 @@ class MemorySelectionTests(unittest.TestCase):
         step = PluginMemoryRunner(plugin_manager=manager)
         shared = {}
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
-        self.assertIsNone(step.update(context, None))
+        self.assertEqual(step.update(context, None)["plugins"], [])
         manager.add("first")
-        self.assertEqual(step.update(context, None).implementation_id, "first")
+        self.assertEqual(step.update(context, None)["plugins"][0]["implementation_id"], "first")
+        shared["decision.observation"] = "published by the removed plugin"
         manager.remove("first")
-        self.assertIsNone(step.update(context, None))
-        self.assertNotIn("decision.snapshot", shared)
+        self.assertEqual(step.update(context, None)["plugins"], [])
+        self.assertNotIn("decision.observation", shared)
         self.assertEqual(step.status()["plugin_ids"], [])
 
     def test_selection_id_stays_distinct_from_implementation_id(self):
@@ -191,7 +194,7 @@ class MemorySelectionTests(unittest.TestCase):
         plugin_status = step.status()["plugins"][0]
         self.assertEqual(plugin_status["plugin_id"], "ledger")
         self.assertEqual(plugin_status["implementation_id"], "recording_test")
-        self.assertEqual(step.snapshot().implementation_id, "recording_test")
+        self.assertEqual(step.report()["plugins"][0]["implementation_id"], "recording_test")
 
     def test_legacy_activation_seeds_manager_and_explicit_selection_overrides_it(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,7 +209,7 @@ class MemorySelectionTests(unittest.TestCase):
             activation = read_memory_activation(_write_payload(tmp, payload))
             step = PluginMemoryRunner(activation)
             self.assertEqual(step.plugin_ids, ("first", "second"))
-            self.assertEqual(step.reset({}).implementation_id, "second")
+            self.assertEqual(set(step.reset({})), {"first.state", "second.state"})
             self.assertEqual([item["reset_count"] for item in step.status()["plugins"]], [1, 1])
 
     def test_prepare_selection_constructs_a_replacement_once(self):
@@ -255,7 +258,6 @@ class MemorySelectionTests(unittest.TestCase):
                 "implementation_id",
                 "implementation_spec",
                 "activation",
-                "bounds",
                 "available_plugins",
                 "selected_plugin_ids",
                 "plugin_ids",
@@ -266,9 +268,6 @@ class MemorySelectionTests(unittest.TestCase):
                 "failure_count",
                 "last_duration_ms",
                 "last_error",
-                "last_health",
-                "last_epoch_id",
-                "last_record_count",
             },
         )
         self.assertEqual(status["plugin_ids"], ["second", "first"])

@@ -2045,10 +2045,7 @@ def fetch_matched_observation_pair(
 
 
 def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
-    """Adapt an onboard publication and its retained evidence.
-
-    The memory payload originates at shared_memory["decision.snapshot"].
-    """
+    """Adapt an onboard publication, including its memory report."""
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
     perception = publication.get("perception")
     observation = publication.get("observation")

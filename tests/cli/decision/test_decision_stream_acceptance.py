@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import unittest
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from copy import deepcopy
 from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
 from implementations.runtime.engines.catalog import create_action_composition
@@ -10,7 +11,7 @@ from cli.automa_cli.decision import (
     ENGINE_ID,
     accept_decision_stream_frame,
     build_decision_stream_frame,
-    strict_decode_apply_memory,
+    strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
 from tests.cli.decision.decision_surfaces_fixtures import (
@@ -467,11 +468,11 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     "observation"
                 ]
             ),
-            memory=strict_decode_apply_memory(
-                json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
-                    "memory"
-                ]
-            ),
+            shared_memory={
+                EVIDENCE_KEY: strict_decode_apply_evidence(
+                    json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0]["evidence"]
+                )
+            },
         )
         cycle2_dict = cycle2.to_dict()
 

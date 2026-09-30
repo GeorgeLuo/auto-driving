@@ -5,8 +5,8 @@ from copy import deepcopy
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.snapshots.values import (
-    serialized_memory_snapshot_bytes,
+from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+    serialized_ledger_bytes,
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
@@ -502,7 +502,7 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(conflict.metadata["last_update_conflict_count"], 1)
         self.assertEqual(conflict.metadata["conflict_count"], 1)
         for _ in range(2):
-            snap = ledger.snapshot()
+            snap = ledger.ledger()
             self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
             self.assertEqual(snap.metadata["conflict_count"], 1)
         clean = ledger.update(_ctx("f3", 3, 300), None)
@@ -554,7 +554,7 @@ class ConflictMatrixTests(unittest.TestCase):
 
     def test_drop_details_fit_snapshot_byte_limit(self) -> None:
         ledger = _ledger(max_records=1, max_property_bytes=32, max_serialized_bytes=1024)
-        snapshot = ledger.update(
+        state = ledger.update(
             _ctx("f1", 1, 100),
             _observation(
                 "o1",
@@ -565,9 +565,9 @@ class ConflictMatrixTests(unittest.TestCase):
                 ),
             ),
         )
-        self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 1024)
-        self.assertEqual(snapshot.metadata["last_update_drop_count"], 20)
-        self.assertGreater(snapshot.metadata["last_update_drops_omitted"], 0)
+        self.assertLessEqual(serialized_ledger_bytes(state), 1024)
+        self.assertEqual(state.metadata["last_update_drop_count"], 20)
+        self.assertGreater(state.metadata["last_update_drops_omitted"], 0)
 
     def test_conflict_remains_visible_after_many_expirations(self) -> None:
         ledger = _ledger(max_records=20, max_age_ms=100)
@@ -579,7 +579,7 @@ class ConflictMatrixTests(unittest.TestCase):
                 things=tuple(_thing(str(index)) for index in range(13)),
             ),
         )
-        snapshot = ledger.update(
+        state = ledger.update(
             _ctx("f2", 2, 300),
             _observation(
                 "o2",
@@ -590,12 +590,12 @@ class ConflictMatrixTests(unittest.TestCase):
                 ),
             ),
         )
-        self.assertEqual(snapshot.metadata["last_update_drop_count"], 14)
+        self.assertEqual(state.metadata["last_update_drop_count"], 14)
         self.assertEqual(
-            snapshot.metadata["last_update_drops"][0]["reason"],
+            state.metadata["last_update_drops"][0]["reason"],
             "contradictory_candidates",
         )
-        self.assertEqual(snapshot.metadata["last_update_drops_omitted"], 2)
+        self.assertEqual(state.metadata["last_update_drops_omitted"], 2)
 
     def test_expiry_before_compare_admits_without_conflict(self) -> None:
         """Retained older than max_age expires before same-slot compare (matrix row)."""
@@ -719,7 +719,7 @@ class ConflictMatrixTests(unittest.TestCase):
             _observation("o1", created_at_ms=90, things=(_thing(),)),
         )
         snap.metadata["conflict_count"] = 99
-        again = ledger.snapshot()
+        again = ledger.ledger()
         self.assertEqual(again.metadata["conflict_count"], 0)
 
 

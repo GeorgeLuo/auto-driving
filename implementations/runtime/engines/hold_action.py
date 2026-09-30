@@ -38,7 +38,7 @@ class HoldActionEngine:
                 "Proposals may be nonzero while the authorized AutonomyControl "
                 f"remains idle ({HOLD_IDLE_REASON})."
             ),
-            "inputs": ["context", "perception", "observation", "memory"],
+            "inputs": ["context", "perception", "observation"],
             "output": {
                 "type": "ActionResult",
                 "movement": "always idle",
@@ -46,7 +46,6 @@ class HoldActionEngine:
             },
             "steps": {
                 "action": "propose_plan_hold",
-                "memory": "inspectable_snapshot",
             },
         }
 
@@ -55,6 +54,5 @@ class HoldActionEngine:
         context: DecisionFrameContext,
         perception: Any,
         observation: Any,
-        memory: Any,
     ) -> ActionResult:
-        return self.composition.act(context, perception, observation, memory)
+        return self.composition.act(context, perception, observation)

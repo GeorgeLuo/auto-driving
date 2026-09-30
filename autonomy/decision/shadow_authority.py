@@ -7,13 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from autonomy.decision.action_plan import ActionPlan
-from autonomy.decision.action_proposal import ProposedVehicleCommand
+from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.decision.decision_data import (
     ComponentEnvelope,
     DecisionDataSource,
     unavailable_envelope,
 )
-from autonomy.decision.shadow_ids import require_ascii_id
+from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.engine import AutonomyControl
 
 SHADOW_AUTHORITY_RESULT_SCHEMA = "shadow_authority_result_v0"

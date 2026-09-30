@@ -7,6 +7,13 @@ re-exported from ``autonomy.memory`` are retained evidence and the
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
+from autonomy.decision_cycle.proposal.values import (
+    ACTION_PROPOSAL_SCHEMA,
+    ActionProposal,
+    ProposedVehicleCommand,
+    SourceRef,
+)
 from .cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
@@ -35,18 +42,11 @@ from .memory import (
     unavailable_memory_snapshot,
 )
 from .observation import OBSERVATION_SCHEMA, Observation, observation_from_perception
-from .shadow_ids import ShadowCycleInputError
 from .decision_data import (
     DECISION_DATA_SOURCE_SCHEMA,
     ComponentEnvelope,
     DecisionDataSource,
     build_decision_data_source,
-)
-from .action_proposal import (
-    ACTION_PROPOSAL_SCHEMA,
-    ActionProposal,
-    ProposedVehicleCommand,
-    SourceRef,
 )
 from .action_plan import ACTION_PLAN_SCHEMA, ActionPlan, SELECTOR_ID, select_action_plan
 from .shadow_authority import (

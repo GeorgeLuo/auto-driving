@@ -1,57 +1,25 @@
-"""ASCII identity grammar for shadow action proposals (M006)."""
+"""Identifier grammar import path.
 
-from __future__ import annotations
+Defined in ``autonomy.decision_cycle.action_identifiers``. The JSON helpers
+are defined in ``autonomy.serialization``. Names imported here are those
+objects.
+"""
 
-import re
-
+from autonomy.decision_cycle.action_identifiers import (
+    IDENTIFIER_PATTERN,
+    MAX_ID_LEN,
+    MAX_SAFE_INT,
+    ActionProposalMatrixError,
+    ShadowCycleInputError,
+    plan_id_for,
+    proposal_id_for,
+    require_ascii_id,
+    require_code_point_len,
+    require_safe_int,
+)
 from autonomy.serialization import (
     FrozenJsonObject,
     _is_json_primitive,
     deep_freeze,
     frozen_mapping_to_dict,
 )
-
-IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
-MAX_ID_LEN = 64
-MAX_SAFE_INT = 9_007_199_254_740_991  # 2**53 - 1
-
-
-class ShadowCycleInputError(ValueError):
-    """Raised when cycle identity is invalid before a cycle result is promised."""
-
-
-class ActionProposalMatrixError(ValueError):
-    """Admitted candidate fails lifecycle/bounds matrix re-validation."""
-
-
-def require_ascii_id(value: object, *, field_name: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a string")
-    if not IDENTIFIER_PATTERN.fullmatch(value):
-        raise ValueError(
-            f"{field_name} must match ^[A-Za-z0-9._:-]{{1,64}}$; got {value!r}"
-        )
-    return value
-
-
-def require_safe_int(value: object, *, field_name: str) -> int:
-    # Reject bool (subclass of int), floats, and numeric strings.
-    if type(value) is not int:
-        raise ValueError(f"{field_name} must be a non-bool int; got {type(value).__name__}")
-    if value < 0 or value > MAX_SAFE_INT:
-        raise ValueError(f"{field_name} must be in 0..{MAX_SAFE_INT}")
-    return value
-
-
-def proposal_id_for(plugin_id: str, frame_id: str) -> str:
-    return f"{plugin_id}:{frame_id}"
-
-
-def plan_id_for(frame_id: str) -> str:
-    return f"action-plan:{frame_id}"
-
-
-def require_code_point_len(value: str, *, field_name: str, max_len: int) -> str:
-    if len(value) > max_len:
-        raise ValueError(f"{field_name} exceeds {max_len} code points")
-    return value

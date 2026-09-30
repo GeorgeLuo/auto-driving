@@ -17,12 +17,14 @@ from autonomy.memory.values import (
     detach_memory_snapshot,
     empty_memory_snapshot,
 )
-from autonomy.serialization import canonical_json_size_bytes
-from autonomy.decision.observation import Observation
-from autonomy.decision.shadow_ids import (
+from autonomy.serialization import (
     _is_json_primitive,
+    canonical_json_size_bytes,
     deep_freeze,
     frozen_mapping_to_dict,
+)
+from autonomy.decision.observation import Observation
+from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_code_point_len,
     require_safe_int,

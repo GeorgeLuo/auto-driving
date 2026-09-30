@@ -57,6 +57,12 @@ from autonomy.decision.cycle import DecisionFrameContext as CycleContext
 from autonomy.decision.cycle import MemoryUpdateError as CycleMemoryError
 from autonomy.decision_cycle.context import DecisionFrameContext as CanonicalContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError as CanonicalMemoryUpdateError
+from autonomy.decision import ActionProposal as PackageProposal
+from autonomy.decision import ShadowCycleInputError as PackageInputError
+from autonomy.decision.action_proposal import ActionProposal as LegacyProposal
+from autonomy.decision.shadow_ids import ShadowCycleInputError as LegacyInputError
+from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError as CanonicalInputError
+from autonomy.decision_cycle.proposal.values import ActionProposal as CanonicalProposal
 from autonomy.decision.observation import Observation as DirectObservation
 from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
 from autonomy.perception import PerceptionMapper, PerceptionPluginContract
@@ -83,6 +89,8 @@ assert HostSharedMemory is SharedMemory
 assert DecisionCycle is DirectDecisionCycle
 assert PackageContext is CycleContext is CanonicalContext
 assert PackageMemoryError is CycleMemoryError is CanonicalMemoryUpdateError
+assert PackageProposal is LegacyProposal is CanonicalProposal
+assert PackageInputError is LegacyInputError is CanonicalInputError
 assert Observation is DirectObservation
 assert ShadowProposalsEngine is DirectShadowEngine
 assert PerceptionMapper is DirectPerceptionMapper
@@ -104,6 +112,8 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.memory.plugin_runner",
             "import autonomy.decision_cycle.context",
             "import autonomy.decision_cycle.memory.errors",
+            "import autonomy.decision_cycle.action_identifiers",
+            "import autonomy.decision_cycle.proposal.values",
             "import autonomy.perception.mappers.plugin_runner",
             "from autonomy.decision.activation import MemoryActivation",
         )

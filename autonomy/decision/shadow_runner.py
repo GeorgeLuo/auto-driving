@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from autonomy.decision.action_plan import select_action_plan
-from autonomy.decision.action_proposal import (
+from autonomy.decision_cycle.proposal.values import (
     MAX_PROPOSAL_BYTES,
     ActionProposal,
     ProposedVehicleCommand,
@@ -28,7 +28,7 @@ from autonomy.decision.shadow_authority import (
     authorized_idle_control,
     build_authority,
 )
-from autonomy.decision.shadow_ids import (
+from autonomy.decision_cycle.action_identifiers import (
     ActionProposalMatrixError,
     ShadowCycleInputError,
     proposal_id_for,

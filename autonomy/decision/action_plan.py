@@ -6,11 +6,13 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
-from autonomy.decision.action_proposal import ActionProposal
-from autonomy.serialization import canonical_json_size_bytes
-from autonomy.decision.shadow_ids import (
+from autonomy.decision_cycle.proposal.values import ActionProposal
+from autonomy.serialization import (
+    canonical_json_size_bytes,
     deep_freeze,
     frozen_mapping_to_dict,
+)
+from autonomy.decision_cycle.action_identifiers import (
     plan_id_for,
     require_ascii_id,
     require_safe_int,

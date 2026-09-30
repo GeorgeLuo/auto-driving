@@ -1,0 +1,3582 @@
+{
+ "failure": null,
+ "frames": [
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016737",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001",
+    "thing:1:17:classical_regions:20:classical_region_002",
+    "thing:1:17:classical_regions:20:classical_region_003",
+    "thing:1:17:classical_regions:20:classical_region_004",
+    "thing:1:17:classical_regions:20:classical_region_005",
+    "thing:1:17:classical_regions:20:classical_region_006",
+    "thing:1:17:classical_regions:20:classical_region_007",
+    "thing:1:17:classical_regions:20:classical_region_008",
+    "thing:1:17:classical_regions:20:classical_region_009",
+    "thing:1:17:classical_regions:20:classical_region_010",
+    "thing:1:17:classical_regions:20:classical_region_011",
+    "thing:1:17:classical_regions:20:classical_region_012",
+    "thing:1:17:classical_regions:20:classical_region_013",
+    "thing:1:17:classical_regions:20:classical_region_014",
+    "thing:1:17:classical_regions:20:classical_region_015",
+    "thing:1:17:classical_regions:20:classical_region_016",
+    "thing:1:17:classical_regions:20:classical_region_017",
+    "thing:1:17:classical_regions:20:classical_region_018",
+    "thing:1:17:classical_regions:20:classical_region_019",
+    "thing:1:17:classical_regions:20:classical_region_020",
+    "thing:1:17:classical_regions:20:classical_region_021",
+    "thing:1:17:classical_regions:20:classical_region_022",
+    "thing:1:17:classical_regions:20:classical_region_023",
+    "thing:1:17:classical_regions:20:classical_region_024",
+    "thing:1:17:classical_regions:20:classical_region_025",
+    "thing:1:17:classical_regions:20:classical_region_026",
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031",
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "e3b0c44298fc1c14",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016737"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016738",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "6c0ff971f54236ff",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016738"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016741",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:18:floor_boundary_002"
+   ],
+   "memory_retained_digest": "eeae143844aa1d8b",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016741"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016742",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "e3ec11b1def8276e",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016742"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016743",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "3a24ca5e28089f2e",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016743"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016745",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "d7cd84dcf61b461c",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016745"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016746",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "cf7bf59f4c9debe8",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016746"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016747",
+   "memory_added": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "d7cd84dcf61b461c",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016747"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016750",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "900c0a1cd60135c5",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016750"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016751",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "71fc51990d8d9478",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016751"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016752",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_001"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016752"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016753",
+   "memory_added": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016753"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016754",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "002d912cf0a67130",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016754"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016756",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "a49d955cf1cba83a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016756"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016757",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "ec6853d629e0cd54",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016757"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016758",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001",
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_003"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031",
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_001"
+   ],
+   "memory_retained_digest": "feea4ab53e408436",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016758"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016760",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "26b1a226a0d33e06",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016760"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016763",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "d44b2610bc7eaed6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016763"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016764",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_003"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016764"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016765",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "93c31ce90fb97557",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016765"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016767",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "93c31ce90fb97557",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016767"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016768",
+   "memory_added": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_004"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016768"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016769",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016769"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016770",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016770"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016773",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016773"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016775",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016775"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016776",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016776"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016777",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016777"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016779",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016779"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016780",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016780"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016781",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016781"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016782",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016782"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016786",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016786"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016787",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "1d7ef5720057bea7",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016787"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016788",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016788"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016789",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016789"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016790",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "2182117c225a210a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016790"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016791",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "f7a02e17725328fc",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016791"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016793",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "f8d74737a8c400ae",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016793"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016794",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "b3f67caad8f43a60",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016794"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016797",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "c127be9c00348f40",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016797"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016798",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "ec202799131caef8",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016798"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016799",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "2182117c225a210a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016799"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016800",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016800"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016802",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "1d7ef5720057bea7",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016802"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016803",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "1d7ef5720057bea7",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016803"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016804",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016804"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016805",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "2182117c225a210a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016805"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016807",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016807"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016809",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:17:classical_regions:20:classical_region_027"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016809"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016810",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_000"
+   ],
+   "memory_retained_digest": "be3f5a3fa6f5f010",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016810"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016811",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031",
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "bced205ccba0d644",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016811"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016813",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016813"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016814",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "f7a02e17725328fc",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016814"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016816",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "2182117c225a210a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016816"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016817",
+   "memory_added": [
+    "signal:1:17:classical_regions:27:classical_regions_available",
+    "signal:1:24:multi_obstruction_tracks:34:multi_obstruction_tracks_available",
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_025",
+    "thing:1:17:classical_regions:20:classical_region_026",
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "3326c080f66dff03",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016817"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016820",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_025",
+    "thing:1:17:classical_regions:20:classical_region_026",
+    "thing:1:17:classical_regions:20:classical_region_027"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "signal:1:17:classical_regions:27:classical_regions_available",
+    "signal:1:24:multi_obstruction_tracks:34:multi_obstruction_tracks_available",
+    "thing:1:16:floor_continuity:18:floor_boundary_000"
+   ],
+   "memory_retained_digest": "f281e1b17259329b",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016820"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016821",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_retained_digest": "0ef73fd8217d07b3",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016821"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016822",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_retained_digest": "0ef73fd8217d07b3",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016822"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016823",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_retained_digest": "0ef73fd8217d07b3",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016823"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016824",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "e8a6c1993e53c1e1",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016824"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016825",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000"
+   ],
+   "memory_retained_digest": "0ef73fd8217d07b3",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016825"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016827",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016827"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016828",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:17:classical_regions:20:classical_region_027"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016828"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016829",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "13d71cb1628855ce",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016829"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016832",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "13d71cb1628855ce",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016832"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016833",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:17:classical_regions:20:classical_region_027"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016833"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016834",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "c127be9c00348f40",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016834"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016836",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "1d7ef5720057bea7",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016836"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016837",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "b3f67caad8f43a60",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016837"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016838",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_retained_digest": "0ef73fd8217d07b3",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016838"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016840",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "2182117c225a210a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016840"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016842",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016842"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016843",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:18:floor_boundary_002",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_026",
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "6cfa1ea825de0a29",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016843"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016844",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_003",
+    "thing:1:17:classical_regions:20:classical_region_026",
+    "thing:1:17:classical_regions:20:classical_region_027"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:18:floor_boundary_002"
+   ],
+   "memory_retained_digest": "0e63c04a73e4e525",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016844"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016845",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_003",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "b3f67caad8f43a60",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016845"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016847",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016847"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016849",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "856351699dc68242",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016849"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016850",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016850"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016852",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016852"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016854",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "f7a02e17725328fc",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016854"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016855",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "f7a02e17725328fc",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016855"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016856",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "856351699dc68242",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016856"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016858",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "856351699dc68242",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016858"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016859",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016859"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016860",
+   "memory_added": [
+    "signal:1:24:multi_obstruction_tracks:34:multi_obstruction_tracks_available"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_026"
+   ],
+   "memory_retained_digest": "062154a0f09ae594",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016860"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016861",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_026",
+    "thing:1:17:classical_regions:20:classical_region_027"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "signal:1:24:multi_obstruction_tracks:34:multi_obstruction_tracks_available",
+    "thing:1:16:floor_continuity:18:floor_boundary_000"
+   ],
+   "memory_retained_digest": "dd88dfb109dc6a8e",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016861"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016864",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_retained_digest": "0ef73fd8217d07b3",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016864"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016865",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016865"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016866",
+   "memory_added": [
+    "signal:1:24:multi_obstruction_tracks:34:multi_obstruction_tracks_available"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_026"
+   ],
+   "memory_retained_digest": "062154a0f09ae594",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016866"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016867",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_026"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "signal:1:24:multi_obstruction_tracks:34:multi_obstruction_tracks_available"
+   ],
+   "memory_retained_digest": "062154a0f09ae594",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016867"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016868",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_027"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000"
+   ],
+   "memory_retained_digest": "35bcbc3f1d0b4d11",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016868"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016869",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "b3f67caad8f43a60",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016869"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016870",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016870"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016872",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016872"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016873",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016873"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016875",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "f7a02e17725328fc",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016875"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016877",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "3a72d8b7e30bfaff",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016877"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016878",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016878"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016879",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016879"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016881",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "1d7ef5720057bea7",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016881"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016882",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_retained_digest": "b3f67caad8f43a60",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016882"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016883",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "e81c996856017c0d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016883"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016885",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016885"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016887",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016887"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016888",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016888"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016889",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016889"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016890",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "e81c996856017c0d",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016890"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016892",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "f8d74737a8c400ae",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016892"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016893",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "f8d74737a8c400ae",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016893"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016894",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000"
+   ],
+   "memory_retained_digest": "0ef73fd8217d07b3",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016894"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016896",
+   "memory_added": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028"
+   ],
+   "memory_retained_digest": "530c23f2d5f74f80",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016896"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016898",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_027",
+    "thing:1:17:classical_regions:20:classical_region_028",
+    "thing:1:17:classical_regions:20:classical_region_029"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:18:floor_boundary_000",
+    "thing:1:16:floor_continuity:18:floor_boundary_001",
+    "thing:1:16:floor_continuity:21:visible_floor_support"
+   ],
+   "memory_retained_digest": "c127be9c00348f40",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016898"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016899",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "1d7ef5720057bea7",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016899"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016900",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016900"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016901",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016901"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016903",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016903"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016904",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000"
+   ],
+   "memory_retained_digest": "d8979cac39294b0a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016904"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016905",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016905"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016906",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016906"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016909",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0ea011bb9affa427",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016909"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016910",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0ea011bb9affa427",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016910"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016911",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016911"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016912",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016912"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016914",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016914"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016915",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016915"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016916",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016916"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016918",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016918"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016920",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016920"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016921",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016921"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016922",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016922"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016923",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016923"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016925",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016925"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016926",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016926"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016927",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016927"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016928",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016928"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016929",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016929"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016932",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016932"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016933",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016933"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016934",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016934"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016935",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016935"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016936",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016936"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016938",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016938"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016939",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016939"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016940",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016940"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016941",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016941"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016944",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016944"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016945",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016945"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016946",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016946"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016947",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016947"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016949",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016949"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016951",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016951"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016952",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016952"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016954",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016954"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016956",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016956"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016957",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016957"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016958",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016958"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016960",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016960"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016962",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016962"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016963",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016963"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016964",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016964"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016966",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016966"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016967",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016967"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016968",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016968"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016969",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016969"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016971",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016971"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016972",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016972"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016973",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016973"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016975",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016975"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016977",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016977"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016978",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016978"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016979",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016979"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016980",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016980"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016982",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016982"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016983",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016983"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016984",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016984"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016985",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016985"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016987",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016987"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016989",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016989"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016990",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016990"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016991",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016991"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016992",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_000"
+   ],
+   "memory_retained_digest": "b31d0b34f795f58e",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016992"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016994",
+   "memory_added": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_000"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "b31d0b34f795f58e",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016994"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016996",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016996"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_016997",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_016997"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017000",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017000"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017001",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017001"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017002",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017002"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017003",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017003"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017005",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017005"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017006",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017006"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017008",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017008"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017009",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017009"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017011",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017011"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017013",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017013"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017014",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017014"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017016",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017016"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017017",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017017"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017018",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017018"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017019",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017019"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017020",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017020"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017023",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017023"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017024",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017024"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017025",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017025"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017026",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017026"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017027",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017027"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017029",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017029"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017030",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017030"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017031",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017031"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017034",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017034"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017035",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017035"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017036",
+   "memory_added": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "2182117c225a210a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017036"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017037",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_029",
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:16:floor_continuity:21:visible_floor_support",
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "2182117c225a210a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017037"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017038",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017038"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017039",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017039"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017040",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017040"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017041",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017041"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017043",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017043"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017045",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017045"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017046",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_030",
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_000",
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "503345e3c3e11a7a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017046"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017047",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017047"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017049",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_031"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "646819adc10326f6",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017049"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017050",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017050"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017051",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017051"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017053",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017053"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017054",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017054"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017056",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017056"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017057",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": 1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017057"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017058",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017058"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017060",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017060"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017061",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017061"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017062",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017062"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017064",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017064"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017066",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017066"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017067",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017067"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017068",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017068"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017069",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017069"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017071",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017071"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017073",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017073"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017074",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017074"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017075",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017075"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017078",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017078"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017079",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017079"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017080",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "0646b4fa229efb58",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017080"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017081",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_004"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017081"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017083",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "93c31ce90fb97557",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017083"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017084",
+   "memory_added": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_007"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017084"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017085",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "af382235b115bda1",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017085"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017087",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "af382235b115bda1",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017087"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017088",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "af382235b115bda1",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017088"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017090",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "af382235b115bda1",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017090"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017091",
+   "memory_added": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_007"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017091"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017092",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "93c31ce90fb97557",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017092"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017093",
+   "memory_added": [
+    "thing:1:24:multi_obstruction_tracks:21:obstruction_track_008"
+   ],
+   "memory_record_count": 32,
+   "memory_removed": [
+    "thing:1:17:classical_regions:20:classical_region_001"
+   ],
+   "memory_retained_digest": "10f30e44c820961d",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017093"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017094",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "658c295fc70fe78a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017094"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017096",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "658c295fc70fe78a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017096"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017097",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "658c295fc70fe78a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017097"
+  },
+  {
+   "decision_status": "ok",
+   "frame_id": "donkey_frame_017098",
+   "memory_added": [],
+   "memory_record_count": 32,
+   "memory_removed": [],
+   "memory_retained_digest": "658c295fc70fe78a",
+   "perception_status": "ok",
+   "proposed_steering": -1.0,
+   "selected_proposal_id": "avoid_recent_obstruction:donkey_frame_017098"
+  }
+ ],
+ "memory": {
+  "error": null,
+  "health": "healthy",
+  "implementation_id": "multi_obstruction_tracks",
+  "record_count": 32
+ },
+ "phase": "completed",
+ "plugin_runs": [
+  {
+   "error": null,
+   "implementation_id": "multi-obstruction-tracks-v0",
+   "plugin_id": "multi_obstruction_tracks",
+   "signal_count": 1,
+   "status": "ok",
+   "thing_count": 3
+  },
+  {
+   "error": null,
+   "implementation_id": "floor-continuity-v1",
+   "plugin_id": "floor_continuity",
+   "signal_count": 2,
+   "status": "ok",
+   "thing_count": 7
+  },
+  {
+   "error": null,
+   "implementation_id": "classical-regions-v0",
+   "plugin_id": "classical_regions",
+   "signal_count": 1,
+   "status": "ok",
+   "thing_count": 32
+  }
+ ],
+ "progress": {
+  "completed": 258,
+  "percent": 100.0,
+  "total": 258
+ },
+ "signals": [
+  {
+   "signal_id": "multi_obstruction_candidates",
+   "source_plugin_id": "multi_obstruction_tracks",
+   "value": true
+  },
+  {
+   "signal_id": "floor_visible",
+   "source_plugin_id": "floor_continuity",
+   "value": true
+  },
+  {
+   "signal_id": "floor_boundary_available",
+   "source_plugin_id": "floor_continuity",
+   "value": true
+  },
+  {
+   "signal_id": "classical_regions_available",
+   "source_plugin_id": "classical_regions",
+   "value": true
+  }
+ ]
+}

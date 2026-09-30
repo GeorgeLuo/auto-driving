@@ -48,7 +48,8 @@ def run_replay() -> dict:
 def check_selector() -> list[str]:
     """Serve the workbench and change the selection the way the page does.
 
-    A paused selection reprocesses the displayed frame, a running one reaches
+    A paused selection reprocesses the displayed frame, seeking shows earlier
+    frames with the current selection, a running selection reaches
     the next frame, and a loop pass runs with the current selection.
     """
 
@@ -100,6 +101,9 @@ def check_selector() -> list[str]:
         selected = act(action="select_plugins", run_id=run_id, active_plugin_ids=["floor_continuity"])
         if selected["current_frame"]["frame_id"] != frame_id or runs(selected) != ["floor_continuity"]:
             problems.append(f"paused selection did not reprocess {frame_id}: {runs(selected)}")
+        sought = act(action="seek", run_id=run_id, position=0)
+        if runs(sought) != ["floor_continuity"]:
+            problems.append(f"seek to a frame recorded earlier showed {runs(sought)}")
         act(action="resume", run_id=run_id)
         act(action="select_plugins", run_id=run_id, active_plugin_ids=["classical_regions"])
         running = wait_for(lambda s: runs(s) == ["classical_regions"], timeout=30)

@@ -416,6 +416,39 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertNotEqual(stepped["current_frame"]["frame_id"], first_id)
             runner.dispatch("cancel", run_id=run_id)
 
+    def test_seek_shows_frames_with_the_current_selection(self) -> None:
+        with image_source(3) as root:
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=self.plugin_root,
+                cadence_ms=30000,
+            )
+            runner.dispatch("select_plugins", active_plugin_ids=["classical_regions"])
+            run_id, paused = _pause_after_first_frame(runner)
+            first_id = paused["current_frame"]["frame_id"]
+            stepped = runner.dispatch("step", run_id=run_id)
+            second_id = stepped["current_frame"]["frame_id"]
+            self.assertEqual(_plugin_ids(stepped["perception"]), ["classical_regions"])
+
+            runner.dispatch(
+                "select_plugins", run_id=run_id, active_plugin_ids=["floor_continuity"]
+            )
+            back = runner.dispatch("seek", run_id=run_id, position=0)
+            self.assertEqual(back["current_frame"]["frame_id"], first_id)
+            self.assertEqual(_plugin_ids(back["perception"]), ["floor_continuity"])
+            self.assertEqual(
+                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
+                ["floor_continuity"],
+            )
+
+            forward = runner.dispatch("seek", run_id=run_id, position=1)
+            self.assertEqual(forward["current_frame"]["frame_id"], second_id)
+            self.assertEqual(_plugin_ids(forward["perception"]), ["floor_continuity"])
+
+            again = runner.dispatch("seek", run_id=run_id, position=0)
+            self.assertEqual(_plugin_ids(again["perception"]), ["floor_continuity"])
+            runner.dispatch("cancel", run_id=run_id)
+
     def test_paused_selection_retains_instances_and_reprocesses(self) -> None:
         _install_plugin(
             self.plugin_root,

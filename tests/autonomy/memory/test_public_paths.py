@@ -170,6 +170,7 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.decision_cycle.memory.execution.plugin_runtime",
             "import autonomy.decision_cycle.memory.snapshots.values",
             "import autonomy.decision_cycle.memory.snapshots.fallback",
+            "import autonomy.decision_cycle.memory.publication",
             "import autonomy.perception.mappers.plugin_runner",
             "from autonomy.decision.activation import MemoryActivation",
         )

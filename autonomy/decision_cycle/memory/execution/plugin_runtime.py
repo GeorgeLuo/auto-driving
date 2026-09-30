@@ -17,6 +17,7 @@ from typing import Any
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.activation import bounds_from_config, instantiate_memory_implementation
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.memory.publication import publish_snapshot
 from autonomy.decision_cycle.memory.snapshots.fallback import (
     FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
     build_minimal_framework_fallback,
@@ -128,7 +129,7 @@ class MemoryPluginRuntime:
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
         if shared_memory is not None:
-            shared_memory["decision.snapshot"] = owned
+            publish_snapshot(shared_memory, owned)
         return self._publish_snapshot(owned)
 
     def snapshot(self) -> MemorySnapshot:

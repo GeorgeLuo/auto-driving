@@ -15,6 +15,11 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.activation import MemoryActivation, memory_manager_from_activation
 from autonomy.decision_cycle.memory.execution.plugin_runtime import MemoryPluginRuntime
 from autonomy.decision_cycle.memory.plugin import MemoryImplementation
+from autonomy.decision_cycle.memory.publication import (
+    publish_reset_snapshot,
+    publish_snapshot,
+    withdraw_publication,
+)
 from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot, detach_memory_snapshot
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.plugins import (
@@ -127,10 +132,9 @@ class PluginMemoryRunner:
                 for plugin in self.plugins:
                     snapshot = plugin.update(context, observation)
                     if context.shared_memory is not None:
-                        context.shared_memory["decision.snapshot"] = snapshot
+                        publish_snapshot(context.shared_memory, snapshot)
                 if not self.plugins and context.shared_memory is not None:
-                    context.shared_memory.pop("decision.snapshot", None)
-                    context.shared_memory.pop("decision.observation", None)
+                    withdraw_publication(context.shared_memory)
             except Exception:
                 self.failure_count += 1
                 self.last_error = plugin.last_error
@@ -151,10 +155,7 @@ class PluginMemoryRunner:
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error or self.last_error
             if shared_memory is not None:
-                if snapshot is None:
-                    shared_memory.pop("decision.snapshot", None)
-                else:
-                    shared_memory["decision.snapshot"] = snapshot
+                publish_reset_snapshot(shared_memory, snapshot)
             self.reset_count += 1
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
             return self._publish_snapshot(snapshot)

@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.memory.publication import observation_after_memory
 from autonomy.decision_cycle.observation.step import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
@@ -146,16 +147,7 @@ class DecisionCycle:
             except Exception:
                 detail = "unprintable error"
             raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
-        if context.shared_memory is not None:
-            updated_observation = context.shared_memory.get("decision.observation")
-            if (
-                isinstance(updated_observation, Observation)
-                and observation is not None
-                and updated_observation.observation_id == observation.observation_id
-                and memory is not None
-                and memory.health != "error"
-            ):
-                observation = updated_observation
+        observation = observation_after_memory(context.shared_memory, observation, memory)
         control = (
             self.steps.choose_action(context, perception, observation, memory)
             if self.steps.choose_action

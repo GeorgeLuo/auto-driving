@@ -130,6 +130,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision.activation", "validate_framework_fallback_capacity", "autonomy.memory.activation", "validate_framework_fallback_capacity"),
     ("autonomy.decision.cycle", "DecisionCycle", "autonomy.decision.cycle", "DecisionCycle"),
     ("autonomy.decision.cycle", "DecisionFrameContext", "autonomy.decision_cycle.context", "DecisionFrameContext"),
+    ("autonomy.decision.cycle", "MemoryUpdateError", "autonomy.decision_cycle.memory.errors", "MemoryUpdateError"),
     ("autonomy.decision.decision_data", "COMPONENT_STATUSES", "autonomy.decision.decision_data", "COMPONENT_STATUSES"),
     ("autonomy.decision.decision_data", "ComponentEnvelope", "autonomy.decision.decision_data", "ComponentEnvelope"),
     ("autonomy.decision.decision_data", "DECISION_DATA_SOURCE_SCHEMA", "autonomy.decision.decision_data", "DECISION_DATA_SOURCE_SCHEMA"),

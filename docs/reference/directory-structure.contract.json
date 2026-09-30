@@ -48,13 +48,19 @@
             "path": "autonomy/memory/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Memory-step activation, selection, runner, protocol, and value contracts. The host shared map is not owned by this step."
+            "responsibility": "Memory-step activation, selection, runner, protocol, and value contracts. The host shared map is not owned by this step. MemoryUpdateError lives under autonomy/decision_cycle/memory/."
           },
           {
             "path": "autonomy/decision/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Observation contracts and the decision cycle, including optional action stages. Memory activation, protocol, and values live under autonomy/memory/."
+            "responsibility": "Observation contracts and the decision cycle, including optional action stages. Memory activation, protocol, and values live under autonomy/memory/. The cycle input lives under autonomy/decision_cycle/."
+          },
+          {
+            "path": "autonomy/decision_cycle/",
+            "category": "core",
+            "commit_policy": "source",
+            "responsibility": "Canonical home of decision-cycle contracts, grouped by step. It holds the cycle input (context.py) and the memory failure (memory/errors.py); other cycle and step modules still live under autonomy/decision/, autonomy/perception/, and autonomy/memory/, which keep their import paths."
           },
           {
             "path": "autonomy/runtime/",

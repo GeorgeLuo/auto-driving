@@ -55,8 +55,8 @@ from autonomy.decision import MemoryUpdateError as PackageMemoryError
 from autonomy.decision.cycle import DecisionCycle as DirectDecisionCycle
 from autonomy.decision.cycle import DecisionFrameContext as CycleContext
 from autonomy.decision.cycle import MemoryUpdateError as CycleMemoryError
-from autonomy.decision_cycle.context import DecisionFrameContext as ContextRecord
-from autonomy.decision_cycle.memory.errors import MemoryUpdateError as MemoryError
+from autonomy.decision_cycle.context import DecisionFrameContext as CanonicalContext
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError as CanonicalMemoryUpdateError
 from autonomy.decision.observation import Observation as DirectObservation
 from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
 from autonomy.perception import PerceptionMapper, PerceptionPluginContract
@@ -81,8 +81,8 @@ assert decision_read_memory_activation is read_memory_activation is direct_read_
 assert decision_bounds_from_config is direct_bounds_from_config
 assert HostSharedMemory is SharedMemory
 assert DecisionCycle is DirectDecisionCycle
-assert PackageContext is CycleContext is ContextRecord
-assert PackageMemoryError is CycleMemoryError is MemoryError
+assert PackageContext is CycleContext is CanonicalContext
+assert PackageMemoryError is CycleMemoryError is CanonicalMemoryUpdateError
 assert Observation is DirectObservation
 assert ShadowProposalsEngine is DirectShadowEngine
 assert PerceptionMapper is DirectPerceptionMapper

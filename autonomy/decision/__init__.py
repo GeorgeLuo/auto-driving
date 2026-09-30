@@ -51,10 +51,12 @@ from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
     build_decision_data_source,
 )
-from .shadow_authority import (
+from autonomy.decision_cycle.action_gate.hold import (
     SHADOW_AUTHORITY_RESULT_SCHEMA,
-    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     ShadowAuthorityResult,
+)
+from autonomy.decision_cycle.result import (
+    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     ShadowDecisionCycleResult,
 )
 from .shadow_runner import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine

@@ -23,11 +23,8 @@ from autonomy.decision_cycle.proposal.inputs import (
 from autonomy.memory.values import MemorySnapshot
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision.shadow_authority import (
-    ShadowDecisionCycleResult,
-    authorized_idle_control,
-    build_authority,
-)
+from autonomy.decision_cycle.action_gate.hold import authorized_idle_control, build_authority
+from autonomy.decision_cycle.result import ShadowDecisionCycleResult
 from autonomy.decision_cycle.action_identifiers import (
     ActionProposalMatrixError,
     ShadowCycleInputError,

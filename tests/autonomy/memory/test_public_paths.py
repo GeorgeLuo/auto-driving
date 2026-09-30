@@ -74,6 +74,12 @@ from autonomy.decision_cycle.observation.values import Observation as CanonicalO
 from autonomy.decision import DecisionDataSource as PackageDataSource
 from autonomy.decision.decision_data import DecisionDataSource as LegacyDataSource
 from autonomy.decision_cycle.proposal.inputs import DecisionDataSource as CanonicalDataSource
+from autonomy.decision import ShadowAuthorityResult as PackageGateResult
+from autonomy.decision import ShadowDecisionCycleResult as PackageActionResult
+from autonomy.decision.shadow_authority import ShadowAuthorityResult as LegacyGateResult
+from autonomy.decision.shadow_authority import ShadowDecisionCycleResult as LegacyActionResult
+from autonomy.decision_cycle.action_gate.hold import HoldGateResult
+from autonomy.decision_cycle.result import ShadowDecisionCycleResult as CanonicalActionResult
 from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
 from autonomy.perception import PerceptionMapper, PerceptionPluginContract
 from autonomy.perception.interface import PerceptionMapper as DirectPerceptionMapper
@@ -105,6 +111,8 @@ assert PackagePlan is LegacyPlan is CanonicalPlan
 assert package_select_plan is legacy_select_plan is select_highest_confidence_plan
 assert Observation is DirectObservation is CanonicalObservation
 assert PackageDataSource is LegacyDataSource is CanonicalDataSource
+assert PackageGateResult is LegacyGateResult is HoldGateResult
+assert PackageActionResult is LegacyActionResult is CanonicalActionResult
 assert ShadowProposalsEngine is DirectShadowEngine
 assert PerceptionMapper is DirectPerceptionMapper
 assert PerceptionPluginContract is DirectPluginContract
@@ -132,6 +140,8 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.decision_cycle.observation.values",
             "import autonomy.decision_cycle.observation.step",
             "import autonomy.decision_cycle.proposal.inputs",
+            "import autonomy.decision_cycle.action_gate.hold",
+            "import autonomy.decision_cycle.result",
             "import autonomy.perception.mappers.plugin_runner",
             "from autonomy.decision.activation import MemoryActivation",
         )

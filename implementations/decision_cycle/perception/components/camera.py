@@ -8,11 +8,11 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.components.interface import (
     PerceptionComponentUnavailable,
     PerceptionPluginInput,
-    PerceptionRequest,
 )
+from autonomy.decision_cycle.perception.components.context import PerceptionRequest
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading
 
 
@@ -71,7 +71,7 @@ def camera_rgb_input(
     return PerceptionPluginInput(
         name=name,
         component_id=camera_component_id(sensor_id),
-        provider_spec="implementations.perception.components.camera:provide_camera_frame",
+        provider_spec="implementations.decision_cycle.perception.components.camera:provide_camera_frame",
     )
 
 

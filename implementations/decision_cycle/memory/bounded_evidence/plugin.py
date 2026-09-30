@@ -20,8 +20,9 @@ from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.memory.values import (
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.snapshots.values import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
     MemoryBounds,
@@ -30,13 +31,13 @@ from autonomy.memory.values import (
     RetainedEvidence,
     detach_memory_snapshot,
     empty_memory_snapshot,
-    ensure_strict_json_value,
     serialized_mapping_bytes,
     serialized_memory_snapshot_bytes,
 )
+from autonomy.serialization import ensure_strict_json_value
 from autonomy.decision_cycle.memory.publication import SNAPSHOT_KEY
 from autonomy.shared_memory import SharedMemory
-from autonomy.perception import ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 CONFLICT_POLICY = "bounded_evidence_structural_v2"
 MAX_REPORTED_DROPS = 12

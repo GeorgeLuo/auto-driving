@@ -16,7 +16,7 @@ from autonomy.decision_cycle.proposal.values import (
 )
 from autonomy.decision_cycle.planning.selector import select_action_plan
 from autonomy.decision_cycle.planning.values import ACTION_PLAN_SCHEMA, SELECTOR_ID, ActionPlan
-from .cycle import (
+from autonomy.decision_cycle.cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
     DecisionCycleResult,

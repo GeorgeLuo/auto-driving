@@ -8,14 +8,16 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageDraw
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
+    PerceptionSignal,
+    ViewLocation,
+)
+from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
-    PerceptionSignal,
-    ViewLocation,
 )
 from implementations.decision_cycle.perception.components.camera import CameraFrame, FRONT_CAMERA_RGB_INPUT
 

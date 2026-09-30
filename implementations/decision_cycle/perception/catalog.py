@@ -2,25 +2,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA
+from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 
 
 PERCEPTION_MAPPER_SPEC = (
-    "autonomy.perception.plugin_runner:PluginPerceptionMapper"
+    "autonomy.decision_cycle.perception.plugin_runner:PluginPerceptionMapper"
 )
 DEFAULT_PERCEPTION_ALGORITHM = "lightweight_observer"
 
 PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
-    "floor_plane": "implementations.perception.traversability.plugin:FloorPlanePlugin",
-    "frame": "implementations.perception.observation.plugin:FrameObservationPlugin",
-    "motion_tracks": "implementations.perception.motion.tracks:MotionTracksPlugin",
+    "floor_plane": "implementations.decision_cycle.perception.floor_plane.plugin:FloorPlanePlugin",
+    "frame": "implementations.decision_cycle.perception.frame_observation.plugin:FrameObservationPlugin",
+    "motion_tracks": "implementations.decision_cycle.perception.motion_tracks.plugin:MotionTracksPlugin",
     "obstruction_tracks": (
-        "implementations.perception.obstruction_tracks:MultiObstructionTracksPlugin"
+        "implementations.decision_cycle.perception.obstruction_tracks.plugin:MultiObstructionTracksPlugin"
     ),
     "sim_color_targets": (
-        "implementations.perception.simulation.color_targets:SimColorTargetsPlugin"
+        "implementations.decision_cycle.perception.sim_color_targets.plugin:SimColorTargetsPlugin"
     ),
-    "vlm_prep": "implementations.perception.preparation.vlm:VlmPrepPlugin",
+    "vlm_prep": "implementations.decision_cycle.perception.vlm_preparation.plugin:VlmPrepPlugin",
 }
 
 PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {

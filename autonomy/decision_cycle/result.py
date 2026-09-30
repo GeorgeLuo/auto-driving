@@ -2,7 +2,7 @@
 
 ``ShadowDecisionCycleResult`` joins the proposal input, the plan, and the
 hold gate result, and keeps their status and frame fields consistent. The
-outer cycle result is ``DecisionCycleResult`` in ``autonomy.decision.cycle``.
+outer cycle result is ``DecisionCycleResult`` in ``autonomy.decision_cycle.cycle``.
 """
 
 from __future__ import annotations

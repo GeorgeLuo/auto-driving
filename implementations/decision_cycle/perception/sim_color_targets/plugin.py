@@ -7,13 +7,15 @@ from typing import Any, Callable
 import numpy as np
 from PIL import Image
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
-    PerceptionPluginContract,
-    PerceptionPluginInputs,
     PerceptionSignal,
     ViewLocation,
+)
+from autonomy.decision_cycle.perception.plugin import (
+    PerceptionPluginContract,
+    PerceptionPluginInputs,
 )
 from implementations.decision_cycle.perception.components.camera import CameraFrame, FRONT_CAMERA_RGB_INPUT
 

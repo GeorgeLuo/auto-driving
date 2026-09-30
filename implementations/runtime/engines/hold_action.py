@@ -13,17 +13,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from autonomy.decision.decision_data import ComponentEnvelope, omit_forbidden_channel_keys
-from autonomy.memory.values import MemorySnapshot
-from autonomy.decision.observation import Observation
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON, authorized_idle_control
-from autonomy.decision.shadow_ids import ShadowCycleInputError
-from autonomy.decision.shadow_runner import ENGINE_ID
+from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope, omit_forbidden_channel_keys
+from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.action_gate.hold import (
+    AUTHORIZED_IDLE_REASON,
+    authorized_idle_control,
+)
+from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
+from autonomy.decision_cycle.action import ENGINE_ID
 from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
 from implementations.runtime.engines.catalog import create_shadow_proposals_engine
 
 ADAPTER_ENGINE_SPEC = (
-    "implementations.decision.shadow_adapter:ShadowProposalsAutonomyEngine"
+    "implementations.runtime.engines.hold_action:ShadowProposalsAutonomyEngine"
 )
 ENTRY_ERROR_REASON = "shadow-adapter-entry-error"
 STEP_ERROR_REASON = "shadow-adapter-step-error"

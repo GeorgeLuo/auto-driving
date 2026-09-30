@@ -342,23 +342,24 @@ class PluginPerceptionMapper:
 
             for plugin in candidate_plugins:
                 for item in plugin.contract.inputs:
+                    spec = item.provider_spec
+                    if spec not in candidate_providers:
+                        provider = self._component_providers.get(spec)
+                        if provider is None:
+                            provider = _load_symbol(spec)
+                        if not callable(provider):
+                            raise TypeError(f"component provider {spec!r} is not callable")
+                        candidate_providers[spec] = provider
+                    # Specs that name the same provider (a legacy and a
+                    # canonical path) agree.
                     existing = candidate_provider_specs.get(item.component_id)
-                    if existing is not None and existing != item.provider_spec:
+                    if existing is None:
+                        candidate_provider_specs[item.component_id] = spec
+                    elif candidate_providers[existing] is not candidate_providers[spec]:
                         raise ValueError(
                             f"component {item.component_id!r} declares conflicting providers: "
-                            f"{existing!r} and {item.provider_spec!r}"
+                            f"{existing!r} and {spec!r}"
                         )
-                    candidate_provider_specs[item.component_id] = item.provider_spec
-
-            for provider_spec in sorted(set(candidate_provider_specs.values())):
-                provider = self._component_providers.get(provider_spec)
-                if provider is None:
-                    provider = _load_symbol(provider_spec)
-                if not callable(provider):
-                    raise TypeError(
-                        f"component provider {provider_spec!r} is not callable"
-                    )
-                candidate_providers[provider_spec] = provider
 
         self._selection_runtime.prepare(
             load=lambda definition: _instantiate_plugin(

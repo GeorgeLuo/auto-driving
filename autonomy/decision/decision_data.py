@@ -25,7 +25,7 @@ from autonomy.decision_cycle.proposal.inputs import (
     ready_envelope,
     unavailable_envelope,
 )
-from autonomy.memory.values import empty_memory_snapshot
+from autonomy.decision_cycle.memory.snapshots.values import empty_memory_snapshot
 
 __all__ = [
     "COMPONENT_STATUSES",

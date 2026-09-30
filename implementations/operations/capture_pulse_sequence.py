@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from implementations.perception.observation import observe_frame
+from implementations.decision_cycle.perception.frame_observation.frame_analysis import (
+    observe_frame,
+)
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, CarInterface, SensorReadRequest, VehiclePulse
 
 

@@ -6,11 +6,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionEvidenceBatch,
+    PerceptionSignal,
+)
+from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
     PerceptionPluginInputs,
-    PerceptionSignal,
 )
 from implementations.decision_cycle.perception.components.camera import CameraFrame, FRONT_CAMERA_RGB_INPUT
 

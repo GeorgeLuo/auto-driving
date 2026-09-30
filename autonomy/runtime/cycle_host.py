@@ -6,7 +6,7 @@ from typing import Any
 from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
 from autonomy.decision_cycle.memory.publication import publish_snapshot
 from autonomy.shared_memory import SharedMemory
-from autonomy.decision.cycle import (
+from autonomy.decision_cycle.cycle import (
     DecisionCycle,
     DecisionCycleResult,
     DecisionFrameContext,

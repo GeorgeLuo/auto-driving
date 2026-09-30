@@ -19,7 +19,7 @@ from implementations.runtime.engines.hold_action import ShadowProposalsAutonomyE
 
 ENGINE_ID = "obstacle-avoidance"
 ADAPTER_ENGINE_SPEC = (
-    "implementations.decision.live_adapter:ObstacleAvoidanceAutonomyEngine"
+    "implementations.runtime.engines.mode_gated_action:ObstacleAvoidanceAutonomyEngine"
 )
 LIVE_MODES = frozenset({"autonomy", "local"})
 

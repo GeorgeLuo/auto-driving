@@ -5,13 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from autonomy.decision.action_proposal import ActionProposal
-from autonomy.decision.decision_data import DecisionDataSource
-from autonomy.decision.shadow_runner import (
-    ENGINE_ID,
-    ShadowProposalsConfig,
-    ShadowProposalsEngine,
-)
+from autonomy.decision_cycle.proposal.values import ActionProposal
+from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+from autonomy.decision_cycle.action import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
 from implementations.runtime.engines.config import (
     ObstacleAvoidanceConfig,
     engine_config_document,

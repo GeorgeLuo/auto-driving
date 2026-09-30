@@ -12,7 +12,7 @@ MEMORY_IMPLEMENTATIONS: dict[str, dict[str, Any]] = {
     "bounded_evidence": {
         "implementation_id": "bounded_evidence",
         "implementation_spec": (
-            "implementations.memory.bounded_evidence:BoundedEvidenceLedger"
+            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
         ),
         "description": (
             "Bounded recency ledger of observation things and signals with "

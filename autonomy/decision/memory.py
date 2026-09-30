@@ -1,6 +1,6 @@
 """Retained-evidence values.
 
-Memory records come from ``autonomy.memory.values``. Canonical JSON helpers
+Memory records come from ``autonomy.decision_cycle.memory.snapshots.values``. Canonical JSON helpers
 come from ``autonomy.serialization``. Names imported here are those objects.
 """
 
@@ -9,7 +9,7 @@ from autonomy.serialization import (
     canonical_json_utf8,
     ensure_strict_json_value,
 )
-from autonomy.memory.values import (
+from autonomy.decision_cycle.memory.snapshots.values import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,

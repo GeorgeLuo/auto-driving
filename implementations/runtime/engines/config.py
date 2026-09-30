@@ -7,8 +7,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from autonomy.decision.shadow_runner import ShadowProposalsConfig
-from autonomy.decision.shadow_ids import require_ascii_id
+from autonomy.decision_cycle.action import ShadowProposalsConfig
+from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
     PLUGIN_ID,
     DEFAULT_ACCEPTED_KINDS,

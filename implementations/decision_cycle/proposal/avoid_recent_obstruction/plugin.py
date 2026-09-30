@@ -12,13 +12,13 @@ import math
 from collections.abc import Mapping
 from typing import Any, Sequence
 
-from autonomy.decision.action_proposal import (
+from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
     SourceRef,
 )
-from autonomy.decision.decision_data import DecisionDataSource
-from autonomy.memory.values import MemorySnapshot, RetainedEvidence
+from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot, RetainedEvidence
 
 PLUGIN_ID = "avoid_recent_obstruction"
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")

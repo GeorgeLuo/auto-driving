@@ -40,7 +40,7 @@ class MemoryStreamTests(unittest.TestCase):
                     "memory": {
                         "implementation_id": "bounded_evidence",
                         "implementation_spec": (
-                            "implementations.memory.bounded_evidence:BoundedEvidenceLedger"
+                            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
                         ),
                         "last_health": "healthy",
                         "last_epoch_id": "epoch-2",

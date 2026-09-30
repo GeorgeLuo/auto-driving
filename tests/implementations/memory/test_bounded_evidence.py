@@ -69,7 +69,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         entry = memory_implementation_spec("bounded_evidence")
         self.assertEqual(
             entry["implementation_spec"],
-            "implementations.memory.bounded_evidence:BoundedEvidenceLedger",
+            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger",
         )
 
     def test_reset_before_update_uses_explicit_shared_map(self) -> None:

@@ -1,7 +1,8 @@
 from __future__ import annotations
 import json
 import unittest
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
+from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
+from implementations.runtime.engines.hold_action import ShadowProposalsAutonomyEngine
 from autonomy.runtime.manager import AutonomyManager
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
@@ -10,7 +11,6 @@ from cli.automa_cli.decision import (
     get_vehicle_decision_info,
     update_vehicle_decision,
 )
-from implementations.decision.shadow_adapter import ShadowProposalsAutonomyEngine
 from tests.cli.decision.shadow_decision_surfaces_fixtures import (
     ShadowDecisionSurfaceFixture,
 )

@@ -3,10 +3,13 @@ from __future__ import annotations
 import unittest
 from copy import deepcopy
 
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.memory.values import serialized_memory_snapshot_bytes
-from autonomy.perception import ViewLocation
-from implementations.memory.bounded_evidence import (
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.snapshots.values import (
+    serialized_memory_snapshot_bytes,
+)
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from implementations.decision_cycle.memory.bounded_evidence.plugin import (
     CONFLICT_POLICY,
     _BoundedEvidenceReducer as BoundedEvidenceReducer,
     json_values_equal,

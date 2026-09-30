@@ -7,7 +7,7 @@ from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.perception import _load_mapper, set_vehicle_perception_plugin
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     PERCEPTION_MAPPER_SPEC,
     PERCEPTION_PLUGIN_SPECS,
 )

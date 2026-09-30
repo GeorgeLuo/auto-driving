@@ -2,8 +2,10 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import read_memory_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
@@ -17,7 +19,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_SelfContradictingBoundsMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "declares max_serialized_bytes"):
@@ -34,7 +36,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_NormalizationInflatesSizeMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "eviction_policy"):
@@ -59,7 +61,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_TighterDeclaredSizeMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "normalized memory snapshot"):
@@ -75,7 +77,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_NonJsonPropertyMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "JSON"):
@@ -128,7 +130,7 @@ class MemoryActivationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"]["implementation_id"] = "other_id"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             self.assertEqual(step.plugin_ids, ("other_id",))

@@ -5,18 +5,21 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision import DecisionCycle, DecisionFrameContext, DecisionSteps, Observation
+from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import read_memory_activation
+from autonomy.decision_cycle.memory.snapshots.values import error_memory_snapshot
 from autonomy.decision_cycle.memory.publication import SNAPSHOT_KEY
-from autonomy.memory import ActivatedMemoryStep, read_memory_activation
-from autonomy.memory.values import error_memory_snapshot
-from implementations.memory import (
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
-    BoundedEvidenceLedger,
     available_memory_implementation_ids,
     memory_implementation_spec,
+    build_memory_activation_payload,
 )
-from implementations.memory.catalog import build_memory_activation_payload
-from implementations.memory.bounded_evidence import (
+from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+    BoundedEvidenceLedger,
     _BoundedEvidenceReducer as BoundedEvidenceReducer,
     reduce_evidence,
 )
@@ -259,7 +262,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            step = ActivatedMemoryStep(read_memory_activation(path))
+            step = PluginMemoryRunner(read_memory_activation(path))
             shared_memory = {}
             observation = _observation(
                 "obs_9",
@@ -362,7 +365,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(by_id["thing:1:8:plugin-b:9:shared_id"].location.zone, "right")
 
     def test_delimiter_containing_plugin_ids_do_not_collide(self) -> None:
-        from implementations.memory.bounded_evidence import namespaced_record_id
+        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+            namespaced_record_id,
+        )
 
         left = namespaced_record_id("thing", "shared", "plugin:a")
         right = namespaced_record_id("thing", "shared", "plugin_a")
@@ -383,7 +388,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(ids, {left, right})
 
     def test_namespace_preserves_absent_vs_literal_unknown_and_whitespace(self) -> None:
-        from implementations.memory.bounded_evidence import namespaced_record_id
+        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+            namespaced_record_id,
+        )
 
         absent = namespaced_record_id("thing", "shared", None)
         literal_unknown = namespaced_record_id("thing", "shared", "unknown")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
 
 
 class MapperContractTests(unittest.TestCase):

@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
+from autonomy.decision_cycle.action_identifiers import (
+    require_ascii_id,
+    require_safe_int,
+)
 
 from .paths import safe_path_part
 from .perception_view import get_perception_view_status

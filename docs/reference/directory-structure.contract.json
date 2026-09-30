@@ -31,36 +31,10 @@
             "responsibility": "Vehicle-agnostic interface for sensor reads, pulses, actions, capabilities, and adapter boundaries."
           },
           {
-            "path": "autonomy/perception/",
-            "category": "core",
-            "commit_policy": "source",
-            "responsibility": "Import paths that forward to autonomy/decision_cycle/perception/. Existing mapper specs and imports still name them.",
-            "children": [
-              {
-                "path": "autonomy/perception/mappers/",
-                "category": "core",
-                "commit_policy": "source",
-                "responsibility": "Compatibility import path for existing mapper specs. Plugin execution lives in autonomy/perception/."
-              }
-            ]
-          },
-          {
-            "path": "autonomy/memory/",
-            "category": "core",
-            "commit_policy": "source",
-            "responsibility": "Import paths that forward to autonomy/decision_cycle/memory/. The host shared map is not owned by the memory step."
-          },
-          {
-            "path": "autonomy/decision/",
-            "category": "core",
-            "commit_policy": "source",
-            "responsibility": "The decision cycle ordering, plus import paths that forward to autonomy/decision_cycle/. Memory activation, protocol, and values live under autonomy/memory/. The cycle input lives under autonomy/decision_cycle/."
-          },
-          {
             "path": "autonomy/decision_cycle/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Decision-cycle contracts and framework execution, grouped by step. perception/ and memory/ hold each step's plugin contract, selection, activation, and execution, with supporting concepts beneath. observation/ holds the current-frame record and default observe step; proposal/ the proposal inputs and candidate values; planning/ plan values and the built-in selector; action_gate/ the fixed hold gate. At the root: the cycle input (context.py), the action composition (action.py), its aggregate result and engine error reasons (result.py, errors.py), and the action identifier grammar (action_identifiers.py). Cycle ordering still lives in autonomy/decision/cycle.py; autonomy/decision/, autonomy/perception/, and autonomy/memory/ otherwise forward to this tree."
+            "responsibility": "Decision-cycle contracts and framework execution, grouped by step. perception/ and memory/ hold each step's plugin contract, selection, activation, and execution, with supporting concepts beneath. observation/ holds the current-frame record and default observe step; proposal/ the proposal inputs and candidate values; planning/ plan values and the built-in selector; action_gate/ the fixed hold gate. At the root: the cycle input (context.py), the action composition (action.py), its aggregate result and engine error reasons (result.py, errors.py), and the action identifier grammar (action_identifiers.py). Cycle ordering lives in cycle.py."
           },
           {
             "path": "autonomy/runtime/",
@@ -162,7 +136,7 @@
                 "path": "implementations/decision_cycle/memory/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Memory plugins that retain evidence, and the memory catalog. Values, protocol, and activation loading live under autonomy/memory/."
+                "responsibility": "Memory plugins that retain evidence, and the memory catalog. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/."
               },
               {
                 "path": "implementations/decision_cycle/proposal/",
@@ -171,24 +145,6 @@
                 "responsibility": "Proposal plugins that propose a command. Engine assembly lives under implementations/runtime/engines/."
               }
             ]
-          },
-          {
-            "path": "implementations/perception/",
-            "category": "compatibility",
-            "commit_policy": "source",
-            "responsibility": "Import paths that forward to implementations/decision_cycle/perception/. Existing specs and manifests still name them."
-          },
-          {
-            "path": "implementations/decision/",
-            "category": "compatibility",
-            "commit_policy": "source",
-            "responsibility": "Import and engine spec paths that forward to implementations/decision_cycle/proposal/ and implementations/runtime/engines/. The shadow_adapter and live_adapter specs are the same module objects as hold_action and mode_gated_action."
-          },
-          {
-            "path": "implementations/memory/",
-            "category": "compatibility",
-            "commit_policy": "source",
-            "responsibility": "Import paths that forward to implementations/decision_cycle/memory/. Existing memory specs still name them."
           },
           {
             "path": "implementations/runtime/",

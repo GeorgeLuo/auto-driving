@@ -13,19 +13,18 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.memory import (
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.activation import (
     MEMORY_ACTIVATION_SCHEMA,
-    PluginMemoryRunner,
     read_memory_activation,
-)
-from autonomy.memory.activation import (
     bounds_from_config,
     memory_manager_from_activation,
     memory_selection_config,
 )
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
 
-from implementations.memory import (
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
     build_memory_activation_payload,

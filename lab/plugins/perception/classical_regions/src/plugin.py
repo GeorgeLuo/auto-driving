@@ -7,15 +7,20 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
-    PerceptionPluginContract,
-    PerceptionPluginInputs,
     PerceptionSignal,
     ViewLocation,
 )
-from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
+from autonomy.decision_cycle.perception.plugin import (
+    PerceptionPluginContract,
+    PerceptionPluginInputs,
+)
+from implementations.decision_cycle.perception.components.camera import (
+    CameraFrame,
+    FRONT_CAMERA_RGB_INPUT,
+)
 
 
 class ClassicalRegionPlugin:

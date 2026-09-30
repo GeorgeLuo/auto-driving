@@ -2,9 +2,9 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
-from autonomy.perception import PerceptionRequest
+from autonomy.decision_cycle.perception.components.context import PerceptionRequest
 from autonomy.vehicle import SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
 from cli.automa_cli.workbench_plugins import (
     PluginCatalog,
     PluginDescriptor,
@@ -114,7 +114,8 @@ def _install_plugin(
 
 def _empty_plugin_source(class_name: str, implementation_id: str) -> str:
     return (
-        "from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract\n"
+        "from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch\n"
+        "from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract\n"
         "\n"
         f"class {class_name}:\n"
         f"    plugin_id = {implementation_id!r}\n"
@@ -127,7 +128,8 @@ def _empty_plugin_source(class_name: str, implementation_id: str) -> str:
 
 def _temporal_source(implementation_id: str) -> str:
     return (
-        "from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract\n"
+        "from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch\n"
+        "from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract\n"
         "\n"
         "class TemporalPlugin:\n"
         f"    plugin_id = {implementation_id!r}\n"
@@ -800,7 +802,8 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.plugin_root,
             "broken",
             "BrokenPlugin",
-            "from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract\n"
+            "from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch\n"
+            "from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract\n"
             "\n"
             "class BrokenPlugin:\n"
             "    plugin_id = 'broken-plugin-v0'\n"
@@ -915,7 +918,8 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.plugin_root,
             "temporal",
             "TemporalPlugin",
-            "from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract\n"
+            "from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch\n"
+            "from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract\n"
             "\n"
             "class TemporalPlugin:\n"
             "    plugin_id = 'temporal-plugin-v0'\n"
@@ -996,8 +1000,8 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             "        if CountingMemory.constructions > 1:\n"
             "            raise RuntimeError('memory constructed twice')\n"
             "        CountingMemory.built = self\n"
-            "        from autonomy.memory.values import empty_memory_snapshot\n"
-            "        from autonomy.memory.activation import bounds_from_config\n"
+            "        from autonomy.decision_cycle.memory.snapshots.values import empty_memory_snapshot\n"
+            "        from autonomy.decision_cycle.memory.activation import bounds_from_config\n"
             "        self.implementation_id = 'counting_memory'\n"
             "        self._bounds = bounds_from_config(config)\n"
             "        self._snapshot = empty_memory_snapshot(\n"

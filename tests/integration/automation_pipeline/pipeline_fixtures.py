@@ -3,7 +3,10 @@ import json
 import time
 from pathlib import Path
 from PIL import Image
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
+from autonomy.decision_cycle.perception.interface import (
+    PERCEPTION_TEXT_SCHEMA,
+    PerceptionText,
+)
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 
 

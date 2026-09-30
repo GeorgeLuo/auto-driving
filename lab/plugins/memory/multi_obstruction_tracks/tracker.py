@@ -7,7 +7,10 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.perception import PerceivedThing, ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceivedThing,
+    ViewLocation,
+)
 from lab.plugins.perception.multi_obstruction_tracks.src.plugin import (
     _bbox, _shape_support, _clamp, _zone,
 )

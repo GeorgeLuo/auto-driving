@@ -4,22 +4,22 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.memory.values import (
+from autonomy.decision_cycle.memory.snapshots.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
     RetainedEvidence,
 )
-from autonomy.decision.observation import Observation
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
-from autonomy.perception import ViewLocation
-from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
-from autonomy.runtime.manager import AutonomyManager, EngineLoadError
-from implementations.decision.shadow_adapter import (
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from implementations.runtime.engines.hold_action import (
     ADAPTER_ENGINE_SPEC,
     ENTRY_ERROR_REASON,
     ShadowProposalsAutonomyEngine,
 )
+from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
+from autonomy.runtime.manager import AutonomyManager, EngineLoadError
 
 
 def _observation() -> Observation:
@@ -108,7 +108,7 @@ class ShadowAdapterTests(unittest.TestCase):
     def test_bare_shadow_engine_is_not_activation_spec(self) -> None:
         with self.assertRaises(EngineLoadError):
             AutonomyManager(
-                default_engine_spec="autonomy.decision.shadow_runner:ShadowProposalsEngine",
+                default_engine_spec="autonomy.decision_cycle.action:ShadowProposalsEngine",
                 default_engine_config={},
             )
 

@@ -542,7 +542,8 @@ generic runner resolves and caches those inputs, then owns missing-input and
 warm-up status, error isolation, timing, source attribution, text rendering,
 and optional diagnostic persistence. The surrounding cycle owns the sensor
 snapshot, so perception output does not duplicate it. Concrete camera decoding
-and every meaning-making algorithm live under `implementations/perception/`;
+and every meaning-making algorithm live under
+`implementations/decision_cycle/perception/`;
 unpromoted candidates live under `lab/plugins/perception/`.
 
 Both current vehicle adapters expose only the generic `front_camera` sensor

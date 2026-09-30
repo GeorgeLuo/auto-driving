@@ -7,11 +7,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from autonomy.perception import build_perception_request
-from autonomy.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
-from implementations.perception.components import (
+from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.perception.components.camera import (
     FRONT_CAMERA_RGB_INPUT,
     camera_component_id,
     provide_camera_frame,

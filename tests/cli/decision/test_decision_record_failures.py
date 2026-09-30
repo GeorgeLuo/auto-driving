@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
+from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
 from cli.automa_cli.decision import apply_vehicle_decision
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.shadow_decision_surfaces_fixtures import (

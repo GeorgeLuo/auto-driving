@@ -4,9 +4,13 @@ import unittest
 from functools import partial
 from urllib.parse import urlencode
 from urllib.request import urlopen
-from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract, PerceptionSignal
-from autonomy.perception.plugin_runner import PluginPerceptionMapper
-from autonomy.memory.values import MemorySnapshot
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceptionEvidenceBatch,
+    PerceptionSignal,
+)
+from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from cli.automa_cli.workbench_runner import _default_memory_step
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (

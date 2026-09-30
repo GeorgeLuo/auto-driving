@@ -7,12 +7,19 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext, DecisionSteps
-from autonomy.perception import ActivatedPerceptionStep, read_perception_activation
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.perception.activation import (
+    ActivatedPerceptionStep,
+    read_perception_activation,
+)
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.perception.catalog import (
+    PERCEPTION_MAPPER_SPEC,
+    PERCEPTION_PLUGIN_SPECS,
+)
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 

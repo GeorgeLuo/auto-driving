@@ -9,7 +9,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli.deploy import _resolve_physical_target
-from implementations.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+from implementations.decision_cycle.perception.catalog import (
+    DEFAULT_PERCEPTION_ALGORITHM,
+)
 from tests.support.cli_runner import run_automa
 
 

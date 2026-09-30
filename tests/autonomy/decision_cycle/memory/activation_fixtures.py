@@ -1,15 +1,15 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from autonomy.memory.values import (
+from autonomy.decision_cycle.memory.snapshots.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
     RetainedEvidence,
     empty_memory_snapshot,
 )
-from autonomy.memory import MEMORY_ACTIVATION_SCHEMA
-from autonomy.perception import ViewLocation
+from autonomy.decision_cycle.memory.activation import MEMORY_ACTIVATION_SCHEMA
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
 class _RecordingMemory:
@@ -160,7 +160,7 @@ class _NonJsonPropertyMemory(_RecordingMemory):
     """Returns a healthy snapshot with a non-JSON property value."""
 
     def update(self, context, observation):
-        from autonomy.memory.values import (
+        from autonomy.decision_cycle.memory.snapshots.values import (
             MemoryProvenance,
             MemorySnapshot,
             RetainedEvidence,
@@ -229,7 +229,10 @@ class _SelfContradictingBoundsMemory(_RecordingMemory):
     """Advertises a tight serialized ceiling but returns an oversized empty snapshot."""
 
     def update(self, context, observation):
-        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
+        from autonomy.decision_cycle.memory.snapshots.values import (
+            MemoryBounds,
+            empty_memory_snapshot,
+        )
 
         del observation
         tight = MemoryBounds(
@@ -256,7 +259,10 @@ class _NormalizationInflatesSizeMemory(_RecordingMemory):
     """Snapshot fits its short eviction_policy but is rejected for policy mismatch."""
 
     def update(self, context, observation):
-        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
+        from autonomy.decision_cycle.memory.snapshots.values import (
+            MemoryBounds,
+            empty_memory_snapshot,
+        )
 
         del observation
         short_bounds = MemoryBounds(
@@ -281,7 +287,10 @@ class _TighterDeclaredSizeMemory(_RecordingMemory):
     """Same policy label; declared size fields are smaller so normalize grows the body."""
 
     def update(self, context, observation):
-        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
+        from autonomy.decision_cycle.memory.snapshots.values import (
+            MemoryBounds,
+            empty_memory_snapshot,
+        )
 
         del observation
         tighter = MemoryBounds(
@@ -311,7 +320,7 @@ class _NearCeilingThenFailMemory(_RecordingMemory):
         self._updates_seen = 0
 
     def update(self, context, observation):
-        from autonomy.memory.values import (
+        from autonomy.decision_cycle.memory.snapshots.values import (
             empty_memory_snapshot,
             serialized_memory_snapshot_bytes,
         )

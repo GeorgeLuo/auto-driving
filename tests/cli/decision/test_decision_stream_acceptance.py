@@ -2,7 +2,8 @@ from __future__ import annotations
 import json
 import unittest
 from copy import deepcopy
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
+from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
     DECISION_ENGINES,
@@ -12,7 +13,6 @@ from cli.automa_cli.decision import (
     strict_decode_apply_memory,
     strict_decode_apply_observation,
 )
-from implementations.decision.catalog import create_shadow_proposals_engine
 from tests.cli.decision.shadow_decision_surfaces_fixtures import (
     ACTIVE_RUN,
     ShadowDecisionSurfaceFixture,
@@ -452,8 +452,10 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         self.assertEqual(_accept_with_cycle(cmd_schema), "latest_frame_invalid")
 
         # Aggregate cycle alignment: valid nested objects that do not form one cycle.
-        from autonomy.decision.action_proposal import ProposedVehicleCommand
-        from implementations.decision.catalog import create_shadow_proposals_engine
+        from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
+        from implementations.runtime.engines.catalog import (
+            create_shadow_proposals_engine,
+        )
 
         engine = create_shadow_proposals_engine()
         cycle2, _ = engine.run_cycle(

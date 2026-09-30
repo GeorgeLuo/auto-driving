@@ -13,15 +13,28 @@ from __future__ import annotations
 from dataclasses import replace
 from uuid import uuid4
 
-from autonomy.decision.cycle import DecisionFrameContext
-from autonomy.decision.observation import Observation
-from autonomy.memory.activation import bounds_from_config
-from autonomy.memory.values import MemorySnapshot, detach_memory_snapshot, empty_memory_snapshot
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.activation import bounds_from_config
+from autonomy.decision_cycle.memory.snapshots.values import (
+    MemorySnapshot,
+    detach_memory_snapshot,
+    empty_memory_snapshot,
+)
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceivedThing,
+    PerceptionSignal,
+)
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.shared_memory import SharedMemory
 
-from autonomy.perception import PerceivedThing, PerceptionSignal, build_perception_request
-from implementations.memory.bounded_evidence import reduce_evidence
-from implementations.perception.components.camera import FRONT_CAMERA_RGB_INPUT, provide_camera_frame
+from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+    reduce_evidence,
+)
+from implementations.decision_cycle.perception.components.camera import (
+    FRONT_CAMERA_RGB_INPUT,
+    provide_camera_frame,
+)
 from lab.plugins.perception.multi_obstruction_tracks.src.plugin import normalize_gray, _mean_confidence
 from .tracker import ObstructionTrackState
 

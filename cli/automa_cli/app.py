@@ -36,11 +36,11 @@ from .memory import (
 )
 from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
-from implementations.memory import (
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
 )
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     available_perception_algorithm_ids,
 )

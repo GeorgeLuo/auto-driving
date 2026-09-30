@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision import (
-    DecisionCycle,
-    DecisionFrameContext,
-    DecisionSteps,
-    MemoryUpdateError,
-    Observation,
+from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.snapshots.values import (
+    MemoryBounds,
+    empty_memory_snapshot,
 )
-from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
+from autonomy.decision_cycle.perception.interface import (
+    PERCEPTION_TEXT_SCHEMA,
+    PerceptionText,
+)
 from autonomy.runtime import AutonomyControl
 
 

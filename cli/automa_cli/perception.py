@@ -10,16 +10,14 @@ from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
-from autonomy.perception import (
-    build_perception_request,
-    instantiate_perception_mapper,
-)
-from autonomy.perception.selection import perception_plugin_manager
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.activation import instantiate_perception_mapper
+from autonomy.decision_cycle.perception.selection import perception_plugin_manager
 from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
     available_perception_algorithm_ids,
@@ -57,7 +55,7 @@ from .vehicles import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "perception"
+PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "decision_cycle" / "perception"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 LAB_CANDIDATE_MAPPER_SPEC = "cli.automa_cli.lab_plugins:LabPerceptionMapper"
 # The staged mapper is an autonomy class, so the bundle supplies autonomy as

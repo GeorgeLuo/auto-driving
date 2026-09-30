@@ -4,24 +4,24 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.memory.values import (
+from autonomy.decision_cycle.memory.snapshots.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
     RetainedEvidence,
     empty_memory_snapshot,
 )
-from autonomy.decision.observation import Observation
-from autonomy.decision.cycle import DecisionSteps
-from autonomy.perception import ViewLocation
-from autonomy.runtime.engine import AutonomySnapshot
-from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.manager import AutonomyManager
-from implementations.decision.live_adapter import (
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from implementations.runtime.engines.mode_gated_action import (
     ADAPTER_ENGINE_SPEC,
     ENGINE_ID,
     ObstacleAvoidanceAutonomyEngine,
 )
+from autonomy.runtime.engine import AutonomySnapshot
+from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.manager import AutonomyManager
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 

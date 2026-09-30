@@ -121,18 +121,16 @@ import importlib
 import sys
 from autonomy.runtime.manager import AutonomyManager
 
-for legacy, owner, class_name in (
-    ("implementations.decision.shadow_adapter", "implementations.runtime.engines.hold_action", "ShadowProposalsAutonomyEngine"),
-    ("implementations.decision.live_adapter", "implementations.runtime.engines.mode_gated_action", "ObstacleAvoidanceAutonomyEngine"),
+for owner, class_name in (
+    ("implementations.runtime.engines.hold_action", "ShadowProposalsAutonomyEngine"),
+    ("implementations.runtime.engines.mode_gated_action", "ObstacleAvoidanceAutonomyEngine"),
 ):
-    assert importlib.import_module(legacy) is importlib.import_module(owner)
-    manager = AutonomyManager(default_engine_spec=f"{legacy}:{class_name}")
+    manager = AutonomyManager(default_engine_spec=f"{owner}:{class_name}")
     before = type(manager.engine)
     manager.reload_engine()
     after = type(manager.engine)
-    assert after is not before, legacy
-    assert after is getattr(sys.modules[owner], class_name), legacy
-    assert sys.modules[legacy] is sys.modules[owner], legacy
+    assert after is not before, owner
+    assert after is getattr(sys.modules[owner], class_name), owner
 """
         completed = subprocess.run(
             [sys.executable, "-c", script],
@@ -161,8 +159,8 @@ for legacy, owner, class_name in (
         self.assertEqual(manifest["tree_sha256"], self.release["tree_sha256"])
 
     def test_staged_perception_shares_one_bundle_copy(self) -> None:
-        host_mapper = importlib.import_module("autonomy.perception.plugin_runner").PluginPerceptionMapper
-        host_contract = importlib.import_module("autonomy.perception.plugin").PerceptionPluginContract
+        host_mapper = importlib.import_module("autonomy.decision_cycle.perception.plugin_runner").PluginPerceptionMapper
+        host_contract = importlib.import_module("autonomy.decision_cycle.perception.plugin").PerceptionPluginContract
         mapper = _load_mapper(
             PERCEPTION_MAPPER_SPEC,
             {
@@ -190,10 +188,10 @@ for legacy, owner, class_name in (
             self.assertIsNot(mapper_module.PluginPerceptionMapper, host_mapper)
 
     def test_staged_memory_keeps_host_autonomy_classes(self) -> None:
-        host_snapshot = importlib.import_module("autonomy.memory.values").MemorySnapshot
-        host_context = importlib.import_module("autonomy.decision.cycle").DecisionFrameContext
+        host_snapshot = importlib.import_module("autonomy.decision_cycle.memory.snapshots.values").MemorySnapshot
+        host_context = importlib.import_module("autonomy.decision_cycle.context").DecisionFrameContext
         host_ledger = importlib.import_module(
-            "implementations.memory.bounded_evidence"
+            "implementations.decision_cycle.memory.bounded_evidence.plugin"
         ).BoundedEvidenceLedger
         payload = build_memory_activation_payload()
         payload["controller_bundle"] = {"root_dir": str(self.bundle_root)}

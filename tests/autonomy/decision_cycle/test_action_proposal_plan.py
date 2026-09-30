@@ -1,18 +1,18 @@
 from __future__ import annotations
 import unittest
-from autonomy.decision.action_plan import select_action_plan
-from autonomy.decision.action_proposal import (
+from autonomy.decision_cycle.planning.selector import select_action_plan
+from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
     SourceRef,
     synthetic_error_proposal,
 )
-from autonomy.memory.values import canonical_json_bytes
-from autonomy.decision.shadow_authority import proposed_equals_authorized
-from autonomy.decision.shadow_ids import ShadowCycleInputError
-from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine
-from implementations.decision.catalog import create_shadow_proposals_engine
-from implementations.decision.config import ObstacleAvoidanceConfig
+from autonomy.serialization import canonical_json_bytes
+from autonomy.decision_cycle.action_gate.hold import proposed_equals_authorized
+from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
+from autonomy.decision_cycle.action import ShadowProposalsConfig, ShadowProposalsEngine
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from implementations.runtime.engines.config import ObstacleAvoidanceConfig
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
@@ -119,7 +119,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             engine.run_cycle(frame_id="😀", frame_index=0, timestamp_ms=1)
 
     def test_prior_frame_proposal_not_selected(self) -> None:
-        from autonomy.decision.decision_data import DecisionDataSource
+        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         stale = _active_proposal(frame_id="frame_001", confidence=0.99)
 
@@ -238,7 +238,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertLessEqual(canonical_json_bytes(prop.to_dict()), 4096)
 
     def test_require_safe_int_rejects_coercion(self) -> None:
-        from autonomy.decision.shadow_ids import require_safe_int
+        from autonomy.decision_cycle.action_identifiers import require_safe_int
 
         for bad in (1.9, "12", True, False):
             with self.assertRaises(ValueError):
@@ -298,7 +298,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(err.to_dict()["metadata"], {})
 
     def test_contribution_plugin_id_must_match_selected(self) -> None:
-        from autonomy.decision.action_plan import ActionPlan, PlanContribution
+        from autonomy.decision_cycle.planning.values import ActionPlan, PlanContribution
 
         a = _active_proposal(plugin_id="aaa")
         with self.assertRaises(ValueError):
@@ -383,7 +383,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
 
     def test_plugin_none_wrong_id_and_exception(self) -> None:
-        from autonomy.decision.decision_data import DecisionDataSource
+        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         def return_none(source: DecisionDataSource) -> ActionProposal:
             return None  # type: ignore[return-value]

@@ -5,11 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision import DecisionFrameContext, DecisionSteps, MemoryUpdateError
-from autonomy.memory import load_memory_step_if_present, read_memory_activation
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.memory.activation import (
+    load_memory_step_if_present,
+    read_memory_activation,
+)
 from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.memory.catalog import build_memory_activation_payload
+from implementations.decision_cycle.memory.catalog import (
+    build_memory_activation_payload,
+)
 
 
 class _PushyEngine:
@@ -46,7 +53,10 @@ class _RecordingMemory:
         max_serialized_bytes: int | None = 262_144,
         **_ignored,
     ) -> None:
-        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
+        from autonomy.decision_cycle.memory.snapshots.values import (
+            MemoryBounds,
+            empty_memory_snapshot,
+        )
 
         self.implementation_id = implementation_id
         self.bounds = MemoryBounds(
@@ -61,7 +71,7 @@ class _RecordingMemory:
         self._snapshot = self.reset()
 
     def update(self, context, observation):
-        from autonomy.memory.values import (
+        from autonomy.decision_cycle.memory.snapshots.values import (
             MemoryProvenance,
             MemorySnapshot,
             RetainedEvidence,
@@ -106,7 +116,9 @@ class _RecordingMemory:
         return self._snapshot
 
     def reset(self, shared_memory=None):
-        from autonomy.memory.values import empty_memory_snapshot
+        from autonomy.decision_cycle.memory.snapshots.values import (
+            empty_memory_snapshot,
+        )
 
         del shared_memory
         self.epoch += 1
@@ -155,7 +167,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             manager = AutonomyManager()
             engine = _PushyEngine()
             manager.engine = engine
-            from autonomy.decision import Observation
+            from autonomy.decision_cycle.observation.values import Observation
 
             host = AutonomyCycleHost(
                 manager=manager,
@@ -195,7 +207,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
                 manager=manager,
                 steps=DecisionSteps(remember=step),
             )
-            from autonomy.decision import Observation
+            from autonomy.decision_cycle.observation.values import Observation
 
             result = host.run(
                 DecisionFrameContext(
@@ -216,7 +228,6 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             self.assertIn(status["memory"]["last_health"], {"empty", "healthy"})
             self.assertIsNotNone(status["last_cycle"])
 
-            from autonomy.decision import Observation
 
             step.update(
                 DecisionFrameContext("frame_2", 2, 200),
@@ -258,7 +269,7 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             step = load_memory_step_if_present(_write_activation(Path(tmp)))
             self.assertIsNotNone(step)
             host = AutonomyCycleHost(steps=DecisionSteps(remember=step))
-            from autonomy.decision import Observation
+            from autonomy.decision_cycle.observation.values import Observation
 
             step.update(
                 DecisionFrameContext("frame_fill", 1, 100),
@@ -291,8 +302,11 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
 
     def test_host_shares_context_and_delivers_memory_updated_observation(self) -> None:
         from dataclasses import replace
-        from autonomy.decision import Observation
-        from autonomy.memory.values import MemoryBounds, empty_memory_snapshot
+        from autonomy.decision_cycle.observation.values import Observation
+        from autonomy.decision_cycle.memory.snapshots.values import (
+            MemoryBounds,
+            empty_memory_snapshot,
+        )
         seen = []
 
         def observe(context, perception):

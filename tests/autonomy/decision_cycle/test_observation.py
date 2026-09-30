@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 import unittest
 
-from autonomy.decision import OBSERVATION_SCHEMA, observation_from_perception
-from autonomy.perception import (
+from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
+from autonomy.decision_cycle.observation.step import observation_from_perception
+from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
+    PerceptionText,
+)
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionSignal,
-    PerceptionText,
     ViewLocation,
 )
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot

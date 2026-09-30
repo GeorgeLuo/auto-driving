@@ -9,7 +9,7 @@ import numpy as np
 from autonomy.runtime.manager import AutonomyManager
 from cli.automa_cli.decision import DECISION_ENGINES, ENGINE_ID
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
+from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
 from implementations.runtime.donkeycar import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
@@ -79,14 +79,16 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
     def test_publication_includes_memory_snapshot_when_step_present(self) -> None:
-        from autonomy.decision import DecisionFrameContext, DecisionSteps, Observation
-        from autonomy.memory.values import (
+        from autonomy.decision_cycle.context import DecisionFrameContext
+        from autonomy.decision_cycle.cycle import DecisionSteps
+        from autonomy.decision_cycle.observation.values import Observation
+        from autonomy.decision_cycle.memory.snapshots.values import (
             MemoryBounds,
             MemoryProvenance,
             MemorySnapshot,
             RetainedEvidence,
         )
-        from autonomy.perception import ViewLocation
+        from autonomy.decision_cycle.perception.evidence.values import ViewLocation
         from autonomy.runtime.cycle_host import AutonomyCycleHost
 
         def remember(context, observation):

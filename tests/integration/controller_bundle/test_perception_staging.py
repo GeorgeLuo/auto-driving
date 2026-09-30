@@ -6,11 +6,14 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.perception import build_perception_request
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.perception.catalog import (
+    PERCEPTION_MAPPER_SPEC,
+    PERCEPTION_PLUGIN_SPECS,
+)
 
 
 class PerceptionStagingTests(unittest.TestCase):

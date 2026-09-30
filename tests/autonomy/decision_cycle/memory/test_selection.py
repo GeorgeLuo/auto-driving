@@ -5,10 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.memory import ActivatedMemoryStep, read_memory_activation
-from autonomy.memory.activation import memory_manager_from_activation, memory_selection_config
-from autonomy.memory.selection import memory_plugin_manager
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import (
+    read_memory_activation,
+    memory_manager_from_activation,
+    memory_selection_config,
+)
+from autonomy.decision_cycle.memory.selection import memory_plugin_manager
 from tests.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory, _valid_payload, _write_payload
 
 
@@ -73,7 +78,7 @@ class MemorySelectionTests(unittest.TestCase):
             self.assertEqual(activation.implementation_spec, SPEC)
             activation.payload["memory"]["plugin_specs"]["second"] = "not.installed:Missing"
             self.assertEqual(memory_selection_config(activation)["plugin_specs"]["second"], SPEC)
-            step = ActivatedMemoryStep(activation)
+            step = PluginMemoryRunner(activation)
             self.assertEqual(step.reset({}).implementation_id, "second")
             self.assertEqual(memory_manager_from_activation(activation).available_ids, ("first", "second"))
 
@@ -87,7 +92,7 @@ class MemorySelectionTests(unittest.TestCase):
                 },
             }
             path.write_text(json.dumps(plugin_only), encoding="utf-8")
-            step = ActivatedMemoryStep(read_memory_activation(path))
+            step = PluginMemoryRunner(read_memory_activation(path))
             self.assertEqual(step.reset({}).implementation_id, "second")
 
     def test_plugin_only_activation_supports_an_empty_selection(self):
@@ -98,14 +103,14 @@ class MemorySelectionTests(unittest.TestCase):
                 "memory": {"plugins": [], "plugin_specs": {"first": SPEC}},
             }), encoding="utf-8")
             activation = read_memory_activation(path)
-            step = ActivatedMemoryStep(activation)
+            step = PluginMemoryRunner(activation)
             self.assertEqual(step.plugin_ids, ())
             self.assertEqual(step.status()["available_plugins"], ["first"])
             self.assertIsNone(step.snapshot())
 
     def test_status_reports_unselected_catalog_plugins_and_can_enable_them(self):
         manager = _manager()
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         self.assertEqual(step.plugins, ())
         manager.add("second")
@@ -120,7 +125,7 @@ class MemorySelectionTests(unittest.TestCase):
     def test_manager_selection_runs_in_order_and_last_output_reaches_decision(self):
         manager = _manager()
         manager.select(["first", "second"])
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         shared = {}
         snapshot = step.update(
             DecisionFrameContext("frame-1", 1, 100, shared_memory=shared),
@@ -135,7 +140,7 @@ class MemorySelectionTests(unittest.TestCase):
     def test_reset_without_a_map_publishes_to_the_last_map(self):
         manager = _manager()
         manager.select(["first"])
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         shared = {}
         step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory=shared), Observation("obs-1", 90, {}))
         reset = step.reset()
@@ -145,7 +150,7 @@ class MemorySelectionTests(unittest.TestCase):
     def test_selection_changes_reuse_retained_plugins_and_reset_removed_plugins(self):
         manager = _manager()
         manager.select(["first", "second"])
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         first, second = step.plugins
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
         step.update(context, None)
@@ -166,7 +171,7 @@ class MemorySelectionTests(unittest.TestCase):
 
     def test_empty_selection_can_be_enabled_then_disabled_between_cycles(self):
         manager = _manager()
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         shared = {}
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
         self.assertIsNone(step.update(context, None))
@@ -180,7 +185,7 @@ class MemorySelectionTests(unittest.TestCase):
     def test_selection_id_stays_distinct_from_implementation_id(self):
         manager = memory_plugin_manager({"ledger": SPEC}, {"ledger": {}})
         manager.select(["ledger"])
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         self.assertEqual(step.plugin_ids, ("ledger",))
         self.assertEqual(step.plugins[0].implementation.implementation_id, "recording_test")
         plugin_status = step.status()["plugins"][0]
@@ -192,14 +197,14 @@ class MemorySelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             activation = read_memory_activation(_write_payload(tmp, payload))
-            self.assertEqual(ActivatedMemoryStep(activation).plugin_ids, ("recording_test",))
+            self.assertEqual(PluginMemoryRunner(activation).plugin_ids, ("recording_test",))
             payload["memory"].update({
                 "plugins": ["first", "second"],
                 "plugin_specs": {"first": SPEC, "second": SPEC},
                 "plugin_configs": {name: {"implementation_id": name} for name in ("first", "second")},
             })
             activation = read_memory_activation(_write_payload(tmp, payload))
-            step = ActivatedMemoryStep(activation)
+            step = PluginMemoryRunner(activation)
             self.assertEqual(step.plugin_ids, ("first", "second"))
             self.assertEqual(step.reset({}).implementation_id, "second")
             self.assertEqual([item["reset_count"] for item in step.status()["plugins"]], [1, 1])
@@ -214,7 +219,7 @@ class MemorySelectionTests(unittest.TestCase):
             },
         )
         manager.select(["first"])
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         original = step.plugins[0]
         manager.select(["second"])
 
@@ -238,7 +243,7 @@ class MemorySelectionTests(unittest.TestCase):
             },
         )
         manager.select(["second", "first"])
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
 
         with self.assertRaisesRegex(RuntimeError, "forced-update-failure"):
             step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
@@ -309,7 +314,7 @@ class MemorySelectionTests(unittest.TestCase):
             {"first": {"implementation_id": "first-impl"}},
         )
         manager.select(["first"])
-        step = ActivatedMemoryStep(plugin_manager=manager)
+        step = PluginMemoryRunner(plugin_manager=manager)
         manager.select(["second", "first"])
 
         pending = step.plugin_report()

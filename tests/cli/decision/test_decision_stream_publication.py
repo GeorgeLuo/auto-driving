@@ -6,8 +6,10 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from autonomy.decision.observation import Observation
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from implementations.runtime.engines.hold_action import ShadowProposalsAutonomyEngine
 from cli.automa_cli.automation import _record_decision_publish_skip
 from cli.automa_cli.decision import (
     ENGINE_ID,
@@ -22,8 +24,6 @@ from cli.automa_cli.decision import (
     update_vehicle_decision,
     write_latest_decision_frame,
 )
-from implementations.decision.catalog import create_shadow_proposals_engine
-from implementations.decision.shadow_adapter import ShadowProposalsAutonomyEngine
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.shadow_decision_surfaces_fixtures import (
     ACTIVE_RUN,

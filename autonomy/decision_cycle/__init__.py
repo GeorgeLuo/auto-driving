@@ -10,6 +10,5 @@ and plans. ``planning`` holds plan values and the built-in selector, and
 ``action_gate.hold`` the fixed idle gate. ``result`` is the aggregate action
 result and ``errors`` its engine error reasons. ``action`` composes proposal,
 planning, and the hold gate for one cycle.
-``cycle`` orders perceive, observe, remember, and choose_action; its legacy path is
-``autonomy.decision.cycle``.
+``cycle`` orders perceive, observe, remember, and choose_action.
 """

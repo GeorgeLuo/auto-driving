@@ -1,14 +1,14 @@
 from __future__ import annotations
 import unittest
-from autonomy.decision.action_proposal import (
+from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
     SourceRef,
 )
-from autonomy.memory.values import canonical_json_bytes
-from autonomy.decision.shadow_ids import ShadowCycleInputError
-from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine
-from implementations.decision.catalog import create_shadow_proposals_engine
+from autonomy.serialization import canonical_json_bytes
+from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
+from autonomy.decision_cycle.action import ShadowProposalsConfig, ShadowProposalsEngine
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
@@ -16,8 +16,11 @@ from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
 
 class RunnerBoundaryTests(unittest.TestCase):
     def test_plan_and_source_empty_metadata_is_object(self) -> None:
-        from autonomy.decision.action_plan import ActionPlan
-        from autonomy.decision.decision_data import build_decision_data_source
+        from autonomy.decision_cycle.planning.values import ActionPlan
+        from autonomy.decision_cycle.proposal.inputs import (
+            build_decision_data_source,
+            ready_envelope,
+        )
 
         plan = ActionPlan(
             frame_id="frame_001",
@@ -33,7 +36,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(source.to_dict()["metadata"], {})
         # Nested empty object in ready envelope value.
-        from autonomy.decision.decision_data import ready_envelope
 
         env = ready_envelope({"empty": {}, "arr": []}, updated_at_ms=1)
         self.assertEqual(env.to_dict()["value"], {"empty": {}, "arr": []})
@@ -60,7 +62,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
 
     def test_non_string_json_keys_rejected(self) -> None:
-        from autonomy.decision.shadow_ids import deep_freeze
+        from autonomy.serialization import deep_freeze
 
         for bad in ({1: "value"}, {True: "x"}, {None: "y"}, {"ok": {2: "nested"}}):
             with self.subTest(bad=bad):
@@ -80,8 +82,8 @@ class RunnerBoundaryTests(unittest.TestCase):
                     )
 
     def test_plugin_cannot_admit_oversize_via_metadata_mutation(self) -> None:
-        from autonomy.decision.decision_data import DecisionDataSource
-        from autonomy.decision.shadow_ids import FrozenJsonObject
+        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+        from autonomy.serialization import FrozenJsonObject
 
         def corrupt(source: DecisionDataSource) -> ActionProposal:
             proposal = ActionProposal(
@@ -143,7 +145,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(control.steering, 0.0)
 
     def test_corrupted_lifecycle_matrix_is_engine_error(self) -> None:
-        from autonomy.decision.decision_data import DecisionDataSource
+        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         def corrupt_matrix(source: DecisionDataSource) -> ActionProposal:
             proposal = ActionProposal(
@@ -223,7 +225,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
 
     def test_runner_rejects_non_bool_available_after_construction(self) -> None:
-        from autonomy.decision.decision_data import DecisionDataSource
+        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         def bad_available(source: DecisionDataSource) -> ActionProposal:
             proposal = _active_proposal(frame_id=source.frame_id)
@@ -257,8 +259,8 @@ class RunnerBoundaryTests(unittest.TestCase):
                 available=False,
                 metadata=[["x", 1]],  # type: ignore[arg-type]
             )
-        from autonomy.decision.action_plan import ActionPlan
-        from autonomy.decision.decision_data import build_decision_data_source
+        from autonomy.decision_cycle.planning.values import ActionPlan
+        from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 
         with self.assertRaises(TypeError):
             ActionPlan(
@@ -365,7 +367,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
 
     def test_authority_proposed_is_detached_from_selected_command(self) -> None:
-        from autonomy.decision.decision_data import DecisionDataSource
+        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         def active(source: DecisionDataSource) -> ActionProposal:
             return _active_proposal(frame_id=source.frame_id, steering=0.35)

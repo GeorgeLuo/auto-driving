@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.perception import read_perception_activation
+from autonomy.decision_cycle.perception.activation import read_perception_activation
 
 
 def _valid_payload() -> dict:
@@ -13,7 +13,7 @@ def _valid_payload() -> dict:
         "schema": "automa_perception_activation_v0",
         "perception": {
             "algorithm": "current",
-            "mapper_spec": "autonomy.perception.mappers.plugin_runner:PluginRunnerPerceptionMapper",
+            "mapper_spec": "autonomy.decision_cycle.perception.plugin_runner:PluginRunnerPerceptionMapper",
             "mapper_config": {
                 "plugins": ["frame", "floor_plane"],
                 "plugin_specs": {"frame": "implementations.perception.plugins:FramePlugin"},
@@ -39,7 +39,7 @@ class PerceptionActivationTests(unittest.TestCase):
         self.assertEqual(activation.algorithm, "current")
         self.assertEqual(
             activation.mapper_spec,
-            "autonomy.perception.mappers.plugin_runner:PluginRunnerPerceptionMapper",
+            "autonomy.decision_cycle.perception.plugin_runner:PluginRunnerPerceptionMapper",
         )
         self.assertEqual(activation.mapper_config["plugins"], ["frame", "floor_plane"])
 

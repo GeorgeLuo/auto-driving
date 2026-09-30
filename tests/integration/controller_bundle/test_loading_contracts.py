@@ -260,6 +260,35 @@ class LoadingContractTests(unittest.TestCase):
                     mismatches.append(f"{module_name}: {type(exc).__name__}: {exc}")
         self.assertEqual(mismatches, [], "legacy path does not resolve to its canonical owner")
 
+    def test_engine_spec_modules_reload_their_owner(self) -> None:
+        # Runs in a fresh process because reloading replaces the engine classes.
+        script = """
+import importlib
+import sys
+from autonomy.runtime.manager import AutonomyManager
+
+for legacy, owner, class_name in (
+    ("implementations.decision.shadow_adapter", "implementations.runtime.engines.hold_action", "ShadowProposalsAutonomyEngine"),
+    ("implementations.decision.live_adapter", "implementations.runtime.engines.mode_gated_action", "ObstacleAvoidanceAutonomyEngine"),
+):
+    assert importlib.import_module(legacy) is importlib.import_module(owner)
+    manager = AutonomyManager(default_engine_spec=f"{legacy}:{class_name}")
+    before = type(manager.engine)
+    manager.reload_engine()
+    after = type(manager.engine)
+    assert after is not before, legacy
+    assert after is getattr(sys.modules[owner], class_name), legacy
+    assert sys.modules[legacy] is sys.modules[owner], legacy
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
     def test_changes_outside_the_baseline_are_visible(self) -> None:
         # Absence of a recorded path from the tree is not a failure. A new spec,
         # export, lab import, or manifest field that the inventory does not

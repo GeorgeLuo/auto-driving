@@ -18,8 +18,8 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("autonomy.perception.plugin_runner:PluginPerceptionMapper", "autonomy.perception.plugin_runner", "PluginPerceptionMapper"),
     ("autonomy.runtime.engine:IdleAutonomyEngine", "autonomy.runtime.engine", "IdleAutonomyEngine"),
     ("cli.automa_cli.lab_plugins:LabPerceptionMapper", "cli.automa_cli.lab_plugins", "LabPerceptionMapper"),
-    ("implementations.decision.live_adapter:ObstacleAvoidanceAutonomyEngine", "implementations.decision.live_adapter", "ObstacleAvoidanceAutonomyEngine"),
-    ("implementations.decision.shadow_adapter:ShadowProposalsAutonomyEngine", "implementations.decision.shadow_adapter", "ShadowProposalsAutonomyEngine"),
+    ("implementations.decision.live_adapter:ObstacleAvoidanceAutonomyEngine", "implementations.runtime.engines.mode_gated_action", "ObstacleAvoidanceAutonomyEngine"),
+    ("implementations.decision.shadow_adapter:ShadowProposalsAutonomyEngine", "implementations.runtime.engines.hold_action", "ShadowProposalsAutonomyEngine"),
     ("implementations.memory.bounded_evidence:BoundedEvidenceLedger", "implementations.decision_cycle.memory.bounded_evidence.plugin", "BoundedEvidenceLedger"),
     ("implementations.perception.components.camera:provide_camera_frame", "implementations.decision_cycle.perception.components.camera", "provide_camera_frame"),
     ("implementations.perception.motion.tracks:MotionTracksPlugin", "implementations.decision_cycle.perception.motion_tracks.plugin", "MotionTracksPlugin"),
@@ -44,6 +44,10 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
 # (legacy module, canonical module). Both stay importable. They are not
 # required to be the same module object once a forwarding shim exists.
 LEGACY_MODULES: tuple[tuple[str, str], ...] = (
+    # Engine spec modules are the same module object as their owner, so a
+    # manager reload through the legacy spec reloads the engine code.
+    ("implementations.decision.live_adapter", "implementations.runtime.engines.mode_gated_action"),
+    ("implementations.decision.shadow_adapter", "implementations.runtime.engines.hold_action"),
     ("lab.plugins.perception.worker", "lab.plugins.perception.worker"),
 )
 

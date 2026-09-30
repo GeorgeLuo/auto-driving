@@ -182,7 +182,7 @@
             "path": "implementations/decision/",
             "category": "compatibility",
             "commit_policy": "source",
-            "responsibility": "Import paths that forward to implementations/decision_cycle/proposal/ and implementations/runtime/engines/. The hold and mode-gated adapters still live here."
+            "responsibility": "Import and engine spec paths that forward to implementations/decision_cycle/proposal/ and implementations/runtime/engines/. The shadow_adapter and live_adapter specs are the same module objects as hold_action and mode_gated_action."
           },
           {
             "path": "implementations/memory/",
@@ -206,7 +206,7 @@
                 "path": "implementations/runtime/engines/",
                 "category": "runtime-implementation",
                 "commit_policy": "source",
-                "responsibility": "Loadable automation engines, their catalog, configuration, and offline inspection. They assemble proposal plugins into the action composition."
+                "responsibility": "Loadable automation engines, their catalog, configuration, and offline inspection. hold_action runs the action composition and always returns idle control; mode_gated_action applies the selected proposal only in permitted drive modes."
               }
             ]
           },

@@ -58,37 +58,16 @@ from .shadow_authority import (
     ShadowDecisionCycleResult,
 )
 from .shadow_runner import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
-
-
-_MEMORY_ACTIVATION_EXPORTS = (
-    "MEMORY_ACTIVATION_SCHEMA",
-    "ActivatedMemoryStep",
-    "MemoryActivation",
-    "instantiate_memory_implementation",
-    "load_memory_implementation",
-    "load_memory_step_if_present",
-    "read_memory_activation",
+from autonomy.memory.activation import (
+    MEMORY_ACTIVATION_SCHEMA,
+    ActivatedMemoryStep,
+    MemoryActivation,
+    instantiate_memory_implementation,
+    load_memory_implementation,
+    load_memory_step_if_present,
+    read_memory_activation,
 )
-
-
-def __getattr__(name: str):
-    """Load memory activation and protocol on first use.
-
-    The protocol imports this package, so it cannot be imported while the
-    package itself is still starting.
-    """
-    if name == "MemoryImplementation":
-        from autonomy.memory.plugin import MemoryImplementation
-
-        globals()[name] = MemoryImplementation
-        return MemoryImplementation
-    if name not in _MEMORY_ACTIVATION_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from autonomy.memory import activation
-
-    value = getattr(activation, name)
-    globals()[name] = value
-    return value
+from autonomy.memory.plugin import MemoryImplementation
 
 __all__ = [
     "DECISION_CYCLE_RESULT_SCHEMA",

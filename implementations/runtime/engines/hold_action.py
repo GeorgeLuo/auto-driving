@@ -1,63 +1,33 @@
 """Hold action engine.
 
-``ShadowProposalsAutonomyEngine`` runs the action composition from
-``create_shadow_proposals_engine`` for each host step and always returns the
-hold gate's idle control. The proposed command is recorded only on the cycle
-result; this engine never applies it. ``HoldActionAutonomyEngine`` names the
-same class.
-
-``ADAPTER_ENGINE_SPEC`` keeps the spec string existing activations use.
+``HoldActionEngine`` runs the packaged proposals through the hold gate for
+each cycle: proposals may be nonzero while the authorized control stays idle.
+The cycle result records the selected command and ``proposed_applied=false``.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope, omit_forbidden_channel_keys
-from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
-from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.action_gate.hold import (
-    AUTHORIZED_IDLE_REASON,
-    authorized_idle_control,
-)
-from autonomy.decision_cycle.action_identifiers import ShadowCycleInputError
-from autonomy.decision_cycle.action import ENGINE_ID
-from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
-from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from autonomy.decision_cycle.action_gate.hold import GATE_ID, HOLD_IDLE_REASON, HoldGate
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.result import ActionResult
+from implementations.runtime.engines.catalog import create_action_composition
 
-ADAPTER_ENGINE_SPEC = (
-    "implementations.runtime.engines.hold_action:ShadowProposalsAutonomyEngine"
-)
-ENTRY_ERROR_REASON = "shadow-adapter-entry-error"
-STEP_ERROR_REASON = "shadow-adapter-step-error"
+ENGINE_ID = "hold-action"
+ADAPTER_ENGINE_SPEC = "implementations.runtime.engines.hold_action:HoldActionEngine"
 
 
-class ShadowProposalsAutonomyEngine:
-    """AutonomyManager engine that runs the action composition and holds idle."""
+class HoldActionEngine:
+    """AutonomyManager engine that proposes and plans, then holds idle."""
 
     def __init__(self, **engine_config: Any) -> None:
         # The catalog owns the proposal document. Missing keys use its named
         # defaults; unknown keys and invalid values fail closed.
-        self._engine = create_shadow_proposals_engine(engine_config or None)
-        self.last_cycle_result = None
-        self.last_cycle_error_reason: str | None = None
+        self.composition = create_action_composition(engine_config or None, gate=HoldGate())
 
     def reset(self) -> None:
-        self.last_cycle_result = None
-        self.last_cycle_error_reason = "reset"
-
-    def get_current_cycle_result(self) -> Any | None:
-        """Return the most recent successful typed shadow result, if any.
-
-        This is an optional read-only capability for a runtime publisher.  The
-        adapter deliberately keeps the capability narrower than the generic
-        ``AutonomyEngine`` protocol: callers may inspect the result produced by
-        the latest step, but they cannot use it to authorize the inner control.
-        ``step`` clears the value before every entry and failed/reset paths leave
-        it empty, so a publisher cannot accidentally replay an older result.
-        """
-
-        return self.last_cycle_result
+        return None
 
     def describe_schema(self) -> dict[str, Any]:
         return {
@@ -65,167 +35,26 @@ class ShadowProposalsAutonomyEngine:
             "engine_id": ENGINE_ID,
             "engine_spec": ADAPTER_ENGINE_SPEC,
             "purpose": (
-                "Shadow-only decision engine: proposals may be nonzero while "
-                f"authorized AutonomyControl remains idle ({AUTHORIZED_IDLE_REASON})."
+                "Proposals may be nonzero while the authorized AutonomyControl "
+                f"remains idle ({HOLD_IDLE_REASON})."
             ),
-            "inputs": [
-                "sensor_snapshot",
-                "perception",
-                "observation",
-                "memory",
-                "cycle",
-                "mode",
-                "user_steering",
-                "user_throttle",
-            ],
+            "inputs": ["context", "perception", "observation", "memory"],
             "output": {
-                "type": "AutonomyControl",
+                "type": "ActionResult",
                 "movement": "always idle",
+                "gate": GATE_ID,
             },
             "steps": {
-                "action": "shadow_proposals_run_cycle",
+                "action": "propose_plan_hold",
                 "memory": "inspectable_snapshot",
             },
         }
 
-    def step(self, snapshot: AutonomySnapshot) -> AutonomyControl:
-        # Always clear before entry so a failed step never republishes a prior cycle.
-        self.last_cycle_result = None
-        self.last_cycle_error_reason = None
-        try:
-            kwargs = self._map_snapshot(snapshot)
-        except (TypeError, ValueError, ShadowCycleInputError) as exc:
-            self.last_cycle_error_reason = "failed_step"
-            return AutonomyControl(
-                steering=0.0,
-                throttle=0.0,
-                confidence=1.0,
-                reason=ENTRY_ERROR_REASON,
-                metadata={
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "engine_id": ENGINE_ID,
-                },
-            )
-        except Exception as exc:  # noqa: BLE001 - fail closed at adapter boundary
-            self.last_cycle_error_reason = "failed_step"
-            return AutonomyControl(
-                steering=0.0,
-                throttle=0.0,
-                confidence=1.0,
-                reason=ENTRY_ERROR_REASON,
-                metadata={
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "engine_id": ENGINE_ID,
-                },
-            )
-
-        try:
-            cycle_result, control = self._engine.run_cycle(**kwargs)
-        except ShadowCycleInputError as exc:
-            self.last_cycle_error_reason = "failed_step"
-            return AutonomyControl(
-                steering=0.0,
-                throttle=0.0,
-                confidence=1.0,
-                reason=ENTRY_ERROR_REASON,
-                metadata={
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "engine_id": ENGINE_ID,
-                },
-            )
-        except Exception as exc:  # noqa: BLE001 - unexpected after entry
-            self.last_cycle_error_reason = "failed_step"
-            return AutonomyControl(
-                steering=0.0,
-                throttle=0.0,
-                confidence=1.0,
-                reason=STEP_ERROR_REASON,
-                metadata={
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "engine_id": ENGINE_ID,
-                },
-            )
-
-        # An engine-error result is diagnostic state, not a current decision
-        # publication.  Keep the optional capability fail closed while still
-        # returning the shadow-only idle control to the host.
-        if getattr(cycle_result, "status", "ok") != "ok":
-            self.last_cycle_result = None
-            self.last_cycle_error_reason = "failed_step"
-            del control
-            return authorized_idle_control()
-
-        self.last_cycle_result = cycle_result
-        # Always authorized idle at the adapter boundary. Discard any inner control
-        # (including a non-idle fake/faulty runner return). Proposed intent lives
-        # only on last_cycle_result.
-        del control
-        return authorized_idle_control()
-
-    def _map_snapshot(self, snapshot: AutonomySnapshot) -> dict[str, Any]:
-        if not isinstance(snapshot, AutonomySnapshot):
-            raise TypeError(
-                f"snapshot must be AutonomySnapshot; got {type(snapshot).__name__}"
-            )
-        cycle = snapshot.cycle if isinstance(snapshot.cycle, dict) else {}
-        if "frame_id" not in cycle:
-            raise ValueError("snapshot.cycle.frame_id is required")
-        frame_id = cycle["frame_id"]
-        if "frame_index" not in cycle:
-            raise ValueError("snapshot.cycle.frame_index is required")
-        frame_index = cycle["frame_index"]
-        if type(frame_index) is not int:
-            raise ValueError("snapshot.cycle.frame_index must be a non-bool int")
-        timestamp_ms = snapshot.timestamp_ms
-        if type(timestamp_ms) is not int:
-            raise ValueError("snapshot.timestamp_ms must be a non-bool int")
-
-        observation: Observation | dict[str, Any] | None
-        if snapshot.observation is None:
-            observation = None
-        elif isinstance(snapshot.observation, Observation):
-            observation = Observation.from_dict(
-                omit_forbidden_channel_keys(snapshot.observation.to_dict())
-            )
-        elif isinstance(snapshot.observation, dict):
-            observation = omit_forbidden_channel_keys(snapshot.observation)
-        else:
-            observation = None
-
-        metadata = snapshot.metadata if isinstance(snapshot.metadata, dict) else {}
-        observation_error = metadata.get("observation_error")
-        if type(observation_error) is not str:
-            observation_error = None
-
-        # Retained evidence from shared_memory["decision.snapshot"].
-        memory = snapshot.memory if isinstance(snapshot.memory, MemorySnapshot) else None
-
-        host_application = metadata.get("host_application")
-        if not isinstance(host_application, ComponentEnvelope):
-            host_application = None
-
-        prior = metadata.get("prior_host_applied_command")
-        if not isinstance(prior, ComponentEnvelope):
-            prior = None
-
-        capabilities = metadata.get("capabilities")
-        if not isinstance(capabilities, ComponentEnvelope):
-            capabilities = None
-
-        drive_mode_gate = snapshot.mode if isinstance(snapshot.mode, str) else "unknown"
-
-        return {
-            "frame_id": frame_id,
-            "frame_index": frame_index,
-            "timestamp_ms": timestamp_ms,
-            "observation": observation,
-            "observation_error": observation_error,
-            "memory": memory,
-            "host_application": host_application,
-            "prior_host_applied_command": prior,
-            "drive_mode_gate": drive_mode_gate,
-            "capabilities": capabilities,
-        }
-
-
-HoldActionAutonomyEngine = ShadowProposalsAutonomyEngine
+    def act(
+        self,
+        context: DecisionFrameContext,
+        perception: Any,
+        observation: Any,
+        memory: Any,
+    ) -> ActionResult:
+        return self.composition.act(context, perception, observation, memory)

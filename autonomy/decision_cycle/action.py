@@ -1,10 +1,11 @@
 """Action composition for one cycle.
 
-``ShadowProposalsEngine`` builds the proposal input, invokes the configured
-proposal plugins, admits their candidates, selects a plan, and records the
-hold gate result. ``HoldActionPipeline`` names the same class. The proposal
-protocol, configuration, admission, and invocation stay in this module until
-the proposal step has its own plugin files.
+``ActionComposition`` builds the proposal input, invokes the configured
+proposal plugins, admits their candidates, selects a plan, and asks its gate
+for the control to apply. The gate's authority record states whether that
+control is the selected command. The proposal protocol, configuration,
+admission, and invocation stay in this module until the proposal step has its
+own plugin files.
 """
 
 from __future__ import annotations
@@ -25,23 +26,23 @@ from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
     build_decision_data_source,
     default_capabilities,
+    omit_forbidden_channel_keys,
     ready_envelope,
 )
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.action_gate.hold import authorized_idle_control, build_authority
-from autonomy.decision_cycle.result import ShadowDecisionCycleResult
+from autonomy.decision_cycle.action_gate.hold import HoldGate
+from autonomy.decision_cycle.action_gate.values import ActionGate, build_authority
+from autonomy.decision_cycle.result import ActionResult
 from autonomy.decision_cycle.action_identifiers import (
+    ActionInputError,
     ActionProposalMatrixError,
-    ShadowCycleInputError,
     proposal_id_for,
     require_ascii_id,
     require_safe_int,
 )
-from autonomy.runtime.engine import AutonomyControl
-
-ENGINE_ID = "shadow-proposals"
 
 
 class ProposalPlugin(Protocol):
@@ -49,7 +50,7 @@ class ProposalPlugin(Protocol):
 
 
 @dataclass(frozen=True)
-class ShadowProposalsConfig:
+class ProposalConfig:
     """Activation config. Catalog membership is owned by the engine factory / plugins map."""
 
     enabled_plugins: tuple[str, ...]
@@ -126,12 +127,15 @@ def _admit_candidate(
     return validated
 
 
-@dataclass
-class ShadowProposalsEngine:
-    """Minimal shadow-proposals engine: proposals may be nonzero; applied is idle."""
 
-    config: ShadowProposalsConfig
+
+@dataclass
+class ActionComposition:
+    """Propose, plan, and gate one cycle's action."""
+
+    config: ProposalConfig
     plugins: dict[str, Callable[[DecisionDataSource], ActionProposal]]
+    gate: ActionGate = field(default_factory=HoldGate)
     # Activation document supplied by the implementation. The runner does not read it.
     reported_config: dict[str, Any] = field(default_factory=dict)
 
@@ -147,14 +151,58 @@ class ShadowProposalsEngine:
     def create(
         cls,
         *,
-        config: ShadowProposalsConfig,
+        config: ProposalConfig,
         plugins: dict[str, Callable[[DecisionDataSource], ActionProposal]],
-    ) -> "ShadowProposalsEngine":
-        """Build an engine with caller-provided plugins (implementations own wiring)."""
+        gate: ActionGate | None = None,
+    ) -> "ActionComposition":
+        """Build a composition with caller-provided plugins (implementations own wiring)."""
 
-        return cls(config=config, plugins=plugins)
+        return cls(config=config, plugins=plugins, gate=gate or HoldGate())
 
-    def run_cycle(
+    def act(
+        self,
+        context: DecisionFrameContext,
+        perception: Any,
+        observation: Observation | dict[str, Any] | None,
+        memory: MemorySnapshot | None,
+    ) -> ActionResult:
+        """Run the composition as the cycle's action step.
+
+        ``context.metadata`` may carry ``observation_error`` and host-reported
+        envelopes (``host_application``, ``prior_host_applied_command``,
+        ``capabilities``). ``context.mode`` is the drive mode given to the gate.
+        """
+
+        if isinstance(observation, Observation):
+            observation = Observation.from_dict(
+                omit_forbidden_channel_keys(observation.to_dict())
+            )
+        elif isinstance(observation, dict):
+            observation = omit_forbidden_channel_keys(observation)
+        else:
+            observation = None
+        metadata = context.metadata if isinstance(context.metadata, dict) else {}
+        observation_error = metadata.get("observation_error")
+
+        def envelope(key: str) -> ComponentEnvelope | None:
+            value = metadata.get(key)
+            return value if isinstance(value, ComponentEnvelope) else None
+
+        return self.run(
+            frame_id=context.frame_id,
+            frame_index=context.frame_index,
+            timestamp_ms=context.timestamp_ms,
+            observation=observation,
+            observation_error=observation_error if type(observation_error) is str else None,
+            # Retained evidence from shared_memory["decision.snapshot"].
+            memory=memory if isinstance(memory, MemorySnapshot) else None,
+            host_application=envelope("host_application"),
+            prior_host_applied_command=envelope("prior_host_applied_command"),
+            drive_mode_gate=context.mode if isinstance(context.mode, str) else "unknown",
+            capabilities=envelope("capabilities"),
+        )
+
+    def run(
         self,
         *,
         frame_id: str,
@@ -168,33 +216,33 @@ class ShadowProposalsEngine:
         prior_host_applied_command: ComponentEnvelope | None = None,
         drive_mode_gate: str = "unknown",
         capabilities: ComponentEnvelope | None = None,
-    ) -> tuple[ShadowDecisionCycleResult, AutonomyControl]:
+    ) -> ActionResult:
         # Entry precondition — invalid identity never yields a cycle result.
         try:
             frame_id = require_ascii_id(frame_id, field_name="frame_id")
             frame_index = require_safe_int(frame_index, field_name="frame_index")
             timestamp_ms = require_safe_int(timestamp_ms, field_name="timestamp_ms")
         except ValueError as exc:
-            raise ShadowCycleInputError(str(exc)) from exc
+            raise ActionInputError(str(exc)) from exc
 
         gate = drive_mode_gate if isinstance(drive_mode_gate, str) else "unknown"
         # Host-report boundary owned after valid entry (never raise TypeError out).
         if host_application is not None and not isinstance(
             host_application, ComponentEnvelope
         ):
-            return _engine_error(
+            return error_result(
                 frame_id=frame_id,
                 reason="engine_internal_error",
+                gate=self.gate,
                 source=None,
                 drive_mode_gate=gate,
             )
 
-        def fail(reason: str, *, source: DecisionDataSource | None) -> tuple[
-            ShadowDecisionCycleResult, AutonomyControl
-        ]:
-            return _engine_error(
+        def fail(reason: str, *, source: DecisionDataSource | None) -> ActionResult:
+            return error_result(
                 frame_id=frame_id,
                 reason=reason,
+                gate=self.gate,
                 source=source,
                 host_application=host_application,
                 drive_mode_gate=gate,
@@ -277,40 +325,47 @@ class ShadowProposalsEngine:
             proposed: ProposedVehicleCommand | None = None
             if selected is not None and selected.command is not None:
                 proposed = ProposedVehicleCommand.from_dict(selected.command.to_dict())
+            decision = self.gate.decide(plan, mode=gate)
             authority = build_authority(
                 frame_id=frame_id,
+                gate_id=self.gate.gate_id,
+                decision=decision,
                 cycle_status="ok",
                 cycle_reason="",
                 proposed=proposed,
                 host_application=host_application,
                 drive_mode_gate=gate,
             )
-            result = ShadowDecisionCycleResult(
+            return ActionResult(
                 frame_id=frame_id,
                 status="ok",
                 reason="",
                 source=source,
                 plan=plan,
                 authority=authority,
+                control=decision.control,
             )
-            return result, authorized_idle_control()
         except Exception:
             return fail("engine_internal_error", source=source)
 
 
-HoldActionPipeline = ShadowProposalsEngine
-
-
-def _engine_error(
+def error_result(
     *,
     frame_id: str,
     reason: str,
-    source: DecisionDataSource | None,
+    gate: ActionGate | None = None,
+    source: DecisionDataSource | None = None,
     host_application: ComponentEnvelope | None = None,
     drive_mode_gate: str = "unknown",
-) -> tuple[ShadowDecisionCycleResult, AutonomyControl]:
+) -> ActionResult:
+    """Return the fail-closed result for ``reason``; the gate still chooses the control."""
+
+    gate = gate or HoldGate()
+    decision = gate.decide(None, mode=drive_mode_gate, error_reason=reason)
     authority = build_authority(
         frame_id=frame_id,
+        gate_id=gate.gate_id,
+        decision=decision,
         cycle_status="engine_error",
         cycle_reason=reason,
         proposed=None,
@@ -319,12 +374,12 @@ def _engine_error(
         else None,
         drive_mode_gate=drive_mode_gate,
     )
-    result = ShadowDecisionCycleResult(
+    return ActionResult(
         frame_id=frame_id,
         status="engine_error",
         reason=reason,
         source=source,
         plan=None,
         authority=authority,
+        control=decision.control,
     )
-    return result, authorized_idle_control()

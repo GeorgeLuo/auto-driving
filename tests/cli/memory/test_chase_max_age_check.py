@@ -13,7 +13,7 @@ from tests.cli.memory.chase_max_age_fixtures import (
 
 
 class ChaseMaxAgeIntegrationTests(unittest.TestCase):
-    def test_chase_shadow_path_includes_max_age_expiry_and_record(self) -> None:
+    def test_chase_reference_path_includes_max_age_expiry_and_record(self) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-chaser",
             "provider": "chase-sim",

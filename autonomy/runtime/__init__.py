@@ -6,7 +6,7 @@ from .activation import (
     apply_decision_activation,
     read_decision_activation,
 )
-from .engine import AutonomyControl, AutonomySnapshot, IdleAutonomyEngine
+from .engine import AutonomyControl, IdleAutonomyEngine
 from .manager import AutonomyManager
 
 __all__ = [
@@ -15,7 +15,6 @@ __all__ = [
     "DecisionActivation",
     "IdleAutonomyEngine",
     "AutonomyManager",
-    "AutonomySnapshot",
     "apply_decision_activation",
     "read_decision_activation",
 ]

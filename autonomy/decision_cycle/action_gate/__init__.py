@@ -1,4 +1,5 @@
 """Action gates within the decision cycle.
 
-``hold`` is the fixed policy that permits only idle control.
+``values`` holds the gate contract and the authority record. ``hold`` is the
+gate that permits only idle control.
 """

@@ -4,7 +4,7 @@ from unittest import mock
 
 
 class MemoryCheckTests(unittest.TestCase):
-    def test_chase_shadow_path_scores_live_alignment(self) -> None:
+    def test_chase_reference_path_scores_live_alignment(self) -> None:
         # Full Chase max-age path lives in tests/cli/memory/test_chase_max_age.py.
         # Keep provenance scoring smoke here without cross-TestCase invocation.
         from cli.automa_cli.memory_check import score_chase_memory_provenance
@@ -62,13 +62,13 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertIn("passed", score)
 
     def test_chase_check_internal_probe_bypasses_vehicle_discovery(self) -> None:
-        from cli.automa_cli.memory_check import run_chase_shadow_memory_check
+        from cli.automa_cli.memory_check import run_chase_reference_memory_check
 
         with mock.patch(
             "cli.automa_cli.memory_check.probe_live_memory",
             return_value={"status": "unavailable", "error": "test stop"},
         ) as probe:
-            result = run_chase_shadow_memory_check(
+            result = run_chase_reference_memory_check(
                 vehicle_id="chase-sim-chaser",
                 load_latest_frame=lambda: None,
                 reset_fn=lambda: {"ok": False, "error": "fixture worker unavailable"},
@@ -95,13 +95,13 @@ class MemoryCheckTests(unittest.TestCase):
             "action_policy": "engine_idle",
             "control_application": "stop_only_safety_gate",
             "control": {"applied": False, "steering": 0.0, "throttle": 0.0},
-            "shadow_reference": {"chaser_control_source": "ws"},
+            "chaser_reference": {"chaser_control_source": "ws"},
         }
         score = score_chase_observe_only([frame])
         self.assertFalse(score["passed"])
         self.assertTrue(any("external_ws" in v for v in score["violations"]))
         self.assertTrue(
-            any("shadow.chaser_control_source=ws" in v for v in score["violations"])
+            any("reference.chaser_control_source=ws" in v for v in score["violations"])
         )
 
     def test_chase_observe_only_requires_explicit_complete_zero_control(self) -> None:
@@ -116,7 +116,7 @@ class MemoryCheckTests(unittest.TestCase):
             "action_policy": "observe_only",
             "control_application": "not_applied",
             "control": {"applied": False, "steering": 0.0},
-            "shadow_reference": {"chaser_control_source": "programmatic"},
+            "chaser_reference": {"chaser_control_source": "programmatic"},
         }
         score = score_chase_observe_only([frame])
         self.assertFalse(score["passed"])

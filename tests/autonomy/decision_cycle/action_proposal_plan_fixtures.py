@@ -21,7 +21,7 @@ def _active_proposal(
         confidence=confidence,
         reason="test",
         command=ProposedVehicleCommand(steering=steering, throttle=0.0, gear="hold"),
-        assumptions=("shadow_only",),
+        assumptions=("image_relative_only",),
         source_refs=(
             SourceRef(kind="memory_record", id="r1", frame_id=frame_id, note="primary"),
         ),

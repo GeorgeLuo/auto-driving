@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
-from implementations.runtime.engines.catalog import create_shadow_proposals_engine
-from implementations.runtime.engines.hold_action import ShadowProposalsAutonomyEngine
+from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
+from implementations.runtime.engines.catalog import create_action_composition
+from implementations.runtime.engines.hold_action import HoldActionEngine
 from cli.automa_cli.automation import _record_decision_publish_skip
 from cli.automa_cli.decision import (
     ENGINE_ID,
@@ -18,21 +18,21 @@ from cli.automa_cli.decision import (
     get_vehicle_decision_info,
     _format_stream_frame,
     latest_decision_path,
-    publish_shadow_decision_frame,
+    publish_decision_frame,
     strict_decode_apply_observation,
     stream_vehicle_decision,
     update_vehicle_decision,
     write_latest_decision_frame,
 )
 from tests.support.cli_runner import run_automa
-from tests.cli.decision.shadow_decision_surfaces_fixtures import (
+from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
     NO_MEM_RUN,
-    ShadowDecisionSurfaceFixture,
+    DecisionSurfaceFixture,
 )
 
 
-class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase):
+class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_publish_and_stream_once_cli(self) -> None:
         self._stage()
         cycle = self._sample_cycle()
@@ -41,7 +41,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
             vehicle_runtime / "bundle" / "runtime" / "decision" / "active.json"
         )
         activation = json.loads(activation_path.read_text())
-        published = publish_shadow_decision_frame(
+        published = publish_decision_frame(
             cycle_result=cycle,
             context_frame_id="frame_001",
             vehicle_id="chase-sim-chaser",
@@ -199,10 +199,10 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         ):
             self.assertIn(expected, selected_text)
 
-        engine = create_shadow_proposals_engine()
+        engine = create_action_composition()
         no_memory_sequence = json.loads((NO_MEM_RUN / "sequence.json").read_text())
         raw = no_memory_sequence["frames"][0]
-        idle_cycle, _ = engine.run_cycle(
+        idle_cycle = engine.run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
@@ -276,7 +276,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
                     from_run=ACTIVE_RUN,
                     json_output=True,
                 )
-                published = publish_shadow_decision_frame(
+                published = publish_decision_frame(
                     cycle_result=self._sample_cycle(),
                     context_frame_id="frame_001",
                     vehicle_id="chase-sim-chaser",
@@ -327,7 +327,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         activation_a = json.loads(activation_path.read_text())
         activated_a = activation_a["activated_at_ms"]
         self.assertTrue(
-            publish_shadow_decision_frame(
+            publish_decision_frame(
                 cycle_result=cycle,
                 context_frame_id="frame_001",
                 vehicle_id="chase-sim-chaser",
@@ -359,8 +359,8 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
             )
         )
 
-        # Startup-captured shadow activation must not allow republish after restage.
-        republished = publish_shadow_decision_frame(
+        # Startup-captured activation must not allow republish after restage.
+        republished = publish_decision_frame(
             cycle_result=cycle,
             context_frame_id="frame_001",
             vehicle_id="chase-sim-chaser",
@@ -377,13 +377,13 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
                 payload.get("schema"), "vehicle_decision_stream_frame_v0"
             )
 
-        # Restage to a new shadow generation B: worker still holding A must not
+        # Restage to a new generation B: worker still holding A must not
         # publish a cycle labeled as B.
         self._stage()
         activation_b = json.loads(activation_path.read_text())
         self.assertNotEqual(activation_b["activated_at_ms"], activated_a)
         self.assertFalse(
-            publish_shadow_decision_frame(
+            publish_decision_frame(
                 cycle_result=cycle,
                 context_frame_id="frame_001",
                 vehicle_id="chase-sim-chaser",
@@ -396,7 +396,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         )
         # Only a worker that reloads with generation B may publish under B.
         self.assertTrue(
-            publish_shadow_decision_frame(
+            publish_decision_frame(
                 cycle_result=cycle,
                 context_frame_id="frame_001",
                 vehicle_id="chase-sim-chaser",
@@ -442,24 +442,22 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
 
     def test_no_stale_republish_after_bad_step(self) -> None:
         self._stage()
-        engine = ShadowProposalsAutonomyEngine()
-        good = engine.step(
-            __import__(
-                "autonomy.runtime.engine", fromlist=["AutonomySnapshot"]
-            ).AutonomySnapshot(
-                observation=Observation(
-                    observation_id="obs",
-                    created_at_ms=1000,
-                    sensor_snapshot={},
-                ),
-                memory=None,
-                cycle={"frame_id": "frame_001", "frame_index": 1},
-                timestamp_ms=1000,
-            )
+        from autonomy.decision_cycle.context import DecisionFrameContext
+        from autonomy.runtime.manager import AutonomyManager
+        from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
+
+        manager = AutonomyManager(default_engine_spec=ADAPTER_ENGINE_SPEC)
+        first = manager.act(
+            DecisionFrameContext(frame_id="frame_001", frame_index=1, timestamp_ms=1000),
+            None,
+            Observation(
+                observation_id="obs",
+                created_at_ms=1000,
+                sensor_snapshot={},
+            ),
+            None,
         )
-        self.assertEqual(good.reason, AUTHORIZED_IDLE_REASON)
-        first = engine.last_cycle_result
-        self.assertIsNotNone(first)
+        self.assertEqual(first.control.reason, HOLD_IDLE_REASON)
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         activation = json.loads(
             (
@@ -467,7 +465,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
             ).read_text()
         )
         self.assertTrue(
-            publish_shadow_decision_frame(
+            publish_decision_frame(
                 cycle_result=first,
                 context_frame_id="frame_001",
                 vehicle_id="chase-sim-chaser",
@@ -478,27 +476,25 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
                 staged_engine_id=ENGINE_ID,
             )
         )
-        # bad step clears last_cycle_result; publish gate must not reuse prior
-        engine.step(
-            __import__(
-                "autonomy.runtime.engine", fromlist=["AutonomySnapshot"]
-            ).AutonomySnapshot(
-                observation=None,
-                memory=None,
-                cycle={"frame_id": "!!!", "frame_index": 2},
-                timestamp_ms=2000,
-            )
+        # A bad step yields no action; the prior result is never republished
+        # for a later frame.
+        bad = manager.act(
+            DecisionFrameContext(frame_id="!!!", frame_index=2, timestamp_ms=2000),
+            None,
+            None,
+            None,
         )
-        self.assertIsNone(engine.last_cycle_result)
-        self.assertFalse(
-            publish_shadow_decision_frame(
-                cycle_result=engine.last_cycle_result,
-                context_frame_id="frame_bad",
-                vehicle_id="chase-sim-chaser",
-                vehicle_runtime_dir=vehicle_runtime,
-                run_id="r1",
-                worker_pid=1,
-                activation=activation,
-                staged_engine_id=ENGINE_ID,
+        self.assertIsNone(bad)
+        for cycle_result in (bad, first):
+            self.assertFalse(
+                publish_decision_frame(
+                    cycle_result=cycle_result,
+                    context_frame_id="frame_bad",
+                    vehicle_id="chase-sim-chaser",
+                    vehicle_runtime_dir=vehicle_runtime,
+                    run_id="r1",
+                    worker_pid=1,
+                    activation=activation,
+                    staged_engine_id=ENGINE_ID,
+                )
             )
-        )

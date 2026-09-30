@@ -1,8 +1,8 @@
 from __future__ import annotations
 import json
 import unittest
-from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
-from implementations.runtime.engines.hold_action import ShadowProposalsAutonomyEngine
+from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
+from implementations.runtime.engines.hold_action import HoldActionEngine
 from autonomy.runtime.manager import AutonomyManager
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
@@ -11,13 +11,13 @@ from cli.automa_cli.decision import (
     get_vehicle_decision_info,
     update_vehicle_decision,
 )
-from tests.cli.decision.shadow_decision_surfaces_fixtures import (
-    ShadowDecisionSurfaceFixture,
+from tests.cli.decision.decision_surfaces_fixtures import (
+    DecisionSurfaceFixture,
 )
 
 
-class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase):
-    def test_stage_shadow_proposals_and_info_contract(self) -> None:
+class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
+    def test_stage_hold_action_and_info_contract(self) -> None:
         update = self._stage()
         self.assertEqual(update.exit_code, 0, update.message)
         payload = json.loads(update.message)
@@ -43,10 +43,10 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         self.assertEqual(info.exit_code, 0, info.message)
         info_payload = json.loads(info.message)
         self.assertEqual(info_payload["schema"], "vehicle_decision_info_v0")
-        self.assertIsNotNone(info_payload["shadow"])
-        shadow = info_payload["shadow"]
+        self.assertIsNotNone(info_payload["proposals"])
+        proposals = info_payload["proposals"]
         self.assertEqual(
-            shadow["decision_inputs"],
+            proposals["decision_inputs"],
             [
                 "observation",
                 "memory",
@@ -54,12 +54,13 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
                 "prior_host_applied_command",
             ],
         )
-        self.assertEqual(shadow["enabled_plugins"], ["avoid_recent_obstruction"])
-        self.assertEqual(shadow["selector_id"], "deterministic_first_active")
-        self.assertEqual(shadow["authority"]["proposed_applied"], False)
+        self.assertEqual(proposals["enabled_plugins"], ["avoid_recent_obstruction"])
+        self.assertEqual(proposals["selector_id"], "deterministic_first_active")
+        self.assertEqual(proposals["authority"]["proposed_applied"], False)
+        self.assertEqual(proposals["authority"]["gate_id"], "hold")
         self.assertEqual(
-            shadow["authority"]["authorized_idle_reason"],
-            AUTHORIZED_IDLE_REASON,
+            proposals["authority"]["authorized_idle_reason"],
+            HOLD_IDLE_REASON,
         )
         self.assertEqual(
             info_payload["combined_view"]["view_id"], "decision-combined-v0"
@@ -71,7 +72,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         )
         self.assertEqual(human.exit_code, 0)
         self.assertIn("avoid_recent_obstruction", human.message)
-        self.assertIn(AUTHORIZED_IDLE_REASON, human.message)
+        self.assertIn(HOLD_IDLE_REASON, human.message)
         self.assertIn("decision-combined-v0", human.message)
 
     def test_stage_unknown_engine_and_invalid_config(self) -> None:
@@ -83,7 +84,7 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
         self.assertEqual(result.exit_code, 2)
         payload = json.loads(result.message)
         self.assertEqual(payload["error"], "unknown_engine")
-        self.assertIn("shadow-proposals", payload["message"])
+        self.assertIn("hold-action", payload["message"])
 
         # Invalid catalog config fails closed before write.
         original = dict(DECISION_ENGINES[ENGINE_ID]["engine_config"])
@@ -123,4 +124,4 @@ class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase
             default_engine_spec=entry["engine_spec"],
             default_engine_config=dict(entry["engine_config"]),
         )
-        self.assertIsInstance(manager.engine, ShadowProposalsAutonomyEngine)
+        self.assertIsInstance(manager.engine, HoldActionEngine)

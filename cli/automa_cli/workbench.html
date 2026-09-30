@@ -1644,8 +1644,8 @@
         setText("decisionProposed", proposed && Object.keys(proposed).length
           ? "steering=" + text(proposed.steering, "—") + " throttle=" + text(proposed.throttle, "—")
           : "none");
-        setText("decisionAuthority", authority.proposed_applied === false
-          ? "shadow idle · applied=false" : "unavailable");
+        setText("decisionAuthority", typeof authority.proposed_applied === "boolean"
+          ? text(authority.gate_id, "gate") + " · applied=" + authority.proposed_applied : "unavailable");
         setText("decisionReason", cycle.reason || (plan.reason || "—"));
         var sourceRefs = [];
         candidates.forEach(function (candidate) {

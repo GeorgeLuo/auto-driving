@@ -1,4 +1,4 @@
-"""Catalog of decision engines and proposal plugins for M006 shadow-proposals."""
+"""Catalog of proposal plugins and the action composition built from them."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from typing import Any
 
 from autonomy.decision_cycle.proposal.values import ActionProposal
 from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
-from autonomy.decision_cycle.action import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
+from autonomy.decision_cycle.action import ActionComposition, ProposalConfig
+from autonomy.decision_cycle.action_gate.values import ActionGate
 from implementations.runtime.engines.config import (
     ObstacleAvoidanceConfig,
     engine_config_document,
@@ -37,9 +38,13 @@ def validate_engine_config(
     return engine_config_document(cfg)
 
 
-def create_shadow_proposals_engine(
+def create_action_composition(
     config: ObstacleAvoidanceConfig | Mapping[str, Any] | None = None,
-) -> ShadowProposalsEngine:
+    *,
+    gate: ActionGate | None = None,
+) -> ActionComposition:
+    """Bind the packaged proposal plugins to ``gate`` (the hold gate by default)."""
+
     cfg = parse_engine_config(config)
     # Reject unknown enabled ids at activation against this catalog (not a
     # caller-supplied known_plugins field).
@@ -56,14 +61,10 @@ def create_shadow_proposals_engine(
         )
 
     plugins = {PLUGIN_ID: _bound}
-    engine = ShadowProposalsEngine.create(
-        config=ShadowProposalsConfig(enabled_plugins=cfg.enabled_plugins),
+    composition = ActionComposition.create(
+        config=ProposalConfig(enabled_plugins=cfg.enabled_plugins),
         plugins=plugins,
+        gate=gate,
     )
-    engine.reported_config = engine_config_document(cfg)
-    return engine
-
-
-KNOWN_ENGINES = {
-    ENGINE_ID: create_shadow_proposals_engine,
-}
+    composition.reported_config = engine_config_document(cfg)
+    return composition

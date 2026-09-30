@@ -6,12 +6,12 @@ from unittest import mock
 from implementations.vehicle.chase_sim.car import ChaseSimCar
 from implementations.vehicle.chase_sim.frame_identity import (
     ChaseCaptureValidationError,
-    align_candidate_with_shadow,
-    build_chase_shadow_reference,
+    align_candidate_with_reference,
+    build_chaser_reference,
     evaluate_chase_evaluator_reference,
     format_chase_frame_id,
     frame_indices_strictly_increasing,
-    score_shadow_alignment_batch,
+    score_reference_alignment_batch,
     validate_chase_sensor_capture,
 )
 from tests.implementations.vehicle.chase_frame_identity_fixtures import (
@@ -110,36 +110,36 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         sensor = validate_chase_sensor_capture(capture)
         self.assertEqual(sensor["image"]["content_type"], "image/png")
 
-    def test_builds_bounded_shadow_reference_from_atomic_capture(self) -> None:
+    def test_builds_bounded_chaser_reference_from_atomic_capture(self) -> None:
         self.assertEqual(format_chase_frame_id(42), "chase_frame_000042")
-        shadow = build_chase_shadow_reference(_atomic_capture())
-        assert shadow is not None
+        reference = build_chaser_reference(_atomic_capture())
+        assert reference is not None
 
-        self.assertEqual(shadow["schema"], "chase_shadow_reference_v1")
-        self.assertTrue(shadow["evaluator_only"])
-        self.assertEqual(shadow["simulator_frame_index"], 42)
-        self.assertEqual(shadow["simulation_epoch"], "chase-run:test")
-        self.assertEqual(shadow["chaser_control_source"], "programmatic")
+        self.assertEqual(reference["schema"], "chaser_reference_v1")
+        self.assertTrue(reference["evaluator_only"])
+        self.assertEqual(reference["simulator_frame_index"], 42)
+        self.assertEqual(reference["simulation_epoch"], "chase-run:test")
+        self.assertEqual(reference["chaser_control_source"], "programmatic")
         self.assertEqual(
-            shadow["chaser_action"]["selectedActionProposalId"], "proposal-1"
+            reference["chaser_action"]["selectedActionProposalId"], "proposal-1"
         )
-        self.assertNotIn("shadow", shadow)
-        self.assertNotIn("visibleWallCount", str(shadow))
-        self.assertNotIn("map", str(shadow))
+        self.assertNotIn("shadow", reference)
+        self.assertNotIn("visibleWallCount", str(reference))
+        self.assertNotIn("map", str(reference))
 
     def test_atomic_reference_rejects_invalid_or_future_identity(self) -> None:
         self.assertIsNone(
-            build_chase_shadow_reference(
+            build_chaser_reference(
                 _atomic_capture(frame_index=10, action_frame_index=11)
             )
         )
         missing_epoch = _atomic_capture()
         missing_epoch["frameIdentity"].pop("simulationEpoch")
-        self.assertIsNone(build_chase_shadow_reference(missing_epoch))
+        self.assertIsNone(build_chaser_reference(missing_epoch))
 
         coerced_boolean = _atomic_capture()
         coerced_boolean["evaluator"]["reference"]["input"]["forward"] = 1
-        self.assertIsNone(build_chase_shadow_reference(coerced_boolean))
+        self.assertIsNone(build_chaser_reference(coerced_boolean))
 
     def test_sensor_capture_is_independent_from_optional_evaluator_reference(
         self,
@@ -301,38 +301,38 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             self.assertFalse(path.parent.exists())
 
     def test_alignment_requires_epoch_and_strictly_increasing_frames(self) -> None:
-        shadow = build_chase_shadow_reference(_atomic_capture(frame_index=7))
-        assert shadow is not None
-        ok = align_candidate_with_shadow(
+        reference = build_chaser_reference(_atomic_capture(frame_index=7))
+        assert reference is not None
+        ok = align_candidate_with_reference(
             candidate_frame_index=7,
             candidate_simulation_epoch="chase-run:test",
-            shadow_reference=shadow,
+            chaser_reference=reference,
         )
         self.assertTrue(ok["aligned"])
-        wrong_epoch = align_candidate_with_shadow(
+        wrong_epoch = align_candidate_with_reference(
             candidate_frame_index=7,
             candidate_simulation_epoch="chase-run:other",
-            shadow_reference=shadow,
+            chaser_reference=reference,
         )
         self.assertFalse(wrong_epoch["aligned"])
 
         frames = []
         for index in (10, 11):
-            reference = build_chase_shadow_reference(_atomic_capture(frame_index=index))
+            reference = build_chaser_reference(_atomic_capture(frame_index=index))
             frames.append(
                 {
                     "frame_id": format_chase_frame_id(index),
                     "simulator_frame_index": index,
                     "simulation_epoch": "chase-run:test",
-                    "shadow_reference": reference,
+                    "chaser_reference": reference,
                 }
             )
-        score = score_shadow_alignment_batch(frames, min_frames=2)
+        score = score_reference_alignment_batch(frames, min_frames=2)
         self.assertTrue(score["passed"], score)
         self.assertTrue(score["consistent_run_identity"])
 
         frames.reverse()
-        reversed_score = score_shadow_alignment_batch(frames, min_frames=2)
+        reversed_score = score_reference_alignment_batch(frames, min_frames=2)
         self.assertFalse(reversed_score["passed"])
         self.assertFalse(reversed_score["advancing_simulator_frames"])
         self.assertFalse(frame_indices_strictly_increasing([11, 10]))

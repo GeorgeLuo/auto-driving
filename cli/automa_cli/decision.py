@@ -35,14 +35,18 @@ from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
 )
 from autonomy.decision_cycle.action_gate.hold import (
-    SHADOW_AUTHORITY_RESULT_SCHEMA,
-    AUTHORIZED_IDLE_REASON,
-    ShadowAuthorityResult,
-    authorized_idle_output,
+    GATE_ID as HOLD_GATE_ID,
+    HOLD_IDLE_REASON,
+    idle_output,
+)
+from autonomy.decision_cycle.action_gate.values import (
+    AUTHORITY_RESULT_SCHEMA,
+    AuthorityResult,
+    control_output,
 )
 from autonomy.decision_cycle.result import (
-    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
-    ShadowDecisionCycleResult,
+    ACTION_RESULT_SCHEMA,
+    ActionResult,
 )
 from autonomy.decision_cycle.planning.selector import select_action_plan
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
@@ -50,23 +54,23 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
-from autonomy.decision_cycle.action import ENGINE_ID
 from autonomy.decision_cycle.memory.snapshots.values import (
     MEMORY_SNAPSHOT_SCHEMA,
     MemorySnapshot,
 )
 from autonomy.serialization import canonical_json_utf8
 from implementations.runtime.engines.catalog import (
-    create_shadow_proposals_engine,
+    create_action_composition,
     validate_engine_config,
 )
 from implementations.runtime.engines.config import default_engine_config
 from implementations.runtime.engines.mode_gated_action import (
     ADAPTER_ENGINE_SPEC as LIVE_ADAPTER_ENGINE_SPEC,
     ENGINE_ID as LIVE_ENGINE_ID,
+    GATE_ID as LIVE_GATE_ID,
 )
-from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
-from autonomy.runtime import AutonomyManager, read_decision_activation
+from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC, ENGINE_ID
+from autonomy.runtime import AutonomyControl, AutonomyManager, read_decision_activation
 
 from .bundles import (
     controller_bundle_paths,
@@ -140,7 +144,7 @@ AUTHORITY_EXACT_KEYS = frozenset(
         "proposed_equals_authorized",
         "cycle_status",
         "cycle_reason",
-        "authority_mode",
+        "gate_id",
         "drive_mode_gate",
     }
 )
@@ -223,9 +227,10 @@ AUTHORITY_SUMMARY_EXACT_KEYS = frozenset(
         "proposed_equals_authorized",
         "cycle_status",
         "cycle_reason",
+        "gate_id",
     }
 )
-VIEW_EXACT_KEYS = frozenset({"view_id", "applied_false_emphasized"})
+VIEW_EXACT_KEYS = frozenset({"view_id", "applied_emphasized"})
 
 OBSERVATION_REQUIRED_KEYS = frozenset(
     {
@@ -293,7 +298,7 @@ LOCATION_REQUIRED_KEYS = frozenset(
     {"frame", "zone", "bbox_xyxy_norm", "polygon_xy_norm"}
 )
 
-SHADOW_DECISION_INPUTS = (
+PROPOSAL_DECISION_INPUTS = (
     "observation",
     "memory",
     "capabilities",
@@ -301,6 +306,7 @@ SHADOW_DECISION_INPUTS = (
 )
 
 PROPOSAL_ENGINE_IDS = frozenset({ENGINE_ID, LIVE_ENGINE_ID})
+ENGINE_GATE_IDS = {ENGINE_ID: HOLD_GATE_ID, LIVE_ENGINE_ID: LIVE_GATE_ID}
 
 DECISION_ENGINES: dict[str, dict[str, Any]] = {
     "idle": {
@@ -310,8 +316,8 @@ DECISION_ENGINES: dict[str, dict[str, Any]] = {
     },
     ENGINE_ID: {
         "description": (
-            "Shadow-only proposals engine (PR #74). Authorized output is idle; "
-            f"proposed_applied=false; reason={AUTHORIZED_IDLE_REASON}."
+            "Proposals through the hold gate. Authorized output is idle; "
+            f"proposed_applied=false; reason={HOLD_IDLE_REASON}."
         ),
         "engine_spec": ADAPTER_ENGINE_SPEC,
         "engine_config": default_engine_config(),
@@ -320,7 +326,8 @@ DECISION_ENGINES: dict[str, dict[str, Any]] = {
         "description": (
             "Explicit-autonomy PiCar obstacle avoidance using the existing "
             "avoid_recent_obstruction proposal; clear or unusable evidence "
-            "returns idle."
+            "returns idle. The mode gate applies the selected command in "
+            "autonomy/local drive modes and records proposed_applied."
         ),
         "engine_spec": LIVE_ADAPTER_ENGINE_SPEC,
         "engine_config": default_engine_config(),
@@ -436,12 +443,28 @@ def _validate_proposal_engine_config(
         ) from exc
 
 
-def validate_shadow_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
-    """Fail closed before activation write when shadow config is invalid."""
+def _engine_authority_description(engine_id: str) -> dict[str, Any]:
+    """How the engine's gate authorizes control, for operator-facing summaries."""
+
+    if engine_id == ENGINE_ID:
+        return {
+            "gate_id": HOLD_GATE_ID,
+            "proposed_applied": False,
+            "authorized_idle_reason": HOLD_IDLE_REASON,
+        }
+    return {
+        "gate_id": LIVE_GATE_ID,
+        "proposed_applied": "in autonomy/local drive modes",
+        "authorized_idle_reason": None,
+    }
+
+
+def validate_hold_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed before activation write when hold-action config is invalid."""
 
     return _validate_proposal_engine_config(
         engine_config,
-        engine_label="shadow-proposals",
+        engine_label=ENGINE_ID,
     )
 
 
@@ -452,6 +475,18 @@ def validate_live_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]
         engine_config,
         engine_label=LIVE_ENGINE_ID,
     )
+
+
+def _validate_engine_config_for(
+    engine_id: str,
+    engine_config: dict[str, Any],
+) -> dict[str, Any]:
+    validator = (
+        validate_hold_engine_config
+        if engine_id == ENGINE_ID
+        else validate_live_engine_config
+    )
+    return validator(engine_config)
 
 
 def _read_surface_activation(
@@ -490,12 +525,7 @@ def _read_surface_activation(
                 },
             )
         try:
-            validator = (
-                validate_shadow_engine_config
-                if decoded.engine_id == ENGINE_ID
-                else validate_live_engine_config
-            )
-            validator(decoded.engine_config)
+            _validate_engine_config_for(decoded.engine_id, decoded.engine_config)
         except DecisionSurfaceError as exc:
             raise DecisionSurfaceError(
                 "activation_invalid",
@@ -530,7 +560,7 @@ def update_vehicle_decision(
     if engine_id in PROPOSAL_ENGINE_IDS:
         try:
             validator = (
-                validate_shadow_engine_config
+                validate_hold_engine_config
                 if engine_id == ENGINE_ID
                 else validate_live_engine_config
             )
@@ -676,31 +706,27 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
 
     engine_id = decision.get("engine_id")
     engine_config = decision.get("engine_config") if isinstance(decision.get("engine_config"), dict) else {}
-    shadow: dict[str, Any] | None = None
-    if engine_id == ENGINE_ID:
+    proposals: dict[str, Any] | None = None
+    if engine_id in PROPOSAL_ENGINE_IDS:
         plugins = engine_config.get("enabled_plugins")
         if not isinstance(plugins, list):
             plugins = list(default_engine_config()["enabled_plugins"])
-        shadow = {
-            "decision_inputs": list(SHADOW_DECISION_INPUTS),
+        proposals = {
+            "decision_inputs": list(PROPOSAL_DECISION_INPUTS),
             "enabled_plugins": list(plugins),
             "selector_id": SELECTOR_ID,
             "output_schemas": {
                 "action_proposal": ACTION_PROPOSAL_SCHEMA,
                 "action_plan": ACTION_PLAN_SCHEMA,
-                "shadow_authority": SHADOW_AUTHORITY_RESULT_SCHEMA,
-                "cycle_result": SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
+                "authority": AUTHORITY_RESULT_SCHEMA,
+                "action_result": ACTION_RESULT_SCHEMA,
             },
-            "authority": {
-                "proposed_applied": False,
-                "authorized_idle_reason": AUTHORIZED_IDLE_REASON,
-                "authority_mode": "shadow_only",
-            },
+            "authority": _engine_authority_description(engine_id),
         }
 
     # D2 discovery is a short, read-only loopback probe. It never starts a
     # worker or creates a capture; an unavailable producer remains explicit.
-    if engine_id != ENGINE_ID:
+    if engine_id not in PROPOSAL_ENGINE_IDS:
         view_status = {
             "available": False,
             "status": "unavailable",
@@ -744,7 +770,7 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
             "engine_spec": decision.get("engine_spec"),
             "engine_config": decision.get("engine_config"),
         },
-        "shadow": shadow,
+        "proposals": proposals,
         "engine_schema_source": {
             "kind": "engine_method",
             "method": "describe_schema",
@@ -822,7 +848,7 @@ def build_decision_stream_frame(
         "authority_summary": _authority_summary(authority, cycle_dict),
         "view": {
             "view_id": COMBINED_VIEW_ID,
-            "applied_false_emphasized": True,
+            "applied_emphasized": True,
         },
     }
 
@@ -976,7 +1002,7 @@ def _authority_summary(
         proposed_out = None
     authorized = authority.get("authorized_output")
     if not isinstance(authorized, dict):
-        authorized = authorized_idle_output()
+        authorized = idle_output()
     host_application = authority.get("host_application")
     if not isinstance(host_application, dict):
         host_application = {
@@ -988,13 +1014,14 @@ def _authority_summary(
     return {
         "proposed": proposed_out,
         "authorized_output": authorized,
-        "proposed_applied": False,
+        "proposed_applied": authority.get("proposed_applied") is True,
         "host_application": host_application,
         "proposed_equals_authorized": bool(authority.get("proposed_equals_authorized")),
         "cycle_status": authority.get("cycle_status") or cycle.get("status") or "ok",
         "cycle_reason": authority.get("cycle_reason")
         if authority.get("cycle_reason") is not None
         else (cycle.get("reason") or ""),
+        "gate_id": authority.get("gate_id") or HOLD_GATE_ID,
     }
 
 
@@ -1035,11 +1062,12 @@ def accept_decision_stream_frame(
             "Decision activation has no decision section.",
         )
     engine_id = decision.get("engine_id")
-    if engine_id != ENGINE_ID:
+    if engine_id not in PROPOSAL_ENGINE_IDS:
         raise DecisionSurfaceError(
             "wrong_engine",
-            f"stream decision requires engine_id={ENGINE_ID!r}; got {engine_id!r}. "
-            "Run: ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
+            f"stream decision requires engine_id in {sorted(PROPOSAL_ENGINE_IDS)!r}; "
+            f"got {engine_id!r}. "
+            f"Run: ./cli/automa vehicles update decision --id <vehicle> --engine {ENGINE_ID}",
         )
     engine_config = decision.get("engine_config")
     if not isinstance(engine_config, dict):
@@ -1048,14 +1076,16 @@ def accept_decision_stream_frame(
             "Decision activation engine_config must be an object.",
         )
     try:
-        shadow_config = validate_shadow_engine_config(engine_config)
+        proposal_config = _validate_engine_config_for(engine_id, engine_config)
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
             "activation_invalid",
             exc.message_text,
             details=exc.details,
         ) from exc
-    _require_runner_plan_alignment(reconstructed_cycle, shadow_config)
+    _require_runner_plan_alignment(
+        reconstructed_cycle, proposal_config, engine_id=engine_id
+    )
 
     activated_at = activation.get("activated_at_ms")
     if type(activated_at) is not int:
@@ -1065,12 +1095,12 @@ def accept_decision_stream_frame(
         )
     if (
         frame.get("activation_activated_at_ms") != activated_at
-        or frame.get("activation_engine_id") != ENGINE_ID
-        or frame.get("engine_id") != ENGINE_ID
+        or frame.get("activation_engine_id") != engine_id
+        or frame.get("engine_id") != engine_id
     ):
         raise DecisionSurfaceError(
             "latest_frame_stale",
-            "Latest decision frame does not match the current shadow-proposals activation generation.",
+            f"Latest decision frame does not match the current {engine_id} activation generation.",
         )
 
     if not isinstance(automation_state, dict):
@@ -1139,7 +1169,7 @@ def _accept_provider_neutral_decision_cycle(
 
     A PiCar publication carries its source-owned identity in the physical wire
     envelope. It must not be relabeled as a Chase worker frame merely to reuse
-    local ``state.json`` or PID checks. The typed shadow cycle remains subject
+    local ``state.json`` or PID checks. The typed action result remains subject
     to the same exact reconstruction and runner/activation checks.
     """
 
@@ -1165,19 +1195,16 @@ def _accept_provider_neutral_decision_cycle(
             "Physical decision activation engine_config must be an object.",
         )
     try:
-        validator = (
-            validate_shadow_engine_config
-            if engine_id == ENGINE_ID
-            else validate_live_engine_config
-        )
-        shadow_config = validator(engine_config)
+        proposal_config = _validate_engine_config_for(engine_id, engine_config)
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             exc.message_text,
             details=exc.details,
         ) from exc
-    _require_runner_plan_alignment(reconstructed_cycle, shadow_config)
+    _require_runner_plan_alignment(
+        reconstructed_cycle, proposal_config, engine_id=engine_id
+    )
 
     if decision.get("activation_engine_id") != activation.get("engine_id"):
         raise DecisionSurfaceError(
@@ -1290,7 +1317,7 @@ def _require_exact_keys(
 
 def _require_stream_frame_envelope(
     frame: dict[str, Any],
-) -> ShadowDecisionCycleResult:
+) -> ActionResult:
     """Validate exact vehicle_decision_stream_frame_v0 + nested cycle export."""
 
     if "applied_control" in frame:
@@ -1341,10 +1368,10 @@ def _require_stream_frame_envelope(
             "view must be an object.",
         )
     _require_exact_keys(view, VIEW_EXACT_KEYS, field="view")
-    if view.get("view_id") != COMBINED_VIEW_ID or view.get("applied_false_emphasized") is not True:
+    if view.get("view_id") != COMBINED_VIEW_ID or view.get("applied_emphasized") is not True:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "view must be decision-combined-v0 with applied_false_emphasized=true.",
+            "view must be decision-combined-v0 with applied_emphasized=true.",
         )
 
     cycle = frame["cycle"]
@@ -1421,10 +1448,10 @@ def _require_authority_summary(payload: object) -> None:
             "authority_summary must be an object.",
         )
     _require_exact_keys(payload, AUTHORITY_SUMMARY_EXACT_KEYS, field="authority_summary")
-    if payload.get("proposed_applied") is not False:
+    if type(payload.get("proposed_applied")) is not bool:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "authority_summary.proposed_applied must be false.",
+            "authority_summary.proposed_applied must be a bool.",
         )
     if "applied_control" in payload:
         raise DecisionSurfaceError(
@@ -1627,24 +1654,18 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
     return plan
 
 
-def _strict_decode_authority(payload: object, *, field: str) -> ShadowAuthorityResult:
+def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
     if not isinstance(payload, dict):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"{field} must be a ShadowAuthorityResult object.",
+            f"{field} must be an AuthorityResult object.",
             details={"field": field},
         )
     _require_exact_keys(payload, AUTHORITY_EXACT_KEYS, field=field)
-    if payload.get("schema") != SHADOW_AUTHORITY_RESULT_SCHEMA:
+    if payload.get("schema") != AUTHORITY_RESULT_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"{field}.schema must be {SHADOW_AUTHORITY_RESULT_SCHEMA!r}.",
-            details={"field": field},
-        )
-    if payload.get("proposed_applied") is not False:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field}.proposed_applied must be false.",
+            f"{field}.schema must be {AUTHORITY_RESULT_SCHEMA!r}.",
             details={"field": field},
         )
     if "applied_control" in payload:
@@ -1653,12 +1674,47 @@ def _strict_decode_authority(payload: object, *, field: str) -> ShadowAuthorityR
             f"{field} must not include applied_control.",
             details={"field": field},
         )
-    # authorized_output must be the exact idle command before reconstruction.
-    _require_canonical_export_equal(
-        payload.get("authorized_output"),
-        authorized_idle_output(),
-        field=f"{field}.authorized_output",
-    )
+    gate_id = payload.get("gate_id")
+    if gate_id not in {HOLD_GATE_ID, LIVE_GATE_ID}:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.gate_id must be {HOLD_GATE_ID!r} or {LIVE_GATE_ID!r}.",
+            details={"field": f"{field}.gate_id"},
+        )
+    if type(payload.get("proposed_applied")) is not bool:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.proposed_applied must be a bool.",
+            details={"field": field},
+        )
+    authorized_output = payload.get("authorized_output")
+    if gate_id == HOLD_GATE_ID:
+        if payload.get("proposed_applied") is not False:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field}.proposed_applied must be false for the hold gate.",
+                details={"field": field},
+            )
+        # The hold gate's authorized output is the exact idle command.
+        _require_canonical_export_equal(
+            authorized_output,
+            idle_output(),
+            field=f"{field}.authorized_output",
+        )
+    else:
+        try:
+            control = AutonomyControl(**authorized_output)
+        except TypeError as exc:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field}.authorized_output is not a control output: {exc}",
+                details={"field": f"{field}.authorized_output"},
+            ) from exc
+        _require_canonical_export_equal(
+            authorized_output,
+            control_output(control),
+            field=f"{field}.authorized_output",
+        )
     proposed_payload = payload.get("proposed")
     proposed: ProposedVehicleCommand | None
     if proposed_payload is None:
@@ -1672,21 +1728,22 @@ def _strict_decode_authority(payload: object, *, field: str) -> ShadowAuthorityR
         field=f"{field}.host_application",
     )
     try:
-        authority = ShadowAuthorityResult(
+        authority = AuthorityResult(
             frame_id=str(payload["frame_id"]),
+            gate_id=str(gate_id),
             proposed=proposed,
             cycle_status=str(payload["cycle_status"]),
             cycle_reason=str(payload.get("cycle_reason") or ""),
+            authorized_output=dict(authorized_output),
             host_application=host,
             drive_mode_gate=str(payload.get("drive_mode_gate") or "unknown"),
-            authority_mode=str(payload.get("authority_mode") or ""),
-            proposed_applied=False,
-            schema=str(payload.get("schema") or SHADOW_AUTHORITY_RESULT_SCHEMA),
+            proposed_applied=payload["proposed_applied"],
+            schema=str(payload.get("schema") or AUTHORITY_RESULT_SCHEMA),
         )
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"{field} failed ShadowAuthorityResult construction: {exc}",
+            f"{field} failed AuthorityResult construction: {exc}",
             details={"field": field},
         ) from exc
     _require_canonical_export_equal(payload, authority.to_dict(), field=field)
@@ -1818,7 +1875,7 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
     return source
 
 
-def _require_exact_cycle_export(cycle: dict[str, Any]) -> ShadowDecisionCycleResult:
+def _require_exact_cycle_export(cycle: dict[str, Any]) -> ActionResult:
     """Strict reconstruction + full canonical export equality for the cycle.
 
     One owning boundary: reconstruct typed PR #74 objects (authority, plan,
@@ -1828,10 +1885,10 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> ShadowDecisionCycleRes
     """
 
     _require_exact_keys(cycle, CYCLE_EXACT_KEYS, field="cycle")
-    if cycle.get("schema") != SHADOW_DECISION_CYCLE_RESULT_SCHEMA:
+    if cycle.get("schema") != ACTION_RESULT_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"cycle.schema must be {SHADOW_DECISION_CYCLE_RESULT_SCHEMA!r}.",
+            f"cycle.schema must be {ACTION_RESULT_SCHEMA!r}.",
             details={"field": "cycle.schema"},
         )
     if cycle.get("status") not in {"ok", "engine_error"}:
@@ -1860,19 +1917,19 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> ShadowDecisionCycleRes
         source = _strict_decode_source(source_payload, field="cycle.source")
 
     try:
-        reconstructed = ShadowDecisionCycleResult(
+        reconstructed = ActionResult(
             frame_id=str(cycle["frame_id"]),
             status=str(cycle["status"]),
             reason=str(cycle.get("reason") or ""),
             source=source,
             plan=plan,
             authority=authority,
-            schema=str(cycle.get("schema") or SHADOW_DECISION_CYCLE_RESULT_SCHEMA),
+            schema=str(cycle.get("schema") or ACTION_RESULT_SCHEMA),
         )
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"cycle failed ShadowDecisionCycleResult construction: {exc}",
+            f"cycle failed ActionResult construction: {exc}",
             details={"field": "cycle"},
         ) from exc
     _require_canonical_export_equal(cycle, reconstructed.to_dict(), field="cycle")
@@ -1881,7 +1938,7 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> ShadowDecisionCycleRes
 
 def _require_aggregate_cycle_alignment(
     frame: dict[str, Any],
-    cycle: ShadowDecisionCycleResult,
+    cycle: ActionResult,
 ) -> None:
     """Enforce cross-object cycle alignment the nested constructors do not own.
 
@@ -2002,11 +2059,24 @@ def _require_aggregate_cycle_alignment(
 
 
 def _require_runner_plan_alignment(
-    cycle: ShadowDecisionCycleResult,
+    cycle: ActionResult,
     config: Mapping[str, Any],
+    *,
+    engine_id: str,
 ) -> None:
-    """Enforce runner-owned candidate membership and selector output."""
+    """Enforce the engine's gate, candidate membership, and selector output."""
 
+    expected_gate = ENGINE_GATE_IDS[engine_id]
+    if cycle.authority.gate_id != expected_gate:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{engine_id} cycles must come from the {expected_gate!r} gate.",
+            details={
+                "field": "cycle.authority.gate_id",
+                "expected_gate_id": expected_gate,
+                "got_gate_id": cycle.authority.gate_id,
+            },
+        )
     if cycle.status == "engine_error":
         if cycle.plan is not None:
             raise DecisionSurfaceError(
@@ -2071,7 +2141,7 @@ def _require_stream_summaries_match_cycle(
         "authority_summary": _authority_summary(authority, cycle),
         "view": {
             "view_id": COMBINED_VIEW_ID,
-            "applied_false_emphasized": True,
+            "applied_emphasized": True,
         },
     }
     for key, rebuilt in expected.items():
@@ -2165,7 +2235,7 @@ def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, 
     return payload
 
 
-def publish_shadow_decision_frame(
+def publish_decision_frame(
     *,
     cycle_result: Any | None,
     context_frame_id: str,
@@ -2186,12 +2256,17 @@ def publish_shadow_decision_frame(
 
     if cycle_result is None:
         return False
-    if staged_engine_id is not None and staged_engine_id != ENGINE_ID:
+    if staged_engine_id is not None and staged_engine_id not in PROPOSAL_ENGINE_IDS:
         return False
     if not isinstance(activation, dict):
         return False
     worker_decision = activation.get("decision")
-    if not isinstance(worker_decision, dict) or worker_decision.get("engine_id") != ENGINE_ID:
+    if not isinstance(worker_decision, dict):
+        return False
+    engine_id = worker_decision.get("engine_id")
+    if engine_id not in PROPOSAL_ENGINE_IDS:
+        return False
+    if staged_engine_id is not None and staged_engine_id != engine_id:
         return False
     worker_activated_at = activation.get("activated_at_ms")
     if type(worker_activated_at) is not int:
@@ -2207,7 +2282,7 @@ def publish_shadow_decision_frame(
     if live is None:
         return False
     live_decision = live.get("decision")
-    if not isinstance(live_decision, dict) or live_decision.get("engine_id") != ENGINE_ID:
+    if not isinstance(live_decision, dict) or live_decision.get("engine_id") != engine_id:
         return False
     live_activated_at = live.get("activated_at_ms")
     if type(live_activated_at) is not int:
@@ -2223,8 +2298,9 @@ def publish_shadow_decision_frame(
         vehicle_id=vehicle_id,
         run_id=run_id,
         worker_pid=worker_pid,
-        activation_engine_id=ENGINE_ID,
+        activation_engine_id=engine_id,
         activation_activated_at_ms=worker_activated_at,
+        engine_id=engine_id,
     )
     write_latest_decision_frame(latest_decision_path(vehicle_runtime_dir), frame)
     return True
@@ -2441,7 +2517,7 @@ def stream_vehicle_decision(
                         f"No active decision engine found for {vehicle_id!r}.",
                         f"Expected activation: {display_path(activation_path)}",
                         "Run: ./cli/automa vehicles update decision --id <vehicle_id> "
-                        "--engine shadow-proposals",
+                        f"--engine {ENGINE_ID}",
                     ]
                 ),
                 vehicle_id=vehicle_id,
@@ -2493,13 +2569,13 @@ def stream_vehicle_decision(
                 "Decision activation has no decision section.",
                 vehicle_id=vehicle_id,
             )
-        if decision.get("engine_id") != ENGINE_ID:
+        if decision.get("engine_id") not in PROPOSAL_ENGINE_IDS:
             raise DecisionSurfaceError(
                 "wrong_engine",
-                f"stream decision requires engine_id={ENGINE_ID!r}; "
+                f"stream decision requires engine_id in {sorted(PROPOSAL_ENGINE_IDS)!r}; "
                 f"got {decision.get('engine_id')!r}. "
                 "Run: ./cli/automa vehicles update decision --id <vehicle> "
-                "--engine shadow-proposals",
+                f"--engine {ENGINE_ID}",
                 vehicle_id=vehicle_id,
             )
         frame = _load_frame()
@@ -2629,11 +2705,12 @@ def _format_stream_frame(frame: dict[str, Any]) -> str:
     )
     lines.append(f"Selected source_refs: {json.dumps(selected_refs, sort_keys=True)}")
     lines.append(
-        f"Authority: proposed={proposed} authorized={authority.get('authorized_output')} "
-        f"proposed_applied=false"
+        f"Authority: gate={authority.get('gate_id')} proposed={proposed} "
+        f"authorized={authority.get('authorized_output')} "
+        f"proposed_applied={str(authority.get('proposed_applied') is True).lower()}"
     )
     lines.append(
-        "Non-claims: no object identity; shadow-only; not navigation certification."
+        "Non-claims: no object identity; not navigation certification."
     )
     return "\n".join(lines)
 
@@ -2930,7 +3007,7 @@ def _apply_vehicle_decision_body(
                     f"No active decision engine found for {vehicle_id!r}.",
                     f"Expected activation: {display_path(activation_path)}",
                     "Run: ./cli/automa vehicles update decision --id <vehicle_id> "
-                    "--engine shadow-proposals",
+                    f"--engine {ENGINE_ID}",
                 ]
             ),
             vehicle_id=vehicle_id,
@@ -2960,7 +3037,7 @@ def _apply_vehicle_decision_body(
             vehicle_id=vehicle_id,
         )
     try:
-        cfg = validate_shadow_engine_config(dict(engine_config))
+        cfg = validate_hold_engine_config(dict(engine_config))
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
             "activation_invalid",
@@ -3122,10 +3199,10 @@ def _run_apply_pass(
     cfg: Mapping[str, Any],
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    engine = create_shadow_proposals_engine(cfg)
+    engine = create_action_composition(cfg)
     digest_frames: list[dict[str, Any]] = []
     for frame in frames:
-        cycle_result, _control = engine.run_cycle(
+        cycle_result = engine.run(
             frame_id=frame["frame_id"],
             frame_index=frame["frame_index"],
             timestamp_ms=frame["timestamp_ms"],
@@ -3164,8 +3241,8 @@ def _run_apply_pass(
                 ),
                 "candidates": candidates,
                 "proposed": proposed,
-                "proposed_applied": False,
-                "authorized_output": authorized_idle_output(),
+                "proposed_applied": authority.proposed_applied,
+                "authorized_output": dict(authority.authorized_output),
             }
         )
     return {
@@ -3206,10 +3283,10 @@ def _write_apply_record(
         frames_dir.mkdir()
         source_frames_dir.mkdir()
 
-        engine = create_shadow_proposals_engine(engine_config)
+        engine = create_action_composition(engine_config)
         cycle_results: list[Any] = []
         for frame in frames:
-            cycle_result, _ = engine.run_cycle(
+            cycle_result = engine.run(
                 frame_id=frame["frame_id"],
                 frame_index=frame["frame_index"],
                 timestamp_ms=frame["timestamp_ms"],
@@ -3279,7 +3356,7 @@ def _write_apply_record(
                 "max_frames": DECISION_APPLY_MAX_FRAMES,
                 "max_record_bytes": DECISION_APPLY_MAX_RECORD_BYTES,
             },
-            "note": "proposed_applied=false; authorized output is shadow-only idle",
+            "note": "proposed_applied=false; the hold gate authorizes idle output",
         }
         (partial_dir / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True),
@@ -3486,7 +3563,7 @@ def render_decision_exact_frame_html(
   </section>{host_telemetry_block}
   <section id="non-claims">
     <h2>Non-claims</h2>
-    <p>no object identity; shadow-only; not navigation certification.</p>
+    <p>no object identity; not navigation certification.</p>
   </section>
 </body>
 </html>
@@ -3580,20 +3657,21 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
         "",
         f"Output: {(schema.get('output') or {}).get('type', 'unknown') if isinstance(schema.get('output'), dict) else 'unknown'}",
     ]
-    shadow = payload.get("shadow")
-    if isinstance(shadow, dict):
+    proposals = payload.get("proposals")
+    if isinstance(proposals, dict):
+        authority = proposals.get("authority") or {}
         lines.extend(
             [
                 "",
-                "Shadow decision:",
-                f"- inputs: {', '.join(shadow.get('decision_inputs') or [])}",
-                f"- enabled_plugins: {', '.join(shadow.get('enabled_plugins') or [])}",
-                f"- selector: {shadow.get('selector_id')}",
-                f"- output_schemas: {json.dumps(shadow.get('output_schemas') or {}, sort_keys=True)}",
+                "Proposal decision:",
+                f"- inputs: {', '.join(proposals.get('decision_inputs') or [])}",
+                f"- enabled_plugins: {', '.join(proposals.get('enabled_plugins') or [])}",
+                f"- selector: {proposals.get('selector_id')}",
+                f"- output_schemas: {json.dumps(proposals.get('output_schemas') or {}, sort_keys=True)}",
                 (
-                    f"- authority: proposed_applied={shadow.get('authority', {}).get('proposed_applied')} "
-                    f"idle_reason={shadow.get('authority', {}).get('authorized_idle_reason')} "
-                    f"mode={shadow.get('authority', {}).get('authority_mode')}"
+                    f"- authority: gate={authority.get('gate_id')} "
+                    f"proposed_applied={authority.get('proposed_applied')} "
+                    f"idle_reason={authority.get('authorized_idle_reason')}"
                 ),
             ]
         )

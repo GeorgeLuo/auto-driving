@@ -30,7 +30,7 @@ class _SlowMapper:
 class _FakeCar:
     def __init__(self, **_kwargs) -> None:
         self.capture_count = 0
-        self.last_capture_shadow_reference: dict | None = None
+        self.last_capture_chaser_reference: dict | None = None
         self.last_passive_capture: dict | None = None
         self.last_simulator_frame_index: int | None = None
 
@@ -64,8 +64,8 @@ class _FakeCar:
             },
             "mutation_attempted": False,
         }
-        self.last_capture_shadow_reference = {
-            "schema": "chase_shadow_reference_v1",
+        self.last_capture_chaser_reference = {
+            "schema": "chaser_reference_v1",
             "evaluator_only": True,
             "simulator_frame_index": simulator_frame_index,
             "simulation_epoch": "chase-run:test",

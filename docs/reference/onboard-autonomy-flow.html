@@ -418,10 +418,11 @@
 
         <div class="node decision">
           <h3>Loadable Engine</h3>
-          <p><code>AutonomyCycleHost</code> gives the cycle result to the engine selected by <code>AutonomyManager</code>.</p>
+          <p><code>AutonomyCycleHost</code> runs the engine selected by <code>AutonomyManager</code> as the cycle's <code>act</code> step.</p>
           <ul>
             <li>Selection comes from <code>runtime/decision/active.json</code>.</li>
-            <li>The current <code>idle</code> engine always returns zero control.</li>
+            <li>Engines propose, plan, and gate; the gate's authority record states whether the selected command was applied.</li>
+            <li>The <code>idle</code> engine takes no action, so the cycle holds position.</li>
             <li>Engines receive evidence, never privileged simulator map state.</li>
           </ul>
         </div>
@@ -557,9 +558,9 @@
           </tr>
           <tr>
             <td>Decision</td>
-            <td><code>AutonomySnapshot</code> with all available step outputs.</td>
-            <td>Normalized <code>AutonomyControl</code>.</td>
-            <td><code>autonomy/runtime/engine.py</code>, <code>cycle_host.py</code></td>
+            <td>Frame context, perception, observation, and memory.</td>
+            <td><code>ActionResult</code>: plan, gate authority, and the <code>AutonomyControl</code> to apply.</td>
+            <td><code>autonomy/decision_cycle/action.py</code>, <code>action_gate/</code>, <code>autonomy/runtime/cycle_host.py</code></td>
           </tr>
           <tr>
             <td>Operations</td>

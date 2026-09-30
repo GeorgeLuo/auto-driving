@@ -323,7 +323,7 @@ def run_live_decision_monitor(
             print(
                 f"Live decision view: {view_url}\n"
                 f"Vehicle: {resolved.vehicle_id} ({resolved.base_url})\n"
-                "Read-only shadow view; no vehicle commands are sent. Ctrl-C stops it.",
+                "Read-only decision view; no vehicle commands are sent. Ctrl-C stops it.",
                 file=output,
                 flush=True,
             )

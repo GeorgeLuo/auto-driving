@@ -23,12 +23,12 @@ from cli.automa_cli.decision import (
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.runtime.donkeycar import AutonomyPilotPart
 from tests.support.cli_runner import run_automa
-from tests.cli.decision.shadow_decision_surfaces_fixtures import (
-    ShadowDecisionSurfaceFixture,
+from tests.cli.decision.decision_surfaces_fixtures import (
+    DecisionSurfaceFixture,
 )
 
 
-class ShadowDecisionSurfaceTests(ShadowDecisionSurfaceFixture, unittest.TestCase):
+class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_physical_decision_acceptance_rejects_bounded_unavailable_cases(
         self,
     ) -> None:

@@ -122,8 +122,8 @@ import sys
 from autonomy.runtime.manager import AutonomyManager
 
 for owner, class_name in (
-    ("implementations.runtime.engines.hold_action", "ShadowProposalsAutonomyEngine"),
-    ("implementations.runtime.engines.mode_gated_action", "ObstacleAvoidanceAutonomyEngine"),
+    ("implementations.runtime.engines.hold_action", "HoldActionEngine"),
+    ("implementations.runtime.engines.mode_gated_action", "ModeGatedActionEngine"),
 ):
     manager = AutonomyManager(default_engine_spec=f"{owner}:{class_name}")
     before = type(manager.engine)

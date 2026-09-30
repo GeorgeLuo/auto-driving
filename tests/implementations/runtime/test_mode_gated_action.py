@@ -1,4 +1,4 @@
-"""Happy-path live PiCar adapter tests."""
+"""Happy-path mode-gated action engine tests."""
 
 from __future__ import annotations
 
@@ -14,12 +14,13 @@ from autonomy.decision_cycle.memory.snapshots.values import (
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from autonomy.decision_cycle.context import DecisionFrameContext
 from implementations.runtime.engines.mode_gated_action import (
     ADAPTER_ENGINE_SPEC,
     ENGINE_ID,
-    ObstacleAvoidanceAutonomyEngine,
+    GATE_ID,
+    ModeGatedActionEngine,
 )
-from autonomy.runtime.engine import AutonomySnapshot
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.manager import AutonomyManager
 from implementations.runtime.donkeycar import AutonomyPilotPart
@@ -75,73 +76,69 @@ def _memory(
     )
 
 
-def _snapshot(*, zone: str | None, mode: str) -> AutonomySnapshot:
-    return AutonomySnapshot(
-        observation=Observation(
+def _act(*, zone: str | None, mode: str):
+    return ModeGatedActionEngine().act(
+        DecisionFrameContext(frame_id="frame-1", frame_index=1, timestamp_ms=1000, mode=mode),
+        None,
+        Observation(
             observation_id="obs-1",
             created_at_ms=1000,
             sensor_snapshot={},
             summary=("test",),
         ),
-        memory=_memory(zone),
-        cycle={"frame_id": "frame-1", "frame_index": 1},
-        mode=mode,
-        timestamp_ms=1000,
+        _memory(zone),
     )
 
 
-class LiveAdapterTests(unittest.TestCase):
+class ModeGatedActionTests(unittest.TestCase):
     def test_schema_is_explicitly_live_and_mode_gated(self) -> None:
-        engine = ObstacleAvoidanceAutonomyEngine()
+        engine = ModeGatedActionEngine()
         schema = engine.describe_schema()
 
         self.assertEqual(schema["engine_id"], ENGINE_ID)
         self.assertEqual(schema["engine_spec"], ADAPTER_ENGINE_SPEC)
         self.assertEqual(schema["output"]["live_modes"], ["autonomy", "local"])
-
-    def test_proposal_cycle_is_available_to_read_only_publication(self) -> None:
-        engine = ObstacleAvoidanceAutonomyEngine()
-        self.assertIsNone(engine.get_current_cycle_result())
-        engine.step(_snapshot(zone="left", mode="local"))
-        cycle = engine.get_current_cycle_result()
-        self.assertIsNotNone(cycle)
-        self.assertEqual(cycle.status, "ok")
+        self.assertEqual(schema["output"]["gate"], GATE_ID)
 
     def test_left_obstruction_drives_forward_and_away(self) -> None:
-        control = ObstacleAvoidanceAutonomyEngine().step(
-            _snapshot(zone="left", mode="local")
-        )
+        action = _act(zone="left", mode="local")
+        control = action.control
 
         self.assertGreater(control.steering, 0.0)
         self.assertAlmostEqual(control.throttle, 0.60)
         self.assertEqual(control.reason, "steer_away_left_obstruction")
+        self.assertEqual(action.authority.gate_id, GATE_ID)
+        self.assertTrue(action.authority.proposed_applied)
+        self.assertTrue(action.authority.proposed_equals_authorized)
 
     def test_right_obstruction_drives_forward_and_away(self) -> None:
-        control = ObstacleAvoidanceAutonomyEngine().step(
-            _snapshot(zone="right", mode="local")
-        )
+        action = _act(zone="right", mode="local")
+        control = action.control
 
         self.assertLess(control.steering, 0.0)
         self.assertAlmostEqual(control.throttle, 0.60)
         self.assertEqual(control.reason, "steer_away_right_obstruction")
+        self.assertTrue(action.authority.proposed_applied)
 
     def test_clear_path_is_idle(self) -> None:
-        control = ObstacleAvoidanceAutonomyEngine().step(
-            _snapshot(zone=None, mode="local")
-        )
+        action = _act(zone=None, mode="local")
+        control = action.control
 
         self.assertEqual(control.steering, 0.0)
         self.assertEqual(control.throttle, 0.0)
         self.assertEqual(control.reason, "no_lateral_obstruction")
+        self.assertFalse(action.authority.proposed_applied)
 
     def test_manual_mode_is_idle_even_with_obstruction(self) -> None:
-        control = ObstacleAvoidanceAutonomyEngine().step(
-            _snapshot(zone="left", mode="user")
-        )
+        action = _act(zone="left", mode="user")
+        control = action.control
 
         self.assertEqual(control.steering, 0.0)
         self.assertEqual(control.throttle, 0.0)
         self.assertEqual(control.reason, "autonomy-mode-required")
+        self.assertIsNotNone(action.authority.proposed)
+        self.assertFalse(action.authority.proposed_applied)
+        self.assertEqual(action.authority.drive_mode_gate, "user")
 
     def test_donkey_pilot_part_forwards_live_command_in_local_mode(self) -> None:
         manager = AutonomyManager(
@@ -170,11 +167,13 @@ class LiveAdapterTests(unittest.TestCase):
             mode="local",
         )
         part.wait_for_cycle()
-        steering, throttle, control, _engine, _cycle = part.completed_outputs("local")
+        steering, throttle, control, _engine, cycle = part.completed_outputs("local")
 
         self.assertGreater(steering, 0.0)
         self.assertAlmostEqual(throttle, 0.60)
         self.assertEqual(control["reason"], "steer_away_left_obstruction")
+        self.assertTrue(cycle["action"]["authority"]["proposed_applied"])
+        self.assertEqual(cycle["action"]["authority"]["gate_id"], GATE_ID)
 
 
 if __name__ == "__main__":

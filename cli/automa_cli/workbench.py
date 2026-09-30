@@ -2,7 +2,7 @@
 
 The workbench is deliberately a thin presentation and lifecycle boundary. It
 normalizes one ordered image-directory source, feeds it through the existing
-perception, observation, memory, and shadow decision seams, and exposes the
+perception, observation, memory, and decision steps, and exposes the
 resulting state to both the CLI and a small loopback HTTP page.
 """
 

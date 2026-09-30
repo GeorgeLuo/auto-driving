@@ -15,6 +15,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
+from autonomy.decision_cycle.result import ACTION_RESULT_SCHEMA
 
 from .paths import safe_path_part
 from .perception_view import get_perception_view_status
@@ -1644,7 +1645,7 @@ def normalize_physical_decision_publication(
 
     The provider returns a detached view of the onboard transport and never
     creates vehicle/run/activation/frame identity. The typed cycle remains the
-    existing ``shadow_decision_cycle_result_v0`` export for common validation.
+    ``action_result_v0`` export for common validation.
     """
 
     if publication is None:
@@ -1816,10 +1817,10 @@ def normalize_physical_decision_publication(
         )
 
     cycle = _physical_require_mapping(decision.get("cycle"), field="decision.cycle")
-    if cycle.get("schema") != "shadow_decision_cycle_result_v0" or cycle.get("status") != "ok":
+    if cycle.get("schema") != ACTION_RESULT_SCHEMA or cycle.get("status") != "ok":
         raise _physical_decision_error(
             "incomplete",
-            "Physical decision cycle is not a successful shadow result.",
+            "Physical decision cycle is not a successful action result.",
             field="decision.cycle",
         )
     if cycle.get("frame_id") != frame_id:

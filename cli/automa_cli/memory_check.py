@@ -25,7 +25,7 @@ from implementations.decision_cycle.memory.catalog import (
 from implementations.vehicle.chase_sim.frame_identity import (
     coerce_simulator_frame_index,
     format_chase_frame_id,
-    score_shadow_alignment_batch,
+    score_reference_alignment_batch,
 )
 
 from .automation import _automation_dir
@@ -102,7 +102,7 @@ def run_vehicle_memory_check(
 ) -> CommandResult:
     """Run present/dropout/expiry/reset gates through activated memory.
 
-    - Chase-sim (discovered): live automation frames + shadow reference alignment.
+    - Chase-sim (discovered): live automation frames + chaser reference alignment.
     - Offline staging ids: process-local phase script.
     - PiCar: scores the **live onboard** step via publication.memory and
       onboard reset (no forced dropout, no ephemeral local reducer). Recorded
@@ -150,7 +150,7 @@ def run_vehicle_memory_check(
             vehicle_id
         )
         if automation_ready:
-            return run_chase_shadow_memory_check(
+            return run_chase_reference_memory_check(
                 vehicle_id=vehicle_id,
                 implementation_id=implementation_id,
                 record=record,
@@ -167,7 +167,7 @@ def run_vehicle_memory_check(
                 load_frame_image=load_frame_image,
             )
         # Discovered Chase without a running automation worker: keep the offline
-        # phase script for unit/dev use, but do not claim live shadow success.
+        # phase script for unit/dev use, but do not claim live reference success.
         return run_offline_memory_check(
             vehicle_id=vehicle_id,
             provider="chase-sim",
@@ -178,7 +178,7 @@ def run_vehicle_memory_check(
             output_root=output_root,
             safety_note=(
                 "Chase automation worker is not running; offline phase script only. "
-                "Start observe-only automation for live simulator frameIndex + shadow alignment "
+                "Start observe-only automation for live simulator frameIndex + reference alignment "
                 "(scenario chaser-depth-obstacles)."
             ),
         )
@@ -209,7 +209,7 @@ def _chase_automation_worker_running(vehicle_id: str) -> bool:
     return str(state.get("status") or "") == "running"
 
 
-def run_chase_shadow_memory_check(
+def run_chase_reference_memory_check(
     *,
     vehicle_id: str,
     implementation_id: str | None = None,
@@ -229,7 +229,7 @@ def run_chase_shadow_memory_check(
     """Score live Chase automation frames for identity, retention, max-age, reset.
 
     Requires a running automation worker. Candidate cycle results must carry
-    ``simulator_frame_index`` and an evaluator-only ``shadow_reference`` with the
+    ``simulator_frame_index`` and an evaluator-only ``chaser_reference`` with the
     same index. After retained-prior evidence is observed, lifecycle keys must
     leave live memory under max-age **without** reset. Map/debug never enter
     observation or memory inputs.
@@ -310,7 +310,7 @@ def run_chase_shadow_memory_check(
 
     _emit(
         output,
-        "Memory check (Chase shadow: identity → alignment → provenance → "
+        "Memory check (Chase reference: identity → alignment → provenance → "
         "max-age expiry → reset)",
     )
     _emit(output, f"vehicle: {vehicle_id}")
@@ -381,7 +381,7 @@ def run_chase_shadow_memory_check(
             2,
             "\n".join(
                 [
-                    f"Chase shadow check collected only {len(frames)} automation frame(s); need ≥{min_frames}.",
+                    f"Chase reference check collected only {len(frames)} automation frame(s); need ≥{min_frames}.",
                     "Ensure automation is running observe-only against a live Play session",
                     f"(scenario chaser-depth-obstacles) and writing {display_path(latest_json_path)}.",
                 ]
@@ -402,20 +402,20 @@ def run_chase_shadow_memory_check(
         except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
             return CommandResult(2, f"Could not record exact Chase source frames: {exc}")
 
-    alignment = score_shadow_alignment_batch(frames, min_frames=max(2, int(min_frames)))
+    alignment = score_reference_alignment_batch(frames, min_frames=max(2, int(min_frames)))
     phase_results.append(
         {
-            "phase": "shadow_alignment",
+            "phase": "reference_alignment",
             "passed": bool(alignment.get("passed")),
             "score": alignment,
             "frame_count": len(frames),
             "live_frame_ids": [frame.get("frame_id") for frame in frames],
-            "lifecycle_source": "live_automation_worker+shadow_reference",
+            "lifecycle_source": "live_automation_worker+chaser_reference",
         }
     )
     _emit(
         output,
-        f"phase: shadow_alignment  "
+        f"phase: reference_alignment  "
         f"{'PASS' if alignment.get('passed') else 'FAIL'}  "
         f"frames={alignment.get('frame_count')} aligned={alignment.get('aligned_count')}",
     )
@@ -464,10 +464,10 @@ def run_chase_shadow_memory_check(
         f"{observe_score.get('reason')}",
     )
 
-    isolation_score = score_shadow_reference_isolation(frames)
+    isolation_score = score_chaser_reference_isolation(frames)
     phase_results.append(
         {
-            "phase": "shadow_isolation",
+            "phase": "reference_isolation",
             "passed": bool(isolation_score.get("passed")),
             "score": isolation_score,
             "frame_count": len(frames),
@@ -476,7 +476,7 @@ def run_chase_shadow_memory_check(
     )
     _emit(
         output,
-        f"phase: shadow_isolation  "
+        f"phase: reference_isolation  "
         f"{'PASS' if isolation_score.get('passed') else 'FAIL'}  "
         f"{isolation_score.get('reason')}",
     )
@@ -525,7 +525,7 @@ def run_chase_shadow_memory_check(
             "\n".join(
                 [
                     f"Memory check: {vehicle_id}  FAIL",
-                    "Provider: chase-sim (live shadow)",
+                    "Provider: chase-sim (live reference)",
                     f"max_age_expiry: {reason}",
                 ]
             ),
@@ -774,11 +774,11 @@ def run_chase_shadow_memory_check(
                 "frame_index": frame.get("frame_index"),
                 "simulator_frame_index": frame.get("simulator_frame_index"),
                 "simulation_epoch": frame.get("simulation_epoch"),
-                "shadow_aligned": (frame.get("shadow_alignment") or {}).get("aligned")
-                if isinstance(frame.get("shadow_alignment"), dict)
+                "reference_aligned": (frame.get("reference_alignment") or {}).get("aligned")
+                if isinstance(frame.get("reference_alignment"), dict)
                 else (
-                    isinstance(frame.get("shadow_reference"), dict)
-                    and frame.get("shadow_reference", {}).get("simulator_frame_index")
+                    isinstance(frame.get("chaser_reference"), dict)
+                    and frame.get("chaser_reference", {}).get("simulator_frame_index")
                     == frame.get("simulator_frame_index")
                 ),
             }
@@ -805,7 +805,7 @@ def run_chase_shadow_memory_check(
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
     lines = [
         f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
-        f"Provider: chase-sim (live shadow)",
+        f"Provider: chase-sim (live reference)",
         f"Implementation: {selected}",
         f"Frames sampled: {len(frames)}",
         f"Phases: {', '.join(item['phase'] + ('✓' if item['passed'] else '✗') for item in phase_results)}",
@@ -1107,7 +1107,7 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
     - action_policy=observe_only
     - control_application=not_applied
     - zero steering/throttle on published control
-    - shadow chaser_control_source is not a WebSocket authority
+    - reference chaser_control_source is not a WebSocket authority
     """
 
     violations: list[str] = []
@@ -1121,12 +1121,12 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
         application = str(frame.get("control_application") or "")
         control_value = frame.get("control")
         control = control_value if isinstance(control_value, dict) else None
-        shadow = (
-            frame.get("shadow_reference")
-            if isinstance(frame.get("shadow_reference"), dict)
+        reference = (
+            frame.get("chaser_reference")
+            if isinstance(frame.get("chaser_reference"), dict)
             else {}
         )
-        shadow_source = str(shadow.get("chaser_control_source") or "").lower()
+        reference_source = str(reference.get("chaser_control_source") or "").lower()
 
         if control_source != "simulator":
             violations.append(f"{frame_id}:control_source={control_source or 'missing'}")
@@ -1154,14 +1154,14 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
                 elif abs(float(value)) > 1e-9:
                     violations.append(f"{frame_id}:control.{axis}={value}")
         # Built-in/simulator/keyboard/ai retain scenario authority; any WS path is forbidden.
-        if not shadow_source:
-            violations.append(f"{frame_id}:shadow.chaser_control_source=missing")
+        if not reference_source:
+            violations.append(f"{frame_id}:reference.chaser_control_source=missing")
         elif (
-            shadow_source in {"ws", "websocket", "external_ws", "external"}
-            or "ws" in shadow_source
-            or shadow_source.startswith("external")
+            reference_source in {"ws", "websocket", "external_ws", "external"}
+            or "ws" in reference_source
+            or reference_source.startswith("external")
         ):
-            violations.append(f"{frame_id}:shadow.chaser_control_source={shadow_source}")
+            violations.append(f"{frame_id}:reference.chaser_control_source={reference_source}")
 
     passed = bool(frames) and not violations
     return {
@@ -1237,13 +1237,13 @@ def derive_chase_safety_from_frames(
             if isinstance(frame, dict) and frame.get("control_application")
         }
     )
-    shadow_sources = sorted(
+    reference_sources = sorted(
         {
-            str((frame.get("shadow_reference") or {}).get("chaser_control_source") or "")
+            str((frame.get("chaser_reference") or {}).get("chaser_control_source") or "")
             for frame in frames
             if isinstance(frame, dict)
-            and isinstance(frame.get("shadow_reference"), dict)
-            and (frame.get("shadow_reference") or {}).get("chaser_control_source")
+            and isinstance(frame.get("chaser_reference"), dict)
+            and (frame.get("chaser_reference") or {}).get("chaser_control_source")
         }
     )
     observe_ok = bool(observe_score.get("passed"))
@@ -1254,7 +1254,7 @@ def derive_chase_safety_from_frames(
         "control_sources": control_sources,
         "action_policies": action_policies,
         "control_applications": applications,
-        "shadow_chaser_control_sources": shadow_sources,
+        "reference_chaser_control_sources": reference_sources,
         "action_policy": action_policies[0] if len(action_policies) == 1 else action_policies,
         "control_source": control_sources[0] if len(control_sources) == 1 else control_sources,
         "rewritten_engine_idle": (
@@ -1263,31 +1263,31 @@ def derive_chase_safety_from_frames(
             and applications == ["not_applied"]
         ),
         "simulator_retains_authority": observe_ok and control_sources == ["simulator"],
-        "lifecycle_source": "live_automation_worker+shadow_reference",
+        "lifecycle_source": "live_automation_worker+chaser_reference",
         "forced_dropout": False,
         "ephemeral_local_reducer": False,
-        "shadow_alignment_passed": bool(alignment_score.get("passed")),
+        "reference_alignment_passed": bool(alignment_score.get("passed")),
         "scenario_note": (
             "Live Chase automation frames preserve simulator frameIndex and pair "
-            "candidate cycle results with exact-identity evaluator-only shadow_reference. "
+            "candidate cycle results with exact-identity evaluator-only chaser_reference. "
             "Safety conclusions are derived from sampled frame control_source, "
-            "action_policy, control_application, and shadow authority."
+            "action_policy, control_application, and chaser reference control source."
         ),
     }
 
 
-def score_shadow_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, Any]:
-    """Shadow/debug must not appear inside observation or memory record inputs."""
+def score_chaser_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, Any]:
+    """Evaluator references and debug data must not appear in observation or memory record inputs."""
 
     leaks: list[str] = []
     for frame in frames:
         observation = frame.get("observation") if isinstance(frame.get("observation"), dict) else {}
-        if "shadow_reference" in observation:
-            leaks.append(f"{frame.get('frame_id')}:observation.shadow_reference")
+        if "chaser_reference" in observation:
+            leaks.append(f"{frame.get('frame_id')}:observation.chaser_reference")
         sensor = observation.get("sensor_snapshot")
         if isinstance(sensor, dict):
             meta = sensor.get("metadata") if isinstance(sensor.get("metadata"), dict) else {}
-            if "shadow_reference" in meta:
+            if "chaser_reference" in meta:
                 leaks.append(f"{frame.get('frame_id')}:observation.sensor_snapshot.metadata")
         memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else {}
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
@@ -1295,16 +1295,16 @@ def score_shadow_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, 
             if not isinstance(record, dict):
                 continue
             blob = json.dumps(record, sort_keys=True, default=str)
-            if "shadow_reference" in blob or "chase_shadow_reference_" in blob:
+            if "chaser_reference" in blob or "chase_chaser_reference_" in blob:
                 leaks.append(f"{record.get('record_id')}:memory_record")
     passed = not leaks
     return {
         "passed": passed,
         "leaks": leaks[:12],
         "reason": (
-            "shadow_reference stays evaluator-only (absent from observation/memory inputs)"
+            "chaser_reference stays evaluator-only (absent from observation/memory inputs)"
             if passed
-            else f"shadow/debug leaked into controller inputs: {leaks[:5]}"
+            else f"evaluator reference/debug leaked into controller inputs: {leaks[:5]}"
         ),
     }
 
@@ -2745,7 +2745,7 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
         )
         if max_age_passed:
             notes.append(
-                "The live Chase check covers history boundary, atomic shadow alignment, "
+                "The live Chase check covers history boundary, atomic reference alignment, "
                 "ordered provenance, max-age expiry without reset, observe-only isolation, "
                 "and reset."
             )
@@ -2756,7 +2756,7 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
             )
         else:
             notes.append(
-                "The live Chase check covers history boundary, atomic shadow alignment, "
+                "The live Chase check covers history boundary, atomic reference alignment, "
                 "ordered provenance, observe-only isolation, and reset."
             )
     else:

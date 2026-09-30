@@ -9,7 +9,8 @@ import numpy as np
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
+from autonomy.runtime.engine import AutonomyControl
+from tests.support.action_fixtures import fixed_control_composition
 from autonomy.runtime.manager import AutonomyManager
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.runtime.donkeycar import (
@@ -41,14 +42,15 @@ class _PushyEngine:
             "engine_spec": "tests:_PushyEngine",
         }
 
-    def step(self, snapshot: AutonomySnapshot) -> AutonomyControl:
-        del snapshot
-        return AutonomyControl(
-            steering=0.7,
-            throttle=0.4,
-            confidence=1.0,
-            reason="pushy-test-engine",
-        )
+    def act(self, context, perception, observation, memory):
+        return fixed_control_composition(
+            AutonomyControl(
+                steering=0.7,
+                throttle=0.4,
+                confidence=1.0,
+                reason="pushy-test-engine",
+            )
+        ).act(context, perception, observation, memory)
 
 
 class _ExplodingHost:
@@ -87,8 +89,8 @@ class RuntimeCycleHostTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(result.control.reason, "stable-idle-engine")
-        self.assertTrue(result.control.metadata["has_sensor_snapshot"])
+        self.assertEqual(result.control.reason, "engine-idle")
+        self.assertIsNone(result.action)
         self.assertEqual(host.manager.status()["step_count"], 1)
         self.assertTrue(
             result.to_dict()["context"]["sensor_snapshot"]["readings"][FRONT_CAMERA_SENSOR_ID][
@@ -98,7 +100,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
     def test_host_rejects_a_second_action_step(self) -> None:
         with self.assertRaisesRegex(ValueError, "owns the decision action step"):
-            AutonomyCycleHost(steps=DecisionSteps(choose_action=lambda *args: None))
+            AutonomyCycleHost(steps=DecisionSteps(act=lambda *args: None))
 
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
@@ -109,7 +111,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
-        self.assertEqual(control["reason"], "stable-idle-engine")
+        self.assertEqual(control["reason"], "engine-idle")
         self.assertEqual(engine, "autonomy.runtime.engine:IdleAutonomyEngine")
         self.assertEqual(cycle["schema"], "decision_cycle_result_v0")
         self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")
@@ -308,6 +310,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
                 class _Result:
                     control = AutonomyControl(reason="blocked-test")
+                    action = None
                     completed_at_ms = 1
                     duration_ms = 1
 

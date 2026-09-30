@@ -54,13 +54,13 @@
             "path": "autonomy/decision/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Observation contracts and the decision cycle, including optional action stages. Memory activation, protocol, and values live under autonomy/memory/. The cycle input lives under autonomy/decision_cycle/."
+            "responsibility": "The decision cycle ordering and the action composition, including optional action stages. Memory activation, protocol, and values live under autonomy/memory/. The cycle input lives under autonomy/decision_cycle/."
           },
           {
             "path": "autonomy/decision_cycle/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Canonical home of decision-cycle contracts, grouped by step. It holds the cycle input (context.py), the memory failure (memory/errors.py), proposal values (proposal/values.py), the action identifier grammar (action_identifiers.py), and plan values with the built-in selector (planning/); other cycle and step modules still live under autonomy/decision/, autonomy/perception/, and autonomy/memory/, which keep their import paths."
+            "responsibility": "Canonical home of decision-cycle contracts, grouped by step. It holds the cycle input (context.py), the memory failure (memory/errors.py), the observation record and default observe step (observation/), proposal inputs and values (proposal/), the action identifier grammar (action_identifiers.py), and plan values with the built-in selector (planning/); other cycle and step modules still live under autonomy/decision/, autonomy/perception/, and autonomy/memory/, which keep their import paths."
           },
           {
             "path": "autonomy/runtime/",

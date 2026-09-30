@@ -43,8 +43,9 @@ from .memory import (
     serialized_memory_snapshot_bytes,
     unavailable_memory_snapshot,
 )
-from .observation import OBSERVATION_SCHEMA, Observation, observation_from_perception
-from .decision_data import (
+from autonomy.decision_cycle.observation.step import observation_from_perception
+from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
+from autonomy.decision_cycle.proposal.inputs import (
     DECISION_DATA_SOURCE_SCHEMA,
     ComponentEnvelope,
     DecisionDataSource,

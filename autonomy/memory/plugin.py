@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision.observation import Observation
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.memory.values import MemorySnapshot
 from autonomy.shared_memory import SharedMemory
 

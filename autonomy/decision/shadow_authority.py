@@ -8,7 +8,7 @@ from typing import Any
 
 from autonomy.decision_cycle.planning.values import ActionPlan
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
-from autonomy.decision.decision_data import (
+from autonomy.decision_cycle.proposal.inputs import (
     ComponentEnvelope,
     DecisionDataSource,
     unavailable_envelope,

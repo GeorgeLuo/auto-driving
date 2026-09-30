@@ -13,7 +13,7 @@ from autonomy.decision_cycle.proposal.values import (
     ProposedVehicleCommand,
     synthetic_error_proposal,
 )
-from autonomy.decision.decision_data import (
+from autonomy.decision_cycle.proposal.inputs import (
     ComponentEnvelope,
     DecisionDataSource,
     build_decision_data_source,
@@ -22,7 +22,7 @@ from autonomy.decision.decision_data import (
 )
 from autonomy.memory.values import MemorySnapshot
 from autonomy.serialization import canonical_json_size_bytes
-from autonomy.decision.observation import Observation
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision.shadow_authority import (
     ShadowDecisionCycleResult,
     authorized_idle_control,

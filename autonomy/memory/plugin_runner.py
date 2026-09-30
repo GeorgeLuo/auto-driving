@@ -11,7 +11,7 @@ from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
-from autonomy.decision.observation import Observation
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.memory.plugin import MemoryImplementation
 from autonomy.memory.values import (
     DEFAULT_MAX_DIAGNOSTIC_CHARS,

@@ -97,72 +97,98 @@
             ]
           },
           {
-            "path": "implementations/perception/",
+            "path": "implementations/decision_cycle/",
             "category": "implementation",
             "commit_policy": "source",
-            "responsibility": "Concrete component adapters and plugin-style sensor-to-evidence algorithms.",
+            "responsibility": "Concrete decision-cycle plugins grouped by the step they plug into. Each plugin package holds its entrypoint and helpers.",
             "children": [
               {
-                "path": "implementations/perception/components/",
+                "path": "implementations/decision_cycle/perception/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Concrete adapters that derive reusable plugin input components from generic sensor readings."
+                "responsibility": "Perception plugins that derive evidence from sensor data, their components, shared algorithms, and the packaged catalog.",
+                "children": [
+                  {
+                    "path": "implementations/decision_cycle/perception/components/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Concrete adapters that derive reusable plugin input components from generic sensor readings, such as camera frames."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/perception/frame_observation/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Frame observation plugin: current-frame statistics and change measurements."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/perception/floor_plane/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Floor-plane plugin: floor modeling, projection, and traversability evidence."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/perception/motion_tracks/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Motion-tracks plugin: bounded temporal tracks from scene motion."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/perception/obstruction_tracks/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Multi-obstruction tracks plugin."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/perception/sim_color_targets/",
+                    "category": "environment-implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Simulation-only color-target plugin."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/perception/vlm_preparation/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Deterministic image preparation plugin for optional downstream observers."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/perception/algorithms/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Feature, scene-motion, and landmark algorithms shared by plugins and tools. They are not selectable plugins."
+                  }
+                ]
               },
               {
-                "path": "implementations/perception/observation/",
+                "path": "implementations/decision_cycle/memory/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Current-frame statistics and change measurements."
+                "responsibility": "Memory plugins that retain evidence, and the memory catalog. Values, protocol, and activation loading live under autonomy/memory/."
               },
               {
-                "path": "implementations/perception/features/",
+                "path": "implementations/decision_cycle/proposal/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Feature detection, matching, and sequence fitting algorithms."
-              },
-              {
-                "path": "implementations/perception/motion/",
-                "category": "implementation",
-                "commit_policy": "source",
-                "responsibility": "Scene-motion estimation and bounded temporal track plugins."
-              },
-              {
-                "path": "implementations/perception/traversability/",
-                "category": "implementation",
-                "commit_policy": "source",
-                "responsibility": "Floor modeling, projection, and traversability evidence plugins."
-              },
-              {
-                "path": "implementations/perception/landmarks/",
-                "category": "implementation",
-                "commit_policy": "source",
-                "responsibility": "Landmark selection and relative-distance estimation algorithms."
-              },
-              {
-                "path": "implementations/perception/simulation/",
-                "category": "environment-implementation",
-                "commit_policy": "source",
-                "responsibility": "Simulation-only perception controls and validation plugins."
-              },
-              {
-                "path": "implementations/perception/preparation/",
-                "category": "implementation",
-                "commit_policy": "source",
-                "responsibility": "Deterministic preprocessing implementations for optional downstream observers."
+                "responsibility": "Proposal plugins that propose a command. Engine assembly lives under implementations/runtime/engines/."
               }
             ]
           },
           {
-            "path": "implementations/decision/",
-            "category": "implementation",
+            "path": "implementations/perception/",
+            "category": "compatibility",
             "commit_policy": "source",
-            "responsibility": "Concrete non-default decision engines and stage implementations. The stable idle default belongs to autonomy/runtime/."
+            "responsibility": "Import paths that forward to implementations/decision_cycle/perception/. Existing specs and manifests still name them."
+          },
+          {
+            "path": "implementations/decision/",
+            "category": "compatibility",
+            "commit_policy": "source",
+            "responsibility": "Import paths that forward to implementations/decision_cycle/proposal/ and implementations/runtime/engines/. The hold and mode-gated adapters still live here."
           },
           {
             "path": "implementations/memory/",
-            "category": "implementation",
+            "category": "compatibility",
             "commit_policy": "source",
-            "responsibility": "Concrete memory reducers selected by runtime/memory activation. Stable values, protocol, and activation loading live under autonomy/memory/."
+            "responsibility": "Import paths that forward to implementations/decision_cycle/memory/. Existing memory specs still name them."
           },
           {
             "path": "implementations/runtime/",
@@ -175,6 +201,12 @@
                 "category": "runtime-implementation",
                 "commit_policy": "source",
                 "responsibility": "DonkeyCar part and drive-loop integration."
+              },
+              {
+                "path": "implementations/runtime/engines/",
+                "category": "runtime-implementation",
+                "commit_policy": "source",
+                "responsibility": "Loadable automation engines, their catalog, configuration, and offline inspection. They assemble proposal plugins into the action composition."
               }
             ]
           },

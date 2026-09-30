@@ -378,7 +378,9 @@ class LoadingContractTests(unittest.TestCase):
         # bundle classes rather than the classes already imported by the host.
         with StagedBundleImport(self.bundle_root, PERCEPTION_BUNDLE_PREFIXES).activate():
             mapper_module = importlib.import_module("autonomy.perception.plugin_runner")
-            plugin_module = importlib.import_module("implementations.perception.observation.plugin")
+            plugin_module = importlib.import_module(
+                "implementations.decision_cycle.perception.frame_observation.plugin"
+            )
             self.assertIn(str(self.bundle_root), mapper_module.__file__ or "")
             self.assertIn(str(self.bundle_root), plugin_module.__file__ or "")
             self.assertIs(plugin_module.PerceptionPluginContract, mapper_module.PerceptionPluginContract)
@@ -403,7 +405,9 @@ class LoadingContractTests(unittest.TestCase):
         # autonomy stays imported from the host. Its package __path__ is the
         # host tree, including submodules imported for the first time here.
         with StagedBundleImport(self.bundle_root, MEMORY_BUNDLE_PREFIXES).activate():
-            staged = importlib.import_module("implementations.memory.bounded_evidence")
+            staged = importlib.import_module(
+                "implementations.decision_cycle.memory.bounded_evidence.plugin"
+            )
             self.assertIn(str(self.bundle_root), staged.__file__ or "")
             self.assertIsNot(staged.BoundedEvidenceLedger, host_ledger)
             self.assertIs(staged.MemorySnapshot, host_snapshot)

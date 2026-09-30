@@ -42,17 +42,24 @@ class MemoryStreamTests(unittest.TestCase):
                         "implementation_spec": (
                             "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
                         ),
-                        "last_health": "healthy",
-                        "last_epoch_id": "epoch-2",
-                        "last_record_count": 7,
+                        "plugins": [
+                            {
+                                "plugin_id": "bounded_evidence",
+                                "state": {
+                                    "health": "healthy",
+                                    "epoch_id": "epoch-2",
+                                    "record_count": 7,
+                                    "bounds": {
+                                        "max_records": 32,
+                                        "max_age_ms": 10000,
+                                        "eviction_policy": "oldest_first",
+                                    },
+                                },
+                            }
+                        ],
                         "update_count": 12,
                         "reset_count": 1,
                         "failure_count": 0,
-                        "bounds": {
-                            "max_records": 32,
-                            "max_age_ms": 10000,
-                            "eviction_policy": "oldest_first",
-                        },
                         "plugin_report": {
                             "available_plugin_ids": ["bounded_evidence", "other"],
                             "selected_plugin_ids": ["other"],
@@ -122,8 +129,12 @@ class MemoryStreamTests(unittest.TestCase):
                 "components": {
                     "memory": {
                         "implementation_id": "bounded_evidence",
-                        "last_health": "healthy",
-                        "last_record_count": 3,
+                        "plugins": [
+                            {
+                                "plugin_id": "bounded_evidence",
+                                "state": {"health": "healthy", "record_count": 3},
+                            }
+                        ],
                         "update_count": 4,
                         "reset_count": 1,
                         "failure_count": 0,
@@ -272,9 +283,16 @@ class MemoryStreamTests(unittest.TestCase):
                         "memory": {
                             "implementation_id": "bounded_evidence",
                             "status": {
-                                "last_health": "healthy",
-                                "last_record_count": 3,
-                                "last_epoch_id": "epoch-1",
+                                "plugins": [
+                                    {
+                                        "plugin_id": "bounded_evidence",
+                                        "state": {
+                                            "health": "healthy",
+                                            "record_count": 3,
+                                            "epoch_id": "epoch-1",
+                                        },
+                                    }
+                                ],
                                 "update_count": 9,
                             },
                         },
@@ -549,9 +567,16 @@ class MemoryStreamTests(unittest.TestCase):
                         "memory": {
                             "implementation_id": "bounded_evidence",
                             "status": {
-                                "last_health": "healthy",
-                                "last_record_count": 5,
-                                "last_epoch_id": "epoch-3",
+                                "plugins": [
+                                    {
+                                        "plugin_id": "bounded_evidence",
+                                        "state": {
+                                            "health": "healthy",
+                                            "record_count": 5,
+                                            "epoch_id": "epoch-3",
+                                        },
+                                    }
+                                ],
                                 "update_count": 12,
                                 "reset_count": 1,
                                 "failure_count": 0,

@@ -11,6 +11,8 @@ from tests.cli.memory.chase_max_age_fixtures import (
     _live_probe,
 )
 
+from tests.support.memory_fixtures import memory_report
+
 
 class ChaseMaxAgeIntegrationTests(unittest.TestCase):
     def test_record_fails_closed_when_expiry_image_missing(self) -> None:
@@ -122,7 +124,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             return {
                 "ok": True,
                 "status": "reset",
-                "snapshot": {
+                "report": memory_report({
                     "health": "empty",
                     "record_count": 0,
                     "records": [],
@@ -130,7 +132,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                     "metadata": {
                         "capacity_eviction_count": worker["capacity_eviction_count"],
                     },
-                },
+                }),
             }
 
         temporary = tempfile.TemporaryDirectory()

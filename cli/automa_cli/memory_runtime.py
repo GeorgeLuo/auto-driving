@@ -16,7 +16,7 @@ from .staged_bundle import StagedBundleImport
 
 
 # Implementations and lab plugins come from the staged bundle. autonomy stays
-# on the host so DecisionCycle sees the host MemorySnapshot class.
+# on the host so plugins and the cycle share the host's value classes.
 _BUNDLE_PREFIXES = ("implementations", "lab")
 
 
@@ -30,7 +30,7 @@ def load_memory_step_from_bundle(activation: MemoryActivation) -> PluginMemoryRu
     import_context = StagedBundleImport(Path(root), _BUNDLE_PREFIXES)
     with import_context.activate():
         step = PluginMemoryRunner(activation)
-    for method_name in ("update", "reset", "snapshot"):
+    for method_name in ("update", "reset", "report", "status"):
         method = getattr(step, method_name)
 
         def invoke_in_bundle(*args, _method=method, **kwargs):

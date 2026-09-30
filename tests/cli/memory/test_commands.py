@@ -64,7 +64,8 @@ class MemoryCommandTests(unittest.TestCase):
                 info_payload["activation"]["implementation_id"],
                 "bounded_evidence",
             )
-            self.assertEqual(info_payload["activation"]["bounds"]["max_records"], 32)
+            # Retention bounds belong to the plugin, not the activation.
+            self.assertNotIn("bounds", info_payload["activation"])
             self.assertFalse(info_payload["lifecycle"]["claims_identity"])
 
     def test_memory_enable_disable_commands_round_trip_through_info(self) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
@@ -12,7 +13,7 @@ from cli.automa_cli import decision as decision_module
 from cli.automa_cli.decision import (
     ENGINE_ID,
     build_decision_stream_frame,
-    strict_decode_apply_memory,
+    strict_decode_apply_evidence,
     strict_decode_apply_observation,
     update_vehicle_decision,
 )
@@ -75,7 +76,7 @@ class LiveRuntimeDecisionViewFixture:
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
             observation=strict_decode_apply_observation(raw["observation"]),
-            memory=strict_decode_apply_memory(raw["memory"]),
+            shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
             host_application=host_application,
         )
         _control = cycle.control
@@ -94,7 +95,7 @@ class LiveRuntimeDecisionViewFixture:
                 "frames"
             ][0]
         )
-        record = raw["memory"]["records"][0]
+        record = raw["evidence"][0]
         provenance = record["provenance"]
         thing = {
             "thing_id": provenance["evidence_id"],

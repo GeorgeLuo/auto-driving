@@ -509,7 +509,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live memory snapshots (one JSON object per refresh).",
+        help="Print machine-readable live memory probes (one JSON object per refresh).",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
@@ -597,7 +597,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--from-run",
         required=True,
         dest="from_run",
-        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v0).",
+        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v1).",
     )
     decision_apply.add_argument(
         "--json",

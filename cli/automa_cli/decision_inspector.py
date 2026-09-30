@@ -11,6 +11,7 @@ from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from autonomy.serialization import canonical_json_utf8
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.runtime.engines.catalog import create_action_composition
 from implementations.runtime.engines.config import default_engine_config
 from implementations.runtime.engines.inspection import prepare_inspection_scenarios
@@ -28,7 +29,7 @@ from .decision import (
     _read_surface_activation,
     controller_bundle_paths,
     safe_path_part,
-    strict_decode_apply_memory,
+    strict_decode_apply_evidence,
     validate_hold_engine_config,
 )
 from .loopback_http import (
@@ -76,22 +77,25 @@ def inspect_decision_sequence(
         if decision.get("engine_id") != ENGINE_ID:
             raise ValueError(f"Inspector requires the {ENGINE_ID} engine.")
         config = validate_hold_engine_config(decision["engine_config"])
-    # Recorded retained evidence originated at shared_memory["decision.snapshot"].
-    if frame["memory"] is None:
-        raise ValueError("Selected frame has no retained memory to reposition. Choose a frame with image evidence.")
+    # Recorded retained evidence is what memory had published in shared memory.
+    if frame["evidence"] is None:
+        raise ValueError("Selected frame has no retained evidence to reposition. Choose a frame with image evidence.")
 
-    prepared = prepare_inspection_scenarios(frame["memory"].to_dict(), config)
+    prepared = prepare_inspection_scenarios(
+        [record.to_dict() for record in frame["evidence"]], config
+    )
     scenarios = {}
     for name, scenario in prepared.items():
         cycle = create_action_composition(config).run(
             frame_id=frame["frame_id"], frame_index=frame["frame_index"],
             timestamp_ms=frame["timestamp_ms"], observation=frame["observation"],
             observation_error=frame["observation_error"],
-            memory=strict_decode_apply_memory(scenario["memory"]), host_application=None,
+            shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(scenario["evidence"])},
+            host_application=None,
         )
         command = cycle.authority.proposed
         steering = command.steering if command is not None else 0
-        published = {key: value for key, value in scenario.items() if key != "memory"}
+        published = {key: value for key, value in scenario.items() if key != "evidence"}
         published["steering_direction"] = (
             "steer left" if steering < 0 else "steer right" if steering > 0 else "hold"
         )

@@ -488,7 +488,7 @@
         <div class="step">
           <div>
             <h3>Update Memory</h3>
-            <p>An activated memory plugin transforms observations into a <code>MemorySnapshot</code> for the decision engine. Without a configured memory step, the cycle carries <code>null</code>.</p>
+            <p>Activated memory plugins read each observation and write what they retain to plugin-owned <code>shared_memory</code> keys. The step returns a memory report of each plugin's state. Without a configured memory step, the cycle carries <code>null</code>.</p>
           </div>
         </div>
         <div class="step">
@@ -513,10 +513,10 @@
 
       <div class="callout">
         <strong>Memory plugins own memory transformations:</strong>
-        the shared cycle passes their <code>MemorySnapshot</code> directly to
-        the action step and exposes it in <code>DecisionCycleResult</code>.
-        Derived evidence belongs in that memory contract, so the harness does
-        not need separate pattern or projection steps.
+        proposal plugins read the same <code>shared_memory</code> keys that
+        memory plugins write, and <code>DecisionCycleResult</code> carries the
+        memory report. Derived evidence belongs in those keys, so the harness
+        does not need separate pattern or projection steps.
       </div>
     </section>
 

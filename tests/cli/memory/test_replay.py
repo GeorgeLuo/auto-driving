@@ -7,7 +7,7 @@ from cli.automa_cli.memory import (
     MEMORY_REPLAY_MAX_FRAMES,
     MEMORY_REPLAY_RECORD_ARTIFACTS,
     load_memory_observation_sequence,
-    memory_snapshot_digest,
+    memory_state_digest,
     replay_vehicle_memory,
 )
 from tests.support.cli_runner import run_automa
@@ -80,7 +80,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         payload = json.loads(result.stdout)
-        recomputed = memory_snapshot_digest(payload["final"])
+        recomputed = memory_state_digest(payload["final"])
         self.assertEqual(payload["digest"], recomputed)
 
     def test_replay_uses_staged_activation_when_present(self) -> None:

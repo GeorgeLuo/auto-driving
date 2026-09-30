@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from cli.automa_cli.memory_report import memory_state
 from cli.automa_cli.physical_observation import publication_to_frame_record
 from cli.automa_cli.perception_view import (
     _publication_payload,
 )
+from tests.support.memory_fixtures import memory_report
 
 
 class MemoryViewPublicationTests(unittest.TestCase):
@@ -34,8 +36,8 @@ class MemoryViewPublicationTests(unittest.TestCase):
                     }
                 ]
             },
-            "memory": {
-                "schema": "decision_memory_snapshot_v0",
+            "memory": memory_report({
+                "schema": "bounded_evidence_ledger_v0",
                 "health": "healthy",
                 "epoch_id": "epoch-2",
                 "record_count": 1,
@@ -56,12 +58,14 @@ class MemoryViewPublicationTests(unittest.TestCase):
                         },
                     }
                 ],
-            },
+            }),
             "control": {"steering": 0.0, "throttle": 0.0},
         }
         frame_record = publication_to_frame_record(publication)
-        self.assertEqual(frame_record["memory"]["health"], "healthy")
-        self.assertEqual(frame_record["memory"]["records"][0]["kind"], "floor_boundary")
+        self.assertEqual(memory_state(frame_record["memory"])["health"], "healthy")
+        self.assertEqual(
+            memory_state(frame_record["memory"])["records"][0]["kind"], "floor_boundary"
+        )
 
         view_payload = _publication_payload(
             vehicle_id="piracer",

@@ -54,16 +54,14 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MEMORY_SNAPSHOT_SCHEMA,
-    MemorySnapshot,
-)
+from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.serialization import canonical_json_utf8
 from implementations.runtime.engines.catalog import (
     create_action_composition,
     validate_engine_config,
 )
 from implementations.runtime.engines.config import default_engine_config
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.runtime.engines.mode_gated_action import (
     ADAPTER_ENGINE_SPEC as LIVE_ADAPTER_ENGINE_SPEC,
     ENGINE_ID as LIVE_ENGINE_ID,
@@ -100,7 +98,7 @@ DECISION_APPLY_MAX_RECORD_BYTES = int(
     os.environ.get("AUTOMA_DECISION_APPLY_MAX_RECORD_BYTES", str(8 * 1024 * 1024))
 )
 
-APPLY_SEQUENCE_SCHEMA = "automa_decision_apply_sequence_v0"
+APPLY_SEQUENCE_SCHEMA = "automa_decision_apply_sequence_v1"
 STREAM_FRAME_SCHEMA = "vehicle_decision_stream_frame_v0"
 APPLY_RESULT_SCHEMA = "vehicle_decision_apply_result_v0"
 APPLY_DIGEST_SCHEMA = "vehicle_decision_apply_digest_v0"
@@ -170,7 +168,7 @@ SOURCE_EXACT_KEYS = frozenset(
         "frame_index",
         "timestamp_ms",
         "observation",
-        "memory",
+        "evidence",
         "capabilities",
         "prior_host_applied_command",
         "metadata",
@@ -247,31 +245,6 @@ OBSERVATION_REQUIRED_KEYS = frozenset(
         "metadata",
     }
 )
-MEMORY_REQUIRED_KEYS = frozenset(
-    {
-        "schema",
-        "memory_id",
-        "epoch_id",
-        "health",
-        "bounds",
-        "created_at_ms",
-        "record_count",
-        "records",
-        "summary",
-        "implementation_id",
-        "error",
-        "metadata",
-    }
-)
-BOUNDS_REQUIRED_KEYS = frozenset(
-    {
-        "max_records",
-        "max_age_ms",
-        "eviction_policy",
-        "max_property_bytes",
-        "max_serialized_bytes",
-    }
-)
 RECORD_REQUIRED_KEYS = frozenset(
     {
         "record_id",
@@ -300,7 +273,7 @@ LOCATION_REQUIRED_KEYS = frozenset(
 
 PROPOSAL_DECISION_INPUTS = (
     "observation",
-    "memory",
+    "shared_memory",
     "capabilities",
     "prior_host_applied_command",
 )
@@ -904,20 +877,19 @@ def _memory_summary(source: dict[str, Any] | None) -> dict[str, Any]:
             "record_count": None,
             "records": [],
         }
-    mem_env = source.get("memory")
-    if not isinstance(mem_env, dict):
+    evidence_env = source.get("evidence")
+    if not isinstance(evidence_env, dict):
         return {
             "status": "absent",
             "health": None,
             "record_count": None,
             "records": [],
         }
-    status = mem_env.get("status")
-    value = mem_env.get("value") if isinstance(mem_env.get("value"), dict) else None
+    status = evidence_env.get("status")
+    value = evidence_env.get("value") if isinstance(evidence_env.get("value"), list) else None
     if status == "ready" and value is not None:
         records_out: list[dict[str, Any]] = []
-        raw_records = value.get("records") if isinstance(value.get("records"), list) else []
-        for item in raw_records[:12]:
+        for item in value[:12]:
             if not isinstance(item, dict):
                 continue
             prov = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
@@ -932,14 +904,14 @@ def _memory_summary(source: dict[str, Any] | None) -> dict[str, Any]:
             )
         return {
             "status": "ready",
-            "health": value.get("health"),
-            "record_count": value.get("record_count"),
+            "health": "healthy" if value else "empty",
+            "record_count": len(value),
             "records": records_out,
         }
     return {
         "status": str(status or "absent"),
-        "health": value.get("health") if isinstance(value, dict) else None,
-        "record_count": value.get("record_count") if isinstance(value, dict) else None,
+        "health": None,
+        "record_count": None,
         "records": [],
     }
 
@@ -1789,23 +1761,23 @@ def _strict_decode_source_envelope(
                 value, typed.to_dict(), field=f"{field}.value"
             )
             value = typed
-        elif component == "memory":
-            if not isinstance(value, dict):
+        elif component == "evidence":
+            if not isinstance(value, list):
                 raise DecisionSurfaceError(
                     "latest_frame_invalid",
-                    f"{field}.value must be a MemorySnapshot export object when ready.",
+                    f"{field}.value must be a list of RetainedEvidence exports when ready.",
                     details={"field": field},
                 )
             try:
-                typed = MemorySnapshot.from_dict(value)
-            except (TypeError, ValueError) as exc:
+                typed = tuple(RetainedEvidence.from_dict(item) for item in value)
+            except (AttributeError, TypeError, ValueError) as exc:
                 raise DecisionSurfaceError(
                     "latest_frame_invalid",
-                    f"{field}.value failed MemorySnapshot construction: {exc}",
+                    f"{field}.value failed RetainedEvidence construction: {exc}",
                     details={"field": field},
                 ) from exc
             _require_canonical_export_equal(
-                value, typed.to_dict(), field=f"{field}.value"
+                value, [record.to_dict() for record in typed], field=f"{field}.value"
             )
             value = typed
     try:
@@ -1843,7 +1815,7 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
     envelopes: dict[str, ComponentEnvelope] = {}
     for env_key in (
         "observation",
-        "memory",
+        "evidence",
         "capabilities",
         "prior_host_applied_command",
     ):
@@ -1858,7 +1830,7 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
             frame_index=payload["frame_index"],
             timestamp_ms=payload["timestamp_ms"],
             observation=envelopes["observation"],
-            memory=envelopes["memory"],
+            evidence=envelopes["evidence"],
             capabilities=envelopes["capabilities"],
             prior_host_applied_command=envelopes["prior_host_applied_command"],
             metadata=dict(payload.get("metadata") or {}),
@@ -2778,75 +2750,48 @@ def strict_decode_apply_observation(payload: object) -> Observation:
     return constructed
 
 
-def strict_decode_apply_memory(payload: object) -> MemorySnapshot:
-    """Decode retained evidence published at shared_memory["decision.snapshot"].
+def strict_decode_apply_evidence(payload: object) -> tuple[RetainedEvidence, ...]:
+    """Decode recorded retained evidence (a list of RetainedEvidence exports).
 
-    Only legal way apply turns JSON into MemorySnapshot (complete export equality).
+    Only legal way apply turns JSON into evidence records (complete export equality).
     """
 
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "run_invalid",
-            "Apply memory must be a JSON object (full to_dict export).",
-        )
-    if set(payload.keys()) != MEMORY_REQUIRED_KEYS:
-        raise DecisionSurfaceError(
-            "run_invalid",
-            "Apply memory key set must exactly match MemorySnapshot.to_dict() export.",
-            details={
-                "expected": sorted(MEMORY_REQUIRED_KEYS),
-                "got": sorted(payload.keys()),
-            },
-        )
-    bounds = payload.get("bounds")
-    if not isinstance(bounds, dict) or set(bounds.keys()) != BOUNDS_REQUIRED_KEYS:
-        raise DecisionSurfaceError(
-            "run_invalid",
-            "memory.bounds must be a complete MemoryBounds.to_dict() export.",
-        )
-    records = payload.get("records")
-    if not isinstance(records, (list, tuple)):
-        raise DecisionSurfaceError("run_invalid", "memory.records must be a list.")
-    if payload.get("record_count") != len(records):
-        raise DecisionSurfaceError(
-            "run_invalid",
-            "memory.record_count must equal len(records).",
-        )
-    summary = payload.get("summary")
-    if not isinstance(summary, (list, tuple)):
-        raise DecisionSurfaceError("run_invalid", "memory.summary must be a list.")
-    for item in records:
+    if not isinstance(payload, (list, tuple)):
+        raise DecisionSurfaceError("run_invalid", "evidence must be a list of records.")
+    for item in payload:
         if not isinstance(item, dict):
             raise DecisionSurfaceError(
                 "run_invalid",
-                "memory.records entries must be objects (lossless decode).",
+                "evidence entries must be objects (lossless decode).",
             )
         if set(item.keys()) != RECORD_REQUIRED_KEYS:
             raise DecisionSurfaceError(
                 "run_invalid",
-                "memory record key set must match RetainedEvidence.to_dict().",
+                "evidence record key set must match RetainedEvidence.to_dict().",
             )
         provenance = item.get("provenance")
         if not isinstance(provenance, dict) or set(provenance.keys()) != PROVENANCE_REQUIRED_KEYS:
             raise DecisionSurfaceError(
                 "run_invalid",
-                "memory record provenance must be a complete MemoryProvenance export.",
+                "evidence record provenance must be a complete MemoryProvenance export.",
             )
         location = item.get("location")
         if location is not None:
             if not isinstance(location, dict) or set(location.keys()) != LOCATION_REQUIRED_KEYS:
                 raise DecisionSurfaceError(
                     "run_invalid",
-                    "memory record location must be null or a complete ViewLocation export.",
+                    "evidence record location must be null or a complete ViewLocation export.",
                 )
     try:
-        constructed = MemorySnapshot.from_dict(payload)
+        constructed = tuple(RetainedEvidence.from_dict(item) for item in payload)
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "run_invalid",
-            f"memory failed construction: {exc}",
+            f"evidence failed construction: {exc}",
         ) from exc
-    _require_full_export_equality(payload, constructed.to_dict(), label="memory")
+    _require_full_export_equality(
+        list(payload), [record.to_dict() for record in constructed], label="evidence"
+    )
     return constructed
 
 
@@ -3174,12 +3119,12 @@ def _normalize_apply_frames(
                 vehicle_id=vehicle_id,
             )
 
-        memory_payload = raw.get("memory")
-        memory: MemorySnapshot | None
-        if memory_payload is None or "memory" not in raw:
-            memory = None
+        evidence_payload = raw.get("evidence")
+        evidence: tuple[RetainedEvidence, ...] | None
+        if evidence_payload is None:
+            evidence = None
         else:
-            memory = strict_decode_apply_memory(memory_payload)
+            evidence = strict_decode_apply_evidence(evidence_payload)
 
         normalized.append(
             {
@@ -3188,11 +3133,18 @@ def _normalize_apply_frames(
                 "timestamp_ms": timestamp_ms,
                 "observation": observation,
                 "observation_error": observation_error,
-                "memory": memory,
+                "evidence": evidence,
                 "raw": raw,
             }
         )
     return normalized
+
+
+def _recorded_shared_memory(frame: Mapping[str, Any]) -> dict[str, Any]:
+    """The host map as the recording saw it: the evidence memory had published."""
+
+    evidence = frame["evidence"]
+    return {} if evidence is None else {EVIDENCE_KEY: evidence}
 
 
 def _run_apply_pass(
@@ -3208,7 +3160,7 @@ def _run_apply_pass(
             timestamp_ms=frame["timestamp_ms"],
             observation=frame["observation"],
             observation_error=frame["observation_error"],
-            memory=frame["memory"],
+            shared_memory=_recorded_shared_memory(frame),
             host_application=None,
         )
         plan = cycle_result.plan
@@ -3292,7 +3244,7 @@ def _write_apply_record(
                 timestamp_ms=frame["timestamp_ms"],
                 observation=frame["observation"],
                 observation_error=frame["observation_error"],
-                memory=frame["memory"],
+                shared_memory=_recorded_shared_memory(frame),
                 host_application=None,
             )
             cycle_results.append(cycle_result)

@@ -32,12 +32,7 @@ def authorized_idle_output() -> dict[str, Any]:
 
 
 def authorized_idle_control() -> AutonomyControl:
-    return AutonomyControl(
-        steering=0.0,
-        throttle=0.0,
-        confidence=1.0,
-        reason=AUTHORIZED_IDLE_REASON,
-    )
+    return AutonomyControl(**authorized_idle_output())
 
 
 def proposed_equals_authorized(

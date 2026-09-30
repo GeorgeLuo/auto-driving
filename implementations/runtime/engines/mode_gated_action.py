@@ -97,7 +97,7 @@ class ModeGatedActionEngine:
                 "Happy-path lateral obstruction avoidance using the existing "
                 "avoid_recent_obstruction proposal."
             ),
-            "inputs": ["context", "perception", "observation", "memory"],
+            "inputs": ["context", "perception", "observation"],
             "output": {
                 "type": "ActionResult",
                 "movement": (
@@ -109,7 +109,6 @@ class ModeGatedActionEngine:
             },
             "steps": {
                 "action": "propose_plan_mode_gate",
-                "memory": "inspectable_snapshot",
             },
         }
 
@@ -118,6 +117,5 @@ class ModeGatedActionEngine:
         context: DecisionFrameContext,
         perception: Any,
         observation: Any,
-        memory: Any,
     ) -> ActionResult:
-        return self.composition.act(context, perception, observation, memory)
+        return self.composition.act(context, perception, observation)

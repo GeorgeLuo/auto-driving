@@ -104,7 +104,6 @@ class AutonomyManager:
         context: "DecisionFrameContext",
         perception: Any,
         observation: Any,
-        memory: Any,
     ) -> "ActionResult | None":
         """Run the loaded engine as the cycle's action step.
 
@@ -124,7 +123,7 @@ class AutonomyManager:
             return None
 
         try:
-            action = engine.act(context, perception, observation, memory)
+            action = engine.act(context, perception, observation)
             if action is not None and not isinstance(action, ActionResult):
                 raise TypeError("autonomy engine act must return ActionResult or None")
         except Exception as exc:

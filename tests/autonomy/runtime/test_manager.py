@@ -22,8 +22,8 @@ class KnownGoodEngine:
     def describe_schema(self) -> dict[str, str]:
         return {"schema": "autonomy_engine_schema_v0", "engine_id": "known-good"}
 
-    def act(self, context, perception, observation, memory):
-        return self.composition.act(context, perception, observation, memory)
+    def act(self, context, perception, observation):
+        return self.composition.act(context, perception, observation)
 
 
 class FailOnceEngine:
@@ -39,17 +39,17 @@ class FailOnceEngine:
             "engine_id": "fail-once",
         }
 
-    def act(self, context, perception, observation, memory):
+    def act(self, context, perception, observation):
         self.calls += 1
         if self.calls == 1:
             raise RuntimeError("transient step failure")
-        return self.composition.act(context, perception, observation, memory)
+        return self.composition.act(context, perception, observation)
 
 
 class RuntimeManagerTests(unittest.TestCase):
     def test_failed_reload_preserves_the_known_good_engine(self) -> None:
         manager = AutonomyManager(default_engine_spec=f"{__name__}:KnownGoodEngine")
-        initial = manager.act(_context(), None, None, None)
+        initial = manager.act(_context(), None, None)
         before = manager.status()
 
         with patch.object(
@@ -72,7 +72,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(failed["error_count"], before["error_count"] + 1)
         self.assertEqual(failed["last_error"], "RuntimeError: reload unavailable")
 
-        recovered = manager.act(_context(), None, None, None)
+        recovered = manager.act(_context(), None, None)
         after_recovery = manager.status()
         self.assertEqual(recovered.control.reason, "known-good")
         self.assertEqual(after_recovery["step_count"], before["step_count"] + 1)
@@ -84,7 +84,7 @@ class RuntimeManagerTests(unittest.TestCase):
         engine_spec = f"{__name__}:FailOnceEngine"
         manager.load_engine(engine_spec)
 
-        failed_action = manager.act(_context(), None, None, None)
+        failed_action = manager.act(_context(), None, None)
         failed = manager.status()
 
         self.assertEqual(failed_action.status, "engine_error")
@@ -97,7 +97,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(failed["error_count"], 1)
         self.assertIn("transient step failure", failed["last_error"] or "")
 
-        recovered_action = manager.act(_context(), None, None, None)
+        recovered_action = manager.act(_context(), None, None)
         recovered = manager.status()
 
         self.assertEqual(recovered_action.control.reason, "recovered")
@@ -112,7 +112,7 @@ class RuntimeManagerTests(unittest.TestCase):
     def test_idle_engine_takes_no_action(self) -> None:
         manager = AutonomyManager()
 
-        self.assertIsNone(manager.act(_context(), None, None, None))
+        self.assertIsNone(manager.act(_context(), None, None))
         self.assertEqual(manager.status()["last_control"]["reason"], "engine-idle")
 
     def test_status_provider_failure_is_isolated_from_runtime_state(self) -> None:

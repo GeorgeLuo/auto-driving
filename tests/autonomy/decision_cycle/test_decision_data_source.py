@@ -8,25 +8,13 @@ from copy import deepcopy
 from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
     build_decision_data_source,
-    memory_envelope_from_snapshot,
+    evidence_envelope,
     omit_forbidden_channel_keys,
     ready_envelope,
     unavailable_envelope,
 )
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemoryBounds,
-    MemoryProvenance,
-    MemorySnapshot,
-    RetainedEvidence,
-    empty_memory_snapshot,
-    error_memory_snapshot,
-    unavailable_memory_snapshot,
-)
+from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-
-
-def _bounds() -> MemoryBounds:
-    return MemoryBounds(max_records=8, max_age_ms=10_000)
 
 
 def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> RetainedEvidence:
@@ -52,71 +40,38 @@ def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> Ret
 
 
 class DecisionDataSourceTests(unittest.TestCase):
-    def test_memory_health_mapping(self) -> None:
-        empty = empty_memory_snapshot(
-            memory_id="m",
-            epoch_id="e",
-            created_at_ms=1,
-            bounds=_bounds(),
-            implementation_id="bounded_evidence",
-        )
-        env = memory_envelope_from_snapshot(empty)
-        self.assertEqual(env.status, "ready")
-        self.assertIsInstance(env.value, MemorySnapshot)
-
-        healthy = MemorySnapshot(
-            memory_id="m",
-            epoch_id="e",
-            health="healthy",
-            bounds=_bounds(),
-            created_at_ms=1,
-            records=(_record(),),
-            implementation_id="bounded_evidence",
-        )
-        self.assertEqual(memory_envelope_from_snapshot(healthy).status, "ready")
-
-        unavail = unavailable_memory_snapshot(
-            memory_id="m",
-            epoch_id="e",
-            created_at_ms=1,
-            bounds=_bounds(),
-            implementation_id="bounded_evidence",
-            reason="gone",
-        )
-        env = memory_envelope_from_snapshot(unavail)
+    def test_evidence_envelope(self) -> None:
+        env = evidence_envelope(None)
         self.assertEqual(env.status, "unavailable")
+        self.assertEqual(env.reason, "evidence_not_published")
         self.assertIsNone(env.value)
 
-        err = error_memory_snapshot(
-            memory_id="m",
-            epoch_id="e",
-            created_at_ms=1,
-            bounds=_bounds(),
-            implementation_id="bounded_evidence",
-            error="boom",
-        )
-        env = memory_envelope_from_snapshot(err)
-        self.assertEqual(env.status, "error")
-        self.assertIsNone(env.value)
-        self.assertIn("memory_error:", env.reason)
+        self.assertEqual(evidence_envelope(()).value, ())
+        self.assertEqual(evidence_envelope(()).status, "ready")
+
+        record = _record()
+        env = evidence_envelope([record])
+        self.assertEqual(env.status, "ready")
+        self.assertEqual(env.value, (record,))
+        self.assertIsNot(env.value[0], record)
+        self.assertEqual(env.to_dict()["value"], [record.to_dict()])
+
+        with self.assertRaises(TypeError):
+            evidence_envelope([{"record_id": "raw"}])
 
     def test_frozen_against_mutation(self) -> None:
         source = build_decision_data_source(
             frame_id="frame_001",
             frame_index=0,
             timestamp_ms=10,
-            memory=empty_memory_snapshot(
-                memory_id="m",
-                epoch_id="e",
-                created_at_ms=10,
-                bounds=_bounds(),
-                implementation_id="bounded_evidence",
-            ),
+            evidence=(_record(),),
         )
         payload = source.to_dict()
-        payload["memory"]["status"] = "error"
+        payload["evidence"]["status"] = "error"
+        payload["evidence"]["value"][0]["label"] = "mutated"
         again = source.to_dict()
-        self.assertEqual(again["memory"]["status"], "ready")
+        self.assertEqual(again["evidence"]["status"], "ready")
+        self.assertEqual(again["evidence"]["value"][0]["label"], "floor_boundary")
         # Dataclass freeze rejects attribute rebinding through normal assignment.
         with self.assertRaises(Exception):
             source.frame_id = "hijacked"  # type: ignore[misc]
@@ -147,7 +102,7 @@ class DecisionDataSourceTests(unittest.TestCase):
                 frame_index=0,
                 timestamp_ms=1,
                 observation=unavailable_envelope("x"),
-                memory=unavailable_envelope("y"),
+                evidence=unavailable_envelope("y"),
                 capabilities=ready_envelope({"max_abs_steering": 1.0}),
                 prior_host_applied_command=unavailable_envelope("h"),
                 schema="wrong",
@@ -163,7 +118,7 @@ class DecisionDataSourceTests(unittest.TestCase):
 
         seen: list[object] = []
 
-        def plugin_a(source: DecisionDataSource) -> ActionProposal:
+        def plugin_a(source: DecisionDataSource, shared_memory) -> ActionProposal:
             seen.append(source.capabilities.value)
             value = source.capabilities.value
             # Frozen mapping rejects item assignment; plain dict would mutate a
@@ -186,7 +141,7 @@ class DecisionDataSourceTests(unittest.TestCase):
                 available=False,
             )
 
-        def plugin_b(source: DecisionDataSource) -> ActionProposal:
+        def plugin_b(source: DecisionDataSource, shared_memory) -> ActionProposal:
             seen.append(source.capabilities.value)
             return ActionProposal(
                 plugin_id="b",
@@ -455,7 +410,7 @@ class DecisionDataSourceTests(unittest.TestCase):
             frame_index=0,
             timestamp_ms=1,
             observation=ready,
-            memory=unavailable_envelope("memory_not_provided"),
+            evidence=unavailable_envelope("evidence_not_published"),
             capabilities=ready_envelope(
                 {
                     "max_abs_steering": 1.0,

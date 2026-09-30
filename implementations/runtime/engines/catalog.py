@@ -14,10 +14,12 @@ from implementations.runtime.engines.config import (
     engine_config_document,
     parse_engine_config,
 )
+from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
     PLUGIN_ID,
     propose as avoid_propose,
 )
+from autonomy.shared_memory import SharedMemory
 
 # Implementation catalog is the sole authority for known proposal plugin ids.
 KNOWN_PROPOSAL_PLUGIN_IDS: frozenset[str] = frozenset({PLUGIN_ID})
@@ -52,9 +54,11 @@ def create_action_composition(
         if plugin_id not in KNOWN_PROPOSAL_PLUGIN_IDS:
             raise ValueError(f"unknown plugin_id {plugin_id!r}")
 
-    def _bound(source: DecisionDataSource) -> ActionProposal:
+    def _bound(source: DecisionDataSource, shared_memory: SharedMemory) -> ActionProposal:
         return avoid_propose(
             source,
+            shared_memory,
+            evidence_key=EVIDENCE_KEY,
             accepted_kinds=cfg.accepted_kinds,
             retained_max_age_ms=cfg.retained_max_age_ms,
             steer_magnitude=cfg.steer_magnitude,
@@ -65,6 +69,7 @@ def create_action_composition(
         config=ProposalConfig(enabled_plugins=cfg.enabled_plugins),
         plugins=plugins,
         gate=gate,
+        evidence_key=EVIDENCE_KEY,
     )
     composition.reported_config = engine_config_document(cfg)
     return composition

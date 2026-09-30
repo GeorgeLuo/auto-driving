@@ -13,31 +13,21 @@ from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
 
 from autonomy.decision_cycle.memory.plugin import MemoryImplementation
 from autonomy.decision_cycle.memory.selection import memory_plugin_manager
-from autonomy.decision_cycle.memory.snapshots.fallback import validate_framework_fallback_capacity
-from autonomy.decision_cycle.memory.snapshots.values import (
-    DEFAULT_MAX_PROPERTY_BYTES,
-    DEFAULT_MAX_SERIALIZED_BYTES,
-    MemoryBounds,
-)
 
 if TYPE_CHECKING:
     from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
 
 
 MEMORY_ACTIVATION_SCHEMA = "automa_memory_activation_v0"
-DEFAULT_MAX_RECORDS = 32
-DEFAULT_MAX_AGE_MS = 10_000
-DEFAULT_EVICTION_POLICY = "oldest_first"
 
 
 @dataclass(frozen=True)
 class MemoryActivation:
-    """An activation document with one resolved snapshot of its plugin selection."""
+    """An activation document with its plugin selection resolved once."""
 
     implementation_id: str | None
     implementation_spec: str | None
     implementation_config: dict[str, Any] | None
-    bounds: MemoryBounds | None
     source_path: Path
     payload: dict[str, Any]
     available_definitions: tuple[PluginDefinition, ...] = field(init=False, repr=False)
@@ -93,14 +83,11 @@ class MemoryActivation:
             object.__setattr__(self, "implementation_id", final.plugin_id if final else None)
             object.__setattr__(self, "implementation_spec", final.entrypoint if final else None)
             object.__setattr__(self, "implementation_config", deepcopy(config))
-            object.__setattr__(self, "bounds", bounds_from_config(config))
         else:
             config = deepcopy(self.implementation_config)
             object.__setattr__(self, "implementation_id", self.implementation_id.strip())
             object.__setattr__(self, "implementation_spec", self.implementation_spec.strip())
             object.__setattr__(self, "implementation_config", config)
-            if self.bounds is None:
-                object.__setattr__(self, "bounds", bounds_from_config(config))
 
 
 def memory_selection_config(activation: MemoryActivation) -> dict[str, Any]:
@@ -131,33 +118,9 @@ def read_memory_activation(path: Path) -> MemoryActivation:
         implementation_id=memory.get("implementation_id"),
         implementation_spec=memory.get("implementation_spec"),
         implementation_config=memory.get("implementation_config"),
-        bounds=None,
         source_path=path,
         payload=payload,
     )
-
-
-def bounds_from_config(config: dict[str, Any]) -> MemoryBounds:
-    max_records = config.get("max_records", DEFAULT_MAX_RECORDS)
-    max_age_ms = config.get("max_age_ms", DEFAULT_MAX_AGE_MS)
-    eviction_policy = config.get("eviction_policy", DEFAULT_EVICTION_POLICY)
-    max_property_bytes = config.get("max_property_bytes", DEFAULT_MAX_PROPERTY_BYTES)
-    max_serialized_bytes = config.get(
-        "max_serialized_bytes", DEFAULT_MAX_SERIALIZED_BYTES
-    )
-    bounds = MemoryBounds(
-        max_records=int(max_records),
-        max_age_ms=int(max_age_ms) if max_age_ms is not None else None,
-        eviction_policy=str(eviction_policy or DEFAULT_EVICTION_POLICY),
-        max_property_bytes=(
-            int(max_property_bytes) if max_property_bytes is not None else None
-        ),
-        max_serialized_bytes=(
-            int(max_serialized_bytes) if max_serialized_bytes is not None else None
-        ),
-    )
-    validate_framework_fallback_capacity(bounds)
-    return bounds
 
 
 def load_memory_implementation(

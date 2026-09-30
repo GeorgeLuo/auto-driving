@@ -4,7 +4,6 @@ from dataclasses import replace
 from typing import Any
 
 from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
-from autonomy.decision_cycle.memory.publication import publish_snapshot
 from autonomy.shared_memory import SharedMemory
 from autonomy.decision_cycle.cycle import (
     DecisionCycle,
@@ -55,24 +54,20 @@ class AutonomyCycleHost:
             payload["memory"] = remember.status()
         return payload
 
-    def reset_memory(self) -> Any:
+    def reset_memory(self) -> dict[str, Any] | None:
         """Reset the activated memory step when present.
 
-        Returns the post-reset snapshot from the step, or ``None`` when no
-        memory step is configured. Does not raise when the step is absent.
+        Clears the host map and keeps only the fresh state memory plugins
+        wrote while resetting (such as a new epoch). Returns the memory report
+        after the reset, or ``None`` when no memory step is configured.
         """
         remember = self.cycle.steps.remember
         if remember is None:
             self.shared_memory.clear()
             return None
-        reset = getattr(remember, "reset", None)
-        if not callable(reset):
+        if not isinstance(remember, PluginMemoryRunner):
             raise TypeError("configured memory step does not support reset")
-        snapshot = (
-            reset(self.shared_memory)
-            if isinstance(remember, PluginMemoryRunner)
-            else reset()
-        )
+        fresh = remember.reset(self.shared_memory)
         self.shared_memory.clear()
-        publish_snapshot(self.shared_memory, snapshot)
-        return snapshot
+        self.shared_memory.update(fresh)
+        return remember.report()

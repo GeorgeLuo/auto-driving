@@ -6,10 +6,6 @@ from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemoryBounds,
-    empty_memory_snapshot,
-)
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -86,12 +82,11 @@ class DecisionCycleTests(unittest.TestCase):
             )
         )
 
-        def act(context, perception, observation, memory):
+        def act(context, perception, observation):
             self.assertEqual(context.frame_id, "frame_000")
             self.assertIsNone(perception)
             self.assertIsNone(observation)
-            self.assertIsNone(memory)
-            return composition.act(context, perception, observation, memory)
+            return composition.act(context, perception, observation)
 
         result = DecisionCycle(DecisionSteps(act=act)).run(self.context())
 
@@ -116,7 +111,7 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.control.reason, "waiting-for-decision")
 
     def test_action_step_rejects_undeclared_dictionary_output(self) -> None:
-        def act(context, perception, observation, memory):
+        def act(context, perception, observation):
             return {"steering": 0.0, "throttle": 0.0}
 
         cycle = DecisionCycle(DecisionSteps(act=act))
@@ -124,30 +119,25 @@ class DecisionCycleTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "must return ActionResult or None"):
             cycle.run(self.context())
 
-    def test_memory_step_accepts_typed_snapshot_and_keeps_idle(self) -> None:
-        snapshot = empty_memory_snapshot(
-            memory_id="mem_frame_000",
-            epoch_id="epoch_1",
-            bounds=MemoryBounds(max_records=4),
-            created_at_ms=10,
-            implementation_id="test",
-        )
+    def test_memory_step_report_is_recorded_and_keeps_idle(self) -> None:
+        report = {"schema": "memory_report_v0", "plugins": [{"state": {"record_count": 0}}]}
 
         result = DecisionCycle(
-            DecisionSteps(remember=lambda context, observation: snapshot)
+            DecisionSteps(remember=lambda context, observation: report)
         ).run(self.context())
 
-        self.assertIs(result.memory, snapshot)
-        self.assertEqual(result.memory.health, "empty")
+        self.assertIs(result.memory, report)
         self.assertEqual(result.control.reason, "decision-cycle-idle")
-        self.assertEqual(result.to_dict()["memory"]["health"], "empty")
+        self.assertEqual(result.to_dict()["memory"], report)
+        result.to_dict()["memory"]["plugins"][0]["state"]["record_count"] = 9
+        self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
 
-    def test_memory_step_rejects_undeclared_dictionary_output(self) -> None:
+    def test_memory_step_rejects_output_that_is_not_a_report(self) -> None:
         cycle = DecisionCycle(
-            DecisionSteps(remember=lambda context, observation: {"records": []})
+            DecisionSteps(remember=lambda context, observation: ["records"])
         )
 
-        with self.assertRaisesRegex(MemoryUpdateError, "must return MemorySnapshot or None"):
+        with self.assertRaisesRegex(MemoryUpdateError, "must return a report dict or None"):
             cycle.run(self.context())
 
     def test_failed_memory_update_stops_action_without_rewriting_plugin_memory(self) -> None:

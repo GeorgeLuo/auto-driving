@@ -13,7 +13,7 @@ from autonomy.decision_cycle.cycle import DecisionCycleResult, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.proposal.inputs import DECISION_DATA_SOURCE_SCHEMA, DecisionDataSource
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
-from autonomy.decision_cycle.memory.snapshots.values import MEMORY_SNAPSHOT_SCHEMA
+from autonomy.decision_cycle.memory.plugin_runner import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.runtime.engine import AutonomyControl
 from implementations.decision_cycle.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
@@ -52,13 +52,13 @@ class CycleVocabularyTests(unittest.TestCase):
 
     def test_records_keep_serialized_names_and_leave_the_host_map_out(self) -> None:
         self.assertEqual(OBSERVATION_SCHEMA, "decision_observation_v1")
-        self.assertEqual(MEMORY_SNAPSHOT_SCHEMA, "decision_memory_snapshot_v0")
+        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v0")
         self.assertEqual(ACTION_PROPOSAL_SCHEMA, "action_proposal_v0")
-        self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v0")
+        self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v1")
         self.assertEqual(DEFAULT_PERCEPTION_ALGORITHM, "lightweight_observer")
         self.assertEqual(FrameObservationPlugin.plugin_id, "frame-observation-v0")
 
-        self.assertIn("memory", DecisionDataSource.__dataclass_fields__)
+        self.assertIn("evidence", DecisionDataSource.__dataclass_fields__)
         self.assertIn("observation", DecisionDataSource.__dataclass_fields__)
         self.assertNotIn("shared_memory", DecisionDataSource.__dataclass_fields__)
         self.assertIn("shared_memory", DecisionFrameContext.__dataclass_fields__)

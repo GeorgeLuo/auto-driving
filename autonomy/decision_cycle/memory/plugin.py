@@ -1,24 +1,26 @@
-"""Retained-evidence reducer used by the cycle's ``remember`` operation.
+"""Memory plugin contract used by the cycle's ``remember`` operation.
 
-Concrete reducers live under implementations/. ``update`` performs remember
-and returns a ``MemorySnapshot``. The stable contract is only update, reset,
-and snapshot. Framework code owns activation loading, timing, status, and
-failure isolation.
+Concrete plugins live under implementations/. Like perception plugins, a
+memory plugin keeps the history later frames need in the host map,
+``context.shared_memory``, under keys it owns, and chooses where to publish
+anything other plugins read. ``update`` performs remember; ``reset`` starts a
+new epoch and writes the plugin's fresh state to the map. ``status`` is an
+optional JSON summary of that state for diagnostics. Framework code owns
+selection, timing, and failure isolation.
 """
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.shared_memory import SharedMemory
 
 
 @runtime_checkable
 class MemoryImplementation(Protocol):
-    """Loadable retained-evidence reducer. ``update`` performs ``remember``."""
+    """Loadable memory plugin. ``update`` performs ``remember``."""
 
     implementation_id: str
 
@@ -26,11 +28,17 @@ class MemoryImplementation(Protocol):
         self,
         context: DecisionFrameContext,
         observation: Observation | None,
-    ) -> MemorySnapshot:
-        """Remember one observation and return detached retained evidence."""
+    ) -> None:
+        """Remember one observation in ``context.shared_memory``; raise on failure."""
 
-    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
-        """Begin a new epoch. Reducers that keep history use the host map."""
+    def reset(self, shared_memory: SharedMemory) -> None:
+        """Begin a new epoch: replace this plugin's keys with fresh state."""
 
-    def snapshot(self) -> MemorySnapshot:
-        """Return detached retained evidence, including the initial empty snapshot."""
+
+def plugin_status(implementation: Any, shared_memory: SharedMemory | None) -> dict[str, Any] | None:
+    """Return the plugin's optional ``status(shared_memory)`` summary, if it has one."""
+
+    status = getattr(implementation, "status", None)
+    if not callable(status):
+        return None
+    return status(shared_memory)

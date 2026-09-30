@@ -1,8 +1,8 @@
 """Action composition for one cycle.
 
 ``ActionComposition`` builds the proposal input, invokes the configured
-proposal plugins, admits their candidates, selects a plan, and asks its gate
-for the control to apply. The gate's authority record states whether that
+proposal plugins with the host map, admits their candidates, selects a plan,
+and asks its gate for the control to apply. The gate's authority record states whether that
 control is the selected command. The proposal protocol, configuration,
 admission, and invocation stay in this module until the proposal step has its
 own plugin files.
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from autonomy.decision_cycle.planning.selector import select_action_plan
 from autonomy.decision_cycle.proposal.values import (
@@ -30,7 +30,7 @@ from autonomy.decision_cycle.proposal.inputs import (
     ready_envelope,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
+from autonomy.shared_memory import SharedMemory
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action_gate.hold import HoldGate
@@ -46,7 +46,9 @@ from autonomy.decision_cycle.action_identifiers import (
 
 
 class ProposalPlugin(Protocol):
-    def __call__(self, source: DecisionDataSource) -> ActionProposal: ...
+    """Return one proposal from the detached source and the host map."""
+
+    def __call__(self, source: DecisionDataSource, shared_memory: SharedMemory) -> ActionProposal: ...
 
 
 @dataclass(frozen=True)
@@ -134,8 +136,10 @@ class ActionComposition:
     """Propose, plan, and gate one cycle's action."""
 
     config: ProposalConfig
-    plugins: dict[str, Callable[[DecisionDataSource], ActionProposal]]
+    plugins: dict[str, ProposalPlugin]
     gate: ActionGate = field(default_factory=HoldGate)
+    # Shared-memory key whose retained evidence the result keeps for audit.
+    evidence_key: str | None = None
     # Activation document supplied by the implementation. The runner does not read it.
     reported_config: dict[str, Any] = field(default_factory=dict)
 
@@ -152,23 +156,28 @@ class ActionComposition:
         cls,
         *,
         config: ProposalConfig,
-        plugins: dict[str, Callable[[DecisionDataSource], ActionProposal]],
+        plugins: dict[str, ProposalPlugin],
         gate: ActionGate | None = None,
+        evidence_key: str | None = None,
     ) -> "ActionComposition":
         """Build a composition with caller-provided plugins (implementations own wiring)."""
 
-        return cls(config=config, plugins=plugins, gate=gate or HoldGate())
+        return cls(
+            config=config,
+            plugins=plugins,
+            gate=gate or HoldGate(),
+            evidence_key=evidence_key,
+        )
 
     def act(
         self,
         context: DecisionFrameContext,
         perception: Any,
         observation: Observation | dict[str, Any] | None,
-        memory: MemorySnapshot | None,
     ) -> ActionResult:
         """Run the composition as the cycle's action step.
 
-        ``context.metadata`` may carry ``observation_error`` and host-reported
+        Proposal plugins read ``context.shared_memory``. ``context.metadata`` may carry ``observation_error`` and host-reported
         envelopes (``host_application``, ``prior_host_applied_command``,
         ``capabilities``). ``context.mode`` is the drive mode given to the gate.
         """
@@ -194,8 +203,7 @@ class ActionComposition:
             timestamp_ms=context.timestamp_ms,
             observation=observation,
             observation_error=observation_error if type(observation_error) is str else None,
-            # Retained evidence from shared_memory["decision.snapshot"].
-            memory=memory if isinstance(memory, MemorySnapshot) else None,
+            shared_memory=context.shared_memory,
             host_application=envelope("host_application"),
             prior_host_applied_command=envelope("prior_host_applied_command"),
             drive_mode_gate=context.mode if isinstance(context.mode, str) else "unknown",
@@ -210,8 +218,7 @@ class ActionComposition:
         timestamp_ms: int,
         observation: Observation | dict[str, Any] | None = None,
         observation_error: str | None = None,
-        # Retained evidence from shared_memory["decision.snapshot"].
-        memory: MemorySnapshot | None = None,
+        shared_memory: SharedMemory | None = None,
         host_application: ComponentEnvelope | None = None,
         prior_host_applied_command: ComponentEnvelope | None = None,
         drive_mode_gate: str = "unknown",
@@ -265,7 +272,11 @@ class ActionComposition:
                 observation_error=observation_error,
                 # Absent + no error ⇒ step not configured for this unit.
                 observation_configured=False,
-                memory=memory,
+                evidence=(
+                    shared_memory.get(self.evidence_key)
+                    if shared_memory is not None and self.evidence_key is not None
+                    else None
+                ),
                 capabilities=capabilities
                 or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),
                 prior_host_applied_command=prior_host_applied_command,
@@ -273,6 +284,8 @@ class ActionComposition:
         except Exception:
             return fail("decision_data_source_invalid", source=None)
 
+        # Without a host map (offline replay), plugins still get a map to read.
+        plugin_memory: SharedMemory = shared_memory if shared_memory is not None else {}
         candidates: list[ActionProposal] = []
         try:
             for plugin_id in sorted(self.config.enabled_plugins):
@@ -292,8 +305,9 @@ class ActionComposition:
                 raised: BaseException | None = None
                 returned: object = None
                 try:
-                    # Isolate nested state so one plugin cannot mutate another's view.
-                    returned = plugin(deepcopy(source))
+                    # Isolate the source so one plugin cannot mutate another's view;
+                    # the host map is shared on purpose, as for the other steps.
+                    returned = plugin(deepcopy(source), plugin_memory)
                 except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
                     raised = exc
                 try:

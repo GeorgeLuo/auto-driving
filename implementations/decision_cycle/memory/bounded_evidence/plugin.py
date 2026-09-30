@@ -10,8 +10,9 @@ still agree (conflict policy ``bounded_evidence_structural_v2``). Record ids are
 namespaced by source plugin so two plugins cannot silently overwrite one
 another with the same local evidence id.
 
-The activated ledger reads the prior snapshot from shared memory. Its reducer
-uses mutable working data for one update and is then discarded.
+The plugin keeps its ledger at ``LEDGER_KEY`` in shared memory and publishes
+the retained records at ``EVIDENCE_KEY`` for other plugins. Its reducer uses
+mutable working data for one update and is then discarded.
 """
 
 from __future__ import annotations
@@ -22,27 +23,26 @@ from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.snapshots.values import (
+from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.serialization import ensure_strict_json_value
+from autonomy.shared_memory import SharedMemory
+from implementations.decision_cycle.memory.bounded_evidence.ledger import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
-    MemoryBounds,
-    MemoryProvenance,
-    MemorySnapshot,
-    RetainedEvidence,
-    detach_memory_snapshot,
-    empty_memory_snapshot,
+    EVIDENCE_KEY,
+    LEDGER_KEY,
+    EvidenceLedger,
+    LedgerBounds,
+    detach_ledger,
+    empty_ledger,
+    serialized_ledger_bytes,
     serialized_mapping_bytes,
-    serialized_memory_snapshot_bytes,
 )
-from autonomy.serialization import ensure_strict_json_value
-from autonomy.decision_cycle.memory.publication import SNAPSHOT_KEY
-from autonomy.shared_memory import SharedMemory
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 CONFLICT_POLICY = "bounded_evidence_structural_v2"
 MAX_REPORTED_DROPS = 12
 MAX_REPORTED_ID_CHARS = 128
-EPOCH_COUNTER_KEY = "bounded_evidence.epoch"
 
 
 class _BoundedEvidenceReducer:
@@ -67,7 +67,7 @@ class _BoundedEvidenceReducer:
             raise ValueError(
                 "BoundedEvidenceLedger only supports eviction_policy='oldest_first'"
             )
-        self.bounds = MemoryBounds(
+        self.bounds = LedgerBounds(
             max_records=int(max_records),
             max_age_ms=int(max_age_ms) if max_age_ms is not None else None,
             eviction_policy=str(eviction_policy),
@@ -94,7 +94,7 @@ class _BoundedEvidenceReducer:
         self,
         context: DecisionFrameContext,
         observation: Observation | None,
-    ) -> MemorySnapshot:
+    ) -> EvidenceLedger:
         now_ms = int(context.timestamp_ms)
         self._last_update_drops = []
         self._last_update_drop_count = 0
@@ -136,7 +136,7 @@ class _BoundedEvidenceReducer:
         self._last_update_conflict_count = update_conflicts
         self._conflict_count += update_conflicts
         self._enforce_capacity()
-        self._latest = self._build_snapshot(
+        self._latest = self._build_ledger(
             memory_id=f"memory-{context.frame_id}",
             created_at_ms=now_ms,
             observation=observation,
@@ -145,17 +145,17 @@ class _BoundedEvidenceReducer:
         while (
             limit is not None
             and self._last_update_drops
-            and serialized_memory_snapshot_bytes(self._latest) > limit
+            and serialized_ledger_bytes(self._latest) > limit
         ):
             self._last_update_drops.pop()
-            self._latest = self._build_snapshot(
+            self._latest = self._build_ledger(
                 memory_id=f"memory-{context.frame_id}",
                 created_at_ms=now_ms,
                 observation=observation,
             )
-        return detach_memory_snapshot(self._latest)
+        return detach_ledger(self._latest)
 
-    def reset(self) -> MemorySnapshot:
+    def reset(self) -> EvidenceLedger:
         self._epoch += 1
         self._records = {}
         self._capacity_eviction_count = 0
@@ -163,7 +163,7 @@ class _BoundedEvidenceReducer:
         self._last_update_conflict_count = 0
         self._last_update_drops = []
         self._last_update_drop_count = 0
-        self._latest = empty_memory_snapshot(
+        self._latest = empty_ledger(
             memory_id=f"memory-reset-{self._epoch}",
             epoch_id=f"epoch-{self._epoch}",
             bounds=self.bounds,
@@ -176,11 +176,11 @@ class _BoundedEvidenceReducer:
             ),
             metadata=self._metadata(observation_id=None),
         )
-        return detach_memory_snapshot(self._latest)
+        return detach_ledger(self._latest)
 
-    def snapshot(self) -> MemorySnapshot:
+    def ledger(self) -> EvidenceLedger:
         # Pure read: must not zero last_update_conflict_count.
-        return detach_memory_snapshot(self._latest)
+        return detach_ledger(self._latest)
 
     def _metadata(self, *, observation_id: str | None) -> dict[str, Any]:
         return {
@@ -329,13 +329,13 @@ class _BoundedEvidenceReducer:
             self._capacity_eviction_count += 1
             self._report_drop(record.record_id, "capacity", "evicted")
 
-    def _build_snapshot(
+    def _build_ledger(
         self,
         *,
         memory_id: str,
         created_at_ms: int,
         observation: Observation | None,
-    ) -> MemorySnapshot:
+    ) -> EvidenceLedger:
         epoch_id = f"epoch-{self._epoch}"
         records = tuple(
             sorted(
@@ -360,7 +360,7 @@ class _BoundedEvidenceReducer:
                 "reason=no_observation"
                 if observation is None else "reason=no_retained_evidence",
             )
-        return MemorySnapshot(
+        return EvidenceLedger(
             memory_id=memory_id,
             epoch_id=epoch_id,
             health="healthy" if records else "empty",
@@ -378,14 +378,14 @@ class _BoundedEvidenceReducer:
 
 
 def reduce_evidence(
-    previous: MemorySnapshot,
+    previous: EvidenceLedger,
     context: DecisionFrameContext,
     observation: Observation | None,
     *,
     implementation_id: str,
     **config: Any,
-) -> MemorySnapshot:
-    """Reduce one cycle from an explicit prior snapshot without retaining a reducer."""
+) -> EvidenceLedger:
+    """Reduce one cycle from an explicit prior ledger without retaining a reducer."""
     reducer = _BoundedEvidenceReducer(**config)
     reducer.implementation_id = implementation_id
     reducer._records = {record.record_id: record for record in previous.records}
@@ -393,23 +393,23 @@ def reduce_evidence(
         previous.metadata.get("capacity_eviction_count", 0)
     )
     reducer._conflict_count = int(previous.metadata.get("conflict_count", 0))
-    snapshot = reducer.update(context, observation)
+    ledger = reducer.update(context, observation)
     return replace(
-        snapshot,
+        ledger,
         epoch_id=previous.epoch_id,
         summary=tuple(
             f"epoch_id={previous.epoch_id}" if item.startswith("epoch_id=") else item
-            for item in snapshot.summary
+            for item in ledger.summary
         ),
     )
 
 
 class BoundedEvidenceLedger:
-    """Remember implementation that keeps bounded retained evidence.
+    """Memory plugin that keeps bounded retained evidence.
 
-    The framework publishes each accepted value at ``SNAPSHOT_KEY``; the ledger
-    reads its previous value there and owns ``EPOCH_COUNTER_KEY``. Other keys
-    in the map belong to other producers.
+    The plugin keeps its ``EvidenceLedger`` at ``LEDGER_KEY`` and publishes the
+    ledger's records at ``EVIDENCE_KEY``. Other keys in the map belong to other
+    producers.
     """
 
     implementation_id = "bounded_evidence"
@@ -418,35 +418,32 @@ class BoundedEvidenceLedger:
         self.config = config
         reducer = _BoundedEvidenceReducer(**config)
         self.bounds = reducer.bounds
-        self._shared_memory: SharedMemory | None = None
-        self._empty = reducer.snapshot()
+        self._empty = reducer.ledger()
 
-    def snapshot(self) -> MemorySnapshot:
-        current = (
-            self._shared_memory.get(SNAPSHOT_KEY) if self._shared_memory is not None else None
-        )
-        return detach_memory_snapshot(current or self._empty)
+    def ledger(self, shared_memory: SharedMemory | None) -> EvidenceLedger:
+        """The stored ledger, or the initial empty ledger before the first update."""
 
-    def reset(self, shared_memory: SharedMemory | None = None) -> MemorySnapshot:
-        if shared_memory is not None:
-            self._shared_memory = shared_memory
-        if self._shared_memory is None:
-            raise ValueError("bounded evidence reset requires a shared-memory map")
-        previous = self.snapshot()
-        next_epoch = max(
-            _numbered_epoch(previous.epoch_id),
-            self._shared_memory.get(EPOCH_COUNTER_KEY, 1),
-        ) + 1
+        current = shared_memory.get(LEDGER_KEY) if shared_memory is not None else None
+        return detach_ledger(current if isinstance(current, EvidenceLedger) else self._empty)
+
+    def status(self, shared_memory: SharedMemory | None) -> dict[str, Any]:
+        return self.ledger(shared_memory).to_dict()
+
+    def reset(self, shared_memory: SharedMemory) -> None:
+        previous = self.ledger(shared_memory)
+        next_epoch = _numbered_epoch(previous.epoch_id) + 1
         epoch = f"epoch-{next_epoch}"
-        self._shared_memory[EPOCH_COUNTER_KEY] = next_epoch
-        return replace(
-            self._empty,
-            memory_id=f"memory-reset-{next_epoch}",
-            epoch_id=epoch,
-            summary=(
-                "memory_empty=true",
-                f"epoch_id={epoch}",
-                "policy=bounded_evidence_recency",
+        publish_ledger(
+            shared_memory,
+            replace(
+                self._empty,
+                memory_id=f"memory-reset-{next_epoch}",
+                epoch_id=epoch,
+                summary=(
+                    "memory_empty=true",
+                    f"epoch_id={epoch}",
+                    "policy=bounded_evidence_recency",
+                ),
             ),
         )
 
@@ -454,25 +451,26 @@ class BoundedEvidenceLedger:
         self,
         context: DecisionFrameContext,
         observation: Observation | None,
-    ) -> MemorySnapshot:
+    ) -> None:
         if context.shared_memory is None:
             raise ValueError("bounded evidence requires a shared-memory map")
-        self._shared_memory = context.shared_memory
-        previous = self.snapshot()
-        epoch_number = max(
-            _numbered_epoch(previous.epoch_id),
-            context.shared_memory.get(EPOCH_COUNTER_KEY, 1),
+        publish_ledger(
+            context.shared_memory,
+            reduce_evidence(
+                self.ledger(context.shared_memory),
+                context,
+                observation,
+                implementation_id=self.implementation_id,
+                **self.config,
+            ),
         )
-        context.shared_memory[EPOCH_COUNTER_KEY] = epoch_number
-        if previous.health == "error":
-            previous = replace(self._empty, epoch_id=f"epoch-{epoch_number}")
-        return reduce_evidence(
-            previous,
-            context,
-            observation,
-            implementation_id=self.implementation_id,
-            **self.config,
-        )
+
+
+def publish_ledger(shared_memory: SharedMemory, ledger: EvidenceLedger) -> None:
+    """Store the ledger and publish its records for other plugins."""
+
+    shared_memory[LEDGER_KEY] = ledger
+    shared_memory[EVIDENCE_KEY] = ledger.records
 
 
 def _numbered_epoch(epoch_id: str) -> int:

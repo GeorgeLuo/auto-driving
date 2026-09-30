@@ -85,7 +85,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
         from autonomy.serialization import FrozenJsonObject
 
-        def corrupt(source: DecisionDataSource) -> ActionProposal:
+        def corrupt(source: DecisionDataSource, shared_memory) -> ActionProposal:
             proposal = ActionProposal(
                 plugin_id="avoid_recent_obstruction",
                 frame_id=source.frame_id,
@@ -149,7 +149,7 @@ class RunnerBoundaryTests(unittest.TestCase):
     def test_corrupted_lifecycle_matrix_is_engine_error(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
-        def corrupt_matrix(source: DecisionDataSource) -> ActionProposal:
+        def corrupt_matrix(source: DecisionDataSource, shared_memory) -> ActionProposal:
             proposal = ActionProposal(
                 plugin_id="avoid_recent_obstruction",
                 frame_id=source.frame_id,
@@ -229,7 +229,7 @@ class RunnerBoundaryTests(unittest.TestCase):
     def test_runner_rejects_non_bool_available_after_construction(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
-        def bad_available(source: DecisionDataSource) -> ActionProposal:
+        def bad_available(source: DecisionDataSource, shared_memory) -> ActionProposal:
             proposal = _active_proposal(frame_id=source.frame_id)
             object.__setattr__(proposal, "available", "false")  # type: ignore[arg-type]
             return proposal
@@ -372,7 +372,7 @@ class RunnerBoundaryTests(unittest.TestCase):
     def test_authority_proposed_is_detached_from_selected_command(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
-        def active(source: DecisionDataSource) -> ActionProposal:
+        def active(source: DecisionDataSource, shared_memory) -> ActionProposal:
             return _active_proposal(frame_id=source.frame_id, steering=0.35)
 
         engine = ActionComposition(

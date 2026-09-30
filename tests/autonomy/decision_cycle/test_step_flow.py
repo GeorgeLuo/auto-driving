@@ -11,12 +11,7 @@ from autonomy.decision_cycle.cycle import (
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemoryBounds,
-    MemoryProvenance,
-    MemorySnapshot,
-    RetainedEvidence,
-)
+from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -51,13 +46,15 @@ class DecisionStageFlowTests(unittest.TestCase):
             perception_plugin_id=perception.plugin_id,
             summary=perception.lines,
         )
-        memory = MemorySnapshot(
-            memory_id="memory_007",
-            epoch_id="epoch_1",
-            health="healthy",
-            bounds=MemoryBounds(max_records=8, max_age_ms=5_000),
-            created_at_ms=702,
-            records=(
+        shared_memory: dict = {}
+        context = DecisionFrameContext(
+            frame_id=context.frame_id,
+            frame_index=context.frame_index,
+            timestamp_ms=context.timestamp_ms,
+            metadata=context.metadata,
+            shared_memory=shared_memory,
+        )
+        records = (
                 RetainedEvidence(
                     record_id="retained_path_clear",
                     kind="signal",
@@ -74,10 +71,17 @@ class DecisionStageFlowTests(unittest.TestCase):
                     ),
                     location=ViewLocation(frame="image", zone="center"),
                 ),
-            ),
-            summary=("retained_count=1",),
-            implementation_id="test_memory",
         )
+        memory = {
+            "schema": "memory_report_v0",
+            "plugins": [
+                {
+                    "plugin_id": "test_memory",
+                    "implementation_id": "test_memory",
+                    "state": {"records": [record.to_dict() for record in records]},
+                }
+            ],
+        }
         control = AutonomyControl(
             steering=0.1,
             throttle=0.2,
@@ -100,26 +104,26 @@ class DecisionStageFlowTests(unittest.TestCase):
 
         def remember(received_context, received_observation):
             record("remember", received_context, received_observation)
+            received_context.shared_memory["test_memory.records"] = records
             return memory
 
         def act(
             received_context,
             received_perception,
             received_observation,
-            received_memory,
         ):
             record(
                 "act",
                 received_context,
                 received_perception,
                 received_observation,
-                received_memory,
             )
+            # Proposals read what memory published in the host map.
+            self.assertIs(received_context.shared_memory["test_memory.records"], records)
             return composition.act(
                 received_context,
                 received_perception,
                 received_observation,
-                received_memory,
             )
 
         cycle = DecisionCycle(
@@ -149,7 +153,6 @@ class DecisionStageFlowTests(unittest.TestCase):
                         id(context),
                         id(perception),
                         id(observation),
-                        id(memory),
                     ),
                 ),
             ],
@@ -164,7 +167,7 @@ class DecisionStageFlowTests(unittest.TestCase):
         serialized = result.to_dict()
         self.assertEqual(serialized["schema"], DECISION_CYCLE_RESULT_SCHEMA)
         self.assertEqual(serialized["context"]["frame_id"], "frame_007")
-        self.assertEqual(serialized["memory"], memory.to_dict())
+        self.assertEqual(serialized["memory"], memory)
         self.assertEqual(serialized["control"], control.to_dict())
         self.assertEqual(serialized["action"], result.action.to_dict())
         self.assertEqual(serialized["action"]["frame_id"], "frame_007")
@@ -173,9 +176,9 @@ class DecisionStageFlowTests(unittest.TestCase):
         json.dumps(serialized)
 
         serialized["context"]["metadata"]["route"]["candidate"] = "left"
-        serialized["memory"]["records"][0]["properties"]["mutated"] = True
+        serialized["memory"]["plugins"][0]["state"]["records"][0]["properties"]["mutated"] = True
         self.assertEqual(context.metadata["route"]["candidate"], "center")
-        self.assertNotIn("mutated", memory.records[0].properties)
+        self.assertNotIn("mutated", memory["plugins"][0]["state"]["records"][0]["properties"])
 
 
 if __name__ == "__main__":

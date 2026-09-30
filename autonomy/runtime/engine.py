@@ -41,14 +41,13 @@ class IdleAutonomyEngine:
             "engine_id": "idle",
             "engine_spec": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "purpose": "Safe default that always holds position.",
-            "inputs": ["context", "perception", "observation", "memory"],
+            "inputs": ["context", "perception", "observation"],
             "output": {
                 "type": "ActionResult | None",
                 "movement": "always idle",
             },
             "steps": {
                 "action": "hold_position",
-                "memory": "inspectable_snapshot",
             },
         }
 
@@ -57,7 +56,6 @@ class IdleAutonomyEngine:
         context: "DecisionFrameContext",
         perception: Any,
         observation: Any,
-        memory: Any,
     ) -> "ActionResult | None":
         return None
 
@@ -67,7 +65,8 @@ class AutonomyEngine(Protocol):
     """Standard onboard controller shape for loadable autonomy engines.
 
     ``act`` is the decision cycle's action step: it returns the cycle's
-    ``ActionResult``, or ``None`` when the engine takes no action.
+    ``ActionResult``, or ``None`` when the engine takes no action. Proposal
+    plugins read ``context.shared_memory``.
     """
 
     def reset(self) -> None:
@@ -81,6 +80,5 @@ class AutonomyEngine(Protocol):
         context: "DecisionFrameContext",
         perception: Any,
         observation: Any,
-        memory: Any,
     ) -> "ActionResult | None":
         ...

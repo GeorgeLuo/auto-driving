@@ -1,7 +1,9 @@
 """Current decision input view passed to proposal.
 
-The observation envelope is the current-frame record. The memory envelope is
-detached retained evidence.
+The observation envelope is the current-frame record. The evidence envelope is
+a detached audit copy of the retained evidence published in shared memory at
+the key the composition was configured with; proposal plugins read shared
+memory itself.
 """
 
 from __future__ import annotations
@@ -12,10 +14,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from autonomy.decision_cycle.memory.snapshots.values import (
-    MemorySnapshot,
-    detach_memory_snapshot,
-)
+from autonomy.decision_cycle.memory.evidence import RetainedEvidence, detach_evidence
 from autonomy.serialization import (
     _is_json_primitive,
     canonical_json_size_bytes,
@@ -29,7 +28,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 
-DECISION_DATA_SOURCE_SCHEMA = "decision_data_source_v0"
+DECISION_DATA_SOURCE_SCHEMA = "decision_data_source_v1"
 ComponentStatus = Literal["ready", "unavailable", "error"]
 COMPONENT_STATUSES = frozenset({"ready", "unavailable", "error"})
 MAX_ENVELOPE_REASON = 240
@@ -254,9 +253,9 @@ def _canonicalize_ready_component(name: str, envelope: "ComponentEnvelope") -> o
     path = f"{name}.value"
     if name == "observation":
         return _canonical_observation_payload(value, path=path)
-    if name == "memory":
-        if not isinstance(value, MemorySnapshot):
-            raise TypeError(f"{path} must be MemorySnapshot when ready")
+    if name == "evidence":
+        if not _is_evidence(value):
+            raise TypeError(f"{path} must be a tuple of RetainedEvidence when ready")
         return value
     if name == "capabilities":
         return _canonical_capabilities_payload(value, path=path)
@@ -268,8 +267,8 @@ def _canonicalize_ready_component(name: str, envelope: "ComponentEnvelope") -> o
 def _normalize_ready_envelope_value(value: object) -> object:
     """Accept only typed domain objects or strict JSON; reject live handles."""
 
-    if isinstance(value, MemorySnapshot):
-        return detach_memory_snapshot(value)
+    if _is_evidence(value):
+        return detach_evidence(value)
     if isinstance(value, Observation):
         return Observation.from_dict(value.to_dict())
     if isinstance(value, (dict, list, tuple)):
@@ -277,7 +276,7 @@ def _normalize_ready_envelope_value(value: object) -> object:
     if _is_json_primitive(value):
         return value
     raise TypeError(
-        "ready envelope value must be MemorySnapshot, Observation, or strict JSON; "
+        "ready envelope value must be retained evidence, Observation, or strict JSON; "
         f"got {type(value).__name__}"
     )
 
@@ -317,7 +316,9 @@ class ComponentEnvelope:
 
     def to_dict(self) -> dict[str, Any]:
         value = self.value
-        if hasattr(value, "to_dict") and callable(getattr(value, "to_dict")):
+        if _is_evidence(value):
+            value = [record.to_dict() for record in value]
+        elif hasattr(value, "to_dict") and callable(getattr(value, "to_dict")):
             value = value.to_dict()
         else:
             # Frozen JSON (FrozenJsonObject / nested tuples) → plain dict/list.
@@ -353,35 +354,23 @@ def error_envelope(reason: str, *, updated_at_ms: int = 0) -> ComponentEnvelope:
     )
 
 
-def memory_envelope_from_snapshot(
-    snapshot: MemorySnapshot | None,
+def _is_evidence(value: object) -> bool:
+    return isinstance(value, tuple) and all(isinstance(item, RetainedEvidence) for item in value)
+
+
+def evidence_envelope(
+    evidence: tuple[RetainedEvidence, ...] | list[RetainedEvidence] | None,
     *,
     updated_at_ms: int = 0,
 ) -> ComponentEnvelope:
-    """Map MemorySnapshot.health to component envelope (exact proposal table)."""
+    """Ready with a detached copy when evidence was published, else unavailable."""
 
-    if snapshot is None:
-        return unavailable_envelope("memory_not_provided", updated_at_ms=updated_at_ms)
-    if not isinstance(snapshot, MemorySnapshot):
-        raise TypeError("memory envelope requires MemorySnapshot or None")
-    detached = detach_memory_snapshot(snapshot)
-    health = detached.health
-    if health in {"healthy", "empty"}:
-        return ready_envelope(detached, updated_at_ms=updated_at_ms or detached.created_at_ms)
-    if health == "unavailable":
-        reason = detached.error or str(
-            (detached.metadata or {}).get("reason") or "memory_unavailable"
-        )
-        return unavailable_envelope(
-            reason,
-            updated_at_ms=updated_at_ms or detached.created_at_ms,
-        )
-    if health == "error":
-        return error_envelope(
-            f"memory_error:{detached.error or 'unknown'}",
-            updated_at_ms=updated_at_ms or detached.created_at_ms,
-        )
-    raise ValueError(f"unsupported memory health {health!r}")
+    if evidence is None:
+        return unavailable_envelope("evidence_not_published", updated_at_ms=updated_at_ms)
+    records = tuple(evidence)
+    if not all(isinstance(item, RetainedEvidence) for item in records):
+        raise TypeError("evidence must be a sequence of RetainedEvidence or None")
+    return ready_envelope(records, updated_at_ms=updated_at_ms)
 
 
 def observation_envelope_from_value(
@@ -428,16 +417,15 @@ def default_capabilities(
 class DecisionDataSource:
     """Detached decision input for one proposal call.
 
-    ``observation`` is the current-frame record. ``memory`` is retained
-    evidence.
+    ``observation`` is the current-frame record. ``evidence`` is an audit copy
+    of the retained evidence proposals could read in shared memory.
     """
 
     frame_id: str
     frame_index: int
     timestamp_ms: int
     observation: ComponentEnvelope
-    # Retained evidence from shared_memory["decision.snapshot"].
-    memory: ComponentEnvelope
+    evidence: ComponentEnvelope
     capabilities: ComponentEnvelope
     prior_host_applied_command: ComponentEnvelope
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -465,7 +453,7 @@ class DecisionDataSource:
             )
         for name in (
             "observation",
-            "memory",
+            "evidence",
             "capabilities",
             "prior_host_applied_command",
         ):
@@ -524,7 +512,7 @@ class DecisionDataSource:
             "frame_index": self.frame_index,
             "timestamp_ms": self.timestamp_ms,
             "observation": self.observation.to_dict(),
-            "memory": self.memory.to_dict(),
+            "evidence": self.evidence.to_dict(),
             "capabilities": self.capabilities.to_dict(),
             "prior_host_applied_command": self.prior_host_applied_command.to_dict(),
             "metadata": frozen_mapping_to_dict(self.metadata),
@@ -539,8 +527,7 @@ def build_decision_data_source(
     observation: Observation | dict[str, Any] | None = None,
     observation_configured: bool = False,
     observation_error: str | None = None,
-    # Retained evidence from shared_memory["decision.snapshot"].
-    memory: MemorySnapshot | None = None,
+    evidence: tuple[RetainedEvidence, ...] | list[RetainedEvidence] | None = None,
     capabilities: ComponentEnvelope | None = None,
     prior_host_applied_command: ComponentEnvelope | None = None,
     metadata: dict[str, Any] | None = None,
@@ -563,7 +550,7 @@ def build_decision_data_source(
             error=observation_error,
             updated_at_ms=timestamp_ms,
         ),
-        memory=memory_envelope_from_snapshot(memory, updated_at_ms=timestamp_ms),
+        evidence=evidence_envelope(evidence, updated_at_ms=timestamp_ms),
         capabilities=capabilities
         or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),
         prior_host_applied_command=prior_host_applied_command
@@ -582,7 +569,7 @@ __all__ = [
     "build_decision_data_source",
     "default_capabilities",
     "error_envelope",
-    "memory_envelope_from_snapshot",
+    "evidence_envelope",
     "observation_envelope_from_value",
     "ready_envelope",
     "unavailable_envelope",

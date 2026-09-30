@@ -313,31 +313,30 @@ class AutonomyPilotPart:
                     "error": "cycle host does not support memory reset",
                 }
             try:
-                snapshot = reset()
+                report = reset()
             except Exception as exc:  # noqa: BLE001 - operator boundary
                 return {
                     "ok": False,
                     "status": "error",
                     "error": f"{type(exc).__name__}: {exc}",
                 }
-            if snapshot is None:
+            if report is None:
                 return {
                     "ok": False,
                     "status": "absent",
                     "error": "no memory step is activated",
                 }
-            # Replace the published snapshot from shared_memory["decision.snapshot"]
-            # until the next cycle.
+            # Replace the published memory report until the next cycle.
             if self.latest_snapshot is not None and isinstance(self.latest_snapshot.cycle, dict):
                 cycle = dict(self.latest_snapshot.cycle)
-                cycle["memory"] = snapshot.to_dict() if hasattr(snapshot, "to_dict") else None
+                cycle["memory"] = deepcopy(report)
                 self.latest_snapshot = replace(self.latest_snapshot, cycle=cycle)
             step = self.host.cycle.steps.remember
             step_status = step.status() if step is not None and callable(getattr(step, "status", None)) else None
             return {
                 "ok": True,
                 "status": "reset",
-                "snapshot": snapshot.to_dict() if hasattr(snapshot, "to_dict") else None,
+                "report": deepcopy(report),
                 "memory": step_status,
             }
 
@@ -559,8 +558,7 @@ class AutonomyPilotPart:
 
         perception = None if snap.cycle is None else deepcopy(snap.cycle.get("perception"))
         observation = None if snap.cycle is None else deepcopy(snap.cycle.get("observation"))
-        # Republish retained evidence from shared_memory["decision.snapshot"]
-        # through the cycle publication.
+        # Republish the memory report through the cycle publication.
         memory = None if snap.cycle is None else deepcopy(snap.cycle.get("memory"))
         return {
             "schema": OBSERVATION_PUBLICATION_SCHEMA,

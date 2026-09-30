@@ -209,7 +209,7 @@ class WorkbenchTests(unittest.TestCase):
         with self.assertRaises(ReplayActionError):
             idle.dispatch("seek", run_id="missing", position=0)
 
-    def test_loop_playback_rewinds_instead_of_completing(self) -> None:
+    def test_loop_playback_reprocesses_the_capture_each_pass(self) -> None:
         with image_source(2) as root:
             mapper = FixtureMapper()
             runner = ImageReplayRunner(
@@ -221,13 +221,11 @@ class WorkbenchTests(unittest.TestCase):
             started = runner.start()
             run_id = started["run_id"]
             self.assertTrue(started["controls"]["loop"])
-            _wait_until(
-                lambda: runner.state()["machine_detail"]["last_transition"]["action"] == "loop"
-            )
+            # Each pass runs both frames through the pipelines again.
+            _wait_until(lambda: len(mapper.calls) >= 4)
             live = runner.state()
             self.assertEqual(live["phase"], "running")
             self.assertLessEqual(len(live["timeline"]), 2)
-            self.assertEqual(len(mapper.calls), 2)
             runner.dispatch("set_loop", run_id=run_id, loop=False)
             finished = runner.wait(5)
             self.assertEqual(finished["phase"], "completed")

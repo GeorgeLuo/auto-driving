@@ -303,8 +303,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             started = runner.start(cadence_ms=30000)
             run_id = started["run_id"]
             _wait_until(lambda: runner.state()["position"] == 1)
-            before = runner.state()
-            first_id = before["timeline"][0]["frame"]["frame_id"]
+            first_id = runner.state()["timeline"][0]["frame"]["frame_id"]
             mapper = runner._mapper
             runner._shared_memory["retention-marker"] = "kept"
             selected = runner.dispatch(
@@ -316,21 +315,13 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(selected["run_active_plugin_ids"], ["floor_continuity"])
             self.assertIs(runner._mapper, mapper)
             self.assertEqual(runner._shared_memory.get("retention-marker"), "kept")
-            self.assertEqual(selected["timeline"][0]["frame"]["frame_id"], first_id)
-            retained = runner.frame_detail(first_id, run_id=run_id)
-            self.assertEqual(
-                [run["plugin_id"] for run in retained["perception"]["plugin_runs"]],
-                ["classical_regions"],
+            # The displayed frame runs again with the new selection.
+            _wait_until(
+                lambda: runner.state()["position"] == 1 and runner.state()["timeline"]
             )
-            paused = runner.dispatch("pause", run_id=run_id)
-            self.assertEqual(paused["phase"], "paused")
-            if paused["position"] == before["position"]:
-                paused = runner.dispatch("step", run_id=run_id)
-            latest_id = paused["timeline"][-1]["frame"]["frame_id"]
-            self.assertNotEqual(latest_id, first_id)
-            latest = runner.frame_detail(latest_id, run_id=run_id)
+            reprocessed = runner.frame_detail(first_id, run_id=run_id)
             self.assertEqual(
-                [run["plugin_id"] for run in latest["perception"]["plugin_runs"]],
+                [run["plugin_id"] for run in reprocessed["perception"]["plugin_runs"]],
                 ["floor_continuity"],
             )
             with self.assertRaises(ReplayActionError):
@@ -349,11 +340,11 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                         "plugin_runs"
                     ]
                 ],
-                ["classical_regions"],
+                ["floor_continuity"],
             )
             runner.dispatch("cancel", run_id=run_id)
 
-    def test_paused_plugin_toggle_keeps_recorded_frame_until_next_step(self) -> None:
+    def test_paused_plugin_toggle_reprocesses_the_current_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
@@ -385,15 +376,13 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 both["run_active_plugin_ids"], ["floor_continuity", "classical_regions"]
             )
-            for key in ("perception", "observation", "memory", "decision"):
-                self.assertEqual(both[key], paused[key])
+            self.assertEqual(both["current_frame"]["frame_id"], first_id)
             self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
-                ["classical_regions"],
+                _plugin_ids(both["perception"]), ["floor_continuity", "classical_regions"]
             )
             self.assertEqual(
-                runner.frame_detail(first_id, run_id=run_id)["perception_plugin_report"],
-                recorded_report,
+                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
+                ["floor_continuity", "classical_regions"],
             )
             self.assertEqual(
                 both["machine_detail"]["pipeline"]["perception_plugin_report"][
@@ -409,7 +398,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(none["phase"], "paused")
             self.assertEqual(none["run_active_plugin_ids"], [])
-            self.assertEqual(_plugin_ids(none["perception"]), ["classical_regions"])
+            self.assertEqual(_plugin_ids(none["perception"]), [])
 
             one = runner.dispatch(
                 "select_plugins",
@@ -419,19 +408,15 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(one["phase"], "paused")
             self.assertEqual(one["position"], position)
             self.assertEqual(runner._mapper.plugin_ids, ("floor_continuity",))
-            self.assertEqual(_plugin_ids(one["perception"]), ["classical_regions"])
+            self.assertEqual(_plugin_ids(one["perception"]), ["floor_continuity"])
 
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")
             self.assertEqual(_plugin_ids(stepped["perception"]), ["floor_continuity"])
             self.assertNotEqual(stepped["current_frame"]["frame_id"], first_id)
-            self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
-                ["classical_regions"],
-            )
             runner.dispatch("cancel", run_id=run_id)
 
-    def test_paused_selection_retains_instances_until_reset(self) -> None:
+    def test_paused_selection_retains_instances_and_reprocesses(self) -> None:
         _install_plugin(
             self.plugin_root,
             "kept_marker",
@@ -472,7 +457,9 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             applied = dict(zip(mapper.plugin_ids, mapper.plugins))
             self.assertEqual(list(applied), ["kept_marker", "classical_regions"])
             self.assertIs(applied["classical_regions"], retained)
-            self.assertEqual(_plugin_ids(both["perception"]), ["classical_regions"])
+            self.assertEqual(
+                _plugin_ids(both["perception"]), ["kept_marker", "classical_regions"]
+            )
             self.assertIs(memory_step.plugins[0], memory_plugin)
             self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
             self.assertEqual(
@@ -500,7 +487,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertIs(memory_step.plugins[0], memory_plugin)
             self.assertEqual(
                 _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
-                ["classical_regions"],
+                ["kept_marker", "classical_regions"],
             )
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
 
@@ -661,7 +648,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 active_plugin_ids=["narrow"],
             )
             self.assertEqual(selected["phase"], "paused")
-            self.assertEqual(_plugin_ids(selected["perception"]), ["classical_regions"])
+            self.assertEqual(_plugin_ids(selected["perception"]), ["narrow"])
             self.assertEqual(
                 memory_step.plugin_manager.selected_ids, ("narrow.bounded_evidence",)
             )
@@ -679,24 +666,17 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(
                 live_memory["plugins"][0]["implementation_id"], "bounded_evidence"
             )
-            recorded_memory = runner.frame_detail(first_id, run_id=run_id)[
+            reprocessed_memory = runner.frame_detail(first_id, run_id=run_id)[
                 "memory_plugin_report"
             ]
             self.assertEqual(
-                recorded_memory["applied_plugin_ids"], ["bounded_evidence"]
-            )
-            self.assertEqual(
-                recorded_memory["plugins"][0]["implementation_id"], "bounded_evidence"
+                reprocessed_memory["applied_plugin_ids"], ["narrow.bounded_evidence"]
             )
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
 
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")
             self.assertEqual(_plugin_ids(stepped["perception"]), ["narrow"])
-            self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
-                ["classical_regions"],
-            )
             self.assertEqual(
                 memory_step.plugins[0].implementation.bounds.max_records, 7
             )
@@ -878,7 +858,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             runner.dispatch("cancel", run_id=run_id)
 
-    def test_paused_selection_keeps_temporal_history_until_next_frame(self) -> None:
+    def test_paused_selection_reprocesses_the_frame_with_temporal_history(self) -> None:
         _install_plugin(
             self.plugin_root,
             "temporal",
@@ -905,7 +885,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             first_id = paused["current_frame"]["frame_id"]
             frames = runner._shared_memory["temporal.frames"]
             self.assertEqual(frames, [first_id])
-            recorded = _plugin_ids(paused["perception"])
 
             selected = runner.dispatch(
                 "select_plugins",
@@ -914,8 +893,11 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(selected["phase"], "paused")
             self.assertIs(runner._shared_memory["temporal.frames"], frames)
-            self.assertEqual(frames, [first_id])
-            self.assertEqual(_plugin_ids(selected["perception"]), recorded)
+            # The retained plugin sees the reprocessed frame again.
+            self.assertEqual(frames, [first_id, first_id])
+            self.assertEqual(
+                _plugin_ids(selected["perception"]), ["temporal", "classical_regions"]
+            )
             self.assertEqual(
                 runner._mapper.plugin_ids, ("temporal", "classical_regions")
             )
@@ -923,7 +905,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")
             self.assertEqual(
-                frames, [first_id, stepped["current_frame"]["frame_id"]]
+                frames, [first_id, first_id, stepped["current_frame"]["frame_id"]]
             )
             self.assertNotEqual(stepped["current_frame"]["frame_id"], first_id)
             self.assertEqual(
@@ -1024,9 +1006,13 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertEqual(mapper.plugin_ids, ("counting_temporal", "counting_companion"))
             self.assertIs(retained.frames, frames)
-            self.assertEqual(frames, [first_id])
+            # The retained plugin sees the reprocessed frame again.
+            self.assertEqual(frames, [first_id, first_id])
             self.assertIs(runner._shared_memory["temporal.frames"], shared)
-            self.assertEqual(_plugin_ids(selected["perception"]), ["counting_temporal"])
+            self.assertEqual(
+                _plugin_ids(selected["perception"]),
+                ["counting_temporal", "counting_companion"],
+            )
             runner.dispatch("cancel", run_id=run_id)
 
     def test_failed_memory_replacement_keeps_temporal_instance_history(self) -> None:

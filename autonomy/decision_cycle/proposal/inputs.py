@@ -12,7 +12,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from autonomy.memory.values import (
+from autonomy.decision_cycle.memory.snapshots.values import (
     MemorySnapshot,
     detach_memory_snapshot,
 )

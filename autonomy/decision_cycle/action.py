@@ -27,7 +27,7 @@ from autonomy.decision_cycle.proposal.inputs import (
     default_capabilities,
     ready_envelope,
 )
-from autonomy.memory.values import MemorySnapshot
+from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action_gate.hold import authorized_idle_control, build_authority

@@ -48,7 +48,7 @@
             "path": "autonomy/memory/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Memory-step activation, selection, runner, protocol, and value contracts. The host shared map is not owned by this step. MemoryUpdateError lives under autonomy/decision_cycle/memory/."
+            "responsibility": "Import paths that forward to autonomy/decision_cycle/memory/. The host shared map is not owned by the memory step."
           },
           {
             "path": "autonomy/decision/",
@@ -60,7 +60,7 @@
             "path": "autonomy/decision_cycle/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Canonical home of decision-cycle contracts, grouped by step. It holds the cycle input (context.py), the memory failure (memory/errors.py), the observation record and default observe step (observation/), proposal inputs and values (proposal/), the action identifier grammar (action_identifiers.py), plan values with the built-in selector (planning/), the fixed idle gate (action_gate/hold.py), and the aggregate action result with its engine error reasons (result.py, errors.py), the action composition (action.py), and the perception step (perception/: plugin contract, step boundary, selection, activation, and execution at its root; components/, diagnostics/, and evidence/ beneath); other cycle and step modules still live under autonomy/decision/, autonomy/perception/, and autonomy/memory/, which keep their import paths."
+            "responsibility": "Decision-cycle contracts and framework execution, grouped by step. perception/ and memory/ hold each step's plugin contract, selection, activation, and execution, with supporting concepts beneath. observation/ holds the current-frame record and default observe step; proposal/ the proposal inputs and candidate values; planning/ plan values and the built-in selector; action_gate/ the fixed hold gate. At the root: the cycle input (context.py), the action composition (action.py), its aggregate result and engine error reasons (result.py, errors.py), and the action identifier grammar (action_identifiers.py). Cycle ordering still lives in autonomy/decision/cycle.py; autonomy/decision/, autonomy/perception/, and autonomy/memory/ otherwise forward to this tree."
           },
           {
             "path": "autonomy/runtime/",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from autonomy.memory import PluginMemoryRunner
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
 from autonomy.shared_memory import SharedMemory
 from autonomy.decision.cycle import (
     DecisionCycle,

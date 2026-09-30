@@ -1,17 +1,8 @@
-"""Build the memory-scoped view of the common plugin manager."""
+"""Import path for ``autonomy.decision_cycle.memory.selection``.
 
-from __future__ import annotations
+Names imported here are those objects.
+"""
 
-from collections.abc import Mapping
-from typing import Any
-
-from autonomy.plugins import PluginManager
-
-
-def memory_plugin_manager(
-    specs: Mapping[str, str],
-    configs: Mapping[str, Mapping[str, Any]] | None = None,
-) -> PluginManager:
-    """Create a memory manager without selecting or constructing plugins."""
-
-    return PluginManager.from_specs("memory", specs, configs)
+from autonomy.decision_cycle.memory.selection import (
+    memory_plugin_manager,
+)

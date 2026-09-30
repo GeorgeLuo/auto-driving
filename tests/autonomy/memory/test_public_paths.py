@@ -82,6 +82,10 @@ from autonomy.decision_cycle.action_gate.hold import HoldGateResult
 from autonomy.decision_cycle.result import ShadowDecisionCycleResult as CanonicalActionResult
 from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
 from autonomy.decision_cycle.action import HoldActionPipeline
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner as CanonicalRunner
+from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot as CanonicalSnapshot
+from autonomy.decision_cycle.memory.snapshots.fallback import validate_framework_fallback_capacity
+from autonomy.memory.activation import validate_framework_fallback_capacity as legacy_validate_capacity
 from autonomy.perception import PerceptionRequest as PackageRequest
 from autonomy.perception.interface import PerceptionRequest as LegacyRequest
 from autonomy.decision_cycle.perception.components.context import PerceptionRequest as CanonicalRequest
@@ -120,6 +124,9 @@ assert PackageDataSource is LegacyDataSource is CanonicalDataSource
 assert PackageGateResult is LegacyGateResult is HoldGateResult
 assert PackageActionResult is LegacyActionResult is CanonicalActionResult
 assert ShadowProposalsEngine is DirectShadowEngine is HoldActionPipeline
+assert PluginMemoryRunner is CanonicalRunner is ActivatedMemoryStep
+assert MemorySnapshot is CanonicalSnapshot
+assert legacy_validate_capacity is validate_framework_fallback_capacity
 assert PackageRequest is LegacyRequest is CanonicalRequest
 assert LegacySink is CanonicalSink
 assert PerceptionMapper is DirectPerceptionMapper
@@ -158,6 +165,11 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.decision_cycle.perception.components.context",
             "import autonomy.decision_cycle.perception.diagnostics.sink",
             "import autonomy.decision_cycle.perception.evidence.values",
+            "import autonomy.decision_cycle.memory.plugin_runner",
+            "import autonomy.decision_cycle.memory.activation",
+            "import autonomy.decision_cycle.memory.execution.plugin_runtime",
+            "import autonomy.decision_cycle.memory.snapshots.values",
+            "import autonomy.decision_cycle.memory.snapshots.fallback",
             "import autonomy.perception.mappers.plugin_runner",
             "from autonomy.decision.activation import MemoryActivation",
         )

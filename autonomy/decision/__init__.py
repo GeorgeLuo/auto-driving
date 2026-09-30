@@ -60,7 +60,7 @@ from autonomy.decision_cycle.result import (
     ShadowDecisionCycleResult,
 )
 from autonomy.decision_cycle.action import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
-from autonomy.memory.activation import (
+from autonomy.decision_cycle.memory.activation import (
     MEMORY_ACTIVATION_SCHEMA,
     ActivatedMemoryStep,
     MemoryActivation,
@@ -69,7 +69,7 @@ from autonomy.memory.activation import (
     load_memory_step_if_present,
     read_memory_activation,
 )
-from autonomy.memory.plugin import MemoryImplementation
+from autonomy.decision_cycle.memory.plugin import MemoryImplementation
 
 __all__ = [
     "DECISION_CYCLE_RESULT_SCHEMA",

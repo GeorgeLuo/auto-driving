@@ -16,7 +16,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.observation.step import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.memory.values import MemorySnapshot
+from autonomy.decision_cycle.memory.snapshots.values import MemorySnapshot
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.runtime.engine import AutonomyControl
 

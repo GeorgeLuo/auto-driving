@@ -430,7 +430,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 "timestamp_ms",
                 return_value=10_000,
             ),
-            patch("autonomy.decision.cycle.timestamp_ms", return_value=10_000),
+            patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
             patch("autonomy.runtime.manager.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(
@@ -472,7 +472,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         )
         with (
             patch.object(module, "timestamp_ms", return_value=10_000),
-            patch("autonomy.decision.cycle.timestamp_ms", return_value=10_000),
+            patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
             patch("autonomy.runtime.manager.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(

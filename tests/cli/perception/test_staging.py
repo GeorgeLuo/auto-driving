@@ -8,7 +8,7 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
     PERCEPTION_MAPPER_SPEC,
@@ -46,10 +46,10 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             for relative in (
-                "implementations/perception/traversability/plugin.py",
-                "implementations/perception/preparation/vlm.py",
-                "implementations/perception/motion/tracks.py",
-                "autonomy/perception/plugin_runner.py",
+                "implementations/decision_cycle/perception/floor_plane/plugin.py",
+                "implementations/decision_cycle/perception/vlm_preparation/plugin.py",
+                "implementations/decision_cycle/perception/motion_tracks/plugin.py",
+                "autonomy/decision_cycle/perception/plugin_runner.py",
                 "bundle-manifest.json",
             ):
                 self.assertTrue((bundle_root / relative).exists(), relative)
@@ -174,7 +174,7 @@ class PerceptionCommandTests(unittest.TestCase):
                     "description": "Test-only isolated candidate.",
                     "plugin": {
                         "entrypoint": (
-                            "implementations.perception.observation.plugin:"
+                            "implementations.decision_cycle.perception.frame_observation.plugin:"
                             "FrameObservationPlugin"
                         ),
                         "config": {},
@@ -270,7 +270,7 @@ class PerceptionCommandTests(unittest.TestCase):
                     "id": "fixture",
                     "plugin": {
                         "entrypoint": (
-                            "implementations.perception.observation.plugin:"
+                            "implementations.decision_cycle.perception.frame_observation.plugin:"
                             "FrameObservationPlugin"
                         ),
                         "config": {},

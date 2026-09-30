@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from copy import deepcopy
 
-from autonomy.decision.decision_data import (
+from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
     build_decision_data_source,
     memory_envelope_from_snapshot,
@@ -13,7 +13,7 @@ from autonomy.decision.decision_data import (
     ready_envelope,
     unavailable_envelope,
 )
-from autonomy.memory.values import (
+from autonomy.decision_cycle.memory.snapshots.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
@@ -22,7 +22,7 @@ from autonomy.memory.values import (
     error_memory_snapshot,
     unavailable_memory_snapshot,
 )
-from autonomy.perception import ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
 def _bounds() -> MemoryBounds:
@@ -154,9 +154,12 @@ class DecisionDataSourceTests(unittest.TestCase):
             )
 
     def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
-        from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine
-        from autonomy.decision.action_proposal import ActionProposal
-        from autonomy.decision.decision_data import DecisionDataSource
+        from autonomy.decision_cycle.action import (
+            ShadowProposalsConfig,
+            ShadowProposalsEngine,
+        )
+        from autonomy.decision_cycle.proposal.values import ActionProposal
+        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         seen: list[object] = []
 
@@ -215,7 +218,9 @@ class DecisionDataSourceTests(unittest.TestCase):
             ready_envelope(LiveClient(), updated_at_ms=1)
 
         # Cycle must not return ok with a non-replayable source.
-        from implementations.decision.catalog import create_shadow_proposals_engine
+        from implementations.runtime.engines.catalog import (
+            create_shadow_proposals_engine,
+        )
 
         with self.assertRaises(TypeError):
             create_shadow_proposals_engine().run_cycle(
@@ -254,7 +259,7 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.status, "ready")
 
     def test_rejects_evaluator_and_map_metadata(self) -> None:
-        from autonomy.memory.values import canonical_json_bytes
+        from autonomy.serialization import canonical_json_bytes
 
         with self.assertRaises(ValueError):
             build_decision_data_source(
@@ -421,7 +426,11 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertIs(type(caps["max_abs_throttle"]), float)
 
     def test_ready_observation_accepts_detached_dict(self) -> None:
-        from autonomy.decision.observation import Observation
+        from autonomy.decision_cycle.observation.values import Observation
+        from autonomy.decision_cycle.proposal.inputs import (
+            DecisionDataSource,
+            unavailable_envelope,
+        )
 
         obs = Observation(
             observation_id="obs-1",
@@ -439,7 +448,6 @@ class DecisionDataSourceTests(unittest.TestCase):
             # Ready detached dict through envelope constructor.
         )
         # Direct envelope path with detached dict.
-        from autonomy.decision.decision_data import DecisionDataSource, unavailable_envelope
 
         ready = ready_envelope(obs.to_dict(), updated_at_ms=1)
         source = DecisionDataSource(
@@ -465,7 +473,9 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.value.observation_id, "obs-1")
 
     def test_runner_default_observation_not_configured(self) -> None:
-        from implementations.decision.catalog import create_shadow_proposals_engine
+        from implementations.runtime.engines.catalog import (
+            create_shadow_proposals_engine,
+        )
 
         result, control = create_shadow_proposals_engine().run_cycle(
             frame_id="f", frame_index=0, timestamp_ms=1
@@ -479,7 +489,7 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(control.steering, 0.0)
 
     def test_compound_privileged_origin_keys_rejected(self) -> None:
-        from autonomy.decision.observation import Observation
+        from autonomy.decision_cycle.observation.values import Observation
 
         obs = Observation(
             observation_id="o",
@@ -536,8 +546,10 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertIs(type(caps["max_abs_steering"]), float)
 
     def test_runner_observation_dict_and_error_paths(self) -> None:
-        from autonomy.decision.observation import Observation
-        from implementations.decision.catalog import create_shadow_proposals_engine
+        from autonomy.decision_cycle.observation.values import Observation
+        from implementations.runtime.engines.catalog import (
+            create_shadow_proposals_engine,
+        )
 
         engine = create_shadow_proposals_engine()
         obs = Observation(

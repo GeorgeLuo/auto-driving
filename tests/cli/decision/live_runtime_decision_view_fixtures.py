@@ -6,7 +6,8 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
-from autonomy.decision import ComponentEnvelope
+from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
 from cli.automa_cli import decision as decision_module
 from cli.automa_cli.decision import (
     ENGINE_ID,
@@ -16,7 +17,6 @@ from cli.automa_cli.decision import (
     update_vehicle_decision,
 )
 from cli.automa_cli.runtime_view import RuntimeViewServer
-from implementations.decision.catalog import create_shadow_proposals_engine
 
 
 SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"

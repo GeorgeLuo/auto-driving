@@ -20,14 +20,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionMapper
-from autonomy.perception.activation import instantiate_perception_mapper
+from autonomy.decision_cycle.perception.interface import (
+    PERCEPTION_TEXT_SCHEMA,
+    PerceptionMapper,
+)
+from autonomy.decision_cycle.perception.activation import instantiate_perception_mapper
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
-from implementations.memory.catalog import (
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     MEMORY_IMPLEMENTATIONS,
 )
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
     PERCEPTION_MAPPER_SPEC,
@@ -37,7 +40,7 @@ from implementations.perception.catalog import (
 
 PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog_v1"
 PLUGIN_MANIFEST_SCHEMA = "automa_lab_perception_plugin_v0"
-DEFAULT_PLUGIN_ROOT_ID = "packaged:implementations.perception.catalog"
+DEFAULT_PLUGIN_ROOT_ID = "packaged:implementations.decision_cycle.perception.catalog"
 _SAFE_PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _SAFE_SYMBOL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -437,7 +440,7 @@ def packaged_plugin_catalog() -> PluginCatalog:
                     "name": "frame",
                     "component_id": "camera.rgb:front_camera",
                     "provider_spec": (
-                        "implementations.perception.components.camera:provide_camera_frame"
+                        "implementations.decision_cycle.perception.components.camera:provide_camera_frame"
                     ),
                 }
             ],

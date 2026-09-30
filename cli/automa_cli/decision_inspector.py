@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
-from autonomy.memory.values import canonical_json_utf8
-from implementations.decision.catalog import create_shadow_proposals_engine
-from implementations.decision.config import default_engine_config
-from implementations.decision.inspection import prepare_inspection_scenarios
+from autonomy.serialization import canonical_json_utf8
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
+from implementations.runtime.engines.config import default_engine_config
+from implementations.runtime.engines.inspection import prepare_inspection_scenarios
 
 from .decision import (
     APPLY_SEQUENCE_SCHEMA,

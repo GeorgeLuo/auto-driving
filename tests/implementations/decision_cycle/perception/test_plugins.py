@@ -6,12 +6,16 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.perception import build_perception_request
-from autonomy.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_PLUGIN_SPECS
-from implementations.perception.components import camera_component_id
-from implementations.perception.motion.tracks import MotionTracksPlugin
+from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.perception.components.camera import (
+    camera_component_id,
+)
+from implementations.decision_cycle.perception.motion_tracks.plugin import (
+    MotionTracksPlugin,
+)
 
 
 FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)

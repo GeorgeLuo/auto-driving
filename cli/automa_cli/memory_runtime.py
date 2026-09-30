@@ -5,8 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from autonomy.memory import PluginMemoryRunner, MemoryActivation, read_memory_activation
-from autonomy.memory.activation import memory_selection_config
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import (
+    MemoryActivation,
+    read_memory_activation,
+    memory_selection_config,
+)
 
 from .staged_bundle import StagedBundleImport
 

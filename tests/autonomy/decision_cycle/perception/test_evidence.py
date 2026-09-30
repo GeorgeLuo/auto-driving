@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import unittest
 
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
+    PerceptionText,
+)
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
     PerceptionSignal,
-    PerceptionText,
     ViewLocation,
 )
 

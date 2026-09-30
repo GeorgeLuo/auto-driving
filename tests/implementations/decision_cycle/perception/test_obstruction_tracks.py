@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.perception.plugin_runner import PluginPerceptionMapper
-from implementations.perception.catalog import PERCEPTION_ALGORITHMS
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from implementations.decision_cycle.perception.catalog import PERCEPTION_ALGORITHMS
 
 
 class ObstructionTracksProductionTests(unittest.TestCase):

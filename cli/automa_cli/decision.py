@@ -17,46 +17,56 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from autonomy.decision import (
+from autonomy.decision_cycle.planning.values import (
     ACTION_PLAN_SCHEMA,
-    ACTION_PROPOSAL_SCHEMA,
-    DECISION_DATA_SOURCE_SCHEMA,
-    SHADOW_AUTHORITY_RESULT_SCHEMA,
-    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     SELECTOR_ID,
+    ActionPlan,
+    PlanContribution,
 )
-from autonomy.decision.action_plan import ActionPlan, PlanContribution, select_action_plan
-from autonomy.decision.action_proposal import (
+from autonomy.decision_cycle.proposal.values import (
+    ACTION_PROPOSAL_SCHEMA,
     PROPOSED_VEHICLE_COMMAND_SCHEMA,
     ActionProposal,
     ProposedVehicleCommand,
 )
-from autonomy.decision.decision_data import ComponentEnvelope, DecisionDataSource
-from autonomy.decision.observation import OBSERVATION_SCHEMA, Observation
-from autonomy.decision.shadow_authority import (
+from autonomy.decision_cycle.proposal.inputs import (
+    DECISION_DATA_SOURCE_SCHEMA,
+    ComponentEnvelope,
+    DecisionDataSource,
+)
+from autonomy.decision_cycle.action_gate.hold import (
+    SHADOW_AUTHORITY_RESULT_SCHEMA,
     AUTHORIZED_IDLE_REASON,
     ShadowAuthorityResult,
-    ShadowDecisionCycleResult,
     authorized_idle_output,
 )
-from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
-from autonomy.decision.shadow_runner import ENGINE_ID
-from autonomy.memory.values import (
+from autonomy.decision_cycle.result import (
+    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
+    ShadowDecisionCycleResult,
+)
+from autonomy.decision_cycle.planning.selector import select_action_plan
+from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
+from autonomy.decision_cycle.action_identifiers import (
+    require_ascii_id,
+    require_safe_int,
+)
+from autonomy.decision_cycle.action import ENGINE_ID
+from autonomy.decision_cycle.memory.snapshots.values import (
     MEMORY_SNAPSHOT_SCHEMA,
     MemorySnapshot,
-    canonical_json_utf8,
 )
-from autonomy.runtime import AutonomyManager, read_decision_activation
-from implementations.decision.catalog import (
+from autonomy.serialization import canonical_json_utf8
+from implementations.runtime.engines.catalog import (
     create_shadow_proposals_engine,
     validate_engine_config,
 )
-from implementations.decision.config import default_engine_config
-from implementations.decision.live_adapter import (
+from implementations.runtime.engines.config import default_engine_config
+from implementations.runtime.engines.mode_gated_action import (
     ADAPTER_ENGINE_SPEC as LIVE_ADAPTER_ENGINE_SPEC,
     ENGINE_ID as LIVE_ENGINE_ID,
 )
-from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
+from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
+from autonomy.runtime import AutonomyManager, read_decision_activation
 
 from .bundles import (
     controller_bundle_paths,

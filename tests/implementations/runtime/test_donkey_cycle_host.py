@@ -6,7 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext, DecisionSteps
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.engine import AutonomyControl, AutonomySnapshot
 from autonomy.runtime.manager import AutonomyManager

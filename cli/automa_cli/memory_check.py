@@ -12,9 +12,11 @@ from typing import Any, Callable, TextIO
 from urllib.parse import quote, urljoin
 from urllib.request import urlopen
 
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.memory import PluginMemoryRunner, read_memory_activation
-from implementations.memory import (
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import read_memory_activation
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
     build_memory_activation_payload,

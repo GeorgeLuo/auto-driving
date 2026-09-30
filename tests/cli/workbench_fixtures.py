@@ -9,14 +9,16 @@ from tempfile import TemporaryDirectory
 from typing import Iterator
 from urllib.request import Request, urlopen
 from PIL import Image
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
+)
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
     PerceivedThing,
     ViewLocation,
 )
-from autonomy.memory.values import MemoryBounds, MemorySnapshot
+from autonomy.decision_cycle.memory.snapshots.values import MemoryBounds, MemorySnapshot
 from cli.automa_cli.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
     WorkbenchServer,

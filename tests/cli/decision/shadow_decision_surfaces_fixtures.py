@@ -5,7 +5,8 @@ import tempfile
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
+from autonomy.decision_cycle.action_gate.hold import AUTHORIZED_IDLE_REASON
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
 from cli.automa_cli.decision import (
     DECISION_ENGINES,
     ENGINE_ID,
@@ -13,7 +14,6 @@ from cli.automa_cli.decision import (
     strict_decode_apply_observation,
     update_vehicle_decision,
 )
-from implementations.decision.catalog import create_shadow_proposals_engine
 
 
 SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"

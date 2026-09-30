@@ -370,7 +370,7 @@
         live-control path.
       </p>
       <p class="source-line">
-        Source points: <code>autonomy/decision/cycle.py</code>,
+        Source points: <code>autonomy/decision_cycle/cycle.py</code>,
         <code>autonomy/runtime/cycle_host.py</code>,
         <code>cli/automa_cli/automation.py</code>, and
         <code>implementations/runtime/donkeycar/donkey_part.py</code>
@@ -541,19 +541,19 @@
             <td>Perception</td>
             <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query components from its snapshot.</td>
             <td><code>PerceptionText</code> containing evidence and limits.</td>
-            <td><code>autonomy/perception/</code>, <code>implementations/perception/</code></td>
+            <td><code>autonomy/decision_cycle/perception/</code>, <code>implementations/decision_cycle/perception/</code></td>
           </tr>
           <tr>
             <td>Observation</td>
             <td>Current snapshot and optional perception.</td>
             <td>Stable decision-facing evidence record.</td>
-            <td><code>autonomy/decision/observation.py</code></td>
+            <td><code>autonomy/decision_cycle/observation/</code></td>
           </tr>
           <tr>
             <td>Memory Step</td>
             <td>Observation and frame context.</td>
             <td>Optional memory supplied by the activated memory plugin.</td>
-            <td><code>autonomy/decision/cycle.py</code></td>
+            <td><code>autonomy/decision_cycle/cycle.py</code></td>
           </tr>
           <tr>
             <td>Decision</td>

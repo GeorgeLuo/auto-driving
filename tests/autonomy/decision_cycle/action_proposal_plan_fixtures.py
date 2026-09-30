@@ -1,5 +1,5 @@
 from __future__ import annotations
-from autonomy.decision.action_proposal import (
+from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
     SourceRef,

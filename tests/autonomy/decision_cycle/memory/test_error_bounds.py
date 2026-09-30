@@ -2,8 +2,10 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import read_memory_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
@@ -16,7 +18,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload = _valid_payload()
             payload["memory"]["implementation_config"]["fail_on_update"] = True
             payload["memory"]["implementation_config"]["max_serialized_bytes"] = 2_000
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             # Force an oversized exception string through the step boundary.
@@ -36,7 +38,9 @@ class MemoryActivationTests(unittest.TestCase):
                     )
             finally:
                 step.implementation.update = original_update  # type: ignore[method-assign]
-            from autonomy.memory.values import DEFAULT_MAX_DIAGNOSTIC_CHARS
+            from autonomy.decision_cycle.memory.snapshots.values import (
+                DEFAULT_MAX_DIAGNOSTIC_CHARS,
+            )
             # last_error/status must also be bounded (Chase worker publishes this).
             status = step.status()
             self.assertIsNotNone(status["last_error"])
@@ -58,7 +62,7 @@ class MemoryActivationTests(unittest.TestCase):
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_NearCeilingThenFailMemory"
             payload["memory"]["implementation_config"]["max_serialized_bytes"] = 2_000
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             first = step.update(
@@ -77,7 +81,7 @@ class MemoryActivationTests(unittest.TestCase):
     def test_reset_failure_preserves_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             step.implementation.fail_on_reset = True
@@ -114,7 +118,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"]["implementation_config"]["max_serialized_bytes"] = 512
             # Just under the activation-time capacity limit for these bounds.
             payload["memory"]["implementation_config"]["eviction_policy"] = "p" * 85
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             step.implementation.fail_on_reset = True
@@ -122,7 +126,9 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertEqual(snapshot.health, "empty")
             self.assertTrue(snapshot.epoch_id.startswith("epoch-reset-failed-"))
             self.assertEqual(len(snapshot.epoch_id.split("-")[-1]), 10)
-            from autonomy.memory.values import serialized_memory_snapshot_bytes
+            from autonomy.decision_cycle.memory.snapshots.values import (
+                serialized_memory_snapshot_bytes,
+            )
 
             self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
             self.assertIn("reset exploded", step.last_error or "")
@@ -133,7 +139,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_BrokenStrMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaises(Exception):

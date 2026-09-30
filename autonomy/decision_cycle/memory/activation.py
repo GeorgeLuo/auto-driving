@@ -220,12 +220,3 @@ def json_load_object(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"memory activation must be a JSON object: {path}")
     return payload
-
-
-def __getattr__(name: str) -> Any:
-    """Expose the host-facing legacy name without making activation own execution."""
-    if name not in {"ActivatedMemoryStep", "PluginMemoryRunner"}:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
-
-    return PluginMemoryRunner

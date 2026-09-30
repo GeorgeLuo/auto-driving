@@ -18,10 +18,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import DecisionFrameContext, DecisionSteps
-from autonomy.memory import read_memory_activation
-from autonomy.memory.activation import memory_selection_config
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.memory.activation import (
+    read_memory_activation,
+    memory_selection_config,
+)
+from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest

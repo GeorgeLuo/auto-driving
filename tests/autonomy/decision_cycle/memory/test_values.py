@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from autonomy.memory.values import (
+from autonomy.decision_cycle.memory.snapshots.values import (
     MEMORY_SNAPSHOT_SCHEMA,
     MIN_MAX_SERIALIZED_BYTES,
     MemoryBounds,
@@ -14,7 +14,7 @@ from autonomy.memory.values import (
     error_memory_snapshot,
     unavailable_memory_snapshot,
 )
-from autonomy.perception import ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
 class MemoryContractTests(unittest.TestCase):
@@ -97,7 +97,9 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual(ok.max_serialized_bytes, MIN_MAX_SERIALIZED_BYTES)
 
     def test_detach_memory_snapshot_isolates_nested_mutation(self) -> None:
-        from autonomy.memory.values import detach_memory_snapshot
+        from autonomy.decision_cycle.memory.snapshots.values import (
+            detach_memory_snapshot,
+        )
 
         original = MemorySnapshot(
             memory_id="mem_1",

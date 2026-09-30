@@ -10,7 +10,9 @@ from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.memory import set_vehicle_memory_plugin
 from cli.automa_cli.memory_runtime import load_memory_step_from_bundle
-from implementations.memory import build_memory_activation_payload
+from implementations.decision_cycle.memory.catalog import (
+    build_memory_activation_payload,
+)
 from tests.integration.automation_pipeline.pipeline_fixtures import _FakeCar, _SlowMapper, _write_activations
 
 
@@ -24,9 +26,9 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             _write_activations(bundle)
             # This implementation exists only in the staged bundle and is first
             # loaded after automation starts, exercising the lazy import context.
-            staged = Path(bundle["root_dir"]) / "implementations/memory/second.py"
+            staged = Path(bundle["root_dir"]) / "implementations/decision_cycle/memory/second.py"
             staged.write_text(
-                "from implementations.memory.bounded_evidence import BoundedEvidenceLedger\n"
+                "from implementations.decision_cycle.memory.bounded_evidence.plugin import BoundedEvidenceLedger\n"
                 "class SecondLedger(BoundedEvidenceLedger):\n"
                 "    implementation_id = 'second'\n", encoding="utf-8",
             )
@@ -36,7 +38,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 "plugins": ["bounded_evidence"],
                 "plugin_specs": {
                     "bounded_evidence": memory["implementation_spec"],
-                    "second": "implementations.memory.second:SecondLedger",
+                    "second": "implementations.decision_cycle.memory.second:SecondLedger",
                 },
                 "plugin_configs": {
                     name: dict(memory["implementation_config"])

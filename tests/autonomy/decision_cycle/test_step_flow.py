@@ -4,20 +4,24 @@ import json
 import unittest
 from unittest.mock import patch
 
-from autonomy.decision import (
+from autonomy.decision_cycle.cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
-    DecisionFrameContext,
     DecisionSteps,
-    Observation,
 )
-from autonomy.memory.values import (
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.snapshots.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
     RetainedEvidence,
 )
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText, ViewLocation
+from autonomy.decision_cycle.perception.interface import (
+    PERCEPTION_TEXT_SCHEMA,
+    PerceptionText,
+)
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.runtime import AutonomyControl
 
 
@@ -121,7 +125,7 @@ class DecisionStageFlowTests(unittest.TestCase):
         )
 
         with patch(
-            "autonomy.decision.cycle.timestamp_ms",
+            "autonomy.decision_cycle.cycle.timestamp_ms",
             side_effect=(1_000, 1_007),
         ):
             result = cycle.run(context)

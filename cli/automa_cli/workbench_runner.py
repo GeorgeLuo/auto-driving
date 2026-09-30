@@ -10,29 +10,29 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from autonomy.decision import (
-    DecisionCycle,
-    DecisionFrameContext,
-    DecisionSteps,
-    Observation,
-    observation_from_perception,
+from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.observation.step import observation_from_perception
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import (
+    MemoryActivation,
+    bounds_from_config,
 )
-from autonomy.memory import PluginMemoryRunner, MemoryActivation
-from autonomy.memory.activation import bounds_from_config
-from autonomy.decision.shadow_runner import ENGINE_ID
-from autonomy.perception import (
+from autonomy.decision_cycle.action import ENGINE_ID
+from autonomy.decision_cycle.perception.interface import (
     PerceptionMapper,
     PerceptionText,
-    build_perception_request,
 )
-from autonomy.perception.activation import instantiate_perception_mapper
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.activation import instantiate_perception_mapper
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision.catalog import create_shadow_proposals_engine
-from implementations.memory.catalog import (
+from implementations.decision_cycle.memory.catalog import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     build_memory_activation_payload,
 )
-from implementations.perception.catalog import (
+from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
 )
@@ -1616,8 +1616,8 @@ class ImageReplayRunner:
                 "memory_implementation": self._memory_implementation_id(),
                 "perception_plugin_report": _plugin_report(getattr(self, "_mapper", None)),
                 "memory_plugin_report": _plugin_report(getattr(self, "_memory_step", None)),
-                "observation_adapter": "autonomy.decision.observation.observation_from_perception",
-                "decision_cycle": "autonomy.decision.cycle.DecisionCycle",
+                "observation_adapter": "autonomy.decision_cycle.observation.step.observation_from_perception",
+                "decision_cycle": "autonomy.decision_cycle.cycle.DecisionCycle",
                 "decision_engine": ENGINE_ID,
                 "decision_config": self._decision_configuration(),
                 "active_plugin_ids": active_ids,

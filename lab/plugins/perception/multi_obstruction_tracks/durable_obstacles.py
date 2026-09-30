@@ -10,11 +10,14 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext, Observation
-from autonomy.perception import PerceptionDiagnosticSink, PerceptionPluginInputs, PerceivedThing
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
+from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from lab.plugins.memory.multi_obstruction_tracks.plugin import MultiObstructionMemory
-from implementations.perception.components import CameraFrame
+from implementations.decision_cycle.perception.components.camera import CameraFrame
 from lab.plugins.perception.multi_obstruction_tracks.src.plugin import MultiObstructionTracksPlugin
 
 

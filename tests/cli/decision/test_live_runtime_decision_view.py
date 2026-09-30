@@ -6,7 +6,8 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.request import urlopen
 from PIL import Image
-from autonomy.decision import ComponentEnvelope
+from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
+from implementations.runtime.engines.catalog import create_shadow_proposals_engine
 from cli.automa_cli.automation import _read_latest_decision_frame_for_view
 from cli.automa_cli.decision import (
     ENGINE_ID,
@@ -15,7 +16,6 @@ from cli.automa_cli.decision import (
     strict_decode_apply_memory,
     strict_decode_apply_observation,
 )
-from implementations.decision.catalog import create_shadow_proposals_engine
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
     ACTIVE_RUN,
     LiveRuntimeDecisionViewFixture,

@@ -1,8 +1,11 @@
 from __future__ import annotations
 import tempfile
 import unittest
-from autonomy.decision import DecisionCycle, DecisionFrameContext, DecisionSteps, Observation
-from autonomy.memory import ActivatedMemoryStep, read_memory_activation
+from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.memory.activation import read_memory_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
@@ -13,7 +16,7 @@ class MemoryActivationTests(unittest.TestCase):
     def test_activation_loads_and_runs_through_decision_cycle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activation = read_memory_activation(_write_payload(tmp, _valid_payload()))
-            step = ActivatedMemoryStep(activation)
+            step = PluginMemoryRunner(activation)
 
             context = DecisionFrameContext(
                 frame_id="frame_1",
@@ -47,7 +50,7 @@ class MemoryActivationTests(unittest.TestCase):
 
     def test_reset_starts_a_new_empty_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, _valid_payload()))
             )
             context = DecisionFrameContext("frame_2", 2, 200)
@@ -65,7 +68,7 @@ class MemoryActivationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
             payload["memory"]["implementation_config"]["fail_on_update"] = True
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(RuntimeError, "forced-update-failure"):
@@ -82,7 +85,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_OverCapacityMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "max_records"):
@@ -97,7 +100,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_WeakAgeMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             with self.assertRaisesRegex(ValueError, "max_age_ms"):
@@ -112,7 +115,7 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"][
                 "implementation_spec"
             ] = "tests.autonomy.decision_cycle.memory.activation_fixtures:_MutatingSharedSnapshotMemory"
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, payload))
             )
             observation = Observation("obs_6", 590, {})
@@ -127,7 +130,7 @@ class MemoryActivationTests(unittest.TestCase):
 
     def test_caller_mutation_does_not_affect_published_value(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            step = ActivatedMemoryStep(
+            step = PluginMemoryRunner(
                 read_memory_activation(_write_payload(tmp, _valid_payload()))
             )
             shared = {}

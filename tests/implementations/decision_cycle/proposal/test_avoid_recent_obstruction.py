@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision.decision_data import build_decision_data_source
-from autonomy.memory.values import (
+from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
+from autonomy.decision_cycle.memory.snapshots.values import (
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
@@ -14,9 +14,11 @@ from autonomy.memory.values import (
     error_memory_snapshot,
     unavailable_memory_snapshot,
 )
-from autonomy.perception import ViewLocation
-from implementations.decision.config import ObstacleAvoidanceConfig
-from implementations.decision.proposals.avoid_recent_obstruction import propose
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from implementations.runtime.engines.config import ObstacleAvoidanceConfig
+from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
+    propose,
+)
 
 
 def _bounds() -> MemoryBounds:
@@ -320,7 +322,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertNotEqual(future.reason, "future_dated_provenance")
 
     def test_ready_malformed_capabilities_rejected_at_source(self) -> None:
-        from autonomy.decision.decision_data import ready_envelope
+        from autonomy.decision_cycle.proposal.inputs import ready_envelope
 
         snap = MemorySnapshot(
             memory_id="m",
@@ -352,7 +354,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             )
 
     def test_capabilities_unavailable_uses_configured_magnitude(self) -> None:
-        from autonomy.decision.decision_data import unavailable_envelope
+        from autonomy.decision_cycle.proposal.inputs import unavailable_envelope
 
         snap = MemorySnapshot(
             memory_id="m",
@@ -379,7 +381,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertIn("capabilities_not_ready", p.assumptions)
 
     def test_ready_capabilities_invalid_max_abs_steering(self) -> None:
-        from autonomy.decision.decision_data import (
+        from autonomy.decision_cycle.proposal.inputs import (
             default_capabilities,
             ready_envelope,
         )
@@ -424,13 +426,13 @@ class AvoidRecentObstructionTests(unittest.TestCase):
     def test_missing_zone_bbox_only_is_active(self) -> None:
         """Omitted zone becomes ViewLocation 'unknown'; bbox mid_x still steers."""
 
-        from autonomy.memory.values import (
+        from autonomy.decision_cycle.memory.snapshots.values import (
             MemoryBounds,
             MemoryProvenance,
             MemorySnapshot,
             RetainedEvidence,
         )
-        from autonomy.perception import ViewLocation
+        from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
         location = ViewLocation.from_dict(
             {

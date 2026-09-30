@@ -7,25 +7,34 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext
-from autonomy.perception import (
-    PERCEPTION_TEXT_SCHEMA,
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
+from autonomy.decision_cycle.perception.activation import (
     ActivatedPerceptionStep,
-    PerceivedThing,
-    PerceptionComponentUnavailable,
-    PerceptionEvidenceBatch,
-    PerceptionPluginContract,
-    PerceptionPluginInput,
-    PerceptionSignal,
-    ViewLocation,
-    build_perception_request,
     read_perception_activation,
 )
-from autonomy.perception.plugin_runner import PluginPerceptionMapper
-from autonomy.perception.selection import perception_plugin_manager
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceivedThing,
+    PerceptionEvidenceBatch,
+    PerceptionSignal,
+    ViewLocation,
+)
+from autonomy.decision_cycle.perception.components.interface import (
+    PerceptionComponentUnavailable,
+)
+from autonomy.decision_cycle.perception.plugin import (
+    PerceptionPluginContract,
+    PerceptionPluginInput,
+)
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.selection import perception_plugin_manager
 from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.perception.catalog import (
+    PERCEPTION_MAPPER_SPEC,
+    PERCEPTION_PLUGIN_SPECS,
+)
 
 
 TEST_INPUT = PerceptionPluginInput(

@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.perception import PerceptionText
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.vehicle import SensorSnapshot
 
 

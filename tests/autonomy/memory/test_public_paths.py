@@ -82,6 +82,11 @@ from autonomy.decision_cycle.action_gate.hold import HoldGateResult
 from autonomy.decision_cycle.result import ShadowDecisionCycleResult as CanonicalActionResult
 from autonomy.decision.shadow_runner import ShadowProposalsEngine as DirectShadowEngine
 from autonomy.decision_cycle.action import HoldActionPipeline
+from autonomy.perception import PerceptionRequest as PackageRequest
+from autonomy.perception.interface import PerceptionRequest as LegacyRequest
+from autonomy.decision_cycle.perception.components.context import PerceptionRequest as CanonicalRequest
+from autonomy.perception.plugin import PerceptionDiagnosticSink as LegacySink
+from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink as CanonicalSink
 from autonomy.perception import PerceptionMapper, PerceptionPluginContract
 from autonomy.perception.interface import PerceptionMapper as DirectPerceptionMapper
 from autonomy.perception.plugin import PerceptionPluginContract as DirectPluginContract
@@ -115,6 +120,8 @@ assert PackageDataSource is LegacyDataSource is CanonicalDataSource
 assert PackageGateResult is LegacyGateResult is HoldGateResult
 assert PackageActionResult is LegacyActionResult is CanonicalActionResult
 assert ShadowProposalsEngine is DirectShadowEngine is HoldActionPipeline
+assert PackageRequest is LegacyRequest is CanonicalRequest
+assert LegacySink is CanonicalSink
 assert PerceptionMapper is DirectPerceptionMapper
 assert PerceptionPluginContract is DirectPluginContract
 assert IdleAutonomyEngine is DirectIdleEngine
@@ -144,6 +151,13 @@ class PackageOwnershipTests(unittest.TestCase):
             "import autonomy.decision_cycle.action_gate.hold",
             "import autonomy.decision_cycle.result",
             "import autonomy.decision_cycle.action",
+            "import autonomy.decision_cycle.perception.plugin_runner",
+            "import autonomy.decision_cycle.perception.plugin",
+            "import autonomy.decision_cycle.perception.interface",
+            "import autonomy.decision_cycle.perception.components.interface",
+            "import autonomy.decision_cycle.perception.components.context",
+            "import autonomy.decision_cycle.perception.diagnostics.sink",
+            "import autonomy.decision_cycle.perception.evidence.values",
             "import autonomy.perception.mappers.plugin_runner",
             "from autonomy.decision.activation import MemoryActivation",
         )

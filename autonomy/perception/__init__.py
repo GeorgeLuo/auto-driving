@@ -2,32 +2,34 @@
 
 A perception plugin's ``perceive`` returns an evidence batch. The framework
 combines batches into the step result. That result is current evidence.
+Defined under ``autonomy.decision_cycle.perception``; names imported here are
+those objects.
 """
 
-from .evidence import (
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
     PerceptionSignal,
     ViewLocation,
 )
-from .interface import (
+from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.components.interface import PerceptionComponentUnavailable
+from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
+from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionMapper,
     PerceptionPluginRun,
-    PerceptionRequest,
     PerceptionText,
 )
-from .plugin import (
-    PerceptionComponentUnavailable,
-    PerceptionDiagnosticSink,
+from autonomy.decision_cycle.perception.plugin import (
     PerceptionPlugin,
     PerceptionPluginContract,
     PerceptionPluginInput,
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
 )
-from .inputs import build_perception_request
-from .activation import (
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.activation import (
     PERCEPTION_ACTIVATION_SCHEMA,
     ActivatedPerceptionStep,
     PerceptionActivation,

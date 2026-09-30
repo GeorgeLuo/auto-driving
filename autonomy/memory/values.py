@@ -12,7 +12,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-from autonomy.perception.evidence import ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.serialization import (
     canonical_json_bytes,
     canonical_json_size_bytes,

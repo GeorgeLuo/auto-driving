@@ -1,17 +1,8 @@
-"""Build the perception-scoped view of the common plugin manager."""
+"""Import path for ``autonomy.decision_cycle.perception.selection``.
 
-from __future__ import annotations
+Names imported here are those objects.
+"""
 
-from collections.abc import Mapping
-from typing import Any
-
-from autonomy.plugins import PluginManager
-
-
-def perception_plugin_manager(
-    specs: Mapping[str, str],
-    configs: Mapping[str, Mapping[str, Any]] | None = None,
-) -> PluginManager:
-    """Create a perception manager without selecting or constructing plugins."""
-
-    return PluginManager.from_specs("perception", specs, configs)
+from autonomy.decision_cycle.perception.selection import (
+    perception_plugin_manager,
+)

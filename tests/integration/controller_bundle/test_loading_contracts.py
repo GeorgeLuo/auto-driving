@@ -406,7 +406,9 @@ for legacy, owner, class_name in (
         # Both trees are evicted, so the plugin and the mapper bind the same
         # bundle classes rather than the classes already imported by the host.
         with StagedBundleImport(self.bundle_root, PERCEPTION_BUNDLE_PREFIXES).activate():
-            mapper_module = importlib.import_module("autonomy.perception.plugin_runner")
+            mapper_module = importlib.import_module(
+                "autonomy.decision_cycle.perception.plugin_runner"
+            )
             plugin_module = importlib.import_module(
                 "implementations.decision_cycle.perception.frame_observation.plugin"
             )

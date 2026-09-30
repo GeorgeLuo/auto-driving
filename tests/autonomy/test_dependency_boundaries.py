@@ -24,14 +24,20 @@ class DependencyBoundaryTests(unittest.TestCase):
         self.assertEqual(violations, [])
 
     def test_stable_perception_contains_no_concrete_algorithms(self) -> None:
-        perception_root = ROOT / "autonomy" / "perception"
         forbidden_packages = {"cv2", "numpy", "PIL", "scipy", "sklearn", "torch", "ultralytics"}
         forbidden_domains = {"core", "features", "landmarks", "motion", "traversability"}
         dependency_violations: list[str] = []
         domain_violations: list[str] = []
         sensor_policy_violations: list[str] = []
 
-        for path in perception_root.rglob("*.py"):
+        perception_roots = (
+            ROOT / "autonomy" / "decision_cycle" / "perception",
+            ROOT / "autonomy" / "perception",
+        )
+        paths = [
+            (root, path) for root in perception_roots for path in sorted(root.rglob("*.py"))
+        ]
+        for perception_root, path in paths:
             relative = path.relative_to(perception_root)
             if relative.parts[0] in forbidden_domains:
                 domain_violations.append(str(relative))

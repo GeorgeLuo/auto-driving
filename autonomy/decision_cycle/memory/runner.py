@@ -190,7 +190,6 @@ class MemoryRunner:
             "plugins": [
                 {
                     "plugin_id": plugin.plugin_id,
-                    "implementation_id": plugin.implementation_id,
                     "state": plugin.plugin_status(),
                 }
                 for plugin in self.plugins
@@ -207,7 +206,6 @@ class MemoryRunner:
         records = [
             {
                 "plugin_id": plugin.plugin_id,
-                "implementation_id": plugin.implementation_id,
                 "duration_ms": plugin.last_duration_ms,
                 "error": plugin.last_error,
             }
@@ -223,8 +221,8 @@ class MemoryRunner:
         with self._runtime_lock:
             final = self.plugins[-1] if self.plugins else None
             return {
-                "implementation_id": final.implementation_id if final else None,
-                "implementation_spec": final.definition.entrypoint if final else None,
+                "plugin_id": final.plugin_id if final else None,
+                "plugin_spec": final.definition.entrypoint if final else None,
                 "activation": (
                     str(self.activation.source_path)
                     if self.activation and self.activation.source_path

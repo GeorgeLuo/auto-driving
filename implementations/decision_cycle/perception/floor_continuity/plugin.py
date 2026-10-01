@@ -29,7 +29,7 @@ from .model import FloorContinuityAnalysis, FloorContinuityConfig, analyze_floor
 class FloorContinuityPlugin:
     """Emit current-frame floor support and first-interruption evidence."""
 
-    plugin_id = "floor-continuity-v1"
+    plugin_id = "floor_continuity"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="stateless",

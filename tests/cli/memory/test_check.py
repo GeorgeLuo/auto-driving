@@ -74,7 +74,7 @@ class MemoryCheckTests(unittest.TestCase):
     def test_run_memory_check_passes_offline(self) -> None:
         result = run_vehicle_memory_check(
             vehicle_id="chase-sim-chaser",
-            implementation_id="bounded_evidence",
+            plugin_id="bounded_evidence",
             json_output=True,
             skip_discovery=True,
         )
@@ -95,7 +95,7 @@ class MemoryCheckTests(unittest.TestCase):
             output_root = Path(tmp) / "memory-check"
             result = run_vehicle_memory_check(
                 vehicle_id="chase-sim-chaser",
-                implementation_id="bounded_evidence",
+                plugin_id="bounded_evidence",
                 record=True,
                 json_output=True,
                 skip_discovery=True,

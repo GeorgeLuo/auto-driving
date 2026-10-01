@@ -106,7 +106,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             report = state["perception"]["plugin_report"]
             self.assertEqual(report["applied_plugin_ids"], ["floor_plane"])
             self.assertEqual(report["plugins"][0]["plugin_id"], "floor_plane")
-            self.assertTrue(report["plugins"][0]["implementation_id"])
+            self.assertTrue(report["plugins"][0]["plugin_id"])
             self.assertIsNotNone(report["plugins"][0]["duration_ms"])
             latest = json.loads(
                 (automation_dir / "latest_perception.json").read_text(encoding="utf-8")

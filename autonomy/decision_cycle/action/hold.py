@@ -13,8 +13,6 @@ from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.runtime.control import AutonomyControl
 
-PLUGIN_ID = "hold"
-PLUGIN_SPEC = "autonomy.decision_cycle.action.hold:HoldAction"
 HOLD_IDLE_REASON = "hold-idle"
 
 
@@ -34,7 +32,7 @@ def idle_control() -> AutonomyControl:
 class HoldAction:
     """Authorize idle control for every cycle."""
 
-    plugin_id = PLUGIN_ID
+    plugin_id = "hold"
 
     def decide(
         self,

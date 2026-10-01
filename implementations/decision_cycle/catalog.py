@@ -16,8 +16,6 @@ from copy import deepcopy
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS, StepActivation, require_step, step_activation
-from autonomy.decision_cycle.observation import perception_summary
-from autonomy.decision_cycle.plan import highest_confidence
 from implementations.decision_cycle.action.catalog import ACTION_PLUGINS, DEFAULT_ACTION_PLUGINS
 from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGINS, MEMORY_PLUGINS
 from implementations.decision_cycle.perception.catalog import (
@@ -33,8 +31,8 @@ from implementations.decision_cycle.proposal.catalog import (
 STEP_PLUGINS: dict[str, dict[str, dict[str, Any]]] = {
     "perception": PERCEPTION_PLUGINS,
     "observation": {
-        perception_summary.PLUGIN_ID: {
-            "spec": perception_summary.PLUGIN_SPEC,
+        "perception_summary": {
+            "spec": "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary",
             "description": "Perception evidence plus the sensor snapshot as the frame record.",
             "default_config": {},
         },
@@ -42,8 +40,8 @@ STEP_PLUGINS: dict[str, dict[str, dict[str, Any]]] = {
     "memory": MEMORY_PLUGINS,
     "proposal": PROPOSAL_PLUGINS,
     "plan": {
-        highest_confidence.PLUGIN_ID: {
-            "spec": highest_confidence.PLUGIN_SPEC,
+        "highest_confidence": {
+            "spec": "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan",
             "description": "Select the most confident active candidate; otherwise plan idle.",
             "default_config": {},
         },
@@ -53,10 +51,10 @@ STEP_PLUGINS: dict[str, dict[str, dict[str, Any]]] = {
 
 DEFAULT_STEP_PLUGINS: dict[str, tuple[str, ...]] = {
     "perception": DEFAULT_PERCEPTION_PLUGINS,
-    "observation": (perception_summary.PLUGIN_ID,),
+    "observation": ("perception_summary",),
     "memory": DEFAULT_MEMORY_PLUGINS,
     "proposal": DEFAULT_PROPOSAL_PLUGINS,
-    "plan": (highest_confidence.PLUGIN_ID,),
+    "plan": ("highest_confidence",),
     "action": DEFAULT_ACTION_PLUGINS,
 }
 

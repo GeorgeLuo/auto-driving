@@ -168,7 +168,7 @@ class _BoundedEvidenceReducer:
             epoch_id=f"epoch-{self._epoch}",
             bounds=self.bounds,
             created_at_ms=0,
-            implementation_id=self.plugin_id,
+            plugin_id=self.plugin_id,
             summary=(
                 "memory_empty=true",
                 f"epoch_id=epoch-{self._epoch}",
@@ -368,7 +368,7 @@ class _BoundedEvidenceReducer:
             created_at_ms=created_at_ms,
             records=records,
             summary=summary,
-            implementation_id=self.plugin_id,
+            plugin_id=self.plugin_id,
             metadata=self._metadata(
                 observation_id=(
                     observation.observation_id if observation is not None else None
@@ -382,12 +382,12 @@ def reduce_evidence(
     context: DecisionFrameContext,
     observation: Observation | None,
     *,
-    implementation_id: str,
+    plugin_id: str,
     **config: Any,
 ) -> EvidenceLedger:
     """Reduce one cycle from an explicit prior ledger without retaining a reducer."""
     reducer = _BoundedEvidenceReducer(**config)
-    reducer.plugin_id = implementation_id
+    reducer.plugin_id = plugin_id
     reducer._records = {record.record_id: record for record in previous.records}
     reducer._capacity_eviction_count = int(
         previous.metadata.get("capacity_eviction_count", 0)
@@ -460,7 +460,7 @@ class BoundedEvidenceLedger:
                 self.ledger(context.shared_memory),
                 context,
                 observation,
-                implementation_id=self.plugin_id,
+                plugin_id=self.plugin_id,
                 **self.config,
             ),
         )

@@ -17,6 +17,7 @@ from implementations.decision_cycle.perception.composite_box_fusion.plugin impor
 class CompositeBoxFusionPlugin(_CompositeBoxFusionPlugin):
     """Keep the variant entrypoint and its object separation default."""
 
+    plugin_id = "composite_box_fusion_object_separated"
     _emit_object_separated_geometry = True
     _jev_cache_directory = Path(__file__).resolve().parent / "cache"
 

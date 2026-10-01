@@ -2128,7 +2128,7 @@ def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
 def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
     result = run_vehicle_memory_check(
         vehicle_id=args.vehicle_id,
-        implementation_id=args.plugin,
+        plugin_id=args.plugin,
         record=args.record,
         json_output=args.json,
         output=None if args.json else sys.stdout,

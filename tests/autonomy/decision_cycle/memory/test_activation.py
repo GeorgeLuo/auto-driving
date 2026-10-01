@@ -50,7 +50,7 @@ class MemoryActivationTests(unittest.TestCase):
             )
             self.assertEqual(shared["recording_test.state"]["records"][0].record_id, "rec-obs_1")
             status = step.status()
-            self.assertEqual(status["implementation_id"], "recording_test")
+            self.assertEqual(status["plugin_id"], "recording_test")
             self.assertEqual(status["update_count"], 2)
             self.assertEqual(status["failure_count"], 0)
             self.assertIsNotNone(status["last_duration_ms"])

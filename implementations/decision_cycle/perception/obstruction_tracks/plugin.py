@@ -38,7 +38,7 @@ class _Track:
 class MultiObstructionTracksPlugin:
     """Associate multiple generic obstruction regions after floor suppression."""
 
-    plugin_id = "multi-obstruction-tracks-v0"
+    plugin_id = "obstruction_tracks"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="windowed",

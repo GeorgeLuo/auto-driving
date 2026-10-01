@@ -38,8 +38,8 @@ class MemoryStreamTests(unittest.TestCase):
                 },
                 "components": {
                     "memory": {
-                        "implementation_id": "bounded_evidence",
-                        "implementation_spec": (
+                        "plugin_id": "bounded_evidence",
+                        "plugin_spec": (
                             "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
                         ),
                         "plugins": [
@@ -67,7 +67,6 @@ class MemoryStreamTests(unittest.TestCase):
                             "plugins": [
                                 {
                                     "plugin_id": "bounded_evidence",
-                                    "implementation_id": "bounded_evidence",
                                     "duration_ms": 3.0,
                                     "error": None,
                                 }
@@ -84,7 +83,7 @@ class MemoryStreamTests(unittest.TestCase):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
 
         self.assertEqual(live["status"], "live")
-        self.assertEqual(live["implementation_id"], "bounded_evidence")
+        self.assertEqual(live["plugin_id"], "bounded_evidence")
         self.assertEqual(live["last_record_count"], 7)
         self.assertTrue(live["has_memory"])
         self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
@@ -128,7 +127,7 @@ class MemoryStreamTests(unittest.TestCase):
             "autonomy": {
                 "components": {
                     "memory": {
-                        "implementation_id": "bounded_evidence",
+                        "plugin_id": "bounded_evidence",
                         "plugins": [
                             {
                                 "plugin_id": "bounded_evidence",
@@ -160,7 +159,7 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_memory_live_v0")
         self.assertEqual(payload["status"], "live")
         self.assertEqual(payload["vehicle_id"], "piracer")
-        self.assertEqual(payload["implementation_id"], "bounded_evidence")
+        self.assertEqual(payload["plugin_id"], "bounded_evidence")
         self.assertEqual(payload["last_record_count"], 3)
 
     def test_chase_stream_once_live_exits_zero(self) -> None:
@@ -281,7 +280,7 @@ class MemoryStreamTests(unittest.TestCase):
                         "pid": 424242,
                         "updated_at_ms": now,
                         "memory": {
-                            "implementation_id": "bounded_evidence",
+                            "plugin_id": "bounded_evidence",
                             "status": {
                                 "plugins": [
                                     {
@@ -318,7 +317,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {
                     "last_health": "healthy",
                     "last_record_count": 2,
@@ -344,7 +343,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 60_000,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -368,7 +367,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -400,7 +399,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -454,7 +453,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -478,7 +477,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -502,7 +501,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now + 86_400_000,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -528,7 +527,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now + 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
+                "plugin_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -565,7 +564,7 @@ class MemoryStreamTests(unittest.TestCase):
                         "pid": 424242,
                         "updated_at_ms": now - 1_000,
                         "memory": {
-                            "implementation_id": "bounded_evidence",
+                            "plugin_id": "bounded_evidence",
                             "status": {
                                 "plugins": [
                                     {

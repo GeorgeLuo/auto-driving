@@ -54,7 +54,7 @@ def provide_unavailable_component(request, plugin_input):
 
 
 class WorkingPlugin:
-    plugin_id = "working-test-v0"
+    plugin_id = "working"
     contract = PerceptionPluginContract(
         inputs=(TEST_INPUT,),
         description="Test fixture that emits one signal and one thing.",
@@ -84,7 +84,7 @@ class WorkingPlugin:
 
 
 class ExplodingPlugin:
-    plugin_id = "exploding-test-v0"
+    plugin_id = "exploding"
     contract = PerceptionPluginContract(inputs=(TEST_INPUT,))
 
     def perceive(self, inputs):
@@ -93,7 +93,7 @@ class ExplodingPlugin:
 
 
 class UnavailablePlugin:
-    plugin_id = "unavailable-test-v0"
+    plugin_id = "unavailable"
     contract = PerceptionPluginContract(inputs=(UNAVAILABLE_INPUT,))
 
     def __init__(self) -> None:
@@ -106,7 +106,7 @@ class UnavailablePlugin:
 
 
 class ConstructionFailurePlugin:
-    plugin_id = "construction-failure-v0"
+    plugin_id = "broken"
     contract = PerceptionPluginContract()
 
     def __init__(self) -> None:
@@ -114,7 +114,7 @@ class ConstructionFailurePlugin:
 
 
 class SelectionChangingPlugin:
-    plugin_id = "selection-changing-v0"
+    plugin_id = "selection_changing"
     contract = PerceptionPluginContract()
     manager = None
 
@@ -168,8 +168,8 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(perception.signals[0].source_plugin_id, "working")
         self.assertEqual(perception.things[0].source_plugin_id, "working")
         self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
-        self.assertEqual(perception.plugin_runs[0].implementation_id, "working-test-v0")
-        self.assertEqual(mapper.plugins[0].plugin_id, "working-test-v0")
+        self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
+        self.assertEqual(mapper.plugins[0].plugin_id, "working")
         self.assertEqual(mapper.plugins[0].asserted_value, 42)
         reported = {
             item["plugin_id"]: item for item in mapper.plugin_report()["plugins"]
@@ -178,42 +178,11 @@ class PluginRunnerTests(unittest.TestCase):
             record = reported[run.plugin_id]
             self.assertEqual(
                 set(record),
-                {"plugin_id", "implementation_id", "duration_ms", "error"},
+                {"plugin_id", "duration_ms", "error"},
             )
-            self.assertEqual(record["implementation_id"], run.implementation_id)
+            self.assertEqual(record["plugin_id"], run.plugin_id)
             self.assertEqual(record["duration_ms"], run.duration_ms)
             self.assertEqual(record["error"], run.error)
-
-    def test_catalog_aliases_may_share_one_implementation(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "first_frame": f"{__name__}:WorkingPlugin",
-                "second_frame": f"{__name__}:WorkingPlugin",
-            }
-        )
-        manager.select(["first_frame", "second_frame"])
-        mapper = PerceptionRunner(plugin_manager=manager)
-
-        perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
-
-        self.assertEqual(mapper.plugin_ids, ("first_frame", "second_frame"))
-        self.assertEqual(
-            [plugin.plugin_id for plugin in mapper.plugins],
-            ["working-test-v0", "working-test-v0"],
-        )
-        self.assertEqual(
-            [run.plugin_id for run in perception.plugin_runs],
-            ["first_frame", "second_frame"],
-        )
-        self.assertEqual(
-            [run.implementation_id for run in perception.plugin_runs],
-            ["working-test-v0", "working-test-v0"],
-        )
-        self.assertEqual(
-            [signal.source_plugin_id for signal in perception.signals],
-            ["first_frame", "second_frame"],
-        )
 
     def test_runner_reset_is_optional_and_invokes_stateful_hook_when_present(self) -> None:
         mapper = PerceptionRunner.from_selection(
@@ -397,18 +366,18 @@ class PluginRunnerTests(unittest.TestCase):
         executed = step.status()
         record = executed["plugin_report"]["plugins"][0]
         self.assertEqual(record["plugin_id"], "working")
-        self.assertEqual(record["implementation_id"], "working-test-v0")
+        self.assertEqual(record["plugin_id"], "working")
         self.assertGreaterEqual(record["duration_ms"], 0)
         self.assertIsNone(record["error"])
         self.assertEqual(
             set(record),
-            {"plugin_id", "implementation_id", "duration_ms", "error"},
+            {"plugin_id", "duration_ms", "error"},
         )
         self.assertEqual(executed["last_plugin_runs"][0]["status"], "ok")
         self.assertEqual(executed["last_plugin_runs"][0]["duration_ms"], record["duration_ms"])
         self.assertEqual(step.plugin_report(), executed["plugin_report"])
-        self.assertEqual(result.plugin_runs[0].implementation_id, "working-test-v0")
-        self.assertEqual(step.plugins[0].plugin_id, "working-test-v0")
+        self.assertEqual(result.plugin_runs[0].plugin_id, "working")
+        self.assertEqual(step.plugins[0].plugin_id, "working")
 
         step.plugin_manager.select(["exploding"])
         waiting = step.status()
@@ -434,14 +403,14 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(reported["plugin_report"]["applied_plugin_ids"], ["exploding"])
         self.assertEqual(reported["plugin_report"]["selected_plugin_ids"], ["exploding"])
         self.assertEqual(failed_record["plugin_id"], "exploding")
-        self.assertEqual(failed_record["implementation_id"], "exploding-test-v0")
+        self.assertEqual(failed_record["plugin_id"], "exploding")
         self.assertGreaterEqual(failed_record["duration_ms"], 0)
         self.assertIn("expected test failure", failed_record["error"])
         self.assertNotIn("status", failed_record)
         self.assertEqual(reported["last_plugin_runs"][0]["status"], "error")
         self.assertEqual(reported["last_plugin_runs"][0]["plugin_id"], "exploding")
         self.assertEqual(failed.plugin_runs[0].plugin_id, "exploding")
-        self.assertEqual(step.plugins[0].plugin_id, "exploding-test-v0")
+        self.assertEqual(step.plugins[0].plugin_id, "exploding")
         self.assertEqual(step.plugin_report(), reported["plugin_report"])
 
         step.reset()

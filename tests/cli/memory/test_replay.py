@@ -57,11 +57,11 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
         self.assertTrue(payload_a["deterministic"])
         self.assertEqual(payload_a["digest"], payload_b["digest"])
         self.assertEqual(payload_a["frame_count"], 3)
-        self.assertEqual(payload_a["final"]["implementation_id"], "bounded_evidence")
+        self.assertEqual(payload_a["final"]["plugin_id"], "bounded_evidence")
         self.assertGreaterEqual(payload_a["final"]["record_count"], 1)
         # Recurring thing id updates same slot; signal remains.
         record_ids = {item["record_id"] for item in payload_a["final"]["records"]}
-        self.assertIn("thing:1:14:floor-plane-v0:18:floor_boundary_000", record_ids)
+        self.assertIn("thing:1:11:floor_plane:18:floor_boundary_000", record_ids)
         self.assertIn("signal:1:20:lightweight_observer:13:floor_visible", record_ids)
         # Last observation updated signal; thing still retained from prior frames.
         self.assertEqual(payload_a["final"]["record_count"], 2)
@@ -192,7 +192,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             )
             self.assertIn("retained evidence", extract.lower())
             self.assertIn("not current camera geometry", extract.lower())
-            self.assertIn("thing:1:14:floor-plane-v0:18:floor_boundary_000", extract)
+            self.assertIn("thing:1:11:floor_plane:18:floor_boundary_000", extract)
             self.assertIn("provenance.frame_id", extract)
             self.assertIn("obs_001", extract)  # last update of recurring thing
 

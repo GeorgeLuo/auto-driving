@@ -36,7 +36,7 @@ class VlmPrepConfig:
 class VlmPrepPlugin:
     """Emit deterministic image-prep artifacts for downstream VLM/CV observers."""
 
-    plugin_id = "vlm-prep-v0"
+    plugin_id = "vlm_prep"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         description="Produce deterministic diagnostic image variants for later observers.",

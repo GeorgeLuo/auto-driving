@@ -32,7 +32,7 @@ class TemporalFloorContinuityPlugin:
     confidence. It does not claim object identity or metric depth.
     """
 
-    plugin_id = "floor-continuity-temporal-v0"
+    plugin_id = "floor_continuity_temporal"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="windowed",

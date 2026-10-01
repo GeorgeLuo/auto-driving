@@ -47,7 +47,7 @@ def _thing(
     bbox: list[float] | None = None,
     polygon: list[list[float]] | None = None,
     properties: dict | None = None,
-    source_plugin_id: str = "floor-plane-v0",
+    source_plugin_id: str = "floor_plane",
     include_location: bool = True,
 ) -> dict:
     thing: dict = {
@@ -180,7 +180,7 @@ class ConflictMatrixTests(unittest.TestCase):
             [
                 {
                     "record_id": namespaced_record_id(
-                        "thing", "floor_boundary_000", "floor-plane-v0"
+                        "thing", "floor_boundary_000", "floor_plane"
                     ),
                     "reason": "kind_changed",
                     "action": "removed_prior_and_rejected_current",

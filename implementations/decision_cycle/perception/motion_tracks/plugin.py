@@ -39,7 +39,7 @@ class _SceneTrack:
 class MotionTracksPlugin:
     """Maintain bounded image-space tracks from coherent feature motion groups."""
 
-    plugin_id = "motion-tracks-v0"
+    plugin_id = "motion_tracks"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="windowed",

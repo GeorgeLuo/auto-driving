@@ -60,14 +60,12 @@ def observation_from_perception(
     )
 
 
-PLUGIN_ID = "perception_summary"
-PLUGIN_SPEC = "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary"
 
 
 class PerceptionSummary:
     """Observation plugin that records perception evidence when there is any."""
 
-    plugin_id = PLUGIN_ID
+    plugin_id = "perception_summary"
 
     def observe(
         self, context: DecisionFrameContext, perception: PerceptionText | None
@@ -78,5 +76,5 @@ class PerceptionSummary:
             observation_id=context.frame_id,
             sensor_snapshot=context.sensor_snapshot,
             perception=perception,
-            metadata={"source": PLUGIN_ID},
+            metadata={"source": self.plugin_id},
         )

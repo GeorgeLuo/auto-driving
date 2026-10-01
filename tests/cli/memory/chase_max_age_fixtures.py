@@ -91,7 +91,7 @@ def _live_probe(
         "worker_pid": pid,
         "run_id": run_id,
         "capacity_eviction_count": capacity_eviction_count,
-        "implementation_id": "bounded_evidence",
+        "plugin_id": "bounded_evidence",
         "activation": "runtime/memory/active.json",
     }
     if include_bounds:

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from autonomy.decision_cycle.plan.values import SELECTOR_ID, ActionPlan, PlanContribution
+from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.values import ActionProposal
 
 
@@ -64,14 +64,12 @@ def select_highest_confidence_plan(
     )
 
 
-PLUGIN_ID = SELECTOR_ID
-PLUGIN_SPEC = "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan"
 
 
 class HighestConfidencePlan:
     """Plan plugin wrapping ``select_highest_confidence_plan``."""
 
-    plugin_id = PLUGIN_ID
+    plugin_id = "highest_confidence"
 
     def plan(
         self,

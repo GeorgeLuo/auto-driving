@@ -28,6 +28,7 @@ from autonomy.plugins import (
     PluginSelectionRuntime,
     instantiate_plugin,
     plugin_report as build_plugin_report,
+    require_plugin_id,
 )
 from autonomy.decision_cycle.perception.components.context import PerceptionRequest
 from autonomy.decision_cycle.perception.components.interface import ComponentProvider
@@ -224,18 +225,14 @@ class PerceptionRunner:
         records = []
         for definition, plugin in self._selection_runtime.applied:
             run = runs.get(definition.plugin_id)
-            implementation_id = plugin.plugin_id
             duration_ms = None
             error = None
             if run is not None:
-                if run.implementation_id:
-                    implementation_id = run.implementation_id
                 duration_ms = run.duration_ms
                 error = run.error
             records.append(
                 {
                     "plugin_id": definition.plugin_id,
-                    "implementation_id": implementation_id,
                     "duration_ms": duration_ms,
                     "error": error,
                 }
@@ -262,7 +259,6 @@ class PerceptionRunner:
             plugin_schemas.append(
                 {
                     "plugin_id": definition.plugin_id,
-                    "implementation_id": plugin.plugin_id,
                     "spec": definition.entrypoint,
                     "config": deepcopy(dict(definition.config)),
                     "contract": contract.to_dict(),
@@ -360,7 +356,6 @@ class PerceptionRunner:
                     thing_count=len(attributed_things),
                     artifact_count=len(execution.artifacts),
                     error=execution.error,
-                    implementation_id=plugin.plugin_id,
                 )
             )
             lines.append(
@@ -485,7 +480,7 @@ class PerceptionRunner:
             plugin = self._provided[definition.plugin_id]
         else:
             plugin = instantiate_plugin(definition)
-        _validate_plugin(definition.plugin_id, plugin)
+        _validate_plugin(plugin, definition)
         return plugin
 
     def _discard_selection(self) -> None:
@@ -639,10 +634,8 @@ def _load_symbol(spec: str) -> Any:
     return getattr(module, name)
 
 
-def _validate_plugin(configured_id: str, plugin: Any) -> None:
-    plugin_id = getattr(plugin, "plugin_id", None)
-    if not isinstance(plugin_id, str) or not plugin_id:
-        raise TypeError(f"configured plugin {configured_id!r} must expose a non-empty plugin_id")
+def _validate_plugin(plugin: Any, definition: PluginDefinition) -> None:
+    plugin_id = require_plugin_id(plugin, definition)
     if not isinstance(getattr(plugin, "contract", None), PerceptionPluginContract):
         raise TypeError(f"plugin {plugin_id!r} must expose PerceptionPluginContract as contract")
     if not callable(getattr(plugin, "perceive", None)):

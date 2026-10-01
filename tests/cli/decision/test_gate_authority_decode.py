@@ -30,7 +30,7 @@ def _left_obstruction() -> tuple[RetainedEvidence, ...]:
                 coordinate_frame="image",
                 observed_at_ms=1000,
                 updated_at_ms=1000,
-                source_plugin_id="floor-plane-v0",
+                source_plugin_id="floor_plane",
                 frame_id="frame-1",
             ),
             location=ViewLocation(

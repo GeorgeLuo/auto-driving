@@ -58,7 +58,7 @@ class MultiObstructionMemory:
         self.bounds = bounds_from_config(config)
         self._empty = empty_ledger(
             memory_id="memory-reset-1", epoch_id="epoch-1", bounds=self.bounds,
-            created_at_ms=0, implementation_id=self.plugin_id,
+            created_at_ms=0, plugin_id=self.plugin_id,
         )
 
     def ledger(self, shared_memory: SharedMemory | None) -> EvidenceLedger:
@@ -86,7 +86,7 @@ class MultiObstructionMemory:
             context.shared_memory,
             reduce_evidence(
                 self.ledger(context.shared_memory), context, observation,
-                implementation_id=self.plugin_id, **self.config,
+                plugin_id=self.plugin_id, **self.config,
             ),
         )
 

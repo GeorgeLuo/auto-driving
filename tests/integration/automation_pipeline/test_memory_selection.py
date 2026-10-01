@@ -33,7 +33,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 "from implementations.decision_cycle.memory.bounded_evidence.plugin import BoundedEvidenceLedger\n"
                 "class SecondLedger(BoundedEvidenceLedger):\n"
                 "    plugin_id = 'second'\n"
-                "    implementation_id = 'second'\n", encoding="utf-8",
+                "    plugin_id = 'second'\n", encoding="utf-8",
             )
             payload = packaged_activation("memory", ["bounded_evidence"]).to_payload()
             config = payload["plugin_configs"]["bounded_evidence"]
@@ -66,7 +66,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                     report = update(context, observation)
                     applied.append(step.plugin_ids)
                     plugins = (report or {}).get("plugins") or []
-                    outputs.append(plugins[-1]["implementation_id"] if plugins else None)
+                    outputs.append(plugins[-1]["plugin_id"] if plugins else None)
                     if len(applied) <= len(actions):
                         plugin_id, enabled = actions[len(applied) - 1]
                         edits.append(set_vehicle_memory_plugin(

@@ -92,7 +92,7 @@ class EvidenceLedger:
     created_at_ms: int
     records: tuple[RetainedEvidence, ...] = ()
     summary: tuple[str, ...] = ()
-    implementation_id: str | None = None
+    plugin_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     schema: str = LEDGER_SCHEMA
 
@@ -143,7 +143,7 @@ class EvidenceLedger:
             "record_count": self.record_count,
             "records": [record.to_dict() for record in self.records],
             "summary": list(self.summary),
-            "implementation_id": self.implementation_id,
+            "plugin_id": self.plugin_id,
             "metadata": deepcopy(self.metadata),
         }
 
@@ -164,8 +164,8 @@ class EvidenceLedger:
                 if isinstance(item, dict)
             ),
             summary=tuple(str(item) for item in (data.get("summary") or ())),
-            implementation_id=(
-                str(data["implementation_id"]) if data.get("implementation_id") is not None else None
+            plugin_id=(
+                str(data["plugin_id"]) if data.get("plugin_id") is not None else None
             ),
             metadata=deepcopy(dict(data.get("metadata") or {})),
             schema=str(data.get("schema") or LEDGER_SCHEMA),
@@ -178,7 +178,7 @@ def empty_ledger(
     epoch_id: str,
     bounds: LedgerBounds,
     created_at_ms: int,
-    implementation_id: str | None = None,
+    plugin_id: str | None = None,
     summary: tuple[str, ...] = ("memory_empty=true",),
     metadata: dict[str, Any] | None = None,
 ) -> EvidenceLedger:
@@ -192,7 +192,7 @@ def empty_ledger(
         created_at_ms=created_at_ms,
         records=(),
         summary=summary,
-        implementation_id=implementation_id,
+        plugin_id=plugin_id,
         metadata=metadata or {},
     )
 

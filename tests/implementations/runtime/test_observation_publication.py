@@ -108,7 +108,6 @@ class ObservationPublicationTests(unittest.TestCase):
                 "plugins": [
                     {
                         "plugin_id": "bounded_evidence",
-                        "implementation_id": "bounded_evidence",
                         "state": {
                             "health": "healthy",
                             "record_count": 1,

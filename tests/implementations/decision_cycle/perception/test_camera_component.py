@@ -108,7 +108,7 @@ class CameraComponentTests(unittest.TestCase):
         self.assertEqual(schema["inputs"][0]["component_id"], FRONT_CAMERA_COMPONENT)
         self.assertEqual(schema["inputs"][0]["required_by"], ["frame"])
         self.assertEqual(schema["plugins"][0]["plugin_id"], "frame")
-        self.assertEqual(schema["plugins"][0]["implementation_id"], "frame-observation-v0")
+        self.assertEqual(schema["plugins"][0]["plugin_id"], "frame")
         self.assertEqual(schema["plugins"][0]["contract"]["inputs"][0]["name"], "frame")
 
 

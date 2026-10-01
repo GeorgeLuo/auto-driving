@@ -343,12 +343,13 @@ def instantiate_plugin(definition: PluginDefinition, *, reload_module: bool = Fa
 
 
 def require_plugin_id(plugin: Any, definition: PluginDefinition) -> str:
-    """Return the instance's declared ``plugin_id``; it must be a non-empty string."""
+    """Return the instance's ``plugin_id``; it must equal the ID it was selected under."""
 
     plugin_id = getattr(plugin, "plugin_id", None)
-    if not isinstance(plugin_id, str) or not plugin_id.strip():
+    if plugin_id != definition.plugin_id:
         raise TypeError(
-            f"{definition.step} plugin {definition.entrypoint} must declare a non-empty plugin_id"
+            f"{definition.step} plugin {definition.entrypoint} declares plugin_id "
+            f"{plugin_id!r}, selected as {definition.plugin_id!r}"
         )
     return plugin_id
 
@@ -541,18 +542,9 @@ def _report_records(
 def _report_plugin(plugin_id: str, record: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "plugin_id": plugin_id,
-        "implementation_id": _report_identifier(record.get("implementation_id")),
         "duration_ms": _report_duration(record.get("duration_ms")),
         "error": _report_error(record.get("error")),
     }
-
-
-def _report_identifier(value: Any) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        raise PluginManagementError("plugin implementation_id must be a non-empty string")
-    return value
 
 
 def _report_duration(value: Any) -> float | int | None:

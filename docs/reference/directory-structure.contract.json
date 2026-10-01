@@ -80,13 +80,13 @@
                 "path": "implementations/decision_cycle/perception/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Perception plugins that derive evidence from sensor data, their components, shared algorithms, and the packaged catalog.",
+                "responsibility": "Perception plugins that derive evidence from sensor data, their feeds, shared library code, and the packaged catalog.",
                 "children": [
                   {
-                    "path": "implementations/decision_cycle/perception/components/",
+                    "path": "implementations/decision_cycle/perception/feeds/",
                     "category": "implementation",
                     "commit_policy": "source",
-                    "responsibility": "Concrete adapters that derive reusable plugin input components from generic sensor readings, such as camera frames."
+                    "responsibility": "Feeds: per-sensor adapters that turn generic sensor readings into typed plugin inputs, such as camera frames. The core contract calls these components."
                   },
                   {
                     "path": "implementations/decision_cycle/perception/frame_observation/",

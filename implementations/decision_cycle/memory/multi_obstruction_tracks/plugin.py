@@ -34,7 +34,7 @@ from implementations.decision_cycle.memory.bounded_evidence.ledger import (
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
     reduce_evidence,
 )
-from implementations.decision_cycle.perception.components.camera import (
+from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
     provide_camera_frame,
 )

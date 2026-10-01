@@ -71,7 +71,7 @@ def camera_rgb_input(
     return PerceptionPluginInput(
         name=name,
         component_id=camera_component_id(sensor_id),
-        provider_spec="implementations.decision_cycle.perception.components.camera:provide_camera_frame",
+        provider_spec="implementations.decision_cycle.perception.feeds.camera:provide_camera_frame",
     )
 
 

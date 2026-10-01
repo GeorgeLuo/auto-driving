@@ -17,7 +17,7 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
     PerceptionPluginInputs,
 )
-from implementations.decision_cycle.perception.components.camera import (
+from implementations.decision_cycle.perception.feeds.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )

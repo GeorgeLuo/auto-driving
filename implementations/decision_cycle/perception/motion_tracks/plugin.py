@@ -19,7 +19,7 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
 )
-from implementations.decision_cycle.perception.components.camera import CameraFrame, FRONT_CAMERA_RGB_INPUT
+from implementations.decision_cycle.perception.feeds.camera import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 from implementations.decision_cycle.perception.shared.motion.scene_motion import MotionGroup, analyze_scene_motion_images
 

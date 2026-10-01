@@ -11,7 +11,7 @@ from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.catalog import step_plugins
-from implementations.decision_cycle.perception.components.camera import (
+from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
     camera_component_id,
     provide_camera_frame,

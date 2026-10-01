@@ -17,7 +17,7 @@ from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.memory.multi_obstruction_tracks.plugin import MultiObstructionMemory
-from implementations.decision_cycle.perception.components.camera import CameraFrame
+from implementations.decision_cycle.perception.feeds.camera import CameraFrame
 from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import MultiObstructionTracksPlugin
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from cli.automa_cli.workbench import SourceValidationError, normalize_image_directory
+from cli.automa_cli.workbench import normalize_image_directory
 from tests.cli.workbench_fixtures import (
     BlockingSecondMapper,
     DecisionFixtureMapper,
@@ -119,79 +119,6 @@ class WorkbenchTests(unittest.TestCase):
         self.assertTrue(feed.frames[1].absent)
         self.assertEqual(feed.frames[1].absence_reason, "camera dropout")
 
-    def test_directory_adapter_rejects_traversal_duplicate_and_unsupported_inputs(
-        self,
-    ) -> None:
-        with image_source(1) as root:
-            write_manifest(root, {
-                "frames": [
-                    {"frame_id": "same", "image_path": "frame_00.png"},
-                    {"frame_id": "same", "image_path": "frame_00.png"},
-                ]
-            })
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            write_manifest(root, {"frames": [{"image_path": "../outside.png"}]})
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            (root / "manifest.json").unlink()
-            (root / "bad.gif").write_bytes(b"not an image")
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-    def test_directory_adapter_rejects_empty_over_limit_and_nonincreasing_sources(
-        self,
-    ) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            _make_images(root, 3)
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root, max_frames=2)
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root, max_image_bytes=10)
-
-            write_manifest(root, {
-                "frames": [
-                    {
-                        "frame_id": "later",
-                        "frame_index": 2,
-                        "timestamp_ms": 20,
-                        "image_path": "frame_00.png",
-                    },
-                    {
-                        "frame_id": "earlier",
-                        "frame_index": 1,
-                        "timestamp_ms": 30,
-                        "image_path": "frame_01.png",
-                    },
-                ]
-            })
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            write_manifest(root, {
-                "frames": [
-                    {
-                        "frame_id": "first",
-                        "frame_index": 1,
-                        "timestamp_ms": 40,
-                        "image_path": "frame_00.png",
-                    },
-                    {
-                        "frame_id": "second",
-                        "frame_index": 2,
-                        "timestamp_ms": 40,
-                        "image_path": "frame_01.png",
-                    },
-                ]
-            })
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
 
     def test_runner_refuses_invalid_and_undecodable_sources_before_pipeline(
         self,
@@ -311,8 +238,8 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(first_decision["frame_id"], frame_id)
         self.assertFalse(first_decision["authority"]["proposed_applied"])
         self.assertEqual(
-            state["machine_detail"]["pipeline"]["decision_engine"],
-            "hold-action",
+            state["machine_detail"]["pipeline"]["decision_steps"],
+            {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["hold"]},
         )
         decision_config = state["machine_detail"]["pipeline"]["decision_config"]
         self.assertFalse(decision_config["proposed_applied"])

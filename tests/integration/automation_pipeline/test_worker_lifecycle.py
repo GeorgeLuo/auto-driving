@@ -149,7 +149,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         "status": "running",
                         "pid": 45454,
                         "run_id": "run-current",
-                        "action_policy": "engine_idle",
+                        "action_policy": "cycle_idle",
                         "control_application": "stop_only_safety_gate",
                     }
                 ),
@@ -215,7 +215,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         "status": "running",
                         "pid": 45454,
                         "run_id": "run-control-taking",
-                        "action_policy": "engine_idle",
+                        "action_policy": "cycle_idle",
                         "control_application": "stop_only_safety_gate",
                     }
                 ),

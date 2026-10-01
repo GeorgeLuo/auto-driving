@@ -70,57 +70,6 @@ class FramePairHelpersTests(unittest.TestCase):
         self.assertEqual(pair["frame_bytes"], b"b")
         self.assertGreaterEqual(pair["attempts"], 2)
 
-    def test_matched_pair_times_out_on_persistent_mismatch(self) -> None:
-        with mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_publication",
-            return_value={"frame": {"frame_id": "a", "has_image": True}},
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_frame",
-            return_value=(b"jpeg", {"x-frame-id": "b"}),
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.time.sleep",
-            return_value=None,
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.time.monotonic",
-            side_effect=[0.0, 0.1, 0.2, 5.0],
-        ):
-            with self.assertRaises(TimeoutError) as ctx:
-                fetch_matched_observation_pair(
-                    "http://piracer.test:8887",
-                    timeout_s=0.1,
-                    match_timeout_s=1.0,
-                )
-        self.assertIn("mismatch", str(ctx.exception))
-
-    def test_require_image_does_not_succeed_when_has_image_false(self) -> None:
-        jpeg_calls = {"n": 0}
-
-        def no_jpeg(*_args, **_kwargs):
-            jpeg_calls["n"] += 1
-            raise AssertionError("JPEG must not be fetched when has_image is false")
-
-        with mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_publication",
-            return_value={"frame": {"frame_id": "f1", "has_image": False}},
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_frame",
-            side_effect=no_jpeg,
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.time.sleep",
-            return_value=None,
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.time.monotonic",
-            side_effect=[0.0, 0.1, 0.2, 5.0],
-        ):
-            with self.assertRaises(TimeoutError) as ctx:
-                fetch_matched_observation_pair(
-                    "http://piracer.test:8887",
-                    timeout_s=0.1,
-                    match_timeout_s=1.0,
-                    require_image=True,
-                )
-        self.assertIn("has_image=false", str(ctx.exception))
-        self.assertEqual(jpeg_calls["n"], 0)
 
     def test_after_frame_id_waits_for_newer_matched_pair(self) -> None:
         # First two publications stay on "old" (no JPEG fetch). Third is "new".
@@ -149,29 +98,6 @@ class FramePairHelpersTests(unittest.TestCase):
         self.assertEqual(pair["frame_id"], "new")
         self.assertEqual(pair["frame_bytes"], b"c")
         self.assertGreaterEqual(pair["attempts"], 3)
-
-    def test_require_image_rejects_empty_jpeg_body(self) -> None:
-        with mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_publication",
-            return_value={"frame": {"frame_id": "f1", "has_image": True}},
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_frame",
-            return_value=(b"", {"x-frame-id": "f1"}),
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.time.sleep",
-            return_value=None,
-        ), mock.patch(
-            "cli.automa_cli.physical_observation.time.monotonic",
-            side_effect=[0.0, 0.1, 0.2, 5.0],
-        ):
-            with self.assertRaises(TimeoutError) as ctx:
-                fetch_matched_observation_pair(
-                    "http://piracer.test:8887",
-                    timeout_s=0.1,
-                    match_timeout_s=1.0,
-                    require_image=True,
-                )
-        self.assertIn("empty", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot  # noqa: E402
 from lab.plugins.perception.worker_memory import decode_shared_memory, encode_shared_memory  # noqa: E402
 
@@ -46,7 +46,7 @@ def main() -> int:
         plugin_specs = {"frame": frame_spec, candidate_id: candidate_spec}
 
     with contextlib.redirect_stdout(sys.stderr):
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=plugin_ids,
             plugin_specs=plugin_specs,
             plugin_configs={candidate_id: config},
@@ -95,7 +95,7 @@ def main() -> int:
     return 0
 
 
-def _perceive(mapper: PluginPerceptionMapper, command: dict[str, Any], *, shared_memory=None):
+def _perceive(mapper: PerceptionRunner, command: dict[str, Any], *, shared_memory=None):
     image_path = Path(str(command["image_path"])).resolve()
     if not image_path.is_file():
         raise FileNotFoundError(image_path)

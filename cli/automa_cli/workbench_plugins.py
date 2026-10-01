@@ -22,18 +22,17 @@ from typing import Any, Iterator, Sequence
 
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
-    PerceptionMapper,
+    PerceptionBackend,
 )
-from autonomy.decision_cycle.perception.activation import instantiate_perception_mapper
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManager
 from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_IMPLEMENTATION,
-    MEMORY_IMPLEMENTATIONS,
+    DEFAULT_MEMORY_PLUGIN,
+    MEMORY_PLUGINS,
 )
 from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
-    PERCEPTION_MAPPER_SPEC,
     PERCEPTION_PLUGIN_SPECS,
 )
 
@@ -95,10 +94,10 @@ def _memory_definitions(
 
     specs: dict[str, str] = {}
     configs: dict[str, dict[str, Any]] = {}
-    for implementation_id, entry in MEMORY_IMPLEMENTATIONS.items():
-        specs[implementation_id] = str(entry["implementation_spec"])
+    for implementation_id, entry in MEMORY_PLUGINS.items():
+        specs[implementation_id] = str(entry["spec"])
         configs[implementation_id] = copy.deepcopy(dict(entry["default_config"]))
-    default_config = copy.deepcopy(configs[DEFAULT_MEMORY_IMPLEMENTATION])
+    default_config = copy.deepcopy(configs[DEFAULT_MEMORY_PLUGIN])
     companions: dict[str, list[tuple[str, str, dict[str, Any]]]] = {}
     for descriptor in plugins:
         companion = descriptor.memory
@@ -106,7 +105,7 @@ def _memory_definitions(
             continue
         implementation_id = str(companion["implementation_id"])
         spec = str(companion["implementation_spec"])
-        if implementation_id in MEMORY_IMPLEMENTATIONS:
+        if implementation_id in MEMORY_PLUGINS:
             config = copy.deepcopy(configs[implementation_id])
         else:
             config = copy.deepcopy(default_config)
@@ -196,7 +195,7 @@ def _selected_memory_id(
         raise PluginCatalogError("selected plugins declare multiple memory companions")
     if owners:
         return perception_memory_ids[owners[0]]
-    return DEFAULT_MEMORY_IMPLEMENTATION
+    return DEFAULT_MEMORY_PLUGIN
 
 
 @dataclass(frozen=True)
@@ -350,7 +349,7 @@ class PluginCatalog:
         # root: replay still displays frames, but no perception plugin runs.
         return manager.selected_ids
 
-    def build_mapper(self, active_ids: Sequence[str]) -> PerceptionMapper:
+    def build_mapper(self, active_ids: Sequence[str]) -> PerceptionBackend:
         """Instantiate exactly the selected core-runtime manifest plugins."""
 
         selected = self.normalize_selection(active_ids, require_explicit_selection=False)
@@ -359,9 +358,7 @@ class PluginCatalog:
 
         if self.root is not None:
             with _import_root(self.root):
-                mapper = instantiate_perception_mapper(
-                    PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
-                )
+                mapper = PerceptionRunner(manager)
             perceive = mapper.perceive
 
             def perceive_in_root(request):
@@ -371,9 +368,7 @@ class PluginCatalog:
 
             mapper.perceive = perceive_in_root
         else:
-            mapper = instantiate_perception_mapper(
-                PERCEPTION_MAPPER_SPEC, {"plugin_manager": manager},
-            )
+            mapper = PerceptionRunner(manager)
         return mapper
 
     def memory_catalog(self) -> tuple[tuple[PluginDefinition, ...], dict[str, str]]:
@@ -407,7 +402,7 @@ class PluginCatalog:
 def packaged_plugin_catalog() -> PluginCatalog:
     """Expose every packaged plugin while keeping the algorithm's defaults."""
 
-    defaults = PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]["mapper_config"]
+    defaults = PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]
     default_ids = defaults["plugins"]
     # Defaults retain their existing display/execution order. Other entries are
     # available choices, not additional default selections.

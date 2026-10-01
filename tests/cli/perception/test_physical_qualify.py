@@ -163,13 +163,10 @@ class PhysicalQualifyCommandTests(unittest.TestCase):
                     return _fake_perception(zones=sequence[placement])
 
             with patch(
-                "cli.automa_cli.physical_qualify.PERCEPTION_ALGORITHMS",
-                {"lightweight_observer": {"mapper_spec": "x", "mapper_config": {}}},
-            ), patch(
-                "cli.automa_cli.physical_qualify._load_mapper",
+                "cli.automa_cli.physical_qualify.PerceptionRunner.from_activation",
                 return_value=FakeControl(),
             ), patch(
-                "cli.automa_cli.physical_qualify._close_mapper",
+                "cli.automa_cli.physical_qualify._close_runner",
                 return_value=None,
             ), patch(
                 "cli.automa_cli.physical_qualify.LabPerceptionMapper",

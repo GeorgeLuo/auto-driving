@@ -889,15 +889,17 @@ def _format_vehicle(index: int, vehicle: dict[str, Any]) -> list[str]:
 
     autonomy = status.get("autonomy")
     if isinstance(autonomy, dict):
-        engine = autonomy.get("engine")
+        steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
+        action = steps.get("action") if isinstance(steps.get("action"), dict) else {}
+        action_plugins = action.get("plugin_ids") if isinstance(action.get("plugin_ids"), list) else []
         last_control = autonomy.get("last_control")
         reason = None
         if isinstance(last_control, dict):
             reason = last_control.get("reason")
-        engine_line = f"   autonomy: {engine or 'unknown'}"
+        autonomy_line = f"   autonomy: action={','.join(action_plugins) or 'unknown'}"
         if reason:
-            engine_line += f" ({reason})"
-        lines.append(engine_line)
+            autonomy_line += f" ({reason})"
+        lines.append(autonomy_line)
 
     metrics_ui = status.get("metrics_ui")
     if isinstance(metrics_ui, dict):

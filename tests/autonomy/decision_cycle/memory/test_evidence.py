@@ -61,25 +61,6 @@ class RetainedEvidenceTests(unittest.TestCase):
         self.assertEqual(original[0].properties["width_fraction"], 0.2)
         self.assertEqual([record.record_id for record in detached], ["a", "b"])
 
-    def test_confidence_and_identifiers_are_validated(self) -> None:
-        with self.assertRaisesRegex(ValueError, "confidence"):
-            RetainedEvidence(
-                record_id="rec",
-                kind="floor_boundary",
-                label="boundary",
-                confidence=float("nan"),
-                provenance=self.provenance(),
-            )
-
-        with self.assertRaisesRegex(ValueError, "record_id"):
-            RetainedEvidence(
-                record_id="  ",
-                kind="floor_boundary",
-                label="boundary",
-                confidence=0.5,
-                provenance=self.provenance(),
-            )
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

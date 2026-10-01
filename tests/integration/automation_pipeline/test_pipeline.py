@@ -6,15 +6,12 @@ from pathlib import Path
 from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.perception import _load_mapper, set_vehicle_perception_plugin
-from implementations.decision_cycle.perception.catalog import (
-    PERCEPTION_MAPPER_SPEC,
-    PERCEPTION_PLUGIN_SPECS,
-)
+from cli.automa_cli.perception import set_vehicle_perception_plugin
 from tests.integration.automation_pipeline.pipeline_fixtures import (
     _FakeCar,
     _SlowMapper,
     _write_activations,
+    staged_runners,
 )
 
 
@@ -25,21 +22,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             vehicle_id = "chase-sim-chaser"
             bundle = controller_bundle_paths(runtime_root / vehicle_id)
             sync_controller_bundle(bundle, output=None)
-            _write_activations(bundle)
-
-            activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-            activation = json.loads(activation_path.read_text(encoding="utf-8"))
-            activation["perception"] = {
-                "algorithm": "lightweight_observer",
-                "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                "mapper_config": {
-                    "plugins": ["frame"],
-                    "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
-                },
-            }
-            activation_path.write_text(
-                json.dumps(activation, indent=2, sort_keys=True), encoding="utf-8"
-            )
+            _write_activations(bundle, plugins=["frame"])
 
             vehicle = {
                 "id": vehicle_id,
@@ -59,10 +42,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
             applied_selections: list[tuple[str, ...]] = []
             cli_updates = []
 
-            def load_running_mapper(mapper_spec, mapper_config, *, bundle_root=None):
-                mapper = _load_mapper(
-                    mapper_spec, mapper_config, bundle_root=bundle_root
-                )
+            def wrap_perception(step, mapper):
+                if step != "perception":
+                    return
                 perceive = mapper.perceive
 
                 def perceive_with_cli_updates(request):
@@ -89,7 +71,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return result
 
                 mapper.perceive = perceive_with_cli_updates
-                return mapper
 
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
@@ -103,10 +84,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=(vehicle, None),
                 ),
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
-                patch(
-                    "cli.automa_cli.automation._load_mapper",
-                    side_effect=load_running_mapper,
-                ),
+                staged_runners(wrap=wrap_perception),
             ):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
@@ -126,7 +104,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 (automation_dir / "state.json").read_text(encoding="utf-8")
             )
             report = state["perception"]["plugin_report"]
-            self.assertEqual(state["perception"]["mapper_spec"], PERCEPTION_MAPPER_SPEC)
             self.assertEqual(report["applied_plugin_ids"], ["floor_plane"])
             self.assertEqual(report["plugins"][0]["plugin_id"], "floor_plane")
             self.assertTrue(report["plugins"][0]["implementation_id"])
@@ -173,7 +150,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=(vehicle, None),
                 ),
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
-                patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
+                staged_runners(perception=mapper),
             ):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
@@ -259,7 +236,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=(vehicle, None),
                 ),
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
-                patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
+                staged_runners(perception=mapper),
                 patch(
                     "cli.automa_cli.automation.publish_decision_frame",
                     return_value=True,
@@ -331,7 +308,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=(vehicle, None),
                 ),
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
-                patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
+                staged_runners(perception=mapper),
                 patch(
                     "cli.automa_cli.automation.publish_decision_frame",
                     return_value=True,
@@ -407,7 +384,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=(vehicle, None),
                 ),
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
-                patch("cli.automa_cli.automation._load_mapper", return_value=mapper),
+                staged_runners(perception=mapper),
                 patch(
                     "cli.automa_cli.automation.publish_decision_frame",
                     return_value=True,

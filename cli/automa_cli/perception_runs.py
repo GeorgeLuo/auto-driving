@@ -22,10 +22,25 @@ from .perception_evaluation import evaluate_perception_frames, write_review_html
 from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
-    PERCEPTION_MAPPER_SPEC,
 )
+from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from implementations.decision_cycle.catalog import perception_algorithm_activation
 
-from .perception import _load_mapper, ensure_local_perception_runtime
+from .perception import ensure_local_perception_runtime
+from .step_hosting import load_staged_runner
+
+RUNNER_SPEC = "autonomy.decision_cycle.perception.runner:PerceptionRunner"
+
+
+def _selection(activation) -> dict[str, Any]:
+    """The perception selection a recorded run names as its runner config."""
+
+    return {
+        "plugins": list(activation.plugins),
+        "plugin_specs": dict(activation.plugin_specs),
+        "plugin_configs": dict(activation.plugin_configs),
+    }
 from .vehicle_access import create_vehicle_access
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
 
@@ -88,17 +103,12 @@ def run_perception_experiment(
         else:
             prepared_runtime = ensure_local_perception_runtime(vehicle=vehicle, algorithm=algorithm)
             manifest = prepared_runtime["manifest"]
-            mapper_spec = manifest["perception"]["mapper_spec"]
-            mapper_config = dict(manifest["perception"].get("mapper_config") or {})
-            mapper = _load_mapper(
-                mapper_spec,
-                mapper_config,
-                bundle_root=Path(prepared_runtime["bundle"]["root_dir"]),
-            )
+            activation = step_activation_from_payload(manifest, step="perception")
+            mapper = load_staged_runner(activation)
             mapper_record = {
-                "algorithm": manifest["perception"].get("algorithm"),
-                "spec": mapper_spec,
-                "config": mapper_config,
+                "algorithm": activation.metadata.get("algorithm"),
+                "spec": RUNNER_SPEC,
+                "config": _selection(activation),
                 "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
                 "bundle_refreshed": prepared_runtime["refreshed"],
             }
@@ -244,22 +254,23 @@ def apply_perception_experiment(
         else:
             recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
             if algorithm is not None:
-                algorithm_config = PERCEPTION_ALGORITHMS[algorithm]
-                mapper_spec = str(algorithm_config["mapper_spec"])
-                mapper_config = dict(algorithm_config["mapper_config"])
+                activation = perception_algorithm_activation(algorithm)
             elif isinstance(recorded_mapper, dict) and not str(
                 recorded_mapper.get("algorithm") or ""
             ).startswith("candidate:"):
-                mapper_spec = str(recorded_mapper.get("spec") or PERCEPTION_MAPPER_SPEC)
-                mapper_config = dict(recorded_mapper.get("config") or {})
+                recorded = dict(recorded_mapper.get("config") or {})
+                activation = step_activation(
+                    "perception",
+                    recorded.get("plugins") or [],
+                    recorded.get("plugin_specs") or {},
+                    recorded.get("plugin_configs") or {},
+                )
                 algorithm = recorded_mapper.get("algorithm") or "recorded"
             else:
-                algorithm_config = PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]
-                mapper_spec = str(algorithm_config["mapper_spec"])
-                mapper_config = dict(algorithm_config["mapper_config"])
+                activation = perception_algorithm_activation(DEFAULT_PERCEPTION_ALGORITHM)
                 algorithm = DEFAULT_PERCEPTION_ALGORITHM
-            mapper = _load_mapper(mapper_spec, mapper_config)
-            report_mapper = {"algorithm": algorithm, "spec": mapper_spec, "config": mapper_config}
+            mapper = PerceptionRunner.from_activation(activation)
+            report_mapper = {"algorithm": algorithm, "spec": RUNNER_SPEC, "config": _selection(activation)}
             record_root = APPLY_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")

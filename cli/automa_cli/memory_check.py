@@ -14,12 +14,11 @@ from urllib.request import urlopen
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
-from autonomy.decision_cycle.memory.activation import read_memory_activation
+from autonomy.decision_cycle.memory.runner import MemoryRunner
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_IMPLEMENTATION,
-    available_memory_implementation_ids,
-    build_memory_activation_payload,
+    DEFAULT_MEMORY_PLUGIN,
+    MEMORY_PLUGINS,
 )
 
 from implementations.vehicle.chase_sim.frame_identity import (
@@ -236,7 +235,7 @@ def run_chase_reference_memory_check(
     observation or memory inputs.
     """
 
-    selected = implementation_id or DEFAULT_MEMORY_IMPLEMENTATION
+    selected = implementation_id or DEFAULT_MEMORY_PLUGIN
     automation_dir = _automation_dir(vehicle_id)
     latest_json_path = automation_dir / "latest_perception.json"
     state_path = automation_dir / "state.json"
@@ -317,7 +316,7 @@ def run_chase_reference_memory_check(
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"implementation: {selected}")
     _emit(output, "provider: chase-sim")
-    _emit(output, "movement: rewritten engine observe-only (built-in model retains authority)")
+    _emit(output, "movement: rewritten cycle observe-only (built-in model retains authority)")
     _emit(output, "")
 
     if not state_path.exists() and load_latest_frame is None:
@@ -1257,7 +1256,7 @@ def derive_chase_safety_from_frames(
         "reference_chaser_control_sources": reference_sources,
         "action_policy": action_policies[0] if len(action_policies) == 1 else action_policies,
         "control_source": control_sources[0] if len(control_sources) == 1 else control_sources,
-        "rewritten_engine_idle": (
+        "rewritten_cycle_idle": (
             observe_ok
             and movement_commands_sent is False
             and applications == ["not_applied"]
@@ -1324,8 +1323,8 @@ def run_offline_memory_check(
 ) -> CommandResult:
     """Run lifecycle gates from a phase script (offline / non-host unit path)."""
 
-    selected = implementation_id or DEFAULT_MEMORY_IMPLEMENTATION
-    known = available_memory_implementation_ids()
+    selected = implementation_id or DEFAULT_MEMORY_PLUGIN
+    known = tuple(sorted(MEMORY_PLUGINS))
     if selected not in known:
         available = ", ".join(known) or "(none)"
         return CommandResult(
@@ -1455,7 +1454,7 @@ def run_offline_memory_check(
             "action_policy": (
                 "physical_observe_only" if provider == "picar" else "offline_phase_script"
             ),
-            "rewritten_engine_idle": True,
+            "rewritten_cycle_idle": True,
             "scenario_note": safety_note
             or (
                 "Offline/Chase phase script uses camera-equivalent structured observations "
@@ -1864,7 +1863,7 @@ def run_physical_memory_check(
         "safety": {
             "movement_commands_sent": False,
             "action_policy": "physical_observe_only",
-            "rewritten_engine_idle": True,
+            "rewritten_cycle_idle": True,
             "lifecycle_source": "live_onboard_step",
             "forced_dropout": False,
             "ephemeral_local_reducer": False,
@@ -2768,42 +2767,28 @@ def _load_check_step(
     vehicle_id: str,
     implementation_id: str,
     force_ephemeral: bool,
-) -> tuple[PluginMemoryRunner, str]:
+) -> tuple[MemoryRunner, str]:
     # Check uses fixed short max_age so expiry is deterministic offline.
     # force_ephemeral reserved for future staged-activation variants.
-    del force_ephemeral
-    import tempfile
-
-    payload = build_memory_activation_payload(
-        implementation_id,
-        config_overrides={
-            "max_records": CHECK_MAX_RECORDS,
-            "max_age_ms": CHECK_MAX_AGE_MS,
-            "eviction_policy": "oldest_first",
-        },
+    del force_ephemeral, vehicle_id
+    step = MemoryRunner.from_activation(
+        packaged_activation(
+            "memory",
+            [implementation_id],
+            config_overrides={
+                implementation_id: {
+                    "max_records": CHECK_MAX_RECORDS,
+                    "max_age_ms": CHECK_MAX_AGE_MS,
+                    "eviction_policy": "oldest_first",
+                }
+            },
+        )
     )
-    handle = tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".json",
-        prefix=f"memory-check-{safe_path_part(vehicle_id)}-",
-        delete=False,
-        encoding="utf-8",
-    )
-    handle.write(json.dumps(payload, indent=2, sort_keys=True))
-    handle.close()
-    path = Path(handle.name)
-    try:
-        step = PluginMemoryRunner(read_memory_activation(path))
-    finally:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
     return step, f"ephemeral-check:{implementation_id}(max_age_ms={CHECK_MAX_AGE_MS})"
 
 
 def _feed_frames(
-    step: PluginMemoryRunner,
+    step: MemoryRunner,
     frames: list[dict[str, Any]],
     shared_memory: dict[str, Any],
 ) -> dict[str, Any]:

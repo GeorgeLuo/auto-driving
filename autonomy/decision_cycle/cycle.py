@@ -1,10 +1,21 @@
-"""Decision-cycle ordering and the records passed between its operations.
+"""The decision cycle: six steps run in order, each recording one output.
 
-``perceive`` returns current evidence. ``observe`` adapts that evidence and
-the sensor context into the current-frame record. ``remember`` lets memory
-plugins update the host map and returns their report. ``act`` proposes, plans, and gates the cycle's action and
-returns an ``ActionResult`` whose control the cycle applies.
-``shared_memory`` on the frame context is the host-owned map.
+A step is a slot in ``DecisionSteps``, named by the same noun as its package,
+its plugin manager, its activation (``runtime/<step>/active.json``), and its
+field in ``DecisionCycleResult``. Each slot holds that step's runner, which
+runs the plugins selected for the step:
+
+- ``perception(context)`` returns current evidence.
+- ``observation(context, perception)`` returns the current-frame record.
+- ``memory(context, observation)`` lets memory plugins update the host map
+  and returns their report. A memory plugin may replace the observation for
+  the later steps through ``shared_memory["decision.observation"]``.
+- ``proposal(context, observation)`` returns the candidates.
+- ``plan(context, proposal)`` returns the plan over those candidates.
+- ``action(context, proposal, plan)`` returns the authorized control.
+
+An empty slot records ``None``. ``shared_memory`` on the frame context is the
+host-owned map every step's plugins share.
 """
 
 from __future__ import annotations
@@ -13,69 +24,61 @@ import time
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Callable
 
+from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.memory.publication import observation_after_memory
-from autonomy.decision_cycle.observation.step import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from autonomy.decision_cycle.result import ActionResult
-from autonomy.runtime.engine import AutonomyControl
+from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.runtime.control import AutonomyControl
 
 
-DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v0"
+DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v1"
 
 
 def timestamp_ms() -> int:
     return int(time.time() * 1000)
 
 
-PerceiveStep = Callable[[DecisionFrameContext], PerceptionText | None]
-ObserveStep = Callable[[DecisionFrameContext, PerceptionText | None], Observation | None]
-MemoryStep = Callable[
-    [DecisionFrameContext, Observation | None],
-    dict[str, Any] | None,
-]
+PerceptionStep = Callable[[DecisionFrameContext], PerceptionText | None]
+ObservationStep = Callable[[DecisionFrameContext, PerceptionText | None], Observation | None]
+MemoryStep = Callable[[DecisionFrameContext, Observation | None], dict[str, Any] | None]
+ProposalStep = Callable[[DecisionFrameContext, Observation | None], ProposalResult | None]
+PlanStep = Callable[[DecisionFrameContext, ProposalResult | None], ActionPlan | None]
 ActionStep = Callable[
-    [
-        DecisionFrameContext,
-        PerceptionText | None,
-        Observation | None,
-    ],
+    [DecisionFrameContext, ProposalResult | None, ActionPlan | None],
     ActionResult | None,
 ]
 
 
 @dataclass(frozen=True)
 class DecisionSteps:
-    """The cycle operations.
+    """The cycle's steps, in the order they run."""
 
-    ``perceive``, ``observe``, and ``remember`` are the perception, observation,
-    and memory steps. ``act`` is the action composition. ``observe``
-    overrides the default adaptation of perception evidence into the
-    current-frame record. Omitting ``observe`` leaves that default in place
-    when perception evidence is present.
-    """
-
-    perceive: PerceiveStep | None = None
-    observe: ObserveStep | None = None
-    remember: MemoryStep | None = None
-    act: ActionStep | None = None
+    perception: PerceptionStep | None = None
+    observation: ObservationStep | None = None
+    memory: MemoryStep | None = None
+    proposal: ProposalStep | None = None
+    plan: PlanStep | None = None
+    action: ActionStep | None = None
 
 
 @dataclass(frozen=True)
 class DecisionCycleResult:
-    """Records from one cycle tick.
+    """One cycle's records, one per step, and the control applied.
 
-    ``perception`` is current evidence, ``observation`` is the current-frame
-    record, and ``memory`` is the memory step's report of plugin state.
+    ``memory`` is the memory step's report of plugin state, for diagnostics;
+    plugins read what memory published in the host map.
     """
 
     context: DecisionFrameContext
     perception: PerceptionText | None
     observation: Observation | None
-    # Diagnostics only; plugins read what memory published in shared_memory.
     memory: dict[str, Any] | None
+    proposal: ProposalResult | None
+    plan: ActionPlan | None
     action: ActionResult | None
     control: AutonomyControl
     started_at_ms: int
@@ -93,22 +96,18 @@ class DecisionCycleResult:
             "completed_at_ms": self.completed_at_ms,
             "duration_ms": self.duration_ms,
             "context": self.context.to_dict(),
-            "perception": self.perception.to_dict() if self.perception is not None else None,
-            "observation": self.observation.to_dict() if self.observation is not None else None,
+            "perception": _record(self.perception),
+            "observation": _record(self.observation),
             "memory": _to_plain_data(self.memory),
-            "action": self.action.to_dict() if self.action is not None else None,
+            "proposal": _record(self.proposal),
+            "plan": _record(self.plan),
+            "action": _record(self.action),
             "control": self.control.to_dict(),
         }
 
 
 class DecisionCycle:
-    """Run perceive, observe, remember, then act.
-
-    ``observe`` overrides the default adaptation. Omitting it leaves that
-    default in place when perception evidence is present. ``remember`` returns
-    a memory report or ``None``. A memory plugin may replace the current
-    observation through ``shared_memory["decision.observation"]``.
-    """
+    """Run the configured steps in order and record each output."""
 
     def __init__(
         self,
@@ -120,24 +119,23 @@ class DecisionCycle:
         self.idle_reason = idle_reason
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
+        steps = self.steps
         started_at_ms = timestamp_ms()
-        perception = self.steps.perceive(context) if self.steps.perceive else None
-        if self.steps.observe:
-            observation = self.steps.observe(context, perception)
-        elif perception is not None:
-            observation = observation_from_perception(
-                observation_id=context.frame_id,
-                sensor_snapshot=context.sensor_snapshot,
-                perception=perception,
-                metadata={"source": "default_observe_step"},
-            )
-        else:
-            observation = None
+        perception = _checked(
+            "perception",
+            steps.perception(context) if steps.perception else None,
+            PerceptionText,
+        )
+        observation = _checked(
+            "observation",
+            steps.observation(context, perception) if steps.observation else None,
+            Observation,
+        )
         try:
             # Memory plugins write the host map; the step returns a report.
-            memory = self.steps.remember(context, observation) if self.steps.remember else None
+            memory = steps.memory(context, observation) if steps.memory else None
             if memory is not None and not isinstance(memory, dict):
-                raise TypeError("decision memory step must return a report dict or None")
+                raise TypeError("memory step must return a report dict or None")
         except MemoryUpdateError:
             raise
         except Exception as exc:
@@ -147,28 +145,48 @@ class DecisionCycle:
                 detail = "unprintable error"
             raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
         observation = observation_after_memory(context.shared_memory, observation)
-        action = (
-            self.steps.act(context, perception, observation)
-            if self.steps.act
-            else None
+        proposal = _checked(
+            "proposal",
+            steps.proposal(context, observation) if steps.proposal else None,
+            ProposalResult,
         )
-        if action is None:
-            control = AutonomyControl(confidence=1.0, reason=self.idle_reason)
-        elif isinstance(action, ActionResult):
-            control = action.control
-        else:
-            raise TypeError("decision action step must return ActionResult or None")
-
+        plan = _checked(
+            "plan",
+            steps.plan(context, proposal) if steps.plan else None,
+            ActionPlan,
+        )
+        action = _checked(
+            "action",
+            steps.action(context, proposal, plan) if steps.action else None,
+            ActionResult,
+        )
+        control = (
+            action.control
+            if action is not None
+            else AutonomyControl(confidence=1.0, reason=self.idle_reason)
+        )
         return DecisionCycleResult(
             context=context,
             perception=perception,
             observation=observation,
             memory=memory,
+            proposal=proposal,
+            plan=plan,
             action=action,
             control=control,
             started_at_ms=started_at_ms,
             completed_at_ms=timestamp_ms(),
         )
+
+
+def _checked(step: str, record: Any, record_type: type) -> Any:
+    if record is not None and not isinstance(record, record_type):
+        raise TypeError(f"{step} step must return {record_type.__name__} or None")
+    return record
+
+
+def _record(value: Any) -> Any:
+    return value.to_dict() if value is not None else None
 
 
 def _to_plain_data(value: Any) -> Any:

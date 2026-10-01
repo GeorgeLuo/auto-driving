@@ -1,43 +1,36 @@
 from __future__ import annotations
 import json
 import unittest
-from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
-from implementations.runtime.engines.hold_action import HoldActionEngine
-from autonomy.runtime.manager import AutonomyManager
-from cli.automa_cli.decision import (
-    ADAPTER_ENGINE_SPEC,
-    DECISION_ENGINES,
-    ENGINE_ID,
-    get_vehicle_decision_info,
-    update_vehicle_decision,
-)
+from unittest.mock import patch
+from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
+from autonomy.decision_cycle.steps import load_decision_steps
+from implementations.decision_cycle.proposal.catalog import PROPOSAL_PLUGINS
+from cli.automa_cli.decision import get_vehicle_decision_info
+from cli.automa_cli.step_activations import update_vehicle_step
 from tests.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
+    packaged_decision_steps,
 )
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_stage_hold_action_and_info_contract(self) -> None:
-        update = self._stage()
-        self.assertEqual(update.exit_code, 0, update.message)
-        payload = json.loads(update.message)
-        self.assertEqual(payload["schema"], "vehicle_decision_update_v0")
-        self.assertEqual(payload["engine_id"], ENGINE_ID)
-        self.assertEqual(
-            payload["manifest"]["decision"]["engine_spec"],
-            ADAPTER_ENGINE_SPEC,
-        )
-        self.assertEqual(
-            set(payload["manifest"]["decision"]["engine_config"].keys()),
-            {"plugins", "plugin_specs", "plugin_configs"},
-        )
+        identity = self._stage()
+        staged = identity["steps"]["proposal"]
+        expected = packaged_decision_steps()["proposal"]
+        for key in ("plugins", "plugin_specs", "plugin_configs"):
+            self.assertEqual(staged[key], expected[key])
+        self.assertEqual(staged["metadata"]["vehicle_id"], "chase-sim-chaser")
 
         info = get_vehicle_decision_info(
             vehicle_id="chase-sim-chaser", json_output=True
         )
         self.assertEqual(info.exit_code, 0, info.message)
         info_payload = json.loads(info.message)
-        self.assertEqual(info_payload["schema"], "vehicle_decision_info_v0")
+        self.assertEqual(info_payload["schema"], "vehicle_decision_info_v1")
+        self.assertEqual(info_payload["generation_id"], identity["generation_id"])
+        self.assertEqual(info_payload["steps"]["plan"]["source"], "builtin")
+        self.assertEqual(info_payload["steps"]["action"]["plugins"], ["hold"])
         self.assertIsNotNone(info_payload["proposals"])
         proposals = info_payload["proposals"]
         self.assertEqual(
@@ -50,7 +43,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             ],
         )
         self.assertEqual(proposals["plugins"], ["avoid_recent_obstruction"])
-        self.assertEqual(proposals["selector_id"], "deterministic_first_active")
+        self.assertEqual(proposals["selector_id"], "highest_confidence")
         self.assertEqual(proposals["authority"]["proposed_applied"], False)
         self.assertEqual(proposals["authority"]["gate_id"], "hold")
         self.assertEqual(
@@ -70,53 +63,50 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertIn(HOLD_IDLE_REASON, human.message)
         self.assertIn("decision-combined-v0", human.message)
 
-    def test_stage_unknown_engine_and_invalid_config(self) -> None:
-        result = update_vehicle_decision(
+    def test_stage_unknown_plugin_and_invalid_config(self) -> None:
+        code, message = update_vehicle_step(
             vehicle_id="chase-sim-chaser",
-            engine_id="ghost",
+            step="action",
+            plugins=["ghost"],
+            runtime_root=self.runtime_root,
             json_output=True,
         )
-        self.assertEqual(result.exit_code, 2)
-        payload = json.loads(result.message)
-        self.assertEqual(payload["error"], "unknown_engine")
-        self.assertIn("hold-action", payload["message"])
+        self.assertEqual(code, 2)
+        payload = json.loads(message)
+        self.assertEqual(payload["error"], "invalid_selection")
+        self.assertIn("hold", payload["available_plugins"])
 
         # Invalid catalog config fails closed before write.
-        original = dict(DECISION_ENGINES[ENGINE_ID]["engine_config"])
-        try:
-            DECISION_ENGINES[ENGINE_ID]["engine_config"] = {
-                **original,
-                "steer_magnitude": 0.0,
-            }
-            bad = update_vehicle_decision(
+        entry = PROPOSAL_PLUGINS["avoid_recent_obstruction"]
+        bad_config = {**entry["default_config"], "steer_magnitude": 0.0}
+        with patch.dict(entry, {"default_config": bad_config}):
+            code, message = update_vehicle_step(
                 vehicle_id="chase-sim-chaser",
-                engine_id=ENGINE_ID,
+                step="proposal",
+                runtime_root=self.runtime_root,
                 json_output=True,
             )
-            self.assertEqual(bad.exit_code, 2)
-            self.assertEqual(json.loads(bad.message)["error"], "invalid_engine_config")
-            activation = (
-                self.runtime_root
-                / "chase-sim-chaser"
-                / "bundle"
-                / "runtime"
-                / "decision"
-                / "active.json"
-            )
-            self.assertFalse(activation.exists())
-        finally:
-            DECISION_ENGINES[ENGINE_ID]["engine_config"] = original
+        self.assertEqual(code, 2, message)
+        self.assertEqual(json.loads(message)["error"], "invalid_selection")
+        activation = (
+            self.runtime_root
+            / "chase-sim-chaser"
+            / "bundle"
+            / "runtime"
+            / "proposal"
+            / "active.json"
+        )
+        self.assertFalse(activation.exists())
 
     def test_info_missing_activation(self) -> None:
         result = get_vehicle_decision_info(vehicle_id="missing", json_output=True)
         self.assertEqual(result.exit_code, 2)
         self.assertEqual(json.loads(result.message)["error"], "activation_missing")
 
-    def test_staged_adapter_loads_via_autonomy_manager(self) -> None:
+    def test_staged_steps_load_from_the_runtime_directory(self) -> None:
         self._stage()
-        entry = DECISION_ENGINES[ENGINE_ID]
-        manager = AutonomyManager(
-            default_engine_spec=entry["engine_spec"],
-            default_engine_config=dict(entry["engine_config"]),
+        steps = load_decision_steps(
+            self.runtime_root / "chase-sim-chaser" / "bundle" / "runtime"
         )
-        self.assertIsInstance(manager.engine, HoldActionEngine)
+        self.assertEqual(steps.proposal.status()["plugin_ids"], ["avoid_recent_obstruction"])
+        self.assertEqual(steps.action.status()["plugin_ids"], ["hold"])

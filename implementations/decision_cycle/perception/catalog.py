@@ -1,3 +1,10 @@
+"""Packaged perception plugins and named perception selections.
+
+``PERCEPTION_ALGORITHMS`` names ready-made perception selections: the plugins
+to select, in order, and config overrides for some of them. An activation
+built from one records the algorithm name in its metadata.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -5,9 +12,6 @@ from typing import Any
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 
 
-PERCEPTION_MAPPER_SPEC = (
-    "autonomy.decision_cycle.perception.plugin_runner:PluginPerceptionMapper"
-)
 DEFAULT_PERCEPTION_ALGORITHM = "lightweight_observer"
 
 PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
@@ -23,17 +27,18 @@ PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
     "vlm_prep": "implementations.decision_cycle.perception.vlm_preparation.plugin:VlmPrepPlugin",
 }
 
+PERCEPTION_PLUGINS: dict[str, dict[str, Any]] = {
+    plugin_id: {"spec": spec, "description": "", "default_config": {}}
+    for plugin_id, spec in PERCEPTION_PLUGIN_SPECS.items()
+}
+
 PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
     "lightweight_observer": {
         "description": (
             "Lightweight perception: frame facts, visible floor, and "
             "first-hit floor boundaries."
         ),
-        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-        "mapper_config": {
-            "plugins": ["frame", "floor_plane"],
-            "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
-        },
+        "plugins": ["frame", "floor_plane"],
         "output_contract": {
             "schema": PERCEPTION_TEXT_SCHEMA,
             "meaning": "structured frame, floor, and non-semantic boundary evidence",
@@ -44,11 +49,7 @@ PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
             "Simulator-only debug control: frame facts plus known Chase "
             "color-target signals."
         ),
-        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-        "mapper_config": {
-            "plugins": ["frame", "sim_color_targets"],
-            "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
-        },
+        "plugins": ["frame", "sim_color_targets"],
         "output_contract": {
             "schema": PERCEPTION_TEXT_SCHEMA,
             "meaning": "structured frame and simulator target evidence",
@@ -59,11 +60,7 @@ PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
             "Generic visual observer: frame facts, floor/traversability, and "
             "bounded scene tracks."
         ),
-        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-        "mapper_config": {
-            "plugins": ["frame", "floor_plane", "motion_tracks"],
-            "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
-        },
+        "plugins": ["frame", "floor_plane", "motion_tracks"],
         "output_contract": {
             "schema": PERCEPTION_TEXT_SCHEMA,
             "meaning": "structured surface, boundary, and scene-track evidence",
@@ -74,30 +71,26 @@ PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
             "Generic obstruction observer: frame facts, floor suppression, and "
             "bounded multi-region temporal tracks."
         ),
-        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-        "mapper_config": {
-            "plugins": ["frame", "floor_plane", "obstruction_tracks"],
-            "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
-            "plugin_configs": {
-                "obstruction_tracks": {
-                    "max_tracks": 4,
-                    "floor_cutoff_y": 0.72,
-                    "minimum_object_height": 0.10,
-                    "minimum_object_area_fraction": 0.006,
-                    "maximum_object_area_fraction": 0.60,
-                    "association_distance": 0.35,
-                    "minimum_association_score": 0.12,
-                    "smoothing_alpha": 0.35,
-                    "max_missed_frames": 2,
-                    "reacquire_window_frames": 4,
-                    "minimum_feature_points": 6,
-                    "canny_low": 20,
-                    "canny_high": 40,
-                    "minimum_contour_area_fraction": 0.0015,
-                    "maximum_contour_area_fraction": 0.25,
-                    "contour_merge_gap": 0.16,
-                }
-            },
+        "plugins": ["frame", "floor_plane", "obstruction_tracks"],
+        "plugin_configs": {
+            "obstruction_tracks": {
+                "max_tracks": 4,
+                "floor_cutoff_y": 0.72,
+                "minimum_object_height": 0.10,
+                "minimum_object_area_fraction": 0.006,
+                "maximum_object_area_fraction": 0.60,
+                "association_distance": 0.35,
+                "minimum_association_score": 0.12,
+                "smoothing_alpha": 0.35,
+                "max_missed_frames": 2,
+                "reacquire_window_frames": 4,
+                "minimum_feature_points": 6,
+                "canny_low": 20,
+                "canny_high": 40,
+                "minimum_contour_area_fraction": 0.0015,
+                "maximum_contour_area_fraction": 0.25,
+                "contour_merge_gap": 0.16,
+            }
         },
         "output_contract": {
             "schema": PERCEPTION_TEXT_SCHEMA,
@@ -109,3 +102,8 @@ PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
 
 def available_perception_algorithm_ids() -> tuple[str, ...]:
     return tuple(sorted(PERCEPTION_ALGORITHMS))
+
+
+DEFAULT_PERCEPTION_PLUGINS: tuple[str, ...] = tuple(
+    PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]["plugins"]
+)

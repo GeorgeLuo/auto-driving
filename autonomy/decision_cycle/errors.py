@@ -1,15 +1,19 @@
-"""Reasons the action composition can end a cycle with ``engine_error``."""
+"""Reasons a cycle's proposal, plan, or action record can carry status ``error``.
+
+Any of these makes the action step decide without a plan; the selected action
+plugin still chooses the control, so the cycle fails closed.
+"""
 
 from __future__ import annotations
 
-ENGINE_ERROR_REASONS = frozenset(
+CYCLE_ERROR_REASONS = frozenset(
     {
         "decision_data_source_invalid",
         "action_plan_invariant_violated",
         "action_proposal_matrix_violated",
         "synthetic_error_proposal_failed",
-        "engine_internal_error",
+        "step_internal_error",
     }
 )
 
-__all__ = ["ENGINE_ERROR_REASONS"]
+__all__ = ["CYCLE_ERROR_REASONS"]

@@ -1,7 +1,9 @@
-"""Whole perception step boundary.
+"""The perception step's output and the request-level perception boundary.
 
-``PerceptionMapper`` takes a ``PerceptionRequest`` and returns current evidence
-as ``PerceptionText``, with one ``PerceptionPluginRun`` per plugin.
+``PerceptionText`` is current evidence, with one ``PerceptionPluginRun`` per
+plugin. ``PerceptionBackend`` is anything that runs perception on a
+``PerceptionRequest``: the step's ``PerceptionRunner``, or an offline tool
+such as a lab candidate running in a worker process.
 """
 
 from __future__ import annotations
@@ -115,8 +117,8 @@ class PerceptionText:
 
 
 @runtime_checkable
-class PerceptionMapper(Protocol):
-    """Whole perception step: sensors in, current evidence out."""
+class PerceptionBackend(Protocol):
+    """Run perception on one request: sensors in, current evidence out."""
 
     plugin_id: str
 

@@ -25,8 +25,14 @@ from autonomy.decision_cycle.perception.components.interface import (
     PerceptionComponentUnavailable,
 )
 from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch
+from autonomy.decision_cycle.perception.plugin import (
+    PerceptionPluginContract,
+    PerceptionPluginInputs,
+)
 from implementations.decision_cycle.perception.components.camera import (
     FRONT_CAMERA_RGB_INPUT,
+    CameraFrame,
     provide_camera_frame,
 )
 
@@ -349,9 +355,28 @@ class LabPerceptionMapper:
         except PerceptionComponentUnavailable as exc:
             self.reset(request.shared_memory)
             raise RuntimeError(f"front camera unavailable: {exc}") from exc
+        return self.perceive_frame(
+            frame,
+            frame_id=request.snapshot.read_id,
+            output_dir=request.output_dir,
+            metadata=request.metadata,
+            shared_memory=request.shared_memory,
+        )
+
+    def perceive_frame(
+        self,
+        frame: Any,
+        *,
+        frame_id: str,
+        output_dir: Path | None = None,
+        metadata: Any = None,
+        shared_memory: Any = None,
+    ) -> PerceptionText:
+        """Send one camera frame to the candidate worker and return its evidence."""
+
         image_path = frame.source_path
         if image_path is None or not image_path.is_file():
-            image_path = Path(self._scratch.name) / f"{safe_path_part(request.snapshot.read_id)}.png"
+            image_path = Path(self._scratch.name) / f"{safe_path_part(frame_id)}.png"
             bgr = cv2.cvtColor(frame.rgb, cv2.COLOR_RGB2BGR)
             if not cv2.imwrite(str(image_path), bgr):
                 raise RuntimeError(f"could not materialize candidate input at {image_path}")
@@ -359,20 +384,20 @@ class LabPerceptionMapper:
             {
                 "command": "perceive",
                 "image_path": str(image_path),
-                "frame_id": request.snapshot.read_id,
+                "frame_id": frame_id,
                 "captured_at_ms": frame.captured_at_ms,
-                "output_dir": str(request.output_dir) if request.output_dir is not None else None,
-                "metadata": request.metadata,
-                "shared_memory": encode_shared_memory(request.shared_memory),
+                "output_dir": str(output_dir) if output_dir is not None else None,
+                "metadata": dict(metadata or {}),
+                "shared_memory": encode_shared_memory(shared_memory),
             }
         )
         perception = response.get("perception")
         if not isinstance(perception, dict):
             raise RuntimeError("candidate worker did not return perception output")
-        if request.shared_memory is not None:
+        if shared_memory is not None:
             updated_memory = decode_shared_memory(response["shared_memory"])
-            request.shared_memory.clear()
-            request.shared_memory.update(updated_memory)
+            shared_memory.clear()
+            shared_memory.update(updated_memory)
         self.last_runtime_metrics = dict(response.get("runtime") or {})
         return PerceptionText.from_dict(perception)
 
@@ -605,3 +630,60 @@ def _command_failure(prefix: str, completed: subprocess.CompletedProcess[str]) -
 def _emit(output: TextIO | None, message: str) -> None:
     if output is not None:
         print(message, file=output, flush=True)
+
+
+LAB_CANDIDATE_PLUGIN_SPEC = "cli.automa_cli.lab_plugins:LabCandidatePlugin"
+
+
+class LabCandidatePlugin:
+    """A ready lab candidate as one perception plugin.
+
+    The candidate runs in its isolated worker. This plugin hands it the front
+    camera frame and the host map and returns the candidate's signals and
+    things as its evidence, so a candidate is selected and run like any other
+    perception plugin.
+    """
+
+    def __init__(
+        self,
+        *,
+        candidate_id: str,
+        timeout_s: float = 180.0,
+        config_overrides: dict[str, Any] | None = None,
+    ) -> None:
+        self.backend = LabPerceptionMapper(
+            candidate_id, timeout_s=timeout_s, config_overrides=config_overrides
+        )
+        self.plugin_id = self.backend.plugin_id
+        self.contract = PerceptionPluginContract(
+            inputs=(FRONT_CAMERA_RGB_INPUT,),
+            state_mode="windowed",
+            memory_required=True,
+            description=str(
+                self.backend.candidate.manifest.get("description") or candidate_id
+            ),
+            limitations=("runs in an isolated lab worker process",),
+        )
+
+    def reset(self, shared_memory=None) -> None:
+        self.backend.reset(shared_memory)
+
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require(FRONT_CAMERA_RGB_INPUT.name, CameraFrame)
+        perception = self.backend.perceive_frame(
+            frame,
+            frame_id=inputs.frame_id,
+            metadata=dict(inputs.metadata),
+            shared_memory=inputs.shared_memory,
+        )
+        measurements: dict[str, Any] = {}
+        for values in perception.measurements.values():
+            measurements.update(values)
+        return PerceptionEvidenceBatch(
+            signals=perception.signals,
+            things=perception.things,
+            measurements=measurements,
+        )
+
+    def close(self) -> None:
+        self.backend.close()

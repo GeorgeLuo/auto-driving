@@ -60,7 +60,7 @@
           </details>
           <details data-disclosure-key="source">
             <summary>Selected scenario and configuration</summary>
-            <p class="subtle">The saved file and engine settings are shared by both sides.</p>
+            <p class="subtle">The saved file and decision step selections are shared by both sides.</p>
             <pre id="inspection-source"></pre>
           </details>
         </details>
@@ -82,13 +82,13 @@
         document.querySelector(".decision-direction").textContent = scenario.steering_direction;
         document.querySelector(".decision-context").textContent = scenario.context || "";
         const selected = cycle.plan?.candidates?.find(candidate => candidate.proposal_id === cycle.plan.selected_proposal_id);
-        document.querySelector("#decision-reason").textContent = selected?.reason || cycle.reason || cycle.plan?.status || "";
-        document.querySelector("#decision-input").textContent = JSON.stringify(cycle.source, null, 2);
-        document.querySelector("#decision-output").textContent = JSON.stringify({plan: cycle.plan, authority: cycle.authority}, null, 2);
+        document.querySelector("#decision-reason").textContent = selected?.reason || cycle.action?.reason || cycle.plan?.status || "";
+        document.querySelector("#decision-input").textContent = JSON.stringify(cycle.proposal?.source, null, 2);
+        document.querySelector("#decision-output").textContent = JSON.stringify({plan: cycle.plan, authority: cycle.action?.authority}, null, 2);
         document.querySelector("#inspection-source").textContent = JSON.stringify({
           selected_scenario: selectedScenario,
           saved_input: inspection.input,
-          engine_id: inspection.engine_id, engine_config: inspection.engine_config,
+          generation_id: inspection.generation_id, steps: inspection.steps,
           config_source: inspection.config_source
         }, null, 2);
         document.querySelector("#decision-overview").hidden = false;

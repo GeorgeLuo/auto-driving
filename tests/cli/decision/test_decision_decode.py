@@ -3,11 +3,9 @@ import json
 import unittest
 from autonomy.serialization import canonical_json_bytes, canonical_json_utf8
 from cli.automa_cli.decision import (
-    ADAPTER_ENGINE_SPEC,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
-from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
     DecisionSurfaceFixture,
@@ -83,21 +81,3 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         # same length different content is possible
         self.assertEqual(canonical_json_bytes(a), canonical_json_bytes(b))
         self.assertNotEqual(canonical_json_utf8(a), canonical_json_utf8(b))
-
-    def test_cli_update_hold_engine_choice(self) -> None:
-        result = run_automa(
-            "vehicles",
-            "update",
-            "decision",
-            "--id",
-            "chase-sim-chaser",
-            "--engine",
-            "hold-action",
-            "--json",
-            runtime_root=self.runtime_root,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        payload = json.loads(result.stdout)
-        self.assertEqual(
-            payload["manifest"]["decision"]["engine_spec"], ADAPTER_ENGINE_SPEC
-        )

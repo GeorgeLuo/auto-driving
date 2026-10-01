@@ -224,18 +224,10 @@ diff --git a/donkeycar/parts/web_controller/web.py b/donkeycar/parts/web_control
 index 8af4669..232d5df 100644
 --- a/donkeycar/parts/web_controller/web.py
 +++ b/donkeycar/parts/web_controller/web.py
-@@ -28,6 +28,20 @@ from ... import utils
+@@ -28,6 +28,12 @@ from ... import utils
  logger = logging.getLogger(__name__)
  
  
-+try:
-+    from autonomy.runtime.manager import AutonomyManager, EngineLoadError
-+except Exception as exc:
-+    AutonomyManager = None
-+    EngineLoadError = RuntimeError
-+    logger.warning("Autonomy runtime is not importable: %s", exc)
-+
-+
 +AUTONOMY_MODE_TO_DRIVE_MODE = {
 +    "manual": "user",
 +    "autonomy": "local",
@@ -245,7 +237,7 @@ index 8af4669..232d5df 100644
  class RemoteWebServer():
      '''
      A controller that repeatedly polls a remote webserver and expects
-@@ -101,7 +115,7 @@ class RemoteWebServer():
+@@ -101,7 +107,7 @@ class RemoteWebServer():
  
  class LocalWebController(tornado.web.Application):
  
@@ -254,12 +246,13 @@ index 8af4669..232d5df 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +137,34 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +129,33 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
 +        self.camera = camera
-+        self.autonomy_manager = AutonomyManager() if AutonomyManager is not None else None
++        # Set by manage.py when the autonomy bundle is activated.
++        self.autonomy_host = None
 +        # Set by manage.py after AutonomyPilotPart is constructed.
 +        self.observation_publisher = None
 +        self.host_telemetry_publisher = None
@@ -270,8 +263,6 @@ index 8af4669..232d5df 100644
              (r"/drive", DriveAPI),
 +            (r"/autonomy/status", AutonomyStatusAPI),
 +            (r"/autonomy/mode", AutonomyModeAPI),
-+            (r"/autonomy/engine", AutonomyEngineAPI),
-+            (r"/autonomy/reload", AutonomyReloadAPI),
 +            (r"/autonomy/observation/latest", AutonomyObservationLatestAPI),
 +            (r"/autonomy/observation/latest/frame.jpg", AutonomyObservationLatestFrameAPI),
 +            (r"/autonomy/camera/latest", AutonomyCameraLatestAPI),
@@ -289,7 +280,7 @@ index 8af4669..232d5df 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +272,481 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +263,426 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -304,24 +295,11 @@ index 8af4669..232d5df 100644
 +            return {}
 +        return tornado.escape.json_decode(self.request.body)
 +
-+    def manager(self):
-+        manager = getattr(self.application, "autonomy_manager", None)
-+        if manager is None:
-+            self.write_json(
-+                {
-+                    "ok": False,
-+                    "error": "autonomy runtime is not available",
-+                },
-+                status=503,
-+            )
-+            return None
-+        return manager
-+
 +    def status_payload(self) -> dict:
-+        manager = getattr(self.application, "autonomy_manager", None)
-+        autonomy_status = None if manager is None else manager.status()
++        host = getattr(self.application, "autonomy_host", None)
++        autonomy_status = None if host is None else host.status()
 +        return {
-+            "ok": manager is not None,
++            "ok": host is not None,
 +            "drive_mode": getattr(self.application, "mode", None),
 +            "autonomy_modes": sorted(AUTONOMY_MODE_TO_DRIVE_MODE.keys()),
 +            "drive_mode_map": AUTONOMY_MODE_TO_DRIVE_MODE,
@@ -544,48 +522,6 @@ index 8af4669..232d5df 100644
 +        self.write_json(payload)
 +
 +
-+class AutonomyEngineAPI(AutonomyAPIBase):
-+    def post(self):
-+        manager = self.manager()
-+        if manager is None:
-+            return
-+
-+        data = self.read_json_body()
-+        engine = data.get("engine")
-+        if not isinstance(engine, str) or not engine.strip():
-+            self.write_json(
-+                {
-+                    "ok": False,
-+                    "error": "engine is required and must be 'module.path:ClassName'",
-+                },
-+                status=400,
-+            )
-+            return
-+
-+        try:
-+            status = manager.load_engine(engine.strip(), data.get("config") or {})
-+        except EngineLoadError as exc:
-+            self.write_json({"ok": False, "error": str(exc), "autonomy": manager.status()}, status=400)
-+            return
-+
-+        self.write_json({"ok": True, "autonomy": status})
-+
-+
-+class AutonomyReloadAPI(AutonomyAPIBase):
-+    def post(self):
-+        manager = self.manager()
-+        if manager is None:
-+            return
-+
-+        try:
-+            status = manager.reload_engine()
-+        except EngineLoadError as exc:
-+            self.write_json({"ok": False, "error": str(exc), "autonomy": manager.status()}, status=400)
-+            return
-+
-+        self.write_json({"ok": True, "autonomy": status})
-+
-+
 +class AutonomyMemoryResetAPI(AutonomyAPIBase):
 +    """Reset the activated memory step without restarting the Donkey process."""
 +
@@ -623,13 +559,13 @@ index 8af4669..232d5df 100644
 +            **result,
 +        }
 +        # Include live autonomy status so operators can confirm empty epoch/counts.
-+        manager = getattr(self.application, "autonomy_manager", None)
-+        if manager is not None:
-+            autonomy = manager.status()
++        host = getattr(self.application, "autonomy_host", None)
++        if host is not None:
++            autonomy = host.status()
 +            payload["autonomy"] = autonomy
-+            components = autonomy.get("components") if isinstance(autonomy, dict) else None
-+            if isinstance(components, dict) and isinstance(components.get("memory"), dict):
-+                payload.setdefault("memory", components["memory"])
++            steps = autonomy.get("steps") if isinstance(autonomy, dict) else None
++            if isinstance(steps, dict) and isinstance(steps.get("memory"), dict):
++                payload.setdefault("memory", steps["memory"])
 +
 +        status_code = 200 if payload.get("ok") else 409
 +        if payload.get("status") == "absent":
@@ -771,7 +707,7 @@ index 8af4669..232d5df 100644
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +689,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +625,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -824,7 +760,7 @@ index 8af4669..232d5df 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +784,3 @@ class WebFpv(Application):
+@@ -440,5 +720,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

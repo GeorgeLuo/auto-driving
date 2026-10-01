@@ -94,7 +94,7 @@ class MemoryCheckTests(unittest.TestCase):
         frame = {
             "frame_id": "chase_frame_000001",
             "control_source": "external_ws",
-            "action_policy": "engine_idle",
+            "action_policy": "cycle_idle",
             "control_application": "stop_only_safety_gate",
             "control": {"applied": False, "steering": 0.0, "throttle": 0.0},
             "chaser_reference": {"chaser_control_source": "ws"},

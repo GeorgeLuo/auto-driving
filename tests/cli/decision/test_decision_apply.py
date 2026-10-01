@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from autonomy.serialization import canonical_json_bytes, canonical_json_utf8
-from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
-from cli.automa_cli.decision import ENGINE_ID, apply_vehicle_decision
+from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
+from cli.automa_cli.decision import apply_vehicle_decision
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
@@ -17,7 +17,7 @@ from tests.cli.decision.decision_surfaces_fixtures import (
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
-    def test_apply_requires_id_and_hold_engine(self) -> None:
+    def test_apply_requires_id_and_hold_action(self) -> None:
         missing = apply_vehicle_decision(
             vehicle_id=None,
             from_run=ACTIVE_RUN,
@@ -26,14 +26,14 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual(missing.exit_code, 2)
         self.assertEqual(json.loads(missing.message)["error"], "missing_vehicle_id")
 
-        self._stage(engine_id="idle")
+        self._stage(action="mode")
         wrong = apply_vehicle_decision(
             vehicle_id="chase-sim-chaser",
             from_run=ACTIVE_RUN,
             json_output=True,
         )
         self.assertEqual(wrong.exit_code, 2)
-        self.assertEqual(json.loads(wrong.message)["error"], "wrong_engine")
+        self.assertEqual(json.loads(wrong.message)["error"], "wrong_action")
 
     def test_apply_digest_determinism_byte_equality(self) -> None:
         self._stage()
@@ -263,4 +263,4 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["schema"], "vehicle_decision_apply_result_v0")
-        self.assertEqual(payload["engine_id"], ENGINE_ID)
+        self.assertEqual(payload["generation_id"], self._identity()["generation_id"])

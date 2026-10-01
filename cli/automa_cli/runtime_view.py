@@ -79,7 +79,7 @@ class RuntimeViewServer:
             activation_path=(
                 decision_activation_path
                 if decision_activation_path is not None
-                else automation_dir.parent / "decision" / "active.json"
+                else automation_dir.parent
             ),
             provider_identity=decision_provider_identity,
         )

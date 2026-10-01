@@ -38,14 +38,14 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
         first = replay_vehicle_memory(
             vehicle_id="chase-sim-chaser",
             sequence=RECURRENCE_SOURCE,
-            implementation_id="bounded_evidence",
+            plugin_id="bounded_evidence",
             json_output=True,
             verify_twice=True,
         )
         second = replay_vehicle_memory(
             vehicle_id="chase-sim-chaser",
             sequence=RECURRENCE_SOURCE,
-            implementation_id="bounded_evidence",
+            plugin_id="bounded_evidence",
             json_output=True,
             verify_twice=True,
         )
@@ -74,7 +74,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             str(RECURRENCE_SOURCE),
             "--id",
             "chase-sim-chaser",
-            "--implementation",
+            "--plugin",
             "bounded_evidence",
             "--json",
         )
@@ -92,7 +92,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                 "memory",
                 "--id",
                 "chase-sim-chaser",
-                "--implementation",
+                "--plugin",
                 "bounded_evidence",
                 "--json",
                 runtime_root=runtime_root,
@@ -117,7 +117,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
         result = replay_vehicle_memory(
             vehicle_id="chase-sim-chaser",
             sequence="/no/such/sequence.json",
-            implementation_id="bounded_evidence",
+            plugin_id="bounded_evidence",
         )
         self.assertEqual(result.exit_code, 2)
         self.assertIn("Could not load observation sequence", result.message)
@@ -137,7 +137,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             result = replay_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
                 sequence=RECURRENCE_SOURCE,
-                implementation_id="bounded_evidence",
+                plugin_id="bounded_evidence",
                 json_output=True,
                 record=False,
                 output_root=output_root,
@@ -154,7 +154,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             result = replay_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
                 sequence=RECURRENCE_SOURCE,
-                implementation_id="bounded_evidence",
+                plugin_id="bounded_evidence",
                 json_output=True,
                 record=True,
                 output_root=output_root,
@@ -221,7 +221,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                     str(RECURRENCE_SOURCE),
                     "--id",
                     "chase-sim-chaser",
-                    "--implementation",
+                    "--plugin",
                     "bounded_evidence",
                     "--record",
                     "--json",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from autonomy.runtime import AutonomyControl
+from autonomy.runtime.control import AutonomyControl
 
 
 class AutonomyControlTests(unittest.TestCase):

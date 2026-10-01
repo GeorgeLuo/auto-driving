@@ -135,7 +135,7 @@ class MemoryCheckTests(unittest.TestCase):
             "check",
             "--id",
             "chase-sim-chaser",
-            "--implementation",
+            "--plugin",
             "bounded_evidence",
             "--json",
         )
@@ -156,7 +156,7 @@ class MemoryCheckTests(unittest.TestCase):
                     "check",
                     "--id",
                     "chase-sim-chaser",
-                    "--implementation",
+                    "--plugin",
                     "bounded_evidence",
                     "--record",
                     "--json",

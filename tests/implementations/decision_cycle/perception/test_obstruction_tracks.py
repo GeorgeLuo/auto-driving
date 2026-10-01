@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
-from implementations.decision_cycle.perception.catalog import PERCEPTION_ALGORITHMS
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from implementations.decision_cycle.catalog import perception_algorithm_activation
 
 
 class ObstructionTracksProductionTests(unittest.TestCase):
     def test_catalog_constructs_obstruction_observer(self) -> None:
-        config = PERCEPTION_ALGORITHMS["obstruction_observer"]["mapper_config"]
-        mapper = PluginPerceptionMapper(**config)
+        mapper = PerceptionRunner.from_activation(
+            perception_algorithm_activation("obstruction_observer")
+        )
         self.assertEqual(mapper.plugin_ids, ("frame", "floor_plane", "obstruction_tracks"))
         self.assertEqual(
             [plugin.plugin_id for plugin in mapper.plugins],

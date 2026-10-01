@@ -11,27 +11,28 @@ from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from autonomy.serialization import canonical_json_utf8
+from autonomy.decision_cycle.action.hold import PLUGIN_ID as HOLD_PLUGIN_ID
+from autonomy.decision_cycle.activation import DECISION_STEPS
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
-from implementations.runtime.engines.catalog import create_action_composition
-from implementations.runtime.engines.config import default_engine_config
-from implementations.runtime.engines.inspection import prepare_inspection_scenarios
+from implementations.decision_cycle.proposal.inspection import prepare_inspection_scenarios
 
 from .decision import (
     APPLY_SEQUENCE_SCHEMA,
     DECISION_APPLY_MAX_FRAMES,
     DECISION_APPLY_MAX_SEQUENCE_FILE_BYTES,
-    ENGINE_ID,
     RUNTIME_ROOT,
     CommandResult,
     DecisionSurfaceError,
     _error_result,
     _normalize_apply_frames,
-    _read_surface_activation,
+    _read_surface_identity,
     controller_bundle_paths,
     safe_path_part,
     strict_decode_apply_evidence,
-    validate_hold_engine_config,
 )
+from .decision_records import DecisionRunners, activations_from_payloads
+from .step_activations import decision_generation_id
 from .loopback_http import (
     LoopbackHTTPRequestHandler,
     LoopbackHTTPServer,
@@ -43,7 +44,7 @@ from .loopback_http import (
 def inspect_decision_sequence(
     from_run: str | Path, *, frame_index: int = 0, vehicle_id: str | None = None,
 ) -> dict[str, Any]:
-    """Load one saved frame and run the real proposal composition for both sides.
+    """Load one saved frame and run the real proposal, plan, and action steps for both sides.
 
     frame_index is a zero-based position in the sequence. Source timestamps stay
     fixed, so an old capture can be inspected without a worker or a wall clock.
@@ -67,31 +68,30 @@ def inspect_decision_sequence(
     if vehicle_id and "vehicle_id" in sequence and sequence["vehicle_id"] != vehicle_id:
         raise ValueError("Sequence vehicle_id does not match --id.")
     frame = _normalize_apply_frames([frames[frame_index]], vehicle_id=vehicle_id or "offline")[0]
-    config = default_engine_config()
+    steps = {
+        step: packaged_activation(step, [HOLD_PLUGIN_ID] if step == "action" else None).to_payload()
+        for step in DECISION_STEPS
+    }
     if vehicle_id:
         bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-        activation = _read_surface_activation(
-            Path(bundle["decision_runtime_dir"]) / "active.json", vehicle_id=vehicle_id,
-        )
-        decision = activation["decision"]
-        if decision.get("engine_id") != ENGINE_ID:
-            raise ValueError(f"Inspector requires the {ENGINE_ID} engine.")
-        config = validate_hold_engine_config(decision["engine_config"])
+        steps = _read_surface_identity(bundle, vehicle_id=vehicle_id)["steps"]
+        if (steps.get("action") or {}).get("plugins") != [HOLD_PLUGIN_ID]:
+            raise ValueError(f"Inspector requires the {HOLD_PLUGIN_ID!r} action plugin.")
+    activations = activations_from_payloads(steps)
     # Recorded retained evidence is what memory had published in shared memory.
     if frame["evidence"] is None:
         raise ValueError("Selected frame has no retained evidence to reposition. Choose a frame with image evidence.")
 
     prepared = prepare_inspection_scenarios(
-        [record.to_dict() for record in frame["evidence"]], config
+        [record.to_dict() for record in frame["evidence"]], activations["proposal"]
     )
     scenarios = {}
     for name, scenario in prepared.items():
-        cycle = create_action_composition(config).run(
+        cycle = DecisionRunners.from_activations(activations).run(
             frame_id=frame["frame_id"], frame_index=frame["frame_index"],
             timestamp_ms=frame["timestamp_ms"], observation=frame["observation"],
             observation_error=frame["observation_error"],
             shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(scenario["evidence"])},
-            host_application=None,
         )
         command = cycle.authority.proposed
         steering = command.steering if command is not None else 0
@@ -102,9 +102,9 @@ def inspect_decision_sequence(
         published["cycle"] = cycle.to_dict()
         scenarios[name] = published
     return {
-        "schema": "automa_decision_inspection_v1",
-        "engine_id": ENGINE_ID,
-        "engine_config": dict(config),
+        "schema": "automa_decision_inspection_v2",
+        "generation_id": decision_generation_id(activations),
+        "steps": steps,
         "config_source": "staged" if vehicle_id else "packaged defaults",
         "input": {
             "name": path.name, "sha256": hashlib.sha256(raw).hexdigest(),

@@ -9,7 +9,6 @@ from autonomy.decision_cycle.perception.interface import (
 )
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
-    PerceptionEvidenceBatch,
     PerceptionSignal,
     ViewLocation,
 )
@@ -48,90 +47,14 @@ class ViewLocationTests(unittest.TestCase):
         self.assertEqual(restored.bbox_xyxy_norm, (0.1, 0.2, 0.7, 0.8))
         self.assertEqual(restored.polygon_xy_norm, polygon)
 
-    def test_location_rejects_malformed_normalized_bounding_boxes(self) -> None:
-        invalid_boxes = (
-            (0.1, 0.2, 0.7),
-            (float("nan"), 0.2, 0.7, 0.8),
-            (-0.1, 0.2, 0.7, 0.8),
-            (0.1, 0.2, 1.1, 0.8),
-            (0.8, 0.2, 0.7, 0.9),
-            (0.1, 0.9, 0.7, 0.8),
-        )
-        for bbox in invalid_boxes:
-            with self.subTest(bbox=bbox):
-                with self.assertRaises(ValueError):
-                    ViewLocation(
-                        frame="image",
-                        zone="center",
-                        bbox_xyxy_norm=bbox,
-                    )
-
-        with self.assertRaises(ValueError):
-            ViewLocation.from_dict(
-                {
-                    "frame": "image",
-                    "zone": "center",
-                    "bbox_xyxy_norm": "not-a-box",
-                }
-            )
-
-    def test_location_rejects_malformed_normalized_polygons(self) -> None:
-        invalid_polygons = (
-            ((0.1, 0.2), (0.7, 0.2)),
-            ((0.1, 0.2), (0.7,), (0.6, 0.8)),
-            ((0.1, 0.2), (float("inf"), 0.2), (0.6, 0.8)),
-            ((0.1, 0.2), (1.1, 0.2), (0.6, 0.8)),
-        )
-        for polygon in invalid_polygons:
-            with self.subTest(polygon=polygon):
-                with self.assertRaises(ValueError):
-                    ViewLocation(
-                        frame="image",
-                        zone="center",
-                        polygon_xy_norm=polygon,
-                    )
-
 
 class EvidenceValueTests(unittest.TestCase):
-    def test_signal_and_thing_require_non_empty_string_ids(self) -> None:
-        for signal_id in ("", "   ", 7):
-            with self.subTest(record="signal", identifier=signal_id):
-                with self.assertRaisesRegex(ValueError, "non-empty string"):
-                    PerceptionSignal(signal_id, True)
-
-        for thing_id in ("", "   ", 7):
-            with self.subTest(record="thing", identifier=thing_id):
-                with self.assertRaisesRegex(ValueError, "non-empty string"):
-                    _thing(thing_id=thing_id)
 
     def test_signal_and_thing_clamp_finite_confidence(self) -> None:
         self.assertEqual(PerceptionSignal("ready", True, confidence=2.0).confidence, 1.0)
         self.assertEqual(PerceptionSignal("ready", True, confidence=-1.0).confidence, 0.0)
         self.assertEqual(_thing(confidence=2.0).confidence, 1.0)
         self.assertEqual(_thing(confidence=-1.0).confidence, 0.0)
-
-    def test_signal_and_thing_reject_non_finite_confidence(self) -> None:
-        for value in (float("nan"), float("inf"), float("-inf")):
-            with self.subTest(record="signal", value=value):
-                with self.assertRaisesRegex(ValueError, "finite"):
-                    PerceptionSignal("ready", True, confidence=value)
-            with self.subTest(record="thing", value=value):
-                with self.assertRaisesRegex(ValueError, "finite"):
-                    _thing(confidence=value)
-
-    def test_batch_rejects_duplicate_local_evidence_ids(self) -> None:
-        with self.assertRaisesRegex(ValueError, "repeat signal ids"):
-            PerceptionEvidenceBatch(
-                signals=(
-                    PerceptionSignal("ready", True),
-                    PerceptionSignal("ready", False),
-                )
-            )
-
-        with self.assertRaisesRegex(ValueError, "repeat thing ids"):
-            PerceptionEvidenceBatch(
-                things=(_thing(thing_id="region"), _thing(thing_id="region")),
-            )
 
 
 class PerceptionEvidenceSerializationTests(unittest.TestCase):

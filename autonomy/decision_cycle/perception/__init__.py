@@ -1,9 +1,9 @@
-"""Perception step within the decision cycle.
+"""The perception step.
 
-A perception plugin derives evidence from sensor data. The root modules manage
-the step: the plugin contract (``plugin``), the whole-step boundary
-(``interface``), selection, activation, request building, and plugin
-execution (``plugin_runner``). ``components`` holds component declarations and
-their resolution context, ``diagnostics`` the diagnostic sink, and
-``evidence`` the evidence values and their text rendering.
+A perception plugin derives evidence from sensor data. ``plugin`` is the
+perception plugin protocol and contract, ``interface`` the step's output and
+request-level boundary, ``inputs`` request building, and ``runner`` the step
+runner. ``components`` holds component declarations and their resolution
+context, ``diagnostics`` the diagnostic sink, and ``evidence`` the evidence
+values and their text rendering.
 """

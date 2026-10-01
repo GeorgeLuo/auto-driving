@@ -14,6 +14,8 @@ from cli.automa_cli.decision_live import (
     _accepted_pair,
     read_host_telemetry_panel,
 )
+from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
+from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
 from cli.automa_cli.decision import DecisionSurfaceError
 from cli.automa_cli.physical_observation import (
     DECISION_PUBLICATION_SCHEMA,
@@ -28,6 +30,7 @@ from cli.automa_cli.physical_observation import (
 
 
 NOW_MS = 10_000
+GENERATION_ID = "decision:0123456789abcdef"
 
 
 def _record(
@@ -48,12 +51,8 @@ def _record(
         "vehicle_id": "piracer",
         "source_id": "donkeycar:piracer",
         "run_id": "run-1",
-        "generation_id": "hold-action:1000",
-        "activation": {
-            "engine_id": "hold-action",
-            "activated_at_ms": 1_000,
-            "generation_id": "hold-action:1000",
-        },
+        "generation_id": GENERATION_ID,
+        "activation": {"generation_id": GENERATION_ID},
         "source_frame": {
             "frame_id": frame_id,
             "frame_index": frame_index,
@@ -98,36 +97,32 @@ def _decision(*, source_frame: dict | None = None) -> dict:
             "vehicle_id": "piracer",
             "source_id": "donkeycar:piracer",
             "run_id": "run-1",
-            "activation_engine_id": "hold-action",
-            "activation_activated_at_ms": 1_000,
-            "generation_id": "hold-action:1000",
+            "generation_id": GENERATION_ID,
             "frame_id": frame["frame_id"],
             "frame_index": frame["frame_index"],
             "timestamp_ms": frame["captured_at_ms"],
             "published_at_ms": 9_500,
-            "activation": {
-                "engine_id": "hold-action",
-                "activated_at_ms": 1_000,
-                "generation_id": "hold-action:1000",
-            },
+            "activation": {"generation_id": GENERATION_ID, "steps": {}},
             "source_frame": copy.deepcopy(frame),
-            "cycle": {"source": {"source_frame": copy.deepcopy(frame)}},
+            "cycle": {"proposal": {"source": {"source_frame": copy.deepcopy(frame)}}},
         }
     }
 
 
 def _physical_publication() -> dict:
     decision = _decision()["decision"]
-    decision["activation"]["engine_config"] = {}
     decision["cycle"] = {
-        "schema": "action_result_v0",
-        "status": "ok",
-        "frame_id": "frame-1",
-        "source": {
+        "proposal": {
+            "schema": PROPOSAL_RESULT_SCHEMA,
+            "status": "ok",
             "frame_id": "frame-1",
-            "frame_index": 1,
-            "timestamp_ms": 8_000,
+            "source": {
+                "frame_id": "frame-1",
+                "frame_index": 1,
+                "timestamp_ms": 8_000,
+            },
         },
+        "action": {"schema": ACTION_RESULT_SCHEMA, "status": "ok", "frame_id": "frame-1"},
     }
     return {
         "schema": DECISION_PUBLICATION_SCHEMA,

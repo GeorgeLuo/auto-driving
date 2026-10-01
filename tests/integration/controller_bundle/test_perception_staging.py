@@ -8,12 +8,10 @@ import numpy as np
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from cli.automa_cli import perception as perception_module
+from autonomy.decision_cycle.activation import step_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from implementations.decision_cycle.perception.catalog import (
-    PERCEPTION_MAPPER_SPEC,
-    PERCEPTION_PLUGIN_SPECS,
-)
+from cli.automa_cli.step_hosting import load_staged_runner
+from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
 
 
 class PerceptionStagingTests(unittest.TestCase):
@@ -21,13 +19,13 @@ class PerceptionStagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = controller_bundle_paths(Path(tmp) / "vehicle")
             sync_controller_bundle(bundle, output=None)
-            mapper = perception_module._load_mapper(
-                PERCEPTION_MAPPER_SPEC,
-                {
-                    "plugins": ["frame"],
-                    "plugin_specs": {"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
-                },
-                bundle_root=Path(bundle["root_dir"]),
+            mapper = load_staged_runner(
+                step_activation(
+                    "perception",
+                    ["frame"],
+                    {"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
+                    metadata={"controller_bundle": {"root_dir": bundle["root_dir"]}},
+                )
             )
             snapshot = SensorSnapshot(
                 read_id="staged-frame",

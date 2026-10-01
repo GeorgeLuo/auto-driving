@@ -17,24 +17,17 @@ from tests.run import prepare_live_pi
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def _runtime_status_response(
-    *,
-    drive_mode: str,
-    perception_algorithm: str | None = "lightweight_observer",
-) -> MagicMock:
-    components = {}
-    if perception_algorithm is not None:
-        components["perception"] = {"algorithm": perception_algorithm}
+def _runtime_status_response(*, drive_mode: str, action: list[str] | None = ["hold"]) -> MagicMock:
+    steps = {"perception": {"plugin_ids": ["frame", "floor_plane"]}}
+    if action is not None:
+        steps["action"] = {"plugin_ids": action}
     response = MagicMock()
     response.__enter__.return_value = response
     response.read.return_value = json.dumps(
         {
             "ok": True,
             "drive_mode": drive_mode,
-            "autonomy": {
-                "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
-                "components": components,
-            },
+            "autonomy": {"steps": steps, "components": {}},
         }
     ).encode("utf-8")
     return response
@@ -70,11 +63,8 @@ class PiLiveRunnerTests(unittest.TestCase):
         self.assertTrue(ready)
         self.assertIn("result: ready", output.getvalue())
         self.assertIn("drive mode: user", output.getvalue())
-        self.assertIn(
-            "decision engine: autonomy.runtime.engine:IdleAutonomyEngine",
-            output.getvalue(),
-        )
-        self.assertIn("perception: lightweight_observer", output.getvalue())
+        self.assertIn("action: hold", output.getvalue())
+        self.assertIn("perception: frame, floor_plane", output.getvalue())
 
     def test_non_manual_pi_is_unavailable_and_does_not_enable_live_test(self) -> None:
         response = _runtime_status_response(drive_mode="local")
@@ -99,11 +89,8 @@ class PiLiveRunnerTests(unittest.TestCase):
             output.getvalue(),
         )
 
-    def test_missing_perception_activation_is_unavailable(self) -> None:
-        response = _runtime_status_response(
-            drive_mode="user",
-            perception_algorithm=None,
-        )
+    def test_missing_action_step_is_unavailable(self) -> None:
+        response = _runtime_status_response(drive_mode="user", action=None)
         output = io.StringIO()
 
         with (
@@ -119,7 +106,7 @@ class PiLiveRunnerTests(unittest.TestCase):
 
         self.assertFalse(ready)
         self.assertIn("result: unavailable", output.getvalue())
-        self.assertIn("did not report an active perception algorithm", output.getvalue())
+        self.assertIn("did not report a loaded action step", output.getvalue())
 
     def test_unreachable_pi_is_an_explicit_nonzero_unavailable_result(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reserve:

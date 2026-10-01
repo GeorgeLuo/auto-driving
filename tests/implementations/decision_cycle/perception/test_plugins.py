@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
 from implementations.decision_cycle.perception.components.camera import (
@@ -21,8 +21,8 @@ from implementations.decision_cycle.perception.motion_tracks.plugin import (
 FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
-def _mapper(plugin_id: str) -> PluginPerceptionMapper:
-    return PluginPerceptionMapper(
+def _mapper(plugin_id: str) -> PerceptionRunner:
+    return PerceptionRunner.from_selection(
         plugins=[plugin_id],
         plugin_specs=PERCEPTION_PLUGIN_SPECS,
     )
@@ -54,7 +54,7 @@ class PerceptionPluginTests(unittest.TestCase):
     def test_current_plugins_share_camera_component_without_writing_diagnostics(self) -> None:
         rgb = np.random.default_rng(3).integers(0, 256, (72, 96, 3), dtype=np.uint8)
         request = build_perception_request(_snapshot(_array_reading(rgb)))
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["frame", "floor_plane"],
             plugin_specs=PERCEPTION_PLUGIN_SPECS,
         )
@@ -87,7 +87,7 @@ class PerceptionPluginTests(unittest.TestCase):
     def test_windowed_plugin_warms_up_and_reset_discards_previous_frame(self) -> None:
         rgb = np.random.default_rng(7).integers(0, 256, (72, 96, 3), dtype=np.uint8)
         shifted = np.roll(rgb, 2, axis=1)
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["motion_tracks"],
             plugin_specs=PERCEPTION_PLUGIN_SPECS,
             plugin_configs={
@@ -136,7 +136,7 @@ class PerceptionPluginTests(unittest.TestCase):
     def test_framework_namespaces_declared_diagnostics(self) -> None:
         rgb = np.random.default_rng(11).integers(0, 256, (72, 96, 3), dtype=np.uint8)
         shifted = np.roll(rgb, 2, axis=1)
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["motion_tracks"],
             plugin_specs=PERCEPTION_PLUGIN_SPECS,
             plugin_configs={"motion_tracks": {"max_features": 50, "search_radius": 8}},

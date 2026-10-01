@@ -179,7 +179,7 @@
     }
 
     .run.ok, .run.active { border-color: var(--green); }
-    .run.error, .run.unavailable, .run.engine_error { border-color: var(--red); }
+    .run.error, .run.unavailable { border-color: var(--red); }
     .run.inactive, .run.missing_input, .run.incompatible { border-color: var(--amber); }
     .secondary { color: var(--muted); font-size: 12px; margin-top: 3px; }
 
@@ -451,7 +451,7 @@
       const cycleMetrics = document.getElementById("cycleMetrics");
       cycleMetrics.replaceChildren();
       appendMetric(cycleMetrics, "Frame", latest.current_image?.frame_id);
-      appendMetric(cycleMetrics, "Status", cycle.status || latest.status);
+      appendMetric(cycleMetrics, "Status", cycle.action?.status || latest.status);
       appendMetric(cycleMetrics, "Proposal", candidate?.reason || plan.status || "—");
       appendMetric(cycleMetrics, "Freshness", candidate?.freshness || candidate?.lifecycle || "—");
       appendMetric(cycleMetrics, "Capture age", latest.freshness?.capture_age_ms != null ? `${latest.freshness.capture_age_ms} ms` : "—");
@@ -532,13 +532,13 @@
       latest = payload;
       const cycle = payload?.decision?.cycle || {};
       const candidate = selectedCandidate();
-      if (cycle.status === "engine_error") {
-        return { text: `Live | ${cycle.reason || "engine_error"}`, mode: "error" };
+      if (cycle.action?.status === "error") {
+        return { text: `Live | ${cycle.action.reason || "error"}`, mode: "error" };
       }
       if (candidate?.reason) {
         return { text: `Live | ${candidate.reason.replaceAll("_", " ")}`, mode: "live" };
       }
-      return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.status || "idle"}`, mode: "stale" };
+      return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.action?.status || "idle"}`, mode: "stale" };
     }
 
     function nonExpiredPayload(payload, now = Date.now()) {

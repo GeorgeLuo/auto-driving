@@ -1,11 +1,14 @@
 # Automa Vehicle Automation Workspace
 
 This repository is the local source of truth for a vehicle-agnostic automation
-engine, a PiRacer/DonkeyCar target, and a Chase simulator adapter. The default
-decision engine is intentionally idle: the framework can capture sensors, run
+framework, a PiRacer/DonkeyCar target, and a Chase simulator adapter. Each frame
+runs one decision cycle of six steps: perception, observation, memory, proposal,
+plan, and action. Every step runs the plugins selected for it in its own
+activation (`runtime/<step>/active.json`). The default action plugin, `hold`,
+always authorizes idle control: the framework can capture sensors, run
 perception, produce an inspectable cycle, and select a controller without
-requiring autonomous navigation. An explicit PiCar obstacle-avoidance engine
-is available for the first bounded live-control path.
+requiring autonomous navigation. The `mode` action plugin applies the selected
+proposal in live drive modes for the first bounded live-control path.
 
 ## Setup
 
@@ -106,10 +109,10 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
 | `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
-| `vehicles update decision` | Packages code and stages a decision activation locally. |
-| `vehicles update memory` | Packages code and stages a vehicle memory activation locally (default `bounded_evidence`). |
-| `vehicles info ...` | Reads staged perception, decision, or memory configuration; perception info also reports the live view URL. |
-| `vehicles decision inspect` | Opens a standalone inspector for saved decision inputs. Toggle obstruction side to inspect the proposal composition's result; no live worker is needed. [Sample command and input](examples/decision-inspection/README.md). |
+| `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
+| `vehicles update memory` | Packages code and stages vehicle memory plugins locally (default `bounded_evidence`). |
+| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration; perception info also reports the live view URL. |
+| `vehicles decision inspect` | Opens a standalone inspector for saved decision inputs. Toggle obstruction side to inspect the proposal, plan, and action records; no live worker is needed. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched perception view (link to Memory map). |
@@ -301,7 +304,7 @@ No captures or reports are retained by default. Add `--record` when overlays,
 per-frame JSON, and the generated review page are wanted.
 
 For a physical vehicle, `vehicles perception run --id piracer` currently fetches
-Pi camera frames and processes them through a mapper on the development machine.
+Pi camera frames and runs perception on them on the development machine.
 It does not prove that the Pi executed or published the perception result.
 
 `lightweight_observer` is the production-oriented frame and floor-boundary
@@ -351,11 +354,11 @@ down, core update falls back to the configured `piracer` SSH target and reports
 that fallback before connecting.
 
 `update autonomy` packages `autonomy/` and `implementations/`, verifies the
-archive hash on the Pi, installs a versioned release, transfers perception and
-decision manifests, and restarts the supervised service only when requested.
-Post-restart verification requires both the selected decision engine and
-perception algorithm to load while Donkey drive mode remains `user`; the
-deployment check does not command movement.
+archive hash on the Pi, installs a versioned release, transfers every staged
+step activation and the runtime identity, and restarts the supervised service
+only when requested. Post-restart verification requires every deployed step to
+run its staged plugins while Donkey drive mode remains `user`; the deployment
+check does not command movement.
 
 Use the deploy commands according to what changed:
 
@@ -406,16 +409,17 @@ block the loop or the driving command. The matched perception result remains
 zero and Donkey DriveMode keeps manual input authoritative.
 
 **Deploy split:** autonomy packages ship the controller tree and activation
-files (including `runtime/memory/active.json`). The code path that *loads*
-memory into the Donkey loop lives in `manage.py` from **core**. After harness
-changes that add steps, run core then autonomy with `--restart`. Autonomy
-`--restart` verification fails if a memory activation was shipped but no live
-memory step appears in `/autonomy/status`.
+files (`runtime/<step>/active.json` for each staged step). The code path that
+*loads* the steps into the Donkey loop lives in `manage.py` from **core**. After
+harness changes, run core then autonomy with `--restart`. Autonomy `--restart`
+verification fails if a step was shipped but `/autonomy/status` does not report
+it running the staged plugins.
 
-Decision and memory selection are local until the next autonomy deployment:
+Step selections are local until the next autonomy deployment:
 
 ```sh
-./cli/automa vehicles update decision --id piracer --engine idle
+./cli/automa vehicles update proposal --id piracer
+./cli/automa vehicles update action --id piracer --plugin hold
 ./cli/automa vehicles update memory --id piracer
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
@@ -432,13 +436,14 @@ normalized steering magnitude (`1.0`) away from one fresh or recently retained
 left/right obstruction: left evidence produces rightward steering and right
 evidence produces leftward steering. With no qualifying lateral evidence it
 returns zero steering and throttle. The
-default engine remains idle, and the vehicle remains stopped until the operator
-explicitly selects autonomy mode.
+default `hold` action keeps it idle, and with `mode` the vehicle remains stopped
+until the operator explicitly selects autonomy mode.
 
 Raise the wheels or clear the path before trying it:
 
 ```sh
-./cli/automa vehicles update decision --id piracer --engine obstacle-avoidance
+./cli/automa vehicles update proposal --id piracer
+./cli/automa vehicles update action --id piracer --plugin mode
 ./cli/automa vehicles update autonomy --id piracer --restart
 curl -sS -X POST http://piracer.local:8887/autonomy/mode \
   -H 'Content-Type: application/json' \
@@ -479,8 +484,7 @@ runtime/vehicles/<vehicle-id>/
     implementations/
     releases/
     runtime/
-      perception/active.json
-      decision/active.json
+      <step>/active.json   # perception, observation, memory, proposal, plan, action
       automation/
   deploy/
 ```

@@ -24,12 +24,20 @@ from implementations.decision_cycle.perception.components.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
-from implementations.decision_cycle.perception.classical_regions.plugin import _detect_regions
 from implementations.decision_cycle.perception.floor_continuity.model import (
     FloorContinuityConfig,
     analyze_floor_continuity,
 )
-from implementations.decision_cycle.perception.shared.obstructions.boxes import clamp, zone
+from implementations.decision_cycle.perception.shared.obstructions.boxes import (
+    center_distance,
+    clamp,
+    zone,
+)
+from implementations.decision_cycle.perception.shared.regions.detection import detect_regions
+from implementations.decision_cycle.perception.shared.serialization.canonical import (
+    canonical_json,
+    json_safe,
+)
 from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
 )
@@ -494,7 +502,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     [list(point) for point in polygon] if polygon is not None else None
                 ),
             },
-            "properties": _json_safe(thing.properties),
+            "properties": json_safe(thing.properties),
             "rejection_reasons": [],
             "selected_for_tracking": False,
         }
@@ -521,7 +529,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         )
 
     def _classical_regions(self, rgb: np.ndarray) -> tuple[list[PerceivedThing], dict[str, Any]]:
-        proposals, diagnostic = _detect_regions(
+        proposals, diagnostic = detect_regions(
             rgb,
             working_width=self.classical_working_width,
             spatial_radius=8,
@@ -892,7 +900,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         hypotheses_by_cluster: dict[str, list[GeometryHypothesis]],
     ) -> dict[str, Any]:
         request_digest = hashlib.sha256(
-            _canonical_json(request).encode("utf-8")
+            canonical_json(request).encode("utf-8")
         ).hexdigest()
         cache_path = self._jev_cache_directory / f"geometry-v1-{request_digest}.json"
         if cache_path.is_file():
@@ -910,7 +918,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                             response, hypotheses_by_cluster
                         ).items()
                     },
-                    "response": _json_safe(response),
+                    "response": json_safe(response),
                 }
             except (OSError, TypeError, ValueError):
                 pass
@@ -973,7 +981,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                         payload, hypotheses_by_cluster
                     ).items()
                 },
-                "response": _json_safe(payload),
+                "response": json_safe(payload),
             }
         except Exception as exc:  # Jev is comparative evidence, never runtime truth.
             return {
@@ -1003,7 +1011,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 support_bbox = support.location.bbox_xyxy_norm
                 if support_bbox is None:
                     continue
-                if _bbox_iou(bbox, support_bbox) >= 0.03 or _center_distance(bbox, support_bbox) <= 0.10:
+                if _bbox_iou(bbox, support_bbox) >= 0.03 or center_distance(bbox, support_bbox) <= 0.10:
                     nearby.append(support)
             properties = dict(candidate.properties)
             properties["line_junction_support_count"] = len(nearby)
@@ -1025,35 +1033,3 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 )
             )
         return updated
-
-
-def _center_distance(
-    left: tuple[float, float, float, float],
-    right: tuple[float, float, float, float],
-) -> float:
-    return float(
-        np.hypot(
-            ((left[0] + left[2]) / 2.0) - ((right[0] + right[2]) / 2.0),
-            ((left[1] + left[3]) / 2.0) - ((right[1] + right[3]) / 2.0),
-        )
-    )
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, np.generic):
-        return value.item()
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (tuple, list)):
-        return [_json_safe(item) for item in value]
-    return value
-
-
-def _canonical_json(value: Any) -> str:
-    return json.dumps(
-        _json_safe(value),
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
-    )

@@ -8,9 +8,11 @@ from typing import Any
 from implementations.decision_cycle.perception.composite_box_fusion.plugin import *  # noqa: F401,F403
 from implementations.decision_cycle.perception.composite_box_fusion.plugin import (
     CompositeBoxFusionPlugin as _CompositeBoxFusionPlugin,
-    _canonical_json,
-    _center_distance,
-    _json_safe,
+)
+from implementations.decision_cycle.perception.shared.obstructions.boxes import center_distance
+from implementations.decision_cycle.perception.shared.serialization.canonical import (
+    canonical_json,
+    json_safe,
 )
 
 

@@ -1,4 +1,4 @@
-"""Camera-frame measurements for the frame perception plugin."""
+"""Camera-frame brightness, color and frame-pair difference measurements."""
 
 from __future__ import annotations
 

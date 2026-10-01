@@ -1,1 +1,1 @@
-"""Frame observation perception plugin and its frame analysis."""
+"""Frame observation perception plugin."""

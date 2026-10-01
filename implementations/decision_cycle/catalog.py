@@ -7,8 +7,8 @@ packaged plugins declare the same one, since this directory's owner resolves
 such conflicts. ``DEFAULT_STEP_PLUGINS`` is each step's default selection. ``packaged_activation`` builds a
 ``StepActivation`` that makes every packaged plugin of the step available,
 selects the requested ones in order, and applies config overrides.
-``perception_algorithm_activation`` builds one from a named perception
-selection.
+``perception_preset_activation`` builds one from a named perception
+preset.
 """
 
 from __future__ import annotations
@@ -23,9 +23,11 @@ from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from implementations.decision_cycle.action.catalog import ACTION_PLUGINS, DEFAULT_ACTION_PLUGINS
 from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGINS, MEMORY_PLUGINS
 from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_PLUGINS,
-    PERCEPTION_ALGORITHMS,
     PERCEPTION_PLUGINS,
+)
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PLUGINS,
+    PERCEPTION_PRESETS,
 )
 from implementations.decision_cycle.proposal.catalog import (
     DEFAULT_PROPOSAL_PLUGINS,
@@ -121,11 +123,11 @@ def packaged_activation(
     )
 
 
-def perception_algorithm_activation(algorithm: str) -> StepActivation:
+def perception_preset_activation(algorithm: str) -> StepActivation:
     try:
-        preset = PERCEPTION_ALGORITHMS[algorithm]
+        preset = PERCEPTION_PRESETS[algorithm]
     except KeyError as exc:
-        known = ", ".join(sorted(PERCEPTION_ALGORITHMS))
+        known = ", ".join(sorted(PERCEPTION_PRESETS))
         raise ValueError(f"unknown perception algorithm {algorithm!r}; known: {known}") from exc
     return packaged_activation(
         "perception",

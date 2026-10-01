@@ -36,9 +36,9 @@ from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
-    available_perception_algorithm_ids,
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
+    available_perception_preset_ids,
 )
 
 from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
@@ -995,7 +995,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_run.add_argument(
         "--algorithm",
-        choices=available_perception_algorithm_ids(),
+        choices=available_perception_preset_ids(),
         default=None,
         help="Run one packaged perception algorithm instead of the active selection.",
     )
@@ -1051,7 +1051,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_apply_selection = perception_apply.add_mutually_exclusive_group()
     perception_apply_selection.add_argument(
         "--algorithm",
-        choices=available_perception_algorithm_ids(),
+        choices=available_perception_preset_ids(),
         default=None,
         help="Apply one packaged perception algorithm instead of the recorded/default mapper.",
     )
@@ -1384,8 +1384,8 @@ def build_parser() -> argparse.ArgumentParser:
     perception.add_argument(
         "--algorithm",
         default=None,
-        choices=available_perception_algorithm_ids(),
-        help=f"Packaged perception algorithm to activate (default: {DEFAULT_PERCEPTION_ALGORITHM}).",
+        choices=available_perception_preset_ids(),
+        help=f"Packaged perception algorithm to activate (default: {DEFAULT_PERCEPTION_PRESET}).",
     )
     perception.add_argument(
         "--dry-run",

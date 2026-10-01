@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -19,6 +20,7 @@ from cli.automa_cli.perception_evaluation import (
 from cli.automa_cli.perception_runs import (
     _source_image_paths,
     apply_perception_experiment,
+    perceive_snapshot,
     run_perception_experiment,
 )
 from cli.automa_cli.vehicle_access import VehicleAccess
@@ -112,6 +114,50 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(len(report["frames"]), 1)
         runs = report["frames"][0]["plugin_runs"]
         self.assertEqual([run["plugin_id"] for run in runs], ["frame", "classical_regions"])
+
+    def test_perceive_snapshot_returns_the_record_and_saves_results_only_on_request(self) -> None:
+        mapper = PerceptionRunner.from_activation(perception_preset_activation("lightweight_observer"))
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "frame.jpg"
+            Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
+            snapshot = SensorSnapshot(
+                read_id="frame_000000",
+                readings={
+                    FRONT_CAMERA_SENSOR_ID: SensorReading(
+                        sensor_id=FRONT_CAMERA_SENSOR_ID,
+                        sensor_kind="camera",
+                        captured_at_ms=7,
+                        path=str(image),
+                    )
+                },
+                started_at_ms=7,
+                completed_at_ms=7,
+            )
+            shared_memory: dict = {}
+            common = dict(
+                frame_id="frame_000000",
+                frame_index=0,
+                image_path=str(image),
+                shared_memory=shared_memory,
+                metadata={},
+            )
+
+            record, perception = perceive_snapshot(mapper, snapshot, **common)
+            self.assertEqual(record["perception"], perception.to_dict())
+            self.assertEqual(record["status"], perception.status)
+            self.assertEqual(record["captured_at_ms"], 7)
+            self.assertEqual(list(Path(tmp).iterdir()), [image])
+
+            result_dir = Path(tmp) / "results" / "frame_000000"
+            record, perception = perceive_snapshot(
+                mapper, snapshot, result_dir=result_dir, started=time.perf_counter() - 5.0, **common
+            )
+            saved = json.loads((result_dir / "perception.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved, json.loads(json.dumps(record)))
+            self.assertEqual(
+                (result_dir / "perception.txt").read_text(encoding="utf-8"), perception.text + "\n"
+            )
+            self.assertGreaterEqual(record["duration_ms"], 5000.0)
 
     def test_named_runtime_refreshes_plugin_definition_but_custom_runtime_is_preserved(
         self,

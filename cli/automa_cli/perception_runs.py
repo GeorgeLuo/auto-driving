@@ -134,40 +134,24 @@ def run_perception_experiment(
                         image_extension=access.image_extension,
                     )
                 )
-                perception_output_dir = results_dir / frame_id if record else None
-                perception = active_mapper.perceive(
-                    build_perception_request(
-                        snapshot,
-                        shared_memory=shared_memory,
-                        output_dir=perception_output_dir,
-                        metadata={
-                            "run_id": run_id,
-                            "frame_index": index,
-                            "vehicle_id": vehicle.get("vehicle_id"),
-                            "recording": record,
-                        },
-                    )
-                )
-                duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
                 reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-                record_item = _frame_record(
+                record_item, _ = perceive_snapshot(
+                    active_mapper,
+                    snapshot,
                     frame_id=frame_id,
                     frame_index=index,
                     image_path=reading.path if reading is not None else None,
-                    snapshot=snapshot,
-                    perception=perception,
-                    duration_ms=duration_ms,
-                    runtime_metrics=_runtime_metrics(),
+                    shared_memory=shared_memory,
+                    metadata={
+                        "run_id": run_id,
+                        "frame_index": index,
+                        "vehicle_id": vehicle.get("vehicle_id"),
+                        "recording": record,
+                    },
+                    result_dir=results_dir / frame_id if record else None,
+                    started=started,
                 )
                 frame_records.append(record_item)
-                if record:
-                    frame_result_dir = results_dir / frame_id
-                    frame_result_dir.mkdir(parents=True, exist_ok=True)
-                    (frame_result_dir / "perception.json").write_text(
-                        json.dumps(record_item, indent=2, sort_keys=True),
-                        encoding="utf-8",
-                    )
-                    (frame_result_dir / "perception.txt").write_text(perception.text + "\n", encoding="utf-8")
                 if index + 1 < frame_count and interval_s > 0:
                     time.sleep(max(0.0, float(interval_s)))
 
@@ -294,34 +278,17 @@ def apply_perception_experiment(
                     completed_at_ms=captured_at_ms,
                     metadata={"source": "apply", "source_path": str(source)},
                 )
-                started = time.perf_counter()
-                perception = active_mapper.perceive(
-                    build_perception_request(
-                        snapshot,
-                        shared_memory=shared_memory,
-                        output_dir=(results_dir / frame_id) if record else None,
-                        metadata={"run_id": run_id, "frame_index": index, "apply": True},
-                    )
-                )
-                duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
-                item = _frame_record(
+                item, _ = perceive_snapshot(
+                    active_mapper,
+                    snapshot,
                     frame_id=frame_id,
                     frame_index=index,
                     image_path=str(image_path),
-                    snapshot=snapshot,
-                    perception=perception,
-                    duration_ms=duration_ms,
-                    runtime_metrics=_runtime_metrics(),
+                    shared_memory=shared_memory,
+                    metadata={"run_id": run_id, "frame_index": index, "apply": True},
+                    result_dir=(results_dir / frame_id) if record else None,
                 )
                 frame_records.append(item)
-                if record:
-                    frame_result_dir = results_dir / frame_id
-                    frame_result_dir.mkdir(parents=True, exist_ok=True)
-                    (frame_result_dir / "perception.json").write_text(
-                        json.dumps(item, indent=2, sort_keys=True),
-                        encoding="utf-8",
-                    )
-                    (frame_result_dir / "perception.txt").write_text(perception.text + "\n", encoding="utf-8")
 
             report = _experiment_report(
                 run_id=run_id,
@@ -367,6 +334,56 @@ def _select_vehicle(
     else:
         reason = "simulator preferred for observation-only experiments"
     return selected, reason, None
+
+
+def perceive_snapshot(
+    mapper: Any,
+    snapshot: SensorSnapshot,
+    *,
+    frame_id: str,
+    frame_index: int,
+    image_path: str | None,
+    shared_memory: dict[str, Any],
+    metadata: dict[str, Any],
+    result_dir: Path | None = None,
+    started: float | None = None,
+) -> tuple[dict[str, Any], Any]:
+    """Perceive one snapshot and return its frame record and the perception.
+
+    With ``result_dir`` the plugins write their outputs there and the frame's
+    ``perception.json`` and ``perception.txt`` are saved beside them. ``started``
+    is a ``time.perf_counter()`` reading that begins ``duration_ms`` earlier
+    than this call, for callers that time the sensor read too.
+    """
+
+    if started is None:
+        started = time.perf_counter()
+    perception = mapper.perceive(
+        build_perception_request(
+            snapshot,
+            shared_memory=shared_memory,
+            output_dir=result_dir,
+            metadata=metadata,
+        )
+    )
+    duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+    record = _frame_record(
+        frame_id=frame_id,
+        frame_index=frame_index,
+        image_path=image_path,
+        snapshot=snapshot,
+        perception=perception,
+        duration_ms=duration_ms,
+        runtime_metrics=_runtime_metrics(),
+    )
+    if result_dir is not None:
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "perception.json").write_text(
+            json.dumps(record, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        (result_dir / "perception.txt").write_text(perception.text + "\n", encoding="utf-8")
+    return record, perception
 
 
 def _frame_record(

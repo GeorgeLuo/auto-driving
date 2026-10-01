@@ -770,7 +770,6 @@ def _activation_manifest(
         "preset_description": preset_config["description"],
         "source_dir": bundle["perception_dir"],
         "workspace_source_dir": str(PERCEPTION_IMPLEMENTATIONS_DIR),
-        "output_contract": dict(preset_config["output_contract"]),
     }
     return manifest
 

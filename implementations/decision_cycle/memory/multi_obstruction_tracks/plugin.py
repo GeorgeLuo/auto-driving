@@ -38,7 +38,7 @@ from implementations.decision_cycle.perception.components.camera import (
     FRONT_CAMERA_RGB_INPUT,
     provide_camera_frame,
 )
-from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import normalize_gray, _mean_confidence
+from implementations.decision_cycle.perception.algorithms.obstructions import normalize_gray
 from .tracker import ObstructionTrackState
 
 
@@ -174,3 +174,9 @@ class MultiObstructionMemory:
         shared_memory["multi_obstruction_tracks.previous_gray"] = gray
         shared_memory["multi_obstruction_tracks.next_track_id"] = tracker._next_track_id
         shared_memory["decision.observation"] = tracked_observation
+
+
+def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float:
+    if not things:
+        return 0.0
+    return float(sum(thing.confidence for thing in things) / len(things))

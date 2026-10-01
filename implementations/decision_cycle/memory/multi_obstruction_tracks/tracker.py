@@ -11,9 +11,7 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     ViewLocation,
 )
-from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import (
-    _bbox, _shape_support, _clamp, _zone,
-)
+from implementations.decision_cycle.perception.algorithms.obstructions import clamp, zone
 
 @dataclass
 class _Track:
@@ -71,18 +69,18 @@ class ObstructionTrackState:
         floor_cutoff_y=0.72,
     ):
         self.max_tracks = max(1, int(max_tracks))
-        self.floor_cutoff_y = _clamp(float(floor_cutoff_y), 0.35, 0.95)
+        self.floor_cutoff_y = clamp(float(floor_cutoff_y), 0.35, 0.95)
         self.association_distance = max(0.01, float(association_distance))
-        self.minimum_association_score = _clamp(
+        self.minimum_association_score = clamp(
             float(minimum_association_score), 0.0, 1.0
         )
-        self.smoothing_alpha = _clamp(float(smoothing_alpha), 0.05, 1.0)
+        self.smoothing_alpha = clamp(float(smoothing_alpha), 0.05, 1.0)
         self.max_missed_frames = max(0, int(max_missed_frames))
         self.reacquire_window_frames = max(0, int(reacquire_window_frames))
         self.minimum_feature_points = max(4, int(minimum_feature_points))
-        self.output_bbox_shrink_x = _clamp(float(output_bbox_shrink_x), 0.25, 1.0)
-        self.output_bbox_shrink_y = _clamp(float(output_bbox_shrink_y), 0.25, 1.0)
-        self.minimum_output_confidence = _clamp(float(minimum_output_confidence), 0.0, 1.0)
+        self.output_bbox_shrink_x = clamp(float(output_bbox_shrink_x), 0.25, 1.0)
+        self.output_bbox_shrink_y = clamp(float(output_bbox_shrink_y), 0.25, 1.0)
+        self.minimum_output_confidence = clamp(float(minimum_output_confidence), 0.0, 1.0)
         self.reset()
 
     def reset(self) -> None:
@@ -255,7 +253,7 @@ class ObstructionTrackState:
                 updated[track.track_id] = _Track(
                     track_id=track.track_id,
                     bbox=predicted[track.track_id],
-                    confidence=_clamp(track.confidence * 0.94, 0.0, 1.0),
+                    confidence=clamp(track.confidence * 0.94, 0.0, 1.0),
                     shape_support=track.shape_support,
                     flow_support=min(1.0, feature_counts[track.track_id] / 40.0),
                     age_frames=track.age_frames + 1,
@@ -345,10 +343,10 @@ class ObstructionTrackState:
             label="temporally associated generic obstruction",
             location=ViewLocation(
                 frame="image",
-                zone=_zone(bbox),
+                zone=zone(bbox),
                 bbox_xyxy_norm=bbox,
             ),
-            confidence=_clamp(track.confidence, 0.0, 1.0),
+            confidence=clamp(track.confidence, 0.0, 1.0),
             properties={
                 "evidence": "floor_suppressed_edge_region",
                 "track_id": track.track_id,
@@ -518,7 +516,7 @@ def _association_score(
     old_area = max(0.0, previous[2] - previous[0]) * max(0.0, previous[3] - previous[1])
     new_area = max(0.0, current[2] - current[0]) * max(0.0, current[3] - current[1])
     area_score = 1.0 - min(1.0, abs(old_area - new_area) / max(old_area, new_area, 1e-6))
-    return float(0.45 * iou + 0.30 * distance_score + 0.15 * area_score + 0.10 * _clamp(confidence, 0.0, 1.0))
+    return float(0.45 * iou + 0.30 * distance_score + 0.15 * area_score + 0.10 * clamp(confidence, 0.0, 1.0))
 
 
 def _iou(left: tuple[float, float, float, float], right: tuple[float, float, float, float]) -> float:
@@ -533,3 +531,16 @@ def _iou(left: tuple[float, float, float, float], right: tuple[float, float, flo
 
 def _blend(old: float, new: float, alpha: float) -> float:
     return (1.0 - alpha) * float(old) + alpha * float(new)
+
+
+def _bbox(thing: PerceivedThing) -> tuple[float, float, float, float]:
+    bbox = thing.location.bbox_xyxy_norm
+    if bbox is None:
+        return (0.0, 0.0, 0.0, 0.0)
+    return tuple(float(value) for value in bbox)  # type: ignore[return-value]
+
+
+def _shape_support(thing: PerceivedThing) -> float:
+    edge_density = float(thing.properties.get("edge_density", 0.0))
+    rectangularity = float(thing.properties.get("rectangularity", 0.0))
+    return round(clamp(0.55 * edge_density + 0.45 * rectangularity, 0.0, 1.0), 5)

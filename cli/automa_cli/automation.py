@@ -46,7 +46,6 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .perception import _close_runner
 from .step_activations import bundle_activation_path, decision_identity, read_bundle_activation
 from .step_hosting import load_staged_runner, sync_live_selection
 from .runtime_view import RuntimeViewServer
@@ -1044,7 +1043,6 @@ def run_vehicle_automation(
     except KeyboardInterrupt:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_runner(perception_step)
         state["status"] = "stopped"
         state["stop_reason"] = "keyboard_interrupt"
         state["completed_at_ms"] = _timestamp_ms()
@@ -1065,7 +1063,6 @@ def run_vehicle_automation(
     except (MetricsUiWebSocketError, ChaseCaptureValidationError, ChasePassiveCaptureError) as exc:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_runner(perception_step)
         state["status"] = "error"
         state["error"] = str(exc)
         state["error_code"] = getattr(exc, "code", "simulator_transport_error")
@@ -1102,7 +1099,6 @@ def run_vehicle_automation(
     except Exception as exc:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_runner(perception_step)
         state["status"] = "error"
         state["error"] = f"{type(exc).__name__}: {exc}"
         state["readiness"] = {
@@ -1129,7 +1125,6 @@ def run_vehicle_automation(
             ),
         )
 
-    _close_runner(perception_step)
     state["status"] = "completed"
     state["completed_at_ms"] = _timestamp_ms()
     state["updated_at_ms"] = state["completed_at_ms"]

@@ -27,9 +27,182 @@ PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
     "vlm_prep": "implementations.decision_cycle.perception.vlm_preparation.plugin:VlmPrepPlugin",
 }
 
+# Tuned default configs for the plugins moved in from lab/plugins.
+_FLOOR_CONTINUITY_CONFIG: dict[str, Any] = {
+    "working_width": 320,
+    "horizon_ratio": 0.4,
+    "edge_margin_ratio": 0.03,
+    "seed_x0_ratio": 0.3,
+    "seed_x1_ratio": 0.7,
+    "seed_y0_ratio": 0.78,
+    "seed_y1_ratio": 0.96,
+    "color_distance_limit": 4.5,
+    "texture_distance_limit": 4.0,
+    "edge_quantile": 0.92,
+    "minimum_edge_strength": 0.24,
+    "minimum_floor_fraction": 0.08,
+    "minimum_floor_support_px": 8,
+    "minimum_interruption_run_px": 6,
+    "minimum_boundary_width_ratio": 0.025,
+    "minimum_boundary_confidence": 0.65,
+    "max_boundaries": 8
+}
+
+_COMPOSITE_BOX_FUSION_CONFIG: dict[str, Any] = {
+    "enabled_substrategies": [
+        "edge_contours",
+        "partial_faces",
+        "photometric_regions",
+        "floor_context",
+        "line_junction_support"
+    ],
+    "max_tracks": 4,
+    "floor_cutoff_y": 0.72,
+    "minimum_object_height": 0.1,
+    "minimum_object_area_fraction": 0.002,
+    "maximum_object_area_fraction": 0.6,
+    "association_distance": 0.35,
+    "minimum_association_score": 0.12,
+    "smoothing_alpha": 0.65,
+    "max_missed_frames": 1,
+    "reacquire_window_frames": 4,
+    "minimum_feature_points": 6,
+    "canny_low": 30,
+    "canny_high": 45,
+    "minimum_contour_area_fraction": 0.0005,
+    "maximum_contour_area_fraction": 0.6,
+    "contour_merge_gap": 0.08,
+    "contrast_normalization": "none",
+    "contrast_clip_limit": 2.0,
+    "contrast_tile_size": 8,
+    "contrast_gamma": 1.0,
+    "shared_blur_kernel": 0,
+    "shared_close_kernel": 0,
+    "shared_min_width_px": 0,
+    "shared_min_height_px": 0,
+    "shared_max_vertices": 0,
+    "preserve_separate_proposals": False,
+    "duplicate_suppression_iou": 0.08,
+    "output_bbox_shrink_x": 1.0,
+    "output_bbox_shrink_y": 1.0,
+    "minimum_output_confidence": 0.0,
+    "issue_working_width": 640,
+    "classical_working_width": 320,
+    "canny_morph_max_boxes": 18,
+    "quad_rectangularity_max_boxes": 18,
+    "partial_contour_max_boxes": 18,
+    "photometric_windows_max_boxes": 18,
+    "hough_fragments_max_boxes": 12,
+    "corner_junctions_max_boxes": 12,
+    "adaptive_contours_max_boxes": 12,
+    "floor_working_width": 320,
+    "floor_horizon_ratio": 0.4,
+    "floor_edge_margin_ratio": 0.03,
+    "floor_seed_x0_ratio": 0.3,
+    "floor_seed_x1_ratio": 0.7,
+    "floor_seed_y0_ratio": 0.78,
+    "floor_seed_y1_ratio": 0.96,
+    "floor_color_distance_limit": 4.5,
+    "floor_texture_distance_limit": 4.0,
+    "floor_edge_quantile": 0.92,
+    "floor_minimum_edge_strength": 0.24,
+    "floor_minimum_floor_fraction": 0.08,
+    "floor_minimum_floor_support_px": 8,
+    "floor_minimum_interruption_run_px": 6,
+    "floor_minimum_boundary_width_ratio": 0.025,
+    "floor_minimum_boundary_confidence": 0.65,
+    "floor_max_boundaries": 8,
+    "raw_proposal_budget": 120,
+    "geometry_max_clusters": 12,
+    "geometry_cluster_iou_threshold": 0.12,
+    "geometry_cluster_center_distance": 0.07,
+    "geometry_split_spatial_modes": True,
+    "geometry_split_center_gap": 0.14,
+    "geometry_max_hypotheses_per_cluster": 10,
+    "robust_extent_low_quantile": 0.1,
+    "robust_extent_high_quantile": 0.9,
+    "robust_extent_padding": 0.014,
+    "geometry_selector": "context_aware_heuristic",
+    "manual_annotations_runtime_input": False,
+    "jev_enabled": True,
+    "jev_model": "jev-latest",
+    "jev_api_url": "https://api.typesafe.ai/v1/systemone",
+    "jev_timeout_s": 30.0,
+    "cache_responses": True
+}
+
+_MULTI_OBSTRUCTION_TRACKS_CONFIG: dict[str, Any] = {
+    "max_tracks": 2,
+    "floor_cutoff_y": 0.5,
+    "minimum_object_height": 0.14,
+    "minimum_object_area_fraction": 0.006,
+    "maximum_object_area_fraction": 0.3,
+    "association_distance": 0.35,
+    "minimum_association_score": 0.12,
+    "smoothing_alpha": 0.35,
+    "max_missed_frames": 2,
+    "reacquire_window_frames": 4,
+    "minimum_feature_points": 6,
+    "canny_low": 30,
+    "canny_high": 45,
+    "minimum_contour_area_fraction": 0.003,
+    "maximum_contour_area_fraction": 0.25,
+    "contour_merge_gap": 0.08,
+    "contrast_normalization": "none",
+    "contrast_clip_limit": 2.0,
+    "contrast_tile_size": 8,
+    "contrast_gamma": 1.0,
+    "preserve_separate_proposals": False,
+    "duplicate_suppression_iou": 0.08,
+    "output_bbox_shrink_x": 1.0,
+    "output_bbox_shrink_y": 1.0,
+    "minimum_output_confidence": 0.0
+}
+
+_TUNED_PLUGINS: dict[str, dict[str, Any]] = {
+    "classical_regions": {
+        "spec": "implementations.decision_cycle.perception.classical_regions.plugin:ClassicalRegionPlugin",
+        "description": "OpenCV-only coherent color components as generic image-space regions.",
+        "default_config": {"working_width": 320, "spatial_radius": 8, "color_radius": 18, "min_area_fraction": 0.003, "max_area_fraction": 0.65, "max_regions": 32},
+    },
+    "composite_box_fusion": {
+        "spec": "implementations.decision_cycle.perception.composite_box_fusion.plugin:CompositeBoxFusionPlugin",
+        "description": "Composite obstruction candidates from edge contours, partial-face and photometric cues, floor continuity, and line/junction support.",
+        "default_config": _COMPOSITE_BOX_FUSION_CONFIG,
+    },
+    "composite_box_fusion_object_separated": {
+        "spec": "implementations.decision_cycle.perception.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin",
+        "description": "Composite box fusion with recursive spatial-mode separation between objects.",
+        "default_config": {**_COMPOSITE_BOX_FUSION_CONFIG, "object_separated_geometry": True},
+    },
+    "floor_continuity": {
+        "spec": "implementations.decision_cycle.perception.floor_continuity.plugin:FloorContinuityPlugin",
+        "description": "Stateless multi-cue bottom-connected floor support and interruption evidence.",
+        "default_config": _FLOOR_CONTINUITY_CONFIG,
+    },
+    "floor_continuity_capture": {
+        "spec": "implementations.decision_cycle.perception.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin",
+        "description": "Stricter floor-boundary variant calibrated against the archived Chaser depth-obstacle capture.",
+        "default_config": {"minimum_boundary_width_ratio": 0.03, "minimum_boundary_confidence": 0.7},
+    },
+    "floor_continuity_temporal": {
+        "spec": "implementations.decision_cycle.perception.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin",
+        "description": "Temporal association and box smoothing around the floor-continuity cue.",
+        "default_config": {**_FLOOR_CONTINUITY_CONFIG, "smoothing_alpha": 0.45, "association_distance": 0.3, "minimum_association_score": 0.18, "max_hold_frames": 2},
+    },
+    "multi_obstruction_tracks": {
+        "spec": "implementations.decision_cycle.perception.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin",
+        "description": "Floor-suppressed obstruction candidates for the multi_obstruction_tracks memory plugin to track.",
+        "default_config": _MULTI_OBSTRUCTION_TRACKS_CONFIG,
+    },
+}
+
 PERCEPTION_PLUGINS: dict[str, dict[str, Any]] = {
-    plugin_id: {"spec": spec, "description": "", "default_config": {}}
-    for plugin_id, spec in PERCEPTION_PLUGIN_SPECS.items()
+    **{
+        plugin_id: {"spec": spec, "description": "", "default_config": {}}
+        for plugin_id, spec in PERCEPTION_PLUGIN_SPECS.items()
+    },
+    **_TUNED_PLUGINS,
 }
 
 PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {

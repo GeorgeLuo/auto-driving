@@ -2,17 +2,12 @@ from __future__ import annotations
 
 import json
 import tempfile
-import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
 
-from autonomy.decision_cycle.perception.interface import (
-    PERCEPTION_TEXT_SCHEMA,
-    PerceptionText,
-)
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
@@ -22,10 +17,8 @@ from cli.automa_cli.perception_evaluation import (
     write_review_html,
 )
 from cli.automa_cli.perception_runs import (
-    CommandResult,
     _source_image_paths,
     apply_perception_experiment,
-    compare_perception_candidates,
     run_perception_experiment,
 )
 from cli.automa_cli.vehicle_access import VehicleAccess
@@ -103,61 +96,22 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertIn("frame_000000&lt;unsafe&gt;", page)
         self.assertNotIn("<script>alert(1)</script>", page)
 
-    def test_apply_accepts_one_image_and_reports_candidate_overrides(self) -> None:
-        class FakeCandidateMapper:
-            init_args: tuple[str, dict[str, object] | None] | None = None
-
-            def __init__(self, candidate_id, *, config_overrides=None):
-                type(self).init_args = (candidate_id, config_overrides)
-                self.candidate = types.SimpleNamespace(runs_dir=Path("unused"))
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return None
-
-            def reset(self):
-                return None
-
-            def report_descriptor(self):
-                return {
-                    "algorithm": "candidate:fixture",
-                    "config": {"threshold": 0.7},
-                }
-
-            def perceive(self, _request):
-                return PerceptionText(
-                    schema=PERCEPTION_TEXT_SCHEMA,
-                    plugin_id="fixture",
-                    status="empty",
-                    lines=(f"schema={PERCEPTION_TEXT_SCHEMA}",),
-                    signals=(),
-                    things=(),
-                )
-
+    def test_apply_runs_selected_catalog_plugins_on_one_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "single.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
-            with patch(
-                "cli.automa_cli.perception_runs.LabPerceptionMapper",
-                FakeCandidateMapper,
-            ):
-                result = apply_perception_experiment(
-                    image,
-                    candidate_id="fixture",
-                    candidate_config={"threshold": 0.7},
-                    json_output=True,
-                )
+            result = apply_perception_experiment(
+                image,
+                plugins=["frame", "classical_regions"],
+                json_output=True,
+            )
 
-        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, 0, result.message)
         report = json.loads(result.message)
         self.assertEqual(report["source"]["path"], str(image.resolve()))
         self.assertEqual(len(report["frames"]), 1)
-        self.assertEqual(
-            FakeCandidateMapper.init_args,
-            ("fixture", {"threshold": 0.7}),
-        )
+        runs = report["frames"][0]["plugin_runs"]
+        self.assertEqual([run["plugin_id"] for run in runs], ["frame", "classical_regions"])
 
     def test_named_runtime_refreshes_plugin_definition_but_custom_runtime_is_preserved(
         self,
@@ -265,53 +219,6 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(
             [path.name for path in paths], ["00_before.png", "00_after.png"]
         )
-
-    def test_candidate_comparison_runs_every_ready_candidate(self) -> None:
-        report = {
-            "summary": {
-                "failed_frames": 0,
-                "thing_kinds": {"region_proposal": 2},
-                "latency_ms": {
-                    "cold_start": 10.0,
-                    "steady_median": 5.0,
-                    "steady_p95": 6.0,
-                },
-                "memory_mb": {"peak_rss": 20.0},
-                "representation_health": {
-                    "score": 0.8,
-                    "continuity": {"mean_match_fraction": 0.7, "mean_matched_iou": 0.6},
-                },
-            },
-            "run_dir": None,
-            "review": None,
-        }
-        candidates = [
-            types.SimpleNamespace(candidate_id="one"),
-            types.SimpleNamespace(candidate_id="two"),
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            with (
-                patch(
-                    "cli.automa_cli.perception_runs.discover_candidates",
-                    return_value=candidates,
-                ),
-                patch(
-                    "cli.automa_cli.perception_runs.candidate_status",
-                    return_value={"ready": True},
-                ),
-                patch(
-                    "cli.automa_cli.perception_runs.apply_perception_experiment",
-                    return_value=CommandResult(0, json.dumps(report)),
-                ) as apply_mock,
-            ):
-                result = compare_perception_candidates(Path(tmp), json_output=True)
-
-        payload = json.loads(result.message)
-        self.assertEqual(result.exit_code, 0)
-        self.assertEqual(
-            [item["candidate"] for item in payload["results"]], ["one", "two"]
-        )
-        self.assertEqual(apply_mock.call_count, 2)
 
     def test_representation_health_accepts_in_memory_tuple_things(self) -> None:
         thing = {

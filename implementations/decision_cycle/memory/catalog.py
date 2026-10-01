@@ -28,4 +28,15 @@ MEMORY_PLUGINS: dict[str, dict[str, Any]] = {
         },
     },
 }
+MEMORY_PLUGINS["multi_obstruction_tracks"] = {
+    "spec": (
+        "implementations.decision_cycle.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory"
+    ),
+    "description": (
+        "Associates obstruction candidates from the multi_obstruction_tracks perception "
+        "plugin into tracks across frames, with optical-flow history, lost-track handling, "
+        "and a bounded evidence ledger."
+    ),
+    "default_config": dict(MEMORY_PLUGINS[DEFAULT_MEMORY_PLUGIN]["default_config"]),
+}
 DEFAULT_MEMORY_PLUGINS: tuple[str, ...] = (DEFAULT_MEMORY_PLUGIN,)

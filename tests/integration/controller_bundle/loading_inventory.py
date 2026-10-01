@@ -5,10 +5,9 @@ attribute so the old spec, export, or import still resolves to that owner.
 Do not rebuild this list from the current tree: dropping a string from a
 catalog or ``__all__`` does not retire the path.
 
-Specs include production ``module:attribute`` paths and the tracked perception
-manifests: entrypoints, the camera provider, and memory implementation specs.
-Exports include ``__all__`` names plus lab and workbench imports that are not
-on those lists.
+Specs include production ``module:attribute`` paths: catalog plugin specs and
+the camera provider. Exports include ``__all__`` names plus workbench imports
+that are not on those lists.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan", "autonomy.decision_cycle.plan.highest_confidence", "HighestConfidencePlan"),
     ("autonomy.decision_cycle.action.hold:HoldAction", "autonomy.decision_cycle.action.hold", "HoldAction"),
     ("implementations.decision_cycle.action.mode.plugin:ModeAction", "implementations.decision_cycle.action.mode.plugin", "ModeAction"),
-    ("cli.automa_cli.lab_plugins:LabCandidatePlugin", "cli.automa_cli.lab_plugins", "LabCandidatePlugin"),
     ("implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger", "implementations.decision_cycle.memory.bounded_evidence.plugin", "BoundedEvidenceLedger"),
     ("implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin:AvoidRecentObstruction", "implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin", "AvoidRecentObstruction"),
     ("implementations.decision_cycle.perception.components.camera:provide_camera_frame", "implementations.decision_cycle.perception.components.camera", "provide_camera_frame"),
@@ -30,17 +28,14 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.vlm_preparation.plugin:VlmPrepPlugin", "implementations.decision_cycle.perception.vlm_preparation.plugin", "VlmPrepPlugin"),
     ("implementations.decision_cycle.perception.sim_color_targets.plugin:SimColorTargetsPlugin", "implementations.decision_cycle.perception.sim_color_targets.plugin", "SimColorTargetsPlugin"),
     ("implementations.decision_cycle.perception.floor_plane.plugin:FloorPlanePlugin", "implementations.decision_cycle.perception.floor_plane.plugin", "FloorPlanePlugin"),
-    # Perception manifest entrypoints and the memory implementation spec.
-    # The camera provider is the production spec above.
-    ("lab.plugins.perception.classical_regions.src.plugin:ClassicalRegionPlugin", "lab.plugins.perception.classical_regions.src.plugin", "ClassicalRegionPlugin"),
-    ("lab.plugins.perception.composite_box_fusion.src.plugin:CompositeBoxFusionPlugin", "lab.plugins.perception.composite_box_fusion.src.plugin", "CompositeBoxFusionPlugin"),
-    ("lab.plugins.perception.composite_box_fusion_object_separated.src.plugin:CompositeBoxFusionPlugin", "lab.plugins.perception.composite_box_fusion_object_separated.src.plugin", "CompositeBoxFusionPlugin"),
-    ("lab.plugins.perception.fastsam.src.plugin:FastSamRegionPlugin", "lab.plugins.perception.fastsam.src.plugin", "FastSamRegionPlugin"),
-    ("lab.plugins.perception.floor_continuity.src.plugin:FloorContinuityPlugin", "lab.plugins.perception.floor_continuity.src.plugin", "FloorContinuityPlugin"),
-    ("lab.plugins.perception.floor_continuity_capture.src.plugin:CaptureFloorContinuityPlugin", "lab.plugins.perception.floor_continuity_capture.src.plugin", "CaptureFloorContinuityPlugin"),
-    ("lab.plugins.perception.floor_continuity_temporal.src.plugin:TemporalFloorContinuityPlugin", "lab.plugins.perception.floor_continuity_temporal.src.plugin", "TemporalFloorContinuityPlugin"),
-    ("lab.plugins.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory", "lab.plugins.memory.multi_obstruction_tracks.plugin", "MultiObstructionMemory"),
-    ("lab.plugins.perception.multi_obstruction_tracks.src.plugin:MultiObstructionTracksPlugin", "lab.plugins.perception.multi_obstruction_tracks.src.plugin", "MultiObstructionTracksPlugin"),
+    ("implementations.decision_cycle.perception.classical_regions.plugin:ClassicalRegionPlugin", "implementations.decision_cycle.perception.classical_regions.plugin", "ClassicalRegionPlugin"),
+    ("implementations.decision_cycle.perception.composite_box_fusion.plugin:CompositeBoxFusionPlugin", "implementations.decision_cycle.perception.composite_box_fusion.plugin", "CompositeBoxFusionPlugin"),
+    ("implementations.decision_cycle.perception.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin", "implementations.decision_cycle.perception.composite_box_fusion_object_separated.plugin", "CompositeBoxFusionPlugin"),
+    ("implementations.decision_cycle.perception.floor_continuity.plugin:FloorContinuityPlugin", "implementations.decision_cycle.perception.floor_continuity.plugin", "FloorContinuityPlugin"),
+    ("implementations.decision_cycle.perception.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin", "implementations.decision_cycle.perception.floor_continuity_capture.plugin", "CaptureFloorContinuityPlugin"),
+    ("implementations.decision_cycle.perception.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin", "implementations.decision_cycle.perception.floor_continuity_temporal.plugin", "TemporalFloorContinuityPlugin"),
+    ("implementations.decision_cycle.perception.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin", "implementations.decision_cycle.perception.multi_obstruction_tracks.plugin", "MultiObstructionTracksPlugin"),
+    ("implementations.decision_cycle.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory", "implementations.decision_cycle.memory.multi_obstruction_tracks.plugin", "MultiObstructionMemory"),
 )
 
 # (legacy module, canonical module). Both stay importable. They are not
@@ -48,7 +43,6 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
 LEGACY_MODULES: tuple[tuple[str, str], ...] = (
     # Engine spec modules named by decision activations.
     ("autonomy.decision_cycle.cycle", "autonomy.decision_cycle.cycle"),
-    ("lab.plugins.perception.worker", "lab.plugins.perception.worker"),
 )
 
 # (legacy module, legacy attribute, canonical module, canonical attribute)

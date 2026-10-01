@@ -16,7 +16,7 @@
 ## Implementation checkpoint: simulator and archived Pi frames
 
 The bounded candidate now exists under
-[`lab/plugins/perception/floor_continuity/`](../../lab/plugins/perception/floor_continuity/).
+[`implementations/decision_cycle/perception/floor_continuity/`](../../implementations/decision_cycle/perception/floor_continuity/).
 It uses the existing plugin contract, stays stateless, processes at 320x240, and
 writes diagnostics only for explicitly recorded runs. Focused synthetic tests
 cover clear floor, a similar-color interruption, current-frame clearing, and

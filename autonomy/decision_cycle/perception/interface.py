@@ -2,8 +2,7 @@
 
 ``PerceptionText`` is current evidence, with one ``PerceptionPluginRun`` per
 plugin. ``PerceptionBackend`` is anything that runs perception on a
-``PerceptionRequest``: the step's ``PerceptionRunner``, or an offline tool
-such as a lab candidate running in a worker process.
+``PerceptionRequest``, such as the step's ``PerceptionRunner``.
 """
 
 from __future__ import annotations

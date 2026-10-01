@@ -24,7 +24,6 @@ from .decision import (
 )
 from .decision_inspector import run_decision_inspector
 from .decision_live import run_live_decision_monitor
-from .lab_plugins import list_perception_candidates, setup_perception_candidate
 from .memory import (
     get_vehicle_memory_info,
     replay_vehicle_memory,
@@ -50,14 +49,12 @@ from .perception import (
 )
 from .perception_runs import (
     apply_perception_experiment,
-    compare_perception_candidates,
     run_perception_experiment,
 )
 from .workbench import run_workbench_replay
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_check import run_physical_perception_check
-from .physical_qualify import run_physical_strategy_qualification
 from .physical_viability import run_physical_viability_measurement
 from .streaming import stream_vehicle_perception
 from .vehicles import (
@@ -1006,18 +1003,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     perception_run.add_argument(
-        "--candidate",
-        default=None,
-        help="Run an isolated lab candidate from `vehicles perception candidates`.",
-    )
-    perception_run.add_argument(
-        "--set",
-        action="append",
-        default=[],
-        metavar="NAME=VALUE",
-        help="Override one candidate parameter for this run. Repeatable; VALUE accepts JSON.",
-    )
-    perception_run.add_argument(
         "--algorithm",
         choices=available_perception_algorithm_ids(),
         default=None,
@@ -1072,23 +1057,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Image file, recorded perception run, or directory containing image frames.",
     )
-    perception_apply.add_argument(
-        "--candidate",
-        default=None,
-        help="Apply an isolated lab candidate instead of the recorded/default mapper.",
-    )
-    perception_apply.add_argument(
-        "--set",
-        action="append",
-        default=[],
-        metavar="NAME=VALUE",
-        help="Override one candidate parameter for this application. Repeatable; VALUE accepts JSON.",
-    )
-    perception_apply.add_argument(
+    perception_apply_selection = perception_apply.add_mutually_exclusive_group()
+    perception_apply_selection.add_argument(
         "--algorithm",
         choices=available_perception_algorithm_ids(),
         default=None,
         help="Apply one packaged perception algorithm instead of the recorded/default mapper.",
+    )
+    perception_apply_selection.add_argument(
+        "--plugin",
+        dest="plugins",
+        action="append",
+        default=None,
+        metavar="PLUGIN",
+        help="Apply these packaged perception plugins, in order, with their default configs. Repeatable.",
     )
     perception_apply.add_argument(
         "--record",
@@ -1158,57 +1140,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_check.set_defaults(handler=_handle_vehicles_perception_check)
 
-    perception_qualify = perception_commands.add_parser(
-        "qualify",
-        help="Compare packaged control vs one lab candidate on labeled physical-check frames.",
-        description=(
-            "Offline common-frame qualification: apply lightweight_observer (floor-plane control) "
-            "and a lab candidate (default floor_continuity) to the same labeled physical-check "
-            "frames, score placement behavior, and emit an explicit promote/reject decision. "
-            "Does not measure onboard Pi viability."
-        ),
-    )
-    perception_qualify.add_argument(
-        "--from-check-run",
-        required=True,
-        type=Path,
-        help="Recorded physical-check directory containing labeled */frame.jpg steps.",
-    )
-    perception_qualify.add_argument(
-        "--control-algorithm",
-        default="lightweight_observer",
-        choices=available_perception_algorithm_ids(),
-        help="Packaged control algorithm (default: lightweight_observer).",
-    )
-    perception_qualify.add_argument(
-        "--candidate",
-        default="floor_continuity",
-        help="Lab candidate id to evaluate (default: floor_continuity).",
-    )
-    perception_qualify.add_argument(
-        "--steps",
-        default=None,
-        help="Comma-separated placements to include (default: clear,left,center,right,removed).",
-    )
-    perception_qualify.add_argument(
-        "--extra-frame",
-        action="append",
-        default=[],
-        metavar="PLACEMENT=PATH",
-        help="Optional extra labeled frame, e.g. right=lab/runs/.../frame.jpg. Repeatable.",
-    )
-    perception_qualify.add_argument(
-        "--no-record",
-        action="store_true",
-        help="Do not write a qualification report directory.",
-    )
-    perception_qualify.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable qualification report.",
-    )
-    perception_qualify.set_defaults(handler=_handle_vehicles_perception_qualify)
-
     perception_viability = perception_commands.add_parser(
         "viability",
         help="Measure onboard physical observation cadence and freshness for a PiCar.",
@@ -1253,64 +1184,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable viability report.",
     )
     perception_viability.set_defaults(handler=_handle_vehicles_perception_viability)
-
-    perception_compare = perception_commands.add_parser(
-        "compare",
-        help="Compare all ready lab candidates on one image sequence.",
-        description=(
-            "Apply every ready lab candidate to the same images and compare representation "
-            "health, continuity, latency, and memory."
-        ),
-    )
-    perception_compare.add_argument(
-        "source_dir",
-        type=Path,
-        help="Directory containing the image sequence to compare.",
-    )
-    perception_compare.add_argument(
-        "--record",
-        action="store_true",
-        help="Persist each candidate's overlays, structured output, and review page.",
-    )
-    perception_compare.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable comparison report.",
-    )
-    perception_compare.set_defaults(handler=_handle_vehicles_perception_compare)
-
-    perception_candidates = perception_commands.add_parser(
-        "candidates",
-        help="Show experimental perception candidates and readiness.",
-        description="Show locally available lab candidates, dependency readiness, and setup guidance.",
-    )
-    perception_candidates.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable candidate inventory.",
-    )
-    perception_candidates.set_defaults(handler=_handle_vehicles_perception_candidates)
-
-    perception_setup = perception_commands.add_parser(
-        "setup",
-        help="Prepare one isolated perception candidate.",
-        description=(
-            "Create the candidate-local Python environment, install declared dependencies, "
-            "and download its declared model. The candidate id may be omitted when only one exists."
-        ),
-    )
-    perception_setup.add_argument(
-        "candidate_id",
-        nargs="?",
-        default=None,
-        help="Candidate id. Omit when the candidate inventory contains exactly one entry.",
-    )
-    perception_setup.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable setup result.",
-    )
-    perception_setup.set_defaults(handler=_handle_vehicles_perception_setup)
 
     perception_enable = perception_commands.add_parser(
         "enable",
@@ -1517,17 +1390,11 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
         ),
     )
-    perception_selection = perception.add_mutually_exclusive_group()
-    perception_selection.add_argument(
+    perception.add_argument(
         "--algorithm",
         default=None,
         choices=available_perception_algorithm_ids(),
         help=f"Packaged perception algorithm to activate (default: {DEFAULT_PERCEPTION_ALGORITHM}).",
-    )
-    perception_selection.add_argument(
-        "--candidate",
-        default=None,
-        help="Ready isolated lab candidate from `vehicles perception candidates` (local simulator only).",
     )
     perception.add_argument(
         "--dry-run",
@@ -1852,11 +1719,7 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
                 "- run      observe a short sequence from an active vehicle",
                 "- apply    process one existing image or image sequence",
                 "- check    guided stationary physical placement check (picar)",
-                "- qualify  compare control vs one lab candidate on labeled check frames",
                 "- viability  measure onboard cadence/freshness on a physical PiCar",
-                "- compare  compare all ready candidates on one sequence",
-                "- candidates  show experimental candidates and readiness",
-                "- setup    prepare one isolated experimental candidate",
                 "- enable   enable one locally staged perception plugin",
                 "- disable  disable one locally staged perception plugin",
                 "- help     show this summary",
@@ -2414,10 +2277,6 @@ def _handle_vehicles_perception_enable(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
-    candidate_config, error = _candidate_config(args.set)
-    if error is not None:
-        print(error)
-        return 2
     result = run_perception_experiment(
         vehicle_id=args.vehicle_id,
         frames=args.frames,
@@ -2425,8 +2284,6 @@ def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
         timeout_s=args.timeout_s,
         record=args.record,
         json_output=args.json,
-        candidate_id=args.candidate,
-        candidate_config=candidate_config,
         algorithm=args.algorithm,
     )
     if result.message:
@@ -2435,17 +2292,12 @@ def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_perception_apply(args: argparse.Namespace) -> int:
-    candidate_config, error = _candidate_config(args.set)
-    if error is not None:
-        print(error)
-        return 2
     result = apply_perception_experiment(
         args.source,
         record=args.record,
         json_output=args.json,
-        candidate_id=args.candidate,
-        candidate_config=candidate_config,
         algorithm=args.algorithm,
+        plugins=args.plugins,
     )
     if result.message:
         print(result.message)
@@ -2479,30 +2331,6 @@ def _handle_vehicles_perception_check(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_perception_qualify(args: argparse.Namespace) -> int:
-    steps = None
-    if args.steps:
-        steps = tuple(part.strip() for part in str(args.steps).split(",") if part.strip())
-    extra_frames: list[tuple[str, Path]] = []
-    for item in args.extra_frame or []:
-        placement, separator, raw_path = str(item).partition("=")
-        if not separator or not placement.strip() or not raw_path.strip():
-            print(f"invalid --extra-frame {item!r}; expected PLACEMENT=PATH")
-            return 2
-        extra_frames.append((placement.strip().lower(), Path(raw_path.strip())))
-    result = run_physical_strategy_qualification(
-        check_run=args.from_check_run,
-        control_algorithm=args.control_algorithm,
-        candidate_id=args.candidate,
-        steps=steps,
-        extra_frames=tuple(extra_frames),
-        record=not args.no_record,
-        json_output=args.json,
-        output=None if args.json else sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
 
 
 def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
@@ -2520,49 +2348,12 @@ def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_perception_compare(args: argparse.Namespace) -> int:
-    result = compare_perception_candidates(
-        args.source_dir,
-        record=args.record,
-        json_output=args.json,
-        output=None if args.json else sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
 
 
-def _candidate_config(values: list[str]) -> tuple[dict[str, Any], str | None]:
-    config: dict[str, Any] = {}
-    for value in values:
-        name, separator, raw = value.partition("=")
-        name = name.strip()
-        if not separator or not name or not raw.strip():
-            return {}, f"Invalid candidate parameter {value!r}; expected NAME=VALUE."
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            parsed = raw
-        config[name] = parsed
-    return config, None
 
 
-def _handle_vehicles_perception_candidates(args: argparse.Namespace) -> int:
-    result = list_perception_candidates(json_output=args.json)
-    if result.message:
-        print(result.message)
-    return result.exit_code
 
 
-def _handle_vehicles_perception_setup(args: argparse.Namespace) -> int:
-    result = setup_perception_candidate(
-        args.candidate_id,
-        json_output=args.json,
-        output=None if args.json else sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
 
 
 def _handle_vehicles_perception_disable(args: argparse.Namespace) -> int:
@@ -2588,7 +2379,6 @@ def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
     result = update_vehicle_perception(
         vehicle_id=args.vehicle_id,
         algorithm=args.algorithm,
-        candidate_id=args.candidate,
         timeout_s=args.timeout_s,
         restart=args.restart,
         dry_run=args.dry_run,

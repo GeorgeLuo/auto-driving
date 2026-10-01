@@ -122,7 +122,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles memory replay` | Offline: feeds a fixed observation sequence through staged (or ephemeral) memory and reports a stable end-state digest. Writes no history by default; pass `--record` for a bounded provenance extract under `lab/runs/memory-replay/`. |
 | `vehicles memory check` | Lifecycle gates: present retention, dropout survival, max-age expiry, and reset (no movement). Chase/offline uses a phase script; PiCar samples live publications with placement prompts. Optional `--record` writes report + extract (and Pi JPEGs) under `lab/runs/memory-check/`. |
 | `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed by default); never moves the car. Use `--record` for review artifacts. |
-| `vehicles perception qualify` | Offline common-frame compare of packaged control vs one lab candidate on labeled physical-check frames; emits promote/reject. |
 | `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory step; if activation is present but the step is missing, update core (manage.py harness) then re-run autonomy. |
@@ -230,25 +229,18 @@ restarting the worker:
 ### Perception Experiments
 
 Observe five frames from a usable vehicle without taking movement control, or
-apply an algorithm to one existing image or an image directory:
+apply an algorithm or a plugin selection to one existing image or an image
+directory:
 
 ```sh
 ./cli/automa vehicles perception run
 ./cli/automa vehicles perception run --id piracer --algorithm lightweight_observer
-./cli/automa vehicles perception apply path/to/frame.jpg --candidate floor_continuity
+./cli/automa vehicles perception apply path/to/frame.jpg --plugin frame --plugin floor_continuity
 ./cli/automa vehicles perception apply path/to/images --algorithm visual_observer
 ```
 
-Candidate parameters come from the candidate manifest. Override one or more for
-a bounded experiment without editing that manifest; the effective configuration
-is retained in a recorded report:
-
-```sh
-./cli/automa vehicles perception apply path/to/images \
-  --candidate floor_continuity \
-  --set minimum_boundary_confidence=0.7 \
-  --record
-```
+`--plugin` selects packaged perception plugins by catalog key, in order, with
+their default configs from `implementations/decision_cycle/perception/catalog.py`.
 
 Guided stationary physical placement check (PiCar only; never commands movement):
 
@@ -261,45 +253,6 @@ Recorded perception experiment reviews provide source, processed, and combined
 view modes plus play/pause and frame scrubbing; the review remains a local,
 dependency-free HTML artifact alongside its recorded images.
 
-Offline strategy qualification on a recorded check run:
-
-```sh
-./cli/automa vehicles perception qualify \
-  --from-check-run lab/runs/perception-check/<run-id> \
-  --candidate floor_continuity \
-  --extra-frame right=path/to/extra-right.jpg
-```
-
-Reports land under `lab/runs/perception-qualify/`. Promotion is explicit and offline-only; packaged floor-plane remains the operational fallback unless Pi viability is also proven.
-
-
-`--set` is candidate-only, repeatable, and accepts JSON values. Invalid or
-unknown parameter names fail explicitly rather than being ignored.
-
-Experimental candidates are isolated under `lab/plugins/perception/`. Inspect
-their readiness, provision declared dependencies once, and compare every ready
-candidate on the same frames:
-
-```sh
-./cli/automa vehicles perception candidates
-./cli/automa vehicles perception setup fastsam
-./cli/automa vehicles perception compare path/to/images
-```
-
-A ready candidate can also drive the local simulator worker without being
-copied into the controller bundle or imported into the core process:
-
-```sh
-./cli/automa vehicles update perception --id chase-sim-chaser --candidate fastsam
-./cli/automa vehicles automation restart --id chase-sim-chaser
-./cli/automa vehicles info perception --id chase-sim-chaser
-```
-
-This candidate activation path is simulator-only. The isolated worker returns
-the stable perception contract, including normalized polygons when available;
-the live view draws those polygons and falls back to normalized boxes for
-plugins that do not emit outlines.
-
 No captures or reports are retained by default. Add `--record` when overlays,
 per-frame JSON, and the generated review page are wanted.
 
@@ -310,8 +263,7 @@ It does not prove that the Pi executed or published the perception result.
 `lightweight_observer` is the production-oriented frame and floor-boundary
 chain. `visual_observer` adds feature-motion tracks and is intentionally much
 slower. Artifact-only VLM preprocessing remains an optional diagnostic plugin,
-not part of either observer. Lab candidates remain local until a measured
-promotion decision moves them into `implementations/`.
+not part of either observer.
 
 ### Perception Plugins
 
@@ -547,8 +499,7 @@ warm-up status, error isolation, timing, source attribution, text rendering,
 and optional diagnostic persistence. The surrounding cycle owns the sensor
 snapshot, so perception output does not duplicate it. Concrete camera decoding
 and every meaning-making algorithm live under
-`implementations/decision_cycle/perception/`;
-unpromoted candidates live under `lab/plugins/perception/`.
+`implementations/decision_cycle/perception/`.
 
 Both current vehicle adapters expose only the generic `front_camera` sensor
 through `CarInterface.read_sensors()`.

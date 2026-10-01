@@ -158,14 +158,3 @@ class LoadingContractTests(unittest.TestCase):
         finally:
             extra.unlink(missing_ok=True)
             sys.modules.pop("autonomy.vehicle.only_in_bundle", None)
-
-    def test_staging_loads_lab_modules_from_the_bundle(self) -> None:
-        lab = self.bundle_root / "lab"
-        lab.mkdir()
-        (lab / "__init__.py").write_text("", encoding="utf-8")
-        (lab / "probe.py").write_text("MARKER = 'bundle'\n", encoding="utf-8")
-        with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
-            probe = importlib.import_module("lab.probe")
-            self.assertEqual(probe.MARKER, "bundle")
-            self.assertIn(str(self.bundle_root), probe.__file__ or "")
-        self.assertNotIn("lab.probe", sys.modules)

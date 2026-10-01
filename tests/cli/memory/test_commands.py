@@ -88,7 +88,9 @@ class MemoryCommandTests(unittest.TestCase):
                 )
                 activation = json.loads(info.stdout)["activation"]
                 self.assertEqual(activation["plugins"], selected)
-                self.assertEqual(activation["available_plugins"], ["bounded_evidence"])
+                self.assertEqual(
+                    activation["available_plugins"], ["bounded_evidence", "multi_obstruction_tracks"]
+                )
                 self.assertEqual(activation["plugin_id"], selected[-1] if selected else None)
                 self.assertEqual(
                     activation["implementation_id"],
@@ -116,7 +118,7 @@ class MemoryCommandTests(unittest.TestCase):
                 "vehicles", "info", "memory", "--id", "test-car", "--json",
                 runtime_root=runtime_root,
             )
-            expected = ["bounded_evidence", "missing"]
+            expected = ["bounded_evidence", "missing", "multi_obstruction_tracks"]
             self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
             disabled = run_automa(
                 "vehicles", "memory", "disable", "--id", "test-car", "missing", "--json",

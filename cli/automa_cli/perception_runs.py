@@ -11,12 +11,11 @@ from collections import Counter, defaultdict
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorReading, SensorSnapshot
 
-from .lab_plugins import LabPerceptionMapper, candidate_status, discover_candidates
 from .paths import ROOT, display_path, safe_path_part
 from .perception_evaluation import evaluate_perception_frames, write_review_html
 from implementations.decision_cycle.perception.catalog import (
@@ -25,7 +24,7 @@ from implementations.decision_cycle.perception.catalog import (
 )
 from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from implementations.decision_cycle.catalog import perception_algorithm_activation
+from implementations.decision_cycle.catalog import packaged_activation, perception_algorithm_activation
 
 from .perception import ensure_local_perception_runtime
 from .step_hosting import load_staged_runner
@@ -65,16 +64,10 @@ def run_perception_experiment(
     timeout_s: float = 3.0,
     record: bool = False,
     json_output: bool = False,
-    candidate_id: str | None = None,
-    candidate_config: dict[str, Any] | None = None,
     algorithm: str | None = None,
 ) -> CommandResult:
-    if candidate_id is not None and algorithm is not None:
-        return CommandResult(2, "Choose either --candidate or --algorithm, not both.")
     if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
         return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
-    if candidate_config and candidate_id is None:
-        return CommandResult(2, "Candidate parameter overrides require --candidate.")
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
@@ -96,23 +89,18 @@ def run_perception_experiment(
 
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
-        if candidate_id is not None:
-            mapper = LabPerceptionMapper(candidate_id, config_overrides=candidate_config)
-            mapper_record = mapper.report_descriptor()
-            record_root = mapper.candidate.runs_dir
-        else:
-            prepared_runtime = ensure_local_perception_runtime(vehicle=vehicle, algorithm=algorithm)
-            manifest = prepared_runtime["manifest"]
-            activation = step_activation_from_payload(manifest, step="perception")
-            mapper = load_staged_runner(activation)
-            mapper_record = {
-                "algorithm": activation.metadata.get("algorithm"),
-                "spec": RUNNER_SPEC,
-                "config": _selection(activation),
-                "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
-                "bundle_refreshed": prepared_runtime["refreshed"],
-            }
-            record_root = Path(prepared_runtime["bundle"]["runtime_dir"]) / "perception-runs"
+        prepared_runtime = ensure_local_perception_runtime(vehicle=vehicle, algorithm=algorithm)
+        manifest = prepared_runtime["manifest"]
+        activation = step_activation_from_payload(manifest, step="perception")
+        mapper = load_staged_runner(activation)
+        mapper_record = {
+            "algorithm": activation.metadata.get("algorithm"),
+            "spec": RUNNER_SPEC,
+            "config": _selection(activation),
+            "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
+            "bundle_refreshed": prepared_runtime["refreshed"],
+        }
+        record_root = Path(prepared_runtime["bundle"]["runtime_dir"]) / "perception-runs"
     except Exception as exc:
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
@@ -120,9 +108,7 @@ def run_perception_experiment(
     run_id = _run_id("perception", str(vehicle.get("vehicle_id") or "vehicle"))
     record_dir = record_root / run_id if record else None
     workspace = _workspace_context(record_dir, prefix="automa_perception_")
-    mapper_context: AbstractContextManager[Any] = (
-        mapper if isinstance(mapper, LabPerceptionMapper) else nullcontext(mapper)
-    )
+    mapper_context: AbstractContextManager[Any] = nullcontext(mapper)
 
     try:
         with workspace as workspace_value, mapper_context as active_mapper:
@@ -171,7 +157,7 @@ def run_perception_experiment(
                     snapshot=snapshot,
                     perception=perception,
                     duration_ms=duration_ms,
-                    runtime_metrics=_runtime_metrics(active_mapper),
+                    runtime_metrics=_runtime_metrics(),
                 )
                 frame_records.append(record_item)
                 if record:
@@ -214,16 +200,13 @@ def apply_perception_experiment(
     *,
     record: bool = False,
     json_output: bool = False,
-    candidate_id: str | None = None,
-    candidate_config: dict[str, Any] | None = None,
     algorithm: str | None = None,
+    plugins: list[str] | None = None,
 ) -> CommandResult:
-    if candidate_id is not None and algorithm is not None:
-        return CommandResult(2, "Choose either --candidate or --algorithm, not both.")
+    if algorithm is not None and plugins:
+        return CommandResult(2, "Choose either --algorithm or --plugin, not both.")
     if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
         return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
-    if candidate_config and candidate_id is None:
-        return CommandResult(2, "Candidate parameter overrides require --candidate.")
     source = source.expanduser().resolve()
     if not source.exists():
         return CommandResult(2, f"Apply source does not exist: {source}")
@@ -247,31 +230,27 @@ def apply_perception_experiment(
         return CommandResult(2, f"No applicable images found under {source}")
 
     try:
-        if candidate_id is not None:
-            mapper = LabPerceptionMapper(candidate_id, config_overrides=candidate_config)
-            report_mapper = mapper.report_descriptor()
-            record_root = mapper.candidate.runs_dir
+        recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
+        if plugins:
+            activation = packaged_activation("perception", plugins)
+            algorithm = "custom"
+        elif algorithm is not None:
+            activation = perception_algorithm_activation(algorithm)
+        elif isinstance(recorded_mapper, dict):
+            recorded = dict(recorded_mapper.get("config") or {})
+            activation = step_activation(
+                "perception",
+                recorded.get("plugins") or [],
+                recorded.get("plugin_specs") or {},
+                recorded.get("plugin_configs") or {},
+            )
+            algorithm = recorded_mapper.get("algorithm") or "recorded"
         else:
-            recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
-            if algorithm is not None:
-                activation = perception_algorithm_activation(algorithm)
-            elif isinstance(recorded_mapper, dict) and not str(
-                recorded_mapper.get("algorithm") or ""
-            ).startswith("candidate:"):
-                recorded = dict(recorded_mapper.get("config") or {})
-                activation = step_activation(
-                    "perception",
-                    recorded.get("plugins") or [],
-                    recorded.get("plugin_specs") or {},
-                    recorded.get("plugin_configs") or {},
-                )
-                algorithm = recorded_mapper.get("algorithm") or "recorded"
-            else:
-                activation = perception_algorithm_activation(DEFAULT_PERCEPTION_ALGORITHM)
-                algorithm = DEFAULT_PERCEPTION_ALGORITHM
-            mapper = PerceptionRunner.from_activation(activation)
-            report_mapper = {"algorithm": algorithm, "spec": RUNNER_SPEC, "config": _selection(activation)}
-            record_root = APPLY_ROOT
+            activation = perception_algorithm_activation(DEFAULT_PERCEPTION_ALGORITHM)
+            algorithm = DEFAULT_PERCEPTION_ALGORITHM
+        mapper = PerceptionRunner.from_activation(activation)
+        report_mapper = {"algorithm": algorithm, "spec": RUNNER_SPEC, "config": _selection(activation)}
+        record_root = APPLY_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
 
@@ -286,9 +265,7 @@ def apply_perception_experiment(
                 f"Apply record directory already exists (refusing overwrite): {record_dir}",
             )
     workspace = _workspace_context(record_dir, prefix="automa_apply_")
-    mapper_context: AbstractContextManager[Any] = (
-        mapper if isinstance(mapper, LabPerceptionMapper) else nullcontext(mapper)
-    )
+    mapper_context: AbstractContextManager[Any] = nullcontext(mapper)
 
     try:
         with workspace as workspace_value, mapper_context as active_mapper:
@@ -334,7 +311,7 @@ def apply_perception_experiment(
                     snapshot=snapshot,
                     perception=perception,
                     duration_ms=duration_ms,
-                    runtime_metrics=_runtime_metrics(active_mapper),
+                    runtime_metrics=_runtime_metrics(),
                 )
                 frame_records.append(item)
                 if record:
@@ -364,93 +341,6 @@ def apply_perception_experiment(
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True))
     return CommandResult(exit_code, _format_report(report))
 
-
-def compare_perception_candidates(
-    source_dir: Path,
-    *,
-    record: bool = False,
-    json_output: bool = False,
-    output: TextIO | None = None,
-) -> CommandResult:
-    source_dir = source_dir.expanduser().resolve()
-    if not source_dir.is_dir():
-        return CommandResult(2, f"Comparison source is not a directory: {source_dir}")
-    ready = [
-        candidate
-        for candidate in discover_candidates()
-        if candidate_status(candidate)["ready"]
-    ]
-    if not ready:
-        return CommandResult(
-            2,
-            "No ready perception candidates. Run `./cli/automa vehicles perception candidates` for setup guidance.",
-        )
-
-    results: list[dict[str, Any]] = []
-    failures: list[dict[str, Any]] = []
-    for index, candidate in enumerate(ready, start=1):
-        if output is not None:
-            print(
-                f"Comparing {candidate.candidate_id} ({index}/{len(ready)})...",
-                file=output,
-                flush=True,
-            )
-        result = apply_perception_experiment(
-            source_dir,
-            record=record,
-            json_output=True,
-            candidate_id=candidate.candidate_id,
-        )
-        if result.exit_code != 0:
-            # Human table stays one-line; JSON retains full structured/raw detail.
-            raw = result.message or ""
-            human_err = raw.strip().splitlines()[0] if raw.strip() else "unknown error"
-            if len(human_err) > 200:
-                human_err = human_err[:197] + "..."
-            if human_err.startswith("{"):
-                human_err = f"candidate execution failed (exit {result.exit_code})"
-            failures.append(
-                {
-                    "candidate": candidate.candidate_id,
-                    "error": human_err,
-                    "error_detail": raw,
-                    "exit_code": result.exit_code,
-                }
-            )
-            continue
-        report = json.loads(result.message)
-        summary = report["summary"]
-        health = summary["representation_health"]
-        results.append({
-            "candidate": candidate.candidate_id,
-            "health_score": health["score"],
-            "continuity_match_fraction": health["continuity"]["mean_match_fraction"],
-            "continuity_iou": health["continuity"]["mean_matched_iou"],
-            "steady_median_ms": summary["latency_ms"]["steady_median"],
-            "steady_p95_ms": summary["latency_ms"]["steady_p95"],
-            "cold_start_ms": summary["latency_ms"]["cold_start"],
-            "peak_rss_mb": summary["memory_mb"]["peak_rss"],
-            "thing_kinds": summary["thing_kinds"],
-            "failed_frames": summary["failed_frames"],
-            "run_dir": report.get("run_dir"),
-            "review": report.get("review"),
-        })
-
-    payload = {
-        "schema": "perception_candidate_comparison_v0",
-        "source": str(source_dir),
-        "recording": record,
-        "interpretation": (
-            "Representation health measures contract validity and temporal stability, not semantic accuracy. "
-            "Latency and memory are directly comparable only on the same host and run conditions."
-        ),
-        "results": results,
-        "failures": failures,
-    }
-    exit_code = 0 if results and not failures else 1 if results else 2
-    if json_output:
-        return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_comparison(payload))
 
 
 def _select_vehicle(
@@ -634,30 +524,6 @@ def _format_counts(counts: dict[str, Any]) -> str:
     return ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
 
 
-def _format_comparison(payload: dict[str, Any]) -> str:
-    lines = [
-        "Perception candidate comparison",
-        "-------------------------------",
-        f"source: {payload['source']}",
-        "health is representation stability, not semantic accuracy",
-        "",
-        f"{'candidate':<20} {'health':>7} {'match':>7} {'IoU':>7} {'steady':>10} {'RSS':>11}",
-    ]
-    for item in payload["results"]:
-        lines.append(
-            f"{item['candidate']:<20} {item['health_score']:>7.3f} "
-            f"{item['continuity_match_fraction']:>7.3f} {item['continuity_iou']:>7.3f} "
-            f"{item['steady_median_ms']:>8.1f}ms {item['peak_rss_mb']:>8.1f}MiB"
-        )
-        lines.append(f"  evidence: {_format_counts(item['thing_kinds'])}")
-        if item.get("review"):
-            lines.append(f"  review: {item['review']}")
-    for failure in payload["failures"]:
-        lines.append(f"- {failure['candidate']} failed: {failure['error']}")
-        # Full detail stays in JSON (error_detail); keep human table compact.
-    lines.append(f"recording: {'on' if payload['recording'] else 'off'}")
-    return "\n".join(lines)
-
 
 def _source_image_paths(source_dir: Path, manifest: dict[str, Any]) -> list[Path]:
     frames = manifest.get("frames") if isinstance(manifest, dict) else None
@@ -738,10 +604,7 @@ def _run_id(kind: str, source: str) -> str:
     return f"{kind}-{safe_path_part(source)}-{stamp}"
 
 
-def _runtime_metrics(mapper: Any) -> dict[str, Any]:
-    candidate_metrics = getattr(mapper, "last_runtime_metrics", None)
-    if isinstance(candidate_metrics, dict) and candidate_metrics:
-        return dict(candidate_metrics)
+def _runtime_metrics() -> dict[str, Any]:
     peak = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     divisor = 1024.0 * 1024.0 if sys.platform == "darwin" else 1024.0
     return {"peak_rss_mb": round(peak / divisor, 3)}

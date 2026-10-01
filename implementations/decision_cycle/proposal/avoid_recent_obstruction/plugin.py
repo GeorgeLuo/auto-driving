@@ -444,7 +444,7 @@ def propose(
 
 
 class AvoidRecentObstruction:
-    """Loadable proposal plugin: ``propose`` bound to validated settings."""
+    """Proposal plugin: the module's ``propose`` bound to validated settings."""
 
     plugin_id = PLUGIN_ID
 
@@ -482,7 +482,7 @@ class AvoidRecentObstruction:
         self.steer_magnitude = magnitude
         self.evidence_key = evidence_key
 
-    def __call__(
+    def propose(
         self,
         source: DecisionDataSource,
         shared_memory: Mapping[str, Any] | None = None,

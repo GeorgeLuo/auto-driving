@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
 from implementations.decision_cycle.perception.components.camera import (
@@ -21,8 +21,8 @@ from implementations.decision_cycle.perception.components.camera import (
 FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
-def _mapper(plugin_id: str) -> PluginPerceptionMapper:
-    return PluginPerceptionMapper(
+def _mapper(plugin_id: str) -> PerceptionRunner:
+    return PerceptionRunner.from_selection(
         plugins=[plugin_id],
         plugin_specs=PERCEPTION_PLUGIN_SPECS,
     )

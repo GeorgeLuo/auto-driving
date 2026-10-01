@@ -8,17 +8,19 @@ from pathlib import Path
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
-from autonomy.decision_cycle.memory.activation import read_memory_activation
+from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.activation import (
+    read_step_activation,
+    write_step_activation,
+)
 from implementations.decision_cycle.memory.bounded_evidence.ledger import (
     EVIDENCE_KEY,
     LEDGER_KEY,
 )
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_IMPLEMENTATION,
-    available_memory_implementation_ids,
-    memory_implementation_spec,
-    build_memory_activation_payload,
+    DEFAULT_MEMORY_PLUGIN,
+    MEMORY_PLUGINS,
 )
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
     BoundedEvidenceLedger,
@@ -68,12 +70,11 @@ def _thing(
 
 
 class BoundedEvidenceLedgerTests(unittest.TestCase):
-    def test_catalog_exposes_default_implementation(self) -> None:
-        self.assertEqual(DEFAULT_MEMORY_IMPLEMENTATION, "bounded_evidence")
-        self.assertIn("bounded_evidence", available_memory_implementation_ids())
-        entry = memory_implementation_spec("bounded_evidence")
+    def test_catalog_exposes_default_plugin(self) -> None:
+        self.assertEqual(DEFAULT_MEMORY_PLUGIN, "bounded_evidence")
+        entry = MEMORY_PLUGINS["bounded_evidence"]
         self.assertEqual(
-            entry["implementation_spec"],
+            entry["spec"],
             "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger",
         )
 
@@ -244,15 +245,14 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
     def test_activation_loads_through_framework_step(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
-            path.write_text(
-                json.dumps(
-                    build_memory_activation_payload(
-                        config_overrides={"max_records": 4, "max_age_ms": 2_000}
-                    )
+            write_step_activation(
+                path,
+                packaged_activation(
+                    "memory",
+                    config_overrides={"bounded_evidence": {"max_records": 4, "max_age_ms": 2_000}},
                 ),
-                encoding="utf-8",
             )
-            step = PluginMemoryRunner(read_memory_activation(path))
+            step = MemoryRunner.from_activation(read_step_activation(path, "memory"))
             shared_memory = {}
             observation = _observation(
                 "obs_9",
@@ -261,8 +261,8 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             )
             result = DecisionCycle(
                 DecisionSteps(
-                    observe=lambda context, perception: observation,
-                    remember=step,
+                    observation=lambda context, perception: observation,
+                    memory=step,
                 )
             ).run(DecisionFrameContext("frame_9", 9, 100, shared_memory=shared_memory))
             state = result.memory["plugins"][0]["state"]

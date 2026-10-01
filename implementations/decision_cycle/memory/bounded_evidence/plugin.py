@@ -48,7 +48,7 @@ MAX_REPORTED_ID_CHARS = 128
 class _BoundedEvidenceReducer:
     """Temporary working state for one reduction, or a standalone algorithm test."""
 
-    implementation_id = "bounded_evidence"
+    plugin_id = "bounded_evidence"
 
     def __init__(
         self,
@@ -168,7 +168,7 @@ class _BoundedEvidenceReducer:
             epoch_id=f"epoch-{self._epoch}",
             bounds=self.bounds,
             created_at_ms=0,
-            implementation_id=self.implementation_id,
+            implementation_id=self.plugin_id,
             summary=(
                 "memory_empty=true",
                 f"epoch_id=epoch-{self._epoch}",
@@ -368,7 +368,7 @@ class _BoundedEvidenceReducer:
             created_at_ms=created_at_ms,
             records=records,
             summary=summary,
-            implementation_id=self.implementation_id,
+            implementation_id=self.plugin_id,
             metadata=self._metadata(
                 observation_id=(
                     observation.observation_id if observation is not None else None
@@ -387,7 +387,7 @@ def reduce_evidence(
 ) -> EvidenceLedger:
     """Reduce one cycle from an explicit prior ledger without retaining a reducer."""
     reducer = _BoundedEvidenceReducer(**config)
-    reducer.implementation_id = implementation_id
+    reducer.plugin_id = implementation_id
     reducer._records = {record.record_id: record for record in previous.records}
     reducer._capacity_eviction_count = int(
         previous.metadata.get("capacity_eviction_count", 0)
@@ -412,7 +412,7 @@ class BoundedEvidenceLedger:
     producers.
     """
 
-    implementation_id = "bounded_evidence"
+    plugin_id = "bounded_evidence"
 
     def __init__(self, **config: Any) -> None:
         self.config = config
@@ -460,7 +460,7 @@ class BoundedEvidenceLedger:
                 self.ledger(context.shared_memory),
                 context,
                 observation,
-                implementation_id=self.implementation_id,
+                implementation_id=self.plugin_id,
                 **self.config,
             ),
         )

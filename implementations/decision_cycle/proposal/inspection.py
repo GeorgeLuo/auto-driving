@@ -1,24 +1,27 @@
-"""Side-by-side scenarios for the packaged proposal. The CLI only runs them."""
+"""Side-by-side scenarios for the selected proposal plugins. The CLI only runs them."""
 
 from __future__ import annotations
 
 import copy
-from collections.abc import Mapping
 from typing import Any
 
-from implementations.runtime.engines.catalog import create_action_composition
+from autonomy.decision_cycle.activation import StepActivation
+from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from implementations.decision_cycle.catalog import packaged_activation
 
 
 def prepare_inspection_scenarios(
     evidence: list[dict[str, Any]],
-    config: Mapping[str, Any] | None = None,
+    activation: StepActivation | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Place recorded retained evidence on each side and name the scenarios."""
 
     # Reposition only evidence some selected proposal accepts.
     accepted_kinds = {
         kind
-        for plugin in create_action_composition(config).plugins.values()
+        for plugin in ProposalRunner.from_activation(
+            activation or packaged_activation("proposal")
+        ).plugins.values()
         for kind in getattr(plugin, "accepted_kinds", ())
     }
     scenarios: dict[str, dict[str, Any]] = {}

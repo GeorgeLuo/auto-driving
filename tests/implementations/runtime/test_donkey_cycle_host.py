@@ -7,11 +7,9 @@ from pathlib import Path
 import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.engine import AutonomyControl
-from tests.support.action_fixtures import fixed_control_composition
-from autonomy.runtime.manager import AutonomyManager
+from autonomy.runtime.control import AutonomyControl
+from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.runtime.donkeycar import (
     DEFAULT_OBSERVATION_INTERVAL_S,
@@ -31,31 +29,20 @@ class _Clock:
         self.now += float(seconds)
 
 
-class _PushyEngine:
-    def reset(self) -> None:
-        return None
+def _pushy_host(**steps) -> AutonomyCycleHost:
+    """A host whose action step authorizes a fixed nonzero control."""
 
-    def describe_schema(self) -> dict:
-        return {
-            "schema": "autonomy_engine_schema_v0",
-            "engine_id": "pushy-test",
-            "engine_spec": "tests:_PushyEngine",
-        }
-
-    def act(self, context, perception, observation):
-        return fixed_control_composition(
-            AutonomyControl(
-                steering=0.7,
-                throttle=0.4,
-                confidence=1.0,
-                reason="pushy-test-engine",
-            )
-        ).act(context, perception, observation)
+    return AutonomyCycleHost(
+        steps=fixed_control_steps(
+            AutonomyControl(steering=0.7, throttle=0.4, confidence=1.0, reason="pushy-test-action"),
+            **steps,
+        )
+    )
 
 
 class _ExplodingHost:
     def status(self) -> dict:
-        return {"engine": {"engine": "exploding-host"}, "last_cycle": None}
+        return {"steps": {}, "last_cycle": None}
 
     def run(self, context: DecisionFrameContext):
         del context
@@ -63,7 +50,7 @@ class _ExplodingHost:
 
 
 class RuntimeCycleHostTests(unittest.TestCase):
-    def test_host_runs_engine_with_in_memory_front_camera_value(self) -> None:
+    def test_host_runs_the_cycle_with_in_memory_front_camera_value(self) -> None:
         image_value = object()
         sensor_snapshot = SensorSnapshot(
             read_id="frame_000",
@@ -89,40 +76,31 @@ class RuntimeCycleHostTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(result.control.reason, "engine-idle")
-        self.assertIsNone(result.action)
-        self.assertEqual(host.manager.status()["step_count"], 1)
+        self.assertEqual(result.control.reason, "hold-idle")
+        self.assertEqual(result.action.authority.gate_id, "hold")
+        self.assertEqual(host.cycle_count, 1)
         self.assertTrue(
             result.to_dict()["context"]["sensor_snapshot"]["readings"][FRONT_CAMERA_SENSOR_ID][
                 "has_value"
             ]
         )
 
-    def test_host_rejects_a_second_action_step(self) -> None:
-        with self.assertRaisesRegex(ValueError, "owns the decision action step"):
-            AutonomyCycleHost(steps=DecisionSteps(act=lambda *args: None))
-
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
 
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()
-        steering, throttle, control, engine, cycle = part.completed_outputs("local")
+        steering, throttle, control, generation, cycle = part.completed_outputs("local")
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
-        self.assertEqual(control["reason"], "engine-idle")
-        self.assertEqual(engine, "autonomy.runtime.engine:IdleAutonomyEngine")
-        self.assertEqual(cycle["schema"], "decision_cycle_result_v0")
+        self.assertEqual(control["reason"], "hold-idle")
+        self.assertIsNone(generation)
+        self.assertEqual(cycle["schema"], "decision_cycle_result_v1")
         self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")
 
     def test_manual_mode_runs_cycle_and_forces_zero_pilot_outputs(self) -> None:
-        manager = AutonomyManager()
-        manager.engine = _PushyEngine()
-        part = AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager),
-            min_interval_s=0.0,
-        )
+        part = AutonomyPilotPart(host=_pushy_host(), min_interval_s=0.0)
 
         part.run(
             image_array=np.zeros((4, 4, 3), dtype=np.uint8),
@@ -131,11 +109,11 @@ class RuntimeCycleHostTests(unittest.TestCase):
             user_throttle=0.1,
         )
         part.wait_for_cycle()
-        steering, throttle, control, _engine, cycle = part.completed_outputs("user")
+        steering, throttle, control, _generation, cycle = part.completed_outputs("user")
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
-        self.assertEqual(control["reason"], "pushy-test-engine")
+        self.assertEqual(control["reason"], "pushy-test-action")
         self.assertEqual(control["steering"], 0.7)
         self.assertIsNotNone(cycle)
         self.assertEqual(cycle["context"]["mode"], "user")
@@ -145,17 +123,12 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000000")
         self.assertIsNotNone(part.latest_snapshot.image)
 
-    def test_local_mode_preserves_engine_pilot_outputs(self) -> None:
-        manager = AutonomyManager()
-        manager.engine = _PushyEngine()
-        part = AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager),
-            min_interval_s=0.0,
-        )
+    def test_local_mode_preserves_action_pilot_outputs(self) -> None:
+        part = AutonomyPilotPart(host=_pushy_host(), min_interval_s=0.0)
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
         part.wait_for_cycle()
-        steering, throttle, control, _engine, _cycle = part.completed_outputs("local")
+        steering, throttle, control, _generation, _cycle = part.completed_outputs("local")
 
         self.assertEqual(steering, 0.7)
         self.assertEqual(throttle, 0.4)
@@ -205,7 +178,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(part.latest_snapshot.skipped_since_previous, 1)
         self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000002")
         self.assertEqual(part.camera_frame_count, 3)
-        self.assertEqual(host.manager.status()["step_count"], 2)
+        self.assertEqual(host.cycle_count, 2)
 
     def test_detaches_image_from_vehicle_memory(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
@@ -221,13 +194,13 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        steering, throttle, control, engine, cycle = part.completed_outputs("user")
+        steering, throttle, control, generation, cycle = part.completed_outputs("user")
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "observation-cycle-error")
         self.assertIsNone(cycle)
-        self.assertEqual(engine, "exploding-host")
+        self.assertIsNone(generation)
         self.assertEqual(part.latest_snapshot.status, "error")
         self.assertIn("RuntimeError", part.latest_snapshot.error or "")
         status = part.observation_status()
@@ -247,12 +220,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
                 raise RuntimeError("memory update failed")
             return None
 
-        manager = AutonomyManager()
-        manager.engine = _PushyEngine()
-        part = AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager, steps=DecisionSteps(remember=remember)),
-            min_interval_s=0.0,
-        )
+        part = AutonomyPilotPart(host=_pushy_host(memory=remember), min_interval_s=0.0)
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
         part.run(image_array=image, mode="local")
@@ -278,21 +246,18 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertTrue(latest["has_image"])
         self.assertNotIn("image", latest)
 
-    def test_observation_status_provider_does_not_reenter_manager_status(self) -> None:
-        manager = AutonomyManager()
-        part = AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager),
-            min_interval_s=0.0,
-        )
-        manager.register_status_provider("observation", part.observation_status)
+    def test_observation_status_provider_does_not_reenter_host_status(self) -> None:
+        host = AutonomyCycleHost()
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0)
+        host.register_status_provider("observation", part.observation_status)
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
 
-        status = manager.status()
+        status = host.status()
         observation = status["components"]["observation"]
         self.assertEqual(observation["processed_count"], 1)
         self.assertEqual(observation["latest"]["frame_id"], "donkey_frame_000000")
-        self.assertEqual(status["step_count"], 1)
+        self.assertEqual(status["cycle_count"], 1)
 
     def test_camera_frames_publish_while_perception_is_still_running(self) -> None:
         started = threading.Event()
@@ -300,7 +265,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         class _BlockingHost:
             def status(self) -> dict:
-                return {"engine": "blocking-host"}
+                return {"steps": {}}
 
             def run(self, context: DecisionFrameContext):
                 del context
@@ -315,7 +280,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
                     duration_ms = 1
 
                     def to_dict(self) -> dict:
-                        return {"schema": "decision_cycle_result_v0", "status": "ok"}
+                        return {"schema": "decision_cycle_result_v1", "status": "ok"}
 
                 return _Result()
 
@@ -325,7 +290,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.run(image_array=first, mode="user")
         self.assertTrue(started.wait(timeout=1.0))
         self.assertEqual(part.processed_count, 0)
-        steering, throttle, _control, _engine, _cycle = part.run(image_array=second, mode="user")
+        steering, throttle, _control, _generation, _cycle = part.run(image_array=second, mode="user")
         self.assertEqual((steering, throttle), (0.0, 0.0))
         self.assertEqual(part.camera_frame_count, 2)
         self.assertEqual(part.latest_camera_frame.frame_id, "donkey_frame_000001")
@@ -353,9 +318,11 @@ class RuntimeCycleHostTests(unittest.TestCase):
         snippet = source[source.index(marker) : source.index(marker) + 1600]
         self.assertIn("min_interval_s=observation_interval_s", snippet)
         self.assertIn("source_id=source_id if telemetry_store is not None else None", snippet)
-        self.assertIn("generation_id=generation_id if telemetry_store is not None else None", snippet)
+        self.assertIn("decision_activations=decision_activations", snippet)
+        self.assertIn("generation_id=generation_id", snippet)
         self.assertIn("run_id=run_id if telemetry_store is not None else None", snippet)
-        self.assertIn("observation_publisher = autonomy_part", snippet)
+        self.assertIn("autonomy_controller.observation_publisher = autonomy_part", snippet)
+        self.assertIn("autonomy_controller.autonomy_host = host", snippet)
         self.assertNotIn("run_condition", snippet)
         self.assertIn("AUTONOMY_OBSERVATION_INTERVAL_S", source)
         self.assertEqual(DEFAULT_OBSERVATION_INTERVAL_S, 0.5)

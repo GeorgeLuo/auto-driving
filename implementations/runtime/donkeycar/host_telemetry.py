@@ -132,8 +132,6 @@ def identity_tuple(record: Mapping[str, Any]) -> tuple[Any, ...]:
         record.get("source_id"),
         record.get("run_id"),
         record.get("generation_id"),
-        activation.get("engine_id"),
-        activation.get("activated_at_ms"),
         activation.get("generation_id"),
         source_frame.get("frame_id"),
         source_frame.get("frame_index"),
@@ -186,10 +184,6 @@ class HostTelemetryStore:
         source_id: str,
         run_id: str,
         generation_id: str,
-        activation_engine_id: str,
-        activation_activated_at_ms: int,
-        activation_generation_id: str | None = None,
-        activation_engine_config: Mapping[str, Any] | None = None,
         clock: Callable[[], int] | None = None,
         max_records: int = 256,
         limits: Mapping[str, int] | None = None,
@@ -201,15 +195,8 @@ class HostTelemetryStore:
             ("source_id", source_id),
             ("run_id", run_id),
             ("generation_id", generation_id),
-            ("activation_engine_id", activation_engine_id),
         ):
             _require_identity(value, field=field)
-        if not _is_epoch_ms(activation_activated_at_ms):
-            raise ValueError("activation_activated_at_ms must be a non-negative integer")
-        if activation_generation_id is not None:
-            _require_identity(activation_generation_id, field="activation_generation_id")
-            if activation_generation_id != generation_id:
-                raise ValueError("activation_generation_id must equal generation_id")
         if limits is not None and dict(limits) != HOST_TELEMETRY_LIMITS:
             raise ValueError("telemetry limits are fixed for v0")
         if clock is not None and not callable(clock):
@@ -219,11 +206,6 @@ class HostTelemetryStore:
         self.source_id = source_id
         self.run_id = run_id
         self.generation_id = generation_id
-        self.activation_engine_id = activation_engine_id
-        self.activation_activated_at_ms = activation_activated_at_ms
-        # Retained only for a bounded status/debugger owner; it is not copied
-        # into the telemetry wire record because it is outside the v0 contract.
-        self.activation_engine_config = deepcopy(dict(activation_engine_config or {}))
         self.limits = dict(HOST_TELEMETRY_LIMITS)
         self._clock = clock or epoch_ms
         self._records: deque[dict[str, Any]] = deque(maxlen=max_records)
@@ -241,8 +223,6 @@ class HostTelemetryStore:
             self.source_id,
             self.run_id,
             self.generation_id,
-            self.activation_engine_id,
-            self.activation_activated_at_ms,
             self.generation_id,
         )
 
@@ -363,10 +343,6 @@ class HostTelemetryStore:
                     now_ms + self.limits["future_skew_tolerance_ms"]
                 ):
                     return self._observation_error_locked("error", "future_dated")
-                if self.activation_activated_at_ms > (
-                    now_ms + self.limits["future_skew_tolerance_ms"]
-                ):
-                    return self._observation_error_locked("error", "future_dated")
                 if observed < frame["completed_at_ms"]:
                     raise ValueError("source_time_future")
                 if published is not None and published < observed:
@@ -461,8 +437,6 @@ class HostTelemetryStore:
                 "run_id": self.run_id,
                 "generation_id": self.generation_id,
                 "activation": {
-                    "engine_id": self.activation_engine_id,
-                    "activated_at_ms": self.activation_activated_at_ms,
                     "generation_id": self.generation_id,
                 },
                 "source_frame": frame,

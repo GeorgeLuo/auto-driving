@@ -6,10 +6,10 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.runtime.manager import AutonomyManager
-from cli.automa_cli.decision import DECISION_ENGINES, ENGINE_ID
+from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.donkeycar import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
@@ -21,19 +21,15 @@ from implementations.runtime.donkeycar import (
 
 class ObservationPublicationTests(unittest.TestCase):
     def _hold_part(self) -> AutonomyPilotPart:
-        manager = AutonomyManager(
-            default_engine_spec=ADAPTER_ENGINE_SPEC,
-            default_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
-        )
+        activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager),
+            host=AutonomyCycleHost(steps=decision_steps(activations)),
             min_interval_s=0.0,
             vehicle_id="piracer",
             source_id="donkeycar:piracer",
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=1_000,
-            activation_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
-            generation_id=f"{ENGINE_ID}:1000",
+            decision_activations={
+                step: activation.to_payload() for step, activation in activations.items()
+            },
             run_id="donkey-run-fixture",
         )
 
@@ -75,7 +71,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
-        self.assertEqual(payload["control"]["reason"], "engine-idle")
+        self.assertEqual(payload["control"]["reason"], "hold-idle")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
     def test_publication_includes_the_memory_report_when_step_present(self) -> None:
@@ -122,7 +118,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 ],
             }
 
-        host = AutonomyCycleHost(steps=DecisionSteps(remember=remember))
+        host = AutonomyCycleHost(steps=DecisionSteps(memory=remember))
         part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
@@ -152,7 +148,7 @@ class ObservationPublicationTests(unittest.TestCase):
 
         class Boom:
             def status(self):
-                return {"engine": {"engine": "boom"}}
+                return {"steps": {}}
 
             def run(self, context):
                 del context
@@ -193,7 +189,16 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["vehicle_id"], "piracer")
         self.assertEqual(published["source_id"], "donkeycar:piracer")
         self.assertEqual(published["run_id"], "donkey-run-fixture")
-        self.assertEqual(published["generation_id"], f"{ENGINE_ID}:1000")
+        expected_generation = activation_generation_id(
+            {step: packaged_activation(step) for step in DECISION_STEPS}, prefix="decision"
+        )
+        self.assertEqual(published["generation_id"], expected_generation)
+        self.assertEqual(published["activation"]["generation_id"], expected_generation)
+        self.assertEqual(sorted(published["activation"]["steps"]), sorted(DECISION_STEPS))
+        self.assertEqual(
+            published["activation"]["steps"]["proposal"]["plugins"],
+            ["avoid_recent_obstruction"],
+        )
         self.assertNotIn("producer_pid", published)
         self.assertEqual(published["frame_id"], part.latest_snapshot.frame_id)
         self.assertEqual(published["frame_index"], part.latest_snapshot.frame_index)
@@ -207,14 +212,16 @@ class ObservationPublicationTests(unittest.TestCase):
                 "completed_at_ms": part.latest_snapshot.completed_at_ms,
             },
         )
-        self.assertEqual(published["cycle"]["frame_id"], published["frame_id"])
+        self.assertEqual(sorted(published["cycle"]), ["action", "plan", "proposal"])
+        self.assertEqual(published["cycle"]["action"]["frame_id"], published["frame_id"])
+        self.assertEqual(published["cycle"]["plan"]["frame_id"], published["frame_id"])
         self.assertEqual(
-            published["cycle"]["source"]["frame_index"],
+            published["cycle"]["proposal"]["source"]["frame_index"],
             published["frame_index"],
         )
         self.assertNotIn(
             "runtime_identity",
-            published["cycle"]["source"]["metadata"],
+            published["cycle"]["proposal"]["source"]["metadata"],
         )
         # The dedicated route owns decision publication. Existing observation
         # consumers retain their established payload shape.
@@ -226,8 +233,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertFalse(expired["ok"])
         self.assertEqual(expired["reason"], "expired")
 
-        # A reload replaces the engine, which retires its result.
-        part.host.manager.reload_engine()
+        # Replacing a decision step retires its result.
+        part.host.set_step("action", decision_steps().action)
         reset = part.publish_decision_latest(now_ms=completed_at_ms)
         self.assertFalse(reset["ok"])
         self.assertEqual(reset["reason"], "reset")
@@ -290,7 +297,7 @@ class ObservationPublicationTests(unittest.TestCase):
             / "app"
             / "manage.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("observation_publisher = autonomy_part", manage)
+        self.assertIn("autonomy_controller.observation_publisher = autonomy_part", manage)
         self.assertIn("algorithm=perception_algorithm", manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.

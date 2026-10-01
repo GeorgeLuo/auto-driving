@@ -423,7 +423,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(plugin.plugin_id, PLUGIN_ID)
         inputs = _source((_record(zone="left"),))
         self.assertEqual(
-            plugin(*inputs).to_dict(),
+            plugin.propose(*inputs).to_dict(),
             propose(inputs, steer_magnitude=0.5).to_dict(),
         )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from implementations.runtime.engines.inspection import prepare_inspection_scenarios
+from implementations.decision_cycle.proposal.inspection import prepare_inspection_scenarios
 
 
 class InspectionScenarioTests(unittest.TestCase):

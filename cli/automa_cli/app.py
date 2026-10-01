@@ -994,10 +994,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     perception_run.add_argument(
-        "--algorithm",
+        "--preset",
         choices=available_perception_preset_ids(),
         default=None,
-        help="Run one packaged perception algorithm instead of the active selection.",
+        help="Run one packaged perception preset instead of the active selection.",
     )
     perception_run.add_argument(
         "--id",
@@ -1050,10 +1050,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_apply_selection = perception_apply.add_mutually_exclusive_group()
     perception_apply_selection.add_argument(
-        "--algorithm",
+        "--preset",
         choices=available_perception_preset_ids(),
         default=None,
-        help="Apply one packaged perception algorithm instead of the recorded/default mapper.",
+        help="Apply one packaged perception preset instead of the recorded/default mapper.",
     )
     perception_apply_selection.add_argument(
         "--plugin",
@@ -1359,9 +1359,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception = update_commands.add_parser(
         "perception",
-        help="Stage a perception algorithm in a vehicle's local controller bundle.",
+        help="Stage a perception preset in a vehicle's local controller bundle.",
         description=(
-            "Idempotently stage a perception algorithm and safe idle decision in a "
+            "Idempotently stage a perception preset and safe idle decision in a "
             "local vehicle bundle. For Chase, the result reports whether the same "
             "passive capture gate is ready for observation-only automation."
         ),
@@ -1382,10 +1382,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     perception.add_argument(
-        "--algorithm",
+        "--preset",
         default=None,
         choices=available_perception_preset_ids(),
-        help=f"Packaged perception algorithm to activate (default: {DEFAULT_PERCEPTION_PRESET}).",
+        help=f"Packaged perception preset to activate (default: {DEFAULT_PERCEPTION_PRESET}).",
     )
     perception.add_argument(
         "--dry-run",
@@ -2274,7 +2274,7 @@ def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
         timeout_s=args.timeout_s,
         record=args.record,
         json_output=args.json,
-        algorithm=args.algorithm,
+        preset=args.preset,
     )
     if result.message:
         print(result.message)
@@ -2286,7 +2286,7 @@ def _handle_vehicles_perception_apply(args: argparse.Namespace) -> int:
         args.source,
         record=args.record,
         json_output=args.json,
-        algorithm=args.algorithm,
+        preset=args.preset,
         plugins=args.plugins,
     )
     if result.message:
@@ -2368,7 +2368,7 @@ def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
         return 2
     result = update_vehicle_perception(
         vehicle_id=args.vehicle_id,
-        algorithm=args.algorithm,
+        preset=args.preset,
         timeout_s=args.timeout_s,
         restart=args.restart,
         dry_run=args.dry_run,

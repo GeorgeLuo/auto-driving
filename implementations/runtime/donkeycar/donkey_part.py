@@ -112,7 +112,7 @@ class LatestObservationSnapshot:
     error: str | None = None
     duration_ms: int = 0
     skipped_since_previous: int = 0
-    algorithm: str | None = None
+    preset: str | None = None
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
 
@@ -132,7 +132,7 @@ class LatestObservationSnapshot:
             "has_image": self.image is not None,
             "duration_ms": self.duration_ms,
             "skipped_since_previous": self.skipped_since_previous,
-            "algorithm": self.algorithm,
+            "preset": self.preset,
             "cycle_schema": None if self.cycle is None else self.cycle.get("schema"),
             "perception_status": None if not isinstance(perception, dict) else perception.get("status"),
         }
@@ -169,7 +169,7 @@ class AutonomyPilotPart:
         host: AutonomyCycleHost,
         min_interval_s: float = DEFAULT_OBSERVATION_INTERVAL_S,
         monotonic: Callable[[], float] | None = None,
-        algorithm: str | None = None,
+        preset: str | None = None,
         vehicle_id: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
@@ -181,7 +181,7 @@ class AutonomyPilotPart:
             raise ValueError("min_interval_s must be >= 0")
         self.host = host
         self.min_interval_s = float(min_interval_s)
-        self.algorithm = algorithm
+        self.preset = preset
         self._monotonic = monotonic or time.monotonic
         self._lock = threading.RLock()
         self.frame_index = 0
@@ -254,7 +254,7 @@ class AutonomyPilotPart:
                 "camera_frame_count": self.camera_frame_count,
                 "perception_inflight": self._cycle_inflight,
                 "memory_update_halted": self._memory_update_halted,
-                "algorithm": self.algorithm,
+                "preset": self.preset,
                 "latest": latest,
                 "latest_camera_frame_id": None if camera is None else camera.frame_id,
                 "latest_json_path": LATEST_JSON_PATH,
@@ -506,7 +506,7 @@ class AutonomyPilotPart:
         processed_count = self.processed_count
         skipped_count = self.skipped_count
         min_interval_s = self.min_interval_s
-        algorithm = self.algorithm
+        preset = self.preset
         generation_id = self.generation_id
         threshold_ms = stale_after_ms(min_interval_s)
 
@@ -526,7 +526,7 @@ class AutonomyPilotPart:
                 "min_interval_s": min_interval_s,
                 "processed_count": processed_count,
                 "skipped_count": skipped_count,
-                "algorithm": algorithm,
+                "preset": preset,
                 "generation_id": generation_id,
                 "frame": None,
                 "control": None,
@@ -565,7 +565,7 @@ class AutonomyPilotPart:
             "min_interval_s": min_interval_s,
             "processed_count": processed_count,
             "skipped_count": skipped_count,
-            "algorithm": algorithm or snap.algorithm,
+            "preset": preset or snap.preset,
             "generation_id": generation_id,
             "frame": {
                 "frame_id": snap.frame_id,
@@ -917,7 +917,7 @@ class AutonomyPilotPart:
                 error=error,
                 duration_ms=duration_ms,
                 skipped_since_previous=skips_at_start,
-                algorithm=self.algorithm,
+                preset=self.preset,
                 decision_publication=decision_publication,
                 decision_error=decision_error,
             )

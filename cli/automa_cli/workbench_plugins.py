@@ -116,7 +116,7 @@ class PluginCatalog:
 
 
 def packaged_plugin_catalog() -> PluginCatalog:
-    """Every packaged perception plugin; the default algorithm's are preselected."""
+    """Every packaged perception plugin; the default preset's are preselected."""
 
     default_ids = tuple(PERCEPTION_PRESETS[DEFAULT_PERCEPTION_PRESET]["plugins"])
     entries = step_plugins("perception")

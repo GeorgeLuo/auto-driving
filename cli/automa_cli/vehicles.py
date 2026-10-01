@@ -699,7 +699,7 @@ def _vehicle_next_action(
                 "automation_not_deployed",
                 command=(
                     "./cli/automa vehicles update perception "
-                    f"--id {vehicle_id} --algorithm lightweight_observer"
+                    f"--id {vehicle_id} --preset lightweight_observer"
                 ),
                 expected_state="automation_deployment=deployed",
             ),

@@ -249,7 +249,7 @@ def write_review_html(run_dir: Path, report: dict[str, Any]) -> Path:
 <body>
 <main>
   <h1>Perception Review</h1>
-  <p>{html.escape(str(report.get('mapper', {}).get('algorithm') or 'unknown'))}</p>
+  <p>{html.escape(str(report.get('mapper', {}).get('preset') or 'unknown'))}</p>
   <section class="summary">
     <h2>Run Summary</h2>
     <p>{html.escape(str(quality.get('interpretation') or 'No representation-health score available.'))}</p>

@@ -144,7 +144,7 @@ operator's current simulator session:
 ./cli/automa vehicles status --chase-url http://localhost:5050
 ./cli/automa vehicles update perception \
   --id chase-sim-chaser \
-  --algorithm lightweight_observer
+  --preset lightweight_observer
 ./cli/automa vehicles automation run \
   --id chase-sim-chaser \
   --observe-only \
@@ -222,26 +222,26 @@ After changing perception or shared autonomy code, stage a fresh bundle before
 restarting the worker:
 
 ```sh
-./cli/automa vehicles update perception --id chase-sim-chaser --algorithm sim_debug
+./cli/automa vehicles update perception --id chase-sim-chaser --preset sim_debug
 ./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
 
 ### Perception Experiments
 
 Observe five frames from a usable vehicle without taking movement control, or
-apply an algorithm or a plugin selection to one existing image or an image
+apply a preset or a plugin selection to one existing image or an image
 directory:
 
 ```sh
 ./cli/automa vehicles perception run
-./cli/automa vehicles perception run --id piracer --algorithm lightweight_observer
+./cli/automa vehicles perception run --id piracer --preset lightweight_observer
 ./cli/automa vehicles perception apply path/to/frame.jpg --plugin frame --plugin floor_continuity
-./cli/automa vehicles perception apply path/to/images --algorithm visual_observer
+./cli/automa vehicles perception apply path/to/images --preset visual_observer
 ```
 
 `--plugin` selects packaged perception plugins by catalog key, in order, with
 their default configs from `implementations/decision_cycle/perception/catalog.py`.
-`--algorithm` selects a named preset from
+`--preset` selects a named preset from
 `implementations/decision_cycle/perception/presets.py`.
 
 Guided stationary physical placement check (PiCar only; never commands movement):
@@ -492,9 +492,9 @@ implementations          -> satisfy and compose autonomy contracts
 CLI/runtime entrypoints  -> select implementations and execute the cycle
 ```
 
-Perception follows a component-injection model. The stable step wraps a
+Perception follows a feed-injection model. The stable step wraps a
 generic `SensorSnapshot` and runs configured plugins without knowing which
-sensor or meaning any plugin uses. Each plugin declares named component inputs
+sensor or meaning any plugin uses. Each plugin declares named feed inputs
 and returns only structured signals, spatial evidence, and measurements. The
 generic runner resolves and caches those inputs, then owns missing-input and
 warm-up status, error isolation, timing, source attribution, text rendering,

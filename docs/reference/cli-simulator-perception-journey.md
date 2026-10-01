@@ -23,7 +23,7 @@ Run these commands from the repository root:
 
 ./cli/automa vehicles update perception \
   --id chase-sim-chaser \
-  --algorithm lightweight_observer
+  --preset lightweight_observer
 
 ./cli/automa vehicles automation run \
   --id chase-sim-chaser \

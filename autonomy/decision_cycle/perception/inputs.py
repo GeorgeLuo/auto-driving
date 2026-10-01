@@ -6,7 +6,7 @@ from typing import Any
 from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import SensorSnapshot
 
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 
 
 def build_perception_request(
@@ -16,7 +16,7 @@ def build_perception_request(
     metadata: dict[str, Any] | None = None,
     shared_memory: SharedMemory | None = None,
 ) -> PerceptionRequest:
-    """Wrap a sensor snapshot without assuming which components plugins need."""
+    """Wrap a sensor snapshot without assuming which feeds plugins need."""
 
     return PerceptionRequest(
         snapshot=snapshot,

@@ -2,7 +2,7 @@
 
 A preset lists the plugins to run and config overrides for some of them. The
 default is a preset. An activation built from one records the preset name in
-its ``algorithm`` metadata key.
+its ``preset`` metadata key.
 """
 
 from __future__ import annotations

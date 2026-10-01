@@ -33,11 +33,11 @@ from .workbench_plugins import (
 )
 from .workbench_server import WorkbenchServer
 from .workbench_source import (
-    ImageFeed,
+    ImageSource,
     ReplayFrame,
     SourceValidationError,
     WORKBENCH_DEFAULT_MAX_FRAMES,
-    load_image_feed,
+    load_image_source,
     normalize_image_directory,
 )
 
@@ -177,7 +177,7 @@ def _format_workbench_status(
 
 
 __all__ = [
-    "ImageFeed",
+    "ImageSource",
     "ImageReplayRunner",
     "PluginCatalog",
     "PluginCatalogError",
@@ -190,7 +190,7 @@ __all__ = [
     "WORKBENCH_DEFAULT_PACE",
     "WORKBENCH_PACES",
     "WORKBENCH_SEQUENCE_ID",
-    "load_image_feed",
+    "load_image_source",
     "normalize_image_directory",
     "run_workbench_replay",
     "packaged_plugin_catalog",

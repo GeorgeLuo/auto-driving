@@ -397,7 +397,7 @@
           <p>The perception step's selected plugins turn sensor readings into <code>PerceptionText</code> evidence.</p>
           <ul>
             <li>The stable step is agnostic of sensor and evidence kinds.</li>
-            <li>Plugins declare and resolve their own input components.</li>
+            <li>Plugins declare and resolve their own input feeds.</li>
             <li>Plugins emit signals, things, artifacts, and limits.</li>
           </ul>
         </div>
@@ -475,7 +475,7 @@
         <div class="step">
           <div>
             <h3>Perceive</h3>
-            <p>The activated generic plugin-chain step passes a component context over the sensor snapshot. Each configured implementation resolves only the components it needs. The same step shape runs locally for Chase and on the Donkey host.</p>
+            <p>The activated generic plugin-chain step passes a feed context over the sensor snapshot. Each configured implementation resolves only the feeds it needs. The same step shape runs locally for Chase and on the Donkey host.</p>
           </div>
         </div>
         <div class="step">
@@ -539,7 +539,7 @@
           </tr>
           <tr>
             <td>Perception</td>
-            <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query components from its snapshot.</td>
+            <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query feeds from its snapshot.</td>
             <td><code>PerceptionText</code> containing evidence and limits.</td>
             <td><code>autonomy/decision_cycle/perception/</code>, <code>implementations/decision_cycle/perception/</code></td>
           </tr>

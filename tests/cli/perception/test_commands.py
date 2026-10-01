@@ -73,12 +73,12 @@ class PerceptionCommandTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["schema"], "vehicle_perception_info_v0")
-        self.assertEqual(payload["activation"]["algorithm"], "sim_debug")
+        self.assertEqual(payload["activation"]["preset"], "sim_debug")
         self.assertEqual(
-            payload["algorithm_schema"]["schema"], "perception_algorithm_schema_v2"
+            payload["perception_schema"]["schema"], "perception_schema_v2"
         )
         self.assertEqual(
-            payload["algorithm_schema"]["output"]["schema"], "perception_text_v2"
+            payload["perception_schema"]["output"]["schema"], "perception_text_v2"
         )
         self.assertFalse(payload["published_view"]["available"])
 

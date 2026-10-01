@@ -11,7 +11,7 @@ from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
-    camera_component_id,
+    camera_feed_id,
 )
 from implementations.decision_cycle.perception.plugins.motion_tracks.plugin import (
     MotionTracksPlugin,
@@ -23,7 +23,7 @@ _PERCEPTION_SPECS = {
 }
 
 
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
+FRONT_CAMERA_FEED = camera_feed_id(FRONT_CAMERA_SENSOR_ID)
 
 
 def _mapper(plugin_id: str) -> PerceptionRunner:
@@ -56,7 +56,7 @@ def _array_reading(
 
 
 class PerceptionPluginTests(unittest.TestCase):
-    def test_current_plugins_share_camera_component_without_writing_diagnostics(self) -> None:
+    def test_current_plugins_share_camera_feed_without_writing_diagnostics(self) -> None:
         rgb = np.random.default_rng(3).integers(0, 256, (72, 96, 3), dtype=np.uint8)
         request = build_perception_request(_snapshot(_array_reading(rgb)))
         mapper = PerceptionRunner.from_selection(
@@ -67,7 +67,7 @@ class PerceptionPluginTests(unittest.TestCase):
         perception = mapper.perceive(request)
 
         self.assertEqual(perception.status, "ok")
-        self.assertEqual(request.component_summary()["available"], {FRONT_CAMERA_COMPONENT: "CameraFrame"})
+        self.assertEqual(request.feed_summary()["available"], {FRONT_CAMERA_FEED: "CameraFrame"})
         self.assertEqual(perception.artifacts, {})
         frame = next(thing for thing in perception.things if thing.kind == "sensor_frame")
         self.assertEqual(frame.properties["width_px"], 96)

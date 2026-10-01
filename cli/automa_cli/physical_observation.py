@@ -2025,7 +2025,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "memory": memory if isinstance(memory, dict) else None,
         "control": control if isinstance(control, dict) else None,
         "generation_id": publication.get("generation_id"),
-        "algorithm": publication.get("algorithm"),
+        "preset": publication.get("preset"),
         "health": publication.get("health"),
         "result_age_ms": publication.get("result_age_ms"),
         "action_policy": "observe_only",

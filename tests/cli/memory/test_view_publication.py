@@ -14,7 +14,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
         publication = {
             "health": "healthy",
             "duration_ms": 12,
-            "algorithm": "lightweight_observer",
+            "preset": "lightweight_observer",
             "frame": {
                 "frame_id": "donkey_frame_1",
                 "frame_index": 1,

@@ -22,4 +22,4 @@ too: `DEFAULT_PERCEPTION_PLUGINS` is the plugin list of
 
 `implementations/decision_cycle/catalog.py` builds an activation from a preset
 with `perception_preset_activation`. The activation records the preset name in
-its `algorithm` metadata key.
+its `preset` metadata key.

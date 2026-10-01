@@ -111,14 +111,14 @@ class AutomationStatusTests(unittest.TestCase):
         vehicle = payload["vehicles"][0]
         self.assertEqual(vehicle["vehicle_id"], VEHICLE_ID)
         self.assertTrue(vehicle["deployed"])
-        self.assertEqual(vehicle["perception"]["algorithm"], "sim_debug")
+        self.assertEqual(vehicle["perception"]["preset"], "sim_debug")
         self.assertEqual(vehicle["decision"]["plugins"]["action"], ["hold"])
         self.assertEqual(vehicle["process"]["status"], "running")
         self.assertTrue(vehicle["process"]["running"])
 
         self.assertIn("deployed automations: 1", human.stdout)
         self.assertIn(vehicle["vehicle_id"], human.stdout)
-        self.assertIn(f"perception: {vehicle['perception']['algorithm']}", human.stdout)
+        self.assertIn(f"perception: {vehicle['perception']['preset']}", human.stdout)
         self.assertIn("decision: proposal=- plan=highest_confidence action=hold", human.stdout)
         self.assertIn(f"worker: {vehicle['process']['status']}", human.stdout)
         self.assertIn("log: disabled", human.stdout)

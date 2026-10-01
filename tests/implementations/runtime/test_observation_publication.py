@@ -37,14 +37,14 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(),
             min_interval_s=0.0,
-            algorithm="lightweight_observer",
+            preset="lightweight_observer",
         )
         payload = part.publish_latest(now_ms=1_000)
         self.assertEqual(payload["schema"], OBSERVATION_PUBLICATION_SCHEMA)
         self.assertEqual(payload["health"], "warming")
         self.assertFalse(payload["ok"])
         self.assertIsNone(payload["frame"])
-        self.assertEqual(payload["algorithm"], "lightweight_observer")
+        self.assertEqual(payload["preset"], "lightweight_observer")
         self.assertEqual(payload["latest_json_path"], LATEST_JSON_PATH)
         self.assertEqual(payload["latest_frame_path"], LATEST_FRAME_PATH)
 
@@ -52,7 +52,7 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(),
             min_interval_s=0.0,
-            algorithm="test-observer",
+            preset="test-observer",
         )
         image = np.zeros((8, 12, 3), dtype=np.uint8)
         image[:, :] = (10, 20, 30)
@@ -67,7 +67,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["control"]["throttle"], 0.0)
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
         self.assertTrue(payload["frame"]["has_image"])
-        self.assertEqual(payload["algorithm"], "test-observer")
+        self.assertEqual(payload["preset"], "test-observer")
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
@@ -118,7 +118,7 @@ class ObservationPublicationTests(unittest.TestCase):
             }
 
         host = AutonomyCycleHost(steps=DecisionSteps(memory=remember))
-        part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0, preset="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
@@ -297,7 +297,7 @@ class ObservationPublicationTests(unittest.TestCase):
             / "manage.py"
         ).read_text(encoding="utf-8")
         self.assertIn("autonomy_controller.observation_publisher = autonomy_part", manage)
-        self.assertIn("algorithm=perception_algorithm", manage)
+        self.assertIn("preset=perception_preset", manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (

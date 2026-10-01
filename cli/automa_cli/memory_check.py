@@ -2257,7 +2257,7 @@ def publication_to_check_frame(
             "created_at_ms": int(timestamp_ms),
             "sensor_snapshot": {},
             "perception_plugin_id": perception.get("plugin_id")
-            or publication.get("algorithm")
+            or publication.get("preset")
             or "onboard_perception",
             "summary": list(perception.get("lines") or [])[:8]
             if isinstance(perception.get("lines"), list)

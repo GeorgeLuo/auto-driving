@@ -63,7 +63,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     "perception",
                     "--id",
                     "chase-sim-chaser",
-                    "--algorithm",
+                    "--preset",
                     "lightweight_observer",
                     runtime_root=runtime_root,
                     extra_env=env,

@@ -3,7 +3,7 @@
   "status": "active",
   "purpose": "Directory-only contract for the initial automation-engine repo shape. Specific files are intentionally omitted.",
   "rules": [
-    "autonomy/ is the stable automation kernel: interfaces, data contracts, stage contracts, generic component contexts, and generic runners; it contains no environment or perception algorithms.",
+    "autonomy/ is the stable automation kernel: interfaces, data contracts, stage contracts, generic feed contexts, and generic runners; it contains no environment or perception algorithms.",
     "implementations/ mirrors the autonomy/ hierarchy and contains concrete code that satisfies stable contracts.",
     "Plugin is a loading and activation mode, not the top-level source-code category.",
     "autonomy/ should not import implementations/ directly; CLI, runtime, or deploy code should load implementations by config/spec.",
@@ -86,7 +86,7 @@
                     "path": "implementations/decision_cycle/perception/feeds/",
                     "category": "implementation",
                     "commit_policy": "source",
-                    "responsibility": "Feeds: per-sensor adapters that turn generic sensor readings into typed plugin inputs, such as camera frames. The core contract calls these components."
+                    "responsibility": "Feeds: per-sensor adapters that turn generic sensor readings into typed plugin inputs, such as camera frames."
                   },
                   {
                     "path": "implementations/decision_cycle/perception/plugins/",

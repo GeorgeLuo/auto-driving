@@ -8,20 +8,20 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from autonomy.decision_cycle.perception.components.interface import (
-    PerceptionComponentUnavailable,
+from autonomy.decision_cycle.perception.feeds.interface import (
+    PerceptionFeedUnavailable,
     PerceptionPluginInput,
 )
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading
 
 
-CAMERA_COMPONENT_KIND = "camera.rgb"
+CAMERA_FEED_KIND = "camera.rgb"
 
 
 @dataclass(frozen=True)
 class CameraFrame:
-    """Normalized RGB component derived from one camera sensor reading."""
+    """Normalized RGB frame derived from one camera sensor reading."""
 
     sensor_id: str
     captured_at_ms: int
@@ -59,8 +59,8 @@ class CameraFrame:
         }
 
 
-def camera_component_id(sensor_id: str) -> str:
-    return f"{CAMERA_COMPONENT_KIND}:{sensor_id}"
+def camera_feed_id(sensor_id: str) -> str:
+    return f"{CAMERA_FEED_KIND}:{sensor_id}"
 
 
 def camera_rgb_input(
@@ -70,7 +70,7 @@ def camera_rgb_input(
 ) -> PerceptionPluginInput:
     return PerceptionPluginInput(
         name=name,
-        component_id=camera_component_id(sensor_id),
+        feed_id=camera_feed_id(sensor_id),
         provider_spec="implementations.decision_cycle.perception.feeds.camera:provide_camera_frame",
     )
 
@@ -84,10 +84,10 @@ def provide_camera_frame(
 ) -> CameraFrame:
     """Normalize one declared camera reading for framework injection."""
 
-    prefix = f"{CAMERA_COMPONENT_KIND}:"
-    if not plugin_input.component_id.startswith(prefix):
-        raise ValueError(f"camera provider cannot resolve {plugin_input.component_id!r}")
-    sensor_id = plugin_input.component_id.removeprefix(prefix)
+    prefix = f"{CAMERA_FEED_KIND}:"
+    if not plugin_input.feed_id.startswith(prefix):
+        raise ValueError(f"camera provider cannot resolve {plugin_input.feed_id!r}")
+    sensor_id = plugin_input.feed_id.removeprefix(prefix)
     return _camera_frame_from_reading(request.sensor(sensor_id), sensor_id)
 
 
@@ -96,9 +96,9 @@ def _camera_frame_from_reading(
     sensor_id: str,
 ) -> CameraFrame:
     if reading is None:
-        raise PerceptionComponentUnavailable(f"sensor reading {sensor_id!r} is missing")
+        raise PerceptionFeedUnavailable(f"sensor reading {sensor_id!r} is missing")
     if reading.sensor_kind != "camera":
-        raise PerceptionComponentUnavailable(
+        raise PerceptionFeedUnavailable(
             f"sensor reading {sensor_id!r} has kind {reading.sensor_kind!r}, expected 'camera'"
         )
 
@@ -124,7 +124,7 @@ def _camera_frame_from_reading(
 
     if rgb is None:
         detail = "; ".join(errors) if errors else "reading has neither value nor path"
-        raise PerceptionComponentUnavailable(detail)
+        raise PerceptionFeedUnavailable(detail)
 
     normalized = np.ascontiguousarray(rgb, dtype=np.uint8)
     normalized.setflags(write=False)

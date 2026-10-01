@@ -1,6 +1,6 @@
 from __future__ import annotations
 import unittest
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorSnapshot
 from implementations.decision_cycle.catalog import step_plugins
 from cli.automa_cli.workbench_plugins import packaged_plugin_catalog
@@ -71,7 +71,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
         self.assertEqual(_plugin_ids(state["perception"]), ["classical_regions"])
         self.assertEqual(
-            state["machine_detail"]["pipeline"]["perception_algorithm"], "plugin_selection"
+            state["machine_detail"]["pipeline"]["perception_preset"], "plugin_selection"
         )
 
     def test_empty_selection_replays_raw_capture_and_allows_live_replacement(self) -> None:

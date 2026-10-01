@@ -98,7 +98,7 @@ class MemoryStreamTests(unittest.TestCase):
         status = {
             "ok": True,
             "drive_mode": "user",
-            "autonomy": {"components": {"perception": {"algorithm": "lightweight_observer"}}},
+            "autonomy": {"components": {"perception": {"preset": "lightweight_observer"}}},
         }
         with patch(
             "cli.automa_cli.memory.fetch_autonomy_status",

@@ -672,7 +672,7 @@ def _bounded_publication(publication: dict[str, Any]) -> dict[str, Any]:
     return {
         "health": publication.get("health"),
         "ok": publication.get("ok"),
-        "algorithm": publication.get("algorithm"),
+        "preset": publication.get("preset"),
         "mode": publication.get("mode") or publication.get("drive_mode"),
         "result_age_ms": publication.get("result_age_ms"),
         "duration_ms": publication.get("duration_ms"),

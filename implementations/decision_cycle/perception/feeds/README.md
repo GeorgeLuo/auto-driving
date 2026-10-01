@@ -6,10 +6,10 @@ turns a camera reading into a `CameraFrame`.
 ## How feeds run
 
 - A plugin declares each input as a `PerceptionPluginInput`: the name it reads,
-  a shared component id, and the feed's provider spec.
+  a shared feed id, and the feed's provider spec.
 - The framework resolves each declared input once per frame and shares the
   result with every plugin that declares it.
-- A provider raises `PerceptionComponentUnavailable` when the sensor data is
+- A provider raises `PerceptionFeedUnavailable` when the sensor data is
   missing or has the wrong kind.
 
 ## Adding a feed

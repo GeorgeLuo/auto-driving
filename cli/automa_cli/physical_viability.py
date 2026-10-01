@@ -216,7 +216,7 @@ def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float)
         "wall_ms": wall_ms,
         "health": publication.get("health"),
         "mode": publication.get("mode") or publication.get("drive_mode"),
-        "algorithm": publication.get("algorithm"),
+        "preset": publication.get("preset"),
         "frame_id": frame.get("frame_id"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),
@@ -284,8 +284,8 @@ def _compute_metrics(
         "duration_ms": _distribution(durations),
         "control_always_zero": control_zero,
         "mode_always_user": mode_user,
-        "algorithms_seen": sorted(
-            {str(s.get("algorithm")) for s in healthy if s.get("algorithm")}
+        "presets_seen": sorted(
+            {str(s.get("preset")) for s in healthy if s.get("preset")}
         ),
         "host": {
             "sample_count": len(host_samples),

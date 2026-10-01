@@ -25,7 +25,7 @@ class PhysicalViabilityTests(unittest.TestCase):
             return {
                 "health": "healthy",
                 "mode": "user",
-                "algorithm": "lightweight_observer",
+                "preset": "lightweight_observer",
                 "processed_count": idx + 1,
                 "skipped_count": idx * 4,
                 "min_interval_s": 0.5,

@@ -4,8 +4,8 @@ import unittest
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.plugin_runner import MEMORY_REPORT_SCHEMA, PluginMemoryRunner
-from autonomy.decision_cycle.memory.activation import read_memory_activation
+from autonomy.decision_cycle.memory.runner import MEMORY_REPORT_SCHEMA, MemoryRunner
+from autonomy.decision_cycle.activation import read_step_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
@@ -19,8 +19,8 @@ def _state(report: dict) -> dict:
 class MemoryActivationTests(unittest.TestCase):
     def test_activation_loads_and_runs_through_decision_cycle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            activation = read_memory_activation(_write_payload(tmp, _valid_payload()))
-            step = PluginMemoryRunner(activation)
+            activation = read_step_activation(_write_payload(tmp, _valid_payload()), "memory")
+            step = MemoryRunner.from_activation(activation)
             shared: dict = {}
 
             context = DecisionFrameContext(
@@ -36,7 +36,7 @@ class MemoryActivationTests(unittest.TestCase):
                 summary=("hello",),
             )
             result = DecisionCycle(
-                DecisionSteps(remember=step),
+                DecisionSteps(memory=step),
             ).run(context)
             # no observation step => observation is None on first cycle
             self.assertEqual(result.memory["schema"], MEMORY_REPORT_SCHEMA)
@@ -58,8 +58,8 @@ class MemoryActivationTests(unittest.TestCase):
 
     def test_reset_starts_a_new_empty_epoch_and_returns_the_written_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            step = PluginMemoryRunner(
-                read_memory_activation(_write_payload(tmp, _valid_payload()))
+            step = MemoryRunner.from_activation(
+                read_step_activation(_write_payload(tmp, _valid_payload()), "memory")
             )
             shared: dict = {"other.key": "kept by the host, not by memory"}
             step.update(
@@ -77,9 +77,9 @@ class MemoryActivationTests(unittest.TestCase):
     def test_update_failures_raise_and_record_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
-            payload["memory"]["implementation_config"]["fail_on_update"] = True
-            step = PluginMemoryRunner(
-                read_memory_activation(_write_payload(tmp, payload))
+            payload["plugin_configs"]["recording_test"]["fail_on_update"] = True
+            step = MemoryRunner.from_activation(
+                read_step_activation(_write_payload(tmp, payload), "memory")
             )
             with self.assertRaisesRegex(RuntimeError, "forced-update-failure"):
                 step.update(
@@ -92,9 +92,9 @@ class MemoryActivationTests(unittest.TestCase):
     def test_reset_failures_are_recorded_without_raising(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()
-            payload["memory"]["implementation_config"]["fail_on_reset"] = True
-            step = PluginMemoryRunner(
-                read_memory_activation(_write_payload(tmp, payload))
+            payload["plugin_configs"]["recording_test"]["fail_on_reset"] = True
+            step = MemoryRunner.from_activation(
+                read_step_activation(_write_payload(tmp, payload), "memory")
             )
 
             self.assertEqual(step.reset({}), {})
@@ -104,8 +104,8 @@ class MemoryActivationTests(unittest.TestCase):
 
     def test_report_is_detached_from_the_plugin_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            step = PluginMemoryRunner(
-                read_memory_activation(_write_payload(tmp, _valid_payload()))
+            step = MemoryRunner.from_activation(
+                read_step_activation(_write_payload(tmp, _valid_payload()), "memory")
             )
             shared: dict = {}
             report = step.update(

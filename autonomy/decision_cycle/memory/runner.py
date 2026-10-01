@@ -1,6 +1,6 @@
-"""Memory plugin selection and execution at the decision-cycle boundary.
+"""Memory step runner.
 
-``PluginMemoryRunner`` applies the manager's selection and runs each selected
+``MemoryRunner`` applies the manager's selection and runs each selected
 plugin through ``MemoryPluginRuntime`` in selection order. Its return value is
 a report of each plugin's own state summary for diagnostics; decisions read
 plugin-published keys in the host map, not the report.
@@ -9,16 +9,20 @@ plugin-published keys in the host map, not the report.
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from threading import RLock
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.activation import MemoryActivation, memory_manager_from_activation
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.memory.execution.plugin_runtime import MemoryPluginRuntime
-from autonomy.decision_cycle.memory.plugin import MemoryImplementation
+from autonomy.decision_cycle.memory.plugin import MemoryPlugin
 from autonomy.decision_cycle.memory.publication import withdraw_publication
 from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.runner import (
+    PROVIDED_ENTRYPOINT,
+    require_step_activation,
+    require_step_manager,
+)
 from autonomy.plugins import (
     PluginDefinition,
     PluginManager,
@@ -30,7 +34,7 @@ from autonomy.shared_memory import SharedMemory
 MEMORY_REPORT_SCHEMA = "memory_report_v0"
 
 
-class PluginMemoryRunner:
+class MemoryRunner:
     """Run the manager's selected memory plugins once per decision cycle.
 
     Plugins run in selection order on the same host map. Each plugin writes its
@@ -38,22 +42,17 @@ class PluginMemoryRunner:
     The framework does not merge retention policies.
     """
 
+    step = "memory"
+
     def __init__(
         self,
-        activation: MemoryActivation | None = None,
+        plugin_manager: PluginManager,
         *,
-        plugin_manager: PluginManager | None = None,
+        provided: dict[str, MemoryPlugin] | None = None,
     ) -> None:
-        if plugin_manager is None:
-            if activation is None:
-                raise ValueError("memory requires an activation or plugin_manager")
-            plugin_manager = memory_manager_from_activation(activation)
-        if not isinstance(plugin_manager, PluginManager):
-            raise TypeError("plugin_manager must be a PluginManager")
-        if plugin_manager.step != "memory":
-            raise ValueError(f"plugin_manager is scoped to {plugin_manager.step!r}, not 'memory'")
-        self.activation = activation
-        self.plugin_manager = plugin_manager
+        self.activation: StepActivation | None = None
+        self.plugin_manager = require_step_manager(plugin_manager, self.step)
+        self._provided = dict(provided or {})
         self._selection_runtime = PluginSelectionRuntime(plugin_manager)
         self._runtime_lock = RLock()
         self.plugin_ids: tuple[str, ...] = ()
@@ -65,18 +64,28 @@ class PluginMemoryRunner:
         self.failure_count = 0
         self._apply_selection()
 
-    @property
-    def implementation(self) -> MemoryImplementation | None:
-        """Compatibility access for callers inspecting a single applied plugin."""
-        return self.plugins[0].implementation if len(self.plugins) == 1 else None
+    @classmethod
+    def from_activation(cls, activation: StepActivation) -> "MemoryRunner":
+        runner = cls(require_step_activation(activation, cls.step).plugin_manager())
+        runner.activation = activation
+        return runner
+
+    @classmethod
+    def from_plugins(cls, plugins: dict[str, MemoryPlugin]) -> "MemoryRunner":
+        """Run already constructed plugins, selected in the mapping's order."""
+
+        manager = PluginManager.from_specs(
+            cls.step, {plugin_id: f"{PROVIDED_ENTRYPOINT}:{plugin_id}" for plugin_id in plugins}
+        )
+        manager.select(tuple(plugins))
+        return cls(manager, provided=plugins)
 
     def _load_plugin(self, definition: PluginDefinition) -> MemoryPluginRuntime:
-        return MemoryPluginRuntime(
-            definition,
-            source_path=(
-                self.activation.source_path if self.activation else definition.source or Path("memory-manager")
-            ),
-        )
+        provided = None
+        if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
+            provided = self._provided[definition.plugin_id]
+        source_path = self.activation.source_path if self.activation else definition.source
+        return MemoryPluginRuntime(definition, source_path=source_path, plugin=provided)
 
     def prepare_selection(self) -> None:
         """Load the manager selection without resetting or publishing it."""
@@ -216,7 +225,11 @@ class PluginMemoryRunner:
             return {
                 "implementation_id": final.implementation_id if final else None,
                 "implementation_spec": final.definition.entrypoint if final else None,
-                "activation": str(self.activation.source_path) if self.activation else None,
+                "activation": (
+                    str(self.activation.source_path)
+                    if self.activation and self.activation.source_path
+                    else None
+                ),
                 "available_plugins": sorted(self.plugin_manager.available_ids),
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),

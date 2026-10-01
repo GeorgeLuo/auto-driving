@@ -1,4 +1,4 @@
-"""Plan values produced by planning.
+"""The plan record the plan step produces.
 
 ``ActionPlan`` records the candidates for one cycle and, when one is
 selected, that proposal and its single contribution. Its validation holds
@@ -26,8 +26,8 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 
 ACTION_PLAN_SCHEMA = "action_plan_v0"
-# Serialized ID of the built-in selector, select_highest_confidence_plan.
-SELECTOR_ID = "deterministic_first_active"
+# Plugin ID of the built-in plan plugin; a plan records the plugin that built it.
+SELECTOR_ID = "highest_confidence"
 MAX_PLAN_METADATA_BYTES = 1024
 
 
@@ -74,8 +74,9 @@ class ActionPlan:
         object.__setattr__(self, "plan_id", plan_id)
         if self.status not in {"selected", "idle"}:
             raise ValueError(f"invalid plan status {self.status!r}")
-        if self.selector_id != SELECTOR_ID:
-            raise ValueError(f"selector_id must be {SELECTOR_ID}")
+        object.__setattr__(
+            self, "selector_id", require_ascii_id(self.selector_id, field_name="selector_id")
+        )
         candidates = tuple(self.candidates)
         plugin_ids = [c.plugin_id for c in candidates]
         if len(plugin_ids) != len(set(plugin_ids)):

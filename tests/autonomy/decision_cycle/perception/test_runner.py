@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from autonomy.plugins import PluginManager
+
 import json
 import tempfile
 import unittest
@@ -9,10 +11,7 @@ import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-from autonomy.decision_cycle.perception.activation import (
-    ActivatedPerceptionStep,
-    read_perception_activation,
-)
+from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA, read_step_activation
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -27,14 +26,10 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInput,
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
-from autonomy.decision_cycle.perception.selection import perception_plugin_manager
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.perception.catalog import (
-    PERCEPTION_MAPPER_SPEC,
-    PERCEPTION_PLUGIN_SPECS,
-)
+from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
 
 
 TEST_INPUT = PerceptionPluginInput(
@@ -156,7 +151,7 @@ def _array_reading(
 
 class PluginRunnerTests(unittest.TestCase):
     def test_runner_injects_inputs_attributes_evidence_and_isolates_errors(self) -> None:
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["working", "exploding"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
@@ -191,14 +186,15 @@ class PluginRunnerTests(unittest.TestCase):
             self.assertEqual(record["error"], run.error)
 
     def test_catalog_aliases_may_share_one_implementation(self) -> None:
-        manager = perception_plugin_manager(
+        manager = PluginManager.from_specs(
+            "perception",
             {
                 "first_frame": f"{__name__}:WorkingPlugin",
                 "second_frame": f"{__name__}:WorkingPlugin",
             }
         )
         manager.select(["first_frame", "second_frame"])
-        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        mapper = PerceptionRunner(plugin_manager=manager)
 
         perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
 
@@ -221,7 +217,7 @@ class PluginRunnerTests(unittest.TestCase):
         )
 
     def test_runner_reset_is_optional_and_invokes_stateful_hook_when_present(self) -> None:
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["working", "frame"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
@@ -236,7 +232,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(plugin.reset_count, 2)
 
     def test_missing_input_short_circuits_plugin_as_unavailable(self) -> None:
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["working", "unavailable"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
@@ -251,11 +247,11 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(mapper.plugins[1].invocations, 0)
 
     def test_schema_uses_full_manager_catalog_without_constructing_unselected_plugins(self) -> None:
-        manager = perception_plugin_manager({
+        manager = PluginManager.from_specs("perception", {
             "working": f"{__name__}:WorkingPlugin",
             "broken": f"{__name__}:ConstructionFailurePlugin",
         })
-        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        mapper = PerceptionRunner(plugin_manager=manager)
         self.assertEqual(
             mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
         )
@@ -274,14 +270,15 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(mapper.plugins, ())
 
     def test_manager_selection_is_applied_at_the_next_perception_frame(self) -> None:
-        manager = perception_plugin_manager(
+        manager = PluginManager.from_specs(
+            "perception",
             {
                 "working": f"{__name__}:WorkingPlugin",
                 "unavailable": f"{__name__}:UnavailablePlugin",
             }
         )
         manager.select(["working"])
-        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        mapper = PerceptionRunner(plugin_manager=manager)
         working = mapper.plugins[0]
 
         first = mapper.perceive(
@@ -311,14 +308,15 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(working.reset_count, 1)
 
     def test_failed_live_selection_build_does_not_publish_partial_runtime(self) -> None:
-        manager = perception_plugin_manager(
+        manager = PluginManager.from_specs(
+            "perception",
             {
                 "working": f"{__name__}:WorkingPlugin",
                 "broken": f"{__name__}:ConstructionFailurePlugin",
             }
         )
         manager.select(["working"])
-        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        mapper = PerceptionRunner(plugin_manager=manager)
         working = mapper.plugins[0]
         manager.select(["broken"])
 
@@ -337,7 +335,8 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertIs(mapper.plugins[0], working)
 
     def test_selection_change_during_perceive_applies_on_the_next_frame(self) -> None:
-        manager = perception_plugin_manager(
+        manager = PluginManager.from_specs(
+            "perception",
             {
                 "selection_changing": f"{__name__}:SelectionChangingPlugin",
                 "working": f"{__name__}:WorkingPlugin",
@@ -346,7 +345,7 @@ class PluginRunnerTests(unittest.TestCase):
         manager.select(["selection_changing", "working"])
         SelectionChangingPlugin.manager = manager
         try:
-            mapper = PluginPerceptionMapper(plugin_manager=manager)
+            mapper = PerceptionRunner(plugin_manager=manager)
             first = mapper.perceive(
                 build_perception_request(_snapshot(_array_reading(), "frame-1"))
             )
@@ -365,14 +364,15 @@ class PluginRunnerTests(unittest.TestCase):
             SelectionChangingPlugin.manager = None
 
     def test_prepare_selection_publishes_the_same_instances_on_commit(self) -> None:
-        manager = perception_plugin_manager(
+        manager = PluginManager.from_specs(
+            "perception",
             {
                 "working": f"{__name__}:WorkingPlugin",
                 "unavailable": f"{__name__}:UnavailablePlugin",
             }
         )
         manager.select(["working"])
-        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        mapper = PerceptionRunner(plugin_manager=manager)
         working = mapper.plugins[0]
         manager.select(["unavailable"])
 
@@ -387,14 +387,15 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(working.reset_count, 1)
 
     def test_discarded_selection_leaves_the_published_plugin(self) -> None:
-        manager = perception_plugin_manager(
+        manager = PluginManager.from_specs(
+            "perception",
             {
                 "working": f"{__name__}:WorkingPlugin",
                 "unavailable": f"{__name__}:UnavailablePlugin",
             }
         )
         manager.select(["working"])
-        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        mapper = PerceptionRunner(plugin_manager=manager)
         working = mapper.plugins[0]
         manager.select(["unavailable"])
         mapper.prepare_selection()
@@ -411,7 +412,8 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(working.reset_count, 0)
 
     def test_schema_distinguishes_selected_ids_from_applied_plugins(self) -> None:
-        manager = perception_plugin_manager(
+        manager = PluginManager.from_specs(
+            "perception",
             {
                 "working": f"{__name__}:WorkingPlugin",
                 "spare": f"{__name__}:WorkingPlugin",
@@ -419,7 +421,7 @@ class PluginRunnerTests(unittest.TestCase):
             }
         )
         manager.select(["working"])
-        mapper = PluginPerceptionMapper(plugin_manager=manager)
+        mapper = PerceptionRunner(plugin_manager=manager)
         published = mapper.plugins[0]
         manager.select(["spare"])
 
@@ -462,23 +464,19 @@ class PluginRunnerTests(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "schema": "automa_perception_activation_v0",
-                        "perception": {
-                            "algorithm": "test-observer",
-                            "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                            "mapper_config": {
-                                "plugins": ["working"],
-                                "plugin_specs": {
-                                    "working": f"{__name__}:WorkingPlugin",
-                                    "exploding": f"{__name__}:ExplodingPlugin",
-                                },
-                            },
+                        "schema": STEP_ACTIVATION_SCHEMA,
+                        "step": "perception",
+                        "plugins": ["working"],
+                        "plugin_specs": {
+                            "working": f"{__name__}:WorkingPlugin",
+                            "exploding": f"{__name__}:ExplodingPlugin",
                         },
+                        "metadata": {"algorithm": "test-observer"},
                     }
                 ),
                 encoding="utf-8",
             )
-            step = ActivatedPerceptionStep(read_perception_activation(path))
+            step = PerceptionRunner.from_activation(read_step_activation(path, "perception"))
 
         pending = step.status()
         self.assertEqual(pending["plugin_report"]["selected_plugin_ids"], ["working"])
@@ -506,11 +504,11 @@ class PluginRunnerTests(unittest.TestCase):
         )
         self.assertEqual(executed["last_plugin_runs"][0]["status"], "ok")
         self.assertEqual(executed["last_plugin_runs"][0]["duration_ms"], record["duration_ms"])
-        self.assertEqual(step.mapper.plugin_report(), executed["plugin_report"])
+        self.assertEqual(step.plugin_report(), executed["plugin_report"])
         self.assertEqual(result.plugin_runs[0].implementation_id, "working-test-v0")
-        self.assertEqual(step.mapper.plugins[0].plugin_id, "working-test-v0")
+        self.assertEqual(step.plugins[0].plugin_id, "working-test-v0")
 
-        step.mapper.plugin_manager.select(["exploding"])
+        step.plugin_manager.select(["exploding"])
         waiting = step.status()
         self.assertEqual(waiting["plugin_report"]["selected_plugin_ids"], ["exploding"])
         self.assertEqual(waiting["plugin_report"]["applied_plugin_ids"], ["working"])
@@ -541,43 +539,15 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(reported["last_plugin_runs"][0]["status"], "error")
         self.assertEqual(reported["last_plugin_runs"][0]["plugin_id"], "exploding")
         self.assertEqual(failed.plugin_runs[0].plugin_id, "exploding")
-        self.assertEqual(step.mapper.plugins[0].plugin_id, "exploding-test-v0")
-        self.assertEqual(step.mapper.plugin_report(), reported["plugin_report"])
+        self.assertEqual(step.plugins[0].plugin_id, "exploding-test-v0")
+        self.assertEqual(step.plugin_report(), reported["plugin_report"])
 
         step.reset()
         cleared = step.status()
         self.assertEqual(cleared["last_plugin_runs"], [])
         self.assertIsNone(cleared["plugin_report"]["plugins"][0]["duration_ms"])
         self.assertIsNone(cleared["plugin_report"]["plugins"][0]["error"])
-        self.assertEqual(step.mapper.plugin_report(), cleared["plugin_report"])
-
-    def test_step_status_omits_plugin_report_without_a_plugin_manager(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "active.json"
-            path.write_text(
-                json.dumps(
-                    {
-                        "schema": "automa_perception_activation_v0",
-                        "perception": {
-                            "algorithm": "test-observer",
-                            "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                            "mapper_config": {
-                                "plugins": ["working"],
-                                "plugin_specs": {
-                                    "working": f"{__name__}:WorkingPlugin",
-                                },
-                            },
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
-            step = ActivatedPerceptionStep(read_perception_activation(path))
-        step.mapper = type("BareMapper", (), {"plugin_id": "bare"})()
-        status = step.status()
-        self.assertNotIn("plugin_report", status)
-        self.assertEqual(status["algorithm"], "test-observer")
-        self.assertEqual(status["last_plugin_runs"], [])
+        self.assertEqual(step.plugin_report(), cleared["plugin_report"])
 
 
 if __name__ == "__main__":

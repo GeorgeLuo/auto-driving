@@ -5,19 +5,21 @@ import unittest
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.execution.plugin_runtime import DEFAULT_MAX_DIAGNOSTIC_CHARS
-from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
-from autonomy.decision_cycle.memory.activation import read_memory_activation
+from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.activation import read_step_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )
 
 
-def _runner(tmp: str, spec: str | None = None) -> PluginMemoryRunner:
+def _runner(tmp: str, spec: str | None = None) -> MemoryRunner:
     payload = _valid_payload()
     if spec is not None:
-        payload["memory"]["implementation_spec"] = spec
-    return PluginMemoryRunner(read_memory_activation(_write_payload(tmp, payload)))
+        payload["plugin_specs"]["recording_test"] = spec
+    return MemoryRunner.from_activation(
+        read_step_activation(_write_payload(tmp, payload), "memory")
+    )
 
 
 class MemoryFailureIsolationTests(unittest.TestCase):
@@ -29,7 +31,7 @@ class MemoryFailureIsolationTests(unittest.TestCase):
                 del context, observation
                 raise RuntimeError("x" * 300_000)
 
-            step.implementation.update = huge_fail  # type: ignore[method-assign]
+            step.plugins[0].implementation.update = huge_fail  # type: ignore[method-assign]
             with self.assertRaises(RuntimeError):
                 step.update(
                     DecisionFrameContext("frame_8", 8, 800, shared_memory={}),
@@ -54,7 +56,7 @@ class MemoryFailureIsolationTests(unittest.TestCase):
                 Observation("obs_a", 90, {}),
             )
             before = dict(shared)
-            step.implementation.fail_on_update = True
+            step.plugins[0].implementation.fail_on_update = True
             with self.assertRaises(RuntimeError):
                 step.update(
                     DecisionFrameContext("frame_b", 2, 200, shared_memory=shared),
@@ -66,7 +68,7 @@ class MemoryFailureIsolationTests(unittest.TestCase):
     def test_reset_failure_is_recorded_with_a_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = _runner(tmp)
-            step.implementation.fail_on_reset = True
+            step.plugins[0].implementation.fail_on_reset = True
 
             self.assertEqual(step.reset({}), {})
 

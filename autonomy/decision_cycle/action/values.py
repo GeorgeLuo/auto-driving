@@ -1,46 +1,33 @@
-"""Gate contract and the authority record every gate produces.
+"""The action step's decision and the authority record every action produces.
 
-A gate receives the cycle's plan (or the error that prevented one) and the
-drive mode, and returns the control to apply. ``AuthorityResult`` records the
-selected command, the control the gate authorized, and whether that control
-is the selected command.
+An action plugin receives the cycle's plan (or the error that prevented one)
+and the drive mode, and returns an ``ActionDecision``: the control to apply and
+whether it applies the selected command. ``AuthorityResult`` records the
+selected command, the control the action authorized, and whether that control
+is the selected command. ``gate_id`` is the deciding action plugin's ID.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
-from autonomy.decision_cycle.errors import ENGINE_ERROR_REASONS
-from autonomy.decision_cycle.planning.values import ActionPlan
+from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope, unavailable_envelope
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
-from autonomy.runtime.engine import AutonomyControl
+from autonomy.runtime.control import AutonomyControl
 
 AUTHORITY_RESULT_SCHEMA = "authority_result_v0"
 COMMAND_EPS = 1e-9
 
 
 @dataclass(frozen=True)
-class GateDecision:
-    """Control chosen by a gate, and whether it applies the selected command."""
+class ActionDecision:
+    """Control chosen by an action plugin, and whether it applies the selected command."""
 
     control: AutonomyControl
     applied: bool = False
-
-
-class ActionGate(Protocol):
-    gate_id: str
-
-    def decide(
-        self,
-        plan: ActionPlan | None,
-        *,
-        mode: str,
-        error_reason: str | None = None,
-    ) -> GateDecision:
-        """Return the control for this cycle. ``plan`` is None exactly when ``error_reason`` is set."""
 
 
 def control_output(control: AutonomyControl) -> dict[str, Any]:
@@ -90,16 +77,16 @@ class AuthorityResult:
             raise ValueError(
                 f"schema must be {AUTHORITY_RESULT_SCHEMA!r}; got {self.schema!r}"
             )
-        if self.cycle_status not in {"ok", "engine_error"}:
+        if self.cycle_status not in {"ok", "error"}:
             raise ValueError(f"invalid cycle_status {self.cycle_status!r}")
         if self.cycle_status == "ok":
             if self.cycle_reason != "":
                 raise ValueError("ok cycle_reason must be empty")
         else:
-            if self.cycle_reason not in ENGINE_ERROR_REASONS:
-                raise ValueError(f"unknown engine_error reason {self.cycle_reason!r}")
+            if self.cycle_reason not in CYCLE_ERROR_REASONS:
+                raise ValueError(f"unknown cycle error reason {self.cycle_reason!r}")
             if self.proposed is not None:
-                raise ValueError("engine_error requires proposed=null")
+                raise ValueError("error requires proposed=null")
         if self.proposed is not None and not isinstance(
             self.proposed, ProposedVehicleCommand
         ):
@@ -147,7 +134,7 @@ def build_authority(
     *,
     frame_id: str,
     gate_id: str,
-    decision: GateDecision,
+    decision: ActionDecision,
     cycle_status: str,
     cycle_reason: str = "",
     proposed: ProposedVehicleCommand | None = None,

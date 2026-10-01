@@ -1,20 +1,5 @@
-"""Runtime autonomy engine loading for onboard vehicle loops."""
+"""Onboard hosting of the decision cycle for vehicle loops.
 
-from .activation import (
-    DECISION_ACTIVATION_SCHEMA,
-    DecisionActivation,
-    apply_decision_activation,
-    read_decision_activation,
-)
-from .engine import AutonomyControl, IdleAutonomyEngine
-from .manager import AutonomyManager
-
-__all__ = [
-    "AutonomyControl",
-    "DECISION_ACTIVATION_SCHEMA",
-    "DecisionActivation",
-    "IdleAutonomyEngine",
-    "AutonomyManager",
-    "apply_decision_activation",
-    "read_decision_activation",
-]
+``control.AutonomyControl`` is the pilot output; ``cycle_host.AutonomyCycleHost``
+runs the cycle on a vehicle loop.
+"""

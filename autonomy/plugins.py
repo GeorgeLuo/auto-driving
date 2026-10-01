@@ -8,10 +8,13 @@ the next selection is loaded and validated before published instances are reset.
 ``plugin_report`` describes the catalog, the manager's requested selection, and
 the instances a step has published. Definitions may come from packaged entries,
 explicit JSON files, or a future catalog implementing ``PluginResolver``.
+``instantiate_plugin`` constructs a definition's entrypoint with its config; a
+step checks the resulting instance against its own plugin protocol.
 """
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
@@ -321,6 +324,33 @@ class PluginSelectionRuntime(Generic[_T]):
 
         self.prepare(load=load, validate=validate)
         return self.commit(reset=reset)
+
+
+def instantiate_plugin(definition: PluginDefinition, *, reload_module: bool = False) -> Any:
+    """Import ``definition.entrypoint`` and call it with a copy of its config."""
+
+    module_name, separator, attribute = definition.entrypoint.partition(":")
+    if not separator or not module_name or not attribute:
+        raise PluginManagementError(
+            f"plugin entrypoint must be 'module.path:Name', got {definition.entrypoint!r}"
+        )
+    importlib.invalidate_caches()
+    module = importlib.import_module(module_name)
+    if reload_module:
+        module = importlib.reload(module)
+    factory = getattr(module, attribute)
+    return factory(**deepcopy(dict(definition.config)))
+
+
+def require_plugin_id(plugin: Any, definition: PluginDefinition) -> str:
+    """Return the instance's declared ``plugin_id``; it must be a non-empty string."""
+
+    plugin_id = getattr(plugin, "plugin_id", None)
+    if not isinstance(plugin_id, str) or not plugin_id.strip():
+        raise TypeError(
+            f"{definition.step} plugin {definition.entrypoint} must declare a non-empty plugin_id"
+        )
+    return plugin_id
 
 
 def replace_selection(

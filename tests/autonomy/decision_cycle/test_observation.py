@@ -4,7 +4,7 @@ import json
 import unittest
 
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
-from autonomy.decision_cycle.observation.step import observation_from_perception
+from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,

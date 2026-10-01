@@ -1,10 +1,10 @@
-"""Aggregate result of the action composition for one cycle.
+"""The action step's record for one cycle.
 
-``ActionResult`` joins the proposal input, the plan, and the gate's authority
-record, and keeps their status and frame fields consistent. ``control`` is the
-control the gate authorized; it is not serialized separately because
-``authority.authorized_output`` records it. The outer cycle result is
-``DecisionCycleResult`` in ``autonomy.decision_cycle.cycle``.
+``ActionResult`` holds the action plugin's authority record and the control it
+authorized. Status ``error`` carries the reason the cycle could not plan; the
+action plugin still chose the control. ``control`` is not serialized
+separately because ``authority.authorized_output`` records it. The proposal
+and plan are recorded by their own steps in ``DecisionCycleResult``.
 """
 
 from __future__ import annotations
@@ -12,14 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from autonomy.decision_cycle.action_gate.values import AuthorityResult
+from autonomy.decision_cycle.action.values import AuthorityResult
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
-from autonomy.decision_cycle.errors import ENGINE_ERROR_REASONS
-from autonomy.decision_cycle.planning.values import ActionPlan
-from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
-from autonomy.runtime.engine import AutonomyControl
+from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
+from autonomy.runtime.control import AutonomyControl
 
-ACTION_RESULT_SCHEMA = "action_result_v0"
+ACTION_RESULT_SCHEMA = "action_result_v1"
 
 
 @dataclass(frozen=True)
@@ -28,8 +26,6 @@ class ActionResult:
     status: str
     authority: AuthorityResult
     reason: str = ""
-    source: DecisionDataSource | None = None
-    plan: ActionPlan | None = None
     control: AutonomyControl | None = None
     schema: str = ACTION_RESULT_SCHEMA
 
@@ -41,27 +37,20 @@ class ActionResult:
             raise ValueError(
                 f"schema must be {ACTION_RESULT_SCHEMA!r}; got {self.schema!r}"
             )
-        if self.status not in {"ok", "engine_error"}:
+        if self.status not in {"ok", "error"}:
             raise ValueError(f"invalid cycle status {self.status!r}")
         if not isinstance(self.authority, AuthorityResult):
             raise TypeError("authority must be AuthorityResult")
         if self.status == "ok":
             if self.reason != "":
                 raise ValueError("ok reason must be empty")
-            if self.plan is None:
-                raise ValueError("ok cycle requires a plan")
-            if self.authority.cycle_status != "ok" or self.authority.cycle_reason != "":
-                raise ValueError("authority cycle fields must match ok status")
-        else:
-            if self.reason not in ENGINE_ERROR_REASONS:
-                raise ValueError(f"unknown engine_error reason {self.reason!r}")
-            if self.plan is not None:
-                raise ValueError("engine_error requires plan=null")
-            if (
-                self.authority.cycle_status != "engine_error"
-                or self.authority.cycle_reason != self.reason
-            ):
-                raise ValueError("authority cycle fields must match engine_error")
+        elif self.reason not in CYCLE_ERROR_REASONS:
+            raise ValueError(f"unknown cycle error reason {self.reason!r}")
+        if (
+            self.authority.cycle_status != self.status
+            or self.authority.cycle_reason != self.reason
+        ):
+            raise ValueError("authority cycle fields must match the action status")
         if self.authority.frame_id != self.frame_id:
             raise ValueError("authority.frame_id must match cycle frame_id")
         if self.control is None:
@@ -84,7 +73,5 @@ class ActionResult:
             "frame_id": self.frame_id,
             "status": self.status,
             "reason": self.reason,
-            "source": self.source.to_dict() if self.source is not None else None,
-            "plan": self.plan.to_dict() if self.plan is not None else None,
             "authority": self.authority.to_dict(),
         }

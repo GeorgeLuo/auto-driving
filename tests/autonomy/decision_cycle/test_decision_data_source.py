@@ -15,6 +15,7 @@ from autonomy.decision_cycle.proposal.inputs import (
 )
 from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from tests.support.action_fixtures import decision_chain, packaged_decision_chain
 
 
 def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> RetainedEvidence:
@@ -109,9 +110,6 @@ class DecisionDataSourceTests(unittest.TestCase):
             )
 
     def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
-        from autonomy.decision_cycle.action import (
-            ActionComposition,
-        )
         from autonomy.decision_cycle.proposal.values import ActionProposal
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
@@ -153,7 +151,7 @@ class DecisionDataSourceTests(unittest.TestCase):
                 available=False,
             )
 
-        engine = ActionComposition(
+        engine = decision_chain(
             plugins={"a": plugin_a, "b": plugin_b},
         )
         engine.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
@@ -169,12 +167,9 @@ class DecisionDataSourceTests(unittest.TestCase):
             ready_envelope(LiveClient(), updated_at_ms=1)
 
         # Cycle must not return ok with a non-replayable source.
-        from implementations.runtime.engines.catalog import (
-            create_action_composition,
-        )
 
         with self.assertRaises(TypeError):
-            create_action_composition().run(
+            packaged_decision_chain().run(
                 frame_id="f",
                 frame_index=0,
                 timestamp_ms=1,
@@ -424,11 +419,8 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.value.observation_id, "obs-1")
 
     def test_runner_default_observation_not_configured(self) -> None:
-        from implementations.runtime.engines.catalog import (
-            create_action_composition,
-        )
 
-        result = create_action_composition().run(
+        result = packaged_decision_chain().run(
             frame_id="f", frame_index=0, timestamp_ms=1
         )
         control = result.control
@@ -499,11 +491,8 @@ class DecisionDataSourceTests(unittest.TestCase):
 
     def test_runner_observation_dict_and_error_paths(self) -> None:
         from autonomy.decision_cycle.observation.values import Observation
-        from implementations.runtime.engines.catalog import (
-            create_action_composition,
-        )
 
-        engine = create_action_composition()
+        engine = packaged_decision_chain()
         obs = Observation(
             observation_id="obs-runner",
             created_at_ms=1,

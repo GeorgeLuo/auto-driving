@@ -63,7 +63,7 @@ def write_runtime_fixture(
             "schema": "automa_decision_activation_v0",
             "decision": {
                 "engine_id": "idle",
-                "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
+                "engine_spec": "autonomy.runtime.control:IdleAutonomyEngine",
                 "engine_config": {},
                 "engine_schema": {
                     "schema": "autonomy_engine_schema_v0",

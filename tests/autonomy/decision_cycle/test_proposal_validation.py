@@ -7,16 +7,15 @@ from autonomy.decision_cycle.proposal.values import (
 )
 from autonomy.serialization import canonical_json_bytes
 from autonomy.decision_cycle.action_identifiers import ActionInputError
-from autonomy.decision_cycle.action import ActionComposition
-from implementations.runtime.engines.catalog import create_action_composition
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
+from tests.support.action_fixtures import decision_chain, packaged_decision_chain
 
 
 class RunnerBoundaryTests(unittest.TestCase):
     def test_plan_and_source_empty_metadata_is_object(self) -> None:
-        from autonomy.decision_cycle.planning.values import ActionPlan
+        from autonomy.decision_cycle.plan.values import ActionPlan
         from autonomy.decision_cycle.proposal.inputs import (
             build_decision_data_source,
             ready_envelope,
@@ -41,7 +40,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(env.to_dict()["value"], {"empty": {}, "arr": []})
 
     def test_frame_id_65_chars_raises(self) -> None:
-        engine = create_action_composition()
+        engine = packaged_decision_chain()
         with self.assertRaises(ActionInputError):
             engine.run(frame_id="f" * 65, frame_index=0, timestamp_ms=1)
 
@@ -108,14 +107,14 @@ class RunnerBoundaryTests(unittest.TestCase):
             self.assertGreater(canonical_json_bytes(proposal.to_dict()), 4096)
             return proposal
 
-        engine = ActionComposition(
+        engine = decision_chain(
             plugins={"avoid_recent_obstruction": corrupt},
         )
         result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1
         )
         control = result.control
-        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.status, "error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertIsNone(result.plan)
         self.assertEqual(
@@ -126,16 +125,16 @@ class RunnerBoundaryTests(unittest.TestCase):
     def test_select_action_plan_failure_is_plan_invariant(self) -> None:
         from unittest.mock import patch
 
-        engine = create_action_composition()
+        engine = packaged_decision_chain()
         with patch(
-            "autonomy.decision_cycle.action.select_action_plan",
+            "autonomy.decision_cycle.plan.highest_confidence.select_highest_confidence_plan",
             side_effect=ValueError("plan broken"),
         ):
             result = engine.run(
                 frame_id="frame_001", frame_index=0, timestamp_ms=1
             )
             control = result.control
-        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.status, "error")
         self.assertEqual(result.reason, "action_plan_invariant_violated")
         self.assertIsNone(result.plan)
         self.assertEqual(
@@ -163,13 +162,13 @@ class RunnerBoundaryTests(unittest.TestCase):
             object.__setattr__(proposal, "available", True)
             return proposal
 
-        engine = ActionComposition(
+        engine = decision_chain(
             plugins={"avoid_recent_obstruction": corrupt_matrix},
         )
         result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1
         )
-        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.status, "error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertIsNone(result.plan)
 
@@ -228,14 +227,14 @@ class RunnerBoundaryTests(unittest.TestCase):
             object.__setattr__(proposal, "available", "false")  # type: ignore[arg-type]
             return proposal
 
-        engine = ActionComposition(
+        engine = decision_chain(
             plugins={"avoid_recent_obstruction": bad_available},
         )
         result = engine.run(
             frame_id="frame_001", frame_index=0, timestamp_ms=1
         )
         control = result.control
-        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.status, "error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertIsNone(result.plan)
         self.assertEqual(control.steering, 0.0)
@@ -253,7 +252,7 @@ class RunnerBoundaryTests(unittest.TestCase):
                 available=False,
                 metadata=[["x", 1]],  # type: ignore[arg-type]
             )
-        from autonomy.decision_cycle.planning.values import ActionPlan
+        from autonomy.decision_cycle.plan.values import ActionPlan
         from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 
         with self.assertRaises(TypeError):
@@ -366,7 +365,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         def active(source: DecisionDataSource, shared_memory) -> ActionProposal:
             return _active_proposal(frame_id=source.frame_id, steering=0.35)
 
-        engine = ActionComposition(
+        engine = decision_chain(
             plugins={"avoid_recent_obstruction": active},
         )
         result = engine.run(

@@ -1,17 +1,18 @@
-"""Built-in planning selector.
+"""Built-in plan plugin: select the most confident active candidate.
 
 A candidate is active when its lifecycle is fresh or retained and matches its
 freshness, it is available, it carries a command, and its proposal ID names
 this frame. The active candidate with the highest confidence is selected; equal
 confidence goes to the lower plugin ID. With no active candidate the plan is
-idle. Plans record this policy as ``SELECTOR_ID``.
+idle. ``HighestConfidencePlan`` is the plan step's default selection and
+records its plugin ID as the plan's ``selector_id``.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from autonomy.decision_cycle.planning.values import ActionPlan, PlanContribution
+from autonomy.decision_cycle.plan.values import SELECTOR_ID, ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.values import ActionProposal
 
 
@@ -63,5 +64,22 @@ def select_highest_confidence_plan(
     )
 
 
-# The action composition and existing callers select through this name.
-select_action_plan = select_highest_confidence_plan
+PLUGIN_ID = SELECTOR_ID
+PLUGIN_SPEC = "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan"
+
+
+class HighestConfidencePlan:
+    """Plan plugin wrapping ``select_highest_confidence_plan``."""
+
+    plugin_id = PLUGIN_ID
+
+    def plan(
+        self,
+        candidates: tuple[ActionProposal, ...],
+        *,
+        frame_id: str,
+        timestamp_ms: int,
+    ) -> ActionPlan:
+        return select_highest_confidence_plan(
+            frame_id=frame_id, timestamp_ms=timestamp_ms, candidates=candidates
+        )

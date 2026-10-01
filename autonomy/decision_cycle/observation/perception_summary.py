@@ -1,7 +1,7 @@
-"""Default ``observe`` step.
+"""Built-in observation plugin: perception evidence plus the sensor snapshot.
 
-It adapts perception evidence and the sensor snapshot into an ``Observation``.
-The cycle's ``observe`` callback can replace it.
+``PerceptionSummary`` adapts the cycle's perception evidence and sensor context
+into an ``Observation``. It is the observation step's default selection.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.vehicle import SensorSnapshot
@@ -26,7 +27,7 @@ def observation_from_perception(
     metadata: dict[str, Any] | None = None,
     created_at_ms: int | None = None,
 ) -> Observation:
-    """Default ``observe`` step: perception evidence plus the sensor snapshot."""
+    """Perception evidence plus the sensor snapshot as the current-frame record."""
 
     snapshot_dict = sensor_snapshot.to_dict() if sensor_snapshot is not None else {}
     observation_created_at_ms = (
@@ -57,3 +58,25 @@ def observation_from_perception(
             **(metadata or {}),
         },
     )
+
+
+PLUGIN_ID = "perception_summary"
+PLUGIN_SPEC = "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary"
+
+
+class PerceptionSummary:
+    """Observation plugin that records perception evidence when there is any."""
+
+    plugin_id = PLUGIN_ID
+
+    def observe(
+        self, context: DecisionFrameContext, perception: PerceptionText | None
+    ) -> Observation | None:
+        if perception is None:
+            return None
+        return observation_from_perception(
+            observation_id=context.frame_id,
+            sensor_snapshot=context.sensor_snapshot,
+            perception=perception,
+            metadata={"source": PLUGIN_ID},
+        )

@@ -1,3 +1,10 @@
+"""Perception step runner.
+
+``PerceptionRunner`` resolves the component inputs each selected perception
+plugin's contract declares, runs the plugins in selection order on one sensor
+frame, and merges their evidence into one ``PerceptionText``.
+"""
+
 from __future__ import annotations
 
 import importlib
@@ -7,9 +14,18 @@ from dataclasses import dataclass, replace
 from threading import RLock
 from typing import Any
 
+from autonomy.decision_cycle.activation import StepActivation, step_activation
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.runner import (
+    PROVIDED_ENTRYPOINT,
+    require_step_activation,
+    require_step_manager,
+)
 from autonomy.plugins import (
+    PluginDefinition,
     PluginManager,
     PluginSelectionRuntime,
+    instantiate_plugin,
     plugin_report as build_plugin_report,
 )
 from autonomy.decision_cycle.perception.components.context import PerceptionRequest
@@ -32,7 +48,6 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
 )
-from autonomy.decision_cycle.perception.selection import perception_plugin_manager
 
 
 @dataclass(frozen=True)
@@ -44,52 +59,120 @@ class _PluginExecution:
     error: str | None = None
 
 
-class PluginPerceptionMapper:
-    """Run the manager's selected perception plugins once per sensor frame."""
+class PerceptionRunner:
+    """Run the manager's selected perception plugins once per sensor frame.
 
+    The cycle calls the runner with the frame context. ``perceive`` runs the
+    selection on an already built ``PerceptionRequest`` for offline tools.
+    """
+
+    step = "perception"
     plugin_id = "autonomy.perception.plugin-runner-v0"
 
     def __init__(
         self,
+        plugin_manager: PluginManager,
         *,
-        plugins: list[str] | tuple[str, ...] | None = None,
-        plugin_specs: dict[str, str] | None = None,
-        plugin_configs: dict[str, dict[str, Any]] | None = None,
-        plugin_manager: PluginManager | None = None,
+        provided: dict[str, Any] | None = None,
     ) -> None:
-        specs = dict(plugin_specs or {})
-        configs = {
-            plugin_id: dict(config)
-            for plugin_id, config in (plugin_configs or {}).items()
-        }
-        plugin_ids = tuple(() if plugins is None else plugins)
-        if len(plugin_ids) != len(set(plugin_ids)):
-            raise ValueError("configured perception plugin ids must be unique")
-        if plugin_manager is None:
-            plugin_manager = perception_plugin_manager(specs, configs)
-            plugin_manager.select(plugin_ids)
-        elif plugins is not None:
-            raise ValueError(
-                "select plugins through plugin_manager when one is provided"
-            )
-        if not isinstance(plugin_manager, PluginManager):
-            raise TypeError("plugin_manager must be a PluginManager")
-        if plugin_manager.step != "perception":
-            raise ValueError(
-                f"plugin_manager is scoped to {plugin_manager.step!r}, not 'perception'"
-            )
-
-        self.plugin_manager = plugin_manager
+        self.plugin_manager = require_step_manager(plugin_manager, self.step)
+        self.activation: StepActivation | None = None
+        self._provided = dict(provided or {})
         self._selection_runtime = PluginSelectionRuntime(plugin_manager)
         self._runtime_lock = RLock()
         self.plugin_ids: tuple[str, ...] = ()
         self.plugins: tuple[Any, ...] = ()
+        self.last_output: PerceptionText | None = None
+        self.last_duration_ms: float | None = None
+        self.last_frame_index: int | None = None
         self._component_providers: dict[str, ComponentProvider] = {}
         self._component_provider_specs: dict[str, str] = {}
         self._pending_providers: dict[str, ComponentProvider] | None = None
         self._pending_provider_specs: dict[str, str] | None = None
         self._execution_runs: tuple[PerceptionPluginRun, ...] = ()
         self._apply_selection()
+
+    @classmethod
+    def from_activation(cls, activation: StepActivation) -> "PerceptionRunner":
+        runner = cls(require_step_activation(activation, cls.step).plugin_manager())
+        runner.activation = activation
+        return runner
+
+    @classmethod
+    def from_selection(
+        cls,
+        plugins: list[str] | tuple[str, ...],
+        plugin_specs: dict[str, str],
+        plugin_configs: dict[str, dict[str, Any]] | None = None,
+    ) -> "PerceptionRunner":
+        return cls.from_activation(
+            step_activation(cls.step, plugins, plugin_specs, plugin_configs)
+        )
+
+    @classmethod
+    def from_plugins(cls, plugins: dict[str, Any]) -> "PerceptionRunner":
+        """Run already constructed plugins, selected in the mapping's order."""
+
+        manager = PluginManager.from_specs(
+            cls.step, {plugin_id: f"{PROVIDED_ENTRYPOINT}:{plugin_id}" for plugin_id in plugins}
+        )
+        manager.select(tuple(plugins))
+        return cls(manager, provided=plugins)
+
+    def __call__(self, context) -> PerceptionText | None:
+        """Perceive the context's sensor frame; without one, reset and return None."""
+
+        with self._runtime_lock:
+            if context.sensor_snapshot is None:
+                self.reset(context.shared_memory)
+                self.last_frame_index = context.frame_index
+                return None
+            started = time.perf_counter()
+            try:
+                self.last_output = self.perceive(
+                    build_perception_request(
+                        context.sensor_snapshot,
+                        shared_memory=context.shared_memory,
+                        metadata={
+                            "runtime": "onboard",
+                            "activation": (
+                                str(self.activation.source_path)
+                                if self.activation and self.activation.source_path
+                                else None
+                            ),
+                            "frame_index": context.frame_index,
+                        },
+                    )
+                )
+            finally:
+                self.last_duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+                self.last_frame_index = context.frame_index
+            return self.last_output
+
+    def status(self) -> dict[str, Any]:
+        with self._runtime_lock:
+            output = self.last_output
+            return {
+                "step": self.step,
+                "activation": (
+                    str(self.activation.source_path)
+                    if self.activation and self.activation.source_path
+                    else None
+                ),
+                "available_plugins": sorted(self.plugin_manager.available_ids),
+                "selected_plugin_ids": list(self.plugin_manager.selected_ids),
+                "plugin_ids": list(self.plugin_ids),
+                "last_status": output.status if output is not None else None,
+                "last_duration_ms": self.last_duration_ms,
+                "last_frame_index": self.last_frame_index,
+                "last_thing_count": len(output.things) if output is not None else 0,
+                "last_plugin_runs": (
+                    [plugin_run.to_dict() for plugin_run in output.plugin_runs]
+                    if output is not None
+                    else []
+                ),
+                "plugin_report": self._plugin_report(),
+            }
 
     @property
     def plugin_specs(self) -> dict[str, str]:
@@ -105,6 +188,9 @@ class PluginPerceptionMapper:
     def reset(self, shared_memory=None) -> None:
         with self._runtime_lock:
             self._execution_runs = ()
+            self.last_output = None
+            self.last_duration_ms = None
+            self.last_frame_index = None
             for plugin in self.plugins:
                 _reset_plugin(plugin, shared_memory)
 
@@ -175,7 +261,7 @@ class PluginPerceptionMapper:
         return {
             "schema": "perception_algorithm_schema_v2",
             "plugin_id": self.plugin_id,
-            "mapper": f"{self.__class__.__module__}:{self.__class__.__name__}",
+            "runner": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "configuration": {
                 "plugins": list(self.plugin_ids),
                 "available_plugins": sorted(item.plugin_id for item in available),
@@ -361,14 +447,7 @@ class PluginPerceptionMapper:
                             f"{existing!r} and {spec!r}"
                         )
 
-        self._selection_runtime.prepare(
-            load=lambda definition: _instantiate_plugin(
-                definition.plugin_id,
-                definition.entrypoint,
-                dict(definition.config),
-            ),
-            validate=validate,
-        )
+        self._selection_runtime.prepare(load=self._load_plugin, validate=validate)
         # Retain providers with the prepared instances. Publish happens on commit,
         # and an unchanged selection leaves these unset so commit does not republish.
         self._pending_provider_specs = candidate_provider_specs
@@ -390,6 +469,14 @@ class PluginPerceptionMapper:
         self.plugins = tuple(plugin for _definition, plugin in applied)
         self._component_provider_specs = specs
         self._component_providers = providers
+
+    def _load_plugin(self, definition: PluginDefinition) -> Any:
+        if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
+            plugin = self._provided[definition.plugin_id]
+        else:
+            plugin = instantiate_plugin(definition)
+        _validate_plugin(definition.plugin_id, plugin)
+        return plugin
 
     def _discard_selection(self) -> None:
         self._selection_runtime.discard()
@@ -532,13 +619,6 @@ def _overall_status(plugin_runs: list[PerceptionPluginRun]) -> str:
     if "warming_up" in statuses:
         return "warming_up"
     return "empty"
-
-
-def _instantiate_plugin(plugin_id: str, spec: str, config: dict[str, Any]) -> Any:
-    plugin_cls = _load_symbol(spec)
-    plugin = plugin_cls(**config)
-    _validate_plugin(plugin_id, plugin)
-    return plugin
 
 
 def _load_symbol(spec: str) -> Any:

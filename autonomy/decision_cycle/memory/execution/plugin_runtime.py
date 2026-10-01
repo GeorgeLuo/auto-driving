@@ -9,15 +9,13 @@ the host to clear the map.
 from __future__ import annotations
 
 import time
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.activation import instantiate_memory_implementation
-from autonomy.decision_cycle.memory.plugin import plugin_status
+from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.plugins import PluginDefinition
+from autonomy.plugins import PluginDefinition, instantiate_plugin, require_plugin_id
 from autonomy.shared_memory import SharedMemory
 
 # Cap for status and worker-facing diagnostic strings.
@@ -27,14 +25,23 @@ DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_024
 class MemoryPluginRuntime:
     """Load, time, and report one applied memory plugin."""
 
-    def __init__(self, definition: PluginDefinition, *, source_path: Path) -> None:
+    def __init__(
+        self,
+        definition: PluginDefinition,
+        *,
+        source_path: Path | None = None,
+        plugin: MemoryPlugin | None = None,
+    ) -> None:
         self.definition = definition
         self.plugin_id = definition.plugin_id
         self.source_path = source_path
-        self.implementation = instantiate_memory_implementation(
-            definition.entrypoint, deepcopy(dict(definition.config))
-        )
-        self.implementation_id = self.implementation.implementation_id
+        self.implementation = plugin if plugin is not None else instantiate_plugin(definition)
+        if not isinstance(self.implementation, MemoryPlugin):
+            raise TypeError(
+                f"memory plugin {definition.entrypoint} does not satisfy MemoryPlugin"
+            )
+        # The plugin's declared ID; the report calls it implementation_id.
+        self.implementation_id = require_plugin_id(self.implementation, definition)
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
         self.update_count = 0
@@ -89,7 +96,7 @@ class MemoryPluginRuntime:
             "plugin_id": self.plugin_id,
             "implementation_id": self.implementation_id,
             "implementation_spec": self.definition.entrypoint,
-            "activation": str(self.source_path),
+            "activation": str(self.source_path) if self.source_path is not None else None,
             "update_count": self.update_count,
             "reset_count": self.reset_count,
             "failure_count": self.failure_count,

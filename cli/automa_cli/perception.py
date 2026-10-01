@@ -19,11 +19,11 @@ from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
-from implementations.decision_cycle.catalog import perception_algorithm_activation
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
-    PERCEPTION_ALGORITHMS,
-    available_perception_algorithm_ids,
+from implementations.decision_cycle.catalog import perception_preset_activation
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
+    PERCEPTION_PRESETS,
+    available_perception_preset_ids,
 )
 
 from .bundles import (
@@ -76,7 +76,7 @@ def ensure_local_perception_runtime(
     """Ensure a vehicle's local bundle reflects current perception source."""
 
     vehicle_id = str(vehicle.get("vehicle_id") or "vehicle")
-    if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
+    if algorithm is not None and algorithm not in PERCEPTION_PRESETS:
         raise ValueError(f"unknown perception algorithm: {algorithm}")
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
@@ -88,9 +88,9 @@ def ensure_local_perception_runtime(
     selected_algorithm = algorithm
     existing_algorithm = _manifest_algorithm(existing) if existing is not None else None
     if selected_algorithm is None:
-        if isinstance(existing_algorithm, str) and existing_algorithm in PERCEPTION_ALGORITHMS:
+        if isinstance(existing_algorithm, str) and existing_algorithm in PERCEPTION_PRESETS:
             selected_algorithm = existing_algorithm
-    selected_algorithm = selected_algorithm or DEFAULT_PERCEPTION_ALGORITHM
+    selected_algorithm = selected_algorithm or DEFAULT_PERCEPTION_PRESET
 
     preserve_existing = existing_algorithm == "custom"
     if existing is not None and algorithm is None and preserve_existing:
@@ -398,9 +398,9 @@ def update_vehicle_perception(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    selected_algorithm = algorithm or DEFAULT_PERCEPTION_ALGORITHM
-    if selected_algorithm not in PERCEPTION_ALGORITHMS:
-        available = ", ".join(available_perception_algorithm_ids())
+    selected_algorithm = algorithm or DEFAULT_PERCEPTION_PRESET
+    if selected_algorithm not in PERCEPTION_PRESETS:
+        available = ", ".join(available_perception_preset_ids())
         return CommandResult(
             2,
             f"Unknown perception algorithm {selected_algorithm!r}. Available algorithms: {available}.",
@@ -663,14 +663,14 @@ def ensure_vehicle_perception_activation(
     bundle: dict[str, str],
     release: dict[str, Any],
 ) -> Path:
-    if algorithm not in PERCEPTION_ALGORITHMS:
+    if algorithm not in PERCEPTION_PRESETS:
         raise ValueError(f"unknown perception algorithm: {algorithm}")
 
     activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     if activation_path.exists():
         manifest = _read_manifest(activation_path)
         existing_algorithm = _manifest_algorithm(manifest)
-        if existing_algorithm in PERCEPTION_ALGORITHMS:
+        if existing_algorithm in PERCEPTION_PRESETS:
             manifest = _activation_manifest(vehicle, existing_algorithm, bundle)
         elif existing_algorithm != "custom":
             manifest = _activation_manifest(vehicle, algorithm, bundle)
@@ -762,8 +762,8 @@ def _activation_manifest(
     algorithm: str,
     bundle: dict[str, str],
 ) -> dict[str, Any]:
-    algorithm_config = PERCEPTION_ALGORITHMS[algorithm]
-    manifest = perception_algorithm_activation(algorithm).to_payload()
+    algorithm_config = PERCEPTION_PRESETS[algorithm]
+    manifest = perception_preset_activation(algorithm).to_payload()
     manifest["metadata"] = {
         **_activation_metadata_base(vehicle, bundle),
         "algorithm": algorithm,

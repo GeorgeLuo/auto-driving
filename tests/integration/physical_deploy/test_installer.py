@@ -19,7 +19,7 @@ from cli.automa_cli.deploy import (
 from cli.automa_cli.memory import ensure_vehicle_memory_activation
 from cli.automa_cli.perception import ensure_vehicle_perception_activation
 from cli.automa_cli.step_activations import bundle_activation_path, ensure_builtin_activations
-from implementations.decision_cycle.perception.catalog import PERCEPTION_ALGORITHMS
+from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
 TARGET = PhysicalTarget(
     vehicle_id="piracer",
@@ -75,7 +75,7 @@ class PhysicalDeployTests(unittest.TestCase):
             refreshed = json.loads(refreshed_path.read_text(encoding="utf-8"))
 
         self.assertEqual(refreshed["metadata"]["algorithm"], "visual_observer")
-        self.assertEqual(refreshed["plugins"], PERCEPTION_ALGORITHMS["visual_observer"]["plugins"])
+        self.assertEqual(refreshed["plugins"], PERCEPTION_PRESETS["visual_observer"]["plugins"])
 
     def test_runtime_verification_requires_every_deployed_step_and_manual_mode(self) -> None:
         expected = {"memory": ["bounded_evidence"], "action": ["hold"]}

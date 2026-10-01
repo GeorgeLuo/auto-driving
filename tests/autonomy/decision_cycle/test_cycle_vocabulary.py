@@ -22,7 +22,7 @@ from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
 from autonomy.decision_cycle.memory.runner import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.runtime.control import AutonomyControl
-from implementations.decision_cycle.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from implementations.decision_cycle.perception.plugins.frame.plugin import (
     FrameObservationPlugin,
 )
@@ -79,7 +79,7 @@ class CycleVocabularyTests(unittest.TestCase):
         self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v0")
         self.assertEqual(ACTION_PROPOSAL_SCHEMA, "action_proposal_v0")
         self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v1")
-        self.assertEqual(DEFAULT_PERCEPTION_ALGORITHM, "lightweight_observer")
+        self.assertEqual(DEFAULT_PERCEPTION_PRESET, "lightweight_observer")
         self.assertEqual(FrameObservationPlugin.plugin_id, "frame")
 
         self.assertIn("evidence", DecisionDataSource.__dataclass_fields__)

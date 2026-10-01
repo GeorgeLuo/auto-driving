@@ -241,6 +241,8 @@ directory:
 
 `--plugin` selects packaged perception plugins by catalog key, in order, with
 their default configs from `implementations/decision_cycle/perception/catalog.py`.
+`--algorithm` selects a named preset from
+`implementations/decision_cycle/perception/presets.py`.
 
 Guided stationary physical placement check (PiCar only; never commands movement):
 

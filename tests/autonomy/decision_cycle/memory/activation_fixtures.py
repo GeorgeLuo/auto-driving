@@ -82,22 +82,6 @@ class _ConfigurableIdMemory(_RecordingMemory):
     """Allows activation to declare a custom plugin_id (including multibyte)."""
 
 
-class _BrokenStringError(RuntimeError):
-    def __str__(self) -> str:
-        raise RuntimeError("stringification failed")
-
-
-class _BrokenStrMemory(_RecordingMemory):
-    def update(self, context, observation):
-        raise _BrokenStringError("payload")
-
-    def reset(self, shared_memory):
-        raise _BrokenStringError("payload")
-
-    def status(self, shared_memory):
-        raise _BrokenStringError("payload")
-
-
 RECORDING_SPEC = "tests.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 
 

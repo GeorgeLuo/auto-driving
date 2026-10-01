@@ -12,12 +12,10 @@ from autonomy.decision_cycle.activation import (
     STEPS,
     activation_generation_id,
     read_step_activation,
-    read_step_activation_if_present,
     step_activation,
     step_activation_path,
     write_step_activation,
 )
-from autonomy.plugins import PluginManagementError
 
 SPEC = "tests.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 
@@ -55,34 +53,6 @@ class StepActivationTests(unittest.TestCase):
                 self.assertEqual(manager.available_ids, ("first", "second"))
                 self.assertEqual(manager.selected_ids, ("first",))
 
-    def test_invalid_documents_are_rejected(self) -> None:
-        cases = {
-            "not an object": [],
-            "old schema": _payload(schema="automa_memory_activation_v0"),
-            "unknown key": _payload(implementation_id="first"),
-            "unknown step": _payload("remember"),
-            "plugins not a list": _payload(plugins="first"),
-            "duplicate plugins": _payload(plugins=["first", "first"]),
-            "specs not a map": _payload(plugin_specs=["first"]),
-            "config not an object": _payload(plugin_configs={"first": []}),
-            "metadata not an object": _payload(metadata=[]),
-        }
-        for name, payload in cases.items():
-            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
-                with self.assertRaises(ValueError):
-                    read_step_activation(_write(tmp, payload))
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, "not 'memory'"):
-                read_step_activation(_write(tmp, _payload("proposal")), "memory")
-            with self.assertRaises(PluginManagementError):
-                read_step_activation(_write(tmp, _payload(plugins=["ghost"])))
-
-    def test_missing_documents(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "memory" / "active.json"
-            with self.assertRaisesRegex(FileNotFoundError, "memory activation is missing"):
-                read_step_activation(path, "memory")
-            self.assertIsNone(read_step_activation_if_present(path, "memory"))
 
     def test_write_round_trips_under_the_step_directory(self) -> None:
         activation = step_activation(

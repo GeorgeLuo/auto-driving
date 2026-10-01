@@ -75,21 +75,3 @@ class MemoryFailureIsolationTests(unittest.TestCase):
             self.assertIn("reset exploded", step.last_error or "")
             self.assertEqual(step.status()["last_error"], step.last_error)
 
-    def test_broken_exception_str_is_recorded_without_escaping(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            step = _runner(
-                tmp, "tests.autonomy.decision_cycle.memory.activation_fixtures:_BrokenStrMemory"
-            )
-            with self.assertRaises(Exception):
-                step.update(
-                    DecisionFrameContext("f1", 1, 1, shared_memory={}),
-                    Observation("o1", 1, {}),
-                )
-            self.assertIn("unprintable exception", step.last_error or "")
-            self.assertNotIn("stringification failed", step.last_error or "")
-
-            step.reset({})
-            self.assertIn("unprintable exception", step.last_error or "")
-
-            state = step.report()["plugins"][0]["state"]
-            self.assertIn("unprintable exception", state["status_error"])

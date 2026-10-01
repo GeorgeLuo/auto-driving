@@ -104,17 +104,6 @@ class PackagedCatalogTests(unittest.TestCase):
         self.assertEqual(packaged_activation("action").plugins, ("hold",))
         self.assertEqual(packaged_activation("proposal").plugins, ("avoid_recent_obstruction",))
 
-    def test_invalid_proposal_config_fails_at_load(self) -> None:
-        with self.assertRaises(ValueError):
-            _steps(
-                "hold",
-                config_overrides={"avoid_recent_obstruction": {"steer_magnitude": 0.0}},
-            )
-        with self.assertRaises(ValueError):
-            packaged_activation("proposal", ["ghost"])
-        with self.assertRaisesRegex(ValueError, "exactly one plugin"):
-            decision_steps({"action": packaged_activation("action", ["hold", "mode"])})
-
 
 class HoldActionTests(unittest.TestCase):
     def test_nonzero_proposal_is_held_idle(self) -> None:

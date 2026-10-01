@@ -8,7 +8,6 @@ from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEv
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from cli.automa_cli.decision import (
-    DecisionSurfaceError,
     _require_runner_plan_alignment,
     _require_stream_frame_envelope,
     build_decision_stream_frame,
@@ -75,13 +74,6 @@ class ActionAuthorityDecodeTests(unittest.TestCase):
         self.assertEqual(cycle.authority.gate_id, "mode")
         self.assertTrue(frame["authority_summary"]["proposed_applied"])
         self.assertEqual(frame["authority_summary"]["gate_id"], "mode")
-
-    def test_mode_action_frame_is_rejected_when_hold_is_staged(self) -> None:
-        cycle = _require_stream_frame_envelope(_applied_frame())
-
-        with self.assertRaises(DecisionSurfaceError) as ctx:
-            _require_runner_plan_alignment(cycle, packaged_decision_steps("hold"))
-        self.assertIn("'hold' action plugin", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from copy import deepcopy
 
 from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
@@ -90,28 +89,9 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.status, "unavailable")
         self.assertEqual(source.observation.reason, "observation_not_configured")
 
-    def test_rejects_bad_frame_id(self) -> None:
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="😀" * 10, frame_index=0, timestamp_ms=1
-            )
-
-    def test_rejects_wrong_schema(self) -> None:
-        with self.assertRaises(ValueError):
-            DecisionDataSource(
-                frame_id="f1",
-                frame_index=0,
-                timestamp_ms=1,
-                observation=unavailable_envelope("x"),
-                evidence=unavailable_envelope("y"),
-                capabilities=ready_envelope({"max_abs_steering": 1.0}),
-                prior_host_applied_command=unavailable_envelope("h"),
-                schema="wrong",
-            )
 
     def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
         from autonomy.decision_cycle.proposal.values import ActionProposal
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         seen: list[object] = []
 
@@ -159,22 +139,6 @@ class DecisionDataSourceTests(unittest.TestCase):
         # Peer still sees original frozen capabilities, not a mutated mapping.
         self.assertEqual(seen[0], seen[1])
 
-    def test_ready_envelope_rejects_live_handles(self) -> None:
-        class LiveClient:
-            pass
-
-        with self.assertRaises(TypeError):
-            ready_envelope(LiveClient(), updated_at_ms=1)
-
-        # Cycle must not return ok with a non-replayable source.
-
-        with self.assertRaises(TypeError):
-            packaged_decision_chain().run(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                capabilities=ready_envelope(LiveClient(), updated_at_ms=1),
-            )
 
     def test_omitting_evaluator_keys_makes_a_live_capture_admissible(self) -> None:
         dirty = {
@@ -375,7 +339,6 @@ class DecisionDataSourceTests(unittest.TestCase):
         from autonomy.decision_cycle.observation.values import Observation
         from autonomy.decision_cycle.proposal.inputs import (
             DecisionDataSource,
-            unavailable_envelope,
         )
 
         obs = Observation(

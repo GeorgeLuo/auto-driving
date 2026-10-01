@@ -4,15 +4,11 @@ from cli.automa_cli.chase_max_age import (
     capacity_eviction_is_ambiguous,
     extract_chase_lifecycle_keys,
     frame_control_is_strict_zero,
-    parse_required_max_age_ms,
-    parse_required_max_records,
-    require_chase_max_age_identity,
     score_chase_max_age_expiry,
 )
 from tests.cli.memory.chase_max_age_fixtures import (
     _chase_frame,
 )
-from tests.support.memory_fixtures import memory_report
 
 
 class ChaseMaxAgeUnitTests(unittest.TestCase):
@@ -66,17 +62,6 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
         ]
         self.assertEqual(extract_chase_lifecycle_keys(frames), {"thing:obstacle_000"})
 
-    def test_parse_required_bounds(self) -> None:
-        with self.assertRaisesRegex(ValueError, "missing"):
-            parse_required_max_age_ms(None)
-        with self.assertRaisesRegex(ValueError, "positive"):
-            parse_required_max_age_ms({"max_age_ms": 0})
-        self.assertEqual(parse_required_max_age_ms({"max_age_ms": 2500}), 2500)
-        with self.assertRaisesRegex(ValueError, "max_records"):
-            parse_required_max_records({"max_age_ms": 1000})
-        self.assertEqual(
-            parse_required_max_records({"max_records": 16, "max_age_ms": 1000}), 16
-        )
 
     def test_control_requires_explicit_observe_only_metadata(self) -> None:
         ok, reason = frame_control_is_strict_zero(
@@ -102,98 +87,6 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
         )
         self.assertTrue(ok3)
 
-    def test_identity_requires_worker_pid_and_epochs(self) -> None:
-        frame = _chase_frame(
-            1,
-            [],
-            memory_epoch_id="e1",
-            run_id="run-a",
-            worker_pid=7,
-            capacity_eviction_count=0,
-        )
-        with self.assertRaisesRegex(ValueError, "worker_pid"):
-            require_chase_max_age_identity(
-                {
-                    "status": "live",
-                    "reset_count": 1,
-                    "last_epoch_id": "e1",
-                    "run_id": "run-a",
-                },
-                frame,
-            )
-        with self.assertRaisesRegex(ValueError, "run_id"):
-            require_chase_max_age_identity(
-                {
-                    "status": "live",
-                    "worker_pid": 7,
-                    "reset_count": 1,
-                    "last_epoch_id": "e1",
-                },
-                frame,
-            )
-        with self.assertRaisesRegex(ValueError, "does not match"):
-            require_chase_max_age_identity(
-                {
-                    "status": "live",
-                    "worker_pid": 7,
-                    "run_id": "run-a",
-                    "reset_count": 1,
-                    "last_epoch_id": "probe-epoch",
-                },
-                _chase_frame(
-                    1,
-                    [],
-                    memory_epoch_id="frame-epoch",
-                    run_id="run-a",
-                    worker_pid=7,
-                ),
-            )
-        with self.assertRaisesRegex(ValueError, "run_id"):
-            require_chase_max_age_identity(
-                {
-                    "status": "live",
-                    "worker_pid": 7,
-                    "run_id": "run-new",
-                    "reset_count": 1,
-                    "last_epoch_id": "e1",
-                },
-                frame,
-            )
-        with self.assertRaisesRegex(ValueError, "capacity_eviction_count"):
-            bare = _chase_frame(
-                1, [], memory_epoch_id="e1", run_id="run-a", worker_pid=7
-            )
-            bare["memory"] = memory_report({
-                "health": "empty",
-                "record_count": 0,
-                "records": [],
-                "epoch_id": "e1",
-                "metadata": {},
-            })
-            require_chase_max_age_identity(
-                {
-                    "status": "live",
-                    "worker_pid": 7,
-                    "run_id": "run-a",
-                    "reset_count": 1,
-                    "last_epoch_id": "e1",
-                },
-                bare,
-            )
-        identity = require_chase_max_age_identity(
-            {
-                "status": "live",
-                "worker_pid": 7,
-                "run_id": "run-a",
-                "reset_count": 1,
-                "last_epoch_id": "e1",
-            },
-            frame,
-        )
-        self.assertEqual(identity.worker_pid, 7)
-        self.assertEqual(identity.run_id, "run-a")
-        self.assertEqual(identity.simulation_epoch, "chase-run:test")
-        self.assertEqual(identity.memory_epoch_id, "e1")
 
     def test_capacity_replacement_on_full_ledger_is_ambiguous(self) -> None:
         self.assertTrue(

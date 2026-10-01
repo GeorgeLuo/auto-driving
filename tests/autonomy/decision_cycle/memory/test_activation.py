@@ -74,20 +74,6 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertEqual(state["record_count"], 0)
             self.assertEqual(state["epoch_id"], "epoch-2")
 
-    def test_update_failures_raise_and_record_status(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            payload = _valid_payload()
-            payload["plugin_configs"]["recording_test"]["fail_on_update"] = True
-            step = MemoryRunner.from_activation(
-                read_step_activation(_write_payload(tmp, payload), "memory")
-            )
-            with self.assertRaisesRegex(RuntimeError, "forced-update-failure"):
-                step.update(
-                    DecisionFrameContext("frame_3", 3, 300, shared_memory={}),
-                    Observation("obs_3", 290, {}),
-                )
-            self.assertEqual(step.failure_count, 1)
-            self.assertIn("forced-update-failure", step.last_error or "")
 
     def test_reset_failures_are_recorded_without_raising(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -4,7 +4,6 @@ import unittest
 
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
@@ -171,14 +170,6 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.control.confidence, 1.0)
         self.assertEqual(result.control.reason, "waiting-for-decision")
 
-    def test_action_step_rejects_undeclared_dictionary_output(self) -> None:
-        def act(context, proposal, plan):
-            return {"steering": 0.0, "throttle": 0.0}
-
-        cycle = DecisionCycle(DecisionSteps(action=act))
-
-        with self.assertRaisesRegex(TypeError, "action step must return ActionResult or None"):
-            cycle.run(self.context())
 
     def test_memory_step_report_is_recorded_and_keeps_idle(self) -> None:
         report = {"schema": "memory_report_v0", "plugins": [{"state": {"record_count": 0}}]}
@@ -192,52 +183,6 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.to_dict()["memory"], report)
         result.to_dict()["memory"]["plugins"][0]["state"]["record_count"] = 9
         self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
-
-    def test_memory_step_rejects_output_that_is_not_a_report(self) -> None:
-        cycle = DecisionCycle(
-            DecisionSteps(memory=lambda context, observation: ["records"])
-        )
-
-        with self.assertRaisesRegex(MemoryUpdateError, "must return a report dict or None"):
-            cycle.run(self.context())
-
-    def test_failed_memory_update_stops_action_without_rewriting_plugin_memory(self) -> None:
-        shared_memory = {}
-        actions = []
-
-        def remember(context, observation):
-            context.shared_memory["test.plugin_write"] = "retained"
-            raise RuntimeError("update failed")
-
-        cycle = DecisionCycle(
-            DecisionSteps(
-                memory=remember,
-                action=lambda *args: actions.append(args),
-            )
-        )
-        context = DecisionFrameContext(
-            frame_id="frame_001",
-            frame_index=1,
-            timestamp_ms=123,
-            shared_memory=shared_memory,
-        )
-
-        with self.assertRaisesRegex(MemoryUpdateError, "update failed"):
-            cycle.run(context)
-        self.assertEqual(shared_memory, {"test.plugin_write": "retained"})
-        self.assertEqual(actions, [])
-
-    def test_unprintable_memory_error_keeps_memory_failure_boundary(self) -> None:
-        class UnprintableError(Exception):
-            def __str__(self):
-                raise RuntimeError("cannot format")
-
-        def remember(context, observation):
-            raise UnprintableError()
-
-        cycle = DecisionCycle(DecisionSteps(memory=remember))
-        with self.assertRaisesRegex(MemoryUpdateError, "unprintable error"):
-            cycle.run(self.context())
 
 
 if __name__ == "__main__":

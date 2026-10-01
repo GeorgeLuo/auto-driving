@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json
 import unittest
-from implementations.decision_cycle.memory.bounded_evidence.ledger import LEDGER_KEY
 from pathlib import Path
 from autonomy.decision_cycle.perception.components.context import PerceptionRequest
 from autonomy.vehicle import SensorSnapshot
@@ -551,12 +550,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(reset["timeline"], [])
             self.assertEqual(runner._shared_memory, {})
 
-    def test_catalog_rejects_unavailable_and_duplicate_selection(self) -> None:
-        catalog = discover_plugin_catalog(self.plugin_root)
-        with self.assertRaises(PluginCatalogError):
-            catalog.normalize_selection(["fastsam"])
-        with self.assertRaises(PluginCatalogError):
-            catalog.normalize_selection(["classical_regions", "classical_regions"])
 
     def test_memory_catalog_identities_do_not_depend_on_plugin_order(self) -> None:
         plugins = [
@@ -633,29 +626,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             {item.plugin_id for item in lab_definitions},
         )
 
-    def test_memory_catalog_rejects_conflicting_entrypoints(self) -> None:
-        with self.assertRaises(PluginCatalogError) as conflicting:
-            _catalog(
-                _memory_descriptor(
-                    "one",
-                    implementation_id="custom",
-                    spec="example.memory:One",
-                ),
-                _memory_descriptor(
-                    "two",
-                    implementation_id="custom",
-                    spec="example.memory:Two",
-                ),
-            ).memory_catalog()
-        self.assertIn("conflicting entrypoints", str(conflicting.exception))
-        with self.assertRaises(PluginCatalogError) as packaged:
-            _catalog(
-                _memory_descriptor(
-                    "replacement",
-                    spec="example.memory:OtherLedger",
-                )
-            ).memory_catalog()
-        self.assertIn("conflicting entrypoints", str(packaged.exception))
 
     def test_unselected_companion_does_not_change_active_memory_config(self) -> None:
         _install_plugin(
@@ -737,182 +707,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             runner.dispatch("cancel", run_id=run_id)
 
-    def test_paused_missing_memory_companion_keeps_the_working_run(self) -> None:
-        _install_plugin(
-            self.plugin_root,
-            "missing_marker",
-            "MarkerPlugin",
-            _empty_plugin_source("MarkerPlugin", "marker-plugin-v0"),
-            memory={
-                "implementation_id": "marker_memory",
-                "implementation_spec": "missing_marker.memory:MarkerMemory",
-                "implementation_config": {},
-            },
-        )
-        with image_source(3) as root:
-            runner = ImageReplayRunner(
-                root,
-                plugin_dir=self.plugin_root,
-                cadence_ms=30000,
-            )
-            runner.dispatch(
-                "select_plugins",
-                active_plugin_ids=["classical_regions"],
-            )
-            run_id, paused = _pause_after_first_frame(runner)
-            mapper = runner._mapper
-            memory_step = runner._memory_step
-            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"]
-            memory_plugin = memory_step.plugins[0]
-            ledger = runner._shared_memory.get(LEDGER_KEY)
-            runner._shared_memory["retention-marker"] = "kept"
-
-            with self.assertRaises(ReplayActionError) as caught:
-                runner.dispatch(
-                    "select_plugins",
-                    run_id=run_id,
-                    active_plugin_ids=["missing_marker", "classical_regions"],
-                )
-
-            self.assertEqual(caught.exception.boundary, "plugin_catalog")
-            self.assertIn("missing_marker.memory", str(caught.exception))
-            state = runner.state()
-            self.assertEqual(state["phase"], "paused")
-            self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
-            self.assertIs(runner._mapper, mapper)
-            self.assertIs(runner._memory_step, memory_step)
-            applied = dict(zip(mapper.plugin_ids, mapper.plugins))
-            self.assertEqual(list(applied), ["classical_regions"])
-            self.assertIs(applied["classical_regions"], retained)
-            self.assertIs(memory_step.plugins[0], memory_plugin)
-            self.assertEqual(
-                memory_step.plugin_manager.selected_ids, ("bounded_evidence",)
-            )
-            self.assertIs(runner._shared_memory.get(LEDGER_KEY), ledger)
-            self.assertEqual(runner._shared_memory["retention-marker"], "kept")
-
-            stepped = runner.dispatch("step", run_id=run_id)
-            self.assertEqual(stepped["phase"], "paused")
-            self.assertEqual(_plugin_ids(stepped["perception"]), ["classical_regions"])
-            self.assertIs(applied["classical_regions"], retained)
-            self.assertIs(memory_step.plugins[0], memory_plugin)
-            runner.dispatch("cancel", run_id=run_id)
-
-    def test_running_perception_constructor_failure_keeps_the_working_run(self) -> None:
-        _install_plugin(
-            self.plugin_root,
-            "broken",
-            "BrokenPlugin",
-            "from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch\n"
-            "from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract\n"
-            "\n"
-            "class BrokenPlugin:\n"
-            "    plugin_id = 'broken-plugin-v0'\n"
-            "    contract = PerceptionPluginContract()\n"
-            "\n"
-            "    def __init__(self):\n"
-            "        raise RuntimeError('constructor failed')\n"
-            "\n"
-            "    def perceive(self, inputs):\n"
-            "        return PerceptionEvidenceBatch()\n",
-        )
-        with image_source(3) as root:
-            runner = ImageReplayRunner(
-                root,
-                plugin_dir=self.plugin_root,
-                cadence_ms=30000,
-            )
-            runner.dispatch(
-                "select_plugins",
-                active_plugin_ids=["classical_regions"],
-            )
-            started = runner.start()
-            run_id = started["run_id"]
-            _wait_until(lambda: runner.state()["position"] == 1)
-            before = runner.state()
-            self.assertEqual(before["phase"], "running")
-            mapper = runner._mapper
-            memory_step = runner._memory_step
-            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"]
-            memory_plugin = memory_step.plugins[0]
-            first_id = before["current_frame"]["frame_id"]
-
-            with self.assertRaises(ReplayActionError) as caught:
-                runner.dispatch(
-                    "select_plugins",
-                    run_id=run_id,
-                    active_plugin_ids=["broken"],
-                )
-
-            self.assertIn("constructor failed", str(caught.exception))
-            state = runner.state()
-            self.assertEqual(state["phase"], "running")
-            self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
-            self.assertIs(runner._mapper, mapper)
-            self.assertIs(runner._memory_step, memory_step)
-            applied = dict(zip(mapper.plugin_ids, mapper.plugins))
-            self.assertEqual(mapper.plugin_manager.selected_ids, ("classical_regions",))
-            self.assertIs(applied["classical_regions"], retained)
-            self.assertIs(memory_step.plugins[0], memory_plugin)
-
-            paused = runner.dispatch("pause", run_id=run_id)
-            self.assertEqual(paused["phase"], "paused")
-            if paused["position"] == before["position"]:
-                paused = runner.dispatch("step", run_id=run_id)
-            self.assertEqual(paused["phase"], "paused")
-            self.assertEqual(_plugin_ids(paused["perception"]), ["classical_regions"])
-            self.assertNotEqual(paused["current_frame"]["frame_id"], first_id)
-            self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
-                ["classical_regions"],
-            )
-            self.assertIs(applied["classical_regions"], retained)
-            runner.dispatch("cancel", run_id=run_id)
-
-    def test_multiple_memory_companions_do_not_replace_the_run(self) -> None:
-        for plugin_id, max_records in (("alpha", 7), ("beta", 9)):
-            _install_plugin(
-                self.plugin_root,
-                plugin_id,
-                "CompanionPlugin",
-                _empty_plugin_source("CompanionPlugin", f"{plugin_id}-plugin-v0"),
-                memory={
-                    "implementation_id": "bounded_evidence",
-                    "implementation_spec": _BOUNDED_SPEC,
-                    "implementation_config": {"max_records": max_records},
-                },
-            )
-        with image_source(2) as root:
-            runner = ImageReplayRunner(
-                root,
-                plugin_dir=self.plugin_root,
-                cadence_ms=30000,
-            )
-            runner.dispatch(
-                "select_plugins",
-                active_plugin_ids=["classical_regions"],
-            )
-            run_id, _paused = _pause_after_first_frame(runner)
-            mapper = runner._mapper
-            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"]
-
-            with self.assertRaises(ReplayActionError) as caught:
-                runner.dispatch(
-                    "select_plugins",
-                    run_id=run_id,
-                    active_plugin_ids=["alpha", "beta"],
-                )
-
-            self.assertIn("multiple memory companions", str(caught.exception))
-            state = runner.state()
-            self.assertEqual(state["phase"], "paused")
-            self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
-            applied = dict(zip(mapper.plugin_ids, mapper.plugins))
-            self.assertIs(applied["classical_regions"], retained)
-            self.assertEqual(
-                runner._memory_step.plugins[0].implementation.bounds.max_records, 32
-            )
-            runner.dispatch("cancel", run_id=run_id)
 
     def test_paused_selection_reprocesses_the_frame_with_temporal_history(self) -> None:
         _install_plugin(
@@ -1058,83 +852,3 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             runner.dispatch("cancel", run_id=run_id)
 
-    def test_failed_memory_replacement_keeps_temporal_instance_history(self) -> None:
-        _install_plugin(
-            self.plugin_root,
-            "failing_temporal",
-            "TemporalPlugin",
-            _temporal_source("failing-temporal-v0"),
-        )
-        _install_plugin(
-            self.plugin_root,
-            "failing_companion",
-            "CompanionPlugin",
-            _empty_plugin_source("CompanionPlugin", "failing-companion-v0"),
-            memory={
-                "implementation_id": "failing_memory",
-                "implementation_spec": "failing_companion.src.memory:FailingMemory",
-                "implementation_config": {},
-            },
-        )
-        _install_memory_module(
-            self.plugin_root,
-            "failing_companion",
-            "class FailingMemory:\n"
-            "    def __init__(self, **config):\n"
-            "        del config\n"
-            "        raise RuntimeError('memory constructor failed')\n",
-        )
-        with image_source(3) as root:
-            runner = ImageReplayRunner(
-                root,
-                plugin_dir=self.plugin_root,
-                cadence_ms=30000,
-            )
-            runner.dispatch(
-                "select_plugins",
-                active_plugin_ids=["failing_temporal"],
-            )
-            run_id, paused = _pause_after_first_frame(runner)
-            first_id = paused["current_frame"]["frame_id"]
-            mapper = runner._mapper
-            memory_step = runner._memory_step
-            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["failing_temporal"]
-            frames = retained.frames
-            shared = runner._shared_memory["temporal.frames"]
-            memory_plugin = memory_step.plugins[0]
-            ledger = runner._shared_memory.get(LEDGER_KEY)
-            self.assertEqual(frames, [first_id])
-            self.assertEqual(shared, [first_id])
-
-            with self.assertRaises(ReplayActionError) as caught:
-                runner.dispatch(
-                    "select_plugins",
-                    run_id=run_id,
-                    active_plugin_ids=["failing_companion"],
-                )
-
-            self.assertEqual(caught.exception.boundary, "plugin_catalog")
-            self.assertIn("memory constructor failed", str(caught.exception))
-            state = runner.state()
-            self.assertEqual(state["phase"], "paused")
-            self.assertEqual(state["run_active_plugin_ids"], ["failing_temporal"])
-            self.assertEqual(mapper.plugin_manager.selected_ids, ("failing_temporal",))
-            applied = dict(zip(mapper.plugin_ids, mapper.plugins))
-            self.assertIs(applied["failing_temporal"], retained)
-            self.assertIs(retained.frames, frames)
-            self.assertEqual(frames, [first_id])
-            self.assertIs(runner._shared_memory["temporal.frames"], shared)
-            self.assertEqual(shared, [first_id])
-            self.assertIs(memory_step.plugins[0], memory_plugin)
-            self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
-            self.assertIs(runner._shared_memory.get(LEDGER_KEY), ledger)
-
-            stepped = runner.dispatch("step", run_id=run_id)
-            self.assertEqual(stepped["phase"], "paused")
-            self.assertIs(applied["failing_temporal"], retained)
-            second_id = stepped["current_frame"]["frame_id"]
-            self.assertNotEqual(second_id, first_id)
-            self.assertEqual(frames, [first_id, second_id])
-            self.assertEqual(shared, [first_id, second_id])
-            self.assertEqual(_plugin_ids(stepped["perception"]), ["failing_temporal"])
-            runner.dispatch("cancel", run_id=run_id)

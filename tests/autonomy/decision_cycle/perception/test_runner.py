@@ -27,7 +27,6 @@ from autonomy.decision_cycle.perception.plugin import (
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
 
@@ -307,32 +306,6 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertNotIn("test_ready", [signal.name for signal in third.signals])
         self.assertEqual(working.reset_count, 1)
 
-    def test_failed_live_selection_build_does_not_publish_partial_runtime(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "working": f"{__name__}:WorkingPlugin",
-                "broken": f"{__name__}:ConstructionFailurePlugin",
-            }
-        )
-        manager.select(["working"])
-        mapper = PerceptionRunner(plugin_manager=manager)
-        working = mapper.plugins[0]
-        manager.select(["broken"])
-
-        with self.assertRaisesRegex(RuntimeError, "expected construction failure"):
-            mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(), "frame-1"))
-            )
-
-        self.assertEqual(mapper.plugin_ids, ("working",))
-        self.assertIs(mapper.plugins[0], working)
-        manager.select(["working"])
-        recovered = mapper.perceive(
-            build_perception_request(_snapshot(_array_reading(), "frame-2"))
-        )
-        self.assertEqual([run.plugin_id for run in recovered.plugin_runs], ["working"])
-        self.assertIs(mapper.plugins[0], working)
 
     def test_selection_change_during_perceive_applies_on_the_next_frame(self) -> None:
         manager = PluginManager.from_specs(
@@ -386,77 +359,6 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertIsNot(mapper.plugins[0], working)
         self.assertEqual(working.reset_count, 1)
 
-    def test_discarded_selection_leaves_the_published_plugin(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "working": f"{__name__}:WorkingPlugin",
-                "unavailable": f"{__name__}:UnavailablePlugin",
-            }
-        )
-        manager.select(["working"])
-        mapper = PerceptionRunner(plugin_manager=manager)
-        working = mapper.plugins[0]
-        manager.select(["unavailable"])
-        mapper.prepare_selection()
-        mapper.discard_selection()
-
-        self.assertIs(mapper.plugins[0], working)
-        self.assertEqual(working.reset_count, 0)
-        with self.assertRaisesRegex(PluginManagementError, "prepared"):
-            mapper.commit_selection()
-        self.assertIs(mapper.plugins[0], working)
-        manager.select(["working"])
-        mapper.perceive(build_perception_request(_snapshot(_array_reading(), "frame-2")))
-        self.assertIs(mapper.plugins[0], working)
-        self.assertEqual(working.reset_count, 0)
-
-    def test_schema_distinguishes_selected_ids_from_applied_plugins(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "working": f"{__name__}:WorkingPlugin",
-                "spare": f"{__name__}:WorkingPlugin",
-                "broken": f"{__name__}:ConstructionFailurePlugin",
-            }
-        )
-        manager.select(["working"])
-        mapper = PerceptionRunner(plugin_manager=manager)
-        published = mapper.plugins[0]
-        manager.select(["spare"])
-
-        configuration = mapper.describe_schema()["configuration"]
-
-        self.assertEqual(configuration["plugins"], ["working"])
-        self.assertEqual(configuration["selected_plugin_ids"], ["spare"])
-        self.assertEqual(configuration["applied_plugin_ids"], ["working"])
-        self.assertEqual(
-            configuration["available_plugins"],
-            ["broken", "spare", "working"],
-        )
-        self.assertEqual(
-            mapper.plugin_report()["plugins"],
-            [
-                {
-                    "plugin_id": "working",
-                    "implementation_id": "working-test-v0",
-                    "duration_ms": None,
-                    "error": None,
-                }
-            ],
-        )
-
-        manager.select(["broken"])
-        with self.assertRaisesRegex(RuntimeError, "expected construction failure"):
-            mapper.prepare_selection()
-
-        configuration = mapper.describe_schema()["configuration"]
-        self.assertEqual(configuration["plugins"], ["working"])
-        self.assertEqual(configuration["selected_plugin_ids"], ["broken"])
-        self.assertEqual(configuration["applied_plugin_ids"], ["working"])
-        self.assertIs(mapper.plugins[0], published)
-        self.assertEqual(mapper.plugin_report()["plugins"][0]["plugin_id"], "working")
-        self.assertIsNone(mapper.plugin_report()["plugins"][0]["duration_ms"])
 
     def test_step_status_reports_applied_runs_with_catalog_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

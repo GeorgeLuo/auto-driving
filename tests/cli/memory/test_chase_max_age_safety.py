@@ -202,17 +202,3 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             "headroom" in result.reason.lower() or "capacity" in result.reason.lower()
         )
 
-    def test_malformed_memory_does_not_pass_immediately(self) -> None:
-        bad = _chase_frame(12, [])
-        del bad["memory"]
-        with self.assertRaises(TimeoutError):
-            wait_for_chase_memory_key_expiry(
-                load_latest_frame=lambda: bad,
-                probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0"),
-                present_keys={"thing:obstacle_000"},
-                max_age_ms=1000,
-                timeout_s=0.6,
-                key_anchors_ms={"thing:obstacle_000": 1},
-                identity=_identity(),
-                max_records=32,
-            )

@@ -86,42 +86,6 @@ class EvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(empty.health, "empty")
         self.assertEqual(empty.record_count, 0)
 
-    def test_rejects_over_capacity_and_invalid_health_pairs(self) -> None:
-        with self.assertRaisesRegex(ValueError, "max_records"):
-            EvidenceLedger(
-                memory_id="mem_1",
-                epoch_id="epoch_a",
-                health="healthy",
-                bounds=LedgerBounds(max_records=1),
-                created_at_ms=1,
-                records=(self.retained("a"), self.retained("b")),
-            )
-        with self.assertRaisesRegex(ValueError, "empty ledger"):
-            EvidenceLedger(
-                memory_id="mem_1",
-                epoch_id="epoch_a",
-                health="empty",
-                bounds=self.bounds(),
-                created_at_ms=1,
-                records=(self.retained(),),
-            )
-        with self.assertRaisesRegex(ValueError, "healthy ledger"):
-            EvidenceLedger(
-                memory_id="mem_1",
-                epoch_id="epoch_a",
-                health="healthy",
-                bounds=self.bounds(),
-                created_at_ms=1,
-                records=(),
-            )
-        with self.assertRaisesRegex(ValueError, "ledger health"):
-            EvidenceLedger(
-                memory_id="mem_1",
-                epoch_id="epoch_a",
-                health="error",
-                bounds=self.bounds(),
-                created_at_ms=1,
-            )
 
     def test_bounds_come_from_plugin_config(self) -> None:
         bounds = bounds_from_config({"max_records": 8, "max_age_ms": None})

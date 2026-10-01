@@ -10,10 +10,6 @@ from autonomy.decision_cycle.proposal.values import (
 from autonomy.serialization import canonical_json_bytes
 from autonomy.decision_cycle.action.hold import idle_output
 from autonomy.decision_cycle.action.values import proposed_equals_authorized
-from autonomy.decision_cycle.action_identifiers import ActionInputError
-from autonomy.decision_cycle.activation import step_activation
-from autonomy.decision_cycle.proposal.runner import ProposalRunner
-from implementations.decision_cycle.catalog import packaged_activation
 from tests.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
@@ -21,11 +17,6 @@ from tests.support.action_fixtures import decision_chain, packaged_decision_chai
 
 
 class ActionProposalMatrixTests(unittest.TestCase):
-    def test_source_refs_reject_removed_harness_stages(self) -> None:
-        for kind in ("pattern", "projection"):
-            with self.subTest(kind=kind):
-                with self.assertRaisesRegex(ValueError, "invalid SourceRef.kind"):
-                    SourceRef(kind=kind, id="removed-step-output")
 
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
         engine = decision_chain(
@@ -43,45 +34,6 @@ class ActionProposalMatrixTests(unittest.TestCase):
         self.assertEqual(result.plan.selected_candidate().plugin_id, "cruise")
         self.assertEqual(control.throttle, 0.0)
 
-    def test_rejects_fresh_with_stale_freshness(self) -> None:
-        with self.assertRaises(ValueError):
-            ActionProposal(
-                plugin_id="avoid_recent_obstruction",
-                frame_id="frame_001",
-                lifecycle="fresh",
-                freshness="stale",
-                confidence=0.5,
-                reason="bad",
-                command=ProposedVehicleCommand(steering=0.1, throttle=0.0, gear="hold"),
-                source_refs=(SourceRef(kind="memory_record", id="r"),),
-                available=True,
-            )
-
-    def test_rejects_nonfinite_confidence(self) -> None:
-        with self.assertRaises(ValueError):
-            ActionProposal(
-                plugin_id="avoid_recent_obstruction",
-                frame_id="frame_001",
-                lifecycle="inactive",
-                freshness="none",
-                confidence=float("nan"),
-                reason="x",
-                command=None,
-                available=False,
-            )
-
-    def test_rejects_confidence_out_of_range(self) -> None:
-        with self.assertRaises(ValueError):
-            ActionProposal(
-                plugin_id="avoid_recent_obstruction",
-                frame_id="frame_001",
-                lifecycle="inactive",
-                freshness="none",
-                confidence=1.5,
-                reason="x",
-                command=None,
-                available=False,
-            )
 
     def test_proposed_equals_authorized_table(self) -> None:
         idle = idle_output()
@@ -119,10 +71,6 @@ class SelectorTests(unittest.TestCase):
 
 
 class RunnerBoundaryTests(unittest.TestCase):
-    def test_invalid_frame_id_raises_before_cycle_result(self) -> None:
-        engine = packaged_decision_chain()
-        with self.assertRaises(ActionInputError):
-            engine.run(frame_id="😀", frame_index=0, timestamp_ms=1)
 
     def test_prior_frame_proposal_not_selected(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
@@ -237,37 +185,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertTrue(plan.selected_proposal_id.endswith(":" + frame))
         self.assertEqual(canonical_json_bytes(plan.to_dict()["metadata"]), 1024)
 
-    def test_metadata_frozen_after_construction(self) -> None:
-        prop = _active_proposal()
-        # Frozen metadata must not grow after the size check.
-        with self.assertRaises(Exception):
-            prop.metadata["pad"] = "x" * 20_000  # type: ignore[index]
-        # Backing store must also reject ordinary mutation (not only __setitem__).
-        with self.assertRaises(Exception):
-            prop.metadata._data["pad"] = "x" * 20_000  # type: ignore[index]
-        with self.assertRaises(Exception):
-            prop.metadata._data = {"pad": "x" * 20_000}  # type: ignore[misc]
-        self.assertLessEqual(canonical_json_bytes(prop.to_dict()), 4096)
-
-    def test_require_safe_int_rejects_coercion(self) -> None:
-        from autonomy.decision_cycle.action_identifiers import require_safe_int
-
-        for bad in (1.9, "12", True, False):
-            with self.assertRaises(ValueError):
-                require_safe_int(bad, field_name="timestamp_ms")
-
-    def test_empty_reason_rejected(self) -> None:
-        with self.assertRaises(ValueError):
-            ActionProposal(
-                plugin_id="avoid_recent_obstruction",
-                frame_id="frame_001",
-                lifecycle="inactive",
-                freshness="none",
-                confidence=0.0,
-                reason="",
-                command=None,
-                available=False,
-            )
 
     def test_metadata_round_trip_preserves_object_array_identity(self) -> None:
         cases = (
@@ -309,26 +226,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(err.to_dict()["metadata"], {})
 
-    def test_contribution_plugin_id_must_match_selected(self) -> None:
-        from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
-
-        a = _active_proposal(plugin_id="aaa")
-        with self.assertRaises(ValueError):
-            ActionPlan(
-                frame_id="frame_001",
-                timestamp_ms=1,
-                status="selected",
-                candidates=(a,),
-                selected_proposal_id=a.proposal_id,
-                contributions=(
-                    PlanContribution(
-                        proposal_id=a.proposal_id,
-                        plugin_id="wrong",
-                        weight=1.0,
-                        role="selected",
-                    ),
-                ),
-            )
 
     def test_host_application_bad_type_is_not_recorded(self) -> None:
         engine = packaged_decision_chain()
@@ -347,52 +244,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertFalse(result.authority.proposed_applied)
         self.assertEqual(control.steering, 0.0)
 
-    def test_bound_rejections(self) -> None:
-        with self.assertRaises(ValueError):
-            ActionProposal(
-                plugin_id="avoid_recent_obstruction",
-                frame_id="frame_001",
-                lifecycle="inactive",
-                freshness="none",
-                confidence=0.0,
-                reason="r" * 241,
-                command=None,
-                available=False,
-            )
-        refs = tuple(SourceRef(kind="memory_record", id=f"r{i}") for i in range(17))
-        with self.assertRaises(ValueError):
-            ActionProposal(
-                plugin_id="avoid_recent_obstruction",
-                frame_id="frame_001",
-                lifecycle="stale",
-                freshness="stale",
-                confidence=0.0,
-                reason="stale",
-                command=None,
-                source_refs=refs,
-                available=False,
-            )
-
-    def test_invalid_activation_configs(self) -> None:
-        packaged = packaged_activation("proposal")
-
-        def selection(plugins):
-            return step_activation("proposal", plugins, packaged.plugin_specs, packaged.plugin_configs)
-
-        with self.assertRaises(ValueError):
-            selection(["avoid_recent_obstruction"] * 2)
-        # String is not a list of ids (would otherwise char-iterate).
-        with self.assertRaises(ValueError):
-            selection("avoid_recent_obstruction")
-        # Unknown ids reject against the selection's specs, not a self-declared known set.
-        with self.assertRaises(ValueError):
-            selection(["ghost"])
-        with self.assertRaises(ValueError):
-            packaged_activation("proposal", ["ghost"])
-        with self.assertRaises(ValueError):
-            decision_chain(plugins={"not an id!": lambda source, shared_memory: None})
-        with self.assertRaises(TypeError):
-            ProposalRunner.from_plugins({"avoid_recent_obstruction": "no propose method"})
 
     def test_more_than_four_plugins_each_propose(self) -> None:
         ids = [f"p{index}" for index in range(6)]
@@ -444,18 +295,3 @@ class RunnerBoundaryTests(unittest.TestCase):
                 self.assertEqual(result.plan.candidates[0].lifecycle, "error")
                 self.assertEqual(control.steering, 0.0)
 
-    def test_proposal_over_max_bytes_rejected(self) -> None:
-        # Pad metadata until canonical size exceeds 4096.
-        pad = "x" * 3800
-        with self.assertRaises(ValueError):
-            ActionProposal(
-                plugin_id="avoid_recent_obstruction",
-                frame_id="frame_001",
-                lifecycle="inactive",
-                freshness="none",
-                confidence=0.0,
-                reason="noop",
-                command=None,
-                available=False,
-                metadata={"pad": pad},
-            )

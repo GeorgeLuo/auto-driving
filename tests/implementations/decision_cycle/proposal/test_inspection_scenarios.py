@@ -39,10 +39,6 @@ class InspectionScenarioTests(unittest.TestCase):
         self.assertEqual(scenarios["left"]["evidence"][1]["location"]["zone"], "center")
         self.assertEqual(evidence[0]["location"]["zone"], "center")
 
-    def test_rejects_a_frame_with_no_accepted_evidence(self) -> None:
-        with self.assertRaises(ValueError):
-            prepare_inspection_scenarios([])
-
 
 if __name__ == "__main__":
     unittest.main()

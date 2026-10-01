@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
+from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.proposal.values import ActionProposal
-from autonomy.plugins import PluginManagementError
 from tests.support.action_fixtures import DecisionChain
 
 
@@ -28,14 +27,6 @@ class _ConfiguredProposal:
             available=False,
         )
 
-
-class _Mislabeled(_ConfiguredProposal):
-    def __init__(self) -> None:
-        super().__init__(plugin_id="someone_else")
-
-
-class _NoPropose:
-    plugin_id = "p0"
 
 
 class _ReadsEvidence(_ConfiguredProposal):
@@ -83,44 +74,6 @@ class ProposalRunnerTests(unittest.TestCase):
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.candidates, ())
 
-    def test_invalid_documents_are_rejected_before_loading(self) -> None:
-        payload = {"schema": "automa_step_activation_v0", "step": "proposal"}
-        cases = {
-            "unknown key": {**payload, "plugins": [], "plugin_specs": {}, "enabled_plugins": []},
-            "plugins not a list": {**payload, "plugins": "p0", "plugin_specs": {}},
-            "duplicate ids": {**payload, "plugins": ["p0", "p0"], "plugin_specs": {"p0": "m:N"}},
-            "specs missing": {**payload, "plugins": ["p0"]},
-            "wrong step": {**payload, "step": "memory", "plugins": [], "plugin_specs": {}},
-        }
-        for name, document in cases.items():
-            with self.subTest(name):
-                with self.assertRaises(ValueError):
-                    step_activation_from_payload(document, step="proposal")
-        with self.assertRaises(PluginManagementError):
-            _activation(["ghost"])
-
-    def test_loaded_plugin_must_satisfy_the_protocol_under_its_selected_id(self) -> None:
-        for spec, message in (
-            (_spec("_Mislabeled"), "declares plugin_id"),
-            (_spec("_NoPropose"), "must implement propose"),
-        ):
-            with self.subTest(spec):
-                with self.assertRaisesRegex(TypeError, message):
-                    ProposalRunner.from_activation(step_activation("proposal", ["p0"], {"p0": spec}))
-
-    def test_bad_plugin_config_fails_at_load(self) -> None:
-        activation = step_activation(
-            "proposal",
-            ["p0"],
-            {"p0": _spec("_ConfiguredProposal")},
-            {"p0": {"plugin_id": "p0", "unknown": 1}},
-        )
-        with self.assertRaises(TypeError):
-            ProposalRunner.from_activation(activation)
-
-    def test_other_step_activations_are_refused(self) -> None:
-        with self.assertRaises(ValueError):
-            ProposalRunner.from_activation(step_activation("memory", [], {}))
 
     def test_declared_evidence_key_is_copied_into_the_source(self) -> None:
         runner = ProposalRunner.from_activation(

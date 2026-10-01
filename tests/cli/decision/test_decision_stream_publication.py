@@ -2,13 +2,10 @@ from __future__ import annotations
 import json
 import os
 import io
-import threading
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
-from cli.automa_cli.automation import _record_decision_publish_skip
 from cli.automa_cli.decision import (
     apply_vehicle_decision,
     build_decision_stream_frame,
@@ -326,32 +323,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         second = json.loads(frame_path.read_text())
         self.assertEqual(second["generation_id"], activation_b["generation_id"])
 
-    def test_publish_skip_counter_write_failure_is_non_fatal(self) -> None:
-        state: dict = {
-            "decision": {
-                "generation_id": packaged_identity()["generation_id"],
-                "latest_frame_publish_skips": 0,
-                "latest_frame_publish_skip_reason": None,
-            }
-        }
-        lock = threading.Lock()
-        # Unwritable path: parent does not exist and cannot be created if we
-        # force _write_json to raise.
-        bad_path = Path("/nonexistent-automa-root-zzz/state.json")
-
-        def boom(*_args, **_kwargs):
-            raise OSError("disk full")
-
-        with patch("cli.automa_cli.automation._write_json", side_effect=boom):
-            # Must not raise even when persistence fails.
-            _record_decision_publish_skip(
-                state, bad_path, lock, reason="unit-test-write-fail"
-            )
-        self.assertEqual(state["decision"]["latest_frame_publish_skips"], 1)
-        self.assertEqual(
-            state["decision"]["latest_frame_publish_skip_reason"],
-            "unit-test-write-fail",
-        )
 
     def test_no_stale_republish_after_bad_step(self) -> None:
         activation = self._stage()

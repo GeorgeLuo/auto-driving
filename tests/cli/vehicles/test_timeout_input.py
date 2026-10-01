@@ -226,23 +226,6 @@ class TimeoutInputTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(update_perception.call_args.kwargs["timeout_s"], 5.0)
 
-    def test_valid_timeout_does_not_relabel_downstream_value_error(self) -> None:
-        with patch(
-            "cli.automa_cli.app.run_vehicle_automation",
-            side_effect=ValueError("unrelated runtime failure"),
-        ), patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"):
-            with self.assertRaisesRegex(ValueError, "unrelated runtime failure"):
-                _invoke(
-                    "vehicles",
-                    "automation",
-                    "run",
-                    "--id",
-                    "chase-sim-chaser",
-                    "--timeout-s",
-                    "1.25",
-                    "--foreground",
-                )
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

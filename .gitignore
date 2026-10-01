@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 *.bak.*
 /lab/
-/implementations/decision_cycle/perception/*/cache/
+/implementations/decision_cycle/perception/plugins/*/cache/
 /runtime/
 frontend/**/.runtime/
 

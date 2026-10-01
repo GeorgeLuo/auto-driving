@@ -24,7 +24,7 @@ from implementations.decision_cycle.perception.feeds.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
-from implementations.decision_cycle.perception.floor_continuity.model import (
+from implementations.decision_cycle.perception.plugins.floor_continuity.model import (
     FloorContinuityConfig,
     analyze_floor_continuity,
 )
@@ -38,7 +38,7 @@ from implementations.decision_cycle.perception.shared.serialization.canonical im
     canonical_json,
     json_safe,
 )
-from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import (
+from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
 )
 

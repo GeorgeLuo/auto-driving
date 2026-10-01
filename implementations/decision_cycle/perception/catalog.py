@@ -149,67 +149,67 @@ _MULTI_OBSTRUCTION_TRACKS_CONFIG: dict[str, Any] = {
 # Each plugin declares its own ID (its ``plugin_id``); entries do not repeat it.
 PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
     {
-        "spec": "implementations.decision_cycle.perception.floor_plane.plugin:FloorPlanePlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_plane.plugin:FloorPlanePlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.frame_observation.plugin:FrameObservationPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.motion_tracks.plugin:MotionTracksPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.obstruction_tracks.plugin:MultiObstructionTracksPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.obstruction_tracks.plugin:MultiObstructionTracksPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.sim_color_targets.plugin:SimColorTargetsPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.vlm_preparation.plugin:VlmPrepPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.classical_regions.plugin:ClassicalRegionPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.classical_regions.plugin:ClassicalRegionPlugin",
         "description": "OpenCV-only coherent color components as generic image-space regions.",
         "default_config": {"working_width": 320, "spatial_radius": 8, "color_radius": 18, "min_area_fraction": 0.003, "max_area_fraction": 0.65, "max_regions": 32},
     },
     {
-        "spec": "implementations.decision_cycle.perception.composite_box_fusion.plugin:CompositeBoxFusionPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin:CompositeBoxFusionPlugin",
         "description": "Composite obstruction candidates from edge contours, partial-face and photometric cues, floor continuity, and line/junction support.",
         "default_config": _COMPOSITE_BOX_FUSION_CONFIG,
     },
     {
-        "spec": "implementations.decision_cycle.perception.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin",
         "description": "Composite box fusion with recursive spatial-mode separation between objects.",
         "default_config": {**_COMPOSITE_BOX_FUSION_CONFIG, "object_separated_geometry": True},
     },
     {
-        "spec": "implementations.decision_cycle.perception.floor_continuity.plugin:FloorContinuityPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_continuity.plugin:FloorContinuityPlugin",
         "description": "Stateless multi-cue bottom-connected floor support and interruption evidence.",
         "default_config": _FLOOR_CONTINUITY_CONFIG,
     },
     {
-        "spec": "implementations.decision_cycle.perception.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin",
         "description": "Stricter floor-boundary variant calibrated against the archived Chaser depth-obstacle capture.",
         "default_config": {"minimum_boundary_width_ratio": 0.03, "minimum_boundary_confidence": 0.7},
     },
     {
-        "spec": "implementations.decision_cycle.perception.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin",
         "description": "Temporal association and box smoothing around the floor-continuity cue.",
         "default_config": {**_FLOOR_CONTINUITY_CONFIG, "smoothing_alpha": 0.45, "association_distance": 0.3, "minimum_association_score": 0.18, "max_hold_frames": 2},
     },
     {
-        "spec": "implementations.decision_cycle.perception.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin",
         "description": "Floor-suppressed obstruction candidates for the multi_obstruction_tracks memory plugin to track.",
         "default_config": _MULTI_OBSTRUCTION_TRACKS_CONFIG,
     },

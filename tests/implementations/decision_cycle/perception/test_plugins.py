@@ -13,7 +13,7 @@ from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
     camera_component_id,
 )
-from implementations.decision_cycle.perception.motion_tracks.plugin import (
+from implementations.decision_cycle.perception.plugins.motion_tracks.plugin import (
     MotionTracksPlugin,
 )
 

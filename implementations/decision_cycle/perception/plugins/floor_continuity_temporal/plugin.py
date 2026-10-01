@@ -19,7 +19,7 @@ from implementations.decision_cycle.perception.feeds.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
-from implementations.decision_cycle.perception.floor_continuity.plugin import FloorContinuityPlugin
+from implementations.decision_cycle.perception.plugins.floor_continuity.plugin import FloorContinuityPlugin
 
 
 class TemporalFloorContinuityPlugin:

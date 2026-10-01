@@ -23,7 +23,7 @@ from autonomy.decision_cycle.memory.runner import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.runtime.control import AutonomyControl
 from implementations.decision_cycle.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
-from implementations.decision_cycle.perception.frame_observation.plugin import (
+from implementations.decision_cycle.perception.plugins.frame.plugin import (
     FrameObservationPlugin,
 )
 

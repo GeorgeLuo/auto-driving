@@ -89,37 +89,37 @@
                     "responsibility": "Feeds: per-sensor adapters that turn generic sensor readings into typed plugin inputs, such as camera frames. The core contract calls these components."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/frame_observation/",
+                    "path": "implementations/decision_cycle/perception/plugins/frame/",
                     "category": "implementation",
                     "commit_policy": "source",
                     "responsibility": "Frame observation plugin: current-frame statistics and change measurements."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/floor_plane/",
+                    "path": "implementations/decision_cycle/perception/plugins/floor_plane/",
                     "category": "implementation",
                     "commit_policy": "source",
                     "responsibility": "Floor-plane plugin: floor modeling, projection, and traversability evidence."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/motion_tracks/",
+                    "path": "implementations/decision_cycle/perception/plugins/motion_tracks/",
                     "category": "implementation",
                     "commit_policy": "source",
                     "responsibility": "Motion-tracks plugin: bounded temporal tracks from scene motion."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/obstruction_tracks/",
+                    "path": "implementations/decision_cycle/perception/plugins/obstruction_tracks/",
                     "category": "implementation",
                     "commit_policy": "source",
                     "responsibility": "Multi-obstruction tracks plugin."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/sim_color_targets/",
+                    "path": "implementations/decision_cycle/perception/plugins/sim_color_targets/",
                     "category": "environment-implementation",
                     "commit_policy": "source",
                     "responsibility": "Simulation-only color-target plugin."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/vlm_preparation/",
+                    "path": "implementations/decision_cycle/perception/plugins/vlm_prep/",
                     "category": "implementation",
                     "commit_policy": "source",
                     "responsibility": "Deterministic image preparation plugin for optional downstream observers."

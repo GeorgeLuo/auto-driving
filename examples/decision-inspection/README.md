@@ -22,8 +22,9 @@ To get the same artifacts without starting a server:
 
 Supply any saved `automa_decision_apply_sequence_v1` file or directory containing
 `sequence.json`. Use `--frame N` to select its zero-based frame position.
-Use `--id <vehicle>` to read a staged hold-action configuration; omit it to
-use packaged defaults without staging a vehicle. `--port N` selects a preferred
+Use `--id <vehicle>` to read the vehicle's staged proposal, plan, and action
+steps (the action must be `hold`); omit it to use packaged defaults without
+staging a vehicle. `--port N` selects a preferred
 local port. Ctrl-C stops the inspector.
 
 Both scenarios reposition all supported image-relative obstruction records in a
@@ -34,4 +35,4 @@ may produce hold; the inspector does not manufacture a steering decision.
 The live automation server remains a separate perception/memory surface. This
 inspector serves its own root page and has no worker generation or expiry.
 Reloading the page reloads the computed artifacts. Restart the command to load a
-different input file or engine configuration.
+different input file or step selection.

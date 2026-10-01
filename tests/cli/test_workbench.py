@@ -311,8 +311,8 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(first_decision["frame_id"], frame_id)
         self.assertFalse(first_decision["authority"]["proposed_applied"])
         self.assertEqual(
-            state["machine_detail"]["pipeline"]["decision_engine"],
-            "hold-action",
+            state["machine_detail"]["pipeline"]["decision_steps"],
+            {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["hold"]},
         )
         decision_config = state["machine_detail"]["pipeline"]["decision_config"]
         self.assertFalse(decision_config["proposed_applied"])

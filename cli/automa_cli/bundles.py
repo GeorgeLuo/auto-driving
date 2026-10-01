@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from autonomy.decision_cycle.activation import STEPS
+
 from .paths import ROOT, display_path
 
 AUTONOMY_DIR = ROOT / "autonomy"
@@ -26,11 +28,9 @@ def controller_bundle_paths(vehicle_runtime_dir: Path) -> dict[str, str]:
         "autonomy_dir": str(autonomy_dir),
         "implementations_dir": str(implementations_dir),
         "perception_dir": str(implementations_dir / "decision_cycle" / "perception"),
-        "decision_dir": str(implementations_dir / "runtime" / "engines"),
         "runtime_dir": str(runtime_dir),
-        "perception_runtime_dir": str(runtime_dir / "perception"),
-        "decision_runtime_dir": str(runtime_dir / "decision"),
-        "memory_runtime_dir": str(runtime_dir / "memory"),
+        # One activation directory per cycle step: runtime/<step>/active.json.
+        **{f"{step}_runtime_dir": str(runtime_dir / step) for step in STEPS},
     }
 
 

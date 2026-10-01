@@ -21,7 +21,6 @@ from autonomy.decision_cycle.cycle import (
     DecisionFrameContext,
     DecisionSteps,
 )
-from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.steps import decision_steps, load_decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.shared_memory import SharedMemory
@@ -144,7 +143,9 @@ class AutonomyCycleHost:
             if memory is None:
                 self.shared_memory.clear()
                 return None
-            if not isinstance(memory, MemoryRunner):
+            if not callable(getattr(memory, "reset", None)) or not callable(
+                getattr(memory, "report", None)
+            ):
                 raise TypeError("configured memory step does not support reset")
             fresh = memory.reset(self.shared_memory)
             self.shared_memory.clear()

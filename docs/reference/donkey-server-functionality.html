@@ -405,12 +405,12 @@
         <div class="stack">
           <div class="node server">
             <h3>Tornado LocalWebController</h3>
-            <p>Owns the web routes, mutable manual state, and <code>AutonomyManager</code>.</p>
+            <p>Owns the web routes and mutable manual state; <code>manage.py</code> attaches the <code>AutonomyCycleHost</code>.</p>
             <ul>
               <li><code>angle</code>, <code>throttle</code></li>
               <li><code>mode</code>, <code>recording</code></li>
               <li><code>buttons</code>, <code>img_arr</code></li>
-              <li>selected engine, status, and last control</li>
+              <li>each step's plugins, status, and last control</li>
             </ul>
           </div>
         </div>
@@ -456,7 +456,7 @@
         </div>
         <div class="node output">
           <h3>Autonomy Activation</h3>
-          <p>At startup, <code>runtime/decision/active.json</code> selects the engine. The current deployed engine is <code>idle</code>; the validated mode remains manual <code>user</code>.</p>
+          <p>At startup, each <code>runtime/&lt;step&gt;/active.json</code> selects that step's plugins; observation, plan, and action fall back to their built-ins (action: <code>hold</code>). The validated mode remains manual <code>user</code>.</p>
         </div>
         <div class="node warning">
           <h3>Joystick Override</h3>
@@ -521,7 +521,7 @@
           </tr>
           <tr>
             <td><code>GET /autonomy/status</code></td>
-            <td>Returns Donkey drive mode, mode mapping, selected engine, counters, errors, and last control.</td>
+            <td>Returns Donkey drive mode, mode mapping, each step's plugins and status, counters, errors, and last control.</td>
             <td>This is the post-deploy verification endpoint used by <code>automa</code>. Observation counters stay bounded and omit raw images.</td>
           </tr>
           <tr>
@@ -538,16 +538,6 @@
             <td><code>POST /autonomy/mode</code></td>
             <td>Switches between <code>manual</code> and <code>autonomy</code>.</td>
             <td><code>manual</code> maps to Donkey <code>user</code>; <code>autonomy</code> maps to <code>local</code>. Returning to manual stops by default.</td>
-          </tr>
-          <tr>
-            <td><code>POST /autonomy/engine</code></td>
-            <td>Loads an engine class and config into the current process.</td>
-            <td>This is an in-memory administrative change. It does not rewrite the persisted activation manifest.</td>
-          </tr>
-          <tr>
-            <td><code>POST /autonomy/reload</code></td>
-            <td>Reloads the currently selected engine module and config.</td>
-            <td>Errors are returned as JSON while the manager retains inspectable error state.</td>
           </tr>
           <tr>
             <td><code>POST /autonomy/memory/reset</code></td>
@@ -568,16 +558,16 @@
         <h2 id="autonomy-sequence-title">Autonomy Startup</h2>
         <div class="sequence">
           <div class="step">
-            <p>The web controller creates an <code>AutonomyManager</code> with the safe idle engine.</p>
+            <p><code>manage.py</code> reads every <code>runtime/&lt;step&gt;/active.json</code> and builds an <code>AutonomyCycleHost</code> whose steps run the selected plugins.</p>
           </div>
           <div class="step">
-            <p><code>manage.py</code> reads <code>runtime/decision/active.json</code> and applies the selected engine configuration.</p>
+            <p>The web controller is given that host for <code>/autonomy/status</code> and memory reset.</p>
           </div>
           <div class="step">
             <p><code>AutonomyPilotPart</code> is added to the Donkey loop without a <code>run_pilot</code> gate and observes at a bounded cadence.</p>
           </div>
           <div class="step">
-            <p>The server starts in manual <code>user</code> mode, so loading an engine alone does not grant movement authority.</p>
+            <p>The server starts in manual <code>user</code> mode, so staging an action plugin alone does not grant movement authority.</p>
           </div>
         </div>
       </div>
@@ -592,7 +582,7 @@
             <p>The part wraps the camera array as a front-camera <code>SensorSnapshot</code>, runs the shared perception/decision cycle, and retains one detached latest snapshot for publication.</p>
           </div>
           <div class="step">
-            <p>In manual <code>user</code> mode the part forces zero pilot outputs. In autonomy mode the engine returns normalized steering/throttle as <code>pilot/angle</code> and <code>pilot/throttle</code>.</p>
+            <p>In manual <code>user</code> mode the part forces zero pilot outputs. In autonomy mode the action step's control becomes normalized steering/throttle on <code>pilot/angle</code> and <code>pilot/throttle</code>.</p>
           </div>
           <div class="step">
             <p><code>DriveMode</code> applies pilot values only while the mode remains <code>local</code>. Operators inspect findings through Automa against <code>/autonomy/observation/latest</code>, not by enabling pilot mode.</p>
@@ -691,7 +681,7 @@ Content-Type: application/json
       <ul>
         <li>API/web control is now the default restart mode.</li>
         <li>Use <code>./cli/automa vehicles update core --id piracer --restart --drive-args=--js</code> when you want the handheld controller to be active.</li>
-        <li>Changing an engine does not change the drive mode; movement authority requires an explicit autonomy-mode request.</li>
+        <li>Changing the action plugin does not change the drive mode; movement authority requires an explicit autonomy-mode request.</li>
         <li>For autonomous experiments, choose one command source at a time and record which one is active.</li>
       </ul>
     </section>

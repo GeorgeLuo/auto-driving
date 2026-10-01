@@ -163,8 +163,8 @@ class DeploymentUpdateTests(unittest.TestCase):
             payload["activation"]["perception_algorithm"],
             DEFAULT_PERCEPTION_ALGORITHM,
         )
-        self.assertEqual(payload["activation"]["decision_engine"], "idle")
-        self.assertEqual(payload["activation"]["memory_implementation"], "bounded_evidence")
+        self.assertEqual(payload["activation"]["steps"]["action"], ["hold"])
+        self.assertEqual(payload["activation"]["steps"]["memory"], ["bounded_evidence"])
         self.assertTrue(payload["restart_requested"])
         self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey runtime service")
         self.assertIn("systemd/control.sh", payload["commands"][-1]["command"])

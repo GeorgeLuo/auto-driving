@@ -46,7 +46,7 @@ LEDGER_KEY = "multi_obstruction_tracks.ledger"
 
 
 class MultiObstructionMemory:
-    implementation_id = "multi_obstruction_tracks"
+    plugin_id = "multi_obstruction_tracks"
     history_keys = (
         "multi_obstruction_tracks.history",
         "multi_obstruction_tracks.previous_gray",
@@ -58,7 +58,7 @@ class MultiObstructionMemory:
         self.bounds = bounds_from_config(config)
         self._empty = empty_ledger(
             memory_id="memory-reset-1", epoch_id="epoch-1", bounds=self.bounds,
-            created_at_ms=0, implementation_id=self.implementation_id,
+            created_at_ms=0, implementation_id=self.plugin_id,
         )
 
     def ledger(self, shared_memory: SharedMemory | None) -> EvidenceLedger:
@@ -86,7 +86,7 @@ class MultiObstructionMemory:
             context.shared_memory,
             reduce_evidence(
                 self.ledger(context.shared_memory), context, observation,
-                implementation_id=self.implementation_id, **self.config,
+                implementation_id=self.plugin_id, **self.config,
             ),
         )
 
@@ -167,7 +167,7 @@ class MultiObstructionMemory:
             signals=tuple(signal for signal in observation.signals if signal is not marker)
                     + tuple(replace(signal, source_plugin_id=source).to_dict() for signal in signals),
             metadata={**observation.metadata, "tracking": measurements,
-                      "tracking_implementation": self.implementation_id},
+                      "tracking_implementation": self.plugin_id},
         )
         self._retain_evidence(context, tracked_observation)
         shared_memory["multi_obstruction_tracks.history"] = lookback_tracks

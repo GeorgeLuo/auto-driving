@@ -10,13 +10,11 @@ from urllib.request import urlopen
 from unittest.mock import patch
 import numpy as np
 from PIL import Image
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.manager import AutonomyManager
-from cli.automa_cli.decision_live import PhysicalDecisionViewAdapter
+from cli.automa_cli.decision_live import PhysicalDecisionViewAdapter, _provider_identity
+from cli.automa_cli.decision_records import activations_from_payloads
 from cli.automa_cli.decision import (
-    ADAPTER_ENGINE_SPEC,
-    DECISION_ENGINES,
-    ENGINE_ID,
     accept_physical_decision_publication,
     physical_decision_view_frame,
 )
@@ -25,6 +23,8 @@ from implementations.runtime.donkeycar import AutonomyPilotPart
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
+    packaged_decision_steps,
+    packaged_identity,
 )
 
 
@@ -40,7 +40,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             now_ms=now_ms,
         )
         self.assertEqual(accepted["source_id"], "donkeycar:piracer")
-        self.assertEqual(accepted["generation_id"], f"{ENGINE_ID}:1000")
+        self.assertEqual(accepted["generation_id"], packaged_identity()["generation_id"])
         self.assertNotIn("producer_pid", accepted["decision"])
 
         unavailable_cases: list[tuple[str, object]] = [
@@ -103,14 +103,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             automation_dir=self.runtime_root / "piracer" / "physical_observation",
             port=0,
             run_id=normalized["run_id"],
-            decision_provider_identity={
-                "vehicle_id": normalized["vehicle_id"],
-                "source_id": normalized["source_id"],
-                "run_id": normalized["run_id"],
-                "activation_engine_id": normalized["activation_engine_id"],
-                "activation_activated_at_ms": normalized["activation_activated_at_ms"],
-                "producer_generation_id": normalized["generation_id"],
-            },
+            decision_provider_identity=_provider_identity(normalized),
         ).start()
         self.addCleanup(server.stop)
 
@@ -165,14 +158,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             automation_dir=self.runtime_root / "piracer" / "physical_observation",
             port=0,
             run_id=normalized["run_id"],
-            decision_provider_identity={
-                "vehicle_id": normalized["vehicle_id"],
-                "source_id": normalized["source_id"],
-                "run_id": normalized["run_id"],
-                "activation_engine_id": normalized["activation_engine_id"],
-                "activation_activated_at_ms": normalized["activation_activated_at_ms"],
-                "producer_generation_id": normalized["generation_id"],
-            },
+            decision_provider_identity=_provider_identity(normalized),
         ).start()
         self.addCleanup(server.stop)
 
@@ -209,19 +195,14 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
 
     def test_physical_source_to_public_cli_http_fixture_and_expiry(self) -> None:
         vehicle_id = "piracer-fixture"
-        manager = AutonomyManager(
-            default_engine_spec=ADAPTER_ENGINE_SPEC,
-            default_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
-        )
+        steps = packaged_decision_steps()
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager),
+            host=AutonomyCycleHost(steps=decision_steps(activations_from_payloads(steps))),
             min_interval_s=5.0,
             vehicle_id=vehicle_id,
             source_id=f"donkeycar:{vehicle_id}",
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=1_000,
-            activation_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
-            generation_id=f"{ENGINE_ID}:1000",
+            decision_activations=steps,
+            generation_id=packaged_identity()["generation_id"],
             run_id="donkey-run-http-fixture",
         )
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
@@ -304,7 +285,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 payload["decision"]["source_id"], f"donkeycar:{vehicle_id}"
             )
             self.assertEqual(payload["decision"]["run_id"], "donkey-run-http-fixture")
-            authority = payload["decision"]["cycle"]["authority"]
+            authority = payload["decision"]["cycle"]["action"]["authority"]
             self.assertFalse(authority["proposed_applied"])
             self.assertEqual(authority["authorized_output"]["steering"], 0.0)
             self.assertEqual(authority["authorized_output"]["throttle"], 0.0)

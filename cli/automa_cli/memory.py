@@ -9,25 +9,19 @@ import os
 import stat as stat_mod
 import time
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.activation import (
-    MEMORY_ACTIVATION_SCHEMA,
-    read_memory_activation,
-    memory_manager_from_activation,
-    memory_selection_config,
-)
-from autonomy.decision_cycle.memory.plugin_runner import PluginMemoryRunner
+from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
+from autonomy.decision_cycle.memory.runner import MemoryRunner
 
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_IMPLEMENTATION,
-    available_memory_implementation_ids,
-    build_memory_activation_payload,
-    memory_implementation_spec,
+    DEFAULT_MEMORY_PLUGINS,
+    MEMORY_PLUGINS,
 )
 
 from .automation import (
@@ -41,8 +35,8 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .memory_runtime import load_memory_step_from_bundle
-from .staged_bundle import write_json_atomically
+from .step_activations import refresh_release, replace_metadata, stage_activation
+from .step_hosting import load_staged_runner
 from .memory_report import memory_state
 from .paths import ROOT, display_path, safe_path_part
 from .runtime_view import RuntimeViewServer
@@ -112,19 +106,17 @@ class CommandResult:
 def update_vehicle_memory(
     *,
     vehicle_id: str,
-    implementation_id: str = DEFAULT_MEMORY_IMPLEMENTATION,
+    plugins: list[str] | None = None,
     dry_run: bool = False,
     json_output: bool = False,
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    known = available_memory_implementation_ids()
-    if implementation_id not in known:
-        available = ", ".join(known) or "(none)"
-        return CommandResult(
-            2,
-            f"Unknown memory implementation {implementation_id!r}. Available: {available}.",
-        )
+    selected = list(plugins) if plugins else list(DEFAULT_MEMORY_PLUGINS)
+    try:
+        activation = packaged_activation("memory", selected)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
 
     stream = output if verbose else None
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
@@ -134,26 +126,15 @@ def update_vehicle_memory(
 
     if not dry_run:
         release = sync_controller_bundle(bundle, output=stream)
+        stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release)
 
-    activation = _memory_activation(
-        vehicle_id=vehicle_id,
-        implementation_id=implementation_id,
-        bundle=bundle,
-        release=release,
-    )
-
-    if not dry_run:
-        activation_path.parent.mkdir(parents=True, exist_ok=True)
-        write_json_atomically(activation_path, activation)
-
-    entry = memory_implementation_spec(implementation_id)
     payload = {
-        "schema": "vehicle_memory_update_v0",
+        "schema": "vehicle_memory_update_v1",
         "vehicle_id": vehicle_id,
-        "implementation_id": implementation_id,
+        "plugins": selected,
         "dry_run": dry_run,
         "activation": display_path(activation_path),
-        "manifest": activation,
+        "manifest": activation.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
     }
     if json_output:
@@ -163,8 +144,8 @@ def update_vehicle_memory(
         0,
         "\n".join(
             [
-                f"{verb}: {vehicle_id} -> {implementation_id}",
-                f"Implementation: {entry['implementation_spec']}",
+                f"{verb}: {vehicle_id} -> {', '.join(selected)}",
+                *(f"Plugin: {plugin_id} ({MEMORY_PLUGINS[plugin_id]['spec']})" for plugin_id in selected),
                 f"Activation: {display_path(activation_path)}",
             ]
         ),
@@ -181,9 +162,8 @@ def set_vehicle_memory_plugin(
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
     try:
-        activation = read_memory_activation(activation_path)
-        config = memory_selection_config(activation)
-        manager = memory_manager_from_activation(activation)
+        activation = read_step_activation(activation_path, "memory")
+        manager = activation.plugin_manager()
         available = sorted(manager.available_ids)
         if plugin_id not in available:
             return CommandResult(2, f"Unknown memory plugin {plugin_id!r}. Available: {', '.join(available)}.")
@@ -195,17 +175,24 @@ def set_vehicle_memory_plugin(
         after = list(manager.selected_ids)
         changed = after != before
         if changed:
-            config["plugins"] = after
-            candidate_payload = deepcopy(activation.payload)
-            candidate_payload["memory"].update(config)
-            # Validate the whole candidate selection before publishing the edit.
-            load_memory_step_from_bundle(replace(activation, payload=candidate_payload))
-            candidate_payload["memory"]["last_plugin_change"] = {
+            metadata = deepcopy(dict(activation.metadata))
+            metadata["last_plugin_change"] = {
                 "plugin": plugin_id,
                 "enabled": enabled,
                 "changed_at_ms": int(time.time() * 1000),
             }
-            write_json_atomically(activation_path, candidate_payload)
+            candidate = replace_metadata(
+                type(activation)(
+                    step="memory",
+                    plugins=tuple(after),
+                    plugin_specs=activation.plugin_specs,
+                    plugin_configs=activation.plugin_configs,
+                ),
+                metadata,
+            )
+            # Validate the whole candidate selection before publishing the edit.
+            load_staged_runner(candidate)
+            write_step_activation(activation_path, candidate)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not change memory plugins: {exc}")
     payload = {
@@ -235,30 +222,19 @@ def ensure_vehicle_memory_activation(
     vehicle_id: str,
     bundle: dict[str, str],
     release: dict[str, Any],
-    implementation_id: str = DEFAULT_MEMORY_IMPLEMENTATION,
+    plugins: list[str] | None = None,
 ) -> Path:
-    """Ensure a current-schema memory activation exists for autonomy deploy."""
+    """Ensure a memory activation exists for autonomy deploy, recording ``release``."""
 
-    activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    if activation_path.exists():
-        activation = read_memory_activation(activation_path).payload
-        controller_bundle = activation.get("controller_bundle")
-        if not isinstance(controller_bundle, dict):
-            controller_bundle = {}
-            activation["controller_bundle"] = controller_bundle
-        controller_bundle["release"] = release_activation_summary(release)
-        write_json_atomically(activation_path, activation)
-        return activation_path
-
-    activation = _memory_activation(
+    path = refresh_release(bundle, "memory", release)
+    if path is not None:
+        return path
+    return stage_activation(
+        bundle,
+        packaged_activation("memory", plugins),
         vehicle_id=vehicle_id,
-        implementation_id=implementation_id,
-        bundle=bundle,
         release=release,
     )
-    activation_path.parent.mkdir(parents=True, exist_ok=True)
-    write_json_atomically(activation_path, activation)
-    return activation_path
 
 
 def get_vehicle_memory_info(
@@ -283,21 +259,14 @@ def get_vehicle_memory_info(
         )
 
     try:
-        activation = read_memory_activation(activation_path)
-        manager = memory_manager_from_activation(activation)
+        activation = read_step_activation(activation_path, "memory")
+        manager = activation.plugin_manager()
         available = manager.available
         final = manager.selected[-1] if manager.selected else None
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         return CommandResult(
             2,
             f"Could not read memory activation {display_path(activation_path)}: {exc}",
-        )
-
-    memory = activation.payload.get("memory")
-    if not isinstance(memory, dict):
-        return CommandResult(
-            2,
-            f"Activation {display_path(activation_path)} has no memory section.",
         )
 
     payload: dict[str, Any] = {
@@ -311,13 +280,17 @@ def get_vehicle_memory_info(
             "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
             "plugin_id": final.plugin_id if final else None,
             "implementation_id": (
-                _packaged_implementation_id(final.entrypoint) if final else None
+                _packaged_plugin_id(final.entrypoint) if final else None
             ),
             "implementation_spec": final.entrypoint if final else None,
             "implementation_config": dict(final.config) if final else None,
         },
-        "description": memory.get("description"),
-        "controller_bundle": activation.payload.get("controller_bundle"),
+        "description": (
+            MEMORY_PLUGINS.get(_packaged_plugin_id(final.entrypoint) or "", {}).get("description")
+            if final
+            else None
+        ),
+        "controller_bundle": activation.metadata.get("controller_bundle"),
         "lifecycle": {
             "methods": ["update", "reset", "status"],
             "claims_identity": False,
@@ -338,7 +311,7 @@ def replay_vehicle_memory(
     *,
     vehicle_id: str,
     sequence: str | Path,
-    implementation_id: str | None = None,
+    plugin_id: str | None = None,
     json_output: bool = False,
     verify_twice: bool = True,
     record: bool = False,
@@ -366,32 +339,23 @@ def replay_vehicle_memory(
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    step: PluginMemoryRunner | None = None
-    selected_implementation = implementation_id
+    step: MemoryRunner | None = None
+    selected_implementation = plugin_id
     activation_source: str
 
-    if implementation_id is not None:
-        known = available_memory_implementation_ids()
-        if implementation_id not in known:
-            available = ", ".join(known) or "(none)"
-            return CommandResult(
-                2,
-                f"Unknown memory implementation {implementation_id!r}. Available: {available}.",
-            )
-        with _temporary_memory_activation(
-            vehicle_id=vehicle_id,
-            implementation_id=implementation_id,
-            bundle=bundle,
-        ) as temp_activation:
-            step = PluginMemoryRunner(read_memory_activation(temp_activation))
-            activation_source = f"ephemeral:{implementation_id}"
-            selected_implementation = implementation_id
-            run_a = _run_memory_sequence(step=step, frames=frames)
-            if verify_twice:
-                step_b = PluginMemoryRunner(read_memory_activation(temp_activation))
-                run_b = _run_memory_sequence(step=step_b, frames=frames)
-            else:
-                run_b = run_a
+    if plugin_id is not None:
+        try:
+            ephemeral = packaged_activation("memory", [plugin_id])
+        except ValueError as exc:
+            return CommandResult(2, str(exc))
+        step = MemoryRunner.from_activation(ephemeral)
+        activation_source = f"ephemeral:{plugin_id}"
+        run_a = _run_memory_sequence(step=step, frames=frames)
+        if verify_twice:
+            step_b = MemoryRunner.from_activation(ephemeral)
+            run_b = _run_memory_sequence(step=step_b, frames=frames)
+        else:
+            run_b = run_a
     else:
         if not activation_path.exists():
             return CommandResult(
@@ -401,12 +365,12 @@ def replay_vehicle_memory(
                         f"No active memory implementation found for {vehicle_id!r}.",
                         f"Expected activation: {display_path(activation_path)}",
                         "Run: ./cli/automa vehicles update memory --id <vehicle_id>",
-                        "Or pass --implementation for an ephemeral offline replay.",
+                        "Or pass --plugin for an ephemeral offline replay.",
                     ]
                 ),
             )
         try:
-            step = load_memory_step_from_bundle(read_memory_activation(activation_path))
+            step = load_staged_runner(read_step_activation(activation_path, "memory"))
         except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
             return CommandResult(
                 2,
@@ -416,7 +380,7 @@ def replay_vehicle_memory(
         selected_implementation = step.status()["implementation_id"]
         run_a = _run_memory_sequence(step=step, frames=frames)
         if verify_twice:
-            step_b = load_memory_step_from_bundle(read_memory_activation(activation_path))
+            step_b = load_staged_runner(read_step_activation(activation_path, "memory"))
             run_b = _run_memory_sequence(step=step_b, frames=frames)
         else:
             run_b = run_a
@@ -1116,7 +1080,7 @@ def _normalize_sequence_frame(
 
 def _run_memory_sequence(
     *,
-    step: PluginMemoryRunner,
+    step: MemoryRunner,
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
     # Fresh epoch for this pass (step already reset on construction).
@@ -1147,46 +1111,6 @@ def _run_memory_sequence(
         "per_frame": per_frame,
         "digest": memory_state_digest(final),
     }
-
-
-class _temporary_memory_activation:
-    """Context manager writing an ephemeral activation file for offline replay."""
-
-    def __init__(
-        self,
-        *,
-        vehicle_id: str,
-        implementation_id: str,
-        bundle: dict[str, str],
-    ) -> None:
-        self.vehicle_id = vehicle_id
-        self.implementation_id = implementation_id
-        self.bundle = bundle
-        self.path: Path | None = None
-
-    def __enter__(self) -> Path:
-        import tempfile
-
-        handle = tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".json",
-            prefix=f"memory-replay-{safe_path_part(self.vehicle_id)}-",
-            delete=False,
-            encoding="utf-8",
-        )
-        payload = build_memory_activation_payload(self.implementation_id)
-        handle.write(json.dumps(payload, indent=2, sort_keys=True))
-        handle.close()
-        self.path = Path(handle.name)
-        return self.path
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        del exc_type, exc, tb
-        if self.path is not None:
-            try:
-                self.path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
 
 def reset_vehicle_memory(
@@ -1994,54 +1918,14 @@ def assess_chase_memory_worker_liveness(
     }
 
 
-def _memory_activation(
-    *,
-    vehicle_id: str,
-    implementation_id: str,
-    bundle: dict[str, str],
-    release: dict[str, Any] | None,
-) -> dict[str, Any]:
-    base = build_memory_activation_payload(implementation_id)
-    entry = memory_implementation_spec(implementation_id)
-    activation = {
-        "schema": MEMORY_ACTIVATION_SCHEMA,
-        "vehicle_id": vehicle_id,
-        "activated_at_ms": int(time.time() * 1000),
-        "controller_bundle": {
-            "root_dir": bundle["root_dir"],
-            "autonomy_dir": bundle["autonomy_dir"],
-            "implementations_dir": bundle["implementations_dir"],
-            "memory_runtime_dir": bundle["memory_runtime_dir"],
-            "release": release_activation_summary(release) if release is not None else None,
-        },
-        "memory": {
-            "implementation_id": entry["implementation_id"],
-            "description": entry["description"],
-            "implementation_spec": entry["implementation_spec"],
-            "implementation_config": dict(base["memory"]["implementation_config"]),
-        },
-    }
-    entries = {
-        plugin_id: memory_implementation_spec(plugin_id)
-        for plugin_id in available_memory_implementation_ids()
-    }
-    activation["memory"].update({
-        "plugins": [implementation_id],
-        "plugin_specs": {plugin_id: item["implementation_spec"] for plugin_id, item in entries.items()},
-        "plugin_configs": {plugin_id: item["default_config"] for plugin_id, item in entries.items()},
-    })
-    return activation
-
-
-def _packaged_implementation_id(entrypoint: str | None) -> str | None:
-    """Return the packaged implementation id for an entrypoint, without loading it."""
+def _packaged_plugin_id(entrypoint: str | None) -> str | None:
+    """Return the packaged memory plugin id for an entrypoint, without loading it."""
 
     if not isinstance(entrypoint, str) or not entrypoint:
         return None
-    for implementation_id in available_memory_implementation_ids():
-        entry = memory_implementation_spec(implementation_id)
-        if entry["implementation_spec"] == entrypoint:
-            return entry["implementation_id"]
+    for plugin_id, entry in MEMORY_PLUGINS.items():
+        if entry["spec"] == entrypoint:
+            return plugin_id
     return None
 
 

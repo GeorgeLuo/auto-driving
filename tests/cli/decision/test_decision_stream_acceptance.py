@@ -3,21 +3,30 @@ import json
 import unittest
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from copy import deepcopy
-from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
-from implementations.runtime.engines.catalog import create_action_composition
+from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
+from autonomy.decision_cycle.activation import step_activation_from_payload
 from cli.automa_cli.decision import (
-    ADAPTER_ENGINE_SPEC,
-    DECISION_ENGINES,
-    ENGINE_ID,
     accept_decision_stream_frame,
     build_decision_stream_frame,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
+from cli.automa_cli.decision_records import DecisionRunners
+from cli.automa_cli.step_activations import decision_generation_id
 from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
     DecisionSurfaceFixture,
+    packaged_decision_steps,
+    packaged_identity,
 )
+
+
+def _identity(steps: dict) -> dict:
+    activations = {
+        step: None if payload is None else step_activation_from_payload(payload, step=step)
+        for step, payload in steps.items()
+    }
+    return {"generation_id": decision_generation_id(activations), "steps": steps}
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
@@ -28,8 +37,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             vehicle_id="chase-sim-chaser",
             run_id="run-1",
             worker_pid=12345,
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=1000,
+            generation_id=packaged_identity()["generation_id"],
             published_at_ms=2000,
         )
         self.assertEqual(frame["schema"], "vehicle_decision_stream_frame_v0")
@@ -58,19 +66,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             vehicle_id="chase-sim-chaser",
             run_id="run-1",
             worker_pid=42,
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=1000,
+            generation_id=packaged_identity()["generation_id"],
             published_at_ms=5000,
         )
-        activation = {
-            "schema": "automa_decision_activation_v0",
-            "activated_at_ms": 1000,
-            "decision": {
-                "engine_id": ENGINE_ID,
-                "engine_spec": ADAPTER_ENGINE_SPEC,
-                "engine_config": dict(DECISION_ENGINES[ENGINE_ID]["engine_config"]),
-            },
-        }
+        activation = packaged_identity()
         state = {"run_id": "run-1", "status": "running", "pid": 42}
 
         accept_decision_stream_frame(
@@ -81,19 +80,16 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             is_pid_alive=lambda pid: True,
         )
 
-        # wrong engine
+        # no proposal step staged
         with self.assertRaises(Exception) as ctx:
             accept_decision_stream_frame(
                 frame,
-                activation={
-                    "activated_at_ms": 1000,
-                    "decision": {"engine_id": "idle", "engine_config": {}},
-                },
+                activation=_identity({**packaged_decision_steps(), "proposal": None}),
                 automation_state=state,
                 now_ms=6000,
                 is_pid_alive=lambda pid: True,
             )
-        self.assertEqual(ctx.exception.error, "wrong_engine")
+        self.assertEqual(ctx.exception.error, "activation_missing")
 
         # dead worker
         with self.assertRaises(Exception) as ctx:
@@ -155,11 +151,13 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error, "latest_frame_stale")
 
-        # generation / activated_at_ms mismatch (restage)
+        # generation mismatch (restaged with a different proposal config)
+        restaged = deepcopy(packaged_decision_steps())
+        restaged["proposal"]["plugin_configs"]["avoid_recent_obstruction"]["steer_magnitude"] = 0.5
         with self.assertRaises(Exception) as ctx:
             accept_decision_stream_frame(
                 frame,
-                activation={**activation, "activated_at_ms": 9999},
+                activation=_identity(restaged),
                 automation_state=state,
                 now_ms=6000,
                 is_pid_alive=lambda pid: True,
@@ -195,7 +193,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             cycle_mut = mutated["cycle"]
             mutated["plan_summary"] = _plan_summary(cycle_mut["plan"])
             mutated["authority_summary"] = _authority_summary(
-                cycle_mut["authority"], cycle_mut
+                cycle_mut["action"]["authority"], cycle_mut["action"]
             )
             with self.assertRaises(Exception) as raised:
                 accept_decision_stream_frame(
@@ -218,8 +216,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     "source_refs": [],
                 }
             )
-            mutated["cycle"]["authority"]["proposed"] = None
-            mutated["cycle"]["authority"]["proposed_equals_authorized"] = True
+            mutated["cycle"]["action"]["authority"]["proposed"] = None
+            mutated["cycle"]["action"]["authority"]["proposed_equals_authorized"] = True
 
         self.assertEqual(
             _selector_error(selected_inactive),
@@ -231,8 +229,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             plan_mut["status"] = "idle"
             plan_mut["selected_proposal_id"] = None
             plan_mut["contributions"] = []
-            mutated["cycle"]["authority"]["proposed"] = None
-            mutated["cycle"]["authority"]["proposed_equals_authorized"] = True
+            mutated["cycle"]["action"]["authority"]["proposed"] = None
+            mutated["cycle"]["action"]["authority"]["proposed_equals_authorized"] = True
 
         self.assertEqual(_selector_error(idle_with_active), "latest_frame_invalid")
 
@@ -278,10 +276,9 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.error, "latest_frame_invalid")
 
-        # envelope: cycle.schema must be exact action_result_v0
-        bad_cycle = dict(frame)
-        bad_cycle["cycle"] = dict(frame["cycle"])
-        bad_cycle["cycle"]["schema"] = "bogus_cycle_v0"
+        # envelope: cycle.action.schema must be exact action_result_v1
+        bad_cycle = deepcopy(frame)
+        bad_cycle["cycle"]["action"]["schema"] = "bogus_cycle_v0"
         with self.assertRaises(Exception) as ctx:
             accept_decision_stream_frame(
                 bad_cycle,
@@ -320,9 +317,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error, "latest_frame_invalid")
 
-        cycle_no_source = dict(frame)
-        cycle_no_source["cycle"] = dict(frame["cycle"])
-        del cycle_no_source["cycle"]["source"]
+        cycle_no_source = deepcopy(frame)
+        del cycle_no_source["cycle"]["proposal"]["source"]
         # rebuild summaries as if source were absent so only omission is tested
         from cli.automa_cli.decision import (
             _authority_summary,
@@ -339,10 +335,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             else None
         )
         cycle_no_source["authority_summary"] = _authority_summary(
-            cycle_no_source["cycle"].get("authority")
-            if isinstance(cycle_no_source["cycle"].get("authority"), dict)
-            else {},
-            cycle_no_source["cycle"],
+            cycle_no_source["cycle"]["action"]["authority"],
+            cycle_no_source["cycle"]["action"],
         )
         with self.assertRaises(Exception) as ctx:
             accept_decision_stream_frame(
@@ -355,10 +349,9 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual(ctx.exception.error, "latest_frame_invalid")
 
         # invalid PR #74 frame-id grammar
-        bad_id = dict(frame)
+        bad_id = deepcopy(frame)
         bad_id["frame_id"] = "bad frame!"
-        bad_id["cycle"] = dict(frame["cycle"])
-        bad_id["cycle"]["frame_id"] = "bad frame!"
+        bad_id["cycle"]["action"]["frame_id"] = "bad frame!"
         # keep summaries consistent with cycle frame_id field only via plan rebuild
         # (frame_id grammar fails before summary compare)
         with self.assertRaises(Exception) as ctx:
@@ -387,20 +380,13 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 if isinstance(mutated_cycle.get("plan"), dict)
                 else None
             )
-            authority = (
-                mutated_cycle.get("authority")
-                if isinstance(mutated_cycle.get("authority"), dict)
-                else {}
-            )
-            source = (
-                mutated_cycle.get("source")
-                if isinstance(mutated_cycle.get("source"), dict)
-                else None
-            )
+            action = mutated_cycle["action"]
+            authority = action.get("authority") if isinstance(action.get("authority"), dict) else {}
+            source = mutated_cycle["proposal"].get("source")
             mutated["observation_summary"] = _observation_summary(source)
             mutated["memory_summary"] = _memory_summary(source)
             mutated["plan_summary"] = _plan_summary(plan)
-            mutated["authority_summary"] = _authority_summary(authority, mutated_cycle)
+            mutated["authority_summary"] = _authority_summary(authority, action)
             with self.assertRaises(Exception) as raised:
                 accept_decision_stream_frame(
                     mutated,
@@ -412,18 +398,13 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             return raised.exception.error
 
         # (1) non-idle authorized_output in cycle + matching summary
-        non_idle = dict(frame["cycle"])
-        non_idle["authority"] = dict(frame["cycle"]["authority"])
-        non_idle["authority"]["authorized_output"] = dict(
-            frame["cycle"]["authority"]["authorized_output"]
-        )
-        non_idle["authority"]["authorized_output"]["steering"] = 0.9
+        non_idle = deepcopy(frame["cycle"])
+        non_idle["action"]["authority"]["authorized_output"]["steering"] = 0.9
         self.assertEqual(_accept_with_cycle(non_idle), "latest_frame_invalid")
 
         # (2) live authority_mode
-        live_mode = dict(frame["cycle"])
-        live_mode["authority"] = dict(frame["cycle"]["authority"])
-        live_mode["authority"]["authority_mode"] = "live_control"
+        live_mode = deepcopy(frame["cycle"])
+        live_mode["action"]["authority"]["authority_mode"] = "live_control"
         self.assertEqual(_accept_with_cycle(live_mode), "latest_frame_invalid")
 
         # (3) extra key on candidate command
@@ -454,12 +435,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
 
         # Aggregate cycle alignment: valid nested objects that do not form one cycle.
         from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
-        from implementations.runtime.engines.catalog import (
-            create_action_composition,
-        )
-
-        engine = create_action_composition()
-        cycle2 = engine.run(
+        cycle2 = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id="frame_002",
             frame_index=2,
             timestamp_ms=2000,
@@ -477,34 +453,32 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         cycle2_dict = cycle2.to_dict()
 
         # (A) authority.proposed idle zeros while selected plan command is nonzero
-        idle_proposed = dict(frame["cycle"])
-        idle_proposed["authority"] = dict(frame["cycle"]["authority"])
-        idle_proposed["authority"]["proposed"] = ProposedVehicleCommand(
+        idle_proposed = deepcopy(frame["cycle"])
+        idle_proposed["action"]["authority"]["proposed"] = ProposedVehicleCommand(
             steering=0.0, throttle=0.0
         ).to_dict()
-        idle_proposed["authority"]["proposed_equals_authorized"] = True
+        idle_proposed["action"]["authority"]["proposed_equals_authorized"] = True
         self.assertEqual(_accept_with_cycle(idle_proposed), "latest_frame_invalid")
 
         # (B) replace plan with a valid plan from another frame_id
-        other_plan = dict(frame["cycle"])
+        other_plan = deepcopy(frame["cycle"])
         other_plan["plan"] = cycle2_dict["plan"]
         self.assertEqual(_accept_with_cycle(other_plan), "latest_frame_invalid")
 
         # (C) replace source with another frame's source and retarget envelope timing
-        other_source = dict(frame)
-        other_source["cycle"] = dict(frame["cycle"])
-        other_source["cycle"]["source"] = cycle2_dict["source"]
+        other_source = deepcopy(frame)
+        other_source["cycle"]["proposal"]["source"] = cycle2_dict["proposal"]["source"]
         other_source["frame_index"] = 2
         other_source["timestamp_ms"] = 2000
         other_source["observation_summary"] = _observation_summary(
-            other_source["cycle"]["source"]
+            other_source["cycle"]["proposal"]["source"]
         )
         other_source["memory_summary"] = _memory_summary(
-            other_source["cycle"]["source"]
+            other_source["cycle"]["proposal"]["source"]
         )
         other_source["plan_summary"] = _plan_summary(other_source["cycle"]["plan"])
         other_source["authority_summary"] = _authority_summary(
-            other_source["cycle"]["authority"], other_source["cycle"]
+            other_source["cycle"]["action"]["authority"], other_source["cycle"]["action"]
         )
         with self.assertRaises(Exception) as ctx:
             accept_decision_stream_frame(

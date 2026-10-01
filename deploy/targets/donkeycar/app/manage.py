@@ -505,12 +505,14 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         else "stays empty",
                     )
             host = AutonomyCycleHost(steps=decision_steps(activations))
-            decision_activations = {
-                step: (
-                    activations.get(step) or builtin_activation(step)
-                ).to_payload()
-                for step in DECISION_STEPS
-            }
+            # A decision step with neither an activation nor a built-in (no
+            # proposal plugins staged) is recorded as None in the identity.
+            decision_activations = {}
+            for step in DECISION_STEPS:
+                activation = activations.get(step) or builtin_activation(step)
+                decision_activations[step] = (
+                    activation.to_payload() if activation is not None else None
+                )
             perception = activations.get("perception")
             perception_algorithm = (
                 perception.metadata.get("algorithm") if perception is not None else None

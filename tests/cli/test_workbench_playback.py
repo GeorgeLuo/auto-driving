@@ -9,7 +9,7 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
 )
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
-from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from cli.automa_cli.memory_report import memory_state
 from implementations.decision_cycle.memory.bounded_evidence.ledger import (
     LEDGER_KEY,
@@ -59,7 +59,7 @@ class SharedMemoryProbe:
 
 class WorkbenchTests(unittest.TestCase):
     def test_shared_memory_connects_plugin_and_memory_step_across_frames(self):
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["probe"],
             plugin_specs={"probe": f"{__name__}:SharedMemoryProbe"},
         )

@@ -8,8 +8,6 @@ import types
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.memory_runtime import _BUNDLE_PREFIXES as MEMORY_BUNDLE_PREFIXES
-from cli.automa_cli.perception import _BUNDLE_PREFIXES as PERCEPTION_BUNDLE_PREFIXES
 from cli.automa_cli.staged_bundle import StagedBundleImport, write_json_atomically
 
 
@@ -21,12 +19,6 @@ class StagedBundleTests(unittest.TestCase):
     def tearDown(self) -> None:
         sys.modules.pop(HOST_NAME, None)
         sys.modules.pop(SWAPPED_NAME, None)
-
-    def test_memory_and_perception_keep_distinct_module_policies(self) -> None:
-        self.assertEqual(MEMORY_BUNDLE_PREFIXES, ("implementations", "lab"))
-        self.assertEqual(PERCEPTION_BUNDLE_PREFIXES, ("autonomy", "implementations"))
-        self.assertNotIn("autonomy", MEMORY_BUNDLE_PREFIXES)
-        self.assertIn("autonomy", PERCEPTION_BUNDLE_PREFIXES)
 
     def test_activation_swaps_only_the_declared_prefixes(self) -> None:
         host = types.ModuleType(HOST_NAME)

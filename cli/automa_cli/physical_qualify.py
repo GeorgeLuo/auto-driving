@@ -12,12 +12,14 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapsh
 from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
-    PERCEPTION_MAPPER_SPEC,
 )
 
 from .lab_plugins import LabPerceptionMapper
 from .paths import ROOT, display_path
-from .perception import _close_mapper, _load_mapper
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from implementations.decision_cycle.catalog import perception_algorithm_activation
+
+from .perception import _close_runner
 from .physical_check import score_placement
 
 
@@ -196,11 +198,7 @@ def _run_strategy_on_frames(
     previous_payload: dict[str, Any] | None = None
 
     if kind == "control":
-        algorithm_config = PERCEPTION_ALGORITHMS[strategy_id]
-        mapper = _load_mapper(
-            str(algorithm_config["mapper_spec"]),
-            dict(algorithm_config["mapper_config"]),
-        )
+        mapper = PerceptionRunner.from_activation(perception_algorithm_activation(strategy_id))
         mapper_context = None
     else:
         mapper = LabPerceptionMapper(strategy_id)
@@ -284,7 +282,7 @@ def _run_strategy_on_frames(
         if mapper_context is not None:
             mapper_context.__exit__(None, None, None)
         else:
-            _close_mapper(mapper)
+            _close_runner(mapper)
     return results
 
 

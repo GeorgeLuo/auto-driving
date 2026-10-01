@@ -18,15 +18,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
+from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.cycle import DecisionSteps
-from autonomy.decision_cycle.memory.activation import (
-    read_memory_activation,
-    memory_selection_config,
-)
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.runtime import AutonomyManager
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import (
@@ -44,20 +39,16 @@ from implementations.vehicle.chase_sim.metrics_ws import (
     compare_chase_session_fingerprints,
 )
 
-from .memory_runtime import load_memory_step_from_bundle, _sync_live_memory_plugin_selection
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
 from .decision import (
     invalidate_latest_decision_frame,
-    load_decision_activation,
-    PROPOSAL_ENGINE_IDS,
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .perception import (
-    _close_mapper,
-    _load_mapper,
-)
+from .perception import _close_runner
+from .step_activations import bundle_activation_path, decision_identity, read_bundle_activation
+from .step_hosting import load_staged_runner, sync_live_selection
 from .runtime_view import RuntimeViewServer
 from .perception_view import (
     get_perception_view_status,
@@ -90,6 +81,24 @@ PASSIVE_RUN_DYNAMIC_FIELDS = (
 )
 
 
+def _step_status(cycle_host: AutonomyCycleHost) -> dict[str, Any]:
+    """Each step's plugin IDs and last error, without the per-cycle records."""
+
+    status = cycle_host.status()
+    steps = status.get("steps") if isinstance(status.get("steps"), dict) else {}
+    return {
+        step: (
+            None
+            if not isinstance(item, dict)
+            else {
+                "plugin_ids": item.get("plugin_ids"),
+                "last_error": item.get("last_error"),
+            }
+        )
+        for step, item in steps.items()
+    } | {"cycle_count": status.get("cycle_count"), "error_count": status.get("error_count")}
+
+
 def _execution_plugin_report(owner: Any) -> dict[str, Any] | None:
     """Copy a step's common plugin envelope, when that step publishes one."""
 
@@ -100,63 +109,6 @@ def _execution_plugin_report(owner: Any) -> dict[str, Any] | None:
     if not isinstance(report, dict):
         return None
     return copy.deepcopy(report)
-
-
-def _sync_live_perception_plugin_selection(
-    mapper: Any,
-    activation_path: Path,
-    *,
-    mapper_spec: str,
-    mapper_config: dict[str, Any],
-) -> None:
-    """Apply CLI selection edits to a running manager at a frame boundary."""
-
-    manager = getattr(mapper, "plugin_manager", None)
-    select = getattr(manager, "select", None)
-    selected_ids = getattr(manager, "selected_ids", None)
-    if not callable(select) or not isinstance(selected_ids, (list, tuple)):
-        return
-
-    try:
-        activation = json.loads(activation_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(activation, dict):
-        return
-    perception = activation.get("perception")
-    if (
-        not isinstance(perception, dict)
-        or perception.get("mapper_spec") != mapper_spec
-    ):
-        return
-    live_config = perception.get("mapper_config")
-    if not isinstance(live_config, dict):
-        return
-
-    # The CLI changes only the selected IDs. Keep a running mapper on its
-    # loaded plugin definitions and configs if a new activation was staged.
-    loaded_static_config = {
-        key: value for key, value in mapper_config.items() if key != "plugins"
-    }
-    live_static_config = {
-        key: value for key, value in live_config.items() if key != "plugins"
-    }
-    if live_static_config != loaded_static_config:
-        return
-
-    plugin_ids = live_config.get("plugins")
-    if not isinstance(plugin_ids, list) or not all(
-        isinstance(plugin_id, str) for plugin_id in plugin_ids
-    ):
-        return
-    if tuple(plugin_ids) == tuple(selected_ids):
-        return
-    try:
-        select(plugin_ids)
-    except Exception:
-        # A bad or stale selection must leave the currently applied plugins
-        # available to the next frame.
-        return
 
 
 @dataclass(frozen=True)
@@ -265,77 +217,43 @@ def run_vehicle_automation(
                 ]
             ),
         )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    mapper_spec = _manifest_get_str(manifest, "perception", "mapper_spec")
-    if mapper_spec is None:
-        return CommandResult(2, f"Activation {display_path(manifest_path)} does not define perception.mapper_spec.")
-    mapper_config = _manifest_get_dict(manifest, "perception", "mapper_config")
-    bundle_root = Path(_manifest_get_str(manifest, "controller_bundle", "root_dir") or bundle["root_dir"])
     try:
-        decision_activation = load_decision_activation(bundle)
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
-        return CommandResult(2, str(exc))
-    decision_config = decision_activation["decision"]
+        perception_activation = read_step_activation(manifest_path, "perception")
+        memory_activation = read_bundle_activation(bundle, "memory")
+        identity = decision_identity(bundle)
+        activations = {
+            step: read_bundle_activation(bundle, step)
+            for step in ("observation", "proposal", "plan", "action")
+        }
+    except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
+    perception_plugins = ", ".join(perception_activation.plugins) or "(none)"
+    perception_algorithm = perception_activation.metadata.get("algorithm") or perception_plugins
+    # A decision frame is published only when proposals are staged.
+    decision_published = identity["steps"]["proposal"] is not None
 
     connection = vehicle.get("connection") if isinstance(vehicle.get("connection"), dict) else {}
     ws_url = connection.get("ws_url") if isinstance(connection.get("ws_url"), str) else None
     car = ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
     try:
-        mapper = _load_mapper(mapper_spec, mapper_config, bundle_root=bundle_root)
+        perception_step = load_staged_runner(perception_activation)
     except Exception as exc:
         return CommandResult(
             2,
             "\n".join(
                 [
                     f"Could not load perception for {vehicle_id}.",
-                    f"Mapper: {mapper_spec}",
+                    f"Plugins: {perception_plugins}",
                     f"Reason: {type(exc).__name__}: {exc}",
                 ]
             ),
         )
 
-    def perceive_step(context: DecisionFrameContext):
-        if context.sensor_snapshot is None:
-            mapper.reset(context.shared_memory)
-            return None
-        _sync_live_perception_plugin_selection(
-            mapper,
-            manifest_path,
-            mapper_spec=mapper_spec,
-            mapper_config=mapper_config,
-        )
-        output_dir_text = context.metadata.get("perception_output_dir")
-        output_dir = (
-            Path(output_dir_text)
-            if record and isinstance(output_dir_text, str)
-            else None
-        )
-        return mapper.perceive(
-            build_perception_request(
-                context.sensor_snapshot,
-                shared_memory=context.shared_memory,
-                output_dir=output_dir,
-                metadata={
-                    "vehicle_id": vehicle_id,
-                    "run_id": run_id,
-                    "frame_index": context.frame_index,
-                    "activation": str(manifest_path),
-                    "recording": bool(record),
-                },
-            )
-        )
-
-    engine_manager = AutonomyManager(
-        default_engine_spec=decision_config["engine_spec"],
-        default_engine_config=dict(decision_config["engine_config"]),
-    )
-    memory_activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
+    memory_activation_path = bundle_activation_path(bundle, "memory")
     memory_step = None
-    if memory_activation_path.exists():
+    if memory_activation is not None:
         try:
-            memory_activation = read_memory_activation(memory_activation_path)
-            memory_config = memory_selection_config(memory_activation)
-            memory_step = load_memory_step_from_bundle(memory_activation)
+            memory_step = load_staged_runner(memory_activation)
         except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
             return CommandResult(
                 2,
@@ -347,12 +265,17 @@ def run_vehicle_automation(
                     ]
                 ),
             )
+    try:
+        steps = decision_steps(
+            {
+                **{step: activation for step, activation in activations.items() if activation},
+                "proposal": activations["proposal"],
+            }
+        )
+    except Exception as exc:
+        return CommandResult(2, f"Could not load decision steps for {vehicle_id}: {type(exc).__name__}: {exc}")
     cycle_host = AutonomyCycleHost(
-        manager=engine_manager,
-        steps=DecisionSteps(
-            perceive=perceive_step,
-            remember=memory_step,
-        ),
+        steps=replace(steps, perception=perception_step, memory=memory_step),
     )
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
@@ -381,12 +304,8 @@ def run_vehicle_automation(
             automation_dir=automation_dir,
             run_id=run_id,
             worker_pid=os.getpid(),
-            decision_activation=(
-                decision_activation
-                if decision_config.get("engine_id") in PROPOSAL_ENGINE_IDS
-                else None
-            ),
-            decision_activation_path=Path(bundle["decision_runtime_dir"]) / "active.json",
+            decision_activation=identity if decision_published else None,
+            decision_activation_path=Path(bundle["runtime_dir"]),
         ).start()
         published_view = view_server.describe()
     except (OSError, RuntimeError, ValueError) as exc:
@@ -413,21 +332,20 @@ def run_vehicle_automation(
         "interval_s": max(0.0, float(interval_s)),
         "pipeline": "latest_frame_async_perception",
         "control_source": "external_ws" if take_control else "preserved_current",
-        "action_policy": "engine_idle" if take_control else "observe_only",
+        "action_policy": "cycle_idle" if take_control else "observe_only",
         "control_application": "stop_only_safety_gate" if take_control else "not_applied",
-        "engine": cycle_host.manager.status(),
+        "steps": _step_status(cycle_host),
         "recording": bool(record),
         "perception": {
             "activation": display_path(manifest_path),
-            "mapper_spec": mapper_spec,
-            "mapper_config": mapper_config,
-            "plugin_report": _execution_plugin_report(mapper),
+            "algorithm": perception_activation.metadata.get("algorithm"),
+            "plugins": list(perception_activation.plugins),
+            "plugin_report": _execution_plugin_report(perception_step),
         },
         "decision": {
-            "activation": display_path(Path(bundle["decision_runtime_dir"]) / "active.json"),
-            "engine_id": decision_config.get("engine_id"),
-            "engine_spec": decision_config["engine_spec"],
-            "engine_config": decision_config["engine_config"],
+            "generation_id": identity["generation_id"],
+            "steps": identity["steps"],
+            "published": decision_published,
             "latest_frame_publish_skips": 0,
             "latest_frame_publish_skip_reason": None,
         },
@@ -467,7 +385,7 @@ def run_vehicle_automation(
     _write_json(state_path, state)
 
     _emit(output, f"Automation running: {vehicle_id}")
-    _emit(output, f"Perception: {manifest.get('perception', {}).get('algorithm', mapper_spec)}")
+    _emit(output, f"Perception: {perception_algorithm}")
     if run_dir is not None:
         _emit(output, f"Recording: {display_path(run_dir)}")
     else:
@@ -477,7 +395,7 @@ def run_vehicle_automation(
         f"Control source: {'external WS' if take_control else 'preserved current simulator source'}",
     )
     _emit(output, f"Action policy: {state['action_policy']}")
-    _emit(output, f"Engine: {cycle_host.manager.status().get('engine')}")
+    _emit(output, f"Decision generation: {identity['generation_id']}")
     if published_view.get("available"):
         _emit(output, f"Runtime view: {published_view.get('url')}")
     else:
@@ -590,32 +508,27 @@ def run_vehicle_automation(
             raise ValueError(f"{context.frame_id} has no sensor snapshot")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
-        if memory_step is not None:
-            _sync_live_memory_plugin_selection(
-                memory_step, memory_activation_path, loaded_config=memory_config,
-            )
+        sync_live_selection(perception_step, manifest_path, perception_activation)
+        if memory_step is not None and memory_activation is not None:
+            sync_live_selection(memory_step, memory_activation_path, memory_activation)
         cycle_result = cycle_host.run(context)
         # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False
         try:
             last_cycle = cycle_result.action
-            published = publish_decision_frame(
-                cycle_result=last_cycle,
+            published = decision_published and publish_decision_frame(
+                cycle_result=cycle_result,
                 context_frame_id=context.frame_id,
                 vehicle_id=vehicle_id,
                 vehicle_runtime_dir=vehicle_runtime_dir,
                 run_id=str(state.get("run_id") or run_id),
                 worker_pid=int(state.get("pid") or os.getpid()),
-                activation=decision_activation,
-                staged_engine_id=str(decision_config.get("engine_id") or ""),
+                activation=identity,
             )
-            if (
-                not published
-                and str(decision_config.get("engine_id") or "") in PROPOSAL_ENGINE_IDS
-            ):
-                # Count for workers that staged a proposal engine at start (including
-                # after restage invalidation where live activation no longer matches).
+            if not published and decision_published:
+                # Count for workers that staged proposals at start (including
+                # after restage invalidation where the live generation no longer matches).
                 reason = (
                     "gate_rejected"
                     if last_cycle is None
@@ -656,7 +569,7 @@ def run_vehicle_automation(
         else:
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
-        perception_plugin_report = _execution_plugin_report(mapper)
+        perception_plugin_report = _execution_plugin_report(perception_step)
         memory_plugin_report = (
             _execution_plugin_report(memory_step) if memory_step is not None else None
         )
@@ -699,7 +612,7 @@ def run_vehicle_automation(
             # The memory step's report of each plugin's state.
             "memory": copy.deepcopy(cycle_result.memory),
             "control": control_record,
-            "engine": cycle_host.manager.status(),
+            "steps": _step_status(cycle_host),
             "decision_cycle": cycle_result.to_dict(),
             "action_policy": state["action_policy"],
             "control_source": state["control_source"],
@@ -725,7 +638,7 @@ def run_vehicle_automation(
                         frame_id=context.frame_id,
                         run_id=str(state.get("run_id") or run_id),
                         worker_pid=int(state.get("pid") or os.getpid()),
-                        activation_activated_at_ms=decision_activation.get("activated_at_ms"),
+                        generation_id=identity["generation_id"],
                     )
                     if latest_decision is None:
                         view_server.decision.invalidate_latest()
@@ -784,7 +697,7 @@ def run_vehicle_automation(
                 "things": len(perception.things) if perception is not None else 0,
                 "signals": len(perception.signals) if perception is not None else 0,
                 "control": control_record,
-                "engine": cycle_host.manager.status().get("engine"),
+                "generation_id": identity["generation_id"],
                 "reference_aligned": bool(
                     isinstance(pending.chaser_reference, dict)
                     and pending.chaser_reference.get("simulator_frame_index")
@@ -792,7 +705,7 @@ def run_vehicle_automation(
                     and pending.chaser_reference.get("simulation_epoch") == simulation_epoch
                 ),
             }
-            state["engine"] = cycle_host.manager.status()
+            state["steps"] = _step_status(cycle_host)
             view_health = (
                 state.get("published_view")
                 if isinstance(state.get("published_view"), dict)
@@ -1131,7 +1044,7 @@ def run_vehicle_automation(
     except KeyboardInterrupt:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_mapper(mapper)
+        _close_runner(perception_step)
         state["status"] = "stopped"
         state["stop_reason"] = "keyboard_interrupt"
         state["completed_at_ms"] = _timestamp_ms()
@@ -1152,7 +1065,7 @@ def run_vehicle_automation(
     except (MetricsUiWebSocketError, ChaseCaptureValidationError, ChasePassiveCaptureError) as exc:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_mapper(mapper)
+        _close_runner(perception_step)
         state["status"] = "error"
         state["error"] = str(exc)
         state["error_code"] = getattr(exc, "code", "simulator_transport_error")
@@ -1189,7 +1102,7 @@ def run_vehicle_automation(
     except Exception as exc:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_mapper(mapper)
+        _close_runner(perception_step)
         state["status"] = "error"
         state["error"] = f"{type(exc).__name__}: {exc}"
         state["readiness"] = {
@@ -1216,7 +1129,7 @@ def run_vehicle_automation(
             ),
         )
 
-    _close_mapper(mapper)
+    _close_runner(perception_step)
     state["status"] = "completed"
     state["completed_at_ms"] = _timestamp_ms()
     state["updated_at_ms"] = state["completed_at_ms"]
@@ -1305,7 +1218,7 @@ def start_vehicle_automation_background(
                 ),
             )
         expected_authority = {
-            "action_policy": "engine_idle" if take_control else "observe_only",
+            "action_policy": "cycle_idle" if take_control else "observe_only",
             "control_application": (
                 "stop_only_safety_gate" if take_control else "not_applied"
             ),
@@ -1617,7 +1530,7 @@ def _initialize_automation_startup(
             "interval_s": max(0.0, float(interval_s)),
             "pipeline": "latest_frame_async_perception",
             "control_source": "external_ws" if take_control else "preserved_current",
-            "action_policy": "engine_idle" if take_control else "observe_only",
+            "action_policy": "cycle_idle" if take_control else "observe_only",
             "control_application": "stop_only_safety_gate" if take_control else "not_applied",
             "recording": bool(record),
             "latest": {
@@ -2085,13 +1998,11 @@ def _collect_automation_status(
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
         perception_manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-        decision_manifest_path = Path(bundle["decision_runtime_dir"]) / "active.json"
         process_path = automation_dir / "process.json"
         state_path = automation_dir / "state.json"
         latest_perception_path = automation_dir / "latest_perception.txt"
 
         perception_manifest = _read_json(perception_manifest_path)
-        decision_manifest = _read_json(decision_manifest_path)
         process = _read_json(process_path)
         state = _read_json(state_path)
         process = process if isinstance(process, dict) else {}
@@ -2173,32 +2084,33 @@ def _collect_automation_status(
 
         perception = {}
         if isinstance(perception_manifest, dict):
-            perception_data = perception_manifest.get("perception")
-            if isinstance(perception_data, dict):
-                perception = {
-                    "algorithm": perception_data.get("algorithm"),
-                    "mapper_spec": perception_data.get("mapper_spec"),
-                    "mapper_config": perception_data.get("mapper_config") if isinstance(perception_data.get("mapper_config"), dict) else {},
-                }
+            metadata = perception_manifest.get("metadata")
+            perception = {
+                "algorithm": metadata.get("algorithm") if isinstance(metadata, dict) else None,
+                "plugins": perception_manifest.get("plugins")
+                if isinstance(perception_manifest.get("plugins"), list)
+                else [],
+            }
 
-        decision = {}
-        if isinstance(decision_manifest, dict):
-            decision_data = decision_manifest.get("decision")
-            if isinstance(decision_data, dict):
-                decision = {
-                    "engine_id": decision_data.get("engine_id"),
-                    "engine_spec": decision_data.get("engine_spec"),
-                    "engine_config": decision_data.get("engine_config")
-                    if isinstance(decision_data.get("engine_config"), dict)
-                    else {},
-                }
+        # Unstaged decision steps run their built-ins, so a readable identity is deployed.
+        try:
+            identity = decision_identity(bundle)
+        except (OSError, TypeError, ValueError):
+            identity = None
+        decision: dict[str, Any] = {"deployed": identity is not None}
+        if identity is not None:
+            decision["generation_id"] = identity["generation_id"]
+            decision["plugins"] = {
+                step: (payload or {}).get("plugins") or []
+                for step, payload in identity["steps"].items()
+            }
 
         statuses.append(
             {
                 "vehicle_id": vehicle_name,
                 "deployed": bundle_root.exists()
                 and perception_manifest_path.exists()
-                and decision_manifest_path.exists(),
+                and decision["deployed"],
                 "bundle_root": display_path(bundle_root),
                 "automation_runtime_exists": automation_dir.exists(),
                 "automation_dir": display_path(automation_dir),
@@ -2208,8 +2120,7 @@ def _collect_automation_status(
                     **perception,
                 },
                 "decision": {
-                    "deployed": decision_manifest_path.exists(),
-                    "activation": display_path(decision_manifest_path),
+                    "activation": display_path(Path(bundle["runtime_dir"])),
                     **decision,
                 },
                 "process": {
@@ -2337,16 +2248,18 @@ def _perception_label(perception: dict[str, Any]) -> str:
     if not perception.get("deployed"):
         return f"not deployed; expected {perception.get('activation', 'unknown')}"
     algorithm = perception.get("algorithm") or "unknown"
-    mapper = perception.get("mapper_spec") or "unknown mapper"
-    return f"{algorithm} ({mapper})"
+    plugins = ", ".join(perception.get("plugins") or []) or "no plugins"
+    return f"{algorithm} ({plugins})"
 
 
 def _decision_label(decision: dict[str, Any]) -> str:
     if not decision.get("deployed"):
         return f"not deployed; expected {decision.get('activation', 'unknown')}"
-    engine_id = decision.get("engine_id") or "unknown"
-    engine_spec = decision.get("engine_spec") or "unknown engine"
-    return f"{engine_id} ({engine_spec})"
+    plugins = decision.get("plugins") if isinstance(decision.get("plugins"), dict) else {}
+    described = " ".join(
+        f"{step}={','.join(ids) or '-'}" for step, ids in plugins.items()
+    )
+    return f"{described or 'unknown'} ({decision.get('generation_id') or 'no generation'})"
 
 
 def _worker_label(process: dict[str, Any], state: dict[str, Any]) -> str:
@@ -2534,7 +2447,7 @@ def _read_latest_decision_frame_for_view(
     frame_id: str,
     run_id: str,
     worker_pid: int,
-    activation_activated_at_ms: Any,
+    generation_id: Any,
 ) -> dict[str, Any] | None:
     """Read only the bounded frame just accepted by this worker generation."""
 
@@ -2551,8 +2464,7 @@ def _read_latest_decision_frame_for_view(
         frame.get("frame_id") != frame_id
         or frame.get("run_id") != run_id
         or frame.get("worker_pid") != worker_pid
-        or frame.get("activation_engine_id") not in PROPOSAL_ENGINE_IDS
-        or frame.get("activation_activated_at_ms") != activation_activated_at_ms
+        or frame.get("generation_id") != generation_id
     ):
         return None
     return frame
@@ -2584,8 +2496,6 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
-
-
 
 
 def _mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:

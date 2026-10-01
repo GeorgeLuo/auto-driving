@@ -492,7 +492,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             first_id = paused["current_frame"]["frame_id"]
             mapper = runner._mapper
             memory_step = runner._memory_step
-            engine = runner._decision_engine
+            decision_steps = runner._decision_steps
             retained = dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"]
             memory_plugin = memory_step.plugins[0]
             self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
@@ -508,7 +508,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(len(both["timeline"]), len(paused["timeline"]))
             self.assertIs(runner._mapper, mapper)
             self.assertIs(runner._memory_step, memory_step)
-            self.assertIs(runner._decision_engine, engine)
+            self.assertIs(runner._decision_steps, decision_steps)
             applied = dict(zip(mapper.plugin_ids, mapper.plugins))
             self.assertEqual(list(applied), ["kept_marker", "classical_regions"])
             self.assertIs(applied["classical_regions"], retained)
@@ -1001,6 +1001,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             "        if CountingMemory.constructions > 1:\n"
             "            raise RuntimeError('memory constructed twice')\n"
             "        CountingMemory.built = self\n"
+            "        self.plugin_id = 'counting_companion'\n"
             "        self.implementation_id = 'counting_memory'\n"
             "\n"
             "    def update(self, context, observation):\n"

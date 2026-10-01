@@ -17,11 +17,10 @@ from .automation import (
 )
 from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision import (
+    RUNTIME_ROOT as DECISION_RUNTIME_ROOT,
     apply_vehicle_decision,
-    available_decision_engine_ids,
     get_vehicle_decision_info,
     stream_vehicle_decision,
-    update_vehicle_decision,
 )
 from .decision_inspector import run_decision_inspector
 from .decision_live import run_live_decision_monitor
@@ -36,15 +35,14 @@ from .memory import (
 )
 from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
-from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_IMPLEMENTATION,
-    available_memory_implementation_ids,
-)
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
+from implementations.decision_cycle.memory.catalog import MEMORY_PLUGINS
 from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     available_perception_algorithm_ids,
 )
 
+from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
 from .perception import (
     get_vehicle_perception_info,
     set_vehicle_perception_plugin,
@@ -517,8 +515,8 @@ def build_parser() -> argparse.ArgumentParser:
         "decision",
         help="Show the latest decision frame (generation-scoped latest replacement).",
         description=(
-            "Read automation/latest_decision.json for the staged hold-action or "
-            "obstacle-avoidance engine. "
+            "Read automation/latest_decision.json for the staged proposal, plan, and "
+            "action steps. "
             "Accepts only generation-matched frames from a running live worker within the "
             "configured max age. No history is written. Use --once for a single accepted frame."
         ),
@@ -706,7 +704,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Replay a fixed observation sequence through staged memory offline.",
         description=(
             "Feed a fixed observation sequence through the vehicle's staged "
-            "memory activation (or an ephemeral --implementation). Reports final "
+            "memory activation (or an ephemeral --plugin). Reports final "
             "health, key counts, retained keys, and a stable end-state digest. "
             "Runs two independent passes by default to prove determinism. "
             "Process-local; writes no history unless --record is passed. "
@@ -728,11 +726,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Vehicle id used to resolve the staged memory activation.",
     )
     memory_replay.add_argument(
-        "--implementation",
+        "--plugin",
         default=None,
-        choices=available_memory_implementation_ids(),
+        choices=sorted(MEMORY_PLUGINS),
         help=(
-            "Optional packaged implementation for an ephemeral offline replay "
+            "Optional packaged memory plugin for an ephemeral offline replay "
             "without reading the staged activation."
         ),
     )
@@ -775,10 +773,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Vehicle id (Chase staging id or discovered PiCar).",
     )
     memory_check.add_argument(
-        "--implementation",
+        "--plugin",
         default=None,
-        choices=available_memory_implementation_ids(),
-        help="Packaged memory implementation (default: bounded_evidence check bounds).",
+        choices=sorted(MEMORY_PLUGINS),
+        help="Packaged memory plugin (default: bounded_evidence check bounds).",
     )
     memory_check.add_argument(
         "--record",
@@ -953,8 +951,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_info = info_commands.add_parser(
         "decision",
-        help="Show the locally staged decision engine and step schema.",
-        description="Show the locally staged decision engine and step schema.",
+        help="Show the locally staged decision steps (proposal, plan, action).",
+        description="Show every step's staged plugins and the proposal, plan, and action contract.",
     )
     decision_info.add_argument(
         "--id",
@@ -1436,7 +1434,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Deploy a versioned autonomy controller release to a physical PiCar.",
         description=(
             "Deploy a versioned autonomy controller release to a physical PiCar. "
-            "With --restart, verifies engine, perception, and live memory step. "
+            "With --restart, verifies every deployed step runs its staged plugins. "
             "Memory activation ships here; manage.py load path ships with core—if "
             "verification reports no memory step, update core then re-run autonomy."
         ),
@@ -1553,44 +1551,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception.set_defaults(handler=_handle_vehicles_update_perception)
 
-    decision = update_commands.add_parser(
-        "decision",
-        help="Stage a decision engine in the local controller bundle.",
-        description="Stage a decision engine in the local controller bundle.",
-    )
-    decision.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    decision.add_argument(
-        "--engine",
-        default="idle",
-        choices=available_decision_engine_ids(),
-        help="Decision engine to activate.",
-    )
-    decision.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the activation manifest without writing it.",
-    )
-    decision.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable decision update payload.",
-    )
-    decision.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print controller release packaging details.",
-    )
-    decision.set_defaults(handler=_handle_vehicles_update_decision)
+    for step_name in GENERIC_UPDATE_STEPS:
+        step_parser = update_commands.add_parser(
+            step_name,
+            help=f"Stage {step_name} plugins in the local controller bundle.",
+            description=(
+                f"Stage packaged {step_name} plugins in the local controller bundle "
+                f"(runtime/{step_name}/active.json). Repeat --plugin to select several, "
+                "in order; omit it for the step's default selection."
+            ),
+        )
+        step_parser.add_argument(
+            "--id",
+            required=True,
+            dest="vehicle_id",
+            help="Vehicle id from `automa vehicles active`.",
+        )
+        step_parser.add_argument(
+            "--plugin",
+            action="append",
+            dest="plugins",
+            default=None,
+            choices=sorted(step_plugins(step_name)),
+            help=(
+                f"Packaged {step_name} plugin to select "
+                f"(default: {', '.join(DEFAULT_STEP_PLUGINS[step_name]) or 'none'})."
+            ),
+        )
+        step_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the activation manifest without writing it.",
+        )
+        step_parser.add_argument(
+            "--json",
+            action="store_true",
+            help=f"Print the full machine-readable {step_name} update payload.",
+        )
+        step_parser.add_argument(
+            "--verbose",
+            action="store_true",
+            help="Print controller release packaging details.",
+        )
+        step_parser.set_defaults(handler=_handle_vehicles_update_step, step=step_name)
 
     memory = update_commands.add_parser(
         "memory",
-        help="Stage a memory implementation in the local controller bundle.",
-        description="Stage a memory implementation in the local controller bundle.",
+        help="Stage memory plugins in the local controller bundle.",
+        description="Stage memory plugins in the local controller bundle.",
     )
     memory.add_argument(
         "--id",
@@ -1599,10 +1607,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Vehicle id from `automa vehicles active`.",
     )
     memory.add_argument(
-        "--implementation",
-        default=DEFAULT_MEMORY_IMPLEMENTATION,
-        choices=available_memory_implementation_ids(),
-        help=f"Memory implementation to activate (default: {DEFAULT_MEMORY_IMPLEMENTATION}).",
+        "--plugin",
+        action="append",
+        dest="plugins",
+        default=None,
+        choices=sorted(MEMORY_PLUGINS),
+        help=(
+            "Packaged memory plugin to select; repeat to select several in order "
+            f"(default: {', '.join(DEFAULT_STEP_PLUGINS['memory'])})."
+        ),
     )
     memory.add_argument(
         "--dry-run",
@@ -1793,12 +1806,15 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles update commands",
                 "",
-                "- core        deploy physical DonkeyCar harness code",
-                "- autonomy    deploy physical autonomy controller release",
-                "- perception  stage local vehicle perception code",
-                "- decision    stage local decision configuration",
-                "- memory      stage local memory implementation",
-                "- help        show this summary",
+                "- core         deploy physical DonkeyCar harness code",
+                "- autonomy     deploy physical autonomy controller release",
+                "- perception   stage local vehicle perception code",
+                "- observation  stage observation plugins",
+                "- memory       stage memory plugins",
+                "- proposal     stage proposal plugins",
+                "- plan         stage the plan plugin",
+                "- action       stage the action plugin (hold or mode)",
+                "- help         show this summary",
                 "",
                 "Detailed help:",
                 "- ./cli/automa vehicles update <command> --help",
@@ -1815,8 +1831,8 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "automa vehicles info commands",
                 "",
                 "- perception  show staged perception schema and live view",
-                "- decision    show locally staged decision engine schema",
-                "- memory      show locally staged memory implementation",
+                "- decision    show the staged steps and decision contract",
+                "- memory      show locally staged memory plugins",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -2135,8 +2151,8 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "- live    read-only local browser monitor for a live PiCar publication",
                 "- help    show this summary",
                 "",
-                "Stage inspection-only proposals with: ./cli/automa vehicles update decision --id <vehicle> --engine hold-action",
-                "Stage the live PiCar happy path with: ./cli/automa vehicles update decision --id <vehicle> --engine obstacle-avoidance",
+                "Stage proposals (held idle):  ./cli/automa vehicles update proposal --id <vehicle>",
+                "Apply them in live modes:     ./cli/automa vehicles update action --id <vehicle> --plugin mode",
                 "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
                 "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
                 "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
@@ -2236,7 +2252,7 @@ def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
     result = replay_vehicle_memory(
         vehicle_id=args.vehicle_id,
         sequence=args.sequence,
-        implementation_id=args.implementation,
+        plugin_id=args.plugin,
         json_output=args.json,
         verify_twice=not args.once,
         record=args.record,
@@ -2249,7 +2265,7 @@ def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
 def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
     result = run_vehicle_memory_check(
         vehicle_id=args.vehicle_id,
-        implementation_id=args.implementation,
+        implementation_id=args.plugin,
         record=args.record,
         json_output=args.json,
         output=None if args.json else sys.stdout,
@@ -2374,7 +2390,7 @@ def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
 def _handle_vehicles_update_memory(args: argparse.Namespace) -> int:
     result = update_vehicle_memory(
         vehicle_id=args.vehicle_id,
-        implementation_id=args.implementation,
+        plugins=args.plugins,
         dry_run=args.dry_run,
         json_output=args.json,
         verbose=args.verbose,
@@ -2585,18 +2601,20 @@ def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_update_decision(args: argparse.Namespace) -> int:
-    result = update_vehicle_decision(
+def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
+    exit_code, message = update_vehicle_step(
         vehicle_id=args.vehicle_id,
-        engine_id=args.engine,
+        step=args.step,
+        plugins=args.plugins,
+        runtime_root=DECISION_RUNTIME_ROOT,
         dry_run=args.dry_run,
         json_output=args.json,
         verbose=args.verbose,
         output=sys.stdout,
     )
-    if result.message:
-        print(result.message)
-    return result.exit_code
+    if message:
+        print(message)
+    return exit_code
 
 
 def _handle_simulators_status(args: argparse.Namespace) -> int:

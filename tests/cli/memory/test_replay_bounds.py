@@ -47,7 +47,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             result = replay_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
                 sequence=sequence,
-                implementation_id="bounded_evidence",
+                plugin_id="bounded_evidence",
                 json_output=True,
             )
         self.assertEqual(result.exit_code, 2)

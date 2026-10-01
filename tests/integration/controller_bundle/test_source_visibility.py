@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[3]
 class SourceVisibilityTests(unittest.TestCase):
     def test_generated_runtime_ignore_does_not_hide_runtime_source_packages(self) -> None:
         for source_path in (
-            "autonomy/runtime/engine.py",
+            "autonomy/runtime/control.py",
             "implementations/runtime/donkeycar/donkey_part.py",
         ):
             result = subprocess.run(

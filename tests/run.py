@@ -112,8 +112,10 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
                 "result: ready",
                 f"endpoint: {status['status_url']}",
                 f"drive mode: {status['drive_mode']}",
-                f"decision engine: {status['engine']}",
-                f"perception: {status['perception_algorithm']}",
+                *(
+                    f"{step}: {', '.join(plugins) if plugins is not None else '(not loaded)'}"
+                    for step, plugins in status["steps"].items()
+                ),
                 "side effects: read-only status requests only; vehicle movement is disabled",
             ]
         ),

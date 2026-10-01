@@ -26,6 +26,7 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
         self, context: DecisionFrameContext, perception: PerceptionText | None
     ) -> Observation | None:
         with self._runtime_lock:
+            self.refresh_selection(context.shared_memory)
             self.run_count += 1
             try:
                 observation = self._single().observe(context, perception)

@@ -54,6 +54,7 @@ class ActionRunner(StepRunner[ActionPlugin]):
         else:
             error_reason = None
         with self._runtime_lock:
+            self.refresh_selection(context.shared_memory)
             self.run_count += 1
             plugin = self._single()
             return self._decide(

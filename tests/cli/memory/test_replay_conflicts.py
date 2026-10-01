@@ -68,7 +68,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                     result = replay_vehicle_memory(
                         vehicle_id="chase-sim-chaser",
                         sequence=prefix_path,
-                        implementation_id="bounded_evidence",
+                        plugin_id="bounded_evidence",
                         json_output=True,
                         verify_twice=True,
                     )

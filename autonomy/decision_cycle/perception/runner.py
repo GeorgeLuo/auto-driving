@@ -11,6 +11,7 @@ import importlib
 import time
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from pathlib import Path
 from threading import RLock
 from typing import Any
 
@@ -48,6 +49,11 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
 )
+
+
+# ``context.metadata`` key naming the directory a recording host wants
+# perception diagnostics written to for the frame.
+PERCEPTION_OUTPUT_DIR_KEY = "perception_output_dir"
 
 
 @dataclass(frozen=True)
@@ -128,11 +134,15 @@ class PerceptionRunner:
                 self.last_frame_index = context.frame_index
                 return None
             started = time.perf_counter()
+            metadata = context.metadata if isinstance(context.metadata, dict) else {}
+            # A host that records diagnostics names the directory per frame.
+            output_dir = metadata.get(PERCEPTION_OUTPUT_DIR_KEY)
             try:
                 self.last_output = self.perceive(
                     build_perception_request(
                         context.sensor_snapshot,
                         shared_memory=context.shared_memory,
+                        output_dir=Path(output_dir) if isinstance(output_dir, str) else None,
                         metadata={
                             "runtime": "onboard",
                             "activation": (

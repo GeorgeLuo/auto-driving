@@ -13,9 +13,10 @@ from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
-from autonomy.decision_cycle.perception.plugin_runner import PluginPerceptionMapper
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
+from implementations.decision_cycle.catalog import perception_algorithm_activation
 from cli.automa_cli.perception_evaluation import (
     evaluate_perception_frames,
     write_review_html,
@@ -175,32 +176,28 @@ class PerceptionRunTests(unittest.TestCase):
                 )
                 activation_path = first["manifest_path"]
                 stale = json.loads(activation_path.read_text(encoding="utf-8"))
-                stale["perception"]["mapper_config"]["plugins"].append("vlm_prep")
+                stale["plugins"].append("vlm_prep")
                 activation_path.write_text(json.dumps(stale), encoding="utf-8")
 
                 refreshed = perception_module.ensure_local_perception_runtime(
                     vehicle=vehicle
                 )
-                refreshed_plugins = refreshed["manifest"]["perception"][
-                    "mapper_config"
-                ]["plugins"]
+                refreshed_plugins = refreshed["manifest"]["plugins"]
                 self.assertEqual(
                     refreshed_plugins, ["frame", "floor_plane", "motion_tracks"]
                 )
                 self.assertFalse(refreshed["refreshed"])
 
                 custom = refreshed["manifest"]
-                custom["perception"]["algorithm"] = "custom"
-                custom["perception"]["mapper_config"]["plugins"] = ["frame"]
+                custom["metadata"]["algorithm"] = "custom"
+                custom["plugins"] = ["frame"]
                 activation_path.write_text(json.dumps(custom), encoding="utf-8")
                 preserved = perception_module.ensure_local_perception_runtime(
                     vehicle=vehicle
                 )
 
-        self.assertEqual(preserved["manifest"]["perception"]["algorithm"], "custom")
-        self.assertEqual(
-            preserved["manifest"]["perception"]["mapper_config"]["plugins"], ["frame"]
-        )
+        self.assertEqual(preserved["manifest"]["metadata"]["algorithm"], "custom")
+        self.assertEqual(preserved["manifest"]["plugins"], ["frame"])
 
     def test_apply_manifest_falls_back_to_archived_frame_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -350,7 +347,7 @@ class PerceptionRunTests(unittest.TestCase):
             "active_count": 2,
             "inactive": [],
         }
-        mapper = PluginPerceptionMapper(
+        mapper = PerceptionRunner.from_selection(
             plugins=["frame"],
             plugin_specs={"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
         )
@@ -363,11 +360,7 @@ class PerceptionRunTests(unittest.TestCase):
                     "runtime_dir": str(root / "bundle" / "runtime"),
                 },
                 "manifest": {
-                    "perception": {
-                        "algorithm": "lightweight_observer",
-                        "mapper_spec": "unused:test",
-                        "mapper_config": {},
-                    }
+                    **perception_algorithm_activation("lightweight_observer").to_payload(),
                 },
                 "source": {"tree_sha256": "test-tree"},
                 "refreshed": False,
@@ -382,7 +375,7 @@ class PerceptionRunTests(unittest.TestCase):
                     return_value=runtime,
                 ),
                 patch(
-                    "cli.automa_cli.perception_runs._load_mapper", return_value=mapper
+                    "cli.automa_cli.perception_runs.load_staged_runner", return_value=mapper
                 ),
                 patch(
                     "cli.automa_cli.perception_runs.create_vehicle_access",

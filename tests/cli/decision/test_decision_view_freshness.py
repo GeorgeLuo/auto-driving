@@ -8,7 +8,8 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
 from cli.automa_cli import decision as decision_module
-from cli.automa_cli.decision import get_vehicle_decision_info, update_vehicle_decision
+from cli.automa_cli.decision import get_vehicle_decision_info
+from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
@@ -198,17 +199,16 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
 
         # Use the public update command to replace the active decision
         # generation while the old producer is still serving its URL.
-        restage = update_vehicle_decision(
+        code, message = update_vehicle_step(
             vehicle_id="chase-sim-chaser",
-            engine_id="idle",
+            step="action",
+            plugins=["mode"],
+            runtime_root=self.runtime_root,
             json_output=True,
         )
-        self.assertEqual(restage.exit_code, 0, restage.message)
-        current_activation = json.loads(
-            self.activation_path.read_text(encoding="utf-8")
-        )
-        self.assertEqual(current_activation["decision"]["engine_id"], "idle")
-        self.assertNotEqual(current_activation, self.activation)
+        self.assertEqual(code, 0, message)
+        current = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
+        self.assertNotEqual(current["generation_id"], self.activation["generation_id"])
 
         for old_url in (old_latest_url, old_image_url):
             with self.subTest(old_url=old_url):

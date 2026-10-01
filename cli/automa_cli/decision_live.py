@@ -8,7 +8,7 @@ import webbrowser
 from dataclasses import dataclass
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.memory.plugin_runner import MEMORY_REPORT_SCHEMA
+from autonomy.decision_cycle.memory.runner import MEMORY_REPORT_SCHEMA
 from .decision import (
     CommandResult,
     DecisionSurfaceError,
@@ -84,15 +84,14 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
         "vehicle_id": normalized["vehicle_id"],
         "source_id": normalized["source_id"],
         "run_id": normalized["run_id"],
-        "activation_engine_id": normalized["activation_engine_id"],
-        "activation_activated_at_ms": normalized["activation_activated_at_ms"],
         "producer_generation_id": normalized["generation_id"],
     }
 
 
 def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
     cycle = normalized["decision"]["cycle"]
-    source = cycle.get("source") if isinstance(cycle, dict) else None
+    proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
+    source = proposal.get("source") if isinstance(proposal, dict) else None
     observation = source.get("observation") if isinstance(source, dict) else None
     observation_value = (
         observation.get("value")
@@ -588,8 +587,6 @@ def _host_record_matches_identity(
         "run_id": record.get("run_id"),
         "generation_id": record.get("generation_id"),
         "activation": {
-            "engine_id": activation.get("engine_id"),
-            "activated_at_ms": activation.get("activated_at_ms"),
             "generation_id": activation.get("generation_id"),
         },
         "source_frame": {

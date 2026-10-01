@@ -9,11 +9,13 @@ from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.memory import set_vehicle_memory_plugin
-from cli.automa_cli.memory_runtime import load_memory_step_from_bundle
-from implementations.decision_cycle.memory.catalog import (
-    build_memory_activation_payload,
+from implementations.decision_cycle.catalog import packaged_activation
+from tests.integration.automation_pipeline.pipeline_fixtures import (
+    _FakeCar,
+    _SlowMapper,
+    _write_activations,
+    staged_runners,
 )
-from tests.integration.automation_pipeline.pipeline_fixtures import _FakeCar, _SlowMapper, _write_activations
 
 
 class AutomationMemorySelectionTests(unittest.TestCase):
@@ -30,22 +32,14 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             staged.write_text(
                 "from implementations.decision_cycle.memory.bounded_evidence.plugin import BoundedEvidenceLedger\n"
                 "class SecondLedger(BoundedEvidenceLedger):\n"
+                "    plugin_id = 'second'\n"
                 "    implementation_id = 'second'\n", encoding="utf-8",
             )
-            payload = build_memory_activation_payload()
-            memory = payload["memory"]
-            memory.update({
-                "plugins": ["bounded_evidence"],
-                "plugin_specs": {
-                    "bounded_evidence": memory["implementation_spec"],
-                    "second": "implementations.decision_cycle.memory.second:SecondLedger",
-                },
-                "plugin_configs": {
-                    name: dict(memory["implementation_config"])
-                    for name in ("bounded_evidence", "second")
-                },
-            })
-            payload["controller_bundle"] = {"root_dir": bundle["root_dir"]}
+            payload = packaged_activation("memory", ["bounded_evidence"]).to_payload()
+            config = payload["plugin_configs"]["bounded_evidence"]
+            payload["plugin_specs"]["second"] = "implementations.decision_cycle.memory.second:SecondLedger"
+            payload["plugin_configs"]["second"] = dict(config)
+            payload["metadata"] = {"controller_bundle": {"root_dir": bundle["root_dir"]}}
             path = Path(bundle["memory_runtime_dir"]) / "active.json"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
@@ -62,8 +56,9 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             steps = []
             actions = [("second", True), ("bounded_evidence", False), ("second", False), ("bounded_evidence", True)]
 
-            def load_running_step(activation):
-                step = load_memory_step_from_bundle(activation)
+            def wrap_memory(step_name, step):
+                if step_name != "memory":
+                    return
                 steps.append(step)
                 update = step.update
 
@@ -81,7 +76,6 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                     return report
 
                 step.update = update_with_cli_edits
-                return step
 
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
@@ -89,8 +83,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
                 patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
                 patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
-                patch("cli.automa_cli.automation._load_mapper", return_value=_SlowMapper()),
-                patch("cli.automa_cli.automation.load_memory_step_from_bundle", side_effect=load_running_step),
+                staged_runners(perception=_SlowMapper(), wrap=wrap_memory),
             ):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id, interval_s=0.4, frames=5, take_control=False,

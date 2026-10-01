@@ -6,8 +6,9 @@ checks each instance against the step's plugin protocol, and runs the applied
 plugins when the cycle calls it. Every runner can be built from a
 ``StepActivation`` and exposes the same selection and report surface:
 ``prepare_selection``/``commit_selection``/``discard_selection`` to change the
-selection between cycles, ``plugin_report`` and ``status`` for diagnostics,
-and ``reset`` to start a new epoch.
+selection between cycles (each call also picks up the manager's selection),
+``plugin_report`` and ``status`` for diagnostics, and ``reset`` to start a new
+epoch.
 
 ``StepRunner`` implements that surface for steps whose plugins need no more
 than load, validate, and reset. The perception and memory runners implement the
@@ -165,6 +166,18 @@ class StepRunner(Generic[PluginT]):
                 validate=self._validate_selection,
                 reset=lambda plugin: reset_plugin(plugin, shared_memory),
             )
+
+    def refresh_selection(self, shared_memory: SharedMemory | None = None) -> None:
+        """Apply the manager's current selection before a call.
+
+        A selection that fails to load or validate keeps the applied plugins
+        and is recorded as ``last_error``, so a bad edit cannot stop the cycle.
+        """
+
+        try:
+            self.apply_selection(shared_memory)
+        except Exception as exc:  # noqa: BLE001 - keep the applied plugins
+            self.last_error = describe_exception(exc)
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         with self._runtime_lock:

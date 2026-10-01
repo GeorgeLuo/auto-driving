@@ -330,7 +330,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("does not define perception.mapper_spec", result.message)
+        self.assertIn("unsupported schema", result.message)
 
     def test_piracer_without_local_staging_keeps_live_only_inspection(self) -> None:
         vehicle = {

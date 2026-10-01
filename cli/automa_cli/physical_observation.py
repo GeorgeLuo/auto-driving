@@ -15,7 +15,8 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
-from autonomy.decision_cycle.result import ACTION_RESULT_SCHEMA
+from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
+from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
 
 from .paths import safe_path_part
 from .perception_view import get_perception_view_status
@@ -658,8 +659,6 @@ def _host_identity_from_record(
         "run_id": run_id,
         "generation_id": generation_id,
         "activation": {
-            "engine_id": activation["engine_id"],
-            "activated_at_ms": activation["activated_at_ms"],
             "generation_id": activation["generation_id"],
         },
         "source_frame": {
@@ -740,7 +739,7 @@ def normalize_host_telemetry_record(
     generation_id = _host_require_id(record.get("generation_id"), field="generation_id")
 
     activation = _host_require_mapping(record.get("activation"), field="activation")
-    activation_required = {"engine_id", "activated_at_ms", "generation_id"}
+    activation_required = {"generation_id"}
     missing_activation = sorted(activation_required - set(activation))
     if missing_activation:
         raise _host_telemetry_error(
@@ -749,12 +748,6 @@ def normalize_host_telemetry_record(
             field="activation",
             details={"missing": missing_activation},
         )
-    activation_engine_id = _host_require_id(
-        activation.get("engine_id"), field="activation.engine_id"
-    )
-    activation_at_ms = _host_require_epoch_ms(
-        activation.get("activated_at_ms"), field="activation.activated_at_ms"
-    )
     activation_generation_id = _host_require_id(
         activation.get("generation_id"), field="activation.generation_id"
     )
@@ -1009,8 +1002,6 @@ def normalize_host_telemetry_record(
         run_id=run_id,
         generation_id=generation_id,
         activation={
-            "engine_id": activation_engine_id,
-            "activated_at_ms": activation_at_ms,
             "generation_id": activation_generation_id,
         },
         source_frame={
@@ -1302,10 +1293,10 @@ def normalize_host_telemetry_records(
 
 def _decision_source_frame(decision: dict[str, Any]) -> dict[str, Any]:
     cycle = decision.get("cycle") if isinstance(decision.get("cycle"), dict) else {}
-    source = cycle.get("source") if isinstance(cycle.get("source"), dict) else {}
+    proposal = cycle.get("proposal") if isinstance(cycle.get("proposal"), dict) else {}
+    source = proposal.get("source") if isinstance(proposal.get("source"), dict) else {}
     candidates = (
         decision.get("source_frame"),
-        cycle.get("source_frame"),
         source.get("source_frame"),
         source,
         decision.get("frame"),
@@ -1368,12 +1359,6 @@ def physical_decision_identity(normalized_decision: dict[str, Any]) -> dict[str,
         generation_id = _host_require_id(
             decision.get("generation_id"), field="decision.generation_id"
         )
-        activation_engine_id = _host_require_id(
-            activation.get("engine_id"), field="decision.activation.engine_id"
-        )
-        activation_at_ms = _host_require_epoch_ms(
-            activation.get("activated_at_ms"), field="decision.activation.activated_at_ms"
-        )
         activation_generation_id = _host_require_id(
             activation.get("generation_id"), field="decision.activation.generation_id"
         )
@@ -1386,16 +1371,6 @@ def physical_decision_identity(normalized_decision: dict[str, Any]) -> dict[str,
             "Physical decision publication cannot expose exact telemetry identity.",
             details=exc.details,
         ) from exc
-    if activation_engine_id != decision.get("activation_engine_id"):
-        raise _host_telemetry_error(
-            "identity_mismatch",
-            "Physical decision activation engine identity does not match its envelope.",
-        )
-    if activation_at_ms != decision.get("activation_activated_at_ms"):
-        raise _host_telemetry_error(
-            "identity_mismatch",
-            "Physical decision activation timestamp does not match its envelope.",
-        )
     if activation_generation_id != generation_id:
         raise _host_telemetry_error(
             "identity_mismatch",
@@ -1422,8 +1397,6 @@ def physical_decision_identity(normalized_decision: dict[str, Any]) -> dict[str,
         "run_id": run_id,
         "generation_id": generation_id,
         "activation": {
-            "engine_id": activation_engine_id,
-            "activated_at_ms": activation_at_ms,
             "generation_id": activation_generation_id,
         },
         "source_frame": source_frame,
@@ -1735,8 +1708,6 @@ def normalize_physical_decision_publication(
         "vehicle_id",
         "source_id",
         "run_id",
-        "activation_engine_id",
-        "activation_activated_at_ms",
         "generation_id",
         "frame_id",
         "frame_index",
@@ -1764,15 +1735,8 @@ def normalize_physical_decision_publication(
         )
     source_id = _physical_required_id(decision.get("source_id"), field="decision.source_id")
     run_id = _physical_required_id(decision.get("run_id"), field="decision.run_id")
-    activation_engine_id = _physical_required_id(
-        decision.get("activation_engine_id"), field="decision.activation_engine_id"
-    )
     generation_id = _physical_required_id(
         decision.get("generation_id"), field="decision.generation_id"
-    )
-    activation_activated_at_ms = _physical_required_int(
-        decision.get("activation_activated_at_ms"),
-        field="decision.activation_activated_at_ms",
     )
     frame_id = _physical_required_id(decision.get("frame_id"), field="decision.frame_id")
     frame_index = _physical_required_int(decision.get("frame_index"), field="decision.frame_index")
@@ -1784,52 +1748,50 @@ def normalize_physical_decision_publication(
     )
 
     activation = _physical_require_mapping(decision.get("activation"), field="decision.activation")
-    for field in ("engine_id", "activated_at_ms", "generation_id", "engine_config"):
+    for field in ("generation_id", "steps"):
         if field not in activation:
             raise _physical_decision_error(
                 "incomplete",
                 f"Physical decision publication decision.activation.{field} is missing.",
                 field=f"decision.activation.{field}",
             )
-    if activation.get("engine_id") != activation_engine_id:
-        raise _physical_decision_error(
-            "mismatched",
-            "Decision activation engine identity does not match its outer identity.",
-            field="decision.activation.engine_id",
-        )
-    if activation.get("activated_at_ms") != activation_activated_at_ms:
-        raise _physical_decision_error(
-            "mismatched",
-            "Decision activation timestamp does not match its outer identity.",
-            field="decision.activation.activated_at_ms",
-        )
     if activation.get("generation_id") != generation_id:
         raise _physical_decision_error(
             "mismatched",
             "Decision activation generation does not match its outer identity.",
             field="decision.activation.generation_id",
         )
-    if not isinstance(activation.get("engine_config"), dict):
+    if not isinstance(activation.get("steps"), dict):
         raise _physical_decision_error(
             "incomplete",
-            "Physical decision activation engine_config must be an object.",
-            field="decision.activation.engine_config",
+            "Physical decision activation steps must be an object.",
+            field="decision.activation.steps",
         )
 
     cycle = _physical_require_mapping(decision.get("cycle"), field="decision.cycle")
-    if cycle.get("schema") != ACTION_RESULT_SCHEMA or cycle.get("status") != "ok":
+    proposal = _physical_require_mapping(cycle.get("proposal"), field="decision.cycle.proposal")
+    action = _physical_require_mapping(cycle.get("action"), field="decision.cycle.action")
+    if (
+        proposal.get("schema") != PROPOSAL_RESULT_SCHEMA
+        or proposal.get("status") != "ok"
+        or action.get("schema") != ACTION_RESULT_SCHEMA
+        or action.get("status") != "ok"
+    ):
         raise _physical_decision_error(
             "incomplete",
-            "Physical decision cycle is not a successful action result.",
+            "Physical decision cycle is not a successful proposal and action.",
             field="decision.cycle",
         )
-    if cycle.get("frame_id") != frame_id:
-        raise _physical_decision_error(
-            "mismatched",
-            "Physical decision cycle frame_id does not match its outer identity.",
-            field="decision.cycle.frame_id",
-        )
-    source = _physical_require_mapping(cycle.get("source"), field="decision.cycle.source")
+    for field, record in (("proposal", proposal), ("action", action)):
+        if record.get("frame_id") != frame_id:
+            raise _physical_decision_error(
+                "mismatched",
+                f"Physical decision {field} frame_id does not match its outer identity.",
+                field=f"decision.cycle.{field}.frame_id",
+            )
+    source = _physical_require_mapping(
+        proposal.get("source"), field="decision.cycle.proposal.source"
+    )
     for field, expected in (
         ("frame_id", frame_id),
         ("frame_index", frame_index),
@@ -1839,7 +1801,7 @@ def normalize_physical_decision_publication(
             raise _physical_decision_error(
                 "mismatched",
                 f"Physical decision source {field} does not match its outer identity.",
-                field=f"decision.cycle.source.{field}",
+                field=f"decision.cycle.proposal.source.{field}",
             )
     if type(now_ms) is not int:
         raise ValueError("now_ms must be a non-bool int")
@@ -1863,8 +1825,6 @@ def normalize_physical_decision_publication(
         "vehicle_id": decision_vehicle_id,
         "source_id": source_id,
         "run_id": run_id,
-        "activation_engine_id": activation_engine_id,
-        "activation_activated_at_ms": activation_activated_at_ms,
         "generation_id": generation_id,
         "frame_id": frame_id,
         "frame_index": frame_index,
@@ -2064,7 +2024,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "observation": observation if isinstance(observation, dict) else None,
         "memory": memory if isinstance(memory, dict) else None,
         "control": control if isinstance(control, dict) else None,
-        "engine": publication.get("engine"),
+        "generation_id": publication.get("generation_id"),
         "algorithm": publication.get("algorithm"),
         "health": publication.get("health"),
         "result_age_ms": publication.get("result_age_ms"),

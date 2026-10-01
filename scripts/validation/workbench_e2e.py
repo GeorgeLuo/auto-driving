@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """End-to-end workbench replay check.
 
-Replays the bright high-rate capture through the workbench with lab plugins
-that extract signals, including one that names the camera by its legacy spec
-and brings its own lab memory. The run is reduced to a fingerprint of per-frame
+Replays the bright high-rate capture through the workbench with packaged
+perception plugins that extract signals. The run is reduced to a fingerprint of per-frame
 statuses, selected proposals, memory changes, and per-plugin signal and thing
 counts. Timing fields are left out. The same replay at a git ref, run in a
 temporary worktree, is the reference, so no recorded output is kept in the
@@ -29,7 +28,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121"
-PLUGIN_DIR = ROOT / "lab/plugins/perception"
 PLUGINS = ("multi_obstruction_tracks", "floor_continuity", "classical_regions")
 
 
@@ -38,7 +36,7 @@ def run_replay(checkout: Path = ROOT) -> dict:
 
     command = [
         sys.executable, str(checkout / "cli/automa"), "vehicles", "workbench", "replay", str(SOURCE),
-        "--plugin-dir", str(checkout / PLUGIN_DIR.relative_to(ROOT)), "--cadence-ms", "0", "--json",
+        "--cadence-ms", "0", "--json",
     ]
     for plugin_id in PLUGINS:
         command += ["--plugin", plugin_id]
@@ -83,7 +81,7 @@ def check_selector() -> list[str]:
     base = f"http://127.0.0.1:{port}"
     command = [
         sys.executable, str(ROOT / "cli/automa"), "vehicles", "workbench", "replay", str(SOURCE),
-        "--plugin-dir", str(PLUGIN_DIR), "--serve", "--port", str(port), "--cadence-ms", "0",
+        "--serve", "--port", str(port), "--cadence-ms", "0",
     ]
     for plugin_id in PLUGINS:
         command += ["--plugin", plugin_id]
@@ -181,7 +179,7 @@ def fingerprint(state: dict) -> dict:
         "progress": state.get("progress"),
         "plugin_runs": [
             {key: run.get(key) for key in (
-                "plugin_id", "implementation_id", "status", "error", "signal_count", "thing_count",
+                "plugin_id", "status", "error", "signal_count", "thing_count",
             )}
             for run in perception.get("plugin_runs") or []
         ],
@@ -190,7 +188,7 @@ def fingerprint(state: dict) -> dict:
             for signal in perception.get("signals") or []
         ],
         "memory": {key: memory.get(key) for key in (
-            "implementation_id", "health", "record_count", "error",
+            "plugin_id", "health", "record_count", "error",
         )},
         "frames": frames,
     }

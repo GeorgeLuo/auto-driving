@@ -77,14 +77,14 @@ class WorkbenchTests(unittest.TestCase):
     def test_directory_adapter_honors_manifest_order_and_absence(self) -> None:
         with TemporaryDirectory() as directory:
             workspace = Path(directory)
-            root = workspace / "lab/plugins/perception/example/runs/fixture-run"
+            root = workspace / "lab/runs/fixture-run"
             image_root = workspace / "lab/runs/capture"
             root.mkdir(parents=True)
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
             write_manifest(root, {
                 "source_id": "fixture.sequence",
-                "run_dir": "lab/plugins/perception/example/runs/fixture-run",
+                "run_dir": "lab/runs/fixture-run",
                 "source": {
                     "kind": "apply",
                     "path": "/previous/location/auto-driving/lab/runs/capture",

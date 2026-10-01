@@ -27,7 +27,7 @@ PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
     "vlm_prep": "implementations.decision_cycle.perception.vlm_preparation.plugin:VlmPrepPlugin",
 }
 
-# Tuned default configs for the plugins moved in from lab/plugins.
+# Tuned default configs shared by related packaged plugins.
 _FLOOR_CONTINUITY_CONFIG: dict[str, Any] = {
     "working_width": 320,
     "horizon_ratio": 0.4,

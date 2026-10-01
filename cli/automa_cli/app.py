@@ -851,14 +851,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing supported images and optional ordered manifest.",
     )
     workbench_replay.add_argument(
-        "--plugin-dir",
-        default=None,
-        help=(
-            "Optional directory tree containing manifest-backed perception plugins. "
-            "Without this flag the packaged lightweight catalog is used."
-        ),
-    )
-    workbench_replay.add_argument(
         "--plugin",
         "--active-plugin",
         "--active-plugin-id",
@@ -866,9 +858,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         help=(
-            "Select one ready plugin id from --plugin-dir; repeat to select more. "
-            "Omit this option with --plugin-dir to replay raw capture without "
-            "perception overlays."
+            "Select one packaged perception plugin id; repeat to select more, in "
+            "order. Omit this option for the default lightweight selection."
         ),
     )
     workbench_replay.add_argument(
@@ -2165,7 +2156,6 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
 def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
-        plugin_dir=args.plugin_dir,
         active_plugin_ids=args.active_plugin_ids,
         cadence_ms=args.cadence_ms,
         pace=args.pace,

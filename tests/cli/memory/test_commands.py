@@ -58,7 +58,7 @@ class MemoryCommandTests(unittest.TestCase):
             self.assertEqual(info_payload["schema"], "vehicle_memory_info_v0")
             self.assertEqual(info_payload["activation"]["plugin_id"], "bounded_evidence")
             self.assertEqual(
-                info_payload["activation"]["implementation_id"],
+                info_payload["activation"]["plugin_id"],
                 "bounded_evidence",
             )
             # Retention bounds belong to the plugin, not the activation.
@@ -93,7 +93,7 @@ class MemoryCommandTests(unittest.TestCase):
                 )
                 self.assertEqual(activation["plugin_id"], selected[-1] if selected else None)
                 self.assertEqual(
-                    activation["implementation_id"],
+                    activation["plugin_id"],
                     "bounded_evidence" if selected else None,
                 )
                 if command == "disable" and changed:

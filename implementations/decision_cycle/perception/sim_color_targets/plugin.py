@@ -31,7 +31,7 @@ class ColorRegion:
 class SimColorTargetsPlugin:
     """Debug-only color detector for Chase sim front camera frames."""
 
-    plugin_id = "sim-color-targets-v0"
+    plugin_id = "sim_color_targets"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         description="Detect simulator control targets with known debug colors.",

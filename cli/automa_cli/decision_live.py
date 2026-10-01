@@ -160,7 +160,6 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
                 "plugins": [
                     {
                         "plugin_id": "decision_evidence",
-                        "implementation_id": None,
                         "state": {"records": evidence_value, "record_count": len(evidence_value)},
                     }
                 ],

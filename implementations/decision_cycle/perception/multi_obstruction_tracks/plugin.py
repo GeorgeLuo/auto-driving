@@ -47,7 +47,7 @@ TRACKING_CONFIG_FIELDS = (
 class MultiObstructionTracksPlugin:
     """Detect candidates; cross-frame tracking is owned by the memory plugin."""
 
-    plugin_id = "multi-obstruction-tracks-v0"
+    plugin_id = "multi_obstruction_tracks"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="stateless",

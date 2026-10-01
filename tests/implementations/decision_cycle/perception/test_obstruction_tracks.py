@@ -14,7 +14,7 @@ class ObstructionTracksProductionTests(unittest.TestCase):
         self.assertEqual(mapper.plugin_ids, ("frame", "floor_plane", "obstruction_tracks"))
         self.assertEqual(
             [plugin.plugin_id for plugin in mapper.plugins],
-            ["frame-observation-v0", "floor-plane-v0", "multi-obstruction-tracks-v0"],
+            ["frame", "floor_plane", "obstruction_tracks"],
         )
         self.assertEqual(
             mapper.plugin_configs["obstruction_tracks"]["max_missed_frames"],

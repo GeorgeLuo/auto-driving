@@ -80,7 +80,7 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(step.plugins, ())
         manager.add("second")
         report = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
-        self.assertEqual(report["plugins"][0]["implementation_id"], "second")
+        self.assertEqual(report["plugins"][0]["plugin_id"], "second")
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         manager.remove("second")
         step.update(DecisionFrameContext("frame-2", 2, 200, shared_memory={}), None)
@@ -100,7 +100,7 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(shared["previous_outputs"], [None, "first"])
         self.assertEqual(shared["last_writer"], "second")
         self.assertEqual(
-            [item["implementation_id"] for item in report["plugins"]], ["first", "second"]
+            [item["plugin_id"] for item in report["plugins"]], ["first", "second"]
         )
         self.assertEqual([item["update_count"] for item in step.status()["plugins"]], [1, 1])
 
@@ -143,23 +143,12 @@ class MemorySelectionTests(unittest.TestCase):
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
         self.assertEqual(step.update(context, None)["plugins"], [])
         manager.add("first")
-        self.assertEqual(step.update(context, None)["plugins"][0]["implementation_id"], "first")
+        self.assertEqual(step.update(context, None)["plugins"][0]["plugin_id"], "first")
         shared["decision.observation"] = "published by the removed plugin"
         manager.remove("first")
         self.assertEqual(step.update(context, None)["plugins"], [])
         self.assertNotIn("decision.observation", shared)
         self.assertEqual(step.status()["plugin_ids"], [])
-
-    def test_selection_id_stays_distinct_from_declared_plugin_id(self):
-        manager = PluginManager.from_specs("memory", {"ledger": SPEC}, {"ledger": {}})
-        manager.select(["ledger"])
-        step = MemoryRunner(plugin_manager=manager)
-        self.assertEqual(step.plugin_ids, ("ledger",))
-        self.assertEqual(step.plugins[0].implementation.plugin_id, "recording_test")
-        plugin_status = step.status()["plugins"][0]
-        self.assertEqual(plugin_status["plugin_id"], "ledger")
-        self.assertEqual(plugin_status["implementation_id"], "recording_test")
-        self.assertEqual(step.report()["plugins"][0]["implementation_id"], "recording_test")
 
     def test_prepare_selection_constructs_a_replacement_once(self):
         _OnceMemory.constructions = 0

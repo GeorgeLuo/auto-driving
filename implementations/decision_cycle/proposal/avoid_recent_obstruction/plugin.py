@@ -23,10 +23,6 @@ from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 
-PLUGIN_ID = "avoid_recent_obstruction"
-PLUGIN_SPEC = (
-    "implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin:AvoidRecentObstruction"
-)
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
 DEFAULT_RETAINED_MAX_AGE_MS = 1000
 DEFAULT_STEER_MAGNITUDE = 1.0
@@ -178,7 +174,7 @@ def _source_ref(record: RetainedEvidence) -> SourceRef:
 
 def _inactive(source: DecisionDataSource, reason: str) -> ActionProposal:
     return ActionProposal(
-        plugin_id=PLUGIN_ID,
+        plugin_id=AvoidRecentObstruction.plugin_id,
         frame_id=source.frame_id,
         lifecycle="inactive",
         freshness="none",
@@ -204,7 +200,7 @@ def propose(
 
     if not isinstance(source, DecisionDataSource):
         return ActionProposal(
-            plugin_id=PLUGIN_ID,
+            plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id="invalid",
             lifecycle="error",
             freshness="none",
@@ -218,7 +214,7 @@ def propose(
     records = shared_memory.get(evidence_key) if shared_memory is not None else None
     if records is None:
         return ActionProposal(
-            plugin_id=PLUGIN_ID,
+            plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id=source.frame_id,
             lifecycle="missing_input",
             freshness="none",
@@ -233,7 +229,7 @@ def propose(
         isinstance(record, RetainedEvidence) for record in records
     ):
         return ActionProposal(
-            plugin_id=PLUGIN_ID,
+            plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id=source.frame_id,
             lifecycle="error",
             freshness="none",
@@ -262,7 +258,7 @@ def propose(
     if accepted_kind_records and not image_located:
         # Accepted kinds present but none image-located.
         return ActionProposal(
-            plugin_id=PLUGIN_ID,
+            plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id=source.frame_id,
             lifecycle="incompatible",
             freshness="none",
@@ -288,7 +284,7 @@ def propose(
 
     if classified and all(cls == "invalid_future" for cls, _ in classified):
         return ActionProposal(
-            plugin_id=PLUGIN_ID,
+            plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id=source.frame_id,
             lifecycle="error",
             freshness="none",
@@ -342,7 +338,7 @@ def propose(
             0.0 <= primary.confidence <= 1.0
         ):
             return ActionProposal(
-                plugin_id=PLUGIN_ID,
+                plugin_id=AvoidRecentObstruction.plugin_id,
                 frame_id=source.frame_id,
                 lifecycle="error",
                 freshness="none",
@@ -371,7 +367,7 @@ def propose(
                 caps_value = dict(caps_value)
             if not isinstance(caps_value, dict):
                 return ActionProposal(
-                    plugin_id=PLUGIN_ID,
+                    plugin_id=AvoidRecentObstruction.plugin_id,
                     frame_id=source.frame_id,
                     lifecycle="error",
                     freshness="none",
@@ -387,7 +383,7 @@ def propose(
                 max_abs = None
             if max_abs is None or not math.isfinite(max_abs) or not (0.0 < max_abs <= 1.0):
                 return ActionProposal(
-                    plugin_id=PLUGIN_ID,
+                    plugin_id=AvoidRecentObstruction.plugin_id,
                     frame_id=source.frame_id,
                     lifecycle="error",
                     freshness="none",
@@ -410,7 +406,7 @@ def propose(
             gear="forward",
         )
         return ActionProposal(
-            plugin_id=PLUGIN_ID,
+            plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id=source.frame_id,
             lifecycle=lifecycle,
             freshness=lifecycle,
@@ -428,7 +424,7 @@ def propose(
         if not math.isfinite(conf) or not (0.0 <= conf <= 1.0):
             conf = 0.0
         return ActionProposal(
-            plugin_id=PLUGIN_ID,
+            plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id=source.frame_id,
             lifecycle="stale",
             freshness="stale",
@@ -446,7 +442,7 @@ def propose(
 class AvoidRecentObstruction:
     """Proposal plugin: the module's ``propose`` bound to validated settings."""
 
-    plugin_id = PLUGIN_ID
+    plugin_id = "avoid_recent_obstruction"
 
     def __init__(
         self,

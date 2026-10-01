@@ -34,8 +34,8 @@ from .memory import (
 )
 from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
-from implementations.decision_cycle.memory.catalog import MEMORY_PLUGINS
+from autonomy.plugins import DuplicatePluginIdError
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 from implementations.decision_cycle.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     available_perception_algorithm_ids,
@@ -725,7 +725,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_replay.add_argument(
         "--plugin",
         default=None,
-        choices=sorted(MEMORY_PLUGINS),
+        metavar="PLUGIN_ID",
         help=(
             "Optional packaged memory plugin for an ephemeral offline replay "
             "without reading the staged activation."
@@ -772,7 +772,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_check.add_argument(
         "--plugin",
         default=None,
-        choices=sorted(MEMORY_PLUGINS),
+        metavar="PLUGIN_ID",
         help="Packaged memory plugin (default: bounded_evidence check bounds).",
     )
     memory_check.add_argument(
@@ -851,14 +851,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing supported images and optional ordered manifest.",
     )
     workbench_replay.add_argument(
-        "--plugin-dir",
-        default=None,
-        help=(
-            "Optional directory tree containing manifest-backed perception plugins. "
-            "Without this flag the packaged lightweight catalog is used."
-        ),
-    )
-    workbench_replay.add_argument(
         "--plugin",
         "--active-plugin",
         "--active-plugin-id",
@@ -866,9 +858,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         help=(
-            "Select one ready plugin id from --plugin-dir; repeat to select more. "
-            "Omit this option with --plugin-dir to replay raw capture without "
-            "perception overlays."
+            "Select one packaged perception plugin id; repeat to select more, in "
+            "order. Omit this option for the default lightweight selection."
         ),
     )
     workbench_replay.add_argument(
@@ -1439,7 +1430,7 @@ def build_parser() -> argparse.ArgumentParser:
             action="append",
             dest="plugins",
             default=None,
-            choices=sorted(step_plugins(step_name)),
+            metavar="PLUGIN_ID",
             help=(
                 f"Packaged {step_name} plugin to select "
                 f"(default: {', '.join(DEFAULT_STEP_PLUGINS[step_name]) or 'none'})."
@@ -1478,7 +1469,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         dest="plugins",
         default=None,
-        choices=sorted(MEMORY_PLUGINS),
+        metavar="PLUGIN_ID",
         help=(
             "Packaged memory plugin to select; repeat to select several in order "
             f"(default: {', '.join(DEFAULT_STEP_PLUGINS['memory'])})."
@@ -2128,7 +2119,7 @@ def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
 def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
     result = run_vehicle_memory_check(
         vehicle_id=args.vehicle_id,
-        implementation_id=args.plugin,
+        plugin_id=args.plugin,
         record=args.record,
         json_output=args.json,
         output=None if args.json else sys.stdout,
@@ -2165,7 +2156,6 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
 def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
-        plugin_dir=args.plugin_dir,
         active_plugin_ids=args.active_plugin_ids,
         cadence_ms=args.cadence_ms,
         pace=args.pace,
@@ -2435,4 +2425,9 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 2
-    return int(handler(args))
+    try:
+        return int(handler(args))
+    except DuplicatePluginIdError as exc:
+        # Plugins declare their own IDs; the implementations owner must resolve a clash.
+        print(f"error: {exc}", file=sys.stderr)
+        return 2

@@ -17,12 +17,10 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.plugins import DuplicatePluginIdError
 
-from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_PLUGINS,
-    MEMORY_PLUGINS,
-)
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGINS
 
 from .automation import (
     _automation_command_matches_vehicle,
@@ -115,6 +113,9 @@ def update_vehicle_memory(
     selected = list(plugins) if plugins else list(DEFAULT_MEMORY_PLUGINS)
     try:
         activation = packaged_activation("memory", selected)
+    except DuplicatePluginIdError:
+        # A packaged-catalog clash is not a bad selection; the CLI reports it.
+        raise
     except ValueError as exc:
         return CommandResult(2, str(exc))
 
@@ -145,7 +146,7 @@ def update_vehicle_memory(
         "\n".join(
             [
                 f"{verb}: {vehicle_id} -> {', '.join(selected)}",
-                *(f"Plugin: {plugin_id} ({MEMORY_PLUGINS[plugin_id]['spec']})" for plugin_id in selected),
+                *(f"Plugin: {plugin_id} ({activation.plugin_specs[plugin_id]})" for plugin_id in selected),
                 f"Activation: {display_path(activation_path)}",
             ]
         ),
@@ -279,14 +280,11 @@ def get_vehicle_memory_info(
             "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
             "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
             "plugin_id": final.plugin_id if final else None,
-            "implementation_id": (
-                _packaged_plugin_id(final.entrypoint) if final else None
-            ),
-            "implementation_spec": final.entrypoint if final else None,
-            "implementation_config": dict(final.config) if final else None,
+            "plugin_spec": final.entrypoint if final else None,
+            "plugin_config": dict(final.config) if final else None,
         },
         "description": (
-            MEMORY_PLUGINS.get(_packaged_plugin_id(final.entrypoint) or "", {}).get("description")
+            step_plugins("memory").get(final.plugin_id, {}).get("description")
             if final
             else None
         ),
@@ -346,6 +344,9 @@ def replay_vehicle_memory(
     if plugin_id is not None:
         try:
             ephemeral = packaged_activation("memory", [plugin_id])
+        except DuplicatePluginIdError:
+            # A packaged-catalog clash is not a bad selection; the CLI reports it.
+            raise
         except ValueError as exc:
             return CommandResult(2, str(exc))
         step = MemoryRunner.from_activation(ephemeral)
@@ -377,7 +378,7 @@ def replay_vehicle_memory(
                 f"Could not load memory activation {display_path(activation_path)}: {exc}",
             )
         activation_source = display_path(activation_path)
-        selected_implementation = step.status()["implementation_id"]
+        selected_implementation = step.status()["plugin_id"]
         run_a = _run_memory_sequence(step=step, frames=frames)
         if verify_twice:
             step_b = load_staged_runner(read_step_activation(activation_path, "memory"))
@@ -391,7 +392,7 @@ def replay_vehicle_memory(
         "vehicle_id": vehicle_id,
         "sequence": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
         "frame_count": len(frames),
-        "implementation_id": selected_implementation,
+        "plugin_id": selected_implementation,
         "plugin_ids": list(step.plugin_ids),
         "activation": activation_source,
         "digest": run_a["digest"],
@@ -544,7 +545,7 @@ def write_memory_replay_record(
             "created_at_ms": int(time.time() * 1000),
             "opt_in": True,
             "writes_default_history": False,
-            "implementation_id": payload.get("implementation_id"),
+            "plugin_id": payload.get("plugin_id"),
             "digest": payload.get("digest"),
             "frame_count": frame_count,
             "bounds": {
@@ -865,7 +866,7 @@ def render_memory_provenance_extract_html(
   <h1>Memory provenance extract</h1>
   <p class="meta">
     vehicle=<strong>{html.escape(vehicle_id)}</strong>
-    · implementation=<code>{html.escape(str(payload.get('implementation_id')))}</code>
+    · implementation=<code>{html.escape(str(payload.get('plugin_id')))}</code>
     · digest=<code>{html.escape(str(payload.get('digest')))}</code>
     · frames={html.escape(str(payload.get('frame_count')))}
     · final keys={html.escape(str(final.get('record_count')))}
@@ -1023,7 +1024,7 @@ def memory_state_digest(state: dict[str, Any]) -> str:
         normalized_records.append(json.loads(json.dumps(record, sort_keys=True, default=str)))
     normalized_records.sort(key=lambda item: str(item.get("record_id") or ""))
     body = {
-        "implementation_id": state.get("implementation_id"),
+        "plugin_id": state.get("plugin_id"),
         "health": state.get("health"),
         "record_count": state.get("record_count", len(normalized_records)),
         "bounds": state.get("bounds"),
@@ -1233,7 +1234,7 @@ def reset_vehicle_memory(
         return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
     lines = [
         f"Reset memory: {vehicle_id}",
-        f"Implementation: {after.get('implementation_id') or before.get('implementation_id') or '—'}",
+        f"Implementation: {after.get('plugin_id') or before.get('plugin_id') or '—'}",
         f"Epoch: {before.get('last_epoch_id') or '—'} -> {after.get('last_epoch_id') or '—'}",
         f"Keys: {before.get('last_record_count')} -> {after.get('last_record_count')}",
         f"Health: {before.get('last_health')} -> {after.get('last_health')}",
@@ -1645,8 +1646,8 @@ def _probe_physical_memory(
         "endpoint": f"{base_url}/autonomy/status",
         "drive_mode": status.get("drive_mode"),
         "has_memory": bool(control_meta.get("has_memory")),
-        "implementation_id": memory.get("implementation_id"),
-        "implementation_spec": memory.get("implementation_spec"),
+        "plugin_id": memory.get("plugin_id"),
+        "plugin_spec": memory.get("plugin_spec"),
         "activation": memory.get("activation"),
         "plugin_ids": memory.get("plugin_ids", []),
         "selected_plugin_ids": memory.get("selected_plugin_ids", []),
@@ -1748,10 +1749,10 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "vehicle_id": vehicle_id,
         "provider": "chase-sim",
         "status": "live",
-        "implementation_id": memory.get("implementation_id")
-        or status_block.get("implementation_id"),
-        "implementation_spec": memory.get("implementation_spec")
-        or status_block.get("implementation_spec"),
+        "plugin_id": memory.get("plugin_id")
+        or status_block.get("plugin_id"),
+        "plugin_spec": memory.get("plugin_spec")
+        or status_block.get("plugin_spec"),
         "activation": memory.get("activation") or status_block.get("activation"),
         "plugin_ids": status_block.get("plugin_ids", []),
         "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
@@ -1918,28 +1919,15 @@ def assess_chase_memory_worker_liveness(
     }
 
 
-def _packaged_plugin_id(entrypoint: str | None) -> str | None:
-    """Return the packaged memory plugin id for an entrypoint, without loading it."""
-
-    if not isinstance(entrypoint, str) or not entrypoint:
-        return None
-    for plugin_id, entry in MEMORY_PLUGINS.items():
-        if entry["spec"] == entrypoint:
-            return plugin_id
-    return None
-
 
 def _format_memory_info(payload: dict[str, Any]) -> str:
     activation = payload["activation"]
     bounds = activation.get("bounds") if isinstance(activation.get("bounds"), dict) else {}
     plugin_id = activation.get("plugin_id") or "none"
-    implementation_id = activation.get("implementation_id")
     lines = [f"Memory: {payload['vehicle_id']} -> {plugin_id}"]
-    if implementation_id and implementation_id != plugin_id:
-        lines.append(f"Implementation id: {implementation_id}")
     lines.extend(
         [
-            f"Implementation: {activation.get('implementation_spec', 'unknown')}",
+            f"Implementation: {activation.get('plugin_spec', 'unknown')}",
             f"Activation: {activation['path']}",
             (
                 f"Bounds: max_records={bounds.get('max_records')} "
@@ -1973,7 +1961,7 @@ def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
     if status == "live":
         lines.extend(
             [
-                f"Implementation: {live.get('implementation_id') or 'none'}",
+                f"Implementation: {live.get('plugin_id') or 'none'}",
                 f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}",
                 (
                     f"Health: {live.get('last_health') or 'unknown'} "

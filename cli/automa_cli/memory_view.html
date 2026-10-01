@@ -411,7 +411,7 @@
         memory?.record_count ?? records().length,
         memory?.bounds?.max_records ?? "",
         memory?.bounds?.max_age_ms ?? "",
-        memory?.implementation_id || "",
+        memory?.plugin_id || "",
         memory?.metadata?.claims_identity ?? false,
       ].join("\0");
       if (fingerprint === lastMetricsFingerprint) return;
@@ -429,7 +429,7 @@
           : "—"
       );
       appendMetric(ledgerMetrics, "Max age", memory?.bounds?.max_age_ms != null ? `${memory.bounds.max_age_ms} ms` : "—");
-      appendMetric(ledgerMetrics, "Implementation", memory?.implementation_id || "—");
+      appendMetric(ledgerMetrics, "Implementation", memory?.plugin_id || "—");
       appendMetric(ledgerMetrics, "Claims identity", String(memory?.metadata?.claims_identity ?? false));
     }
 

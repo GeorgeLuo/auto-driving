@@ -33,7 +33,7 @@ from .model import (
 class FloorPlanePlugin:
     """Estimate floor/traversability from the current front camera frame."""
 
-    plugin_id = "floor-plane-v0"
+    plugin_id = "floor_plane"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         description="Estimate visible floor and first-hit non-floor boundaries.",

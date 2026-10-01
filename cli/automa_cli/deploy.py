@@ -1044,11 +1044,11 @@ def inspect_physical_autonomy_runtime(
         raise RuntimeError(f"{status_url} did not report a loaded action step")
 
     memory = reported.get("memory")
-    memory_id = memory.get("implementation_id") if isinstance(memory, dict) else None
+    memory_id = memory.get("plugin_id") if isinstance(memory, dict) else None
     return {
         "status_url": status_url,
         "steps": steps,
-        "memory_implementation": memory_id if isinstance(memory_id, str) and memory_id else None,
+        "memory_plugin_id": memory_id if isinstance(memory_id, str) and memory_id else None,
         "drive_mode": payload.get("drive_mode"),
         "ok": True,
     }

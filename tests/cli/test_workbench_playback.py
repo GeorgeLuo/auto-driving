@@ -41,7 +41,7 @@ class RecordingMapper(FixtureMapper):
 
 
 class SharedMemoryProbe:
-    plugin_id = "shared-memory-probe"
+    plugin_id = "probe"
     contract = PerceptionPluginContract()
 
     def __init__(self):

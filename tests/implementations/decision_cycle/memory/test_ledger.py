@@ -31,7 +31,7 @@ class EvidenceLedgerTests(unittest.TestCase):
                 coordinate_frame="image",
                 observed_at_ms=100,
                 updated_at_ms=150,
-                source_plugin_id="floor-plane-v0",
+                source_plugin_id="floor_plane",
                 frame_id="donkey_frame_000100",
             ),
             location=ViewLocation(frame="image", zone="center", bbox_xyxy_norm=(0.4, 0.5, 0.6, 0.9)),
@@ -47,7 +47,7 @@ class EvidenceLedgerTests(unittest.TestCase):
             created_at_ms=200,
             records=(self.retained(),),
             summary=("retained_count=1",),
-            implementation_id="bounded_evidence",
+            plugin_id="bounded_evidence",
             metadata={"source": "unit-test"},
         )
 

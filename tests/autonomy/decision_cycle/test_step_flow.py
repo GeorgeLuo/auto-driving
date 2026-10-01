@@ -77,7 +77,6 @@ class DecisionStageFlowTests(unittest.TestCase):
             "plugins": [
                 {
                     "plugin_id": "test_memory",
-                    "implementation_id": "test_memory",
                     "state": {"records": [record.to_dict() for record in records]},
                 }
             ],

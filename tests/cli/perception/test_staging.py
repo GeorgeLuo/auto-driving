@@ -120,11 +120,11 @@ class PerceptionCommandTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [plugin["implementation_id"] for plugin in chain],
+            [plugin["plugin_id"] for plugin in chain],
             [
-                "frame-observation-v0",
-                "floor-plane-v0",
-                "motion-tracks-v0",
+                "frame",
+                "floor_plane",
+                "motion_tracks",
             ],
         )
         self.assertIn(
@@ -132,8 +132,7 @@ class PerceptionCommandTests(unittest.TestCase):
         )
         self.assertIn("Plugins:", text_result.stdout)
         self.assertIn(
-            "frame [stateless] components=camera.rgb:front_camera "
-            "implementation=frame-observation-v0",
+            "frame [stateless] components=camera.rgb:front_camera",
             text_result.stdout,
         )
 

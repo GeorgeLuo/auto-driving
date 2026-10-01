@@ -151,11 +151,32 @@ def step_activation_path(runtime_root: Path, step: str) -> Path:
     return Path(runtime_root) / require_step(step) / ACTIVATION_FILENAME
 
 
+def load_activation_json(text: str) -> Any:
+    """Parse an activation document, refusing a key repeated in one object.
+
+    ``json.loads`` keeps the last of repeated keys, so a plugin ID listed twice
+    in ``plugin_specs`` or ``plugin_configs`` would silently lose a definition.
+    """
+
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"activation repeats key {key!r}")
+            result[key] = value
+        return result
+
+    return json.loads(text, object_pairs_hook=unique)
+
+
 def read_step_activation(path: Path, step: str | None = None) -> StepActivation:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"{step or 'step'} activation is missing: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = load_activation_json(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise ValueError(f"{exc}: {path}") from exc
     return step_activation_from_payload(payload, step=step, source_path=path)
 
 

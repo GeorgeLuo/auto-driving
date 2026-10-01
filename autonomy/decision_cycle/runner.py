@@ -192,7 +192,6 @@ class StepRunner(Generic[PluginT]):
             records = [
                 {
                     "plugin_id": definition.plugin_id,
-                    "implementation_id": getattr(plugin, "plugin_id", None),
                     "duration_ms": None,
                     "error": self.last_error,
                 }

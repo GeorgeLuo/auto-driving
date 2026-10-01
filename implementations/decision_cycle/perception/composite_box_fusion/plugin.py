@@ -70,7 +70,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
     measurements and cannot create a standalone object cluster.
     """
 
-    plugin_id = "composite-box-fusion-v1"
+    plugin_id = "composite_box_fusion"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="stateless",

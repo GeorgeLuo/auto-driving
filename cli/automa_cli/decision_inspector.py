@@ -11,7 +11,7 @@ from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from autonomy.serialization import canonical_json_utf8
-from autonomy.decision_cycle.action.hold import PLUGIN_ID as HOLD_PLUGIN_ID
+from autonomy.decision_cycle.action.hold import HoldAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
@@ -69,14 +69,14 @@ def inspect_decision_sequence(
         raise ValueError("Sequence vehicle_id does not match --id.")
     frame = _normalize_apply_frames([frames[frame_index]], vehicle_id=vehicle_id or "offline")[0]
     steps = {
-        step: packaged_activation(step, [HOLD_PLUGIN_ID] if step == "action" else None).to_payload()
+        step: packaged_activation(step, [HoldAction.plugin_id] if step == "action" else None).to_payload()
         for step in DECISION_STEPS
     }
     if vehicle_id:
         bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
         steps = _read_surface_identity(bundle, vehicle_id=vehicle_id)["steps"]
-        if (steps.get("action") or {}).get("plugins") != [HOLD_PLUGIN_ID]:
-            raise ValueError(f"Inspector requires the {HOLD_PLUGIN_ID!r} action plugin.")
+        if (steps.get("action") or {}).get("plugins") != [HoldAction.plugin_id]:
+            raise ValueError(f"Inspector requires the {HoldAction.plugin_id!r} action plugin.")
     activations = activations_from_payloads(steps)
     # Recorded retained evidence is what memory had published in shared memory.
     if frame["evidence"] is None:

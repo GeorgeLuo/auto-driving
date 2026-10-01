@@ -10,5 +10,5 @@ def memory_report(state: dict[str, Any], *, plugin_id: str = "bounded_evidence")
 
     return {
         "schema": "memory_report_v0",
-        "plugins": [{"plugin_id": plugin_id, "implementation_id": plugin_id, "state": state}],
+        "plugins": [{"plugin_id": plugin_id, "state": state}],
     }

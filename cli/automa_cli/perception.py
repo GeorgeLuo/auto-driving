@@ -10,6 +10,7 @@ from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import (
+    load_activation_json,
     step_activation_from_payload,
     write_step_activation,
 )
@@ -905,8 +906,8 @@ def _read_manifest(path: Path) -> dict[str, Any]:
     """The staged perception activation payload; raises ValueError when invalid."""
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        payload = load_activation_json(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
         raise ValueError(f"Could not parse perception activation {display_path(path)}: {exc}") from exc
     return step_activation_from_payload(payload, step="perception", source_path=path).to_payload()
 
@@ -1061,16 +1062,10 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
                 else "none"
             )
             catalog_id = plugin.get("plugin_id", "unknown")
-            implementation_id = plugin.get("implementation_id")
-            implementation_text = (
-                f" implementation={implementation_id}"
-                if implementation_id and implementation_id != catalog_id
-                else ""
-            )
             lines.append(
                 f"- {catalog_id} "
                 f"[{contract.get('state_mode', 'unknown')}] "
-                f"components={component_text}{implementation_text}"
+                f"components={component_text}"
             )
 
     output_schema = schema.get("output") if isinstance(schema.get("output"), dict) else {}

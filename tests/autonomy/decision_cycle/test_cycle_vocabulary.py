@@ -80,7 +80,7 @@ class CycleVocabularyTests(unittest.TestCase):
         self.assertEqual(ACTION_PROPOSAL_SCHEMA, "action_proposal_v0")
         self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v1")
         self.assertEqual(DEFAULT_PERCEPTION_ALGORITHM, "lightweight_observer")
-        self.assertEqual(FrameObservationPlugin.plugin_id, "frame-observation-v0")
+        self.assertEqual(FrameObservationPlugin.plugin_id, "frame")
 
         self.assertIn("evidence", DecisionDataSource.__dataclass_fields__)
         self.assertIn("observation", DecisionDataSource.__dataclass_fields__)

@@ -15,11 +15,8 @@ from urllib.request import urlopen
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
-from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_PLUGIN,
-    MEMORY_PLUGINS,
-)
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
 
 from implementations.vehicle.chase_sim.frame_identity import (
     coerce_simulator_frame_index,
@@ -81,7 +78,7 @@ def memory_check_output_root() -> Path:
 def run_vehicle_memory_check(
     *,
     vehicle_id: str,
-    implementation_id: str | None = None,
+    plugin_id: str | None = None,
     record: bool = False,
     json_output: bool = False,
     output: TextIO | None = None,
@@ -128,7 +125,7 @@ def run_vehicle_memory_check(
         return run_physical_memory_check(
             vehicle_id=vehicle_id,
             vehicle=vehicle or {},
-            implementation_id=implementation_id,
+            plugin_id=plugin_id,
             record=record,
             json_output=json_output,
             output=output,
@@ -152,7 +149,7 @@ def run_vehicle_memory_check(
         if automation_ready:
             return run_chase_reference_memory_check(
                 vehicle_id=vehicle_id,
-                implementation_id=implementation_id,
+                plugin_id=plugin_id,
                 record=record,
                 json_output=json_output,
                 output=output,
@@ -171,7 +168,7 @@ def run_vehicle_memory_check(
         return run_offline_memory_check(
             vehicle_id=vehicle_id,
             provider="chase-sim",
-            implementation_id=implementation_id,
+            plugin_id=plugin_id,
             record=record,
             json_output=json_output,
             output=output,
@@ -186,7 +183,7 @@ def run_vehicle_memory_check(
     return run_offline_memory_check(
         vehicle_id=vehicle_id,
         provider=provider or "offline",
-        implementation_id=implementation_id,
+        plugin_id=plugin_id,
         record=record,
         json_output=json_output,
         output=output,
@@ -212,7 +209,7 @@ def _chase_automation_worker_running(vehicle_id: str) -> bool:
 def run_chase_reference_memory_check(
     *,
     vehicle_id: str,
-    implementation_id: str | None = None,
+    plugin_id: str | None = None,
     record: bool = False,
     json_output: bool = False,
     output: TextIO | None = None,
@@ -235,7 +232,7 @@ def run_chase_reference_memory_check(
     observation or memory inputs.
     """
 
-    selected = implementation_id or DEFAULT_MEMORY_PLUGIN
+    selected = plugin_id or DEFAULT_MEMORY_PLUGIN
     automation_dir = _automation_dir(vehicle_id)
     latest_json_path = automation_dir / "latest_perception.json"
     state_path = automation_dir / "state.json"
@@ -505,7 +502,7 @@ def run_chase_reference_memory_check(
             "schema": MEMORY_CHECK_RESULT_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
-            "implementation_id": selected,
+            "plugin_id": selected,
             "activation": probe.get("activation") or "live_automation_worker",
             "passed": False,
             "phases": [item["phase"] for item in phase_results],
@@ -759,7 +756,7 @@ def run_chase_reference_memory_check(
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": "chase-sim",
-        "implementation_id": selected,
+        "plugin_id": selected,
         "activation": probe.get("activation") or "live_automation_worker",
         "passed": passed,
         "phases": [item["phase"] for item in phase_results],
@@ -1312,7 +1309,7 @@ def run_offline_memory_check(
     *,
     vehicle_id: str,
     provider: str = "offline",
-    implementation_id: str | None = None,
+    plugin_id: str | None = None,
     record: bool = False,
     json_output: bool = False,
     output: TextIO | None = None,
@@ -1323,8 +1320,8 @@ def run_offline_memory_check(
 ) -> CommandResult:
     """Run lifecycle gates from a phase script (offline / non-host unit path)."""
 
-    selected = implementation_id or DEFAULT_MEMORY_PLUGIN
-    known = tuple(sorted(MEMORY_PLUGINS))
+    selected = plugin_id or DEFAULT_MEMORY_PLUGIN
+    known = tuple(sorted(step_plugins("memory")))
     if selected not in known:
         available = ", ".join(known) or "(none)"
         return CommandResult(
@@ -1335,8 +1332,8 @@ def run_offline_memory_check(
     try:
         step, activation_source = _load_check_step(
             vehicle_id=vehicle_id,
-            implementation_id=selected,
-            force_ephemeral=implementation_id is not None,
+            plugin_id=selected,
+            force_ephemeral=plugin_id is not None,
         )
     except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError, OSError) as exc:
         return CommandResult(2, f"Could not load memory for check: {exc}")
@@ -1438,7 +1435,7 @@ def run_offline_memory_check(
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": provider,
-        "implementation_id": selected,
+        "plugin_id": selected,
         "activation": activation_source,
         "passed": passed,
         "phases": ["present", "dropout", "expiry", "reset"],
@@ -1495,7 +1492,7 @@ def run_physical_memory_check(
     *,
     vehicle_id: str,
     vehicle: dict[str, Any],
-    implementation_id: str | None = None,
+    plugin_id: str | None = None,
     record: bool = False,
     json_output: bool = False,
     output: TextIO | None = None,
@@ -1519,7 +1516,7 @@ def run_physical_memory_check(
     onboard reset endpoint and requires an epoch/reset-count transition.
     """
 
-    del implementation_id  # Pi path validates the activated onboard step only.
+    del plugin_id  # Pi path validates the activated onboard step only.
     base_url = picar_base_url(vehicle)
     if not base_url:
         return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
@@ -1557,7 +1554,7 @@ def run_physical_memory_check(
     present_keys: set[str] = set()
     prior_epoch: str | None = None
     prior_reset_count: int | None = None
-    implementation_id_live: str | None = None
+    plugin_id_live: str | None = None
     max_age_ms: int | None = None
 
     def capture(placement: str, index: int, message: str) -> dict[str, Any] | CommandResult:
@@ -1667,9 +1664,9 @@ def run_physical_memory_check(
         return present_cap
     all_frames.append(present_cap["frame"])
     present_mem = present_cap["live_memory"]
-    implementation_id_live = (
-        str(present_mem.get("implementation_id"))
-        if present_mem.get("implementation_id") is not None
+    plugin_id_live = (
+        str(present_mem.get("plugin_id"))
+        if present_mem.get("plugin_id") is not None
         else None
     )
     bounds = present_mem.get("bounds") if isinstance(present_mem.get("bounds"), dict) else {}
@@ -1852,7 +1849,7 @@ def run_physical_memory_check(
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": "picar",
-        "implementation_id": implementation_id_live,
+        "plugin_id": plugin_id_live,
         "activation": "live_onboard",
         "passed": passed,
         "phases": ["present", "dropout", "expiry", "reset"],
@@ -1889,7 +1886,7 @@ def run_physical_memory_check(
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
     lines = [
         f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
-        f"Implementation: {implementation_id_live or 'live_onboard'}",
+        f"Implementation: {plugin_id_live or 'live_onboard'}",
         "Lifecycle source: live onboard step",
         "Phases: "
         + ", ".join(
@@ -1937,7 +1934,7 @@ def live_memory_from_probe(probe: dict[str, Any]) -> dict[str, Any] | None:
         "record_count": record_count,
         "records": records,
         "epoch_id": probe.get("last_epoch_id"),
-        "implementation_id": probe.get("implementation_id"),
+        "plugin_id": probe.get("plugin_id"),
         "bounds": probe.get("bounds"),
     }
 
@@ -2398,7 +2395,7 @@ def build_default_memory_check_phases() -> list[dict[str, Any]]:
             "zone": "center",
             "bbox_xyxy_norm": [0.35, 0.45, 0.65, 0.95],
         },
-        "source_plugin_id": "floor-plane-v0",
+        "source_plugin_id": "floor_plane",
     }
     floor_signal = {
         "signal_id": "floor_visible",
@@ -2603,7 +2600,7 @@ def write_memory_check_record(
             for item in phase_results
         ]
     extract_payload = {
-        "implementation_id": report.get("implementation_id"),
+        "plugin_id": report.get("plugin_id"),
         "digest": memory_state_digest(present_state) if present_state else "",
         "frame_count": len(all_frames),
         "final": present_state,
@@ -2673,7 +2670,7 @@ def write_memory_check_record(
         "opt_in": True,
         "writes_default_history": False,
         "passed": report.get("passed"),
-        "implementation_id": report.get("implementation_id"),
+        "plugin_id": report.get("plugin_id"),
         "bounds": {
             "artifacts": artifacts,
             "includes_raw_camera_images": bool(image_paths),
@@ -2765,7 +2762,7 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
 def _load_check_step(
     *,
     vehicle_id: str,
-    implementation_id: str,
+    plugin_id: str,
     force_ephemeral: bool,
 ) -> tuple[MemoryRunner, str]:
     # Check uses fixed short max_age so expiry is deterministic offline.
@@ -2774,9 +2771,9 @@ def _load_check_step(
     step = MemoryRunner.from_activation(
         packaged_activation(
             "memory",
-            [implementation_id],
+            [plugin_id],
             config_overrides={
-                implementation_id: {
+                plugin_id: {
                     "max_records": CHECK_MAX_RECORDS,
                     "max_age_ms": CHECK_MAX_AGE_MS,
                     "eviction_policy": "oldest_first",
@@ -2784,7 +2781,7 @@ def _load_check_step(
             },
         )
     )
-    return step, f"ephemeral-check:{implementation_id}(max_age_ms={CHECK_MAX_AGE_MS})"
+    return step, f"ephemeral-check:{plugin_id}(max_age_ms={CHECK_MAX_AGE_MS})"
 
 
 def _feed_frames(

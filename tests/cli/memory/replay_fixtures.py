@@ -13,14 +13,14 @@ class MemoryReplayFixture:
             "schema": "vehicle_memory_replay_v0",
             "vehicle_id": "chase-sim-chaser",
             "frame_count": len(frames),
-            "implementation_id": "bounded_evidence",
+            "plugin_id": "bounded_evidence",
             "digest": "abc",
             "final": {
                 "health": "healthy",
                 "record_count": 1,
                 "records": [
                     {
-                        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000",
+                        "record_id": "thing:1:11:floor_plane:18:floor_boundary_000",
                         "kind": "floor_boundary",
                         "label": "boundary",
                         "confidence": 0.9,

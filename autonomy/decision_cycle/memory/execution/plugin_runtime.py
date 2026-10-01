@@ -40,8 +40,7 @@ class MemoryPluginRuntime:
             raise TypeError(
                 f"memory plugin {definition.entrypoint} does not satisfy MemoryPlugin"
             )
-        # The plugin's declared ID; the report calls it implementation_id.
-        self.implementation_id = require_plugin_id(self.implementation, definition)
+        require_plugin_id(self.implementation, definition)
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
         self.update_count = 0
@@ -94,8 +93,7 @@ class MemoryPluginRuntime:
     def status(self) -> dict[str, Any]:
         return {
             "plugin_id": self.plugin_id,
-            "implementation_id": self.implementation_id,
-            "implementation_spec": self.definition.entrypoint,
+            "plugin_spec": self.definition.entrypoint,
             "activation": str(self.source_path) if self.source_path is not None else None,
             "update_count": self.update_count,
             "reset_count": self.reset_count,

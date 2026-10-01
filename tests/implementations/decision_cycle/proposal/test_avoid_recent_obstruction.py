@@ -9,7 +9,6 @@ from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEv
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
-    PLUGIN_ID,
     AvoidRecentObstruction,
     propose as _propose,
 )
@@ -385,7 +384,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
 
     def test_loaded_plugin_matches_propose(self) -> None:
         plugin = AvoidRecentObstruction(steer_magnitude=0.5)
-        self.assertEqual(plugin.plugin_id, PLUGIN_ID)
+        self.assertEqual(plugin.plugin_id, "avoid_recent_obstruction")
         inputs = _source((_record(zone="left"),))
         self.assertEqual(
             plugin.propose(*inputs).to_dict(),

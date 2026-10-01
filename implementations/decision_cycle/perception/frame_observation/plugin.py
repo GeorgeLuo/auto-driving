@@ -22,7 +22,7 @@ class FrameObservationPlugin:
     evidence into an ``Observation``.
     """
 
-    plugin_id = "frame-observation-v0"
+    plugin_id = "frame"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         description="Report normalized frame dimensions and basic light statistics.",

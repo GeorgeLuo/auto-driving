@@ -26,6 +26,7 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 from autonomy.decision_cycle.steps import builtin_activation, step_runner
+from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     packaged_activation,
@@ -198,6 +199,9 @@ def update_vehicle_step(
         activation = packaged_activation(step, plugins)
         # Construct the runner once so a selection that cannot load is never staged.
         step_runner(activation)
+    except DuplicatePluginIdError:
+        # A packaged-catalog clash is not a bad selection; the CLI reports it.
+        raise
     except (TypeError, ValueError) as exc:
         message = f"Cannot stage {step} plugins: {exc}"
         if json_output:

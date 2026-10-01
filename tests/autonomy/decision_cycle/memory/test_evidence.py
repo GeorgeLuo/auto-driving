@@ -19,7 +19,7 @@ class RetainedEvidenceTests(unittest.TestCase):
             coordinate_frame="image",
             observed_at_ms=100,
             updated_at_ms=150,
-            source_plugin_id="floor-plane-v0",
+            source_plugin_id="floor_plane",
             frame_id="donkey_frame_000100",
         )
 

@@ -26,7 +26,7 @@ from implementations.decision_cycle.perception.components.camera import (
 class ClassicalRegionPlugin:
     """Generate generic coherent-color regions with core OpenCV operations."""
 
-    plugin_id = "classical-regions-v0"
+    plugin_id = "classical_regions"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
         description="Generate coherent-color region proposals with OpenCV.",

@@ -35,7 +35,7 @@ def _always_on_things_signals(*, with_boundary: bool) -> tuple[list[dict], list[
                     "zone": "center",
                     "bbox_xyxy_norm": [0.3, 0.4, 0.7, 0.95],
                 },
-                "source_plugin_id": "floor-plane-v0",
+                "source_plugin_id": "floor_plane",
             }
         )
     signals = [
@@ -129,7 +129,7 @@ def _live_publication(
             "record_count": len(memory_records),
             "records": memory_records,
             "epoch_id": epoch_id,
-            "implementation_id": "bounded_evidence",
+            "plugin_id": "bounded_evidence",
             "bounds": {
                 "max_records": 32,
                 "max_age_ms": max_age_ms,

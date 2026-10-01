@@ -10,6 +10,7 @@ from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import (
+    load_activation_json,
     step_activation_from_payload,
     write_step_activation,
 )
@@ -905,8 +906,8 @@ def _read_manifest(path: Path) -> dict[str, Any]:
     """The staged perception activation payload; raises ValueError when invalid."""
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        payload = load_activation_json(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
         raise ValueError(f"Could not parse perception activation {display_path(path)}: {exc}") from exc
     return step_activation_from_payload(payload, step="perception", source_path=path).to_payload()
 

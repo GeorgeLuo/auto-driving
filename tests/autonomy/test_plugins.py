@@ -4,10 +4,13 @@ import unittest
 from typing import Any
 
 from autonomy.plugins import (
+    DuplicatePluginIdError,
     LocalPluginCatalog,
     PluginDefinition,
+    PluginManagementError,
     PluginManager,
     PluginSelectionRuntime,
+    declared_plugin_id,
     plugin_report,
     replace_selection,
 )
@@ -22,6 +25,14 @@ def _definition(plugin_id: str, **overrides: Any) -> PluginDefinition:
     }
     payload.update(overrides)
     return PluginDefinition(**payload)
+
+
+class _Declared:
+    plugin_id = "declared"
+
+
+class _Undeclared:
+    pass
 
 
 class PluginCatalogTests(unittest.TestCase):
@@ -41,6 +52,21 @@ class PluginCatalogTests(unittest.TestCase):
         self.assertEqual(manager.available, (first, second, third))
         manager.add("third")
         self.assertEqual(manager.selected, (third,))
+
+    def test_a_second_definition_under_one_id_is_refused(self) -> None:
+        resolver = LocalPluginCatalog((_definition("first"),))
+        for duplicate in (_definition("first"), _definition("first", entrypoint="other:Plugin")):
+            with self.subTest(entrypoint=duplicate.entrypoint):
+                with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate memory plugin id 'first'"):
+                    resolver.register(duplicate)
+        resolver.register(_definition("first", step="perception"))
+
+    def test_declared_id_is_read_from_the_plugin_class(self) -> None:
+        self.assertEqual(declared_plugin_id(f"{__name__}:_Declared"), "declared")
+        with self.assertRaisesRegex(PluginManagementError, "does not declare a plugin_id"):
+            declared_plugin_id(f"{__name__}:_Undeclared")
+        definition = PluginDefinition.declared("memory", f"{__name__}:_Declared", {"a": 1})
+        self.assertEqual((definition.plugin_id, dict(definition.config)), ("declared", {"a": 1}))
 
 
 class ReplaceSelectionTests(unittest.TestCase):

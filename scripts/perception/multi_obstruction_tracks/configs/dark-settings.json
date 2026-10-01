@@ -1,7 +1,7 @@
 {
   "profile": "dark-settings",
   "schema": "automa_lab_perception_parameter_profile_v0",
-  "candidate": "multi_obstruction_tracks",
+  "plugin_id": "multi_obstruction_tracks",
   "purpose": "Shared-plugin parameter profile for the darker 22-frame PiCar capture.",
   "source_code_changed": true,
   "implementation_revision": "revised-shared-detector-v2",

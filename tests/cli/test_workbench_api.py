@@ -7,7 +7,6 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from cli.automa_cli.workbench import WorkbenchServer
 from tests.cli.workbench_fixtures import (
-    PluginCatalogFixture,
     FixtureMapper,
     ImageReplayRunner,
     _wait_until,
@@ -18,7 +17,7 @@ from tests.cli.workbench_fixtures import (
 )
 
 
-class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
+class WorkbenchTests(unittest.TestCase):
     def test_loopback_api_accepts_realtime_pace_selection(self) -> None:
         with image_source(2) as root:
             write_manifest(root, {
@@ -60,21 +59,10 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             runner = ImageReplayRunner(cadence_ms=0)
             base = serve_workbench(self, runner)
 
-            plugin_root = str(self.plugin_root.resolve())
-
             post = partial(post_action, base, timeout=2)
 
-            inspected = post({"action": "refresh_plugins", "plugin_dir": plugin_root})
-            catalog = inspected["state"]["plugin_catalog"]
-            self.assertEqual(
-                [item["id"] for item in catalog["plugins"]],
-                [
-                    "classical_regions",
-                    "fastsam",
-                    "floor_continuity",
-                    "floor_continuity_capture",
-                ],
-            )
+            catalog = runner.state()["plugin_catalog"]
+            self.assertIn("classical_regions", [item["id"] for item in catalog["plugins"]])
             raw_selected = post({"action": "select_plugins", "active_plugin_ids": []})
             self.assertEqual(raw_selected["state"]["active_plugin_ids"], [])
             raw_started = post(
@@ -82,7 +70,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "plugin_dir": plugin_root,
                     "active_plugin_ids": [],
                 }
             )
@@ -107,7 +94,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "plugin_dir": plugin_root,
                     "active_plugin_ids": ["classical_regions"],
                 }
             )
@@ -126,11 +112,8 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         with image_source(3) as root:
             runner = ImageReplayRunner(cadence_ms=30000)
             base = serve_workbench(self, runner)
-            plugin_root = str(self.plugin_root.resolve())
-
             post = partial(post_action, base, timeout=10)
 
-            post({"action": "refresh_plugins", "plugin_dir": plugin_root})
             post(
                 {
                     "action": "select_plugins",
@@ -141,7 +124,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 {
                     "action": "start",
                     "source_dir": str(root),
-                    "plugin_dir": plugin_root,
                     "active_plugin_ids": ["classical_regions"],
                     "cadence_ms": 30000,
                 }
@@ -174,7 +156,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
-                plugin_dir=self.plugin_root,
                 cadence_ms=30000,
             )
             runner.dispatch(

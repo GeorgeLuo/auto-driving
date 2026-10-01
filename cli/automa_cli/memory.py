@@ -17,12 +17,10 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.plugins import DuplicatePluginIdError
 
-from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_PLUGINS,
-    MEMORY_PLUGINS,
-)
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGINS
 
 from .automation import (
     _automation_command_matches_vehicle,
@@ -115,6 +113,9 @@ def update_vehicle_memory(
     selected = list(plugins) if plugins else list(DEFAULT_MEMORY_PLUGINS)
     try:
         activation = packaged_activation("memory", selected)
+    except DuplicatePluginIdError:
+        # A packaged-catalog clash is not a bad selection; the CLI reports it.
+        raise
     except ValueError as exc:
         return CommandResult(2, str(exc))
 
@@ -145,7 +146,7 @@ def update_vehicle_memory(
         "\n".join(
             [
                 f"{verb}: {vehicle_id} -> {', '.join(selected)}",
-                *(f"Plugin: {plugin_id} ({MEMORY_PLUGINS[plugin_id]['spec']})" for plugin_id in selected),
+                *(f"Plugin: {plugin_id} ({activation.plugin_specs[plugin_id]})" for plugin_id in selected),
                 f"Activation: {display_path(activation_path)}",
             ]
         ),
@@ -283,7 +284,7 @@ def get_vehicle_memory_info(
             "plugin_config": dict(final.config) if final else None,
         },
         "description": (
-            MEMORY_PLUGINS.get(final.plugin_id, {}).get("description")
+            step_plugins("memory").get(final.plugin_id, {}).get("description")
             if final
             else None
         ),
@@ -343,6 +344,9 @@ def replay_vehicle_memory(
     if plugin_id is not None:
         try:
             ephemeral = packaged_activation("memory", [plugin_id])
+        except DuplicatePluginIdError:
+            # A packaged-catalog clash is not a bad selection; the CLI reports it.
+            raise
         except ValueError as exc:
             return CommandResult(2, str(exc))
         step = MemoryRunner.from_activation(ephemeral)

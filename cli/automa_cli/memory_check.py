@@ -15,11 +15,8 @@ from urllib.request import urlopen
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
-from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_PLUGIN,
-    MEMORY_PLUGINS,
-)
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
 
 from implementations.vehicle.chase_sim.frame_identity import (
     coerce_simulator_frame_index,
@@ -1324,7 +1321,7 @@ def run_offline_memory_check(
     """Run lifecycle gates from a phase script (offline / non-host unit path)."""
 
     selected = plugin_id or DEFAULT_MEMORY_PLUGIN
-    known = tuple(sorted(MEMORY_PLUGINS))
+    known = tuple(sorted(step_plugins("memory")))
     if selected not in known:
         available = ", ".join(known) or "(none)"
         return CommandResult(

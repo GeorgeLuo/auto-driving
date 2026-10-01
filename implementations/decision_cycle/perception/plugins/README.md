@@ -18,5 +18,5 @@ plugin lives in `plugins/frame/`.
 - Reuse goes through `../shared/`. Subclassing another plugin's public class
   is allowed. Importing another plugin's private names is not.
 - Variants of a plugin, such as `floor_continuity_temporal`, get their own
-  folder. Pruning them is the implementations maintainer's call.
+  folder.
 - A `cache/` folder inside a plugin folder is ignored by git.

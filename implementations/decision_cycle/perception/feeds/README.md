@@ -18,6 +18,3 @@ turns a camera reading into a `CameraFrame`.
    `PerceptionPluginInput`, and the provider function.
 2. Plugins declare that input in their `inputs`.
 3. Add a test next to `tests/implementations/decision_cycle/perception/test_camera_feed.py`.
-
-The core contract in `autonomy/decision_cycle/perception/components/` still
-calls these components.

@@ -13,10 +13,7 @@ from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
 from implementations.decision_cycle.catalog import perception_preset_activation
-from cli.automa_cli.perception_evaluation import (
-    evaluate_perception_frames,
-    write_review_html,
-)
+from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
     _source_image_paths,
     apply_perception_experiment,
@@ -52,52 +49,6 @@ class FakeFrameCar:
 
 
 class PerceptionRunTests(unittest.TestCase):
-    def test_recorded_review_escapes_untrusted_frame_and_run_names(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            frames = []
-            for index in range(2):
-                source = root / f"source_{index}.png"
-                overlay = root / f"overlay_{index}.png"
-                Image.new("RGB", (48, 32), (25 + index, 35, 45)).save(source)
-                Image.new("RGB", (48, 32), (45, 35 + index, 25)).save(overlay)
-                frames.append(
-                    {
-                        "frame_id": f"frame_00000{index}<unsafe>",
-                        "image_path": str(source),
-                        "status": "ok",
-                        "thing_count": 1,
-                        "duration_ms": 4.5,
-                        "perception": {
-                            "artifacts": {
-                                "floor/overlay": str(overlay),
-                                "floor/summary": str(root / "summary.json"),
-                            }
-                        },
-                    }
-                )
-            report = {
-                "run_id": 'review"><script>alert(1)</script>',
-                "mapper": {"preset": "lightweight_observer"},
-                "summary": {
-                    "frames": 2,
-                    "failed_frames": 0,
-                    "latency_ms": {"steady_median": 4.5},
-                    "memory_mb": {"peak_rss": 12.0},
-                    "representation_health": {
-                        "score": 1.0,
-                        "interpretation": "Representation only.",
-                    },
-                },
-                "frames": frames,
-            }
-
-            path = write_review_html(root, report)
-            page = path.read_text(encoding="utf-8")
-
-        self.assertIn("frame_000000&lt;unsafe&gt;", page)
-        self.assertNotIn("<script>alert(1)</script>", page)
-
     def test_apply_runs_selected_catalog_plugins_on_one_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "single.jpg"

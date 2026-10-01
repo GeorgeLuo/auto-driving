@@ -54,7 +54,6 @@ from .perception_runs import (
 from .workbench import run_workbench_replay
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
-from .physical_check import run_physical_perception_check
 from .physical_viability import run_physical_viability_measurement
 from .streaming import stream_vehicle_perception
 from .vehicles import (
@@ -1074,62 +1073,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable experiment report.",
     )
     perception_apply.set_defaults(handler=_handle_vehicles_perception_apply)
-
-    perception_check = perception_commands.add_parser(
-        "check",
-        help="Run a guided stationary physical perception placement check.",
-        description=(
-            "Prompt for clear/left/center/right/removed placements by default, "
-            "capture onboard latest observation for each, score generic floor-boundary "
-            "behavior, and never command movement. Use --record to keep frames and a review page. "
-            "Re-score a recorded run with --from-run."
-        ),
-    )
-    perception_check.add_argument(
-        "--id",
-        dest="vehicle_id",
-        default=None,
-        help="Physical vehicle id from `automa vehicles active` (picar only). Required unless --from-run.",
-    )
-    perception_check.add_argument(
-        "--from-run",
-        type=Path,
-        default=None,
-        help="Re-score an existing recorded check directory (uses saved publications/frames).",
-    )
-    perception_check.add_argument(
-        "--record",
-        action="store_true",
-        help="Persist frames, publications, scores, and a local review.html page.",
-    )
-    perception_check.add_argument(
-        "--auto",
-        action="store_true",
-        help="Skip interactive placement prompts (for scripted/tests; still waits for fresh onboard results).",
-    )
-    perception_check.add_argument(
-        "--steps",
-        default=None,
-        help="Comma-separated placements (default: clear,left,center,right,removed). Add unavailable only if needed.",
-    )
-    perception_check.add_argument(
-        "--timeout-s",
-        type=float,
-        default=3.0,
-        help="HTTP request timeout in seconds (default: 3).",
-    )
-    perception_check.add_argument(
-        "--fresh-timeout-s",
-        type=float,
-        default=12.0,
-        help="How long to wait for a fresh onboard result after each placement (default: 12).",
-    )
-    perception_check.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable check report.",
-    )
-    perception_check.set_defaults(handler=_handle_vehicles_perception_check)
 
     perception_viability = perception_commands.add_parser(
         "viability",
@@ -2292,35 +2235,6 @@ def _handle_vehicles_perception_apply(args: argparse.Namespace) -> int:
     if result.message:
         print(result.message)
     return result.exit_code
-
-
-def _handle_vehicles_perception_check(args: argparse.Namespace) -> int:
-    steps = None
-    if args.steps:
-        steps = tuple(part.strip() for part in str(args.steps).split(",") if part.strip())
-    if args.from_run is None and not args.vehicle_id:
-        print("perception check requires --id <vehicle> or --from-run <dir>")
-        return 2
-    try:
-        result = run_physical_perception_check(
-            vehicle_id=args.vehicle_id or "unknown",
-            timeout_s=args.timeout_s,
-            fresh_timeout_s=args.fresh_timeout_s,
-            record=args.record,
-            auto=args.auto,
-            steps=steps,
-            from_run=args.from_run,
-            json_output=args.json,
-            output=None if args.json else sys.stdout,
-        )
-    except ValueError as exc:
-        print(str(exc))
-        return 2
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 
 
 def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:

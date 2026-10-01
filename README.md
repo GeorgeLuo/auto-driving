@@ -121,7 +121,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
 | `vehicles memory replay` | Offline: feeds a fixed observation sequence through staged (or ephemeral) memory and reports a stable end-state digest. Writes no history by default; pass `--record` for a bounded provenance extract under `lab/runs/memory-replay/`. |
 | `vehicles memory check` | Lifecycle gates: present retention, dropout survival, max-age expiry, and reset (no movement). Chase/offline uses a phase script; PiCar samples live publications with placement prompts. Optional `--record` writes report + extract (and Pi JPEGs) under `lab/runs/memory-check/`. |
-| `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed by default); never moves the car. Use `--record` for review artifacts. |
 | `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory step; if activation is present but the step is missing, update core (manage.py harness) then re-run autonomy. |
@@ -244,19 +243,8 @@ their default configs from `implementations/decision_cycle/perception/catalog.py
 `--preset` selects a named preset from
 `implementations/decision_cycle/perception/presets.py`.
 
-Guided stationary physical placement check (PiCar only; never commands movement):
-
-```sh
-./cli/automa vehicles perception check --id piracer --record
-```
-
-Results land under `lab/runs/perception-check/<run-id>/` with `review.html` when `--record` is set.
-Recorded perception experiment reviews provide source, processed, and combined
-view modes plus play/pause and frame scrubbing; the review remains a local,
-dependency-free HTML artifact alongside its recorded images.
-
-No captures or reports are retained by default. Add `--record` when overlays,
-per-frame JSON, and the generated review page are wanted.
+No captures or reports are retained by default. Add `--record` when overlays
+and per-frame JSON are wanted.
 
 For a physical vehicle, `vehicles perception run --id piracer` currently fetches
 Pi camera frames and runs perception on them on the development machine.

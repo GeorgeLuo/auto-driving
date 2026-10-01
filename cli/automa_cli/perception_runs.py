@@ -17,7 +17,7 @@ from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorReading, SensorSnapshot
 
 from .paths import ROOT, display_path, safe_path_part
-from .perception_evaluation import evaluate_perception_frames, write_review_html
+from .perception_evaluation import evaluate_perception_frames
 from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
     PERCEPTION_PRESETS,
@@ -489,8 +489,6 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 def _write_report(run_dir: Path, report: dict[str, Any]) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
-    review_path = write_review_html(run_dir, report)
-    report["review"] = display_path(review_path)
     (run_dir / "run.json").write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     (run_dir / "summary.txt").write_text(_format_report(report) + "\n", encoding="utf-8")
 
@@ -499,13 +497,10 @@ def _format_report(report: dict[str, Any]) -> str:
     summary = report["summary"]
     source = report["source"]
     source_label = source.get("vehicle_id") or source.get("path") or source.get("kind")
-    # Lead with human-scannable identity: review path and outcome before details.
     lines = [
         "Perception experiment",
         "---------------------",
     ]
-    if report.get("review"):
-        lines.append(f"review: {report['review']}")
     if report.get("run_dir"):
         lines.append(f"run: {report['run_dir']}")
     lines.append(f"source: {source_label}")

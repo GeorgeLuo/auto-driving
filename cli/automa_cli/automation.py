@@ -210,7 +210,7 @@ def run_vehicle_automation(
             2,
             "\n".join(
                 [
-                    f"No active perception algorithm found for {vehicle_id!r}.",
+                    f"No active perception preset found for {vehicle_id!r}.",
                     f"Expected activation: {display_path(manifest_path)}",
                     f"Run: ./cli/automa vehicles update perception --id {vehicle_id}",
                 ]
@@ -227,7 +227,7 @@ def run_vehicle_automation(
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
     perception_plugins = ", ".join(perception_activation.plugins) or "(none)"
-    perception_algorithm = perception_activation.metadata.get("algorithm") or perception_plugins
+    perception_preset = perception_activation.metadata.get("preset") or perception_plugins
     # A decision frame is published only when proposals are staged.
     decision_published = identity["steps"]["proposal"] is not None
 
@@ -337,7 +337,7 @@ def run_vehicle_automation(
         "recording": bool(record),
         "perception": {
             "activation": display_path(manifest_path),
-            "algorithm": perception_activation.metadata.get("algorithm"),
+            "preset": perception_activation.metadata.get("preset"),
             "plugins": list(perception_activation.plugins),
             "plugin_report": _execution_plugin_report(perception_step),
         },
@@ -384,7 +384,7 @@ def run_vehicle_automation(
     _write_json(state_path, state)
 
     _emit(output, f"Automation running: {vehicle_id}")
-    _emit(output, f"Perception: {perception_algorithm}")
+    _emit(output, f"Perception: {perception_preset}")
     if run_dir is not None:
         _emit(output, f"Recording: {display_path(run_dir)}")
     else:
@@ -2081,7 +2081,7 @@ def _collect_automation_status(
         if isinstance(perception_manifest, dict):
             metadata = perception_manifest.get("metadata")
             perception = {
-                "algorithm": metadata.get("algorithm") if isinstance(metadata, dict) else None,
+                "preset": metadata.get("preset") if isinstance(metadata, dict) else None,
                 "plugins": perception_manifest.get("plugins")
                 if isinstance(perception_manifest.get("plugins"), list)
                 else [],
@@ -2242,9 +2242,9 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
 def _perception_label(perception: dict[str, Any]) -> str:
     if not perception.get("deployed"):
         return f"not deployed; expected {perception.get('activation', 'unknown')}"
-    algorithm = perception.get("algorithm") or "unknown"
+    preset = perception.get("preset") or "unknown"
     plugins = ", ".join(perception.get("plugins") or []) or "no plugins"
-    return f"{algorithm} ({plugins})"
+    return f"{preset} ({plugins})"
 
 
 def _decision_label(decision: dict[str, Any]) -> str:

@@ -160,7 +160,7 @@ class DeploymentUpdateTests(unittest.TestCase):
         self.assertTrue(payload["release_id"].endswith("-preview"))
         self.assertTrue(payload["source"]["tree_sha256"])
         self.assertEqual(
-            payload["activation"]["perception_algorithm"],
+            payload["activation"]["perception_preset"],
             DEFAULT_PERCEPTION_PRESET,
         )
         self.assertEqual(payload["activation"]["steps"]["action"], ["hold"])

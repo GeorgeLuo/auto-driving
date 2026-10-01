@@ -22,7 +22,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(payload["phase"], "completed")
         self.assertEqual(payload["sequence_id"], "workbench.image_replay.v1")
         self.assertEqual(
-            payload["machine_detail"]["pipeline"]["perception_algorithm"],
+            payload["machine_detail"]["pipeline"]["perception_preset"],
             "lightweight_observer",
         )
         self.assertEqual(

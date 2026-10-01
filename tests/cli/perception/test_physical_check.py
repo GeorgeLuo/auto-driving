@@ -42,7 +42,7 @@ def _publication(
         "health": health,
         "ok": health in {"healthy", "stale"},
         "mode": mode,
-        "algorithm": "lightweight_observer",
+        "preset": "lightweight_observer",
         "duration_ms": 280,
         "result_age_ms": 100,
         "control": {

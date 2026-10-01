@@ -76,7 +76,7 @@ class PerceptionRunTests(unittest.TestCase):
                 )
             report = {
                 "run_id": 'review"><script>alert(1)</script>',
-                "mapper": {"algorithm": "lightweight_observer"},
+                "mapper": {"preset": "lightweight_observer"},
                 "summary": {
                     "frames": 2,
                     "failed_frames": 0,
@@ -126,7 +126,7 @@ class PerceptionRunTests(unittest.TestCase):
             with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
                 first = perception_module.ensure_local_perception_runtime(
                     vehicle=vehicle,
-                    algorithm="visual_observer",
+                    preset="visual_observer",
                 )
                 activation_path = first["manifest_path"]
                 stale = json.loads(activation_path.read_text(encoding="utf-8"))
@@ -143,14 +143,14 @@ class PerceptionRunTests(unittest.TestCase):
                 self.assertFalse(refreshed["refreshed"])
 
                 custom = refreshed["manifest"]
-                custom["metadata"]["algorithm"] = "custom"
+                custom["metadata"]["preset"] = "custom"
                 custom["plugins"] = ["frame"]
                 activation_path.write_text(json.dumps(custom), encoding="utf-8")
                 preserved = perception_module.ensure_local_perception_runtime(
                     vehicle=vehicle
                 )
 
-        self.assertEqual(preserved["manifest"]["metadata"]["algorithm"], "custom")
+        self.assertEqual(preserved["manifest"]["metadata"]["preset"], "custom")
         self.assertEqual(preserved["manifest"]["plugins"], ["frame"])
 
     def test_apply_manifest_falls_back_to_archived_frame_copy(self) -> None:

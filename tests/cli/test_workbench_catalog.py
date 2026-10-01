@@ -71,7 +71,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
         self.assertEqual(_plugin_ids(state["perception"]), ["classical_regions"])
         self.assertEqual(
-            state["machine_detail"]["pipeline"]["perception_algorithm"], "plugin_selection"
+            state["machine_detail"]["pipeline"]["perception_preset"], "plugin_selection"
         )
 
     def test_empty_selection_replays_raw_capture_and_allows_live_replacement(self) -> None:

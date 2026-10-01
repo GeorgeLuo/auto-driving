@@ -136,12 +136,12 @@ class _RunningProcess:
 def _write_activations(
     bundle: dict[str, str],
     *,
-    algorithm: str = "lightweight_observer",
+    preset: str = "lightweight_observer",
     plugins: list[str] | None = None,
 ) -> None:
     """Stage perception and the packaged proposals; plan and action run their built-ins."""
 
-    packaged = perception_preset_activation(algorithm)
+    packaged = perception_preset_activation(preset)
     activation = step_activation(
         "perception",
         packaged.plugins if plugins is None else plugins,

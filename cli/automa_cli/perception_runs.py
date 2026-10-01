@@ -64,10 +64,10 @@ def run_perception_experiment(
     timeout_s: float = 3.0,
     record: bool = False,
     json_output: bool = False,
-    algorithm: str | None = None,
+    preset: str | None = None,
 ) -> CommandResult:
-    if algorithm is not None and algorithm not in PERCEPTION_PRESETS:
-        return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
+    if preset is not None and preset not in PERCEPTION_PRESETS:
+        return CommandResult(2, f"Unknown perception preset {preset!r}.")
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
@@ -89,12 +89,12 @@ def run_perception_experiment(
 
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
-        prepared_runtime = ensure_local_perception_runtime(vehicle=vehicle, algorithm=algorithm)
+        prepared_runtime = ensure_local_perception_runtime(vehicle=vehicle, preset=preset)
         manifest = prepared_runtime["manifest"]
         activation = step_activation_from_payload(manifest, step="perception")
         mapper = load_staged_runner(activation)
         mapper_record = {
-            "algorithm": activation.metadata.get("algorithm"),
+            "preset": activation.metadata.get("preset"),
             "spec": RUNNER_SPEC,
             "config": _selection(activation),
             "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
@@ -200,13 +200,13 @@ def apply_perception_experiment(
     *,
     record: bool = False,
     json_output: bool = False,
-    algorithm: str | None = None,
+    preset: str | None = None,
     plugins: list[str] | None = None,
 ) -> CommandResult:
-    if algorithm is not None and plugins:
-        return CommandResult(2, "Choose either --algorithm or --plugin, not both.")
-    if algorithm is not None and algorithm not in PERCEPTION_PRESETS:
-        return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
+    if preset is not None and plugins:
+        return CommandResult(2, "Choose either --preset or --plugin, not both.")
+    if preset is not None and preset not in PERCEPTION_PRESETS:
+        return CommandResult(2, f"Unknown perception preset {preset!r}.")
     source = source.expanduser().resolve()
     if not source.exists():
         return CommandResult(2, f"Apply source does not exist: {source}")
@@ -233,9 +233,9 @@ def apply_perception_experiment(
         recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
         if plugins:
             activation = packaged_activation("perception", plugins)
-            algorithm = "custom"
-        elif algorithm is not None:
-            activation = perception_preset_activation(algorithm)
+            preset = "custom"
+        elif preset is not None:
+            activation = perception_preset_activation(preset)
         elif isinstance(recorded_mapper, dict):
             recorded = dict(recorded_mapper.get("config") or {})
             activation = step_activation(
@@ -244,12 +244,12 @@ def apply_perception_experiment(
                 recorded.get("plugin_specs") or {},
                 recorded.get("plugin_configs") or {},
             )
-            algorithm = recorded_mapper.get("algorithm") or "recorded"
+            preset = recorded_mapper.get("preset") or "recorded"
         else:
             activation = perception_preset_activation(DEFAULT_PERCEPTION_PRESET)
-            algorithm = DEFAULT_PERCEPTION_PRESET
+            preset = DEFAULT_PERCEPTION_PRESET
         mapper = PerceptionRunner.from_activation(activation)
-        report_mapper = {"algorithm": algorithm, "spec": RUNNER_SPEC, "config": _selection(activation)}
+        report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}
         record_root = APPLY_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
@@ -496,7 +496,7 @@ def _format_report(report: dict[str, Any]) -> str:
         lines.append(f"selection: {source['selection']}")
     lines.extend(
         [
-            f"algorithm: {report['mapper'].get('algorithm')}",
+            f"preset: {report['mapper'].get('preset')}",
             f"frames: {summary['frames']}",
             f"failed frames: {summary['failed_frames']}",
             f"statuses: {_format_counts(summary['status_counts'])}",

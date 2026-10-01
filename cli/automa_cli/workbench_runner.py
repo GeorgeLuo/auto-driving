@@ -239,7 +239,7 @@ class ImageReplayRunner:
         self._state["machine_detail"]["pipeline"]["active_plugin_ids"] = list(
             self._active_plugin_ids
         )
-        self._state["machine_detail"]["pipeline"]["perception_algorithm"] = (
+        self._state["machine_detail"]["pipeline"]["perception_preset"] = (
             DEFAULT_PERCEPTION_PRESET
             if list(self._active_plugin_ids) == ["frame", "floor_plane"]
             else "plugin_selection"
@@ -1405,7 +1405,7 @@ class ImageReplayRunner:
         )
         return {
             "pipeline": {
-                "perception_algorithm": (
+                "perception_preset": (
                     DEFAULT_PERCEPTION_PRESET
                     if active_ids == ["frame", "floor_plane"]
                     else "plugin_selection"

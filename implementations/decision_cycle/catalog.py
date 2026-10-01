@@ -123,17 +123,17 @@ def packaged_activation(
     )
 
 
-def perception_preset_activation(algorithm: str) -> StepActivation:
+def perception_preset_activation(preset: str) -> StepActivation:
     try:
-        preset = PERCEPTION_PRESETS[algorithm]
+        entry = PERCEPTION_PRESETS[preset]
     except KeyError as exc:
         known = ", ".join(sorted(PERCEPTION_PRESETS))
-        raise ValueError(f"unknown perception algorithm {algorithm!r}; known: {known}") from exc
+        raise ValueError(f"unknown perception preset {preset!r}; known: {known}") from exc
     return packaged_activation(
         "perception",
-        preset["plugins"],
-        config_overrides=preset.get("plugin_configs"),
-        metadata={"algorithm": algorithm},
+        entry["plugins"],
+        config_overrides=entry.get("plugin_configs"),
+        metadata={"preset": preset},
     )
 
 

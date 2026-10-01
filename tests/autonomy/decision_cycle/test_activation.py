@@ -42,12 +42,12 @@ class StepActivationTests(unittest.TestCase):
     def test_every_step_reads_the_same_document(self) -> None:
         for step in STEPS:
             with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
-                path = _write(tmp, _payload(step, metadata={"algorithm": "preset"}))
+                path = _write(tmp, _payload(step, metadata={"preset": "preset"}))
                 activation = read_step_activation(path, step)
                 self.assertEqual(activation.step, step)
                 self.assertEqual(activation.plugins, ("first",))
                 self.assertEqual(activation.source_path, path)
-                self.assertEqual(activation.metadata, {"algorithm": "preset"})
+                self.assertEqual(activation.metadata, {"preset": "preset"})
                 manager = activation.plugin_manager()
                 self.assertEqual(manager.step, step)
                 self.assertEqual(manager.available_ids, ("first", "second"))

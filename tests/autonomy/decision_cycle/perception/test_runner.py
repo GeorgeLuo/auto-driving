@@ -342,7 +342,7 @@ class PluginRunnerTests(unittest.TestCase):
                             "working": f"{__name__}:WorkingPlugin",
                             "exploding": f"{__name__}:ExplodingPlugin",
                         },
-                        "metadata": {"algorithm": "test-observer"},
+                        "metadata": {"preset": "test-observer"},
                     }
                 ),
                 encoding="utf-8",

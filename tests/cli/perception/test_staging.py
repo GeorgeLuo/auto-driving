@@ -16,14 +16,14 @@ from tests.support.runtime_fixtures import write_json
 
 def _activation(
     bundle: dict,
-    algorithm: str = "lightweight_observer",
+    preset: str = "lightweight_observer",
     *,
     plugins: list[str] | None = None,
     **metadata,
 ) -> dict:
-    """A staged perception activation for ``algorithm`` (optionally reselected)."""
+    """A staged perception activation for ``preset`` (optionally reselected)."""
 
-    payload = perception_preset_activation(algorithm).to_payload()
+    payload = perception_preset_activation(preset).to_payload()
     if plugins is not None:
         payload["plugins"] = plugins
     payload["metadata"] = {
@@ -101,7 +101,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
         payload = json.loads(json_result.stdout)
-        self.assertEqual(payload["activation"]["algorithm"], "visual_observer")
+        self.assertEqual(payload["activation"]["preset"], "visual_observer")
         self.assertEqual(
             payload["controller_bundle"]["release"]["tree_sha256"],
             release_manifest["tree_sha256"],
@@ -110,7 +110,7 @@ class PerceptionCommandTests(unittest.TestCase):
             payload["activation"]["plugins"],
             ["frame", "floor_plane", "motion_tracks"],
         )
-        chain = payload["algorithm_schema"]["plugins"]
+        chain = payload["perception_schema"]["plugins"]
         self.assertEqual(
             [plugin["plugin_id"] for plugin in chain],
             [
@@ -156,7 +156,7 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_perception_update_v0")
         self.assertTrue(payload["dry_run"])
         self.assertEqual(payload["vehicle_id"], "chase-sim-chaser")
-        self.assertEqual(payload["algorithm"], DEFAULT_PERCEPTION_PRESET)
+        self.assertEqual(payload["preset"], DEFAULT_PERCEPTION_PRESET)
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "chase-sim")
         self.assertTrue(
             payload["would_write"]["bundle_root"].endswith(
@@ -188,7 +188,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "perception",
                 "--id",
                 "piracer",
-                "--algorithm",
+                "--preset",
                 "visual_observer",
                 "--json",
                 runtime_root=runtime_root,
@@ -196,7 +196,7 @@ class PerceptionCommandTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["vehicle_id"], "piracer")
-        self.assertEqual(payload["algorithm"], "visual_observer")
+        self.assertEqual(payload["preset"], "visual_observer")
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "picar")
 
     def test_perception_plugin_enable_disable_edits_active_activation(self) -> None:
@@ -257,7 +257,7 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(disable_payload["plugins_after"], ["floor_plane"])
 
         info_payload = json.loads(info.stdout)
-        self.assertEqual(info_payload["activation"]["algorithm"], "custom")
+        self.assertEqual(info_payload["activation"]["preset"], "custom")
         self.assertEqual(
             info_payload["activation"]["plugins"], ["floor_plane"]
         )

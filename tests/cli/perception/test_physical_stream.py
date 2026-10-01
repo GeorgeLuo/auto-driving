@@ -24,7 +24,7 @@ def _publication(**overrides):
         "min_interval_s": 0.5,
         "processed_count": 12,
         "skipped_count": 40,
-        "algorithm": "lightweight_observer",
+        "preset": "lightweight_observer",
         "mode": "user",
         "drive_mode": "user",
         "control": {

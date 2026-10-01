@@ -382,7 +382,7 @@ def update_vehicle_autonomy(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
-            perception_algorithm=DEFAULT_PERCEPTION_PRESET,
+            perception_preset=DEFAULT_PERCEPTION_PRESET,
             steps={step: list(DEFAULT_STEP_PLUGINS[step]) for step in STEPS if step != "proposal"},
             generation_id=None,
             runtime_verification=None,
@@ -394,7 +394,7 @@ def update_vehicle_autonomy(
     release = sync_controller_bundle(bundle, output=output)
     perception_activation_path = ensure_vehicle_perception_activation(
         vehicle=dict(target.vehicle),
-        algorithm=DEFAULT_PERCEPTION_PRESET,
+        preset=DEFAULT_PERCEPTION_PRESET,
         bundle=bundle,
         release=release,
     )
@@ -441,8 +441,8 @@ def update_vehicle_autonomy(
         if code != 0:
             return CommandResult(code, f"Restart failed with exit code {code}.")
 
-    perception_algorithm = str(
-        activations["perception"].metadata.get("algorithm")
+    perception_preset = str(
+        activations["perception"].metadata.get("preset")
         if "perception" in activations
         else perception_activation_path.name
     )
@@ -476,7 +476,7 @@ def update_vehicle_autonomy(
         commands=commands,
         restart=restart,
         drive_args=drive_args,
-        perception_algorithm=perception_algorithm,
+        perception_preset=perception_preset,
         steps=deployed_steps,
         generation_id=generation_id,
         runtime_verification=runtime_verification,
@@ -496,7 +496,7 @@ def update_vehicle_autonomy(
                 f"Autonomy updated: {vehicle_id} -> {target.ssh_target}",
                 f"Release: {release_id}",
                 f"Tree SHA-256: {release['tree_sha256']}",
-                f"Perception: {payload['activation']['perception_algorithm']}",
+                f"Perception: {payload['activation']['perception_preset']}",
                 *_step_lines(payload["activation"]["steps"]),
                 f"Decision generation: {payload['activation']['generation_id']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
@@ -728,7 +728,7 @@ def _autonomy_update_payload(
     commands: list[tuple[str, list[str]]],
     restart: bool,
     drive_args: str | None,
-    perception_algorithm: str,
+    perception_preset: str,
     steps: dict[str, list[str]],
     generation_id: str | None,
     runtime_verification: dict[str, Any] | None,
@@ -767,7 +767,7 @@ def _autonomy_update_payload(
         "release_id": release_id,
         "release": release_activation_summary(release) if release is not None else None,
         "activation": {
-            "perception_algorithm": perception_algorithm,
+            "perception_preset": perception_preset,
             "steps": steps,
             "generation_id": generation_id,
         },
@@ -897,7 +897,7 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
             f"source tree SHA-256: {payload['source']['tree_sha256']}",
             f"source files: {payload['source']['file_count']}",
             (
-                f"activation defaults: perception={payload['activation']['perception_algorithm']} "
+                f"activation defaults: perception={payload['activation']['perception_preset']} "
                 + " ".join(
                     f"{step}={','.join(plugins) or '-'}"
                     for step, plugins in payload["activation"]["steps"].items()

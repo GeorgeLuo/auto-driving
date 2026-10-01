@@ -265,7 +265,7 @@ class PerceptionRunner:
                 }
             )
         return {
-            "schema": "perception_algorithm_schema_v2",
+            "schema": "perception_schema_v2",
             "plugin_id": self.plugin_id,
             "runner": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "configuration": {

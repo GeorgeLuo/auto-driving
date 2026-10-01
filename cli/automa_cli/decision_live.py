@@ -167,7 +167,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
             if evidence_value is not None
             else None
         ),
-        "algorithm": (
+        "preset": (
             observation_value.get("perception_plugin_id")
             if isinstance(observation_value, dict)
             else None

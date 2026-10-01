@@ -60,7 +60,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             "perception",
             "--id",
             "chase-sim-chaser",
-            "--algorithm",
+            "--preset",
             "lightweight_observer",
             "--timeout-s",
             "6",

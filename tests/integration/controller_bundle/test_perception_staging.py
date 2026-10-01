@@ -11,7 +11,7 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapsh
 from autonomy.decision_cycle.activation import step_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.step_hosting import load_staged_runner
-from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.catalog import step_plugins
 
 
 class PerceptionStagingTests(unittest.TestCase):
@@ -23,7 +23,7 @@ class PerceptionStagingTests(unittest.TestCase):
                 step_activation(
                     "perception",
                     ["frame"],
-                    {"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
+                    {"frame": step_plugins("perception")["frame"]["spec"]},
                     metadata={"controller_bundle": {"root_dir": bundle["root_dir"]}},
                 )
             )

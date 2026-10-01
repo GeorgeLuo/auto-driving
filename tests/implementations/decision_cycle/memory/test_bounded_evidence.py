@@ -17,11 +17,8 @@ from implementations.decision_cycle.memory.bounded_evidence.ledger import (
     EVIDENCE_KEY,
     LEDGER_KEY,
 )
-from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_PLUGIN,
-    MEMORY_PLUGINS,
-)
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
     BoundedEvidenceLedger,
     _BoundedEvidenceReducer as BoundedEvidenceReducer,
@@ -72,7 +69,7 @@ def _thing(
 class BoundedEvidenceLedgerTests(unittest.TestCase):
     def test_catalog_exposes_default_plugin(self) -> None:
         self.assertEqual(DEFAULT_MEMORY_PLUGIN, "bounded_evidence")
-        entry = MEMORY_PLUGINS["bounded_evidence"]
+        entry = step_plugins("memory")["bounded_evidence"]
         self.assertEqual(
             entry["spec"],
             "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger",

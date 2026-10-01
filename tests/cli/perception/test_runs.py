@@ -22,7 +22,7 @@ from cli.automa_cli.perception_runs import (
     run_perception_experiment,
 )
 from cli.automa_cli.vehicle_access import VehicleAccess
-from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.catalog import step_plugins
 
 
 class FakeFrameCar:
@@ -256,7 +256,7 @@ class PerceptionRunTests(unittest.TestCase):
         }
         mapper = PerceptionRunner.from_selection(
             plugins=["frame"],
-            plugin_specs={"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
+            plugin_specs={"frame": step_plugins("perception")["frame"]["spec"]},
         )
 
         with tempfile.TemporaryDirectory() as tmp:

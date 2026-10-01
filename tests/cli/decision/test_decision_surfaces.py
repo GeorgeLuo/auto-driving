@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.steps import load_decision_steps
-from implementations.decision_cycle.proposal.catalog import PROPOSAL_PLUGINS
+from implementations.decision_cycle.catalog import step_plugins
 from cli.automa_cli.decision import get_vehicle_decision_info
 from cli.automa_cli.step_activations import update_vehicle_step
 from tests.cli.decision.decision_surfaces_fixtures import (
@@ -77,7 +77,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertIn("hold", payload["available_plugins"])
 
         # Invalid catalog config fails closed before write.
-        entry = PROPOSAL_PLUGINS["avoid_recent_obstruction"]
+        entry = step_plugins("proposal")["avoid_recent_obstruction"]
         bad_config = {**entry["default_config"], "steer_magnitude": 0.0}
         with patch.dict(entry, {"default_config": bad_config}):
             code, message = update_vehicle_step(

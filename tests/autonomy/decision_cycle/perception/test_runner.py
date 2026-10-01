@@ -28,7 +28,7 @@ from autonomy.decision_cycle.perception.plugin import (
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.catalog import step_plugins
 
 
 TEST_INPUT = PerceptionPluginInput(
@@ -189,7 +189,7 @@ class PluginRunnerTests(unittest.TestCase):
             plugins=["working", "frame"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
-                "frame": PERCEPTION_PLUGIN_SPECS["frame"],
+                "frame": step_plugins("perception")["frame"]["spec"],
             },
         )
         plugin = mapper.plugins[0]

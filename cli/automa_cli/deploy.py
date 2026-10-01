@@ -1048,7 +1048,7 @@ def inspect_physical_autonomy_runtime(
     return {
         "status_url": status_url,
         "steps": steps,
-        "memory_implementation": memory_id if isinstance(memory_id, str) and memory_id else None,
+        "memory_plugin_id": memory_id if isinstance(memory_id, str) and memory_id else None,
         "drive_mode": payload.get("drive_mode"),
         "ok": True,
     }

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-ACTION_PLUGINS: dict[str, dict[str, Any]] = {
-    "hold": {
+# Each plugin declares its own ID (its ``plugin_id``); entries do not repeat it.
+ACTION_PLUGINS: tuple[dict[str, Any], ...] = (
+    {
         "spec": "autonomy.decision_cycle.action.hold:HoldAction",
         "description": "Record the selected command and always authorize idle control.",
         "default_config": {},
     },
-    "mode": {
+    {
         "spec": "implementations.decision_cycle.action.mode.plugin:ModeAction",
         "description": (
             "Apply the selected command in a live drive mode (autonomy, local); "
@@ -18,5 +19,5 @@ ACTION_PLUGINS: dict[str, dict[str, Any]] = {
         ),
         "default_config": {},
     },
-}
+)
 DEFAULT_ACTION_PLUGINS: tuple[str, ...] = ("hold",)

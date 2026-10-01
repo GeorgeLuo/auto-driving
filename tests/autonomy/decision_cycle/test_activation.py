@@ -53,6 +53,16 @@ class StepActivationTests(unittest.TestCase):
                 self.assertEqual(manager.available_ids, ("first", "second"))
                 self.assertEqual(manager.selected_ids, ("first",))
 
+    def test_repeated_plugin_id_in_a_document_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            text = json.dumps(_payload())
+            path.write_text(
+                text.replace('"second": ', '"first": "other:Plugin", "second": '),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "repeats key 'first'"):
+                read_step_activation(path, "memory")
 
     def test_write_round_trips_under_the_step_directory(self) -> None:
         activation = step_activation(

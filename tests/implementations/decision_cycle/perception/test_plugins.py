@@ -9,7 +9,7 @@ import numpy as np
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.components.camera import (
     camera_component_id,
 )
@@ -18,13 +18,18 @@ from implementations.decision_cycle.perception.motion_tracks.plugin import (
 )
 
 
+_PERCEPTION_SPECS = {
+    plugin_id: entry["spec"] for plugin_id, entry in step_plugins("perception").items()
+}
+
+
 FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 def _mapper(plugin_id: str) -> PerceptionRunner:
     return PerceptionRunner.from_selection(
         plugins=[plugin_id],
-        plugin_specs=PERCEPTION_PLUGIN_SPECS,
+        plugin_specs=_PERCEPTION_SPECS,
     )
 
 
@@ -56,7 +61,7 @@ class PerceptionPluginTests(unittest.TestCase):
         request = build_perception_request(_snapshot(_array_reading(rgb)))
         mapper = PerceptionRunner.from_selection(
             plugins=["frame", "floor_plane"],
-            plugin_specs=PERCEPTION_PLUGIN_SPECS,
+            plugin_specs=_PERCEPTION_SPECS,
         )
 
         perception = mapper.perceive(request)
@@ -89,7 +94,7 @@ class PerceptionPluginTests(unittest.TestCase):
         shifted = np.roll(rgb, 2, axis=1)
         mapper = PerceptionRunner.from_selection(
             plugins=["motion_tracks"],
-            plugin_specs=PERCEPTION_PLUGIN_SPECS,
+            plugin_specs=_PERCEPTION_SPECS,
             plugin_configs={
                 "motion_tracks": {
                     "max_features": 50,
@@ -138,7 +143,7 @@ class PerceptionPluginTests(unittest.TestCase):
         shifted = np.roll(rgb, 2, axis=1)
         mapper = PerceptionRunner.from_selection(
             plugins=["motion_tracks"],
-            plugin_specs=PERCEPTION_PLUGIN_SPECS,
+            plugin_specs=_PERCEPTION_SPECS,
             plugin_configs={"motion_tracks": {"max_features": 50, "search_radius": 8}},
         )
         with tempfile.TemporaryDirectory() as tmp:

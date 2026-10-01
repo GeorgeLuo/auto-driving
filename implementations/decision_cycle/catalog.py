@@ -1,8 +1,10 @@
 """Packaged plugins for every cycle step, and activations built from them.
 
 ``STEP_PLUGINS`` lists, per step, each packaged plugin's entrypoint
-(``spec``), a description, and its default config. ``DEFAULT_STEP_PLUGINS``
-is each step's default selection. ``packaged_activation`` builds a
+(``spec``), a description, and its default config. Each plugin declares its
+own ID; ``step_plugins`` reads those IDs and refuses a step in which two
+packaged plugins declare the same one, since this directory's owner resolves
+such conflicts. ``DEFAULT_STEP_PLUGINS`` is each step's default selection. ``packaged_activation`` builds a
 ``StepActivation`` that makes every packaged plugin of the step available,
 selects the requested ones in order, and applies config overrides.
 ``perception_algorithm_activation`` builds one from a named perception
@@ -13,9 +15,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from functools import cache
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS, StepActivation, require_step, step_activation
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from implementations.decision_cycle.action.catalog import ACTION_PLUGINS, DEFAULT_ACTION_PLUGINS
 from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGINS, MEMORY_PLUGINS
 from implementations.decision_cycle.perception.catalog import (
@@ -28,24 +32,24 @@ from implementations.decision_cycle.proposal.catalog import (
     PROPOSAL_PLUGINS,
 )
 
-STEP_PLUGINS: dict[str, dict[str, dict[str, Any]]] = {
+STEP_PLUGINS: dict[str, tuple[dict[str, Any], ...]] = {
     "perception": PERCEPTION_PLUGINS,
-    "observation": {
-        "perception_summary": {
+    "observation": (
+        {
             "spec": "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary",
             "description": "Perception evidence plus the sensor snapshot as the frame record.",
             "default_config": {},
         },
-    },
+    ),
     "memory": MEMORY_PLUGINS,
     "proposal": PROPOSAL_PLUGINS,
-    "plan": {
-        "highest_confidence": {
+    "plan": (
+        {
             "spec": "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan",
             "description": "Select the most confident active candidate; otherwise plan idle.",
             "default_config": {},
         },
-    },
+    ),
     "action": ACTION_PLUGINS,
 }
 
@@ -62,7 +66,25 @@ assert tuple(STEP_PLUGINS) == STEPS
 
 
 def step_plugins(step: str) -> dict[str, dict[str, Any]]:
-    return STEP_PLUGINS[require_step(step)]
+    """The step's packaged plugin entries by the ID each plugin declares.
+
+    Raises ``DuplicatePluginIdError`` when two packaged plugins of the step
+    declare the same ID.
+    """
+
+    return dict(_declared_entries(require_step(step)))
+
+
+@cache
+def _declared_entries(step: str) -> dict[str, dict[str, Any]]:
+    # Reading a declared ID imports the plugin's module; do it once per step.
+    catalog = LocalPluginCatalog()
+    entries: dict[str, dict[str, Any]] = {}
+    for entry in STEP_PLUGINS[step]:
+        definition = PluginDefinition.declared(step, entry["spec"])
+        catalog.register(definition)
+        entries[definition.plugin_id] = entry
+    return entries
 
 
 def packaged_activation(

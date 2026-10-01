@@ -84,7 +84,7 @@ class MemoryRunner:
         provided = None
         if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
             provided = self._provided[definition.plugin_id]
-        source_path = self.activation.source_path if self.activation else definition.source
+        source_path = self.activation.source_path if self.activation else None
         return MemoryPluginRuntime(definition, source_path=source_path, plugin=provided)
 
     def prepare_selection(self) -> None:

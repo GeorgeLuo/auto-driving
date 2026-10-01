@@ -14,7 +14,7 @@ from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES
-from implementations.decision_cycle.catalog import STEP_PLUGINS, packaged_activation
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
 from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
@@ -100,7 +100,7 @@ def _run(
 
 class PackagedCatalogTests(unittest.TestCase):
     def test_action_catalog_offers_hold_and_mode(self) -> None:
-        self.assertEqual(sorted(STEP_PLUGINS["action"]), ["hold", "mode"])
+        self.assertEqual(sorted(step_plugins("action")), ["hold", "mode"])
         self.assertEqual(packaged_activation("action").plugins, ("hold",))
         self.assertEqual(packaged_activation("proposal").plugins, ("avoid_recent_obstruction",))
 

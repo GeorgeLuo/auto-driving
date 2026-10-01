@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-PROPOSAL_PLUGINS: dict[str, dict[str, Any]] = {
-    "avoid_recent_obstruction": {
+# Each plugin declares its own ID (its ``plugin_id``); entries do not repeat it.
+PROPOSAL_PLUGINS: tuple[dict[str, Any], ...] = (
+    {
         "spec": (
             "implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin:"
             "AvoidRecentObstruction"
@@ -20,5 +21,5 @@ PROPOSAL_PLUGINS: dict[str, dict[str, Any]] = {
             "steer_magnitude": 1.0,
         },
     },
-}
+)
 DEFAULT_PROPOSAL_PLUGINS: tuple[str, ...] = ("avoid_recent_obstruction",)

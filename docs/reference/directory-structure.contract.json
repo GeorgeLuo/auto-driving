@@ -125,10 +125,10 @@
                     "responsibility": "Deterministic image preparation plugin for optional downstream observers."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/algorithms/",
+                    "path": "implementations/decision_cycle/perception/shared/",
                     "category": "implementation",
                     "commit_policy": "source",
-                    "responsibility": "Feature, scene-motion, and landmark algorithms shared by plugins and tools. They are not selectable plugins."
+                    "responsibility": "Topic library shared by plugins, the plugins that consume perception evidence, and tools: features, image, landmarks, motion, obstructions. Not selectable plugins."
                   }
                 ]
               },

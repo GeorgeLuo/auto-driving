@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from implementations.decision_cycle.perception.algorithms.features.feature_tracking import FeatureTrackingResult, track_features
+from implementations.decision_cycle.perception.shared.features.feature_tracking import FeatureTrackingResult, track_features
 
 
 @dataclass

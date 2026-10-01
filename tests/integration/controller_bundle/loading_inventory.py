@@ -5,6 +5,10 @@ attribute so the old spec, export, or import still resolves to that owner.
 Do not rebuild this list from the current tree: dropping a string from a
 catalog or ``__all__`` does not retire the path.
 
+A deliberate restructure may retire paths. Rewrite the legacy columns to the
+new paths in the same change; activations and manifests that stored the old
+paths are re-staged rather than kept loadable.
+
 Specs include production ``module:attribute`` paths: catalog plugin specs and
 the camera provider. Exports include ``__all__`` names plus workbench imports
 that are not on those lists.
@@ -212,24 +216,24 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.decision_cycle.perception.components.camera", "camera_component_id", "implementations.decision_cycle.perception.components.camera", "camera_component_id"),
     ("implementations.decision_cycle.perception.components.camera", "camera_rgb_input", "implementations.decision_cycle.perception.components.camera", "camera_rgb_input"),
     ("implementations.decision_cycle.perception.components.camera", "provide_camera_frame", "implementations.decision_cycle.perception.components.camera", "provide_camera_frame"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_tracking", "FeatureMatch", "implementations.decision_cycle.perception.algorithms.features.feature_tracking", "FeatureMatch"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_tracking", "FeatureTrackingResult", "implementations.decision_cycle.perception.algorithms.features.feature_tracking", "FeatureTrackingResult"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_sequence", "PairTrackingSummary", "implementations.decision_cycle.perception.algorithms.features.feature_sequence", "PairTrackingSummary"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_sequence", "TrackedSequenceSummary", "implementations.decision_cycle.perception.algorithms.features.feature_sequence", "TrackedSequenceSummary"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_sequence", "analyze_tracked_sequence", "implementations.decision_cycle.perception.algorithms.features.feature_sequence", "analyze_tracked_sequence"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_tracking", "detect_keypoints", "implementations.decision_cycle.perception.algorithms.features.feature_tracking", "detect_keypoints"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_tracking", "grayscale", "implementations.decision_cycle.perception.algorithms.features.feature_tracking", "grayscale"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_tracking", "match_keypoints", "implementations.decision_cycle.perception.algorithms.features.feature_tracking", "match_keypoints"),
-    ("implementations.decision_cycle.perception.algorithms.features.feature_tracking", "track_features", "implementations.decision_cycle.perception.algorithms.features.feature_tracking", "track_features"),
-    ("implementations.decision_cycle.perception.algorithms.landmarks.distance", "LandmarkDistanceResult", "implementations.decision_cycle.perception.algorithms.landmarks.distance", "LandmarkDistanceResult"),
-    ("implementations.decision_cycle.perception.algorithms.landmarks.distance", "LandmarkSelection", "implementations.decision_cycle.perception.algorithms.landmarks.distance", "LandmarkSelection"),
-    ("implementations.decision_cycle.perception.algorithms.landmarks.distance", "LandmarkStepEstimate", "implementations.decision_cycle.perception.algorithms.landmarks.distance", "LandmarkStepEstimate"),
-    ("implementations.decision_cycle.perception.algorithms.landmarks.distance", "estimate_landmark_distance", "implementations.decision_cycle.perception.algorithms.landmarks.distance", "estimate_landmark_distance"),
-    ("implementations.decision_cycle.perception.algorithms.motion.scene_motion", "MotionGroup", "implementations.decision_cycle.perception.algorithms.motion.scene_motion", "MotionGroup"),
-    ("implementations.decision_cycle.perception.algorithms.motion.scene_motion", "SceneMotionResult", "implementations.decision_cycle.perception.algorithms.motion.scene_motion", "SceneMotionResult"),
-    ("implementations.decision_cycle.perception.algorithms.motion.scene_motion", "analyze_scene_motion", "implementations.decision_cycle.perception.algorithms.motion.scene_motion", "analyze_scene_motion"),
-    ("implementations.decision_cycle.perception.algorithms.motion.scene_motion", "analyze_scene_motion_images", "implementations.decision_cycle.perception.algorithms.motion.scene_motion", "analyze_scene_motion_images"),
-    ("implementations.decision_cycle.perception.algorithms.motion.scene_motion", "find_motion_groups", "implementations.decision_cycle.perception.algorithms.motion.scene_motion", "find_motion_groups"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureMatch", "implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureMatch"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureTrackingResult", "implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureTrackingResult"),
+    ("implementations.decision_cycle.perception.shared.features.feature_sequence", "PairTrackingSummary", "implementations.decision_cycle.perception.shared.features.feature_sequence", "PairTrackingSummary"),
+    ("implementations.decision_cycle.perception.shared.features.feature_sequence", "TrackedSequenceSummary", "implementations.decision_cycle.perception.shared.features.feature_sequence", "TrackedSequenceSummary"),
+    ("implementations.decision_cycle.perception.shared.features.feature_sequence", "analyze_tracked_sequence", "implementations.decision_cycle.perception.shared.features.feature_sequence", "analyze_tracked_sequence"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "detect_keypoints", "implementations.decision_cycle.perception.shared.features.feature_tracking", "detect_keypoints"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "grayscale", "implementations.decision_cycle.perception.shared.features.feature_tracking", "grayscale"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "match_keypoints", "implementations.decision_cycle.perception.shared.features.feature_tracking", "match_keypoints"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "track_features", "implementations.decision_cycle.perception.shared.features.feature_tracking", "track_features"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkDistanceResult", "implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkDistanceResult"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkSelection", "implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkSelection"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkStepEstimate", "implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkStepEstimate"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "estimate_landmark_distance", "implementations.decision_cycle.perception.shared.landmarks.distance", "estimate_landmark_distance"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "MotionGroup", "implementations.decision_cycle.perception.shared.motion.scene_motion", "MotionGroup"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "SceneMotionResult", "implementations.decision_cycle.perception.shared.motion.scene_motion", "SceneMotionResult"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion", "implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion_images", "implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion_images"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "find_motion_groups", "implementations.decision_cycle.perception.shared.motion.scene_motion", "find_motion_groups"),
     ("implementations.decision_cycle.perception.frame_observation.plugin", "FrameObservationPlugin", "implementations.decision_cycle.perception.frame_observation.plugin", "FrameObservationPlugin"),
     ("implementations.decision_cycle.perception.frame_observation.frame_analysis", "compare_frame_pair", "implementations.decision_cycle.perception.frame_observation.frame_analysis", "compare_frame_pair"),
     ("implementations.decision_cycle.perception.frame_observation.frame_analysis", "observe_frame", "implementations.decision_cycle.perception.frame_observation.frame_analysis", "observe_frame"),

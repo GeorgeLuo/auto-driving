@@ -38,7 +38,7 @@ from implementations.decision_cycle.perception.components.camera import (
     FRONT_CAMERA_RGB_INPUT,
     provide_camera_frame,
 )
-from implementations.decision_cycle.perception.algorithms.obstructions import normalize_gray
+from implementations.decision_cycle.perception.shared.image.contrast import normalize_gray
 from .tracker import ObstructionTrackState
 
 

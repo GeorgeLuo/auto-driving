@@ -23,15 +23,12 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
     PerceptionPluginInputs,
 )
-from implementations.decision_cycle.perception.algorithms.obstructions import (
-    clamp,
-    normalize_gray,
-    zone,
-)
 from implementations.decision_cycle.perception.components.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
+from implementations.decision_cycle.perception.shared.image.contrast import normalize_gray
+from implementations.decision_cycle.perception.shared.obstructions.boxes import clamp, zone
 
 
 TRACKING_CONFIG_FIELDS = (

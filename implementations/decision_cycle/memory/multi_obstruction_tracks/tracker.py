@@ -11,7 +11,7 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     ViewLocation,
 )
-from implementations.decision_cycle.perception.algorithms.obstructions import clamp, zone
+from implementations.decision_cycle.perception.shared.obstructions.boxes import clamp, zone
 
 @dataclass
 class _Track:

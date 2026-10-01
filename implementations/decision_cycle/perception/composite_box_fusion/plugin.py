@@ -29,7 +29,7 @@ from implementations.decision_cycle.perception.floor_continuity.model import (
     FloorContinuityConfig,
     analyze_floor_continuity,
 )
-from implementations.decision_cycle.perception.algorithms.obstructions import clamp, zone
+from implementations.decision_cycle.perception.shared.obstructions.boxes import clamp, zone
 from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
 )

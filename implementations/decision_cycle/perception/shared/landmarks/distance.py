@@ -8,8 +8,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from implementations.decision_cycle.perception.algorithms.features.feature_tracking import FeatureMatch, FeatureTrackingResult, track_features
-from implementations.decision_cycle.perception.algorithms.motion.scene_motion import MotionGroup, analyze_scene_motion
+from implementations.decision_cycle.perception.shared.features.feature_tracking import FeatureMatch, FeatureTrackingResult, track_features
+from implementations.decision_cycle.perception.shared.motion.scene_motion import MotionGroup, analyze_scene_motion
 
 
 @dataclass

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from implementations.decision_cycle.perception.algorithms.features.feature_tracking import (
+from implementations.decision_cycle.perception.shared.features.feature_tracking import (
     FeatureMatch,
     detect_keypoints,
     grayscale,

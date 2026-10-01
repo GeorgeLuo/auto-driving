@@ -48,7 +48,7 @@ from .workbench_plugins import (
     packaged_plugin_catalog,
 )
 from .workbench_source import (
-    ImageFeed,
+    ImageSource,
     ReplayFrame,
     SourceValidationError,
     WORKBENCH_ADAPTER,
@@ -180,7 +180,7 @@ class ImageReplayRunner:
         self._condition = threading.Condition(self._lock)
         self._action_lock = threading.RLock()
         self._worker: threading.Thread | None = None
-        self._feed: ImageFeed | None = None
+        self._image_source: ImageSource | None = None
         self._mapper: Any = None
         self._memory_step: Any = None
         self._shared_memory: dict[str, Any] = {}
@@ -284,7 +284,7 @@ class ImageReplayRunner:
             return None
 
     def _frame_for_id_locked(self, frame_id: str | None) -> ReplayFrame | None:
-        if self._feed is None:
+        if self._image_source is None:
             return None
         selected_id = frame_id
         if selected_id is None:
@@ -293,20 +293,20 @@ class ImageReplayRunner:
         if selected_id is None:
             return None
         return next(
-            (frame for frame in self._feed.frames if frame.frame_id == selected_id),
+            (frame for frame in self._image_source.frames if frame.frame_id == selected_id),
             None,
         )
 
     def _frame_for_position_locked(self, position: int) -> ReplayFrame | None:
-        if self._feed is None:
+        if self._image_source is None:
             return None
-        if position < 0 or position >= len(self._feed.frames):
+        if position < 0 or position >= len(self._image_source.frames):
             return None
-        return self._feed.frames[position]
+        return self._image_source.frames[position]
 
     def validate_source(
         self, source_dir: str | os.PathLike[str] | None = None
-    ) -> ImageFeed:
+    ) -> ImageSource:
         raw_source = self.source_dir if source_dir is None else os.fspath(source_dir)
         if raw_source is None:
             raise SourceValidationError("start requires source_dir")
@@ -315,31 +315,31 @@ class ImageReplayRunner:
                 raise SourceValidationError(
                     "source cannot be changed while replay is active"
                 )
-        feed = normalize_image_directory(
+        image_source = normalize_image_directory(
             raw_source,
             source_root=self.source_root,
             max_frames=self.max_frames,
             max_image_bytes=self.max_image_bytes,
         )
         with self._lock:
-            self._feed = feed
+            self._image_source = image_source
             self._history.clear()
-            self.source_dir = str(feed.source_path)
+            self.source_dir = str(image_source.source_path)
             self._state = self._initial_state()
             self._apply_plugin_configuration_locked()
-            self._state["source"] = feed.to_dict()
-            self._state["source_identity"] = feed.source_id
-            self._state["adapter"] = feed.adapter
+            self._state["source"] = image_source.to_dict()
+            self._state["source_identity"] = image_source.source_id
+            self._state["adapter"] = image_source.adapter
             self._state["progress"] = {
                 "completed": 0,
-                "total": len(feed.frames),
+                "total": len(image_source.frames),
                 "percent": 0.0,
             }
             self._state["summary"] = self._summary(
                 frames_completed=0,
-                frames_total=len(feed.frames),
+                frames_total=len(image_source.frames),
             )
-        return feed
+        return image_source
 
     def start(
         self,
@@ -377,7 +377,7 @@ class ImageReplayRunner:
                 generation = self._generation
                 if self._mapper is not None or self._memory_step is not None:
                     self._cleanup_locked()
-                self._feed = None
+                self._image_source = None
                 self._mapper = None
                 self._memory_step = None
                 self._decision_steps = None
@@ -390,7 +390,7 @@ class ImageReplayRunner:
                     selected_plugin_ids = self._plugin_catalog.normalize_selection(
                         self._active_plugin_ids
                     )
-                    feed = normalize_image_directory(
+                    image_source = normalize_image_directory(
                         raw_source,
                         source_root=self.source_root,
                         max_frames=self.max_frames,
@@ -407,8 +407,8 @@ class ImageReplayRunner:
                     )
                     self._condition.notify_all()
                     return copy.deepcopy(self._state)
-                self._feed = feed
-                self.source_dir = str(feed.source_path)
+                self._image_source = image_source
+                self.source_dir = str(image_source.source_path)
                 self._mapper = mapper
                 self._memory_step = memory_step
                 self._decision_steps = decision_steps_
@@ -417,10 +417,10 @@ class ImageReplayRunner:
                 self._state["run_catalog_digest"] = self._plugin_catalog.digest
                 self._state["run_active_plugin_ids"] = list(selected_plugin_ids)
                 self._state["run_plugin_order"] = list(selected_plugin_ids)
-                self._state["source"] = feed.to_dict()
-                self._state["source_identity"] = feed.source_id
-                self._state["adapter"] = feed.adapter
-                self._state["progress"]["total"] = len(feed.frames)
+                self._state["source"] = image_source.to_dict()
+                self._state["source_identity"] = image_source.source_id
+                self._state["adapter"] = image_source.adapter
+                self._state["progress"]["total"] = len(image_source.frames)
                 self._state["machine_detail"] = self._machine_detail()
                 self._state["phase"] = "running"
                 self._record_action_locked("start", run_id=run_id)
@@ -449,7 +449,7 @@ class ImageReplayRunner:
                 self._generation += 1
                 self._cleanup_locked()
                 self._history.clear()
-                self._feed = None
+                self._image_source = None
                 self.source_dir = None
                 self._worker = None
                 self._state = self._initial_state()
@@ -661,12 +661,12 @@ class ImageReplayRunner:
     def _rewind_to_displayed_frame_locked(self) -> ReplayFrame | None:
         """Point the replay back at the displayed frame and return it."""
 
-        feed = self._feed
+        image_source = self._image_source
         position = max(int(self._state["position"]) - 1, 0)
-        if feed is None or position >= len(feed.frames):
+        if image_source is None or position >= len(image_source.frames):
             return None
         self._set_position_locked(position)
-        return feed.frames[position]
+        return image_source.frames[position]
 
     def _cached_frame_locked(self, frame: ReplayFrame) -> dict[str, Any] | None:
         """Return the frame's recorded result if the current selection made it.
@@ -703,7 +703,7 @@ class ImageReplayRunner:
 
     def _set_position_locked(self, position: int) -> None:
         self._state["position"] = position
-        total = len(self._feed.frames) if self._feed else 0
+        total = len(self._image_source.frames) if self._image_source else 0
         self._state["progress"]["completed"] = position
         self._state["progress"]["percent"] = (
             round((position / total) * 100.0, 2) if total else 0.0
@@ -786,8 +786,8 @@ class ImageReplayRunner:
             return copy.deepcopy(self._state)
 
     def _wrap_or_complete_locked(self) -> None:
-        feed = self._feed
-        if feed is None or int(self._state["position"]) < len(feed.frames):
+        image_source = self._image_source
+        if image_source is None or int(self._state["position"]) < len(image_source.frames):
             return
         if self._loop:
             if self._state["phase"] == "running":
@@ -819,19 +819,19 @@ class ImageReplayRunner:
 
     def _step(self) -> dict[str, Any]:
         with self._condition:
-            if self._state["phase"] != "paused" or self._feed is None:
+            if self._state["phase"] != "paused" or self._image_source is None:
                 raise ReplayActionError(
                     "step requires a paused replay", boundary="lifecycle"
                 )
             run_id = str(self._state["run_id"])
             generation = self._generation
-            if self._state["position"] >= len(self._feed.frames):
+            if self._state["position"] >= len(self._image_source.frames):
                 if self._loop:
                     self._restart_capture_locked()
                 else:
                     self._complete_locked()
                     return copy.deepcopy(self._state)
-            frame = self._feed.frames[self._state["position"]]
+            frame = self._image_source.frames[self._state["position"]]
         self._process_one(run_id, generation, frame, allow_paused=True)
         with self._lock:
             self._record_action_locked("step")
@@ -845,12 +845,12 @@ class ImageReplayRunner:
                 boundary="input",
             )
         with self._condition:
-            if self._state["phase"] not in {"running", "paused"} or self._feed is None:
+            if self._state["phase"] not in {"running", "paused"} or self._image_source is None:
                 raise ReplayActionError(
                     "seek requires a running or paused replay",
                     boundary="lifecycle",
                 )
-            total = len(self._feed.frames)
+            total = len(self._image_source.frames)
             if position < 0 or position >= total:
                 raise ReplayActionError(
                     "seek position is outside the loaded source",
@@ -863,7 +863,7 @@ class ImageReplayRunner:
                 self._condition.notify_all()
             run_id = str(self._state["run_id"])
             generation = self._generation
-            frame = self._feed.frames[position]
+            frame = self._image_source.frames[position]
             cached = self._cached_frame_locked(frame)
             if cached is not None:
                 self._apply_cached_frame_locked(frame, cached)
@@ -877,7 +877,7 @@ class ImageReplayRunner:
                 # A future seek must advance the live steps through every
                 # unseen source frame so their state matches the displayed result.
                 self._set_position_locked(len(self._history))
-                unseen = self._feed.frames[len(self._history):position + 1]
+                unseen = self._image_source.frames[len(self._history):position + 1]
         for next_frame in unseen:
             self._process_one(run_id, generation, next_frame, allow_paused=True)
             with self._lock:
@@ -898,7 +898,7 @@ class ImageReplayRunner:
         self._state["memory"] = copy.deepcopy(cached.get("memory"))
         self._state["decision"] = copy.deepcopy(cached.get("decision"))
         completed = frame.position + 1
-        total = len(self._feed.frames) if self._feed is not None else completed
+        total = len(self._image_source.frames) if self._image_source is not None else completed
         self._state["progress"]["completed"] = completed
         self._state["progress"]["percent"] = (
             round((completed / total) * 100.0, 2) if total else 100.0
@@ -931,7 +931,7 @@ class ImageReplayRunner:
                 self._state["phase"] = "cancelled"
             self._cleanup_locked()
             self._shared_memory = {}
-            feed = self._feed
+            image_source = self._image_source
             source_dir = self.source_dir
             source_state = copy.deepcopy(self._state.get("source"))
             source_identity = self._state.get("source_identity")
@@ -939,22 +939,22 @@ class ImageReplayRunner:
             self._state = self._initial_state()
             self._apply_plugin_configuration_locked()
             self._history.clear()
-            self._feed = feed
-            if feed is not None:
+            self._image_source = image_source
+            if image_source is not None:
                 self.source_dir = source_dir
                 self._state["source"] = (
-                    source_state if source_state is not None else feed.to_dict()
+                    source_state if source_state is not None else image_source.to_dict()
                 )
-                self._state["source_identity"] = source_identity or feed.source_id
-                self._state["adapter"] = adapter or feed.adapter
+                self._state["source_identity"] = source_identity or image_source.source_id
+                self._state["adapter"] = adapter or image_source.adapter
                 self._state["progress"] = {
                     "completed": 0,
-                    "total": len(feed.frames),
+                    "total": len(image_source.frames),
                     "percent": 0.0,
                 }
                 self._state["summary"] = self._summary(
                     frames_completed=0,
-                    frames_total=len(feed.frames),
+                    frames_total=len(image_source.frames),
                 )
             self._record_action_locked("reset")
             self._condition.notify_all()
@@ -972,18 +972,18 @@ class ImageReplayRunner:
                 if self._state["phase"] == "paused":
                     self._condition.wait()
                     continue
-                feed = self._feed
+                image_source = self._image_source
                 position = int(self._state["position"])
-                if feed is None:
+                if image_source is None:
                     self._complete_locked()
                     return
-                if position >= len(feed.frames):
+                if position >= len(image_source.frames):
                     if self._loop:
                         self._restart_capture_locked()
                         continue
                     self._complete_locked()
                     return
-                frame = feed.frames[position]
+                frame = image_source.frames[position]
             processing_started = time.monotonic()
             if not self._process_one(run_id, generation, frame):
                 continue
@@ -998,9 +998,9 @@ class ImageReplayRunner:
                 if self._pace == "realtime":
                     next_position = int(self._state["position"])
                     next_frame = (
-                        self._feed.frames[next_position]
-                        if self._feed is not None
-                        and next_position < len(self._feed.frames)
+                        self._image_source.frames[next_position]
+                        if self._image_source is not None
+                        and next_position < len(self._image_source.frames)
                         else None
                     )
                     delay = (
@@ -1123,10 +1123,10 @@ class ImageReplayRunner:
                     self._state["progress"]["completed"] = frame.position + 1
                     self._state["progress"]["percent"] = (
                         round(
-                            ((frame.position + 1) / len(self._feed.frames)) * 100.0,
+                            ((frame.position + 1) / len(self._image_source.frames)) * 100.0,
                             2,
                         )
-                        if self._feed
+                        if self._image_source
                         else 100.0
                     )
                     self._state["summary"] = self._summary(

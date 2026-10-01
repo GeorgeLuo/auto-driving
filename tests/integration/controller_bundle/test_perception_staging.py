@@ -15,7 +15,7 @@ from implementations.decision_cycle.catalog import step_plugins
 
 
 class PerceptionStagingTests(unittest.TestCase):
-    def test_staged_bundle_keeps_component_and_plugin_types_consistent(self) -> None:
+    def test_staged_bundle_keeps_feed_and_plugin_types_consistent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = controller_bundle_paths(Path(tmp) / "vehicle")
             sync_controller_bundle(bundle, output=None)

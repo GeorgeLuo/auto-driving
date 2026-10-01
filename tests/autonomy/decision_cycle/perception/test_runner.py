@@ -18,8 +18,8 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
     ViewLocation,
 )
-from autonomy.decision_cycle.perception.components.interface import (
-    PerceptionComponentUnavailable,
+from autonomy.decision_cycle.perception.feeds.interface import (
+    PerceptionFeedUnavailable,
 )
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
@@ -33,24 +33,24 @@ from implementations.decision_cycle.catalog import step_plugins
 
 TEST_INPUT = PerceptionPluginInput(
     name="value",
-    component_id="test.component",
-    provider_spec=f"{__name__}:provide_test_component",
+    feed_id="test.feed",
+    provider_spec=f"{__name__}:provide_test_feed",
 )
 UNAVAILABLE_INPUT = PerceptionPluginInput(
     name="missing",
-    component_id="test.unavailable",
-    provider_spec=f"{__name__}:provide_unavailable_component",
+    feed_id="test.unavailable",
+    provider_spec=f"{__name__}:provide_unavailable_feed",
 )
 
 
-def provide_test_component(request, plugin_input):
+def provide_test_feed(request, plugin_input):
     del request, plugin_input
     return {"value": 42}
 
 
-def provide_unavailable_component(request, plugin_input):
+def provide_unavailable_feed(request, plugin_input):
     del request, plugin_input
-    raise PerceptionComponentUnavailable("test component is absent")
+    raise PerceptionFeedUnavailable("test feed is absent")
 
 
 class WorkingPlugin:

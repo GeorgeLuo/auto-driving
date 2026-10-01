@@ -1021,7 +1021,7 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
         if not isinstance(item, dict):
             continue
         required = "required" if item.get("required") else "optional"
-        lines.append(f"- {item.get('component_id', 'unknown')} ({required})")
+        lines.append(f"- {item.get('feed_id', 'unknown')} ({required})")
         required_by = item.get("required_by")
         if isinstance(required_by, list) and required_by:
             lines.append(f"  requested by: {', '.join(map(str, required_by))}")
@@ -1052,9 +1052,9 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
                 continue
             contract = plugin.get("contract") if isinstance(plugin.get("contract"), dict) else {}
             inputs = contract.get("inputs")
-            component_text = (
+            feed_text = (
                 ", ".join(
-                    str(item.get("component_id", "unknown"))
+                    str(item.get("feed_id", "unknown"))
                     for item in inputs
                     if isinstance(item, dict)
                 )
@@ -1065,7 +1065,7 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
             lines.append(
                 f"- {catalog_id} "
                 f"[{contract.get('state_mode', 'unknown')}] "
-                f"components={component_text}"
+                f"feeds={feed_text}"
             )
 
     output_schema = schema.get("output") if isinstance(schema.get("output"), dict) else {}

@@ -492,9 +492,9 @@ implementations          -> satisfy and compose autonomy contracts
 CLI/runtime entrypoints  -> select implementations and execute the cycle
 ```
 
-Perception follows a component-injection model. The stable step wraps a
+Perception follows a feed-injection model. The stable step wraps a
 generic `SensorSnapshot` and runs configured plugins without knowing which
-sensor or meaning any plugin uses. Each plugin declares named component inputs
+sensor or meaning any plugin uses. Each plugin declares named feed inputs
 and returns only structured signals, spatial evidence, and measurements. The
 generic runner resolves and caches those inputs, then owns missing-input and
 warm-up status, error isolation, timing, source attribution, text rendering,

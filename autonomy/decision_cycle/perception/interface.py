@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
 from autonomy.shared_memory import SharedMemory
 

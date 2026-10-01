@@ -1,6 +1,6 @@
 from __future__ import annotations
 import unittest
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorSnapshot
 from implementations.decision_cycle.catalog import step_plugins
 from cli.automa_cli.workbench_plugins import packaged_plugin_catalog

@@ -13,7 +13,7 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapsh
 from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
-    camera_component_id,
+    camera_feed_id,
     provide_camera_frame,
 )
 
@@ -23,7 +23,7 @@ _PERCEPTION_SPECS = {
 }
 
 
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
+FRONT_CAMERA_FEED = camera_feed_id(FRONT_CAMERA_SENSOR_ID)
 
 
 def _mapper(plugin_id: str) -> PerceptionRunner:
@@ -64,7 +64,7 @@ def _path_reading(path: Path, *, captured_at_ms: int) -> SensorReading:
     )
 
 
-class CameraComponentTests(unittest.TestCase):
+class CameraFeedTests(unittest.TestCase):
     def test_camera_provider_normalizes_path_and_array_to_read_only_rgb(self) -> None:
         rgb = np.zeros((12, 16, 3), dtype=np.uint8)
         rgb[:, :, 0] = 220
@@ -110,7 +110,7 @@ class CameraComponentTests(unittest.TestCase):
     def test_schema_is_generated_from_plugin_contracts(self) -> None:
         schema = _mapper("frame").describe_schema()
 
-        self.assertEqual(schema["inputs"][0]["component_id"], FRONT_CAMERA_COMPONENT)
+        self.assertEqual(schema["inputs"][0]["feed_id"], FRONT_CAMERA_FEED)
         self.assertEqual(schema["inputs"][0]["required_by"], ["frame"])
         self.assertEqual(schema["plugins"][0]["plugin_id"], "frame")
         self.assertEqual(schema["plugins"][0]["plugin_id"], "frame")

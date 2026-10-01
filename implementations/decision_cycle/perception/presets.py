@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-
 
 DEFAULT_PERCEPTION_PRESET = "lightweight_observer"
 
@@ -21,10 +19,6 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
             "first-hit floor boundaries."
         ),
         "plugins": ["frame", "floor_plane"],
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured frame, floor, and non-semantic boundary evidence",
-        },
     },
     "sim_debug": {
         "description": (
@@ -32,10 +26,6 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
             "color-target signals."
         ),
         "plugins": ["frame", "sim_color_targets"],
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured frame and simulator target evidence",
-        },
     },
     "visual_observer": {
         "description": (
@@ -43,10 +33,6 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
             "bounded scene tracks."
         ),
         "plugins": ["frame", "floor_plane", "motion_tracks"],
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured surface, boundary, and scene-track evidence",
-        },
     },
     "obstruction_observer": {
         "description": (
@@ -73,10 +59,6 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
                 "maximum_contour_area_fraction": 0.25,
                 "contour_merge_gap": 0.16,
             }
-        },
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured frame, floor, and generic obstruction-track evidence",
         },
     },
 }

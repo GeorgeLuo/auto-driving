@@ -29,10 +29,9 @@ from implementations.decision_cycle.perception.floor_continuity.model import (
     FloorContinuityConfig,
     analyze_floor_continuity,
 )
+from implementations.decision_cycle.perception.algorithms.obstructions import clamp, zone
 from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
-    _clamp,
-    _zone,
 )
 
 from .issue219_cues import (
@@ -544,7 +543,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                         label="coherent color region",
                         location=ViewLocation(
                             frame="image",
-                            zone=_zone(bbox),
+                            zone=zone(bbox),
                             bbox_xyxy_norm=bbox,
                             polygon_xy_norm=tuple(
                                 tuple(float(value) for value in point)
@@ -599,7 +598,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             label="supported floor interruption",
             location=ViewLocation(
                 frame="image",
-                zone=_zone(bbox),
+                zone=zone(bbox),
                 bbox_xyxy_norm=bbox,
                 polygon_xy_norm=polygon,
             ),
@@ -863,7 +862,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             label=f"geometry hypothesis: {hypothesis.kind}",
             location=ViewLocation(
                 frame="image",
-                zone=_zone(hypothesis.bbox),
+                zone=zone(hypothesis.bbox),
                 bbox_xyxy_norm=hypothesis.bbox,
             ),
             confidence=hypothesis.confidence,

@@ -23,6 +23,11 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
     PerceptionPluginInputs,
 )
+from implementations.decision_cycle.perception.algorithms.obstructions import (
+    clamp,
+    normalize_gray,
+    zone,
+)
 from implementations.decision_cycle.perception.components.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
@@ -106,53 +111,53 @@ class MultiObstructionTracksPlugin:
         **_unused_config: Any,
     ) -> None:
         self.max_tracks = max(1, int(max_tracks))
-        self.floor_cutoff_y = _clamp(float(floor_cutoff_y), 0.35, 0.95)
-        self.minimum_object_height = _clamp(float(minimum_object_height), 0.02, 1.0)
-        self.minimum_object_area_fraction = _clamp(
+        self.floor_cutoff_y = clamp(float(floor_cutoff_y), 0.35, 0.95)
+        self.minimum_object_height = clamp(float(minimum_object_height), 0.02, 1.0)
+        self.minimum_object_area_fraction = clamp(
             float(minimum_object_area_fraction), 0.0, 1.0
         )
-        self.maximum_object_area_fraction = _clamp(
+        self.maximum_object_area_fraction = clamp(
             float(maximum_object_area_fraction),
             self.minimum_object_area_fraction,
             1.0,
         )
         self.association_distance = max(0.01, float(association_distance))
-        self.minimum_association_score = _clamp(
+        self.minimum_association_score = clamp(
             float(minimum_association_score), 0.0, 1.0
         )
-        self.smoothing_alpha = _clamp(float(smoothing_alpha), 0.05, 1.0)
+        self.smoothing_alpha = clamp(float(smoothing_alpha), 0.05, 1.0)
         self.max_missed_frames = max(0, int(max_missed_frames))
         self.reacquire_window_frames = max(0, int(reacquire_window_frames))
         self.minimum_feature_points = max(4, int(minimum_feature_points))
         self.canny_low = max(1, int(canny_low))
         self.canny_high = max(self.canny_low + 1, int(canny_high))
-        self.minimum_contour_area_fraction = _clamp(
+        self.minimum_contour_area_fraction = clamp(
             float(minimum_contour_area_fraction), 0.0001, 1.0
         )
-        self.maximum_contour_area_fraction = _clamp(
+        self.maximum_contour_area_fraction = clamp(
             float(maximum_contour_area_fraction),
             self.minimum_contour_area_fraction,
             1.0,
         )
-        self.contour_merge_gap = _clamp(float(contour_merge_gap), 0.0, 0.5)
+        self.contour_merge_gap = clamp(float(contour_merge_gap), 0.0, 0.5)
         self.contrast_normalization = str(contrast_normalization or "none").lower()
         if self.contrast_normalization not in {"none", "clahe", "stretch", "gamma"}:
             self.contrast_normalization = "none"
-        self.contrast_clip_limit = _clamp(float(contrast_clip_limit), 0.1, 10.0)
+        self.contrast_clip_limit = clamp(float(contrast_clip_limit), 0.1, 10.0)
         self.contrast_tile_size = max(2, min(32, int(contrast_tile_size)))
-        self.contrast_gamma = _clamp(float(contrast_gamma), 0.25, 4.0)
+        self.contrast_gamma = clamp(float(contrast_gamma), 0.25, 4.0)
         self.shared_blur_kernel = _odd_kernel(shared_blur_kernel)
         self.shared_close_kernel = _odd_kernel(shared_close_kernel)
         self.shared_min_width_px = max(0, int(shared_min_width_px))
         self.shared_min_height_px = max(0, int(shared_min_height_px))
         self.shared_max_vertices = max(0, int(shared_max_vertices))
         self.preserve_separate_proposals = bool(preserve_separate_proposals)
-        self.duplicate_suppression_iou = _clamp(
+        self.duplicate_suppression_iou = clamp(
             float(duplicate_suppression_iou), 0.0, 1.0
         )
-        self.output_bbox_shrink_x = _clamp(float(output_bbox_shrink_x), 0.25, 1.0)
-        self.output_bbox_shrink_y = _clamp(float(output_bbox_shrink_y), 0.25, 1.0)
-        self.minimum_output_confidence = _clamp(float(minimum_output_confidence), 0.0, 1.0)
+        self.output_bbox_shrink_x = clamp(float(output_bbox_shrink_x), 0.25, 1.0)
+        self.output_bbox_shrink_y = clamp(float(output_bbox_shrink_y), 0.25, 1.0)
+        self.minimum_output_confidence = clamp(float(minimum_output_confidence), 0.0, 1.0)
 
 
     def reset(self) -> None:
@@ -226,12 +231,12 @@ class MultiObstructionTracksPlugin:
             if y1 < 0.03 and height_fraction < 0.25:
                 continue
             edge_density = float(edges[y : y + component_height, x : x + component_width].mean() / 255.0)
-            rectangularity = _clamp(
+            rectangularity = clamp(
                 contour_area / max(float(component_width * component_height), 1.0),
                 0.0,
                 1.0,
             )
-            confidence = _clamp(
+            confidence = clamp(
                 0.45 * edge_density
                 + 0.35 * rectangularity
                 + 0.20 * min(1.0, area_fraction / 0.03),
@@ -264,7 +269,7 @@ class MultiObstructionTracksPlugin:
                 label="rectangular foreground edge region",
                 location=ViewLocation(
                     frame="image",
-                    zone=_zone(proposal["bbox"]),
+                    zone=zone(proposal["bbox"]),
                     bbox_xyxy_norm=proposal["bbox"],
                 ),
                 confidence=proposal["confidence"],
@@ -435,40 +440,6 @@ def _proposals_related(
     return horizontal_overlap >= 0.35 and vertical_gap <= gap
 
 
-def _bbox(thing: PerceivedThing) -> tuple[float, float, float, float]:
-    bbox = thing.location.bbox_xyxy_norm
-    if bbox is None:
-        return (0.0, 0.0, 0.0, 0.0)
-    return tuple(float(value) for value in bbox)  # type: ignore[return-value]
-
-
-def _shape_support(thing: PerceivedThing) -> float:
-    edge_density = float(thing.properties.get("edge_density", 0.0))
-    rectangularity = float(thing.properties.get("rectangularity", 0.0))
-    return round(_clamp(0.55 * edge_density + 0.45 * rectangularity, 0.0, 1.0), 5)
-
-
-def _zone(bbox: tuple[float, float, float, float]) -> str:
-    cx = (bbox[0] + bbox[2]) / 2.0
-    cy = (bbox[1] + bbox[3]) / 2.0
-    # Keep the lateral bands aligned with the proposal plugin's image-space
-    # fallback thresholds.  This lets a centered-looking box still contribute
-    # when its bbox supplies an unambiguous side cue.
-    horizontal = "left" if cx < 0.45 else "right" if cx > 0.55 else "center"
-    vertical = "near" if cy > 0.66 else "far" if cy < 0.33 else "mid"
-    return f"{vertical}_{horizontal}"
-
-
-def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float:
-    if not things:
-        return 0.0
-    return float(sum(thing.confidence for thing in things) / len(things))
-
-
-def _clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
-
-
 def _odd_kernel(value: int) -> int:
     """Return an odd OpenCV kernel size, with zero preserving cue defaults."""
     parsed = int(value)
@@ -476,22 +447,3 @@ def _odd_kernel(value: int) -> int:
         return 0
     parsed = max(3, min(15, parsed))
     return parsed if parsed % 2 else parsed + 1
-
-
-def normalize_gray(rgb: np.ndarray, *, contrast_normalization="none", contrast_clip_limit=2.0, contrast_tile_size=8, contrast_gamma=1.0) -> np.ndarray:
-    """Apply a parameterized, capture-agnostic luminance normalization."""
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    if contrast_normalization == "clahe":
-        return cv2.createCLAHE(
-            clipLimit=contrast_clip_limit,
-            tileGridSize=(contrast_tile_size, contrast_tile_size),
-        ).apply(gray)
-    if contrast_normalization == "stretch":
-        return cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
-    if contrast_normalization == "gamma":
-        lut = np.array(
-            [((index / 255.0) ** contrast_gamma) * 255.0 for index in range(256)],
-            dtype=np.float32,
-        ).clip(0.0, 255.0).astype(np.uint8)
-        return cv2.LUT(gray, lut)
-    return gray

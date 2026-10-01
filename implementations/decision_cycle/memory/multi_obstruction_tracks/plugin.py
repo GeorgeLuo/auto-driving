@@ -1,6 +1,6 @@
 """Memory member of the Workbench obstruction pipeline.
 
-Use with ``implementations.decision_cycle.perception.multi_obstruction_tracks.plugin``. Its
+Use with ``implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin``. Its
 candidate signal supplies the selected detector's numerical tracking config.
 This plugin associates candidates, retains obstacle records for the
 ``avoid_recent_obstruction`` proposal plugin, and publishes the tracked

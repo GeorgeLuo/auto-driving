@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from implementations.decision_cycle.perception.floor_continuity.plugin import FloorContinuityPlugin
+from implementations.decision_cycle.perception.plugins.floor_continuity.plugin import FloorContinuityPlugin
 
 
 class CaptureFloorContinuityPlugin(FloorContinuityPlugin):

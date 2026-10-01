@@ -5,7 +5,7 @@
   "purpose": "Shared-plugin parameter profile for the darker 22-frame PiCar capture.",
   "source_code_changed": true,
   "implementation_revision": "revised-shared-detector-v2",
-  "source_code": "implementations/decision_cycle/perception/multi_obstruction_tracks/plugin.py",
+  "source_code": "implementations/decision_cycle/perception/plugins/multi_obstruction_tracks/plugin.py",
   "evidence_capture": "lab/runs/cv-synthesis-20260919/decision-motion-20s-20260919-224250/frames-0-21",
   "config": {
     "max_tracks": 2,

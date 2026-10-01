@@ -18,7 +18,7 @@ from autonomy.decision_cycle.perception.evidence.values import PerceivedThing
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.memory.multi_obstruction_tracks.plugin import MultiObstructionMemory
 from implementations.decision_cycle.perception.feeds.camera import CameraFrame
-from implementations.decision_cycle.perception.multi_obstruction_tracks.plugin import MultiObstructionTracksPlugin
+from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import MultiObstructionTracksPlugin
 
 
 def sha256(path: Path) -> str:
@@ -116,8 +116,8 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
             detections_file.write(json.dumps(record, sort_keys=True, default=str) + "\n")
             cv2.imwrite(str(output_dir / "overlays" / f"{position:04d}-{item['frame_id']}.jpg"), bgr)
     frozen = {"schema": "durable_obstacle_p1_baseline_v1", "manifest": str(manifest_path), "manifest_sha256": sha256(manifest_path),
-              "config_path": str(config_path), "config_sha256": sha256(config_path), "source_code": "implementations/decision_cycle/perception/multi_obstruction_tracks/plugin.py",
-              "source_code_sha256": sha256(Path("implementations/decision_cycle/perception/multi_obstruction_tracks/plugin.py")), "config": config,
+              "config_path": str(config_path), "config_sha256": sha256(config_path), "source_code": "implementations/decision_cycle/perception/plugins/multi_obstruction_tracks/plugin.py",
+              "source_code_sha256": sha256(Path("implementations/decision_cycle/perception/plugins/multi_obstruction_tracks/plugin.py")), "config": config,
               "memory_source_code_sha256": sha256(Path("implementations/decision_cycle/memory/multi_obstruction_tracks/plugin.py")),
               "tracker_source_code_sha256": sha256(Path("implementations/decision_cycle/memory/multi_obstruction_tracks/tracker.py")),
               "config_hash": _json_hash(config), "historical_max_tracks": historical_max, "effective_max_tracks": config["max_tracks"],

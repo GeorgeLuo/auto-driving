@@ -1,18 +1,11 @@
-"""Packaged perception plugins and named perception selections.
+"""Packaged perception plugins: each entry's spec, description and default config.
 
-``PERCEPTION_ALGORITHMS`` names ready-made perception selections: the plugins
-to select, in order, and config overrides for some of them. An activation
-built from one records the algorithm name in its metadata.
+Named selections of these plugins live in ``presets.py``.
 """
 
 from __future__ import annotations
 
 from typing import Any
-
-from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-
-
-DEFAULT_PERCEPTION_ALGORITHM = "lightweight_observer"
 
 # Tuned default configs shared by related packaged plugins.
 _FLOOR_CONTINUITY_CONFIG: dict[str, Any] = {
@@ -149,144 +142,68 @@ _MULTI_OBSTRUCTION_TRACKS_CONFIG: dict[str, Any] = {
 # Each plugin declares its own ID (its ``plugin_id``); entries do not repeat it.
 PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
     {
-        "spec": "implementations.decision_cycle.perception.floor_plane.plugin:FloorPlanePlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_plane.plugin:FloorPlanePlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.frame_observation.plugin:FrameObservationPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.motion_tracks.plugin:MotionTracksPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.obstruction_tracks.plugin:MultiObstructionTracksPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.obstruction_tracks.plugin:MultiObstructionTracksPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.sim_color_targets.plugin:SimColorTargetsPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.vlm_preparation.plugin:VlmPrepPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin",
         "description": "",
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.classical_regions.plugin:ClassicalRegionPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.classical_regions.plugin:ClassicalRegionPlugin",
         "description": "OpenCV-only coherent color components as generic image-space regions.",
         "default_config": {"working_width": 320, "spatial_radius": 8, "color_radius": 18, "min_area_fraction": 0.003, "max_area_fraction": 0.65, "max_regions": 32},
     },
     {
-        "spec": "implementations.decision_cycle.perception.composite_box_fusion.plugin:CompositeBoxFusionPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin:CompositeBoxFusionPlugin",
         "description": "Composite obstruction candidates from edge contours, partial-face and photometric cues, floor continuity, and line/junction support.",
         "default_config": _COMPOSITE_BOX_FUSION_CONFIG,
     },
     {
-        "spec": "implementations.decision_cycle.perception.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin",
         "description": "Composite box fusion with recursive spatial-mode separation between objects.",
         "default_config": {**_COMPOSITE_BOX_FUSION_CONFIG, "object_separated_geometry": True},
     },
     {
-        "spec": "implementations.decision_cycle.perception.floor_continuity.plugin:FloorContinuityPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_continuity.plugin:FloorContinuityPlugin",
         "description": "Stateless multi-cue bottom-connected floor support and interruption evidence.",
         "default_config": _FLOOR_CONTINUITY_CONFIG,
     },
     {
-        "spec": "implementations.decision_cycle.perception.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin",
         "description": "Stricter floor-boundary variant calibrated against the archived Chaser depth-obstacle capture.",
         "default_config": {"minimum_boundary_width_ratio": 0.03, "minimum_boundary_confidence": 0.7},
     },
     {
-        "spec": "implementations.decision_cycle.perception.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin",
         "description": "Temporal association and box smoothing around the floor-continuity cue.",
         "default_config": {**_FLOOR_CONTINUITY_CONFIG, "smoothing_alpha": 0.45, "association_distance": 0.3, "minimum_association_score": 0.18, "max_hold_frames": 2},
     },
     {
-        "spec": "implementations.decision_cycle.perception.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin",
+        "spec": "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin",
         "description": "Floor-suppressed obstruction candidates for the multi_obstruction_tracks memory plugin to track.",
         "default_config": _MULTI_OBSTRUCTION_TRACKS_CONFIG,
     },
-)
-
-PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
-    "lightweight_observer": {
-        "description": (
-            "Lightweight perception: frame facts, visible floor, and "
-            "first-hit floor boundaries."
-        ),
-        "plugins": ["frame", "floor_plane"],
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured frame, floor, and non-semantic boundary evidence",
-        },
-    },
-    "sim_debug": {
-        "description": (
-            "Simulator-only debug control: frame facts plus known Chase "
-            "color-target signals."
-        ),
-        "plugins": ["frame", "sim_color_targets"],
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured frame and simulator target evidence",
-        },
-    },
-    "visual_observer": {
-        "description": (
-            "Generic visual observer: frame facts, floor/traversability, and "
-            "bounded scene tracks."
-        ),
-        "plugins": ["frame", "floor_plane", "motion_tracks"],
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured surface, boundary, and scene-track evidence",
-        },
-    },
-    "obstruction_observer": {
-        "description": (
-            "Generic obstruction observer: frame facts, floor suppression, and "
-            "bounded multi-region temporal tracks."
-        ),
-        "plugins": ["frame", "floor_plane", "obstruction_tracks"],
-        "plugin_configs": {
-            "obstruction_tracks": {
-                "max_tracks": 4,
-                "floor_cutoff_y": 0.72,
-                "minimum_object_height": 0.10,
-                "minimum_object_area_fraction": 0.006,
-                "maximum_object_area_fraction": 0.60,
-                "association_distance": 0.35,
-                "minimum_association_score": 0.12,
-                "smoothing_alpha": 0.35,
-                "max_missed_frames": 2,
-                "reacquire_window_frames": 4,
-                "minimum_feature_points": 6,
-                "canny_low": 20,
-                "canny_high": 40,
-                "minimum_contour_area_fraction": 0.0015,
-                "maximum_contour_area_fraction": 0.25,
-                "contour_merge_gap": 0.16,
-            }
-        },
-        "output_contract": {
-            "schema": PERCEPTION_TEXT_SCHEMA,
-            "meaning": "structured frame, floor, and generic obstruction-track evidence",
-        },
-    },
-}
-
-
-def available_perception_algorithm_ids() -> tuple[str, ...]:
-    return tuple(sorted(PERCEPTION_ALGORITHMS))
-
-
-DEFAULT_PERCEPTION_PLUGINS: tuple[str, ...] = tuple(
-    PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]["plugins"]
 )

@@ -14,8 +14,8 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
 )
 from autonomy.decision_cycle.activation import STEPS
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
@@ -382,7 +382,7 @@ def update_vehicle_autonomy(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
-            perception_algorithm=DEFAULT_PERCEPTION_ALGORITHM,
+            perception_algorithm=DEFAULT_PERCEPTION_PRESET,
             steps={step: list(DEFAULT_STEP_PLUGINS[step]) for step in STEPS if step != "proposal"},
             generation_id=None,
             runtime_verification=None,
@@ -394,7 +394,7 @@ def update_vehicle_autonomy(
     release = sync_controller_bundle(bundle, output=output)
     perception_activation_path = ensure_vehicle_perception_activation(
         vehicle=dict(target.vehicle),
-        algorithm=DEFAULT_PERCEPTION_ALGORITHM,
+        algorithm=DEFAULT_PERCEPTION_PRESET,
         bundle=bundle,
         release=release,
     )

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from implementations.decision_cycle.perception.composite_box_fusion.plugin import *  # noqa: F401,F403
-from implementations.decision_cycle.perception.composite_box_fusion.plugin import (
+from implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin import *  # noqa: F401,F403
+from implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin import (
     CompositeBoxFusionPlugin as _CompositeBoxFusionPlugin,
 )
 from implementations.decision_cycle.perception.shared.obstructions.boxes import center_distance

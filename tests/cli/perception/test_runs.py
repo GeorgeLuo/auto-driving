@@ -11,7 +11,7 @@ from PIL import Image
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
-from implementations.decision_cycle.catalog import perception_algorithm_activation
+from implementations.decision_cycle.catalog import perception_preset_activation
 from cli.automa_cli.perception_evaluation import (
     evaluate_perception_frames,
     write_review_html,
@@ -267,7 +267,7 @@ class PerceptionRunTests(unittest.TestCase):
                     "runtime_dir": str(root / "bundle" / "runtime"),
                 },
                 "manifest": {
-                    **perception_algorithm_activation("lightweight_observer").to_payload(),
+                    **perception_preset_activation("lightweight_observer").to_payload(),
                 },
                 "source": {"tree_sha256": "test-tree"},
                 "refreshed": False,

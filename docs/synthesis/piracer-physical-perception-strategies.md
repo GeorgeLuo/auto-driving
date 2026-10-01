@@ -19,7 +19,7 @@
 ## Implementation checkpoint: simulator and archived Pi frames
 
 The bounded candidate now exists under
-[`implementations/decision_cycle/perception/floor_continuity/`](../../implementations/decision_cycle/perception/floor_continuity/).
+[`implementations/decision_cycle/perception/plugins/floor_continuity/`](../../implementations/decision_cycle/perception/plugins/floor_continuity/).
 It uses the existing plugin contract, stays stateless, processes at 320x240, and
 writes diagnostics only for explicitly recorded runs. Focused synthetic tests
 cover clear floor, a similar-color interruption, current-frame clearing, and
@@ -52,7 +52,7 @@ simulator operability, and compatibility with archived Pi imagery. It does
 **not** establish labeled improvement, onboard Pi latency or memory cost,
 live publication, carpet generalization, or fitness for promotion. Reproduce
 the checks with the commands in the plugin
-[README](../../implementations/decision_cycle/perception/floor_continuity/README.md); retain generated run
+[README](../../implementations/decision_cycle/perception/plugins/floor_continuity/README.md); retain generated run
 artifacts outside source control.
 
 ## Executive recommendation
@@ -324,7 +324,7 @@ If introduced later, calibration belongs in a shared camera component, not hidde
 ### Location
 
 ```text
-implementations/decision_cycle/perception/floor_continuity/
+implementations/decision_cycle/perception/plugins/floor_continuity/
   __init__.py
   plugin.py
   model.py

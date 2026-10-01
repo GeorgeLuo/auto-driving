@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from implementations.decision_cycle.perception.algorithms.motion.scene_motion import (
+from implementations.decision_cycle.perception.shared.motion.scene_motion import (
     analyze_scene_motion,
 )
 

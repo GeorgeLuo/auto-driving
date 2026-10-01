@@ -18,13 +18,13 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorRe
 
 from .paths import ROOT, display_path, safe_path_part
 from .perception_evaluation import evaluate_perception_frames, write_review_html
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
-    PERCEPTION_ALGORITHMS,
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
+    PERCEPTION_PRESETS,
 )
 from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from implementations.decision_cycle.catalog import packaged_activation, perception_algorithm_activation
+from implementations.decision_cycle.catalog import packaged_activation, perception_preset_activation
 
 from .perception import ensure_local_perception_runtime
 from .step_hosting import load_staged_runner
@@ -66,7 +66,7 @@ def run_perception_experiment(
     json_output: bool = False,
     algorithm: str | None = None,
 ) -> CommandResult:
-    if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
+    if algorithm is not None and algorithm not in PERCEPTION_PRESETS:
         return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -205,7 +205,7 @@ def apply_perception_experiment(
 ) -> CommandResult:
     if algorithm is not None and plugins:
         return CommandResult(2, "Choose either --algorithm or --plugin, not both.")
-    if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
+    if algorithm is not None and algorithm not in PERCEPTION_PRESETS:
         return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
     source = source.expanduser().resolve()
     if not source.exists():
@@ -235,7 +235,7 @@ def apply_perception_experiment(
             activation = packaged_activation("perception", plugins)
             algorithm = "custom"
         elif algorithm is not None:
-            activation = perception_algorithm_activation(algorithm)
+            activation = perception_preset_activation(algorithm)
         elif isinstance(recorded_mapper, dict):
             recorded = dict(recorded_mapper.get("config") or {})
             activation = step_activation(
@@ -246,8 +246,8 @@ def apply_perception_experiment(
             )
             algorithm = recorded_mapper.get("algorithm") or "recorded"
         else:
-            activation = perception_algorithm_activation(DEFAULT_PERCEPTION_ALGORITHM)
-            algorithm = DEFAULT_PERCEPTION_ALGORITHM
+            activation = perception_preset_activation(DEFAULT_PERCEPTION_PRESET)
+            algorithm = DEFAULT_PERCEPTION_PRESET
         mapper = PerceptionRunner.from_activation(activation)
         report_mapper = {"algorithm": algorithm, "spec": RUNNER_SPEC, "config": _selection(activation)}
         record_root = APPLY_ROOT

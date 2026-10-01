@@ -80,55 +80,33 @@
                 "path": "implementations/decision_cycle/perception/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Perception plugins that derive evidence from sensor data, their components, shared algorithms, and the packaged catalog.",
+                "responsibility": "Perception plugins that derive evidence from sensor data, their feeds, and shared library code. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset.",
                 "children": [
                   {
-                    "path": "implementations/decision_cycle/perception/components/",
+                    "path": "implementations/decision_cycle/perception/feeds/",
                     "category": "implementation",
                     "commit_policy": "source",
-                    "responsibility": "Concrete adapters that derive reusable plugin input components from generic sensor readings, such as camera frames."
+                    "responsibility": "Feeds: per-sensor adapters that turn generic sensor readings into typed plugin inputs, such as camera frames. The core contract calls these components."
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/frame_observation/",
+                    "path": "implementations/decision_cycle/perception/plugins/",
                     "category": "implementation",
                     "commit_policy": "source",
-                    "responsibility": "Frame observation plugin: current-frame statistics and change measurements."
+                    "responsibility": "One folder per perception plugin, named for its plugin_id. Variants keep their own folders.",
+                    "children": [
+                      {
+                        "path": "implementations/decision_cycle/perception/plugins/sim_color_targets/",
+                        "category": "environment-implementation",
+                        "commit_policy": "source",
+                        "responsibility": "Simulation-only color-target plugin."
+                      }
+                    ]
                   },
                   {
-                    "path": "implementations/decision_cycle/perception/floor_plane/",
+                    "path": "implementations/decision_cycle/perception/shared/",
                     "category": "implementation",
                     "commit_policy": "source",
-                    "responsibility": "Floor-plane plugin: floor modeling, projection, and traversability evidence."
-                  },
-                  {
-                    "path": "implementations/decision_cycle/perception/motion_tracks/",
-                    "category": "implementation",
-                    "commit_policy": "source",
-                    "responsibility": "Motion-tracks plugin: bounded temporal tracks from scene motion."
-                  },
-                  {
-                    "path": "implementations/decision_cycle/perception/obstruction_tracks/",
-                    "category": "implementation",
-                    "commit_policy": "source",
-                    "responsibility": "Multi-obstruction tracks plugin."
-                  },
-                  {
-                    "path": "implementations/decision_cycle/perception/sim_color_targets/",
-                    "category": "environment-implementation",
-                    "commit_policy": "source",
-                    "responsibility": "Simulation-only color-target plugin."
-                  },
-                  {
-                    "path": "implementations/decision_cycle/perception/vlm_preparation/",
-                    "category": "implementation",
-                    "commit_policy": "source",
-                    "responsibility": "Deterministic image preparation plugin for optional downstream observers."
-                  },
-                  {
-                    "path": "implementations/decision_cycle/perception/algorithms/",
-                    "category": "implementation",
-                    "commit_policy": "source",
-                    "responsibility": "Feature, scene-motion, and landmark algorithms shared by plugins and tools. They are not selectable plugins."
+                    "responsibility": "Topic library shared by plugins, the plugins that consume perception evidence, and tools: features, image, landmarks, motion, obstructions. Not selectable plugins."
                   }
                 ]
               },

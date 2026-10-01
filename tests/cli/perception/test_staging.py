@@ -8,8 +8,8 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from implementations.decision_cycle.catalog import perception_algorithm_activation
-from implementations.decision_cycle.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+from implementations.decision_cycle.catalog import perception_preset_activation
+from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.support.cli_runner import run_automa
 from tests.support.runtime_fixtures import write_json
 
@@ -23,7 +23,7 @@ def _activation(
 ) -> dict:
     """A staged perception activation for ``algorithm`` (optionally reselected)."""
 
-    payload = perception_algorithm_activation(algorithm).to_payload()
+    payload = perception_preset_activation(algorithm).to_payload()
     if plugins is not None:
         payload["plugins"] = plugins
     payload["metadata"] = {
@@ -63,9 +63,9 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             for relative in (
-                "implementations/decision_cycle/perception/floor_plane/plugin.py",
-                "implementations/decision_cycle/perception/vlm_preparation/plugin.py",
-                "implementations/decision_cycle/perception/motion_tracks/plugin.py",
+                "implementations/decision_cycle/perception/plugins/floor_plane/plugin.py",
+                "implementations/decision_cycle/perception/plugins/vlm_prep/plugin.py",
+                "implementations/decision_cycle/perception/plugins/motion_tracks/plugin.py",
                 "autonomy/decision_cycle/perception/runner.py",
                 "bundle-manifest.json",
             ):
@@ -156,7 +156,7 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_perception_update_v0")
         self.assertTrue(payload["dry_run"])
         self.assertEqual(payload["vehicle_id"], "chase-sim-chaser")
-        self.assertEqual(payload["algorithm"], DEFAULT_PERCEPTION_ALGORITHM)
+        self.assertEqual(payload["algorithm"], DEFAULT_PERCEPTION_PRESET)
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "chase-sim")
         self.assertTrue(
             payload["would_write"]["bundle_root"].endswith(

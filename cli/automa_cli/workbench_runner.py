@@ -26,10 +26,10 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.catalog import (
     packaged_activation,
-    perception_algorithm_activation,
+    perception_preset_activation,
 )
 from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
-from implementations.decision_cycle.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 
 from .memory_report import memory_state
 from .workbench_contract import (
@@ -92,7 +92,7 @@ def _snapshot_for_frame(frame: ReplayFrame) -> SensorSnapshot | None:
 
 def _default_mapper() -> PerceptionBackend:
     return PerceptionRunner.from_activation(
-        perception_algorithm_activation(DEFAULT_PERCEPTION_ALGORITHM)
+        perception_preset_activation(DEFAULT_PERCEPTION_PRESET)
     )
 
 
@@ -240,7 +240,7 @@ class ImageReplayRunner:
             self._active_plugin_ids
         )
         self._state["machine_detail"]["pipeline"]["perception_algorithm"] = (
-            DEFAULT_PERCEPTION_ALGORITHM
+            DEFAULT_PERCEPTION_PRESET
             if list(self._active_plugin_ids) == ["frame", "floor_plane"]
             else "plugin_selection"
         )
@@ -1406,7 +1406,7 @@ class ImageReplayRunner:
         return {
             "pipeline": {
                 "perception_algorithm": (
-                    DEFAULT_PERCEPTION_ALGORITHM
+                    DEFAULT_PERCEPTION_PRESET
                     if active_ids == ["frame", "floor_plane"]
                     else "plugin_selection"
                 ),

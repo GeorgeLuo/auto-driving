@@ -1,6 +1,6 @@
 """Memory member of the Workbench obstruction pipeline.
 
-Use with ``implementations.decision_cycle.perception.multi_obstruction_tracks.plugin``. Its
+Use with ``implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin``. Its
 candidate signal supplies the selected detector's numerical tracking config.
 This plugin associates candidates, retains obstacle records for the
 ``avoid_recent_obstruction`` proposal plugin, and publishes the tracked
@@ -34,11 +34,11 @@ from implementations.decision_cycle.memory.bounded_evidence.ledger import (
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
     reduce_evidence,
 )
-from implementations.decision_cycle.perception.components.camera import (
+from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
     provide_camera_frame,
 )
-from implementations.decision_cycle.perception.algorithms.obstructions import normalize_gray
+from implementations.decision_cycle.perception.shared.image.contrast import normalize_gray
 from .tracker import ObstructionTrackState
 
 

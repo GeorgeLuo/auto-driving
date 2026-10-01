@@ -10,10 +10,10 @@ from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.decision_cycle.catalog import step_plugins
-from implementations.decision_cycle.perception.components.camera import (
+from implementations.decision_cycle.perception.feeds.camera import (
     camera_component_id,
 )
-from implementations.decision_cycle.perception.motion_tracks.plugin import (
+from implementations.decision_cycle.perception.plugins.motion_tracks.plugin import (
     MotionTracksPlugin,
 )
 

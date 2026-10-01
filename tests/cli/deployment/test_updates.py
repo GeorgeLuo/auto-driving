@@ -9,8 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli.deploy import _resolve_physical_target
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
 )
 from tests.support.cli_runner import run_automa
 
@@ -161,7 +161,7 @@ class DeploymentUpdateTests(unittest.TestCase):
         self.assertTrue(payload["source"]["tree_sha256"])
         self.assertEqual(
             payload["activation"]["perception_algorithm"],
-            DEFAULT_PERCEPTION_ALGORITHM,
+            DEFAULT_PERCEPTION_PRESET,
         )
         self.assertEqual(payload["activation"]["steps"]["action"], ["hold"])
         self.assertEqual(payload["activation"]["steps"]["memory"], ["bounded_evidence"])

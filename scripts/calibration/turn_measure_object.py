@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
 
 from implementations.vehicle.picar.defaults import get_default_local_car_base_url
 from scripts.calibration.step_measure_object import Observation, observe, post_drive
-from implementations.decision_cycle.perception.algorithms.features.feature_sequence import (
+from implementations.decision_cycle.perception.shared.features.feature_sequence import (
     analyze_tracked_sequence,
 )
 

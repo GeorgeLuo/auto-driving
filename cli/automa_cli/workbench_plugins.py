@@ -16,9 +16,9 @@ from autonomy.decision_cycle.perception.interface import PerceptionBackend
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import PluginDefinition, PluginManagementError, PluginManager
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
-    PERCEPTION_ALGORITHMS,
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
+    PERCEPTION_PRESETS,
 )
 
 
@@ -118,7 +118,7 @@ class PluginCatalog:
 def packaged_plugin_catalog() -> PluginCatalog:
     """Every packaged perception plugin; the default algorithm's are preselected."""
 
-    default_ids = tuple(PERCEPTION_ALGORITHMS[DEFAULT_PERCEPTION_ALGORITHM]["plugins"])
+    default_ids = tuple(PERCEPTION_PRESETS[DEFAULT_PERCEPTION_PRESET]["plugins"])
     entries = step_plugins("perception")
     definitions: dict[str, PluginDefinition] = {
         item.plugin_id: item

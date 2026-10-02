@@ -15,7 +15,7 @@ from implementations.decision_cycle.memory.bounded_evidence.ledger import (
     LEDGER_KEY,
     EvidenceLedger,
 )
-from cli.automa_cli.workbench_runner import _default_memory_step
+from cli.automa_cli.workbench_frames import default_memory_step
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
     FixtureMapper,
@@ -68,7 +68,7 @@ class WorkbenchTests(unittest.TestCase):
         published = []
 
         def memory_factory():
-            step = _default_memory_step()
+            step = default_memory_step()
 
             class RecordingStep:
                 def __call__(self, context, observation):

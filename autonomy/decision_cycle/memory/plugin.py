@@ -7,6 +7,12 @@ anything other plugins read. ``update`` runs once per cycle; ``reset`` starts a
 new epoch and writes the plugin's fresh state to the map. ``status`` is an
 optional JSON summary of that state for diagnostics. Framework code owns
 selection, timing, and failure isolation.
+
+The CLI and the workbench read four keys from a retained-evidence ledger's
+summary: ``epoch_id``, ``health`` (``empty`` or ``healthy``), ``bounds`` and
+``record_count``. The framework does not check for them. A summary that drops or
+renames one shows no value for it, and the CLI's reset check reads ``health``
+and ``record_count`` to tell that a reset emptied the memory.
 """
 
 from __future__ import annotations

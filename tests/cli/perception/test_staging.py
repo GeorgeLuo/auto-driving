@@ -9,7 +9,11 @@ from cli.automa_cli.bundles import (
     sync_controller_bundle,
 )
 from implementations.decision_cycle.catalog import perception_preset_activation
-from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
+from implementations.decision_cycle.perception.presets import (
+    CUSTOM_PERCEPTION_DESCRIPTION,
+    CUSTOM_PERCEPTION_PRESET,
+    DEFAULT_PERCEPTION_PRESET,
+)
 from tests.support.cli_runner import run_automa
 from tests.support.runtime_fixtures import write_json
 
@@ -199,65 +203,62 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["preset"], "visual_observer")
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "picar")
 
-    def test_perception_plugin_enable_disable_edits_active_activation(self) -> None:
+    def test_perception_update_plugins_stages_a_custom_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            vehicle_runtime_dir = runtime_root / vehicle_id
-            bundle = controller_bundle_paths(vehicle_runtime_dir)
-            sync_controller_bundle(bundle, output=None)
-
-            write_json(
-                Path(bundle["root_dir"]) / "runtime" / "perception" / "active.json",
-                _activation(
-                    bundle,
-                    plugins=["frame"],
-                    vehicle_id=vehicle_id,
-                    vehicle_kind="chase-sim-ws",
-                    provider="chase-sim",
-                ),
-            )
-
-            enable = run_automa(
+            result = run_automa(
                 "vehicles",
+                "update",
                 "perception",
-                "enable",
                 "--id",
-                vehicle_id,
-                "floor_plane",
-                "--json",
-                runtime_root=runtime_root,
-            )
-            disable = run_automa(
-                "vehicles",
-                "perception",
-                "disable",
-                "--id",
-                vehicle_id,
+                "chase-sim-chaser",
+                "--plugin",
                 "frame",
+                "--plugin",
+                "classical_regions",
+                "--dry-run",
                 "--json",
                 runtime_root=runtime_root,
             )
-            info = run_automa(
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["preset"], CUSTOM_PERCEPTION_PRESET)
+        self.assertEqual(payload["manifest"]["plugins"], ["frame", "classical_regions"])
+        self.assertEqual(
+            payload["manifest"]["metadata"]["preset_description"],
+            CUSTOM_PERCEPTION_DESCRIPTION,
+        )
+
+    def test_perception_update_rejects_a_preset_with_plugins_and_unknown_plugins(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            both = run_automa(
                 "vehicles",
-                "info",
+                "update",
                 "perception",
                 "--id",
-                vehicle_id,
-                "--json",
+                "chase-sim-chaser",
+                "--preset",
+                "visual_observer",
+                "--plugin",
+                "frame",
+                "--dry-run",
                 runtime_root=runtime_root,
+                check=False,
+            )
+            unknown = run_automa(
+                "vehicles",
+                "update",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                "--plugin",
+                "no_such_plugin",
+                "--dry-run",
+                runtime_root=runtime_root,
+                check=False,
             )
 
-        enable_payload = json.loads(enable.stdout)
-        self.assertTrue(enable_payload["changed"])
-        self.assertEqual(enable_payload["plugins_after"], ["frame", "floor_plane"])
-
-        disable_payload = json.loads(disable.stdout)
-        self.assertTrue(disable_payload["changed"])
-        self.assertEqual(disable_payload["plugins_after"], ["floor_plane"])
-
-        info_payload = json.loads(info.stdout)
-        self.assertEqual(info_payload["activation"]["preset"], "custom")
-        self.assertEqual(
-            info_payload["activation"]["plugins"], ["floor_plane"]
-        )
+        self.assertNotEqual(both.returncode, 0)
+        self.assertNotEqual(unknown.returncode, 0)
+        self.assertIn("no_such_plugin", unknown.stdout + unknown.stderr)

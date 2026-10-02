@@ -130,7 +130,7 @@ class PerceptionRunner:
         """Perceive the context's sensor frame; without one, reset and return None."""
 
         with self._runtime_lock:
-            if context.sensor_snapshot is None:
+            if context.sensor_frame is None:
                 self.reset(context.shared_memory)
                 self.last_frame_index = context.frame_index
                 return None
@@ -141,7 +141,7 @@ class PerceptionRunner:
             try:
                 self.last_output = self.perceive(
                     build_perception_request(
-                        context.sensor_snapshot,
+                        context.sensor_frame,
                         shared_memory=context.shared_memory,
                         output_dir=Path(output_dir) if isinstance(output_dir, str) else None,
                         metadata={
@@ -521,8 +521,8 @@ class PerceptionRunner:
                     error=f"required input unavailable: {details}",
                 )
             inputs = PerceptionPluginInputs(
-                frame_id=request.snapshot.read_id,
-                captured_at_ms=request.snapshot.completed_at_ms,
+                frame_id=request.sensor_frame.read_id,
+                captured_at_ms=request.sensor_frame.completed_at_ms,
                 feeds=feeds,
                 diagnostics=diagnostics,
                 metadata=request.metadata,

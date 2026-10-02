@@ -10,14 +10,14 @@ from unittest.mock import patch
 from PIL import Image
 
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli import perception as perception_module
 from implementations.decision_cycle.catalog import preset_activation
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
     _source_image_paths,
     inspect_perception,
-    perceive_snapshot,
+    perceive_sensor_frame,
 )
 from cli.automa_cli.vehicle_access import VehicleAccess
 from implementations.decision_cycle.catalog import step_plugins
@@ -32,7 +32,7 @@ class FakeFrameCar:
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (48, 32), (25 + self.read_count, 35, 45)).save(path)
-        return SensorSnapshot(
+        return SensorFrame(
             read_id=request.read_id,
             readings={
                 FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -87,12 +87,12 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(json.loads(preset.message)["mapper"]["preset"], "visual_observer")
         self.assertEqual(json.loads(custom.message)["mapper"]["preset"], "custom")
 
-    def test_perceive_snapshot_returns_the_record_and_saves_results_only_on_request(self) -> None:
+    def test_perceive_sensor_frame_returns_the_record_and_saves_results_only_on_request(self) -> None:
         mapper = PerceptionRunner.from_activation(preset_activation("perception", "lightweight_observer"))
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "frame.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
-            snapshot = SensorSnapshot(
+            sensor_frame = SensorFrame(
                 read_id="frame_000000",
                 readings={
                     FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -114,15 +114,15 @@ class PerceptionRunTests(unittest.TestCase):
                 metadata={},
             )
 
-            record, perception = perceive_snapshot(mapper, snapshot, **common)
+            record, perception = perceive_sensor_frame(mapper, sensor_frame, **common)
             self.assertEqual(record["perception"], perception.to_dict())
             self.assertEqual(record["status"], perception.status)
             self.assertEqual(record["captured_at_ms"], 7)
             self.assertEqual(list(Path(tmp).iterdir()), [image])
 
             result_dir = Path(tmp) / "results" / "frame_000000"
-            record, perception = perceive_snapshot(
-                mapper, snapshot, result_dir=result_dir, started=time.perf_counter() - 5.0, **common
+            record, perception = perceive_sensor_frame(
+                mapper, sensor_frame, result_dir=result_dir, started=time.perf_counter() - 5.0, **common
             )
             saved = json.loads((result_dir / "perception.json").read_text(encoding="utf-8"))
             self.assertEqual(saved, json.loads(json.dumps(record)))

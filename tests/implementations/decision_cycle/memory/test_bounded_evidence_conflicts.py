@@ -28,7 +28,7 @@ def _observation(
     return Observation(
         observation_id=observation_id,
         created_at_ms=created_at_ms,
-        sensor_snapshot={},
+        sensor_frame={},
         perception_plugin_id="lightweight_observer",
         summary=("test",),
         things=things,
@@ -489,7 +489,7 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(regress.records[0].location.zone, "center")
         self.assertEqual(regress.metadata["last_update_conflict_count"], 0)
 
-    def test_snapshot_preserves_last_update_conflict_count(self) -> None:
+    def test_state_preserves_last_update_conflict_count(self) -> None:
         ledger = _ledger()
         ledger.update(
             _ctx("f1", 1, 100),
@@ -552,7 +552,7 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(len(pressure.metadata["last_update_drops"]), 12)
         self.assertEqual(pressure.metadata["last_update_drops_omitted"], 7)
 
-    def test_drop_details_fit_snapshot_byte_limit(self) -> None:
+    def test_drop_details_fit_state_byte_limit(self) -> None:
         ledger = _ledger(max_records=1, max_property_bytes=32, max_serialized_bytes=1024)
         state = ledger.update(
             _ctx("f1", 1, 100),

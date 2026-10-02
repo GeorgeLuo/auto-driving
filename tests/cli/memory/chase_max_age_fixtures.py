@@ -47,7 +47,7 @@ def _chase_frame(
             "observation_id": f"obs-{index}",
             "things": [{"thing_id": "front_camera_frame"}],
             "signals": [],
-            "sensor_snapshot": {
+            "sensor_frame": {
                 "metadata": {
                     "simulator_frame_index": index,
                     "simulation_epoch": simulation_epoch,

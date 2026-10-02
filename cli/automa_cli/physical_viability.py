@@ -14,7 +14,7 @@ from .physical_observation import (
     fetch_observation_publication,
     picar_base_url,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 VIABILITY_OUTPUT_ROOT = Path(
@@ -67,8 +67,8 @@ def run_physical_viability_measurement(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
                 ]
             ),
         )

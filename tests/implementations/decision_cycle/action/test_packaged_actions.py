@@ -8,7 +8,7 @@ from dataclasses import replace
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionCycleResult
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.steps import decision_steps
@@ -33,9 +33,9 @@ def _records(
             kind="floor_boundary",
             label="floor boundary",
             confidence=0.8,
-            provenance=MemoryProvenance(
+            origin=MemoryOrigin(
                 observation_id="obs-1",
-                evidence_id="boundary",
+                observed_id="boundary",
                 coordinate_frame="image",
                 observed_at_ms=updated_at_ms,
                 updated_at_ms=updated_at_ms,
@@ -56,7 +56,7 @@ def _observation(**overrides) -> Observation:
     values = {
         "observation_id": "obs-1",
         "created_at_ms": 1000,
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "summary": ("test",),
     }
     values.update(overrides)
@@ -125,7 +125,7 @@ class HoldActionTests(unittest.TestCase):
     def test_evaluator_metadata_is_stripped_from_a_live_capture(self) -> None:
         observation = _observation(
             observation_id="obs_live",
-            sensor_snapshot={
+            sensor_frame={
                 "readings": {
                     "front_camera": {
                         "metadata": {

@@ -20,7 +20,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
@@ -65,7 +65,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },

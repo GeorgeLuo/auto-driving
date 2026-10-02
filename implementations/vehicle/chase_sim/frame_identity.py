@@ -42,7 +42,7 @@ class ChaseCaptureValidationError(ValueError):
 def coerce_simulator_frame_index(value: Any) -> int | None:
     """Return a non-negative int frame index, or None when absent/invalid.
 
-    Tolerant helper for local/serialized metadata (snapshots, files, memory).
+    Tolerant helper for local/serialized metadata (sensor frames, files, memory).
     Untrusted Metrics UI wire fields must use require_protocol_frame_index.
     """
 
@@ -79,10 +79,10 @@ def format_chase_frame_id(frame_index: int) -> str:
     return f"chase_frame_{int(frame_index):06d}"
 
 
-def simulator_frame_index_from_snapshot(snapshot: Any) -> int | None:
-    """Extract simulator frame index from a SensorSnapshot or its dict form."""
+def simulator_frame_index_from_sensor_frame(sensor_frame: Any) -> int | None:
+    """Extract simulator frame index from a SensorFrame or its dict form."""
 
-    for metadata in _snapshot_metadata_records(snapshot):
+    for metadata in _sensor_frame_metadata_records(sensor_frame):
         for key in ("simulator_frame_index", "frame_index", "frameIndex"):
             index = coerce_simulator_frame_index(metadata.get(key))
             if index is not None:
@@ -90,10 +90,10 @@ def simulator_frame_index_from_snapshot(snapshot: Any) -> int | None:
     return None
 
 
-def simulator_epoch_from_snapshot(snapshot: Any) -> str | None:
-    """Extract the simulation-run epoch from a SensorSnapshot or dict form."""
+def simulator_epoch_from_sensor_frame(sensor_frame: Any) -> str | None:
+    """Extract the simulation-run epoch from a SensorFrame or dict form."""
 
-    for metadata in _snapshot_metadata_records(snapshot):
+    for metadata in _sensor_frame_metadata_records(sensor_frame):
         for key in ("simulation_epoch", "simulationEpoch"):
             value = metadata.get(key)
             if isinstance(value, str) and value.strip():
@@ -519,17 +519,17 @@ def score_reference_alignment_batch(
     }
 
 
-def _snapshot_metadata_records(snapshot: Any) -> list[dict[str, Any]]:
-    if snapshot is None:
+def _sensor_frame_metadata_records(sensor_frame: Any) -> list[dict[str, Any]]:
+    if sensor_frame is None:
         return []
     metadata: dict[str, Any] = {}
     readings: dict[str, Any] = {}
-    if isinstance(snapshot, dict):
-        maybe_metadata = snapshot.get("metadata")
-        maybe_readings = snapshot.get("readings")
+    if isinstance(sensor_frame, dict):
+        maybe_metadata = sensor_frame.get("metadata")
+        maybe_readings = sensor_frame.get("readings")
     else:
-        maybe_metadata = getattr(snapshot, "metadata", None)
-        maybe_readings = getattr(snapshot, "readings", None)
+        maybe_metadata = getattr(sensor_frame, "metadata", None)
+        maybe_readings = getattr(sensor_frame, "readings", None)
     if isinstance(maybe_metadata, dict):
         metadata = maybe_metadata
     if isinstance(maybe_readings, dict):

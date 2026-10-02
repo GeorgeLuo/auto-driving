@@ -61,7 +61,7 @@ from .streaming import stream_vehicle_perception
 from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
     discover_active_vehicles,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
     format_vehicle_status,
     get_vehicle_status,
 )
@@ -462,7 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream.add_argument(
         "--once",
         action="store_true",
-        help="Render one snapshot and exit.",
+        help="Render once and exit.",
     )
     perception_stream.add_argument(
         "--no-clear",
@@ -495,7 +495,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--once",
         action="store_true",
-        help="Render one snapshot and exit.",
+        help="Render once and exit.",
     )
     memory_stream.add_argument(
         "--no-clear",
@@ -706,7 +706,7 @@ def build_parser() -> argparse.ArgumentParser:
             "health, key counts, retained keys, and a stable end-state digest. "
             "Runs two independent passes by default to prove determinism. "
             "Process-local; writes no history unless --record is passed. "
-            "With --record, freezes a bounded provenance extract (key → value → "
+            "With --record, freezes a bounded origin extract (key → value → "
             "source observation) under lab/runs/memory-replay/."
         ),
     )
@@ -747,7 +747,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Opt-in: write a bounded run directory with result, digest, sequence "
-            "copy, and provenance_extract.html. Disabled by default."
+            "copy, and origin_extract.html. Disabled by default."
         ),
     )
     memory_replay.set_defaults(handler=_handle_vehicles_memory_replay)
@@ -757,7 +757,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Evaluate memory lifecycle gates: present, dropout, max-age expiry, and reset. "
             "Chase (live automation) scores chaser-reference identity/alignment, retained-prior "
-            "provenance, max-age expiry without reset, observe-only control, and reset. "
+            "origin, max-age expiry without reset, observe-only control, and reset. "
             "Offline ids use a phase script. PiCar scores the live onboard step from "
             "publication.memory (no forced dropout, no local ephemeral reducer), waits "
             "for live age expiry, and POSTs onboard reset. Never moves the car. "
@@ -779,7 +779,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_check.add_argument(
         "--record",
         action="store_true",
-        help="Opt-in: write bounded report + provenance_extract.html (and Pi frames).",
+        help="Opt-in: write bounded report + origin_extract.html (and Pi frames).",
     )
     memory_check.add_argument(
         "--auto",
@@ -1689,7 +1689,7 @@ def _handle_vehicles_active(args: argparse.Namespace) -> int:
 
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(format_active_vehicles_snapshot(payload, include_inactive=include_inactive))
+        print(format_active_vehicles(payload, include_inactive=include_inactive))
     return 0
 
 

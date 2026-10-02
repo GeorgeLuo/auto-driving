@@ -37,7 +37,7 @@ def _observation(
     return Observation(
         observation_id=observation_id,
         created_at_ms=created_at_ms,
-        sensor_snapshot={},
+        sensor_frame={},
         perception_plugin_id="lightweight_observer",
         summary=("test",),
         things=things,
@@ -130,7 +130,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
         self.assertEqual(memory[LEDGER_KEY].record_count, 1)
 
-    def test_retains_things_and_signals_with_provenance(self) -> None:
+    def test_retains_things_and_signals_with_origin(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         context = DecisionFrameContext("frame_1", 1, 1_000)
         observation = _observation(
@@ -153,9 +153,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertIn("thing:1:11:floor_plane:18:floor_boundary_000", by_id)
         self.assertIn("signal:1:20:lightweight_observer:13:floor_visible", by_id)
         thing = by_id["thing:1:11:floor_plane:18:floor_boundary_000"]
-        self.assertEqual(thing.provenance.observation_id, "obs_1")
-        self.assertEqual(thing.provenance.frame_id, "frame_1")
-        self.assertEqual(thing.provenance.source_plugin_id, "floor_plane")
+        self.assertEqual(thing.origin.observation_id, "obs_1")
+        self.assertEqual(thing.origin.frame_id, "frame_1")
+        self.assertEqual(thing.origin.source_plugin_id, "floor_plane")
         self.assertEqual(thing.location.zone, "left")
 
     def test_recurring_evidence_updates_same_slot_without_identity_claim(self) -> None:
@@ -182,8 +182,8 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(record.record_id, "thing:1:11:floor_plane:18:floor_boundary_000")
         self.assertEqual(record.location.zone, "right")
         self.assertEqual(record.confidence, 0.95)
-        self.assertEqual(record.provenance.observation_id, "obs_2")
-        self.assertEqual(record.provenance.updated_at_ms, 200)
+        self.assertEqual(record.origin.observation_id, "obs_2")
+        self.assertEqual(record.origin.updated_at_ms, 200)
 
     def test_survives_dropout_until_max_age_then_expires(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=300)
@@ -297,7 +297,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             },
         )
 
-    def test_returned_snapshot_is_detached_from_ledger_state(self) -> None:
+    def test_returned_state_is_detached_from_the_ledger(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         first = ledger.update(
             DecisionFrameContext("frame_1", 1, 1_000),
@@ -392,7 +392,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             Observation(
                 observation_id="o1",
                 created_at_ms=90,
-                sensor_snapshot={},
+                sensor_frame={},
                 perception_plugin_id=None,
                 summary=("test",),
                 things=(no_plugin, unknown_plugin),
@@ -430,7 +430,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {"thing:1:11:floor_plane:2:ok"})
 
-    def test_reduce_evidence_rehydrates_prior_snapshot(self) -> None:
+    def test_reduce_evidence_rehydrates_prior_state(self) -> None:
         config = {"max_records": 8, "max_age_ms": 5_000}
         ledger = BoundedEvidenceReducer(**config)
         first = ledger.update(

@@ -67,7 +67,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.context", "DecisionFrameContext", "autonomy.decision_cycle.context", "DecisionFrameContext"),
     ("autonomy.decision_cycle.cycle", "DecisionSteps", "autonomy.decision_cycle.cycle", "DecisionSteps"),
     ("autonomy.decision_cycle.memory.plugin", "MemoryPlugin", "autonomy.decision_cycle.memory.plugin", "MemoryPlugin"),
-    ("autonomy.decision_cycle.memory.evidence", "MemoryProvenance", "autonomy.decision_cycle.memory.evidence", "MemoryProvenance"),
+    ("autonomy.decision_cycle.memory.evidence", "MemoryOrigin", "autonomy.decision_cycle.memory.evidence", "MemoryOrigin"),
     ("autonomy.decision_cycle.memory.errors", "MemoryUpdateError", "autonomy.decision_cycle.memory.errors", "MemoryUpdateError"),
     ("autonomy.decision_cycle.observation.values", "OBSERVATION_SCHEMA", "autonomy.decision_cycle.observation.values", "OBSERVATION_SCHEMA"),
     ("autonomy.decision_cycle.observation.values", "Observation", "autonomy.decision_cycle.observation.values", "Observation"),
@@ -139,7 +139,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
 
     # Formerly exported by autonomy.memory
     ("autonomy.shared_memory", "SharedMemory", "autonomy.shared_memory", "SharedMemory"),
-    ("autonomy.decision_cycle.memory.execution.plugin_runtime", "format_exception_safely", "autonomy.decision_cycle.memory.execution.plugin_runtime", "format_exception_safely"),
+    ("autonomy.decision_cycle.memory.runner", "format_exception_safely", "autonomy.decision_cycle.memory.runner", "format_exception_safely"),
 
     # autonomy.serialization
     ("autonomy.serialization", "canonical_json_bytes", "autonomy.serialization", "canonical_json_size_bytes"),
@@ -182,7 +182,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.vehicle", "FRONT_CAMERA_SENSOR_ID", "autonomy.vehicle.vehicle", "FRONT_CAMERA_SENSOR_ID"),
     ("autonomy.vehicle", "SensorReadRequest", "autonomy.vehicle.vehicle", "SensorReadRequest"),
     ("autonomy.vehicle", "SensorReading", "autonomy.vehicle.vehicle", "SensorReading"),
-    ("autonomy.vehicle", "SensorSnapshot", "autonomy.vehicle.vehicle", "SensorSnapshot"),
+    ("autonomy.vehicle", "SensorFrame", "autonomy.vehicle.vehicle", "SensorFrame"),
     ("autonomy.vehicle", "VEHICLE_ACTION_FIELDS", "autonomy.vehicle.vehicle", "VEHICLE_ACTION_FIELDS"),
     ("autonomy.vehicle", "VehicleAction", "autonomy.vehicle.vehicle", "VehicleAction"),
     ("autonomy.vehicle", "VehicleCapabilities", "autonomy.vehicle.vehicle", "VehicleCapabilities"),
@@ -259,9 +259,9 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.runtime.donkeycar", "LATEST_FRAME_PATH", "implementations.runtime.donkeycar.donkey_part", "LATEST_FRAME_PATH"),
     ("implementations.runtime.donkeycar", "LATEST_JSON_PATH", "implementations.runtime.donkeycar.donkey_part", "LATEST_JSON_PATH"),
     ("implementations.runtime.donkeycar", "LatestCameraFrame", "implementations.runtime.donkeycar.donkey_part", "LatestCameraFrame"),
-    ("implementations.runtime.donkeycar", "LatestObservationSnapshot", "implementations.runtime.donkeycar.donkey_part", "LatestObservationSnapshot"),
+    ("implementations.runtime.donkeycar", "LatestObservationState", "implementations.runtime.donkeycar.donkey_part", "LatestObservationState"),
     ("implementations.runtime.donkeycar", "OBSERVATION_PUBLICATION_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "OBSERVATION_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.donkeycar", "ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA"),
+    ("implementations.runtime.donkeycar", "ONBOARD_OBSERVATION_STATE_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "ONBOARD_OBSERVATION_STATE_SCHEMA"),
 
     # implementations.vehicle
     ("implementations.vehicle", "ChaseSimCar", "implementations.vehicle.chase_sim.car", "ChaseSimCar"),
@@ -276,8 +276,8 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.vehicle.chase_sim", "evaluate_chase_evaluator_reference", "implementations.vehicle.chase_sim.frame_identity", "evaluate_chase_evaluator_reference"),
     ("implementations.vehicle.chase_sim", "format_chase_frame_id", "implementations.vehicle.chase_sim.frame_identity", "format_chase_frame_id"),
     ("implementations.vehicle.chase_sim", "score_reference_alignment_batch", "implementations.vehicle.chase_sim.frame_identity", "score_reference_alignment_batch"),
-    ("implementations.vehicle.chase_sim", "simulator_epoch_from_snapshot", "implementations.vehicle.chase_sim.frame_identity", "simulator_epoch_from_snapshot"),
-    ("implementations.vehicle.chase_sim", "simulator_frame_index_from_snapshot", "implementations.vehicle.chase_sim.frame_identity", "simulator_frame_index_from_snapshot"),
+    ("implementations.vehicle.chase_sim", "simulator_epoch_from_sensor_frame", "implementations.vehicle.chase_sim.frame_identity", "simulator_epoch_from_sensor_frame"),
+    ("implementations.vehicle.chase_sim", "simulator_frame_index_from_sensor_frame", "implementations.vehicle.chase_sim.frame_identity", "simulator_frame_index_from_sensor_frame"),
     ("implementations.vehicle.chase_sim", "validate_chase_sensor_capture", "implementations.vehicle.chase_sim.frame_identity", "validate_chase_sensor_capture"),
     ("implementations.vehicle.picar", "DonkeyPiCar", "implementations.vehicle.picar.car", "DonkeyPiCar"),
     ("implementations.vehicle.picar", "create_local_car", "implementations.vehicle.picar.car", "create_local_car"),

@@ -1,14 +1,14 @@
 """Bounded reduction of observation evidence into an evidence ledger.
 
 Retains attributed things and signals across cycles with finite capacity and
-age. Recurring evidence_ids update the same ledger slot within an epoch; that
+age. Recurring observed_ids update the same ledger slot within an epoch; that
 is recency bookkeeping, not semantic object identity or world truth.
 
 Same-slot updates preserve kind and location shape while allowing properties to
 change between observations. Duplicate candidates within one observation must
 still agree (conflict policy ``bounded_evidence_structural_v2``). Record ids are
 namespaced by source plugin so two plugins cannot silently overwrite one
-another with the same local evidence id.
+another with the same local observed id.
 
 ``reduce_evidence`` reduces one cycle from an explicit prior ledger. The
 reducer uses mutable working data for one update and is then discarded.
@@ -22,7 +22,7 @@ from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.serialization import ensure_strict_json_value
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     DEFAULT_MAX_PROPERTY_BYTES,
@@ -230,9 +230,9 @@ class BoundedEvidenceReducer:
                 confidence = float(candidate.get("confidence") or 0.0)
                 if confidence < self.min_confidence:
                     continue
-                evidence_id = str(candidate.get(f"{kind}_id") or "").strip()
-                if not evidence_id:
-                    self._report_drop(f"<{kind}>", "missing_evidence_id", "not_admitted")
+                observed_id = str(candidate.get(f"{kind}_id") or "").strip()
+                if not observed_id:
+                    self._report_drop(f"<{kind}>", "missing_observed_id", "not_admitted")
                     continue
                 value = candidate.get("value") if kind == "signal" else None
                 # Keep affirmative / present signals; skip explicit false.
@@ -241,7 +241,7 @@ class BoundedEvidenceReducer:
                 source_plugin = candidate.get("source_plugin_id")
                 if source_plugin is None:
                     source_plugin = observation.perception_plugin_id
-                record_id = namespaced_record_id(kind, evidence_id, source_plugin)
+                record_id = namespaced_record_id(kind, observed_id, source_plugin)
                 location = (
                     _location_from_payload(candidate.get("location"))
                     if is_thing else None
@@ -263,16 +263,16 @@ class BoundedEvidenceReducer:
                 if not self._properties_within_bound(properties):
                     self._report_drop(record_id, "properties_too_large", "not_admitted")
                     continue
-                label = str(candidate.get("label") or evidence_id) if is_thing else evidence_id
+                label = str(candidate.get("label") or observed_id) if is_thing else observed_id
                 records.append(
                     RetainedEvidence(
                         record_id=record_id,
                         kind=str(candidate.get("kind") or "thing") if is_thing else "signal",
                         label=label,
                         confidence=confidence,
-                        provenance=MemoryProvenance(
+                        origin=MemoryOrigin(
                             observation_id=observation.observation_id,
-                            evidence_id=evidence_id,
+                            observed_id=observed_id,
                             coordinate_frame=(
                                 location.frame if location is not None else "image"
                             ) if is_thing else "observation",
@@ -301,7 +301,7 @@ class BoundedEvidenceReducer:
             return
         keep: dict[str, RetainedEvidence] = {}
         for record_id, record in self._records.items():
-            age = now_ms - int(record.provenance.updated_at_ms)
+            age = now_ms - int(record.origin.updated_at_ms)
             if age <= max_age_ms:
                 keep[record_id] = record
             else:
@@ -315,7 +315,7 @@ class BoundedEvidenceReducer:
         ordered = sorted(
             self._records.values(),
             key=lambda item: (
-                int(item.provenance.updated_at_ms),
+                int(item.origin.updated_at_ms),
                 item.record_id,
             ),
         )
@@ -336,7 +336,7 @@ class BoundedEvidenceReducer:
             sorted(
                 self._records.values(),
                 key=lambda item: (
-                    -int(item.provenance.updated_at_ms),
+                    -int(item.origin.updated_at_ms),
                     item.record_id,
                 ),
             )
@@ -401,27 +401,27 @@ def reduce_evidence(
 
 def namespaced_record_id(
     kind_prefix: str,
-    evidence_id: str,
+    observed_id: str,
     source_plugin_id: str | None,
 ) -> str:
     """Build an injective plugin-safe ledger key.
 
     Formats:
-    - absent source: ``{kind}:0:{evidence_len}:{evidence}``
-    - present source: ``{kind}:1:{plugin_len}:{plugin}:{evidence_len}:{evidence}``
+    - absent source: ``{kind}:0:{observed_len}:{observed}``
+    - present source: ``{kind}:1:{plugin_len}:{plugin}:{observed_len}:{observed}``
 
     Optional presence is encoded explicitly so ``None`` never collides with a
-    plugin literally named ``\"unknown\"``. Plugin and evidence strings are kept
+    plugin literally named ``\"unknown\"``. Plugin and observed strings are kept
     exactly as supplied (no strip), so whitespace-distinct IDs remain distinct.
     Length-prefixed components keep delimiter-containing IDs collision-free.
     """
 
-    evidence = str(evidence_id)
+    observed = str(observed_id)
     if source_plugin_id is None:
-        return f"{kind_prefix}:0:{len(evidence)}:{evidence}"
+        return f"{kind_prefix}:0:{len(observed)}:{observed}"
     plugin = str(source_plugin_id)
     return (
-        f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(evidence)}:{evidence}"
+        f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(observed)}:{observed}"
     )
 
 
@@ -470,7 +470,7 @@ def json_values_equal(left: Any, right: Any) -> bool:
 
 
 def payload_equal(left: RetainedEvidence, right: RetainedEvidence) -> bool:
-    """Same-observation payload equality (provenance excluded)."""
+    """Same-observation payload equality (origin excluded)."""
 
     return (
         left.record_id == right.record_id

@@ -20,4 +20,4 @@ when more than one plugin, a memory plugin, or a tool needs it.
 - Organize by topic, two levels deep: `shared/<topic>/<module>.py`. Add a new
   topic folder rather than nesting deeper.
 - Code here is never a plugin, is never resolved by the framework, and never
-  reads the sensor snapshot. Callers pass it arrays and values.
+  reads the sensor frame. Callers pass it arrays and values.

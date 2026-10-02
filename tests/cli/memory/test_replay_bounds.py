@@ -23,7 +23,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                 "observation": {
                     "observation_id": f"obs_{index:04d}",
                     "created_at_ms": 1_000 + index,
-                    "sensor_snapshot": {},
+                    "sensor_frame": {},
                     "perception_plugin_id": "lightweight_observer",
                     "summary": [f"frame {index}"],
                     "things": [],
@@ -66,7 +66,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                             "observation": {
                                 "observation_id": f"obs_{index:03d}",
                                 "created_at_ms": index,
-                                "sensor_snapshot": {},
+                                "sensor_frame": {},
                                 "perception_plugin_id": "lightweight_observer",
                                 "summary": [],
                                 "things": [],
@@ -88,7 +88,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                 "observation": {
                     "observation_id": f"obs_{index:04d}",
                     "created_at_ms": 1_000 + index,
-                    "sensor_snapshot": {},
+                    "sensor_frame": {},
                     "perception_plugin_id": "lightweight_observer",
                     "summary": [f"frame {index}"],
                     "things": [],

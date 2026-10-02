@@ -32,7 +32,7 @@ class MemoryActivationTests(unittest.TestCase):
             observation = Observation(
                 observation_id="obs_1",
                 created_at_ms=90,
-                sensor_snapshot={},
+                sensor_frame={},
                 summary=("hello",),
             )
             result = DecisionCycle(
@@ -45,7 +45,7 @@ class MemoryActivationTests(unittest.TestCase):
             remembered = _state(step(context, observation))
             self.assertEqual(remembered["record_count"], 1)
             self.assertEqual(
-                remembered["records"][0]["provenance"]["observation_id"],
+                remembered["records"][0]["origin"]["observation_id"],
                 "obs_1",
             )
             self.assertEqual(shared["recording_test.state"]["records"][0].record_id, "rec-obs_1")

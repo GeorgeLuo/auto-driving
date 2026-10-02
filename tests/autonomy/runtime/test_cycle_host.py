@@ -67,7 +67,9 @@ class _RecordingProposal:
         return self.runner(context, observation)
 
 
-def _memory_step(root: Path, *, fail_on_update: bool = False) -> MemoryRunner:
+def _memory_step(
+    root: Path, *, fail_on_update: bool = False, extra_specs: dict[str, str] | None = None
+) -> MemoryRunner:
     path = root / "active.json"
     path.write_text(
         json.dumps(
@@ -75,7 +77,7 @@ def _memory_step(root: Path, *, fail_on_update: bool = False) -> MemoryRunner:
                 "schema": STEP_ACTIVATION_SCHEMA,
                 "step": "memory",
                 "plugins": ["recording_test"],
-                "plugin_specs": {"recording_test": RECORDING_SPEC},
+                "plugin_specs": {"recording_test": RECORDING_SPEC, **(extra_specs or {})},
                 "plugin_configs": {"recording_test": {"fail_on_update": fail_on_update}},
             }
         ),
@@ -107,7 +109,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             step = _memory_step(Path(tmp))
             host, _ = _host(
                 observation=lambda context, perception: Observation(
-                    observation_id="obs-1", created_at_ms=1, sensor_snapshot={}, summary=("test",)
+                    observation_id="obs-1", created_at_ms=1, sensor_frame={}, summary=("test",)
                 ),
                 memory=step,
             )
@@ -151,6 +153,17 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertIsNone(host.last_result)
             self.assertEqual(host.status()["error_count"], 1)
             self.assertIn("forced-update-failure", host.status()["last_error"])
+
+    def test_bad_memory_selection_edit_stops_before_later_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            step = _memory_step(Path(tmp), extra_specs={"missing": "no_such_module:Nope"})
+            host, proposal = _host(memory=step)
+            step.plugin_manager.select(["missing"])
+            with self.assertRaisesRegex(MemoryUpdateError, "no_such_module"):
+                host.run(DecisionFrameContext("frame_x", 0, 1))
+            self.assertIsNone(proposal.last_shared_memory)
+            self.assertEqual(host.status()["error_count"], 1)
+            self.assertIn("no_such_module", host.status()["last_error"])
 
     def test_default_steps_hold_while_memory_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

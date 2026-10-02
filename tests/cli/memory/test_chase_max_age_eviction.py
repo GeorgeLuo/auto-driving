@@ -20,7 +20,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
@@ -30,14 +30,14 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             capacity_eviction_count=0,
         )
         # Intermediate capacity eviction occurred (counter advanced on the
-        # published snapshot) even though the sampled final frame has headroom
+        # published state) even though the sampled final frame has headroom
         # and no tracked key. Counter is read from frame metadata only.
         expired = _chase_frame(
             22,
             [
                 {
                     "record_id": "thing:front_camera_frame",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000022",
                         "updated_at_ms": now,
                     },
@@ -73,14 +73,14 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
                 },
                 {
                     "record_id": "thing:other_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000012",
                         "updated_at_ms": now,
                     },

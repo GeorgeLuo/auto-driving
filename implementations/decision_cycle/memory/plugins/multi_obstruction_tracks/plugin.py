@@ -119,7 +119,7 @@ class MultiObstructionMemory:
         tracker._next_track_id = shared_memory.get(
             "multi_obstruction_tracks.next_track_id", tracker._next_track_id
         )
-        frame = provide_camera_frame(build_perception_request(context.sensor_snapshot), FRONT_CAMERA_RGB_INPUT)
+        frame = provide_camera_frame(build_perception_request(context.sensor_frame), FRONT_CAMERA_RGB_INPUT)
         gray = normalize_gray(frame.rgb, **properties["normalization"])
         source = marker.get("source_plugin_id")
         candidates = [PerceivedThing.from_dict(thing) for thing in observation.things

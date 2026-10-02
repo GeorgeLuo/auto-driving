@@ -16,7 +16,7 @@ from autonomy.vehicle import (
     CarInterface,
     SensorReadRequest,
     SensorReading,
-    SensorSnapshot,
+    SensorFrame,
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
@@ -129,7 +129,7 @@ class DonkeyPiCar(CarInterface):
             "completed_at_ms": int(time.time() * 1000),
         }
 
-    def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:
+    def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         _reject_unsupported_sensors(request)
         started_ms = _timestamp_ms()
         readings: dict[str, SensorReading] = {}
@@ -147,7 +147,7 @@ class DonkeyPiCar(CarInterface):
                 metadata=capture,
             )
 
-        return SensorSnapshot(
+        return SensorFrame(
             read_id=request.read_id,
             readings=readings,
             started_at_ms=started_ms,

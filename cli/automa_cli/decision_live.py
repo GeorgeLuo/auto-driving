@@ -39,7 +39,7 @@ from .runtime_view import RuntimeViewServer
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
 )
 
 
@@ -65,8 +65,8 @@ def _resolve_physical_vehicle(
         return None, "\n\n".join(
             [
                 error,
-                "Discovery snapshot:",
-                format_active_vehicles_snapshot(discovery, include_inactive=True),
+                "Discovery:",
+                format_active_vehicles(discovery, include_inactive=True),
             ]
         )
     if vehicle is None:
@@ -108,8 +108,8 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         else None
     )
     evidence_value = evidence_value if isinstance(evidence_value, list) else None
-    sensor_snapshot = (
-        observation_value.get("sensor_snapshot")
+    sensor_frame = (
+        observation_value.get("sensor_frame")
         if isinstance(observation_value, dict)
         else None
     )
@@ -144,7 +144,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         "frame_index": normalized["frame_index"],
         "captured_at_ms": normalized["timestamp_ms"],
         "run_id": normalized["run_id"],
-        "sensor_snapshot": sensor_snapshot,
+        "sensor_frame": sensor_frame,
         "perception_completed_at_ms": (
             observation_value.get("created_at_ms")
             if isinstance(observation_value, dict)
@@ -237,7 +237,7 @@ class PhysicalDecisionViewAdapter:
         self.view_server = view_server
         self.timeout_s = timeout_s
 
-    def publish_snapshot(
+    def publish_frame(
         self,
         normalized: dict[str, Any],
         image: tuple[bytes, str],
@@ -282,7 +282,7 @@ class PhysicalDecisionViewAdapter:
             vehicle_id=self.vehicle_id,
             timeout_s=self.timeout_s,
         )
-        return self.publish_snapshot(normalized, image)
+        return self.publish_frame(normalized, image)
 
 
 def run_live_decision_monitor(
@@ -327,7 +327,7 @@ def run_live_decision_monitor(
             view_server=server,
             timeout_s=max(0.1, float(timeout_s)),
         )
-        if not adapter.publish_snapshot(normalized, image):
+        if not adapter.publish_frame(normalized, image):
             return CommandResult(2, "physical decision transaction was rejected")
         page_path = server.decision.page_url()
         if page_path is None or server.url is None:

@@ -50,7 +50,7 @@ from .vehicles import (
     READINESS_SCHEMA,
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
     get_vehicle_status,
 )
 
@@ -335,8 +335,8 @@ def update_vehicle_perception(
                 "\n\n".join(
                     [
                         error,
-                        "Discovery snapshot:",
-                        format_active_vehicles_snapshot(payload, include_inactive=True),
+                        "Discovery:",
+                        format_active_vehicles(payload, include_inactive=True),
                     ]
                 ),
             )
@@ -748,7 +748,7 @@ def _restart_and_sample_sim_controller(
         _emit(output, json.dumps(preparation, indent=2, sort_keys=True))
 
     _emit(output, "==> Capture simulator front-view sample")
-    snapshot = car.read_sensors(
+    sensor_frame = car.read_sensors(
         SensorReadRequest(
             output_dir=perception_runtime_dir / "sample" / "sensors",
             read_id="current",
@@ -761,7 +761,7 @@ def _restart_and_sample_sim_controller(
     runner = load_staged_runner(_manifest_activation(manifest))
     perception = runner.perceive(
         build_perception_request(
-            snapshot,
+            sensor_frame,
             shared_memory={},
             output_dir=sample_dir / "perception",
             metadata={
@@ -1076,7 +1076,7 @@ def _unavailable_live_observation(
 
 def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
     try:
-        snapshot = discover_active_vehicles(
+        discovery = discover_active_vehicles(
             timeout_s=timeout_s,
             include_picar=True,
             include_chase_sim=True,
@@ -1084,7 +1084,7 @@ def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any
         )
     except Exception as exc:
         return {"vehicle": None, "error": f"{type(exc).__name__}: {exc}"}
-    vehicle, error = find_vehicle_by_id(snapshot, vehicle_id)
+    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
     if error:
         return {"vehicle": None, "error": error}
     return {"vehicle": vehicle, "error": None}

@@ -8,8 +8,8 @@ from tests.support.memory_fixtures import memory_report
 class MemoryCheckTests(unittest.TestCase):
     def test_chase_reference_path_scores_live_alignment(self) -> None:
         # Full Chase max-age path lives in tests/cli/memory/test_chase_max_age.py.
-        # Keep provenance scoring smoke here without cross-TestCase invocation.
-        from cli.automa_cli.memory_check import score_chase_memory_provenance
+        # Keep origin scoring smoke here without cross-TestCase invocation.
+        from cli.automa_cli.memory_check import score_chase_memory_origin
 
         frames = [
             {
@@ -20,14 +20,14 @@ class MemoryCheckTests(unittest.TestCase):
                     "records": [
                         {
                             "record_id": "thing:obstacle_000",
-                            "provenance": {"frame_id": "chase_frame_000010"},
+                            "origin": {"frame_id": "chase_frame_000010"},
                         }
                     ]
                 }),
                 "observation": {
                     "things": [{"thing_id": "obstacle_000"}],
                     "signals": [],
-                    "sensor_snapshot": {
+                    "sensor_frame": {
                         "metadata": {
                             "simulator_frame_index": 10,
                             "simulation_epoch": "chase-run:test",
@@ -43,14 +43,14 @@ class MemoryCheckTests(unittest.TestCase):
                     "records": [
                         {
                             "record_id": "thing:obstacle_000",
-                            "provenance": {"frame_id": "chase_frame_000010"},
+                            "origin": {"frame_id": "chase_frame_000010"},
                         }
                     ]
                 }),
                 "observation": {
                     "things": [{"thing_id": "obstacle_000"}],
                     "signals": [],
-                    "sensor_snapshot": {
+                    "sensor_frame": {
                         "metadata": {
                             "simulator_frame_index": 11,
                             "simulation_epoch": "chase-run:test",
@@ -59,7 +59,7 @@ class MemoryCheckTests(unittest.TestCase):
                 },
             },
         ]
-        score = score_chase_memory_provenance(frames)
+        score = score_chase_memory_origin(frames)
         self.assertIsInstance(score, dict)
         self.assertIn("passed", score)
 
@@ -147,8 +147,8 @@ class MemoryCheckTests(unittest.TestCase):
         )
         self.assertTrue(moving_safety["movement_commands_sent"])
 
-    def test_chase_provenance_is_ordered_per_memory_state(self) -> None:
-        from cli.automa_cli.memory_check import score_chase_memory_provenance
+    def test_chase_origin_is_ordered_per_memory_state(self) -> None:
+        from cli.automa_cli.memory_check import score_chase_memory_origin
 
         frames = [
             {
@@ -158,7 +158,7 @@ class MemoryCheckTests(unittest.TestCase):
                     "records": [
                         {
                             "record_id": "thing:current",
-                            "provenance": {"frame_id": "chase_frame_000010"},
+                            "origin": {"frame_id": "chase_frame_000010"},
                         }
                     ]
                 }),
@@ -170,13 +170,13 @@ class MemoryCheckTests(unittest.TestCase):
                     "records": [
                         {
                             "record_id": "thing:retained",
-                            "provenance": {"frame_id": "chase_frame_000010"},
+                            "origin": {"frame_id": "chase_frame_000010"},
                         }
                     ]
                 }),
             },
         ]
-        score = score_chase_memory_provenance(frames)
+        score = score_chase_memory_origin(frames)
         self.assertTrue(score["passed"], score)
         self.assertEqual(score["current_frame_matches"], 1)
         self.assertEqual(score["retained_prior_matches"], 1)
@@ -188,16 +188,16 @@ class MemoryCheckTests(unittest.TestCase):
                     "records": [
                         {
                             "record_id": "thing:future",
-                            "provenance": {"frame_id": "chase_frame_000011"},
+                            "origin": {"frame_id": "chase_frame_000011"},
                         }
                     ]
                 }),
             },
             frames[1],
         ]
-        future_score = score_chase_memory_provenance(future)
+        future_score = score_chase_memory_origin(future)
         self.assertFalse(future_score["passed"])
-        self.assertTrue(future_score["future_provenance"])
+        self.assertTrue(future_score["future_origin"])
 
         pre_boundary = [
             {
@@ -206,14 +206,14 @@ class MemoryCheckTests(unittest.TestCase):
                     "records": [
                         {
                             "record_id": "thing:stale",
-                            "provenance": {"frame_id": "chase_frame_000009"},
+                            "origin": {"frame_id": "chase_frame_000009"},
                         }
                     ]
                 }),
             },
             frames[1],
         ]
-        stale_score = score_chase_memory_provenance(pre_boundary)
+        stale_score = score_chase_memory_origin(pre_boundary)
         self.assertFalse(stale_score["passed"])
         self.assertTrue(stale_score["mismatched"])
 
@@ -229,7 +229,7 @@ class MemoryCheckTests(unittest.TestCase):
                     "records": [
                         {
                             "record_id": "thing:boundary",
-                            "provenance": {
+                            "origin": {
                                 "frame_id": f"chase_frame_{source_index:06d}"
                             },
                         }
@@ -261,8 +261,8 @@ class MemoryCheckTests(unittest.TestCase):
             ["chase_frame_000011", "chase_frame_000012"],
         )
 
-    def test_chase_provenance_rejects_empty_memory(self) -> None:
-        from cli.automa_cli.memory_check import score_chase_memory_provenance
+    def test_chase_origin_rejects_empty_memory(self) -> None:
+        from cli.automa_cli.memory_check import score_chase_memory_origin
 
         frames = [
             {
@@ -276,6 +276,6 @@ class MemoryCheckTests(unittest.TestCase):
                 "memory": memory_report({"health": "empty", "records": []}),
             },
         ]
-        score = score_chase_memory_provenance(frames)
+        score = score_chase_memory_origin(frames)
         self.assertFalse(score["passed"])
         self.assertIn("empty", score["reason"])

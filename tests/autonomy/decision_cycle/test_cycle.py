@@ -48,7 +48,7 @@ class DecisionCycleTests(unittest.TestCase):
             return Observation(
                 observation_id=context.frame_id,
                 created_at_ms=456,
-                sensor_snapshot={},
+                sensor_frame={},
                 summary=("custom observation",),
             )
 

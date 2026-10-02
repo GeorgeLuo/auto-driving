@@ -8,7 +8,7 @@ import numpy as np
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
     camera_feed_id,
@@ -33,8 +33,8 @@ def _mapper(plugin_id: str) -> PerceptionRunner:
     )
 
 
-def _snapshot(reading: SensorReading, read_id: str = "test-frame") -> SensorSnapshot:
-    return SensorSnapshot(
+def _sensor_frame(reading: SensorReading, read_id: str = "test-frame") -> SensorFrame:
+    return SensorFrame(
         read_id=read_id,
         readings={reading.sensor_id: reading},
         started_at_ms=reading.captured_at_ms,
@@ -58,7 +58,7 @@ def _array_reading(
 class PerceptionPluginTests(unittest.TestCase):
     def test_current_plugins_share_camera_feed_without_writing_diagnostics(self) -> None:
         rgb = np.random.default_rng(3).integers(0, 256, (72, 96, 3), dtype=np.uint8)
-        request = build_perception_request(_snapshot(_array_reading(rgb)))
+        request = build_perception_request(_sensor_frame(_array_reading(rgb)))
         mapper = PerceptionRunner.from_selection(
             plugins=["frame", "floor_plane"],
             plugin_specs=_PERCEPTION_SPECS,
@@ -78,7 +78,7 @@ class PerceptionPluginTests(unittest.TestCase):
         rgb[70:] = (145, 118, 92)
 
         result = _mapper("floor_plane").perceive(
-            build_perception_request(_snapshot(_array_reading(rgb)))
+            build_perception_request(_sensor_frame(_array_reading(rgb)))
         )
 
         boundaries = [thing for thing in result.things if thing.kind == "floor_boundary"]
@@ -105,10 +105,10 @@ class PerceptionPluginTests(unittest.TestCase):
         )
 
         memory = {}
-        first = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "first"), shared_memory=memory))
-        second = mapper.perceive(build_perception_request(_snapshot(_array_reading(shifted), "second"), shared_memory=memory))
+        first = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(rgb), "first"), shared_memory=memory))
+        second = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(shifted), "second"), shared_memory=memory))
         mapper.reset(memory)
-        after_reset = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "third"), shared_memory=memory))
+        after_reset = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(rgb), "third"), shared_memory=memory))
 
         self.assertEqual(first.status, "warming_up")
         self.assertIn(second.status, {"ok", "empty"})
@@ -150,11 +150,11 @@ class PerceptionPluginTests(unittest.TestCase):
             output_dir = Path(tmp)
             memory = {}
             mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(rgb), "first"), output_dir=output_dir, shared_memory=memory)
+                build_perception_request(_sensor_frame(_array_reading(rgb), "first"), output_dir=output_dir, shared_memory=memory)
             )
             result = mapper.perceive(
                 build_perception_request(
-                    _snapshot(_array_reading(shifted), "second"),
+                    _sensor_frame(_array_reading(shifted), "second"),
                     output_dir=output_dir,
                     shared_memory=memory,
                 )

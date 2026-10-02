@@ -12,7 +12,7 @@ from autonomy.decision_cycle.perception.interface import (
 )
 from cli.automa_cli import automation as automation_module
 from implementations.decision_cycle.catalog import packaged_activation, preset_activation
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 
 class _SlowMapper:
@@ -24,7 +24,7 @@ class _SlowMapper:
         self.frame_ids: list[str] = []
 
     def __call__(self, context):
-        return self.perceive(build_perception_request(context.sensor_snapshot))
+        return self.perceive(build_perception_request(context.sensor_frame))
 
     def reset(self, shared_memory=None) -> None:
         del shared_memory
@@ -33,7 +33,7 @@ class _SlowMapper:
         return {"step": "perception", "frames": len(self.frame_ids)}
 
     def perceive(self, request):
-        self.frame_ids.append(request.snapshot.read_id)
+        self.frame_ids.append(request.sensor_frame.read_id)
         time.sleep(0.05)
         return PerceptionText(
             schema=PERCEPTION_TEXT_SCHEMA,
@@ -105,7 +105,7 @@ class _FakeCar:
                 "frame_id": f"chase_frame_{simulator_frame_index:06d}",
             },
         )
-        return SensorSnapshot(
+        return SensorFrame(
             read_id=request.read_id,
             readings={FRONT_CAMERA_SENSOR_ID: reading},
             started_at_ms=now_ms,

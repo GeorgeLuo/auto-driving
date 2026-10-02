@@ -21,7 +21,7 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.perception.feeds.camera import CameraFrame
 from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import (
@@ -80,7 +80,7 @@ def bounded_evidence_replay() -> list[dict[str, Any]]:
         return Observation(
             observation_id=frame_id,
             created_at_ms=created_at_ms,
-            sensor_snapshot={},
+            sensor_frame={},
             perception_plugin_id="lightweight_observer",
             summary=("replay",),
             things=things,
@@ -148,7 +148,7 @@ def tracks_frame_inputs(
             {"sequence_index": index}, shared_memory={},
         )
     )
-    sensors = SensorSnapshot(
+    sensors = SensorFrame(
         read_id=frame_id,
         readings={
             FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -166,13 +166,13 @@ def tracks_frame_inputs(
         frame_id=frame_id,
         frame_index=index,
         timestamp_ms=timestamp_ms,
-        sensor_snapshot=sensors,
+        sensor_frame=sensors,
         shared_memory=shared_memory,
     )
     observation = Observation(
         observation_id=frame_id,
         created_at_ms=timestamp_ms,
-        sensor_snapshot={},
+        sensor_frame={},
         things=tuple(thing.to_dict() for thing in batch.things),
         signals=tuple(signal.to_dict() for signal in batch.signals),
     )

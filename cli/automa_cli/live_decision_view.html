@@ -501,7 +501,7 @@
           const unavailable = document.createElement("div");
           unavailable.className = "thing";
           const name = document.createElement("div");
-          name.textContent = `${item?.record_id || item?.provenance?.evidence_id || "evidence"} · unavailable`;
+          name.textContent = `${item?.record_id || item?.origin?.observed_id || "evidence"} · unavailable`;
           const detail = document.createElement("div");
           detail.className = "secondary";
           detail.textContent = item?.reason || "evidence_association_unavailable";

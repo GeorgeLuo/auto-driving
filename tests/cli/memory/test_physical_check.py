@@ -174,7 +174,7 @@ class MemoryCheckTests(unittest.TestCase):
             self.assertTrue(payload["recorded"])
             run_dir = next(output_root.iterdir())
             self.assertTrue((run_dir / "frames").is_dir())
-            extract = (run_dir / "provenance_extract.html").read_text(encoding="utf-8")
+            extract = (run_dir / "origin_extract.html").read_text(encoding="utf-8")
             self.assertIn("present_frame", extract)
             self.assertIn('<img src="frames/present_frame.jpg"', extract)
             self.assertIn('<img src="frames/dropout_frame.jpg"', extract)
@@ -192,8 +192,8 @@ class MemoryCheckTests(unittest.TestCase):
             )
         self.assertIn("same", str(ctx.exception))
 
-    def test_score_live_reset_uses_snapshot_empty_not_probe(self) -> None:
-        """Empty-state comes from reset snapshot; probe may already be repopulated."""
+    def test_score_live_reset_uses_the_reset_state_not_the_probe(self) -> None:
+        """Empty-state comes from the reset state; probe may already be repopulated."""
         reset_state = {
             "health": "empty",
             "record_count": 0,
@@ -241,7 +241,7 @@ class MemoryCheckTests(unittest.TestCase):
         )
         self.assertTrue(score["passed"], score.get("reason"))
 
-    def test_score_live_reset_rejects_nonempty_snapshot(self) -> None:
+    def test_score_live_reset_rejects_nonempty_reset_state(self) -> None:
         score = score_live_reset(
             reset_state={
                 "health": "healthy",

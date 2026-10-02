@@ -44,9 +44,9 @@ def frame_simulation_epoch(frame: dict[str, Any]) -> str | None:
         return str(raw).strip()
     observation = frame.get("observation")
     if isinstance(observation, dict):
-        snapshot = observation.get("sensor_snapshot")
-        if isinstance(snapshot, dict):
-            metadata = snapshot.get("metadata")
+        sensor_frame = observation.get("sensor_frame")
+        if isinstance(sensor_frame, dict):
+            metadata = sensor_frame.get("metadata")
             if isinstance(metadata, dict):
                 meta_epoch = metadata.get("simulation_epoch")
                 if meta_epoch is not None and str(meta_epoch).strip():
@@ -129,15 +129,15 @@ def extract_chase_lifecycle_keys(frames: list[dict[str, Any]]) -> set[str]:
             record_id = str(record.get("record_id") or "").strip()
             if not record_id or is_chase_always_on_key(record_id):
                 continue
-            provenance = (
-                record.get("provenance")
-                if isinstance(record.get("provenance"), dict)
+            origin = (
+                record.get("origin")
+                if isinstance(record.get("origin"), dict)
                 else {}
             )
-            prov_frame = str(provenance.get("frame_id") or "").strip()
-            if not prov_frame:
+            origin_frame = str(origin.get("frame_id") or "").strip()
+            if not origin_frame:
                 continue
-            source_index = observed_index.get(prov_frame)
+            source_index = observed_index.get(origin_frame)
             if source_index is None:
                 continue
             if source_index < containing_index:
@@ -194,11 +194,11 @@ def _record_updated_at_ms(record: dict[str, Any]) -> int | None:
             parsed = _optional_int(record.get(key))
             if parsed is not None:
                 return parsed
-    provenance = record.get("provenance")
-    if isinstance(provenance, dict):
+    origin = record.get("origin")
+    if isinstance(origin, dict):
         for key in ("updated_at_ms", "observed_at_ms"):
-            if key in provenance:
-                parsed = _optional_int(provenance.get(key))
+            if key in origin:
+                parsed = _optional_int(origin.get(key))
                 if parsed is not None:
                     return parsed
     return None

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReadRequest, SensorReading
 
 from .paths import ROOT, display_path, safe_path_part
 from .perception_evaluation import evaluate_perception_frames
@@ -38,7 +38,7 @@ def _selection(activation) -> dict[str, Any]:
         "plugin_configs": dict(activation.plugin_configs),
     }
 from .vehicle_access import create_vehicle_access
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 DEFAULT_FRAME_COUNT = 5
@@ -129,7 +129,7 @@ def _inspect_vehicle(
             "\n\n".join(
                 [
                     error or "No active vehicle is available.",
-                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                    format_active_vehicles(discovery, include_inactive=True),
                     "Prepare a simulator with: ./cli/automa simulators ensure",
                 ]
             ),
@@ -175,7 +175,7 @@ def _inspect_vehicle(
             for index in range(frame_count):
                 frame_id = f"frame_{index:06d}"
                 started = time.perf_counter()
-                snapshot = access.car.read_sensors(
+                sensor_frame = access.car.read_sensors(
                     SensorReadRequest(
                         output_dir=frames_dir,
                         read_id=frame_id,
@@ -184,10 +184,10 @@ def _inspect_vehicle(
                         image_extension=access.image_extension,
                     )
                 )
-                reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-                record_item, _ = perceive_snapshot(
+                reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
+                record_item, _ = perceive_sensor_frame(
                     active_mapper,
-                    snapshot,
+                    sensor_frame,
                     frame_id=frame_id,
                     frame_index=index,
                     image_path=reading.path if reading is not None else None,
@@ -307,7 +307,7 @@ def _inspect_images(
             for index, image_path in enumerate(image_paths):
                 frame_id = f"frame_{index:06d}"
                 captured_at_ms = int(image_path.stat().st_mtime * 1000)
-                snapshot = SensorSnapshot(
+                sensor_frame = SensorFrame(
                     read_id=frame_id,
                     readings={
                         FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -322,9 +322,9 @@ def _inspect_images(
                     completed_at_ms=captured_at_ms,
                     metadata={"source": "images", "source_path": str(source)},
                 )
-                item, _ = perceive_snapshot(
+                item, _ = perceive_sensor_frame(
                     active_mapper,
-                    snapshot,
+                    sensor_frame,
                     frame_id=frame_id,
                     frame_index=index,
                     image_path=str(image_path),
@@ -382,17 +382,17 @@ def _select_vehicle(
 
 def run_perception(
     mapper: Any,
-    snapshot: SensorSnapshot,
+    sensor_frame: SensorFrame,
     *,
     shared_memory: dict[str, Any],
     metadata: dict[str, Any],
     output_dir: Path | None = None,
 ):
-    """Run perception on one snapshot; the step every consumer shares."""
+    """Run perception on one sensor frame; the step every consumer shares."""
 
     return mapper.perceive(
         build_perception_request(
-            snapshot,
+            sensor_frame,
             shared_memory=shared_memory,
             output_dir=output_dir,
             metadata=metadata,
@@ -400,9 +400,9 @@ def run_perception(
     )
 
 
-def perceive_snapshot(
+def perceive_sensor_frame(
     mapper: Any,
-    snapshot: SensorSnapshot,
+    sensor_frame: SensorFrame,
     *,
     frame_id: str,
     frame_index: int,
@@ -412,7 +412,7 @@ def perceive_snapshot(
     result_dir: Path | None = None,
     started: float | None = None,
 ) -> tuple[dict[str, Any], Any]:
-    """Perceive one snapshot and return its frame record and the perception.
+    """Perceive one sensor frame and return its frame record and the perception.
 
     With ``result_dir`` the plugins write their outputs there and the frame's
     ``perception.json`` and ``perception.txt`` are saved beside them. ``started``
@@ -424,7 +424,7 @@ def perceive_snapshot(
         started = time.perf_counter()
     perception = run_perception(
         mapper,
-        snapshot,
+        sensor_frame,
         shared_memory=shared_memory,
         metadata=metadata,
         output_dir=result_dir,
@@ -434,7 +434,7 @@ def perceive_snapshot(
         frame_id=frame_id,
         frame_index=frame_index,
         image_path=image_path,
-        snapshot=snapshot,
+        sensor_frame=sensor_frame,
         perception=perception,
         duration_ms=duration_ms,
         runtime_metrics=_runtime_metrics(),
@@ -454,7 +454,7 @@ def _frame_record(
     frame_id: str,
     frame_index: int,
     image_path: str | None,
-    snapshot: SensorSnapshot,
+    sensor_frame: SensorFrame,
     perception,
     duration_ms: float,
     runtime_metrics: dict[str, Any],
@@ -463,7 +463,7 @@ def _frame_record(
         "frame_id": frame_id,
         "frame_index": frame_index,
         "image_path": image_path,
-        "captured_at_ms": snapshot.completed_at_ms,
+        "captured_at_ms": sensor_frame.completed_at_ms,
         "duration_ms": duration_ms,
         "status": perception.status,
         "signal_count": len(perception.signals),

@@ -165,7 +165,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             "captured_at_ms": latest["timestamp_ms"],
             "run_id": "run-live",
             "worker_pid": os.getpid(),
-            "sensor_snapshot": {
+            "sensor_frame": {
                 "readings": {"front_camera": {"read_id": latest["frame_id"]}}
             },
         }
@@ -205,14 +205,14 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             payload["provenance"]["evidence"]["value"][0],
         )
 
-    def test_unmatched_retained_evidence_preserves_provenance_without_overlay(
+    def test_unmatched_retained_evidence_preserves_origin_without_overlay(
         self,
     ) -> None:
         def older_frame(_raw, record, _thing) -> None:
-            record["provenance"]["frame_id"] = "frame_older"
+            record["origin"]["frame_id"] = "frame_older"
 
         def observation_mismatch(_raw, record, _thing) -> None:
-            record["provenance"]["observation_id"] = "obs_other"
+            record["origin"]["observation_id"] = "obs_other"
 
         def missing_evidence(_raw, _record, thing) -> None:
             thing["thing_id"] = "ev_other"
@@ -221,7 +221,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             raw["observation"]["things"].append(deepcopy(thing))
 
         def provenance_mismatch(_raw, record, _thing) -> None:
-            record["provenance"]["source_plugin_id"] = "other_plugin"
+            record["origin"]["source_plugin_id"] = "other_plugin"
 
         def geometry_mismatch(_raw, _record, thing) -> None:
             thing["location"]["bbox_xyxy_norm"] = [0.1, 0.0, 0.3, 0.5]
@@ -255,8 +255,8 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertEqual(projected["reason"], expected_reason)
                 self.assertIsNone(projected["record"])
                 self.assertEqual(
-                    projected["provenance"],
+                    projected["origin"],
                     payload["provenance"]["evidence"]["value"][0][
-                        "provenance"
+                        "origin"
                     ],
                 )

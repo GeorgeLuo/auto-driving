@@ -53,10 +53,10 @@ def _memory_record(
         "kind": kind,
         "label": kind,
         "confidence": 0.9,
-        "provenance": {
+        "origin": {
             "frame_id": frame_id,
             "observation_id": f"obs_{frame_id}",
-            "evidence_id": record_id.split(":", 1)[-1],
+            "observed_id": record_id.split(":", 1)[-1],
         },
         "location": {"frame": "image", "zone": "center"},
     }
@@ -119,7 +119,7 @@ def _live_publication(
         "observation": {
             "observation_id": f"obs_{frame_id}",
             "created_at_ms": 1_000 + frame_index * 100,
-            "sensor_snapshot": {},
+            "sensor_frame": {},
             "perception_plugin_id": "lightweight_observer",
             "things": things,
             "signals": signals,

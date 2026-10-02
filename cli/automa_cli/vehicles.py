@@ -109,7 +109,7 @@ def discover_active_vehicles(
     return payload
 
 
-def format_active_vehicles_snapshot(
+def format_active_vehicles(
     payload: dict[str, Any],
     *,
     include_inactive: bool = False,

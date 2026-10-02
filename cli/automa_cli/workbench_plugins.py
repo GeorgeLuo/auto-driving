@@ -1,9 +1,11 @@
-"""Packaged perception plugin listing and selection for the replay workbench.
+"""Packaged plugin listing and selection for the replay workbench.
 
-The workbench offers every packaged perception plugin. A selection is checked
-and built through the same ``perception_activation`` the CLI uses. Listing the
-catalog does not construct plugins; construction happens only after the
-operator selects plugins for a replay.
+The workbench offers every packaged plugin of the steps whose selection the
+operator can change: perception and memory. A selection is checked and built
+through the activation the CLI uses for that step: ``perception_activation``
+for perception, and ``packaged_activation("memory", ...)``, which ``update
+memory`` calls, for memory. Listing a catalog does not construct plugins;
+construction happens only after the operator selects plugins for a replay.
 """
 
 from __future__ import annotations
@@ -14,10 +16,11 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.perception.interface import PerceptionBackend
+from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import PluginDefinition
 from implementations.decision_cycle.catalog import (
+    DEFAULT_STEP_PLUGINS,
     packaged_activation,
     perception_activation,
     step_plugins,
@@ -29,6 +32,7 @@ from implementations.decision_cycle.perception.presets import (
 
 
 PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog_v1"
+SELECTABLE_STEPS = ("perception", "memory")
 
 
 class PluginCatalogError(ValueError):
@@ -39,7 +43,7 @@ class PluginCatalogError(ValueError):
 
 @dataclass(frozen=True)
 class PluginDescriptor:
-    """Presentation metadata for one packaged perception plugin."""
+    """Presentation metadata for one packaged plugin."""
 
     plugin_id: str
     description: str
@@ -61,8 +65,9 @@ class PluginDescriptor:
 
 @dataclass(frozen=True)
 class PluginCatalog:
-    """The packaged perception catalog, in display order, and its digest."""
+    """One step's packaged catalog, in display order, and its digest."""
 
+    step: str
     plugins: tuple[PluginDescriptor, ...]
     digest: str
 
@@ -102,24 +107,35 @@ class PluginCatalog:
         """The CLI's activation for these ids; unknown ids are a catalog error."""
 
         try:
-            return perception_activation(plugins=list(active_ids))
+            if self.step == "perception":
+                return perception_activation(plugins=list(active_ids))
+            return packaged_activation(self.step, list(active_ids))
         except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc
 
-    def build_mapper(self, active_ids: Sequence[str]) -> PerceptionBackend:
-        """Construct exactly the selected packaged perception plugins."""
+    def build(self, active_ids: Sequence[str]) -> PerceptionRunner | MemoryRunner:
+        """Construct exactly the selected packaged plugins, as the step's runner."""
 
-        return PerceptionRunner.from_activation(self.activation(active_ids))
+        runner = PerceptionRunner if self.step == "perception" else MemoryRunner
+        return runner.from_activation(self.activation(active_ids))
 
 
-def packaged_plugin_catalog() -> PluginCatalog:
-    """Every packaged perception plugin; the default preset's are preselected."""
+def packaged_plugin_catalog(step: str) -> PluginCatalog:
+    """Every packaged plugin of ``step``; the step's default selection is preselected."""
 
-    default_ids = tuple(PERCEPTION_PRESETS[DEFAULT_PERCEPTION_PRESET]["plugins"])
-    entries = step_plugins("perception")
+    if step not in SELECTABLE_STEPS:
+        raise PluginCatalogError(
+            f"plugins can be selected for {' and '.join(SELECTABLE_STEPS)}, not {step!r}"
+        )
+    default_ids = (
+        tuple(PERCEPTION_PRESETS[DEFAULT_PERCEPTION_PRESET]["plugins"])
+        if step == "perception"
+        else DEFAULT_STEP_PLUGINS[step]
+    )
+    entries = step_plugins(step)
     definitions: dict[str, PluginDefinition] = {
         item.plugin_id: item
-        for item in packaged_activation("perception", []).plugin_manager().available
+        for item in packaged_activation(step, []).plugin_manager().available
     }
     # Defaults keep their execution order and lead the list.
     plugin_ids = list(dict.fromkeys([*default_ids, *sorted(definitions)]))
@@ -137,7 +153,7 @@ def packaged_plugin_catalog() -> PluginCatalog:
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    return PluginCatalog(plugins=descriptors, digest=digest)
+    return PluginCatalog(step=step, plugins=descriptors, digest=digest)
 
 
 def _json_safe(value: Any) -> Any:
@@ -153,5 +169,6 @@ __all__ = [
     "PluginCatalog",
     "PluginCatalogError",
     "PluginDescriptor",
+    "SELECTABLE_STEPS",
     "packaged_plugin_catalog",
 ]

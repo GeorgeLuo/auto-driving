@@ -34,12 +34,12 @@ from .workbench_contract import (
 )
 from .workbench_frames import (
     default_mapper,
-    default_memory_step,
     plugin_report,
     run_frame,
     workbench_decision_steps,
 )
 from .workbench_plugins import (
+    SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
@@ -119,8 +119,10 @@ class ImageReplayRunner:
         self._pace = self._validate_pace(pace)
         self._loop = bool(loop)
         self._server_identity = f"workbench-{uuid.uuid4().hex[:12]}"
-        self._plugin_catalog: PluginCatalog = packaged_plugin_catalog()
+        self._plugin_catalog: PluginCatalog = packaged_plugin_catalog("perception")
         self._active_plugin_ids = self._initial_plugin_selection(active_plugin_ids)
+        self._memory_catalog: PluginCatalog = packaged_plugin_catalog("memory")
+        self._active_memory_plugin_ids = self._memory_catalog.default_ids
         self._state = self._initial_state()
 
     @property
@@ -135,6 +137,11 @@ class ImageReplayRunner:
     def plugin_catalog(self) -> PluginCatalog:
         with self._lock:
             return self._plugin_catalog
+
+    @property
+    def memory_plugin_catalog(self) -> PluginCatalog:
+        with self._lock:
+            return self._memory_catalog
 
     def _initial_plugin_selection(
         self,
@@ -172,8 +179,15 @@ class ImageReplayRunner:
         self._state["plugin_catalog"] = self._plugin_catalog.to_dict(
             active_ids=self._active_plugin_ids
         )
+        self._state["memory_plugin_catalog"] = self._memory_catalog.to_dict(
+            active_ids=self._active_memory_plugin_ids
+        )
+        self._state["active_memory_plugin_ids"] = list(self._active_memory_plugin_ids)
         self._state["machine_detail"]["pipeline"]["active_plugin_ids"] = list(
             self._active_plugin_ids
+        )
+        self._state["machine_detail"]["pipeline"]["active_memory_plugin_ids"] = list(
+            self._active_memory_plugin_ids
         )
         self._state["machine_detail"]["pipeline"]["perception_preset"] = (
             self._selection_preset(self._active_plugin_ids)
@@ -387,6 +401,7 @@ class ImageReplayRunner:
         source_dir: str | os.PathLike[str] | None = None,
         cadence_ms: int | None = None,
         pace: str | None = None,
+        step: str | None = None,
         active_plugin_ids: list[str] | tuple[str, ...] | None = None,
         position: int | None = None,
         loop: bool | None = None,
@@ -401,14 +416,14 @@ class ImageReplayRunner:
         with self._action_lock:
             with self._lock:
                 self._check_run_id_locked(action, run_id)
-            if active_plugin_ids is not None and action != "select_plugins":
+            if (step is not None or active_plugin_ids is not None) and action != "select_plugins":
                 raise ReplayActionError(
-                    "active_plugin_ids is only accepted by select_plugins",
+                    "step and active_plugin_ids are only accepted by select_plugins",
                     status_code=400,
                     boundary="input",
                 )
             if action == "select_plugins":
-                return self._select_plugins(active_plugin_ids)
+                return self._select_plugins(step, active_plugin_ids)
             if action == "validate":
                 with self._lock:
                     if self._state["phase"] in {"running", "paused"}:
@@ -500,18 +515,27 @@ class ImageReplayRunner:
 
     def _select_plugins(
         self,
+        step: str | None,
         active_plugin_ids: list[str] | tuple[str, ...] | None,
     ) -> dict[str, Any]:
+        step = "perception" if step is None else step
+        if step not in SELECTABLE_STEPS:
+            raise ReplayActionError(
+                f"select_plugins step must be one of: {', '.join(SELECTABLE_STEPS)}",
+                status_code=400,
+                boundary="input",
+            )
         if active_plugin_ids is None:
             raise ReplayActionError(
                 "select_plugins requires active_plugin_ids",
                 status_code=400,
                 boundary="input",
             )
+        catalog = self._memory_catalog if step == "memory" else self._plugin_catalog
         with self._lock:
             active_phase = self._state["phase"] in {"running", "paused"}
             try:
-                normalized = self._plugin_catalog.normalize_selection(active_plugin_ids)
+                normalized = catalog.normalize_selection(active_plugin_ids)
             except PluginCatalogError as exc:
                 self._state["failure"] = {"message": str(exc), "boundary": "plugin_catalog"}
                 self._state["failure_boundary"] = "plugin_catalog"
@@ -526,20 +550,28 @@ class ImageReplayRunner:
             # Managers built at start already hold the catalog. Selecting on
             # them lets core retain unchanged instances. Cached frames from
             # another selection are stale; the displayed frame runs again now.
+            # Memory is built up from the frames before it, so a new memory
+            # selection starts the pass over instead (see below).
             reprocess = None
-            changed = active_phase and normalized != self._active_plugin_ids
-            if changed:
-                self._apply_manager_selection_locked(normalized)
-            self._active_plugin_ids = normalized
-            if changed:
-                reprocess = self._rewind_to_displayed_frame_locked()
+            catch_up: list[ReplayFrame] = []
+            if step == "memory":
+                if active_phase and normalized != self._active_memory_plugin_ids:
+                    catch_up = self._restart_with_memory_locked(normalized)
+                self._active_memory_plugin_ids = normalized
+            else:
+                changed = active_phase and normalized != self._active_plugin_ids
+                if changed:
+                    self._apply_manager_selection_locked(normalized)
+                self._active_plugin_ids = normalized
+                if changed:
+                    reprocess = self._rewind_to_displayed_frame_locked()
             self._apply_plugin_configuration_locked()
             if active_phase:
-                self._state["run_active_plugin_ids"] = list(normalized)
-                self._state["run_plugin_order"] = list(normalized)
                 pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                pipeline["run_active_plugin_ids"] = list(normalized)
-                pipeline["active_plugin_ids"] = list(normalized)
+                if step == "perception":
+                    self._state["run_active_plugin_ids"] = list(normalized)
+                    self._state["run_plugin_order"] = list(normalized)
+                    pipeline["run_active_plugin_ids"] = list(normalized)
                 pipeline["memory_plugin_id"] = self._memory_plugin_id()
                 pipeline["perception_plugin_report"] = plugin_report(self._mapper)
                 pipeline["memory_plugin_report"] = plugin_report(self._memory_step)
@@ -554,7 +586,41 @@ class ImageReplayRunner:
         # shows the new selection now.
         if reprocess is not None and paused:
             self._process_one(run_id, generation, reprocess, allow_paused=True)
+        for frame in catch_up:
+            self._process_one(run_id, generation, frame, allow_paused=True)
+            with self._lock:
+                if self._state["phase"] not in {"running", "paused"}:
+                    break
         return self.state()
+
+    def _restart_with_memory_locked(self, normalized: tuple[str, ...]) -> list[ReplayFrame]:
+        """Start the pass over under a new memory selection.
+
+        Memory is built from every frame before the displayed one, so the
+        selection cannot be swapped under recorded frames. The pipelines are
+        rebuilt with it, the recorded frames dropped, and the frames up to the
+        displayed one returned to run again. A selection that cannot be built
+        leaves the replay as it was.
+        """
+
+        displayed = int(self._state["position"])
+        previous = self._active_memory_plugin_ids
+        self._active_memory_plugin_ids = normalized
+        try:
+            self._rebuild_pipelines_locked()
+        except Exception as exc:  # noqa: BLE001 - selection boundary
+            self._active_memory_plugin_ids = previous
+            message = str(exc)
+            self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
+            self._state["failure_boundary"] = "plugin_catalog"
+            raise ReplayActionError(
+                message,
+                status_code=422,
+                boundary="plugin_catalog",
+                state=self.state(),
+            ) from exc
+        self._set_steps_locked(_empty_steps())
+        return list(self._image_source.frames[:displayed]) if self._image_source else []
 
     def _rewind_to_displayed_frame_locked(self) -> ReplayFrame | None:
         """Point the replay back at the displayed frame and return it."""
@@ -585,6 +651,16 @@ class ImageReplayRunner:
         of replaying the previous pass.
         """
 
+        self._rebuild_pipelines_locked()
+        self._record_action_locked("loop")
+
+    def _rebuild_pipelines_locked(self) -> None:
+        """Fresh pipelines under the current selections, at the first frame.
+
+        The new pipelines are built before the old ones are reset, so a
+        selection that fails to build leaves the replay as it was.
+        """
+
         selected = self._active_plugin_ids
         mapper = self._build_mapper_for_selection(selected)
         memory_step = self._build_memory_step()
@@ -597,7 +673,6 @@ class ImageReplayRunner:
         self._history.clear()
         self._state["timeline"] = []
         self._set_position_locked(0)
-        self._record_action_locked("loop")
 
     def _set_position_locked(self, position: int) -> None:
         self._state["position"] = position
@@ -654,12 +729,12 @@ class ImageReplayRunner:
     ) -> Any:
         if self._mapper_factory_explicit:
             return self.mapper_factory()
-        return self._plugin_catalog.build_mapper(selected_plugin_ids)
+        return self._plugin_catalog.build(selected_plugin_ids)
 
     def _build_memory_step(self) -> Any:
         if self.memory_step_factory is not None:
             return self.memory_step_factory()
-        return default_memory_step()
+        return self._memory_catalog.build(self._active_memory_plugin_ids)
 
     def _memory_plugin_id(self) -> str:
         """ID of the published memory plugin."""
@@ -1156,6 +1231,10 @@ class ImageReplayRunner:
             "active_plugin_ids": plugin_configuration["active_plugin_ids"],
             "plugin_order": plugin_configuration["plugin_order"],
             "plugin_catalog": plugin_catalog,
+            "memory_plugin_catalog": self._memory_catalog.to_dict(
+                active_ids=self._active_memory_plugin_ids
+            ),
+            "active_memory_plugin_ids": list(self._active_memory_plugin_ids),
             "run_catalog_digest": None,
             "run_active_plugin_ids": [],
             "run_plugin_order": [],

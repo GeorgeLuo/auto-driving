@@ -106,6 +106,34 @@ class WorkbenchTests(unittest.TestCase):
             ["classical_regions"],
         )
 
+    def test_loopback_api_selects_memory_plugins_by_step(self) -> None:
+        runner = ImageReplayRunner(cadence_ms=0)
+        base = serve_workbench(self, runner)
+        post = partial(post_action, base, timeout=2)
+
+        catalog = runner.state()["memory_plugin_catalog"]
+        self.assertIn("multi_obstruction_tracks", [item["id"] for item in catalog["plugins"]])
+        selected = post({
+            "action": "select_plugins",
+            "step": "memory",
+            "active_plugin_ids": ["multi_obstruction_tracks"],
+        })["state"]
+        self.assertEqual(selected["active_memory_plugin_ids"], ["multi_obstruction_tracks"])
+        self.assertEqual(selected["active_plugin_ids"], ["frame", "floor_plane"])
+
+        for body, code in (
+            ({"action": "select_plugins", "step": 3, "active_plugin_ids": []}, 400),
+            ({"action": "select_plugins", "step": "decision", "active_plugin_ids": []}, 400),
+            ({"action": "validate", "step": "memory"}, 400),
+            ({"action": "select_plugins", "step": "memory", "active_plugin_ids": ["missing"]}, 422),
+        ):
+            with self.assertRaises(HTTPError, msg=str(body)) as caught:
+                post(body)
+            self.assertEqual(caught.exception.code, code, str(body))
+        self.assertEqual(
+            runner.state()["active_memory_plugin_ids"], ["multi_obstruction_tracks"]
+        )
+
     def test_removed_actions_and_plugin_lists_on_other_actions_are_rejected(self) -> None:
         with image_source(1) as root:
             runner = ImageReplayRunner(cadence_ms=0)

@@ -144,6 +144,7 @@ class WorkbenchServer:
             "source_dir",
             "cadence_ms",
             "pace",
+            "step",
             "active_plugin_ids",
             "position",
             "loop",
@@ -192,6 +193,13 @@ class WorkbenchServer:
                 status_code=400,
                 boundary="input",
             )
+        step = payload.get("step")
+        if step is not None and not isinstance(step, str):
+            raise ReplayActionError(
+                "step must be a string",
+                status_code=400,
+                boundary="input",
+            )
         active_plugin_ids = payload.get("active_plugin_ids")
         if active_plugin_ids is not None:
             if not isinstance(active_plugin_ids, list) or any(
@@ -225,6 +233,7 @@ class WorkbenchServer:
                 source_dir=source_dir,
                 cadence_ms=cadence_ms,
                 pace=pace,
+                step=step,
                 active_plugin_ids=active_plugin_ids,
                 position=position,
                 loop=loop,

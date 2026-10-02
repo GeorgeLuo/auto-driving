@@ -109,7 +109,7 @@ async function action(action, extra) {
     if (!response.ok || payload.ok === false) {
       if (requestGeneration === stateRequestGeneration) {
         if (action === "select_plugins") {
-          revertPluginDraft();
+          revertPluginDraft(extra && extra.step);
           if (payload.state) render(payload.state);
         }
         setNotice(payload.message || "Action was rejected.");
@@ -123,12 +123,13 @@ async function action(action, extra) {
         clearRecordSelection();
         render(payload.state);
       }
-      if (["select_plugins", "start"].indexOf(action) >= 0) settlePluginDraft();
+      if (action === "select_plugins") settlePluginDraft(extra && extra.step);
+      if (action === "start") settlePluginDraft();
     }
   } catch (error) {
     if (requestGeneration === stateRequestGeneration) {
       if (action === "select_plugins") {
-        revertPluginDraft();
+        revertPluginDraft(extra && extra.step);
         render();
       }
       setNotice("Workbench connection failed: " + error);

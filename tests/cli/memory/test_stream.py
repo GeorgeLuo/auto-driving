@@ -3,15 +3,20 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.cycle_host import AutonomyCycleHost
 from cli.automa_cli.automation import _automation_command_matches_vehicle
 from cli.automa_cli.memory import (
     assess_chase_memory_worker_liveness,
     probe_live_memory,
     stream_vehicle_memory,
 )
+from implementations.decision_cycle.catalog import packaged_activation
 from tests.support.cli_runner import run_automa
 
 # Mirrors start_automation launcher argv: ... automation run --id <vehicle_id> ...
@@ -36,7 +41,7 @@ class MemoryStreamTests(unittest.TestCase):
                 "last_control": {
                     "metadata": {"has_memory": True},
                 },
-                "components": {
+                "steps": {
                     "memory": {
                         "plugin_ids": ["bounded_evidence"],
                         "plugins": [
@@ -96,7 +101,7 @@ class MemoryStreamTests(unittest.TestCase):
         status = {
             "ok": True,
             "drive_mode": "user",
-            "autonomy": {"components": {"perception": {"preset": "lightweight_observer"}}},
+            "autonomy": {"steps": {"perception": {"plugin_ids": ["floor_continuity"]}, "memory": None}},
         }
         with patch(
             "cli.automa_cli.memory.fetch_autonomy_status",
@@ -105,6 +110,33 @@ class MemoryStreamTests(unittest.TestCase):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
         self.assertEqual(live["status"], "absent")
         self.assertIn("update core", live["error"])
+
+    def test_probe_reads_what_the_cycle_host_publishes(self) -> None:
+        # The Pi serves ``host.status()`` as ``autonomy``; read it from a real host
+        # so the probe and the writer cannot drift apart again.
+        vehicle = {
+            "vehicle_id": "piracer",
+            "provider": "picar",
+            "connection": {"base_url": "http://piracer.local:8887"},
+        }
+        host = AutonomyCycleHost(
+            steps=replace(
+                decision_steps(),
+                memory=MemoryRunner.from_activation(packaged_activation("memory")),
+            )
+        )
+        status = {"ok": True, "drive_mode": "user", "autonomy": host.status()}
+        with patch("cli.automa_cli.memory.fetch_autonomy_status", return_value=status):
+            live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
+
+        self.assertEqual(live["status"], "live")
+        self.assertEqual(live["plugin_ids"], ["bounded_evidence"])
+        self.assertEqual(live["selected_plugin_ids"], ["bounded_evidence"])
+
+        status["autonomy"] = AutonomyCycleHost(steps=decision_steps()).status()
+        with patch("cli.automa_cli.memory.fetch_autonomy_status", return_value=status):
+            absent = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
+        self.assertEqual(absent["status"], "absent")
 
     def test_stream_once_json_uses_discovery(self) -> None:
         vehicle = {
@@ -123,7 +155,7 @@ class MemoryStreamTests(unittest.TestCase):
             "ok": True,
             "drive_mode": "user",
             "autonomy": {
-                "components": {
+                "steps": {
                     "memory": {
                         "plugin_ids": ["bounded_evidence"],
                         "plugins": [

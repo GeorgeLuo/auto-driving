@@ -1618,8 +1618,8 @@ def _probe_physical_memory(
         }
 
     autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
-    components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
-    memory = components.get("memory") if isinstance(components.get("memory"), dict) else None
+    steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
+    memory = steps.get("memory") if isinstance(steps.get("memory"), dict) else None
     last_control = autonomy.get("last_control") if isinstance(autonomy.get("last_control"), dict) else {}
     control_meta = (
         last_control.get("metadata") if isinstance(last_control.get("metadata"), dict) else {}
@@ -1634,7 +1634,7 @@ def _probe_physical_memory(
             "drive_mode": status.get("drive_mode"),
             "has_memory": bool(control_meta.get("has_memory")),
             "error": (
-                "No live memory component in /autonomy/status. "
+                "No live memory step in /autonomy/status. "
                 "If activation was deployed, update core then autonomy with --restart."
             ),
             "probed_at_ms": probed_at_ms,

@@ -75,7 +75,7 @@ function renderMemory() {
   var memory = currentPayload("memory");
   if (!memory) {
     var updateFailed = state && state.phase === "failed" &&
-      state.failure_boundary === "memory" && !selectedFrameDetail;
+      state.failure_boundary === "memory";
     memoryListSignature = "";
     elements.memoryRecords.textContent = "";
     setText("memoryHealth", updateFailed ? "update failed" : "no snapshot");

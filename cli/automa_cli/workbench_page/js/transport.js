@@ -88,9 +88,7 @@ async function action(action, extra) {
   var requestGeneration = ++stateRequestGeneration;
   actionInFlight = true;
   var skipViewer = playbackControlAction(action);
-  if (["start", "validate", "reset"].indexOf(action) >= 0) {
-    clearFrameSelection();
-  }
+  if (["start", "validate", "reset"].indexOf(action) >= 0) clearRecordSelection();
   if (["start", "reset"].indexOf(action) >= 0) cadenceDraft = false;
   var body = { action: action };
   var runId = selectedRunId(action);
@@ -124,7 +122,7 @@ async function action(action, extra) {
       if (action === "validate") setNotice("Source and plugin configuration validated.");
       if (action === "select_plugins") setNotice("Plugin selection applied.");
       if (action === "select_plugins") {
-        clearFrameSelection();
+        clearRecordSelection();
         render(payload.state);
       }
       if (["select_plugins", "start"].indexOf(action) >= 0) {
@@ -268,7 +266,7 @@ function beginScrub() {
   scrubbing = true;
   resumeAfterScrub = state.phase === "running";
   pendingResume = false;
-  clearFrameSelection();
+  clearRecordSelection();
   if (resumeAfterScrub) {
     action("pause").then(function () { flushSeek(); });
   }

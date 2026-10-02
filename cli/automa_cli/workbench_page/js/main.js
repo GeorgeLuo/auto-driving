@@ -15,9 +15,6 @@ function render(nextState, options) {
   options = options || {};
   state = nextState || state;
   if (!state) return;
-  if (selectedFrameRunId && selectedFrameRunId !== state.run_id) {
-    clearFrameSelection();
-  }
   var source = state.source || {};
   var identity = state.source_identity || "no source selected";
   elements.sourceIdentity.title = identity;
@@ -66,9 +63,13 @@ function render(nextState, options) {
     } else {
       renderFrame();
     }
-    renderEvidence();
-    renderMemory();
-    renderDecision();
+    var stepsKey = text(state.run_id, "") + ":" + text(state.steps_revision, "");
+    if (stepsKey !== renderedStepsKey) {
+      renderedStepsKey = stepsKey;
+      renderEvidence();
+      renderMemory();
+      renderDecision();
+    }
     renderFailure();
   }
   renderControls();

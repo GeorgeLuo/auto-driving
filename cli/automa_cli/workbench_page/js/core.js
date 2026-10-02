@@ -3,16 +3,13 @@
 "use strict";
 
 var state = null;
+var renderedStepsKey = "";
 var lastImageKey = "";
 var loadedImageKey = "";
 var pollInFlight = false;
 var pollTimer = null;
 var actionInFlight = false;
 var stateRequestGeneration = 0;
-var selectedFrameId = null;
-var selectedFrameRunId = null;
-var selectedFrameDetail = null;
-var detailRequestGeneration = 0;
 var imageRequestGeneration = 0;
 var elements = {};
 [
@@ -82,23 +79,14 @@ function setText(id, value, fallback) {
   elements[id].textContent = text(value, fallback);
 }
 function currentFrame() {
-  if (selectedFrameDetail && selectedFrameDetail.frame) {
-    return selectedFrameDetail.frame;
-  }
   return state && state.current_frame ? state.current_frame : null;
 }
 function currentPayload(key) {
-  if (selectedFrameDetail && selectedFrameDetail.steps) {
-    return selectedFrameDetail.steps[key];
-  }
   return state && state.steps ? state.steps[key] : null;
 }
-function clearFrameSelection() {
-  detailRequestGeneration += 1;
-  selectedFrameId = null;
-  selectedFrameRunId = null;
-  selectedFrameDetail = null;
+function clearRecordSelection() {
   selectedRecordId = null;
+  renderedStepsKey = "";
 }
 function selectedRunId(action) {
   if (!state || action === "start") return null;

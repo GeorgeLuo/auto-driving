@@ -254,12 +254,12 @@ function renderFrame() {
     elements.emptyState.textContent = "This sequence position has no image.\nReason: " + text(frame.absence_reason, "not provided");
     return;
   }
-  var imageKey = text(selectedFrameRunId || state.run_id, "") + ":" + text(frame.frame_id, "");
+  var imageKey = text(state.run_id, "") + ":" + text(frame.frame_id, "");
   if (imageKey !== lastImageKey) {
     lastImageKey = imageKey;
     var hasRenderedImage = loadedImageKey !== "";
     var requestGeneration = ++imageRequestGeneration;
-    var imageUrl = "/api/frame?run_id=" + encodeURIComponent(selectedFrameRunId || state.run_id || "") +
+    var imageUrl = "/api/frame?run_id=" + encodeURIComponent(state.run_id || "") +
       "&frame_id=" + encodeURIComponent(frame.frame_id);
     elements.overlayCanvas.width = 1;
     elements.overlayCanvas.height = 1;
@@ -306,7 +306,7 @@ function drawOverlay() {
   var image = elements.frameImage;
   var canvas = elements.overlayCanvas;
   var imageKey = frame
-    ? text(selectedFrameRunId || (state && state.run_id), "") + ":" + text(frame.frame_id, "")
+    ? text(state && state.run_id, "") + ":" + text(frame.frame_id, "")
     : "";
   if (!frame || frame.absent || loadedImageKey !== imageKey || !image.naturalWidth || elements.overlayToggle.value === "off") {
     canvas.width = 1; canvas.height = 1;

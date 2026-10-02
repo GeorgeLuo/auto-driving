@@ -804,7 +804,7 @@ class ImageReplayRunner:
         cached: dict[str, Any],
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
-        self._state["steps"] = copy.deepcopy(cached["steps"])
+        self._set_steps_locked(copy.deepcopy(cached["steps"]))
         completed = frame.position + 1
         total = len(self._image_source.frames) if self._image_source is not None else completed
         self._state["progress"]["completed"] = completed
@@ -962,12 +962,14 @@ class ImageReplayRunner:
                 with self._condition:
                     previous_memory = self._state["steps"]["memory"]
                     self._state["current_frame"] = frame.to_dict()
-                    self._state["steps"] = {
-                        "perception": perception_payload,
-                        "observation": observation_payload,
-                        "memory": memory_payload,
-                        "decision": copy.deepcopy(decision_payload),
-                    }
+                    self._set_steps_locked(
+                        {
+                            "perception": perception_payload,
+                            "observation": observation_payload,
+                            "memory": memory_payload,
+                            "decision": copy.deepcopy(decision_payload),
+                        }
+                    )
                     self._state["progress"]["completed"] = frame.position + 1
                     self._state["progress"]["percent"] = (
                         round(
@@ -1020,7 +1022,7 @@ class ImageReplayRunner:
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
-                    self._state["steps"] = _empty_steps()
+                    self._set_steps_locked(_empty_steps())
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
                         message=f"{type(exc).__name__}: {exc}",
@@ -1178,6 +1180,7 @@ class ImageReplayRunner:
             "summary": self._summary(frames_completed=0, frames_total=0),
             "machine_detail": self._machine_detail(include_run=False),
             "steps": _empty_steps(),
+            "steps_revision": 0,
             "timeline": [],
             "failure": None,
             "failure_boundary": None,
@@ -1282,6 +1285,12 @@ class ImageReplayRunner:
             },
             "last_transition": None,
         }
+
+    def _set_steps_locked(self, steps: dict[str, Any]) -> None:
+        """Replace the displayed frame's step payloads; the revision tells the page they changed."""
+
+        self._state["steps"] = steps
+        self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1
 
     def _record_action_locked(self, action: str, **fields: Any) -> None:
         item = {"action": action, **fields, "at_ms": _now_ms()}

@@ -137,6 +137,20 @@ class WorkbenchTests(unittest.TestCase):
             )
             runner.dispatch("reset", run_id=run_id)
 
+    def test_steps_revision_changes_only_when_step_payloads_change(self) -> None:
+        with image_source(3) as root:
+            runner = ImageReplayRunner(root, cadence_ms=30000)
+            runner.dispatch("select_plugins", active_plugin_ids=["classical_regions"])
+            run_id, paused = _pause_after_first_frame(runner)
+            revision = paused["steps_revision"]
+            self.assertEqual(runner.state()["steps_revision"], revision)
+            reselected = runner.dispatch(
+                "select_plugins", active_plugin_ids=["floor_continuity"], run_id=run_id
+            )
+            self.assertGreater(reselected["steps_revision"], revision)
+            self.assertEqual(runner.state()["steps_revision"], reselected["steps_revision"])
+            runner.dispatch("reset", run_id=run_id)
+
     def test_paused_plugin_toggle_reprocesses_the_current_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(

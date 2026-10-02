@@ -128,7 +128,7 @@ h3, .kicker, dt, .metric .label {
   align-content: start;
   gap: 6px;
 }
-.truncate, #sourceIdentity, #pluginSelectionSummary, .inline-edit, .digest {
+.truncate, #sourceIdentity, #pluginSelectionSummary, #memoryPluginSelectionSummary, .inline-edit, .digest {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

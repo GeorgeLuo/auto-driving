@@ -8,7 +8,8 @@ shown by seeking, as the page does, and compared with
 workbench must show the frame, status, and per-plugin signal and thing counts
 the CLI reports. Memory and decision state must be present for every frame.
 A second pass changes the plugin selection through the API while paused,
-running, seeking, and looping.
+running, seeking, and looping. A third selects memory plugins and compares them
+with the activation ``automa vehicles update memory --dry-run`` reports.
 
     scripts/validation/workbench_e2e.py
 """
@@ -198,13 +199,58 @@ def check_selector() -> list[str]:
     return problems
 
 
+def check_memory_selector() -> list[str]:
+    """Select memory plugins the way the page does and compare with ``update memory``.
+
+    Memory is built from the frames before the displayed one, so a selection
+    while paused rebuilds it over those frames and keeps the displayed frame.
+    """
+
+    problems: list[str] = []
+    try:
+        with serve() as workbench:
+            current = workbench.wait_for(lambda s: s["position"] >= 5)
+            run_id = current["run_id"]
+            paused = workbench.act(action="pause", run_id=run_id)
+            position, frame_id = paused["position"], paused["current_frame"]["frame_id"]
+            for plugins in (["multi_obstruction_tracks"], ["bounded_evidence", "multi_obstruction_tracks"]):
+                label = "+".join(plugins)
+                options = [option for plugin in plugins for option in ("--plugin", plugin)]
+                completed = subprocess.run(
+                    automa("update", "memory", "--id", "workbench-e2e", *options, "--dry-run", "--json"),
+                    cwd=ROOT, capture_output=True, text=True, check=False,
+                )
+                if completed.returncode != 0:
+                    problems.append(f"{label}: update memory exited {completed.returncode}")
+                    continue
+                expected = json.loads(completed.stdout)["manifest"]["plugins"]
+                selected = workbench.act(
+                    action="select_plugins", run_id=run_id, step="memory", active_plugin_ids=plugins,
+                )
+                applied = selected["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"]
+                if applied != expected or selected["active_memory_plugin_ids"] != expected:
+                    problems.append(f"{label}: workbench memory {applied}, update memory {expected}")
+                if selected["position"] != position or selected["current_frame"]["frame_id"] != frame_id:
+                    problems.append(f"{label}: displayed frame moved to {selected['current_frame']['frame_id']}")
+                if len(selected["timeline"]) != position:
+                    problems.append(f"{label}: timeline holds {len(selected['timeline'])} of {position} frames")
+                if (selected["steps"]["memory"] or {}).get("plugin_id") != expected[-1]:
+                    problems.append(f"{label}: memory step shows {(selected['steps']['memory'] or {}).get('plugin_id')}")
+    except (TimeoutError, OSError, KeyError) as exc:
+        problems.append(f"memory selector check failed: {type(exc).__name__}: {exc}")
+    return problems
+
+
 def main() -> int:
-    problems = check_parity() + check_selector()
+    problems = check_parity() + check_selector() + check_memory_selector()
     if problems:
         print(f"{len(problems)} problem(s):")
         print("\n".join(problems[:40]))
         return 1
-    print("workbench matches inspect frame by frame; plugin selection reprocesses frames")
+    print(
+        "workbench matches inspect frame by frame; plugin selection reprocesses frames; "
+        "memory selection matches update memory"
+    )
     return 0
 
 

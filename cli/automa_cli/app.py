@@ -44,12 +44,10 @@ from implementations.decision_cycle.perception.presets import (
 from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
 from .perception import (
     get_vehicle_perception_info,
-    set_vehicle_perception_plugin,
     update_vehicle_perception,
 )
 from .perception_runs import (
-    apply_perception_experiment,
-    run_perception_experiment,
+    inspect_perception,
 )
 from .workbench import run_workbench_replay
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
@@ -974,7 +972,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception_control = vehicle_commands.add_parser(
         "perception",
-        help="Run perception experiments and manage perception plugins.",
+        help="Inspect what perception detects and measure its viability.",
     )
     perception_control.set_defaults(handler=_handle_vehicles_perception_help)
     perception_commands = perception_control.add_subparsers(dest="perception_command")
@@ -984,103 +982,82 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_help.set_defaults(handler=_handle_vehicles_perception_help)
 
-    perception_run = perception_commands.add_parser(
-        "run",
-        help="Observe a short perception sequence from an active vehicle.",
+    perception_inspect = perception_commands.add_parser(
+        "inspect",
+        help="Show what a perception selection detects, from images or a live vehicle.",
         description=(
-            "Observe five frames from an active vehicle without taking movement control. "
-            "When multiple vehicles are active, the simulator is selected by default."
+            "Show what a perception selection detects. With a source (an image, a directory "
+            "of images, or a recorded run) the selection is applied to those images. Without "
+            "one, frames are read from an active vehicle without taking movement control; "
+            "when several are active, the simulator is selected by default."
         ),
     )
-    perception_run.add_argument(
-        "--preset",
-        choices=available_perception_preset_ids(),
-        default=None,
-        help="Run one packaged perception preset instead of the active selection.",
-    )
-    perception_run.add_argument(
-        "--id",
-        dest="vehicle_id",
-        default=None,
-        help="Specific active vehicle id. Omit to select a safe observation target automatically.",
-    )
-    perception_run.add_argument(
-        "--frames",
-        type=int,
-        default=5,
-        help="Frames to observe (default: 5).",
-    )
-    perception_run.add_argument(
-        "--interval-s",
-        type=float,
-        default=0.25,
-        help="Delay between captures in seconds (default: 0.25).",
-    )
-    perception_run.add_argument(
-        "--timeout-s",
-        type=float,
-        default=3.0,
-        help="Vehicle discovery and capture timeout in seconds (default: 3).",
-    )
-    perception_run.add_argument(
-        "--record",
-        action="store_true",
-        help="Persist source frames, plugin artifacts, and the comparison report.",
-    )
-    perception_run.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable experiment report.",
-    )
-    perception_run.set_defaults(handler=_handle_vehicles_perception_run)
-
-    perception_apply = perception_commands.add_parser(
-        "apply",
-        help="Apply perception to an existing image or image directory.",
-        description=(
-            "Apply the recorded mapper configuration, or the default lightweight "
-            "observer, to one image or an image directory."
-        ),
-    )
-    perception_apply.add_argument(
+    perception_inspect.add_argument(
         "source",
+        nargs="?",
         type=Path,
-        help="Image file, recorded perception run, or directory containing image frames.",
+        default=None,
+        help="Image file, recorded perception run, or directory of images. Omit to read a live vehicle.",
     )
-    perception_apply_selection = perception_apply.add_mutually_exclusive_group()
-    perception_apply_selection.add_argument(
+    perception_inspect_selection = perception_inspect.add_mutually_exclusive_group()
+    perception_inspect_selection.add_argument(
         "--preset",
         choices=available_perception_preset_ids(),
         default=None,
-        help="Apply one packaged perception preset instead of the recorded/default mapper.",
+        help="Inspect one packaged perception preset instead of the recorded or staged selection.",
     )
-    perception_apply_selection.add_argument(
+    perception_inspect_selection.add_argument(
         "--plugin",
         dest="plugins",
         action="append",
         default=None,
         metavar="PLUGIN",
-        help="Apply these packaged perception plugins, in order, with their default configs. Repeatable.",
+        help="Inspect these packaged perception plugins, in order, with their default configs. Repeatable.",
     )
-    perception_apply.add_argument(
+    perception_inspect.add_argument(
+        "--id",
+        dest="vehicle_id",
+        default=None,
+        help="Live vehicle id. Omit to select a safe observation target automatically.",
+    )
+    perception_inspect.add_argument(
+        "--frames",
+        type=int,
+        default=None,
+        help="Live frames to observe (default: 5).",
+    )
+    perception_inspect.add_argument(
+        "--interval-s",
+        type=float,
+        default=None,
+        help="Delay between live captures in seconds (default: 0.25).",
+    )
+    perception_inspect.add_argument(
+        "--timeout-s",
+        type=float,
+        default=None,
+        help="Vehicle discovery and capture timeout in seconds (default: 3).",
+    )
+    perception_inspect.add_argument(
         "--record",
         action="store_true",
-        help="Persist applied outputs and the comparison report.",
+        help="Persist source frames, plugin artifacts, and the comparison report.",
     )
-    perception_apply.add_argument(
+    perception_inspect.add_argument(
         "--json",
         action="store_true",
         help="Print the machine-readable experiment report.",
     )
-    perception_apply.set_defaults(handler=_handle_vehicles_perception_apply)
+    perception_inspect.set_defaults(handler=_handle_vehicles_perception_inspect)
 
     perception_viability = perception_commands.add_parser(
         "viability",
-        help="Measure onboard physical observation cadence and freshness for a PiCar.",
+        help="Health-check perception on a vehicle.",
         description=(
-            "Poll the deployed onboard observation publication for a bounded interval "
-            "(default 60s), record cadence, result age, processing duration, skip policy, "
-            "and remote process RSS/CPU. Requires physical PiCar publication endpoints."
+            "Health-check perception on a vehicle. A PiCar is polled for a bounded "
+            "interval (default 60s) to record cadence, result age, processing duration, "
+            "and skip policy, plus host RSS/CPU when the vehicle supplies an ssh_target. "
+            "The simulator has no probe yet and passes automatically."
         ),
     )
     perception_viability.add_argument(
@@ -1118,50 +1095,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable viability report.",
     )
     perception_viability.set_defaults(handler=_handle_vehicles_perception_viability)
-
-    perception_enable = perception_commands.add_parser(
-        "enable",
-        help="Enable one plugin in the locally staged perception activation.",
-        description="Enable one plugin in the locally staged perception activation.",
-    )
-    perception_enable.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    perception_enable.add_argument(
-        "plugin_id",
-        help="Plugin id from `automa vehicles info perception --id <vehicle_id>`.",
-    )
-    perception_enable.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable plugin update payload.",
-    )
-    perception_enable.set_defaults(handler=_handle_vehicles_perception_enable)
-
-    perception_disable = perception_commands.add_parser(
-        "disable",
-        help="Disable one plugin in the locally staged perception activation.",
-        description="Disable one plugin in the locally staged perception activation.",
-    )
-    perception_disable.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    perception_disable.add_argument(
-        "plugin_id",
-        help="Enabled plugin id to remove from the locally staged perception chain.",
-    )
-    perception_disable.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable plugin update payload.",
-    )
-    perception_disable.set_defaults(handler=_handle_vehicles_perception_disable)
 
     update = vehicle_commands.add_parser(
         "update",
@@ -1302,9 +1235,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception = update_commands.add_parser(
         "perception",
-        help="Stage a perception preset in a vehicle's local controller bundle.",
+        help="Stage a perception preset or plugins in a vehicle's local controller bundle.",
         description=(
-            "Idempotently stage a perception preset and safe idle decision in a "
+            "Idempotently stage a perception preset (or plugin list) and safe idle decision in a "
             "local vehicle bundle. For Chase, the result reports whether the same "
             "passive capture gate is ready for observation-only automation."
         ),
@@ -1324,11 +1257,20 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
         ),
     )
-    perception.add_argument(
+    perception_selection = perception.add_mutually_exclusive_group()
+    perception_selection.add_argument(
         "--preset",
         default=None,
         choices=available_perception_preset_ids(),
         help=f"Packaged perception preset to activate (default: {DEFAULT_PERCEPTION_PRESET}).",
+    )
+    perception_selection.add_argument(
+        "--plugin",
+        action="append",
+        dest="plugins",
+        default=None,
+        metavar="PLUGIN_ID",
+        help="Packaged perception plugin to select instead of a preset; repeat to select several in order.",
     )
     perception.add_argument(
         "--dry-run",
@@ -1650,13 +1592,9 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles perception commands",
                 "",
-                "- run      observe a short sequence from an active vehicle",
-                "- apply    process one existing image or image sequence",
-                "- check    guided stationary physical placement check (picar)",
-                "- viability  measure onboard cadence/freshness on a physical PiCar",
-                "- enable   enable one locally staged perception plugin",
-                "- disable  disable one locally staged perception plugin",
-                "- help     show this summary",
+                "- inspect    show what a selection detects, from images or a live vehicle",
+                "- viability  health-check perception (PiCar cadence/freshness; simulator stub)",
+                "- help       show this summary",
                 "",
                 "Detailed help:",
                 "- ./cli/automa vehicles perception <command> --help",
@@ -2197,36 +2135,13 @@ def _handle_vehicles_update_memory(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_perception_enable(args: argparse.Namespace) -> int:
-    result = set_vehicle_perception_plugin(
-        vehicle_id=args.vehicle_id,
-        plugin_id=args.plugin_id,
-        enabled=True,
-        json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
-    result = run_perception_experiment(
+def _handle_vehicles_perception_inspect(args: argparse.Namespace) -> int:
+    result = inspect_perception(
+        args.source,
         vehicle_id=args.vehicle_id,
         frames=args.frames,
         interval_s=args.interval_s,
         timeout_s=args.timeout_s,
-        record=args.record,
-        json_output=args.json,
-        preset=args.preset,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_vehicles_perception_apply(args: argparse.Namespace) -> int:
-    result = apply_perception_experiment(
-        args.source,
         record=args.record,
         json_output=args.json,
         preset=args.preset,
@@ -2260,18 +2175,6 @@ def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
 
 
 
-def _handle_vehicles_perception_disable(args: argparse.Namespace) -> int:
-    result = set_vehicle_perception_plugin(
-        vehicle_id=args.vehicle_id,
-        plugin_id=args.plugin_id,
-        enabled=False,
-        json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
@@ -2283,6 +2186,7 @@ def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
     result = update_vehicle_perception(
         vehicle_id=args.vehicle_id,
         preset=args.preset,
+        plugins=args.plugins,
         timeout_s=args.timeout_s,
         restart=args.restart,
         dry_run=args.dry_run,

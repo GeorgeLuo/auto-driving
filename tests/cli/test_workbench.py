@@ -86,7 +86,7 @@ class WorkbenchTests(unittest.TestCase):
                 "source_id": "fixture.sequence",
                 "run_dir": "lab/runs/fixture-run",
                 "source": {
-                    "kind": "apply",
+                    "kind": "images",
                     "path": "/previous/location/auto-driving/lab/runs/capture",
                 },
                 "frames": [

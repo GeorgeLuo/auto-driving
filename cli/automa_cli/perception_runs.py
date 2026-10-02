@@ -18,13 +18,10 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorRe
 
 from .paths import ROOT, display_path, safe_path_part
 from .perception_evaluation import evaluate_perception_frames
-from implementations.decision_cycle.perception.presets import (
-    DEFAULT_PERCEPTION_PRESET,
-    PERCEPTION_PRESETS,
-)
+from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from implementations.decision_cycle.catalog import packaged_activation, perception_preset_activation
+from implementations.decision_cycle.catalog import perception_activation
 
 from .perception import ensure_local_perception_runtime
 from .step_hosting import load_staged_runner
@@ -47,7 +44,7 @@ from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_activ
 DEFAULT_FRAME_COUNT = 5
 DEFAULT_INTERVAL_S = 0.25
 _PERCEPTION_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-APPLY_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_APPLY_ROOT", ROOT / "runtime" / "perception-applies"))
+INSPECT_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_INSPECT_ROOT", ROOT / "runtime" / "perception-inspections"))
 
 
 @dataclass(frozen=True)
@@ -56,18 +53,69 @@ class CommandResult:
     message: str
 
 
-def run_perception_experiment(
+def inspect_perception(
+    source: Path | None = None,
     *,
     vehicle_id: str | None = None,
-    frames: int = DEFAULT_FRAME_COUNT,
-    interval_s: float = DEFAULT_INTERVAL_S,
-    timeout_s: float = 3.0,
+    frames: int | None = None,
+    interval_s: float | None = None,
+    timeout_s: float | None = None,
     record: bool = False,
     json_output: bool = False,
     preset: str | None = None,
+    plugins: list[str] | None = None,
 ) -> CommandResult:
+    """Show what a perception selection detects, from images or a live vehicle.
+
+    With ``source`` (an image, a directory of images, or a recorded run) the
+    selection is applied to those images. Without it, frames are read from an
+    active vehicle. With neither ``preset`` nor ``plugins``, a recorded run's
+    own selection applies to a source, and a vehicle's staged selection to a
+    live read.
+    """
+
+    if preset is not None and plugins:
+        return CommandResult(2, "Choose either --preset or --plugin, not both.")
     if preset is not None and preset not in PERCEPTION_PRESETS:
         return CommandResult(2, f"Unknown perception preset {preset!r}.")
+    if source is not None:
+        live_only = {
+            "--id": vehicle_id,
+            "--frames": frames,
+            "--interval-s": interval_s,
+            "--timeout-s": timeout_s,
+        }
+        given = [flag for flag, value in live_only.items() if value is not None]
+        if given:
+            return CommandResult(
+                2, f"{', '.join(given)} read a live vehicle and cannot be combined with a source."
+            )
+        return _inspect_images(
+            source, record=record, json_output=json_output, preset=preset, plugins=plugins
+        )
+    return _inspect_vehicle(
+        vehicle_id=vehicle_id,
+        frames=DEFAULT_FRAME_COUNT if frames is None else frames,
+        interval_s=DEFAULT_INTERVAL_S if interval_s is None else interval_s,
+        timeout_s=3.0 if timeout_s is None else timeout_s,
+        record=record,
+        json_output=json_output,
+        preset=preset,
+        plugins=plugins,
+    )
+
+
+def _inspect_vehicle(
+    *,
+    vehicle_id: str | None,
+    frames: int,
+    interval_s: float,
+    timeout_s: float,
+    record: bool,
+    json_output: bool,
+    preset: str | None,
+    plugins: list[str] | None,
+) -> CommandResult:
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
@@ -89,7 +137,9 @@ def run_perception_experiment(
 
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
-        prepared_runtime = ensure_local_perception_runtime(vehicle=vehicle, preset=preset)
+        prepared_runtime = ensure_local_perception_runtime(
+            vehicle=vehicle, preset=preset, plugins=plugins
+        )
         manifest = prepared_runtime["manifest"]
         activation = step_activation_from_payload(manifest, step="perception")
         mapper = load_staged_runner(activation)
@@ -179,18 +229,14 @@ def run_perception_experiment(
     return CommandResult(exit_code, _format_report(report))
 
 
-def apply_perception_experiment(
+def _inspect_images(
     source: Path,
     *,
-    record: bool = False,
-    json_output: bool = False,
-    preset: str | None = None,
-    plugins: list[str] | None = None,
+    record: bool,
+    json_output: bool,
+    preset: str | None,
+    plugins: list[str] | None,
 ) -> CommandResult:
-    if preset is not None and plugins:
-        return CommandResult(2, "Choose either --preset or --plugin, not both.")
-    if preset is not None and preset not in PERCEPTION_PRESETS:
-        return CommandResult(2, f"Unknown perception preset {preset!r}.")
     source = source.expanduser().resolve()
     if not source.exists():
         return CommandResult(2, f"Apply source does not exist: {source}")
@@ -215,11 +261,9 @@ def apply_perception_experiment(
 
     try:
         recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
-        if plugins:
-            activation = packaged_activation("perception", plugins)
-            preset = "custom"
-        elif preset is not None:
-            activation = perception_preset_activation(preset)
+        if plugins or preset is not None:
+            activation = perception_activation(preset=preset, plugins=plugins)
+            preset = activation.metadata["preset"]
         elif isinstance(recorded_mapper, dict):
             recorded = dict(recorded_mapper.get("config") or {})
             activation = step_activation(
@@ -230,15 +274,15 @@ def apply_perception_experiment(
             )
             preset = recorded_mapper.get("preset") or "recorded"
         else:
-            activation = perception_preset_activation(DEFAULT_PERCEPTION_PRESET)
-            preset = DEFAULT_PERCEPTION_PRESET
+            activation = perception_activation()
+            preset = activation.metadata["preset"]
         mapper = PerceptionRunner.from_activation(activation)
         report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}
-        record_root = APPLY_ROOT
+        record_root = INSPECT_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
 
-    run_id = _run_id("apply", source_name)
+    run_id = _run_id("inspect", source_name)
     record_dir = record_root / run_id if record else None
     if record_dir is not None:
         try:
@@ -271,12 +315,12 @@ def apply_perception_experiment(
                             sensor_kind="camera",
                             captured_at_ms=captured_at_ms,
                             path=str(image_path),
-                            metadata={"source": "apply"},
+                            metadata={"source": "images"},
                         )
                     },
                     started_at_ms=captured_at_ms,
                     completed_at_ms=captured_at_ms,
-                    metadata={"source": "apply", "source_path": str(source)},
+                    metadata={"source": "images", "source_path": str(source)},
                 )
                 item, _ = perceive_snapshot(
                     active_mapper,
@@ -285,14 +329,14 @@ def apply_perception_experiment(
                     frame_index=index,
                     image_path=str(image_path),
                     shared_memory=shared_memory,
-                    metadata={"run_id": run_id, "frame_index": index, "apply": True},
+                    metadata={"run_id": run_id, "frame_index": index},
                     result_dir=(results_dir / frame_id) if record else None,
                 )
                 frame_records.append(item)
 
             report = _experiment_report(
                 run_id=run_id,
-                source={"kind": "apply", "path": str(source)},
+                source={"kind": "images", "path": str(source)},
                 mapper=report_mapper,
                 frames=frame_records,
                 recording=record,
@@ -611,7 +655,7 @@ def _run_id(kind: str, source: str) -> str:
     import uuid
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    # Microseconds + short uuid so sequential applies in the same second never collide.
+    # Microseconds + short uuid so sequential runs in the same second never collide.
     stamp = f"{timestamp}-{int(time.time() * 1_000_000) % 1_000_000:06d}-{uuid.uuid4().hex[:8]}"
     return f"{kind}-{safe_path_part(source)}-{stamp}"
 

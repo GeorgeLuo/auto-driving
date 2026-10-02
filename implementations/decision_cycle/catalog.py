@@ -8,7 +8,7 @@ such conflicts. ``DEFAULT_STEP_PLUGINS`` is each step's default selection. ``pac
 ``StepActivation`` that makes every packaged plugin of the step available,
 selects the requested ones in order, and applies config overrides.
 ``perception_preset_activation`` builds one from a named perception
-preset.
+preset, and ``perception_activation`` from a preset or a plugin list.
 """
 
 from __future__ import annotations
@@ -26,7 +26,9 @@ from implementations.decision_cycle.perception.catalog import (
     PERCEPTION_PLUGINS,
 )
 from implementations.decision_cycle.perception.presets import (
+    CUSTOM_PERCEPTION_PRESET,
     DEFAULT_PERCEPTION_PLUGINS,
+    DEFAULT_PERCEPTION_PRESET,
     PERCEPTION_PRESETS,
 )
 from implementations.decision_cycle.proposal.catalog import (
@@ -135,6 +137,24 @@ def perception_preset_activation(preset: str) -> StepActivation:
         config_overrides=entry.get("plugin_configs"),
         metadata={"preset": preset},
     )
+
+
+def perception_activation(
+    *,
+    preset: str | None = None,
+    plugins: Sequence[str] | None = None,
+) -> StepActivation:
+    """A perception activation from a named preset or an ordered plugin list.
+
+    A plugin list is recorded as the ``custom`` preset; with neither, the
+    default preset applies.
+    """
+
+    if preset is not None and plugins:
+        raise ValueError("choose either a perception preset or plugins, not both")
+    if plugins:
+        return packaged_activation("perception", plugins, metadata={"preset": CUSTOM_PERCEPTION_PRESET})
+    return perception_preset_activation(preset or DEFAULT_PERCEPTION_PRESET)
 
 
 def default_activations() -> dict[str, StepActivation]:

@@ -11,7 +11,7 @@ not object identity, semantic detection, depth, or safe traversability.
 Run it against the capture with:
 
 ```sh
-./cli/automa vehicles perception apply \
+./cli/automa vehicles perception inspect \
   lab/runs/cv-synthesis-20260919/retry/frames \
   --plugin frame --plugin floor_continuity_temporal --record
 ```

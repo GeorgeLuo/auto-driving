@@ -16,9 +16,8 @@ from implementations.decision_cycle.catalog import perception_preset_activation
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
     _source_image_paths,
-    apply_perception_experiment,
+    inspect_perception,
     perceive_snapshot,
-    run_perception_experiment,
 )
 from cli.automa_cli.vehicle_access import VehicleAccess
 from implementations.decision_cycle.catalog import step_plugins
@@ -49,11 +48,11 @@ class FakeFrameCar:
 
 
 class PerceptionRunTests(unittest.TestCase):
-    def test_apply_runs_selected_catalog_plugins_on_one_image(self) -> None:
+    def test_inspect_runs_selected_catalog_plugins_on_one_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "single.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
-            result = apply_perception_experiment(
+            result = inspect_perception(
                 image,
                 plugins=["frame", "classical_regions"],
                 json_output=True,
@@ -65,6 +64,28 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(len(report["frames"]), 1)
         runs = report["frames"][0]["plugin_runs"]
         self.assertEqual([run["plugin_id"] for run in runs], ["frame", "classical_regions"])
+
+    def test_inspect_rejects_conflicting_selection_and_live_options_with_a_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "single.jpg"
+            Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
+            both = inspect_perception(image, preset="visual_observer", plugins=["frame"])
+            live_option = inspect_perception(image, frames=3, vehicle_id="piracer")
+
+        self.assertEqual(both.exit_code, 2)
+        self.assertIn("either --preset or --plugin", both.message)
+        self.assertEqual(live_option.exit_code, 2)
+        self.assertIn("--id, --frames", live_option.message)
+
+    def test_inspect_reports_the_preset_or_custom_selection_it_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "single.jpg"
+            Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
+            preset = inspect_perception(image, preset="visual_observer", json_output=True)
+            custom = inspect_perception(image, plugins=["frame"], json_output=True)
+
+        self.assertEqual(json.loads(preset.message)["mapper"]["preset"], "visual_observer")
+        self.assertEqual(json.loads(custom.message)["mapper"]["preset"], "custom")
 
     def test_perceive_snapshot_returns_the_record_and_saves_results_only_on_request(self) -> None:
         mapper = PerceptionRunner.from_activation(perception_preset_activation("lightweight_observer"))
@@ -150,7 +171,25 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(preserved["manifest"]["metadata"]["preset"], "custom")
         self.assertEqual(preserved["manifest"]["plugins"], ["frame"])
 
-    def test_apply_manifest_falls_back_to_archived_frame_copy(self) -> None:
+    def test_plugin_list_stages_a_custom_runtime_that_a_later_default_call_keeps(self) -> None:
+        vehicle = {
+            "vehicle_id": "chase-sim-test",
+            "vehicle_kind": "chase-sim-ws",
+            "provider": "chase-sim",
+            "connection": {"ws_url": "ws://example.invalid/ws"},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
+                staged = perception_module.ensure_local_perception_runtime(
+                    vehicle=vehicle, plugins=["frame", "classical_regions"]
+                )
+                kept = perception_module.ensure_local_perception_runtime(vehicle=vehicle)
+
+        self.assertEqual(staged["manifest"]["plugins"], ["frame", "classical_regions"])
+        self.assertEqual(staged["manifest"]["metadata"]["preset"], "custom")
+        self.assertEqual(kept["manifest"]["plugins"], ["frame", "classical_regions"])
+
+    def test_inspect_manifest_falls_back_to_archived_frame_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = root / "frames"
@@ -193,7 +232,7 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(health["geometry"]["valid_records"], 0)
         self.assertEqual(health["continuity"]["mean_match_fraction"], 0.0)
 
-    def test_startup_report_apply_preserves_before_after_order(self) -> None:
+    def test_startup_report_inspect_preserves_before_after_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = root / "frames"
@@ -290,7 +329,7 @@ class PerceptionRunTests(unittest.TestCase):
                     ),
                 ),
             ):
-                result = run_perception_experiment(
+                result = inspect_perception(
                     frames=2, interval_s=0, json_output=True
                 )
 

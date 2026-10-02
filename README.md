@@ -121,7 +121,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
 | `vehicles memory replay` | Offline: feeds a fixed observation sequence through staged (or ephemeral) memory and reports a stable end-state digest. Writes no history by default; pass `--record` for a bounded provenance extract under `lab/runs/memory-replay/`. |
 | `vehicles memory check` | Lifecycle gates: present retention, dropout survival, max-age expiry, and reset (no movement). Chase/offline uses a phase script; PiCar samples live publications with placement prompts. Optional `--record` writes report + extract (and Pi JPEGs) under `lab/runs/memory-check/`. |
-| `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |
+| `vehicles perception viability` | Perception health check: 60s onboard cadence/freshness measurement on a PiCar (RSS when the vehicle supplies an `ssh_target`); the simulator passes with a stub. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory step; if activation is present but the step is missing, update core (manage.py harness) then re-run autonomy. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -227,15 +227,15 @@ restarting the worker:
 
 ### Perception Experiments
 
-Observe five frames from a usable vehicle without taking movement control, or
-apply a preset or a plugin selection to one existing image or an image
-directory:
+Inspect what a selection detects: observe five frames from a usable vehicle
+without taking movement control, or apply a preset or a plugin selection to one
+existing image or an image directory:
 
 ```sh
-./cli/automa vehicles perception run
-./cli/automa vehicles perception run --id piracer --preset lightweight_observer
-./cli/automa vehicles perception apply path/to/frame.jpg --plugin frame --plugin floor_continuity
-./cli/automa vehicles perception apply path/to/images --preset visual_observer
+./cli/automa vehicles perception inspect
+./cli/automa vehicles perception inspect --id piracer --preset lightweight_observer
+./cli/automa vehicles perception inspect path/to/frame.jpg --plugin frame --plugin floor_continuity
+./cli/automa vehicles perception inspect path/to/images --preset visual_observer
 ```
 
 `--plugin` selects packaged perception plugins by catalog key, in order, with
@@ -246,7 +246,7 @@ their default configs from `implementations/decision_cycle/perception/catalog.py
 No captures or reports are retained by default. Add `--record` when overlays
 and per-frame JSON are wanted.
 
-For a physical vehicle, `vehicles perception run --id piracer` currently fetches
+For a physical vehicle, `vehicles perception inspect --id piracer` currently fetches
 Pi camera frames and runs perception on them on the development machine.
 It does not prove that the Pi executed or published the perception result.
 
@@ -257,15 +257,16 @@ not part of either observer.
 
 ### Perception Plugins
 
-The staged perception schema reports the available and enabled plugins. Enable
-or disable one plugin at a time. A running worker applies the updated selection
-at the next perception frame; if automation is stopped, it uses the selection
-the next time it starts:
+The staged perception schema reports the available and enabled plugins. Stage
+a preset or an ordered plugin list; the plugins replace the staged selection and
+are recorded as the `custom` preset. A running worker applies the updated
+selection at the next perception frame; if automation is stopped, it uses the
+selection the next time it starts:
 
 ```sh
 ./cli/automa vehicles info perception --id chase-sim-chaser
-./cli/automa vehicles perception enable --id chase-sim-chaser floor_plane
-./cli/automa vehicles perception disable --id chase-sim-chaser sim_color_targets
+./cli/automa vehicles update perception --id chase-sim-chaser --plugin frame --plugin floor_plane
+./cli/automa vehicles update perception --id chase-sim-chaser --preset visual_observer
 ```
 
 ## Physical PiRacer Workflow

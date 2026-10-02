@@ -2,7 +2,8 @@
 
 A preset lists the plugins to run and config overrides for some of them. The
 default is a preset. An activation built from one records the preset name in
-its ``preset`` metadata key.
+its ``preset`` metadata key; a selection that is not a preset records
+``CUSTOM_PERCEPTION_PRESET``.
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ from typing import Any
 
 
 DEFAULT_PERCEPTION_PRESET = "lightweight_observer"
+CUSTOM_PERCEPTION_PRESET = "custom"
+CUSTOM_PERCEPTION_DESCRIPTION = "Manual perception plugin selection."
 
 PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
     "lightweight_observer": {

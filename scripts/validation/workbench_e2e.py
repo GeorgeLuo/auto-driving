@@ -99,7 +99,7 @@ def check_selector() -> list[str]:
         return json.load(urllib.request.urlopen(request, timeout=60))["state"]
 
     def runs(current: dict) -> list[str]:
-        perception = current.get("perception") or {}
+        perception = current["steps"]["perception"] or {}
         return [run["plugin_id"] for run in perception.get("plugin_runs") or []]
 
     def wait_for(condition, timeout: float = 120.0) -> dict:
@@ -171,8 +171,9 @@ def fingerprint(state: dict) -> dict:
             "memory_removed": sorted(effect.get("removed") or []),
             "memory_retained_digest": _digest(effect.get("retained") or []),
         })
-    perception = state.get("perception") or {}
-    memory = state.get("memory") or {}
+    steps = state.get("steps") or state  # the reference ref may predate steps.*
+    perception = steps.get("perception") or {}
+    memory = steps.get("memory") or {}
     return {
         "phase": state.get("phase"),
         "failure": state.get("failure"),

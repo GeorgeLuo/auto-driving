@@ -26,10 +26,10 @@ class WorkbenchTests(unittest.TestCase):
             "lightweight_observer",
         )
         self.assertEqual(
-            payload["decision"]["frame_id"],
+            payload["steps"]["decision"]["frame_id"],
             payload["current_frame"]["frame_id"],
         )
-        self.assertFalse(payload["decision"]["authority"]["proposed_applied"])
+        self.assertFalse(payload["steps"]["decision"]["authority"]["proposed_applied"])
         self.assertNotIn("argv", payload)
 
     def test_cli_replay_accepts_realtime_pace(self) -> None:

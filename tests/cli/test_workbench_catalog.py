@@ -69,7 +69,7 @@ class WorkbenchTests(unittest.TestCase):
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
-        self.assertEqual(_plugin_ids(state["perception"]), ["classical_regions"])
+        self.assertEqual(_plugin_ids(state["steps"]["perception"]), ["classical_regions"])
         self.assertEqual(
             state["machine_detail"]["pipeline"]["perception_preset"], "custom"
         )
@@ -84,9 +84,9 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(raw_state["phase"], "completed")
             self.assertEqual(raw_state["run_active_plugin_ids"], [])
             self.assertEqual(raw_state["active_plugin_ids"], [])
-            self.assertEqual(raw_state["perception"]["status"], "empty")
-            self.assertEqual(raw_state["perception"]["plugin_runs"], ())
-            self.assertEqual(raw_state["perception"]["things"], ())
+            self.assertEqual(raw_state["steps"]["perception"]["status"], "empty")
+            self.assertEqual(raw_state["steps"]["perception"]["plugin_runs"], ())
+            self.assertEqual(raw_state["steps"]["perception"]["things"], ())
 
             runner.dispatch(
                 "select_plugins",
@@ -114,7 +114,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             reprocessed = runner.frame_detail(first_id, run_id=run_id)
             self.assertEqual(
-                [run["plugin_id"] for run in reprocessed["perception"]["plugin_runs"]],
+                [run["plugin_id"] for run in reprocessed["steps"]["perception"]["plugin_runs"]],
                 ["floor_continuity"],
             )
             with self.assertRaises(ReplayActionError):
@@ -129,7 +129,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(
                 [
                     run["plugin_id"]
-                    for run in runner.frame_detail(first_id, run_id=run_id)["perception"][
+                    for run in runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"][
                         "plugin_runs"
                     ]
                 ],
@@ -151,7 +151,7 @@ class WorkbenchTests(unittest.TestCase):
             position = paused["position"]
             timeline_len = len(paused["timeline"])
             first_id = paused["current_frame"]["frame_id"]
-            self.assertEqual(_plugin_ids(paused["perception"]), ["classical_regions"])
+            self.assertEqual(_plugin_ids(paused["steps"]["perception"]), ["classical_regions"])
             recorded_report = runner.frame_detail(first_id, run_id=run_id)[
                 "perception_plugin_report"
             ]
@@ -170,10 +170,10 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(both["current_frame"]["frame_id"], first_id)
             self.assertEqual(
-                _plugin_ids(both["perception"]), ["floor_continuity", "classical_regions"]
+                _plugin_ids(both["steps"]["perception"]), ["floor_continuity", "classical_regions"]
             )
             self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
+                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"]),
                 ["floor_continuity", "classical_regions"],
             )
             self.assertEqual(
@@ -190,7 +190,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(none["phase"], "paused")
             self.assertEqual(none["run_active_plugin_ids"], [])
-            self.assertEqual(_plugin_ids(none["perception"]), [])
+            self.assertEqual(_plugin_ids(none["steps"]["perception"]), [])
 
             one = runner.dispatch(
                 "select_plugins",
@@ -200,11 +200,11 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(one["phase"], "paused")
             self.assertEqual(one["position"], position)
             self.assertEqual(runner._mapper.plugin_ids, ("floor_continuity",))
-            self.assertEqual(_plugin_ids(one["perception"]), ["floor_continuity"])
+            self.assertEqual(_plugin_ids(one["steps"]["perception"]), ["floor_continuity"])
 
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")
-            self.assertEqual(_plugin_ids(stepped["perception"]), ["floor_continuity"])
+            self.assertEqual(_plugin_ids(stepped["steps"]["perception"]), ["floor_continuity"])
             self.assertNotEqual(stepped["current_frame"]["frame_id"], first_id)
             runner.dispatch("reset", run_id=run_id)
 
@@ -219,31 +219,31 @@ class WorkbenchTests(unittest.TestCase):
             first_id = paused["current_frame"]["frame_id"]
             stepped = runner.dispatch("step", run_id=run_id)
             second_id = stepped["current_frame"]["frame_id"]
-            self.assertEqual(_plugin_ids(stepped["perception"]), ["classical_regions"])
+            self.assertEqual(_plugin_ids(stepped["steps"]["perception"]), ["classical_regions"])
 
             runner.dispatch(
                 "select_plugins", run_id=run_id, active_plugin_ids=["floor_continuity"]
             )
             back = runner.dispatch("seek", run_id=run_id, position=0)
             self.assertEqual(back["current_frame"]["frame_id"], first_id)
-            self.assertEqual(_plugin_ids(back["perception"]), ["floor_continuity"])
+            self.assertEqual(_plugin_ids(back["steps"]["perception"]), ["floor_continuity"])
             self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
+                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"]),
                 ["floor_continuity"],
             )
 
             forward = runner.dispatch("seek", run_id=run_id, position=1)
             self.assertEqual(forward["current_frame"]["frame_id"], second_id)
-            self.assertEqual(_plugin_ids(forward["perception"]), ["floor_continuity"])
+            self.assertEqual(_plugin_ids(forward["steps"]["perception"]), ["floor_continuity"])
 
             again = runner.dispatch("seek", run_id=run_id, position=0)
-            self.assertEqual(_plugin_ids(again["perception"]), ["floor_continuity"])
+            self.assertEqual(_plugin_ids(again["steps"]["perception"]), ["floor_continuity"])
 
             # Past the recorded frames, from an earlier position.
             ahead = runner.dispatch("seek", run_id=run_id, position=2)
             self.assertEqual(ahead["position"], 3)
             self.assertEqual(len(ahead["timeline"]), 3)
-            self.assertEqual(_plugin_ids(ahead["perception"]), ["floor_continuity"])
+            self.assertEqual(_plugin_ids(ahead["steps"]["perception"]), ["floor_continuity"])
             runner.dispatch("reset", run_id=run_id)
 
     def test_paused_selection_retains_instances_and_reprocesses(self) -> None:
@@ -281,7 +281,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(list(applied), ["floor_continuity", "classical_regions"])
             self.assertIs(applied["classical_regions"], retained)
             self.assertEqual(
-                _plugin_ids(both["perception"]), ["floor_continuity", "classical_regions"]
+                _plugin_ids(both["steps"]["perception"]), ["floor_continuity", "classical_regions"]
             )
             self.assertIs(memory_step.plugins[0], memory_plugin)
             self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
@@ -294,12 +294,12 @@ class WorkbenchTests(unittest.TestCase):
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")
             self.assertEqual(
-                _plugin_ids(stepped["perception"]),
+                _plugin_ids(stepped["steps"]["perception"]),
                 ["floor_continuity", "classical_regions"],
             )
             self.assertIs(memory_step.plugins[0], memory_plugin)
             self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["perception"]),
+                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"]),
                 ["floor_continuity", "classical_regions"],
             )
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
@@ -325,6 +325,6 @@ class WorkbenchMatchesInspectTests(unittest.TestCase):
             )["frames"][0]["perception"]
             runner = ImageReplayRunner(root, active_plugin_ids=["classical_regions"], cadence_ms=0)
             runner.start()
-            shown = runner.wait(10)["perception"]
+            shown = runner.wait(10)["steps"]["perception"]
         for key in ("status", "signals", "things", "limits"):
             self.assertEqual(canonical(shown[key]), canonical(inspected[key]), key)

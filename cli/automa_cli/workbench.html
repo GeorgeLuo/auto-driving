@@ -1215,10 +1215,10 @@
       }
 
       function currentPayload(key) {
-        if (selectedFrameDetail && Object.prototype.hasOwnProperty.call(selectedFrameDetail, key)) {
-          return selectedFrameDetail[key];
+        if (selectedFrameDetail && selectedFrameDetail.steps) {
+          return selectedFrameDetail.steps[key];
         }
-        return state ? state[key] : null;
+        return state && state.steps ? state.steps[key] : null;
       }
 
       function clearFrameSelection() {

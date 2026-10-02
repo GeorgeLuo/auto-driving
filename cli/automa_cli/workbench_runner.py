@@ -56,6 +56,12 @@ from .workbench_source import (
 )
 
 
+def _empty_steps() -> dict[str, Any]:
+    """The per-step payloads of the displayed frame, before any frame ran."""
+
+    return {"perception": None, "observation": None, "memory": None, "decision": None}
+
+
 def _safe_status(value: Any) -> str:
     return str(value or "").strip().lower()
 
@@ -798,10 +804,7 @@ class ImageReplayRunner:
         cached: dict[str, Any],
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
-        self._state["perception"] = copy.deepcopy(cached.get("perception"))
-        self._state["observation"] = copy.deepcopy(cached.get("observation"))
-        self._state["memory"] = copy.deepcopy(cached.get("memory"))
-        self._state["decision"] = copy.deepcopy(cached.get("decision"))
+        self._state["steps"] = copy.deepcopy(cached["steps"])
         completed = frame.position + 1
         total = len(self._image_source.frames) if self._image_source is not None else completed
         self._state["progress"]["completed"] = completed
@@ -957,12 +960,14 @@ class ImageReplayRunner:
                 )
                 memory_payload = copy.deepcopy(memory_state(result.memory))
                 with self._condition:
-                    previous_memory = self._state.get("memory")
+                    previous_memory = self._state["steps"]["memory"]
                     self._state["current_frame"] = frame.to_dict()
-                    self._state["perception"] = perception_payload
-                    self._state["observation"] = observation_payload
-                    self._state["memory"] = memory_payload
-                    self._state["decision"] = copy.deepcopy(decision_payload)
+                    self._state["steps"] = {
+                        "perception": perception_payload,
+                        "observation": observation_payload,
+                        "memory": memory_payload,
+                        "decision": copy.deepcopy(decision_payload),
+                    }
                     self._state["progress"]["completed"] = frame.position + 1
                     self._state["progress"]["percent"] = (
                         round(
@@ -992,7 +997,7 @@ class ImageReplayRunner:
                     )
                     pipeline["memory_plugin_report"] = copy.deepcopy(memory_plugin_report)
                     detail["summary"] = copy.deepcopy(self._state["summary"])
-                    detail["decision"] = copy.deepcopy(decision_payload)
+                    detail["steps"]["decision"] = copy.deepcopy(decision_payload)
                     detail["active_plugin_ids"] = list(self._active_plugin_ids)
                     self._history[frame.frame_id] = detail
                     self._upsert_timeline_locked(detail)
@@ -1015,10 +1020,7 @@ class ImageReplayRunner:
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
-                    self._state["perception"] = None
-                    self._state["observation"] = None
-                    self._state["memory"] = None
-                    self._state["decision"] = None
+                    self._state["steps"] = _empty_steps()
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
                         message=f"{type(exc).__name__}: {exc}",
@@ -1175,10 +1177,7 @@ class ImageReplayRunner:
             "progress": {"completed": 0, "total": 0, "percent": 0.0},
             "summary": self._summary(frames_completed=0, frames_total=0),
             "machine_detail": self._machine_detail(include_run=False),
-            "perception": None,
-            "observation": None,
-            "memory": None,
-            "decision": None,
+            "steps": _empty_steps(),
             "timeline": [],
             "failure": None,
             "failure_boundary": None,
@@ -1310,9 +1309,12 @@ class ImageReplayRunner:
         }
         return {
             "frame": frame.to_dict(include_path=False),
-            "perception": result.perception.to_dict() if result.perception else None,
-            "observation": result.observation.to_dict() if result.observation else None,
-            "memory": memory,
+            "steps": {
+                "perception": result.perception.to_dict() if result.perception else None,
+                "observation": result.observation.to_dict() if result.observation else None,
+                "memory": memory,
+                "decision": None,
+            },
             "perception_status": result.perception.status
             if result.perception
             else None,
@@ -1350,7 +1352,7 @@ class ImageReplayRunner:
             "perception_status": detail["perception_status"],
             "memory_record_count": detail["memory_record_count"],
             "memory_effect": copy.deepcopy(detail["memory_effect"]),
-            "decision": self._decision_timeline_item(detail.get("decision")),
+            "decision": self._decision_timeline_item(detail["steps"]["decision"]),
             "duration_ms": detail["duration_ms"],
         }
 

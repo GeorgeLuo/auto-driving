@@ -4,6 +4,7 @@ import unittest
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorSnapshot
 from implementations.decision_cycle.catalog import step_plugins
+from implementations.decision_cycle.memory.presets import MEMORY_PRESETS
 from cli.automa_cli.memory import update_vehicle_memory
 from cli.automa_cli.workbench_plugins import packaged_plugin_catalog
 from cli.automa_cli.workbench import PluginCatalogError, ReplayActionError
@@ -332,12 +333,6 @@ class WorkbenchMatchesInspectTests(unittest.TestCase):
 
 
 class WorkbenchMemorySelectionTests(unittest.TestCase):
-    MEMORY_SELECTIONS = (
-        ["bounded_evidence"],
-        ["multi_obstruction_tracks"],
-        ["bounded_evidence", "multi_obstruction_tracks"],
-    )
-
     def _runner(self, root, **kwargs) -> ImageReplayRunner:
         return ImageReplayRunner(
             root, cadence_ms=kwargs.pop("cadence_ms", 30000),
@@ -381,9 +376,10 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
 
     def test_memory_activation_equals_update_memory_manifest(self) -> None:
         with image_source(3) as root:
-            for plugins in self.MEMORY_SELECTIONS:
+            for preset, entry in MEMORY_PRESETS.items():
+                plugins = list(entry["plugins"])
                 manifest = json.loads(update_vehicle_memory(
-                    vehicle_id="workbench-parity", plugins=plugins,
+                    vehicle_id="workbench-parity", preset=preset,
                     dry_run=True, json_output=True,
                 ).message)["manifest"]
                 runner = self._runner(root)

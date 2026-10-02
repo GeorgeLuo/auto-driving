@@ -114,7 +114,7 @@
                 "path": "implementations/decision_cycle/memory/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Memory plugins that retain evidence, and library code they share. catalog.py lists the plugins. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/.",
+                "responsibility": "Memory plugins that retain evidence, and library code they share. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/memory/plugins/",

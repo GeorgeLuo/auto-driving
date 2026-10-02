@@ -19,8 +19,16 @@ from autonomy.decision_cycle.activation import read_step_activation, write_step_
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.plugins import DuplicatePluginIdError
 
-from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGINS
+from implementations.decision_cycle.catalog import (
+    packaged_activation,
+    plugin_list_preset,
+    selection_activation,
+    step_plugins,
+)
+from implementations.decision_cycle.memory.presets import (
+    MEMORY_PRESETS,
+    available_memory_preset_ids,
+)
 
 from .automation import (
     _automation_command_matches_vehicle,
@@ -104,21 +112,30 @@ class CommandResult:
 def update_vehicle_memory(
     *,
     vehicle_id: str,
+    preset: str | None = None,
     plugins: list[str] | None = None,
     dry_run: bool = False,
     json_output: bool = False,
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    selected = list(plugins) if plugins else list(DEFAULT_MEMORY_PLUGINS)
+    if preset is not None and plugins:
+        return CommandResult(2, "Choose either --preset or --plugin, not both.")
+    if preset is not None and preset not in MEMORY_PRESETS:
+        available = ", ".join(available_memory_preset_ids())
+        return CommandResult(
+            2,
+            f"Unknown memory preset {preset!r}. Available presets: {available}.",
+        )
     try:
-        activation = packaged_activation("memory", selected)
+        activation = selection_activation("memory", preset=preset, plugins=plugins or None)
     except DuplicatePluginIdError:
         # A packaged-catalog clash is not a bad selection; the CLI reports it.
         raise
     except ValueError as exc:
         return CommandResult(2, str(exc))
 
+    selected = list(activation.plugins)
     stream = output if verbose else None
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
@@ -132,6 +149,7 @@ def update_vehicle_memory(
     payload = {
         "schema": "vehicle_memory_update_v1",
         "vehicle_id": vehicle_id,
+        "preset": activation.metadata["preset"],
         "plugins": selected,
         "dry_run": dry_run,
         "activation": display_path(activation_path),
@@ -146,6 +164,7 @@ def update_vehicle_memory(
         "\n".join(
             [
                 f"{verb}: {vehicle_id} -> {', '.join(selected)}",
+                f"Preset: {activation.metadata['preset']}",
                 *(f"Plugin: {plugin_id} ({activation.plugin_specs[plugin_id]})" for plugin_id in selected),
                 f"Activation: {display_path(activation_path)}",
             ]
@@ -177,6 +196,8 @@ def set_vehicle_memory_plugin(
         changed = after != before
         if changed:
             metadata = deepcopy(dict(activation.metadata))
+            # The staged plugins no longer match the preset they were staged from.
+            metadata["preset"] = plugin_list_preset("memory", after)
             metadata["last_plugin_change"] = {
                 "plugin": plugin_id,
                 "enabled": enabled,
@@ -232,7 +253,7 @@ def ensure_vehicle_memory_activation(
         return path
     return stage_activation(
         bundle,
-        packaged_activation("memory", plugins),
+        selection_activation("memory", plugins=plugins),
         vehicle_id=vehicle_id,
         release=release,
     )

@@ -12,7 +12,7 @@ from PIL import Image
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
-from implementations.decision_cycle.catalog import perception_preset_activation
+from implementations.decision_cycle.catalog import preset_activation
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
     _source_image_paths,
@@ -88,7 +88,7 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(json.loads(custom.message)["mapper"]["preset"], "custom")
 
     def test_perceive_snapshot_returns_the_record_and_saves_results_only_on_request(self) -> None:
-        mapper = PerceptionRunner.from_activation(perception_preset_activation("lightweight_observer"))
+        mapper = PerceptionRunner.from_activation(preset_activation("perception", "lightweight_observer"))
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "frame.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
@@ -307,7 +307,7 @@ class PerceptionRunTests(unittest.TestCase):
                     "runtime_dir": str(root / "bundle" / "runtime"),
                 },
                 "manifest": {
-                    **perception_preset_activation("lightweight_observer").to_payload(),
+                    **preset_activation("perception", "lightweight_observer").to_payload(),
                 },
                 "source": {"tree_sha256": "test-tree"},
                 "refreshed": False,

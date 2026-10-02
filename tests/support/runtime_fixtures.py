@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import step_activation
-from implementations.decision_cycle.catalog import perception_preset_activation
+from implementations.decision_cycle.catalog import preset_activation
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -35,7 +35,7 @@ def write_runtime_fixture(
     automation_process = bundle_root / "runtime" / "automation" / "process.json"
     automation_state = bundle_root / "runtime" / "automation" / "state.json"
 
-    packaged = perception_preset_activation("sim_debug")
+    packaged = preset_activation("perception", "sim_debug")
     write_json(
         perception_activation,
         step_activation(

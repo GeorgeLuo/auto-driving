@@ -1,10 +1,8 @@
-"""Packaged memory plugins and the memory step's default selection."""
+"""Packaged memory plugins."""
 
 from __future__ import annotations
 
 from typing import Any
-
-DEFAULT_MEMORY_PLUGIN = "bounded_evidence"
 
 _BOUNDED_EVIDENCE_CONFIG: dict[str, Any] = {
     "max_records": 32,
@@ -43,4 +41,3 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": dict(_BOUNDED_EVIDENCE_CONFIG),
     },
 )
-DEFAULT_MEMORY_PLUGINS: tuple[str, ...] = (DEFAULT_MEMORY_PLUGIN,)

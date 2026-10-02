@@ -137,6 +137,8 @@ async function action(action, extra) {
     actionInFlight = false;
     if (requestGeneration === stateRequestGeneration) renderControls();
     schedulePoll(pollDelay());
+    flushSeek();
+    flushResume();
     flushPluginSelection();
   }
 }
@@ -243,15 +245,14 @@ function flushSeek() {
   seekInFlight = true;
   action("seek", { position: position }).then(function () {
     seekInFlight = false;
-    if (seekQueued != null) {
-      flushSeek();
-      return;
-    }
-    if (!scrubbing && pendingResume) {
-      pendingResume = false;
-      if (state && state.phase === "paused") action("resume");
-    }
+    flushSeek();
+    flushResume();
   });
+}
+function flushResume() {
+  if (!pendingResume || scrubbing || seekInFlight || seekQueued != null || actionInFlight) return;
+  pendingResume = false;
+  if (state && state.phase === "paused") action("resume");
 }
 function beginScrub() {
   if (scrubbing) return;
@@ -281,8 +282,8 @@ function endScrub() {
   if (!scrubbing) return;
   scrubbing = false;
   if (resumeAfterScrub) {
-    if (seekInFlight || seekQueued != null || actionInFlight) pendingResume = true;
-    else if (state && state.phase === "paused") action("resume");
+    pendingResume = true;
+    flushResume();
   }
   resumeAfterScrub = false;
 }

@@ -142,12 +142,10 @@ class PerceptionRunTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
-                first = perception_module.ensure_local_perception_runtime(
-                    vehicle=vehicle,
-                    preset="visual_observer",
-                )
+                first = perception_module.ensure_local_perception_runtime(vehicle=vehicle)
                 activation_path = first["manifest_path"]
                 stale = json.loads(activation_path.read_text(encoding="utf-8"))
+                stale["metadata"]["preset"] = "visual_observer"
                 stale["plugins"].append("vlm_prep")
                 activation_path.write_text(json.dumps(stale), encoding="utf-8")
 
@@ -171,7 +169,7 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(preserved["manifest"]["metadata"]["preset"], "custom")
         self.assertEqual(preserved["manifest"]["plugins"], ["frame"])
 
-    def test_plugin_list_stages_a_custom_runtime_that_a_later_default_call_keeps(self) -> None:
+    def test_explicit_selection_runs_without_restaging_the_vehicle(self) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-test",
             "vehicle_kind": "chase-sim-ws",
@@ -180,14 +178,20 @@ class PerceptionRunTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
-                staged = perception_module.ensure_local_perception_runtime(
+                chosen = perception_module.ensure_local_perception_runtime(
                     vehicle=vehicle, plugins=["frame", "classical_regions"]
                 )
+                staged = json.loads(chosen["manifest_path"].read_text(encoding="utf-8"))
                 kept = perception_module.ensure_local_perception_runtime(vehicle=vehicle)
 
-        self.assertEqual(staged["manifest"]["plugins"], ["frame", "classical_regions"])
-        self.assertEqual(staged["manifest"]["metadata"]["preset"], "custom")
-        self.assertEqual(kept["manifest"]["plugins"], ["frame", "classical_regions"])
+        self.assertEqual(chosen["manifest"]["plugins"], ["frame", "classical_regions"])
+        self.assertEqual(chosen["manifest"]["metadata"]["preset"], "custom")
+        self.assertEqual(
+            chosen["manifest"]["metadata"]["controller_bundle"]["release"],
+            staged["metadata"]["controller_bundle"]["release"],
+        )
+        self.assertEqual(staged["metadata"]["preset"], "lightweight_observer")
+        self.assertEqual(kept["manifest"]["metadata"]["preset"], "lightweight_observer")
 
     def test_inspect_manifest_falls_back_to_archived_frame_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

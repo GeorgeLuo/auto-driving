@@ -74,7 +74,12 @@ def ensure_local_perception_runtime(
     plugins: list[str] | None = None,
     output: TextIO | None = None,
 ) -> dict[str, Any]:
-    """Ensure a vehicle's local bundle reflects current perception source."""
+    """Ensure a vehicle's local bundle reflects current perception source.
+
+    The staged selection keeps its custom plugins or named preset (the default
+    when none is staged). ``preset`` or ``plugins`` select what the returned
+    manifest runs without restaging; ``update perception`` stages a selection.
+    """
 
     vehicle_id = str(vehicle.get("vehicle_id") or "vehicle")
 
@@ -84,34 +89,34 @@ def ensure_local_perception_runtime(
     if manifest_path.exists():
         existing = _read_manifest(manifest_path)
 
-    selected_preset = preset
-    explicit = preset is not None or bool(plugins)
     existing_preset = _manifest_preset(existing) if existing is not None else None
-    if selected_preset is None and not plugins:
-        if isinstance(existing_preset, str) and existing_preset in PERCEPTION_PRESETS:
-            selected_preset = existing_preset
-
-    if existing is not None and not explicit and existing_preset == CUSTOM_PERCEPTION_PRESET:
-        manifest = existing
+    if existing is not None and existing_preset == CUSTOM_PERCEPTION_PRESET:
+        staged = existing
     else:
-        manifest = _activation_manifest(
-            vehicle, perception_activation(preset=selected_preset, plugins=plugins), bundle
-        )
+        staged_preset = existing_preset if existing_preset in PERCEPTION_PRESETS else None
+        staged = _activation_manifest(vehicle, perception_activation(preset=staged_preset), bundle)
         if existing is not None:
             existing_release = _manifest_bundle(existing).get("release")
             if isinstance(existing_release, dict):
-                _manifest_bundle(manifest)["release"] = existing_release
+                _manifest_bundle(staged)["release"] = existing_release
 
     source = controller_bundle_source_summary()
-    release_summary = _manifest_bundle(manifest).get("release")
+    release_summary = _manifest_bundle(staged).get("release")
     staged_tree = release_summary.get("tree_sha256") if isinstance(release_summary, dict) else None
     bundle_present = Path(bundle["autonomy_dir"]).is_dir() and Path(bundle["implementations_dir"]).is_dir()
     refreshed = not bundle_present or staged_tree != source["tree_sha256"]
 
     if refreshed:
         release = sync_controller_bundle(bundle, output=output)
-        _manifest_bundle(manifest)["release"] = release_activation_summary(release)
-    _write_manifest(manifest_path, manifest)
+        _manifest_bundle(staged)["release"] = release_activation_summary(release)
+    _write_manifest(manifest_path, staged)
+
+    manifest = staged
+    if preset is not None or plugins:
+        manifest = _activation_manifest(
+            vehicle, perception_activation(preset=preset, plugins=plugins), bundle
+        )
+        _manifest_bundle(manifest)["release"] = _manifest_bundle(staged).get("release")
 
     return {
         "vehicle_id": vehicle_id,

@@ -33,7 +33,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
                         "kind": "floor_boundary",
                         "label": "boundary",
                         "confidence": 0.9,
-                        "provenance": {
+                        "origin": {
                             "frame_id": "frame_001",
                             "observation_id": "obs_001",
                             "observed_id": "floor_boundary_000",

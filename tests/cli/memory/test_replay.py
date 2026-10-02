@@ -148,7 +148,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             self.assertIsNone(payload["record_dir"])
             self.assertFalse(output_root.exists())
 
-    def test_replay_record_writes_bounded_provenance_extract(self) -> None:
+    def test_replay_record_writes_bounded_origin_extract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output_root = Path(tmp) / "memory-replay"
             result = replay_vehicle_memory(
@@ -163,7 +163,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             payload = json.loads(result.message)
             self.assertTrue(payload["recorded"])
             self.assertIsNotNone(payload["record_dir"])
-            self.assertIsNotNone(payload["provenance_extract"])
+            self.assertIsNotNone(payload["origin_extract"])
 
             # Resolve record dir from payload display path or output_root children.
             run_dirs = list(output_root.iterdir())
@@ -187,23 +187,23 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
             self.assertIn("bytes_in_record", manifest["bounds"])
             self.assertGreater(manifest["bounds"]["bytes_in_record"], 0)
 
-            extract = (record_dir / "provenance_extract.html").read_text(
+            extract = (record_dir / "origin_extract.html").read_text(
                 encoding="utf-8"
             )
             self.assertIn("retained evidence", extract.lower())
             self.assertIn("not current camera geometry", extract.lower())
             self.assertIn("thing:1:11:floor_plane:18:floor_boundary_000", extract)
-            self.assertIn("provenance.frame_id", extract)
+            self.assertIn("origin.frame_id", extract)
             self.assertIn("obs_001", extract)  # last update of recurring thing
 
             result_on_disk = json.loads(
                 (record_dir / "result.json").read_text(encoding="utf-8")
             )
             self.assertEqual(result_on_disk["digest"], payload["digest"])
-            self.assertGreaterEqual(len(result_on_disk["provenance_rows"]), 1)
-            for row in result_on_disk["provenance_rows"]:
+            self.assertGreaterEqual(len(result_on_disk["origin_rows"]), 1)
+            for row in result_on_disk["origin_rows"]:
                 self.assertTrue(row["retained_not_current"])
-                self.assertIn("provenance", row)
+                self.assertIn("origin", row)
 
     def test_cli_record_flag_end_to_end(self) -> None:
         import os

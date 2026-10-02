@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
@@ -44,7 +44,7 @@ def _record(
         kind=kind,
         label=kind,
         confidence=confidence,
-        provenance=MemoryProvenance(
+        origin=MemoryOrigin(
             observation_id="obs",
             observed_id="ev",
             coordinate_frame=location_frame,
@@ -352,7 +352,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             kind="obstacle",
             label="obstacle",
             confidence=0.8,
-            provenance=MemoryProvenance(
+            origin=MemoryOrigin(
                 observation_id="obs",
                 observed_id="ev",
                 coordinate_frame="image",

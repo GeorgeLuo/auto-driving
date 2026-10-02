@@ -67,7 +67,7 @@ MEMORY_REPLAY_RECORD_ARTIFACTS = (
     "sequence.json",
     "final_memory.json",
     "digest.txt",
-    "provenance_extract.html",
+    "origin_extract.html",
 )
 # Enforceable ceilings for opt-in replay records (not live host history).
 MEMORY_REPLAY_MAX_FRAMES = int(os.environ.get("AUTOMA_MEMORY_REPLAY_MAX_FRAMES", "256"))
@@ -325,7 +325,7 @@ def replay_vehicle_memory(
     Offline and process-local: does not talk to the live host, does not write
     history by default, and reports a stable end-state digest for comparison.
     Pass ``record=True`` for an explicit bounded run directory with a frozen
-    provenance extract (key → value → source frame/observation).
+    origin extract (key → value → source frame/observation).
     """
 
     sequence_path = Path(sequence).expanduser()
@@ -404,7 +404,7 @@ def replay_vehicle_memory(
         "second_pass_digest": run_b["digest"] if verify_twice else None,
         "recorded": False,
         "record_dir": None,
-        "provenance_extract": None,
+        "origin_extract": None,
     }
     if not deterministic:
         if json_output:
@@ -435,7 +435,7 @@ def replay_vehicle_memory(
             return CommandResult(2, f"Could not write memory replay record: {exc}")
         payload["recorded"] = True
         payload["record_dir"] = record_info["record_dir"]
-        payload["provenance_extract"] = record_info["provenance_extract"]
+        payload["origin_extract"] = record_info["origin_extract"]
         payload["record_manifest"] = record_info["manifest"]
         payload["record_bounds"] = record_info["manifest"].get("bounds")
 
@@ -453,9 +453,9 @@ def replay_vehicle_memory(
     ]
     if record:
         lines.append(f"Record: {payload['record_dir']}")
-        lines.append(f"Provenance extract: {payload['provenance_extract']}")
+        lines.append(f"Origin extract: {payload['origin_extract']}")
     else:
-        lines.append("Record: disabled (pass --record to freeze a bounded provenance extract)")
+        lines.append("Record: disabled (pass --record to freeze a bounded origin extract)")
     records = final.get("records") if isinstance(final.get("records"), list) else []
     if records:
         lines.append("Retained keys:")
@@ -481,7 +481,7 @@ def write_memory_replay_record(
     max_frames: int = MEMORY_REPLAY_MAX_FRAMES,
     max_record_bytes: int = MEMORY_REPLAY_MAX_RECORD_BYTES,
 ) -> dict[str, Any]:
-    """Write an explicit, bounded memory-replay record with provenance extract.
+    """Write an explicit, bounded memory-replay record with origin extract.
 
     Default replay writes nothing. This path is opt-in only and never stores
     live camera history; it freezes sequence observations beside retained keys.
@@ -509,12 +509,12 @@ def write_memory_replay_record(
             ),
             "frames": frames,
         }
-        provenance_rows = build_memory_provenance_rows(final=final, frames=frames)
-        extract_html = render_memory_provenance_extract_html(
+        origin_rows = build_memory_origin_rows(final=final, frames=frames)
+        extract_html = render_memory_origin_extract_html(
             vehicle_id=vehicle_id,
             payload=payload,
             frames=frames,
-            provenance_rows=provenance_rows,
+            origin_rows=origin_rows,
         )
 
         (record_dir / "sequence.json").write_text(
@@ -528,7 +528,7 @@ def write_memory_replay_record(
         (record_dir / "digest.txt").write_text(
             f"{payload.get('digest')}\n", encoding="utf-8"
         )
-        extract_path = record_dir / "provenance_extract.html"
+        extract_path = record_dir / "origin_extract.html"
         extract_path.write_text(extract_html, encoding="utf-8")
 
         total_bytes = _directory_byte_size(record_dir)
@@ -563,10 +563,10 @@ def write_memory_replay_record(
                 name: display_path(record_dir / name)
                 for name in MEMORY_REPLAY_RECORD_ARTIFACTS
             },
-            "provenance_row_count": len(provenance_rows),
+            "origin_row_count": len(origin_rows),
             "notes": [
                 "Recording is disabled unless --record is passed.",
-                "Retained image-space geometry is attributed to provenance.frame_id only.",
+                "Retained image-space geometry is attributed to origin.frame_id only.",
                 "This extract does not treat stale coordinates as current camera geometry.",
                 f"Frame count is capped at {int(max_frames)}; total artifact bytes at {int(max_record_bytes)}.",
             ],
@@ -578,7 +578,7 @@ def write_memory_replay_record(
             manifest=manifest,
             payload=payload,
             extract_path=extract_path,
-            provenance_rows=provenance_rows,
+            origin_rows=origin_rows,
             max_record_bytes=int(max_record_bytes),
         )
         manifest["bounds"]["bytes_in_record"] = total_bytes
@@ -594,7 +594,7 @@ def write_memory_replay_record(
 
     return {
         "record_dir": display_path(record_dir),
-        "provenance_extract": display_path(extract_path),
+        "origin_extract": display_path(extract_path),
         "manifest": manifest,
     }
 
@@ -605,7 +605,7 @@ def _stabilize_record_byte_count(
     manifest: dict[str, Any],
     payload: dict[str, Any],
     extract_path: Path,
-    provenance_rows: list[dict[str, Any]],
+    origin_rows: list[dict[str, Any]],
     max_record_bytes: int,
 ) -> int:
     """Rewrite manifest/result until bytes_in_record matches on-disk total."""
@@ -620,9 +620,9 @@ def _stabilize_record_byte_count(
             **payload,
             "recorded": True,
             "record_dir": display_path(record_dir),
-            "provenance_extract": display_path(extract_path),
+            "origin_extract": display_path(extract_path),
             "record_manifest": manifest,
-            "provenance_rows": provenance_rows,
+            "origin_rows": origin_rows,
             "record_bounds": manifest.get("bounds"),
         }
         (record_dir / "manifest.json").write_text(
@@ -702,7 +702,7 @@ def _remove_tree_strict(path: Path) -> None:
         raise OSError(f"failed to remove partial record tree {path}: {detail}")
 
 
-def build_memory_provenance_rows(
+def build_memory_origin_rows(
     *,
     final: dict[str, Any],
     frames: list[dict[str, Any]],
@@ -715,8 +715,8 @@ def build_memory_provenance_rows(
     for record in records:
         if not isinstance(record, dict):
             continue
-        provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
-        frame_id = str(provenance.get("frame_id") or "")
+        origin = record.get("origin") if isinstance(record.get("origin"), dict) else {}
+        frame_id = str(origin.get("frame_id") or "")
         source_frame = frames_by_id.get(frame_id)
         source_observation = (
             source_frame.get("observation")
@@ -732,13 +732,13 @@ def build_memory_provenance_rows(
                 "confidence": record.get("confidence"),
                 "retained_not_current": True,
                 "location": location,
-                "provenance": {
-                    "frame_id": provenance.get("frame_id"),
-                    "observation_id": provenance.get("observation_id"),
-                    "observed_id": provenance.get("observed_id"),
-                    "updated_at_ms": provenance.get("updated_at_ms"),
-                    "source_plugin_id": provenance.get("source_plugin_id"),
-                    "coordinate_frame": provenance.get("coordinate_frame"),
+                "origin": {
+                    "frame_id": origin.get("frame_id"),
+                    "observation_id": origin.get("observation_id"),
+                    "observed_id": origin.get("observed_id"),
+                    "updated_at_ms": origin.get("updated_at_ms"),
+                    "source_plugin_id": origin.get("source_plugin_id"),
+                    "coordinate_frame": origin.get("coordinate_frame"),
                 },
                 "source_frame_present_in_sequence": source_frame is not None,
                 "source_observation": source_observation,
@@ -754,27 +754,27 @@ def build_memory_provenance_rows(
     return rows
 
 
-def render_memory_provenance_extract_html(
+def render_memory_origin_extract_html(
     *,
     vehicle_id: str,
     payload: dict[str, Any],
     frames: list[dict[str, Any]],
-    provenance_rows: list[dict[str, Any]],
+    origin_rows: list[dict[str, Any]],
     frame_image_paths: dict[str, str] | None = None,
 ) -> str:
     """Render a compact HTML extract: retained key → value → source observation."""
 
     final = payload.get("final") if isinstance(payload.get("final"), dict) else {}
     rows_html: list[str] = []
-    for row in provenance_rows:
+    for row in origin_rows:
         location = row.get("location") if isinstance(row.get("location"), dict) else {}
-        provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+        origin = row.get("origin") if isinstance(row.get("origin"), dict) else {}
         source_obs = row.get("source_observation") if isinstance(row.get("source_observation"), dict) else {}
         source_block = (
             f"<pre>{html.escape(json.dumps(source_obs, indent=2, sort_keys=True, default=str))}</pre>"
             if source_obs
             else "<p class='warn'>Source observation not found in recorded sequence "
-            f"for frame_id={html.escape(str(provenance.get('frame_id')))}.</p>"
+            f"for frame_id={html.escape(str(origin.get('frame_id')))}.</p>"
         )
         rows_html.append(
             "\n".join(
@@ -788,13 +788,13 @@ def render_memory_provenance_extract_html(
                     f"<dt>confidence</dt><dd>{html.escape(str(row.get('confidence')))}</dd>",
                     f"<dt>location.zone</dt><dd>{html.escape(str(location.get('zone') or '—'))}</dd>",
                     f"<dt>location.frame</dt><dd>{html.escape(str(location.get('frame') or '—'))}</dd>",
-                    f"<dt>provenance.frame_id</dt><dd><code>{html.escape(str(provenance.get('frame_id') or '—'))}</code></dd>",
-                    f"<dt>provenance.observation_id</dt><dd><code>{html.escape(str(provenance.get('observation_id') or '—'))}</code></dd>",
+                    f"<dt>origin.frame_id</dt><dd><code>{html.escape(str(origin.get('frame_id') or '—'))}</code></dd>",
+                    f"<dt>origin.observation_id</dt><dd><code>{html.escape(str(origin.get('observation_id') or '—'))}</code></dd>",
                     f"<dt>source in sequence</dt><dd>{'yes' if row.get('source_frame_present_in_sequence') else 'no'}</dd>",
                     "</dl>",
                     "<h4>Mapped value (retained)</h4>",
-                    f"<pre>{html.escape(json.dumps({k: row.get(k) for k in ('key','kind','label','confidence','location','provenance')}, indent=2, sort_keys=True, default=str))}</pre>",
-                    "<h4>Source observation at provenance.frame_id</h4>",
+                    f"<pre>{html.escape(json.dumps({k: row.get(k) for k in ('key','kind','label','confidence','location','origin')}, indent=2, sort_keys=True, default=str))}</pre>",
+                    "<h4>Source observation at origin.frame_id</h4>",
                     source_block,
                     "</section>",
                 ]
@@ -832,7 +832,7 @@ def render_memory_provenance_extract_html(
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Memory provenance extract — {html.escape(vehicle_id)}</title>
+  <title>Memory origin extract — {html.escape(vehicle_id)}</title>
   <style>
     :root {{ font-family: ui-sans-serif, system-ui, sans-serif; color: #17191c; }}
     body {{ margin: 24px; max-width: 960px; }}
@@ -865,7 +865,7 @@ def render_memory_provenance_extract_html(
   </style>
 </head>
 <body>
-  <h1>Memory provenance extract</h1>
+  <h1>Memory origin extract</h1>
   <p class="meta">
     vehicle=<strong>{html.escape(vehicle_id)}</strong>
     · implementation=<code>{html.escape(str(payload.get('plugin_id')))}</code>
@@ -875,7 +875,7 @@ def render_memory_provenance_extract_html(
     · health={html.escape(str(final.get('health')))}
   </p>
   <div class="note">
-    Retained evidence is attributed to <code>provenance.frame_id</code> / observation identity.
+    Retained evidence is attributed to <code>origin.frame_id</code> / observation identity.
     Image-space locations below are <strong>not</strong> current camera geometry; they are
     frozen claims from the source observation that produced each key.
   </div>

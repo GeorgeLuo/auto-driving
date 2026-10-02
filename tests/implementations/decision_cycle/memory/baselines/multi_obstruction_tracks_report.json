@@ -36,6 +36,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_0",
+         "observation_id": "frame_0",
+         "observed_at_ms": 100,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 100
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 1,
@@ -46,15 +55,6 @@
           "0": "new"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_0",
-         "observation_id": "frame_0",
-         "observed_at_ms": 100,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 100
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -72,6 +72,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_left"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_0",
+         "observation_id": "frame_0",
+         "observed_at_ms": 100,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 100
         },
         "properties": {
          "association_score": 0.0,
@@ -96,15 +105,6 @@
          "track_event": "new",
          "track_id": 0,
          "track_missed_frames": 0
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_0",
-         "observation_id": "frame_0",
-         "observed_at_ms": 100,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 100
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -176,6 +176,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_1",
+         "observation_id": "frame_1",
+         "observed_at_ms": 200,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 200
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 1,
@@ -186,15 +195,6 @@
           "0": "matched"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_1",
-         "observation_id": "frame_1",
-         "observed_at_ms": 200,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 200
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -212,6 +212,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_left"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_1",
+         "observation_id": "frame_1",
+         "observed_at_ms": 200,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 200
         },
         "properties": {
          "association_score": 0.8336,
@@ -236,15 +245,6 @@
          "track_event": "matched",
          "track_id": 0,
          "track_missed_frames": 0
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_1",
-         "observation_id": "frame_1",
-         "observed_at_ms": 200,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 200
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -316,6 +316,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_2",
+         "observation_id": "frame_2",
+         "observed_at_ms": 300,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 300
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 1,
@@ -326,15 +335,6 @@
           "0": "matched"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_2",
-         "observation_id": "frame_2",
-         "observed_at_ms": 300,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 300
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -352,6 +352,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_left"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_2",
+         "observation_id": "frame_2",
+         "observed_at_ms": 300,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 300
         },
         "properties": {
          "association_score": 0.7948,
@@ -376,15 +385,6 @@
          "track_event": "matched",
          "track_id": 0,
          "track_missed_frames": 0
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_2",
-         "observation_id": "frame_2",
-         "observed_at_ms": 300,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 300
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -456,6 +456,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_3",
+         "observation_id": "frame_3",
+         "observed_at_ms": 400,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 400
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 1,
@@ -466,15 +475,6 @@
           "0": "matched"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_3",
-         "observation_id": "frame_3",
-         "observed_at_ms": 400,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 400
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -492,6 +492,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_left"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_3",
+         "observation_id": "frame_3",
+         "observed_at_ms": 400,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 400
         },
         "properties": {
          "association_score": 0.7817,
@@ -516,15 +525,6 @@
          "track_event": "matched",
          "track_id": 0,
          "track_missed_frames": 0
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_3",
-         "observation_id": "frame_3",
-         "observed_at_ms": 400,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 400
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -596,6 +596,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_4",
+         "observation_id": "frame_4",
+         "observed_at_ms": 500,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 500
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 1,
@@ -606,15 +615,6 @@
           "0": "matched"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_4",
-         "observation_id": "frame_4",
-         "observed_at_ms": 500,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 500
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -632,6 +632,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_left"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_4",
+         "observation_id": "frame_4",
+         "observed_at_ms": 500,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 500
         },
         "properties": {
          "association_score": 0.7769,
@@ -656,15 +665,6 @@
          "track_event": "matched",
          "track_id": 0,
          "track_missed_frames": 0
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_4",
-         "observation_id": "frame_4",
-         "observed_at_ms": 500,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 500
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -736,6 +736,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 600
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 0,
@@ -746,15 +755,6 @@
           "0": "held"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_5",
-         "observation_id": "frame_5",
-         "observed_at_ms": 600,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 600
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -772,6 +772,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_left"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 600
         },
         "properties": {
          "association_score": 0.7769,
@@ -796,15 +805,6 @@
          "track_event": "held",
          "track_id": 0,
          "track_missed_frames": 1
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_5",
-         "observation_id": "frame_5",
-         "observed_at_ms": 600,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 600
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -876,6 +876,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 600
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 0,
@@ -886,15 +895,6 @@
           "0": "held"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_5",
-         "observation_id": "frame_5",
-         "observed_at_ms": 600,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 600
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -912,6 +912,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_left"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 600
         },
         "properties": {
          "association_score": 0.7769,
@@ -936,15 +945,6 @@
          "track_event": "held",
          "track_id": 0,
          "track_missed_frames": 1
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_5",
-         "observation_id": "frame_5",
-         "observed_at_ms": 600,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 600
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -1005,6 +1005,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_7",
+         "observation_id": "frame_7",
+         "observed_at_ms": 800,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 800
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 1,
@@ -1015,15 +1024,6 @@
           "0": "reacquired"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_7",
-         "observation_id": "frame_7",
-         "observed_at_ms": 800,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 800
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -1041,6 +1041,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_center"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_7",
+         "observation_id": "frame_7",
+         "observed_at_ms": 800,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 800
         },
         "properties": {
          "association_score": 0.0,
@@ -1065,15 +1074,6 @@
          "track_event": "reacquired",
          "track_id": 0,
          "track_missed_frames": 0
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_7",
-         "observation_id": "frame_7",
-         "observed_at_ms": 800,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 800
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }
@@ -1145,6 +1145,15 @@
         "kind": "signal",
         "label": "multi_obstruction_tracks_available",
         "location": null,
+        "origin": {
+         "coordinate_frame": "observation",
+         "frame_id": "frame_8",
+         "observation_id": "frame_8",
+         "observed_at_ms": 900,
+         "observed_id": "multi_obstruction_tracks_available",
+         "source_plugin_id": null,
+         "updated_at_ms": 900
+        },
         "properties": {
          "active_track_count": 1,
          "candidate_count": 1,
@@ -1155,15 +1164,6 @@
           "0": "matched"
          },
          "value": true
-        },
-        "provenance": {
-         "coordinate_frame": "observation",
-         "frame_id": "frame_8",
-         "observation_id": "frame_8",
-         "observed_at_ms": 900,
-         "observed_id": "multi_obstruction_tracks_available",
-         "source_plugin_id": null,
-         "updated_at_ms": 900
         },
         "record_id": "signal:0:34:multi_obstruction_tracks_available"
        },
@@ -1181,6 +1181,15 @@
          "frame": "image",
          "polygon_xy_norm": null,
          "zone": "mid_center"
+        },
+        "origin": {
+         "coordinate_frame": "image",
+         "frame_id": "frame_8",
+         "observation_id": "frame_8",
+         "observed_at_ms": 900,
+         "observed_id": "obstruction_track_000",
+         "source_plugin_id": null,
+         "updated_at_ms": 900
         },
         "properties": {
          "association_score": 0.7134,
@@ -1205,15 +1214,6 @@
          "track_event": "matched",
          "track_id": 0,
          "track_missed_frames": 0
-        },
-        "provenance": {
-         "coordinate_frame": "image",
-         "frame_id": "frame_8",
-         "observation_id": "frame_8",
-         "observed_at_ms": 900,
-         "observed_id": "obstruction_track_000",
-         "source_plugin_id": null,
-         "updated_at_ms": 900
         },
         "record_id": "thing:0:21:obstruction_track_000"
        }

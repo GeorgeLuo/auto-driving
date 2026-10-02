@@ -36,10 +36,7 @@
         "kind": "signal",
         "label": "floor_visible",
         "location": null,
-        "properties": {
-         "value": true
-        },
-        "provenance": {
+        "origin": {
          "coordinate_frame": "observation",
          "frame_id": "present_0",
          "observation_id": "present_0",
@@ -47,6 +44,9 @@
          "observed_id": "floor_visible",
          "source_plugin_id": "lightweight_observer",
          "updated_at_ms": 100
+        },
+        "properties": {
+         "value": true
         },
         "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
        },
@@ -65,8 +65,7 @@
          "polygon_xy_norm": null,
          "zone": "center"
         },
-        "properties": {},
-        "provenance": {
+        "origin": {
          "coordinate_frame": "image",
          "frame_id": "present_0",
          "observation_id": "present_0",
@@ -75,6 +74,7 @@
          "source_plugin_id": "floor_plane",
          "updated_at_ms": 100
         },
+        "properties": {},
         "record_id": "thing:1:11:floor_plane:1:a"
        }
       ],
@@ -128,10 +128,7 @@
         "kind": "signal",
         "label": "floor_visible",
         "location": null,
-        "properties": {
-         "value": true
-        },
-        "provenance": {
+        "origin": {
          "coordinate_frame": "observation",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -139,6 +136,9 @@
          "observed_id": "floor_visible",
          "source_plugin_id": "lightweight_observer",
          "updated_at_ms": 200
+        },
+        "properties": {
+         "value": true
         },
         "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
        },
@@ -157,8 +157,7 @@
          "polygon_xy_norm": null,
          "zone": "left"
         },
-        "properties": {},
-        "provenance": {
+        "origin": {
          "coordinate_frame": "image",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -167,6 +166,7 @@
          "source_plugin_id": "floor_plane",
          "updated_at_ms": 200
         },
+        "properties": {},
         "record_id": "thing:1:11:floor_plane:1:a"
        },
        {
@@ -184,8 +184,7 @@
          "polygon_xy_norm": null,
          "zone": "center"
         },
-        "properties": {},
-        "provenance": {
+        "origin": {
          "coordinate_frame": "image",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -194,6 +193,7 @@
          "source_plugin_id": "floor_plane",
          "updated_at_ms": 200
         },
+        "properties": {},
         "record_id": "thing:1:11:floor_plane:1:b"
        }
       ],
@@ -247,10 +247,7 @@
         "kind": "signal",
         "label": "floor_visible",
         "location": null,
-        "properties": {
-         "value": true
-        },
-        "provenance": {
+        "origin": {
          "coordinate_frame": "observation",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -258,6 +255,9 @@
          "observed_id": "floor_visible",
          "source_plugin_id": "lightweight_observer",
          "updated_at_ms": 200
+        },
+        "properties": {
+         "value": true
         },
         "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
        },
@@ -276,8 +276,7 @@
          "polygon_xy_norm": null,
          "zone": "left"
         },
-        "properties": {},
-        "provenance": {
+        "origin": {
          "coordinate_frame": "image",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -286,6 +285,7 @@
          "source_plugin_id": "floor_plane",
          "updated_at_ms": 200
         },
+        "properties": {},
         "record_id": "thing:1:11:floor_plane:1:a"
        },
        {
@@ -303,8 +303,7 @@
          "polygon_xy_norm": null,
          "zone": "center"
         },
-        "properties": {},
-        "provenance": {
+        "origin": {
          "coordinate_frame": "image",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -313,6 +312,7 @@
          "source_plugin_id": "floor_plane",
          "updated_at_ms": 200
         },
+        "properties": {},
         "record_id": "thing:1:11:floor_plane:1:b"
        }
       ],
@@ -366,10 +366,7 @@
         "kind": "signal",
         "label": "floor_visible",
         "location": null,
-        "properties": {
-         "value": true
-        },
-        "provenance": {
+        "origin": {
          "coordinate_frame": "observation",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -377,6 +374,9 @@
          "observed_id": "floor_visible",
          "source_plugin_id": "lightweight_observer",
          "updated_at_ms": 200
+        },
+        "properties": {
+         "value": true
         },
         "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
        },
@@ -395,8 +395,7 @@
          "polygon_xy_norm": null,
          "zone": "left"
         },
-        "properties": {},
-        "provenance": {
+        "origin": {
          "coordinate_frame": "image",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -405,6 +404,7 @@
          "source_plugin_id": "floor_plane",
          "updated_at_ms": 200
         },
+        "properties": {},
         "record_id": "thing:1:11:floor_plane:1:a"
        },
        {
@@ -422,8 +422,7 @@
          "polygon_xy_norm": null,
          "zone": "center"
         },
-        "properties": {},
-        "provenance": {
+        "origin": {
          "coordinate_frame": "image",
          "frame_id": "present_1",
          "observation_id": "present_1",
@@ -432,6 +431,7 @@
          "source_plugin_id": "floor_plane",
          "updated_at_ms": 200
         },
+        "properties": {},
         "record_id": "thing:1:11:floor_plane:1:b"
        }
       ],

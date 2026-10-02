@@ -22,7 +22,7 @@ from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.serialization import ensure_strict_json_value
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     DEFAULT_MAX_PROPERTY_BYTES,
@@ -270,7 +270,7 @@ class BoundedEvidenceReducer:
                         kind=str(candidate.get("kind") or "thing") if is_thing else "signal",
                         label=label,
                         confidence=confidence,
-                        provenance=MemoryProvenance(
+                        origin=MemoryOrigin(
                             observation_id=observation.observation_id,
                             observed_id=observed_id,
                             coordinate_frame=(
@@ -301,7 +301,7 @@ class BoundedEvidenceReducer:
             return
         keep: dict[str, RetainedEvidence] = {}
         for record_id, record in self._records.items():
-            age = now_ms - int(record.provenance.updated_at_ms)
+            age = now_ms - int(record.origin.updated_at_ms)
             if age <= max_age_ms:
                 keep[record_id] = record
             else:
@@ -315,7 +315,7 @@ class BoundedEvidenceReducer:
         ordered = sorted(
             self._records.values(),
             key=lambda item: (
-                int(item.provenance.updated_at_ms),
+                int(item.origin.updated_at_ms),
                 item.record_id,
             ),
         )
@@ -336,7 +336,7 @@ class BoundedEvidenceReducer:
             sorted(
                 self._records.values(),
                 key=lambda item: (
-                    -int(item.provenance.updated_at_ms),
+                    -int(item.origin.updated_at_ms),
                     item.record_id,
                 ),
             )
@@ -470,7 +470,7 @@ def json_values_equal(left: Any, right: Any) -> bool:
 
 
 def payload_equal(left: RetainedEvidence, right: RetainedEvidence) -> bool:
-    """Same-observation payload equality (provenance excluded)."""
+    """Same-observation payload equality (origin excluded)."""
 
     return (
         left.record_id == right.record_id

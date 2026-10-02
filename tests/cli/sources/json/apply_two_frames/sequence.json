@@ -36,7 +36,7 @@
             "zone": "left"
           },
           "properties": {},
-          "provenance": {
+          "origin": {
             "coordinate_frame": "image",
             "observed_id": "ev_001",
             "frame_id": "frame_001",
@@ -85,7 +85,7 @@
             "zone": "right"
           },
           "properties": {},
-          "provenance": {
+          "origin": {
             "coordinate_frame": "image",
             "observed_id": "ev_001",
             "frame_id": "frame_002",

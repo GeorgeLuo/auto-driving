@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     LEDGER_SCHEMA,
@@ -25,7 +25,7 @@ class EvidenceLedgerTests(unittest.TestCase):
             kind="floor_boundary",
             label="first-hit boundary",
             confidence=0.8,
-            provenance=MemoryProvenance(
+            origin=MemoryOrigin(
                 observation_id="obs_1",
                 observed_id="floor_boundary_000",
                 coordinate_frame="image",

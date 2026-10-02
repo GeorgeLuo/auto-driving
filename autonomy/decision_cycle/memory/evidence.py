@@ -1,7 +1,7 @@
 """Evidence records that memory plugins retain and proposal plugins read.
 
 ``RetainedEvidence`` is one attributed record derived from an observation;
-``MemoryProvenance`` says where it came from. Plugins choose where in
+``MemoryOrigin`` says where it came from. Plugins choose where in
 ``shared_memory`` to publish records; these types only fix their shape.
 """
 
@@ -16,11 +16,13 @@ from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
 @dataclass(frozen=True)
-class MemoryProvenance:
+class MemoryOrigin:
     """Attribution for one retained evidence record.
 
     ``observation_id`` is the observation the record came from; ``observed_id``
     is the id of the thing or signal in it that the record was derived from.
+    ``updated_at_ms`` and ``frame_id`` are when, and in which decision frame,
+    memory last wrote the record.
     """
 
     observation_id: str
@@ -54,7 +56,7 @@ class MemoryProvenance:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MemoryProvenance":
+    def from_dict(cls, data: dict[str, Any]) -> "MemoryOrigin":
         return cls(
             observation_id=str(data.get("observation_id") or ""),
             observed_id=str(data.get("observed_id") or ""),
@@ -80,7 +82,7 @@ class RetainedEvidence:
     kind: str
     label: str
     confidence: float
-    provenance: MemoryProvenance
+    origin: MemoryOrigin
     location: ViewLocation | None = None
     properties: dict[str, Any] = field(default_factory=dict)
 
@@ -93,8 +95,8 @@ class RetainedEvidence:
             "confidence",
             _normalized_confidence(self.confidence),
         )
-        if not isinstance(self.provenance, MemoryProvenance):
-            raise TypeError("retained evidence provenance must be MemoryProvenance")
+        if not isinstance(self.origin, MemoryOrigin):
+            raise TypeError("retained evidence origin must be MemoryOrigin")
         if self.location is not None and not isinstance(self.location, ViewLocation):
             raise TypeError("retained evidence location must be ViewLocation or None")
         object.__setattr__(self, "properties", deepcopy(dict(self.properties)))
@@ -105,16 +107,16 @@ class RetainedEvidence:
             "kind": self.kind,
             "label": self.label,
             "confidence": self.confidence,
-            "provenance": self.provenance.to_dict(),
+            "origin": self.origin.to_dict(),
             "location": self.location.to_dict() if self.location is not None else None,
             "properties": deepcopy(self.properties),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RetainedEvidence":
-        provenance_data = data.get("provenance")
-        if not isinstance(provenance_data, dict):
-            raise ValueError("retained evidence requires provenance")
+        origin_data = data.get("origin")
+        if not isinstance(origin_data, dict):
+            raise ValueError("retained evidence requires origin")
         location_data = data.get("location")
         location = (
             ViewLocation.from_dict(location_data)
@@ -126,7 +128,7 @@ class RetainedEvidence:
             kind=str(data.get("kind") or ""),
             label=str(data.get("label") or ""),
             confidence=float(data.get("confidence") or 0.0),
-            provenance=MemoryProvenance.from_dict(provenance_data),
+            origin=MemoryOrigin.from_dict(origin_data),
             location=location,
             properties=deepcopy(dict(data.get("properties") or {})),
         )

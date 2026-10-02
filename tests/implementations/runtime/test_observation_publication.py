@@ -78,7 +78,7 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.context import DecisionFrameContext
         from autonomy.decision_cycle.cycle import DecisionSteps
         from autonomy.decision_cycle.observation.values import Observation
-        from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+        from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
         from autonomy.runtime.cycle_host import AutonomyCycleHost
 
@@ -89,7 +89,7 @@ class ObservationPublicationTests(unittest.TestCase):
                         kind="floor_boundary",
                         label="boundary",
                         confidence=0.9,
-                        provenance=MemoryProvenance(
+                        origin=MemoryOrigin(
                             observation_id="obs",
                             observed_id="boundary",
                             coordinate_frame="image",

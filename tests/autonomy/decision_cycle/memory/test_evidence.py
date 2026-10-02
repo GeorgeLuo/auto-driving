@@ -4,7 +4,7 @@ import json
 import unittest
 
 from autonomy.decision_cycle.memory.evidence import (
-    MemoryProvenance,
+    MemoryOrigin,
     RetainedEvidence,
     detach_evidence,
 )
@@ -12,8 +12,8 @@ from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
 class RetainedEvidenceTests(unittest.TestCase):
-    def provenance(self) -> MemoryProvenance:
-        return MemoryProvenance(
+    def origin(self) -> MemoryOrigin:
+        return MemoryOrigin(
             observation_id="obs_1",
             observed_id="floor_boundary_000",
             coordinate_frame="image",
@@ -29,7 +29,7 @@ class RetainedEvidenceTests(unittest.TestCase):
             kind="floor_boundary",
             label="first-hit boundary",
             confidence=0.8,
-            provenance=self.provenance(),
+            origin=self.origin(),
             location=ViewLocation(
                 frame="image",
                 zone="center",
@@ -43,22 +43,34 @@ class RetainedEvidenceTests(unittest.TestCase):
 
         payload = record.to_dict()
         json.dumps(payload)
-        self.assertEqual(payload["provenance"]["frame_id"], "donkey_frame_000100")
+        self.assertEqual(payload["origin"]["frame_id"], "donkey_frame_000100")
         payload["properties"]["width_fraction"] = 0.9
         self.assertEqual(record.properties["width_fraction"], 0.2)
 
         restored = RetainedEvidence.from_dict(record.to_dict())
         self.assertEqual(restored.record_id, "rec_1")
         self.assertEqual(restored.location.zone, "center")
-        self.assertEqual(restored.provenance, record.provenance)
+        self.assertEqual(restored.origin, record.origin)
 
-    def test_the_old_provenance_key_is_not_read(self) -> None:
-        payload = self.retained().to_dict()
-        provenance = payload["provenance"]
-        provenance["evidence_id"] = provenance.pop("observed_id")
+    def test_retired_record_shapes_are_not_read(self) -> None:
+        # Transitional guard against a read alias for the retired keys. Delete
+        # once no export made before the rename is expected to exist.
+        def retired_origin_key(payload: dict) -> None:
+            payload["provenance"] = payload.pop("origin")
 
-        with self.assertRaisesRegex(ValueError, "observed_id"):
-            RetainedEvidence.from_dict(payload)
+        def retired_observed_id_key(payload: dict) -> None:
+            origin = payload["origin"]
+            origin["evidence_id"] = origin.pop("observed_id")
+
+        for mutate, expected in (
+            (retired_origin_key, "origin"),
+            (retired_observed_id_key, "observed_id"),
+        ):
+            with self.subTest(shape=mutate.__name__):
+                payload = self.retained().to_dict()
+                mutate(payload)
+                with self.assertRaisesRegex(ValueError, expected):
+                    RetainedEvidence.from_dict(payload)
 
     def test_detach_evidence_isolates_nested_mutation(self) -> None:
         original = (self.retained("a"), self.retained("b"))

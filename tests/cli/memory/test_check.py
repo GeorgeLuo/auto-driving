@@ -88,7 +88,7 @@ class MemoryCheckTests(unittest.TestCase):
         )
         self.assertTrue(all(item["passed"] for item in payload["phase_results"]))
         self.assertFalse(payload["safety"]["movement_commands_sent"])
-        self.assertGreaterEqual(len(payload["provenance_rows"]), 1)
+        self.assertGreaterEqual(len(payload["origin_rows"]), 1)
 
     def test_run_memory_check_record_writes_extract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -112,7 +112,7 @@ class MemoryCheckTests(unittest.TestCase):
                 "report.json",
                 "sequence.json",
                 "present_memory.json",
-                "provenance_extract.html",
+                "origin_extract.html",
             ):
                 self.assertTrue((record_dir / name).is_file(), name)
             persisted_report = json.loads(
@@ -123,8 +123,8 @@ class MemoryCheckTests(unittest.TestCase):
                 str(persisted_report["record_dir"]).endswith(record_dir.name)
             )
             self.assertTrue(
-                str(persisted_report["provenance_extract"]).endswith(
-                    f"{record_dir.name}/provenance_extract.html"
+                str(persisted_report["origin_extract"]).endswith(
+                    f"{record_dir.name}/origin_extract.html"
                 )
             )
 

@@ -150,10 +150,10 @@ def _freshness_class(
     frame_id: str,
     retained_max_age_ms: int,
 ) -> str:
-    updated = int(record.provenance.updated_at_ms)
+    updated = int(record.origin.updated_at_ms)
     if updated > now:
         return "invalid_future"
-    if record.provenance.frame_id == frame_id:
+    if record.origin.frame_id == frame_id:
         return "fresh"
     age = now - updated
     if 0 <= age <= retained_max_age_ms:
@@ -165,9 +165,9 @@ def _source_ref(record: RetainedEvidence) -> SourceRef:
     return SourceRef(
         kind="memory_record",
         id=record.record_id,
-        frame_id=record.provenance.frame_id,
-        observation_id=record.provenance.observation_id,
-        plugin_id=record.provenance.source_plugin_id,
+        frame_id=record.origin.frame_id,
+        observation_id=record.origin.observation_id,
+        plugin_id=record.origin.source_plugin_id,
         note="primary_obstruction",
     )
 

@@ -67,7 +67,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.context", "DecisionFrameContext", "autonomy.decision_cycle.context", "DecisionFrameContext"),
     ("autonomy.decision_cycle.cycle", "DecisionSteps", "autonomy.decision_cycle.cycle", "DecisionSteps"),
     ("autonomy.decision_cycle.memory.plugin", "MemoryPlugin", "autonomy.decision_cycle.memory.plugin", "MemoryPlugin"),
-    ("autonomy.decision_cycle.memory.evidence", "MemoryProvenance", "autonomy.decision_cycle.memory.evidence", "MemoryProvenance"),
+    ("autonomy.decision_cycle.memory.evidence", "MemoryOrigin", "autonomy.decision_cycle.memory.evidence", "MemoryOrigin"),
     ("autonomy.decision_cycle.memory.errors", "MemoryUpdateError", "autonomy.decision_cycle.memory.errors", "MemoryUpdateError"),
     ("autonomy.decision_cycle.observation.values", "OBSERVATION_SCHEMA", "autonomy.decision_cycle.observation.values", "OBSERVATION_SCHEMA"),
     ("autonomy.decision_cycle.observation.values", "Observation", "autonomy.decision_cycle.observation.values", "Observation"),

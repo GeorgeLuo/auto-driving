@@ -53,7 +53,7 @@ def _memory_record(
         "kind": kind,
         "label": kind,
         "confidence": 0.9,
-        "provenance": {
+        "origin": {
             "frame_id": frame_id,
             "observation_id": f"obs_{frame_id}",
             "observed_id": record_id.split(":", 1)[-1],

@@ -23,7 +23,7 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
         ),
         "description": (
             "Bounded recency ledger of observation things and signals with "
-            "provenance, age expiry, and oldest-first eviction. Does not claim "
+            "origin, age expiry, and oldest-first eviction. Does not claim "
             "semantic object identity or world truth."
         ),
         "default_config": _BOUNDED_EVIDENCE_CONFIG,

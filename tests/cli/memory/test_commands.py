@@ -68,7 +68,6 @@ class MemoryCommandTests(unittest.TestCase):
             )
             # Retention bounds belong to the plugin, not the activation.
             self.assertNotIn("bounds", info_payload["activation"])
-            self.assertFalse(info_payload["lifecycle"]["claims_identity"])
 
     def test_memory_enable_disable_commands_round_trip_through_info(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

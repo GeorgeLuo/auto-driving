@@ -198,11 +198,6 @@ def set_vehicle_memory_plugin(
             metadata = deepcopy(dict(activation.metadata))
             # The staged plugins no longer match the preset they were staged from.
             metadata["preset"] = plugin_list_preset("memory", after)
-            metadata["last_plugin_change"] = {
-                "plugin": plugin_id,
-                "enabled": enabled,
-                "changed_at_ms": int(time.time() * 1000),
-            }
             candidate = replace_metadata(
                 type(activation)(
                     step="memory",
@@ -312,7 +307,6 @@ def get_vehicle_memory_info(
         "controller_bundle": activation.metadata.get("controller_bundle"),
         "lifecycle": {
             "methods": ["update", "reset", "status"],
-            "claims_identity": False,
         },
         "live": None,
     }
@@ -1958,7 +1952,6 @@ def _format_memory_info(payload: dict[str, Any]) -> str:
             f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
             f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
             "Lifecycle: update / reset / status",
-            "Identity claims: false",
         ]
     )
     live = payload.get("live")

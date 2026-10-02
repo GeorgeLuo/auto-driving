@@ -181,7 +181,6 @@ class BoundedEvidenceReducer:
     def _metadata(self, *, observation_id: str | None) -> dict[str, Any]:
         return {
             "policy": "bounded_evidence_recency",
-            "claims_identity": False,
             "observation_id": observation_id,
             "capacity_eviction_count": self._capacity_eviction_count,
             "conflict_policy": CONFLICT_POLICY,

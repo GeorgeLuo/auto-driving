@@ -166,8 +166,7 @@ class MultiObstructionMemory:
                    + tuple(replace(thing, source_plugin_id=source).to_dict() for thing in things),
             signals=tuple(signal for signal in observation.signals if signal is not marker)
                     + tuple(replace(signal, source_plugin_id=source).to_dict() for signal in signals),
-            metadata={**observation.metadata, "tracking": measurements,
-                      "tracking_implementation": self.plugin_id},
+            metadata={**observation.metadata, "tracking": measurements},
         )
         self._retain_evidence(context, tracked_observation)
         shared_memory["multi_obstruction_tracks.history"] = lookback_tracks

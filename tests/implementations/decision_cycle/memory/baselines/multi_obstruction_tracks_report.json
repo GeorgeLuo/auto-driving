@@ -19,7 +19,6 @@
       "memory_id": "memory-frame_0",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -160,7 +159,6 @@
       "memory_id": "memory-frame_1",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -301,7 +299,6 @@
       "memory_id": "memory-frame_2",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -442,7 +439,6 @@
       "memory_id": "memory-frame_3",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -583,7 +579,6 @@
       "memory_id": "memory-frame_4",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -724,7 +719,6 @@
       "memory_id": "memory-frame_5",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -865,7 +859,6 @@
       "memory_id": "memory-frame_6",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -995,7 +988,6 @@
       "memory_id": "memory-frame_7",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -1136,7 +1128,6 @@
       "memory_id": "memory-frame_8",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,

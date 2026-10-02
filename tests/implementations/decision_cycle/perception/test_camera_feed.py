@@ -9,7 +9,7 @@ from PIL import Image
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
@@ -33,8 +33,8 @@ def _mapper(plugin_id: str) -> PerceptionRunner:
     )
 
 
-def _snapshot(reading: SensorReading, read_id: str = "test-frame") -> SensorSnapshot:
-    return SensorSnapshot(
+def _sensor_frame(reading: SensorReading, read_id: str = "test-frame") -> SensorFrame:
+    return SensorFrame(
         read_id=read_id,
         readings={reading.sensor_id: reading},
         started_at_ms=reading.captured_at_ms,
@@ -72,10 +72,10 @@ class CameraFeedTests(unittest.TestCase):
             image_path = Path(tmp) / "frame.png"
             Image.fromarray(rgb, mode="RGB").save(image_path)
             path_request = build_perception_request(
-                _snapshot(_path_reading(image_path, captured_at_ms=10))
+                _sensor_frame(_path_reading(image_path, captured_at_ms=10))
             )
             array_request = build_perception_request(
-                _snapshot(_array_reading(rgb.copy(), captured_at_ms=11))
+                _sensor_frame(_array_reading(rgb.copy(), captured_at_ms=11))
             )
 
             path_frame = provide_camera_frame(path_request, FRONT_CAMERA_RGB_INPUT)
@@ -89,7 +89,7 @@ class CameraFeedTests(unittest.TestCase):
     def test_invalid_camera_is_reported_by_framework_without_invoking_plugin(self) -> None:
         mapper = _mapper("frame")
         request = build_perception_request(
-            _snapshot(
+            _sensor_frame(
                 SensorReading(
                     sensor_id=FRONT_CAMERA_SENSOR_ID,
                     sensor_kind="camera",

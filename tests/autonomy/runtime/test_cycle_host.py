@@ -107,7 +107,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             step = _memory_step(Path(tmp))
             host, _ = _host(
                 observation=lambda context, perception: Observation(
-                    observation_id="obs-1", created_at_ms=1, sensor_snapshot={}, summary=("test",)
+                    observation_id="obs-1", created_at_ms=1, sensor_frame={}, summary=("test",)
                 ),
                 memory=step,
             )

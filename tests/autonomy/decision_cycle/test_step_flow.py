@@ -41,7 +41,7 @@ class DecisionStageFlowTests(unittest.TestCase):
         observation = Observation(
             observation_id=context.frame_id,
             created_at_ms=701,
-            sensor_snapshot={},
+            sensor_frame={},
             perception_schema=perception.schema,
             perception_plugin_id=perception.plugin_id,
             summary=perception.lines,

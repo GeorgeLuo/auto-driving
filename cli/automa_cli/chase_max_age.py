@@ -44,9 +44,9 @@ def frame_simulation_epoch(frame: dict[str, Any]) -> str | None:
         return str(raw).strip()
     observation = frame.get("observation")
     if isinstance(observation, dict):
-        snapshot = observation.get("sensor_snapshot")
-        if isinstance(snapshot, dict):
-            metadata = snapshot.get("metadata")
+        sensor_frame = observation.get("sensor_frame")
+        if isinstance(sensor_frame, dict):
+            metadata = sensor_frame.get("metadata")
             if isinstance(metadata, dict):
                 meta_epoch = metadata.get("simulation_epoch")
                 if meta_epoch is not None and str(meta_epoch).strip():

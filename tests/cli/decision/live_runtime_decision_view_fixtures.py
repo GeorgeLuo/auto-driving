@@ -132,7 +132,7 @@ class LiveRuntimeDecisionViewFixture:
             "captured_at_ms": stream_frame["timestamp_ms"],
             "run_id": run_id,
             "worker_pid": os.getpid(),
-            "sensor_snapshot": {
+            "sensor_frame": {
                 "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
             },
         }

@@ -56,7 +56,7 @@ def _observation(**overrides) -> Observation:
     values = {
         "observation_id": "obs-1",
         "created_at_ms": 1000,
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "summary": ("test",),
     }
     values.update(overrides)
@@ -125,7 +125,7 @@ class HoldActionTests(unittest.TestCase):
     def test_evaluator_metadata_is_stripped_from_a_live_capture(self) -> None:
         observation = _observation(
             observation_id="obs_live",
-            sensor_snapshot={
+            sensor_frame={
                 "readings": {
                     "front_camera": {
                         "metadata": {

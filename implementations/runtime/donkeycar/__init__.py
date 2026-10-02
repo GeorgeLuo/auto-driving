@@ -12,8 +12,8 @@ from .donkey_part import (
     OBSERVATION_PUBLICATION_SCHEMA,
     AutonomyPilotPart,
     LatestCameraFrame,
-    LatestObservationSnapshot,
-    ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA,
+    LatestObservationState,
+    ONBOARD_OBSERVATION_STATE_SCHEMA,
 )
 
 __all__ = [
@@ -27,7 +27,7 @@ __all__ = [
     "LATEST_FRAME_PATH",
     "LATEST_JSON_PATH",
     "LatestCameraFrame",
-    "LatestObservationSnapshot",
+    "LatestObservationState",
     "OBSERVATION_PUBLICATION_SCHEMA",
-    "ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA",
+    "ONBOARD_OBSERVATION_STATE_SCHEMA",
 ]

@@ -72,7 +72,7 @@ class PhysicalObservationAdapterTests(unittest.TestCase):
 
 
 class PhysicalStreamCommandTests(unittest.TestCase):
-    def test_stream_once_renders_physical_onboard_snapshot(self) -> None:
+    def test_stream_once_renders_physical_onboard_state(self) -> None:
         vehicle = {
             "vehicle_id": "piracer",
             "provider": "picar",

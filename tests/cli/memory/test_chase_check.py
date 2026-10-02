@@ -27,7 +27,7 @@ class MemoryCheckTests(unittest.TestCase):
                 "observation": {
                     "things": [{"thing_id": "obstacle_000"}],
                     "signals": [],
-                    "sensor_snapshot": {
+                    "sensor_frame": {
                         "metadata": {
                             "simulator_frame_index": 10,
                             "simulation_epoch": "chase-run:test",
@@ -50,7 +50,7 @@ class MemoryCheckTests(unittest.TestCase):
                 "observation": {
                     "things": [{"thing_id": "obstacle_000"}],
                     "signals": [],
-                    "sensor_snapshot": {
+                    "sensor_frame": {
                         "metadata": {
                             "simulator_frame_index": 11,
                             "simulation_epoch": "chase-run:test",

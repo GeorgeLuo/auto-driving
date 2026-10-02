@@ -232,7 +232,7 @@ OBSERVATION_REQUIRED_KEYS = frozenset(
         "schema",
         "observation_id",
         "created_at_ms",
-        "sensor_snapshot",
+        "sensor_frame",
         "perception_schema",
         "perception_plugin_id",
         "summary",

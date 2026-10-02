@@ -109,7 +109,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "frame_index": 2,
                 "captured_at_ms": 1000,
                 "perception": {"things": [], "signals": []},
-                "sensor_snapshot": {
+                "sensor_frame": {
                     "readings": {
                         "front_camera": {
                             "metadata": {"content_type": "image/png"},

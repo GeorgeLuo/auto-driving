@@ -18,7 +18,7 @@ class Observation:
 
     observation_id: str
     created_at_ms: int
-    sensor_snapshot: dict[str, Any]
+    sensor_frame: dict[str, Any]
     perception_schema: str | None = None
     perception_plugin_id: str | None = None
     summary: tuple[str, ...] = ()
@@ -40,11 +40,11 @@ class Observation:
         observation_id = str(data.get("observation_id") or "").strip()
         if not observation_id:
             raise ValueError("observation requires observation_id")
-        sensor_snapshot = data.get("sensor_snapshot")
-        if sensor_snapshot is None:
-            sensor_snapshot = {}
-        if not isinstance(sensor_snapshot, dict):
-            raise ValueError("observation sensor_snapshot must be a dictionary")
+        sensor_frame = data.get("sensor_frame")
+        if sensor_frame is None:
+            sensor_frame = {}
+        if not isinstance(sensor_frame, dict):
+            raise ValueError("observation sensor_frame must be a dictionary")
         things = data.get("things") or ()
         signals = data.get("signals") or ()
         if not isinstance(things, (list, tuple)):
@@ -67,7 +67,7 @@ class Observation:
         return cls(
             observation_id=observation_id,
             created_at_ms=int(data.get("created_at_ms") or 0),
-            sensor_snapshot=dict(sensor_snapshot),
+            sensor_frame=dict(sensor_frame),
             perception_schema=(
                 str(data["perception_schema"])
                 if data.get("perception_schema") is not None

@@ -31,8 +31,8 @@ from implementations.vehicle.chase_sim import (
 )
 from implementations.vehicle.chase_sim.frame_identity import (
     format_chase_frame_id,
-    simulator_epoch_from_snapshot,
-    simulator_frame_index_from_snapshot,
+    simulator_epoch_from_sensor_frame,
+    simulator_frame_index_from_sensor_frame,
 )
 from implementations.vehicle.chase_sim.metrics_ws import (
     MetricsUiWebSocketError,
@@ -57,7 +57,7 @@ from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
 )
 
 
@@ -148,8 +148,8 @@ def run_vehicle_automation(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(payload, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(payload, include_inactive=True),
                 ]
             ),
         )
@@ -498,9 +498,9 @@ def run_vehicle_automation(
     def process_frame(pending: _PendingAutomationFrame) -> None:
         apply_memory_reset_if_requested()
         context = pending.context
-        snapshot = context.sensor_snapshot
-        if snapshot is None:
-            raise ValueError(f"{context.frame_id} has no sensor snapshot")
+        sensor_frame = context.sensor_frame
+        if sensor_frame is None:
+            raise ValueError(f"{context.frame_id} has no sensor frame")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
         sync_live_selection(perception_step, manifest_path, perception_activation)
@@ -575,8 +575,8 @@ def run_vehicle_automation(
             # In observe-only mode it also performs no control handoff or stop command.
             "applied": False,
         }
-        simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
-        simulation_epoch = simulator_epoch_from_snapshot(snapshot)
+        simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
+        simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
         if simulator_frame_index is None or simulation_epoch is None:
             raise ValueError(
                 "Chase decision frame is missing atomic simulation-run identity"
@@ -589,15 +589,15 @@ def run_vehicle_automation(
             # Immutable automation generation: pairs frame publications with probe.
             "run_id": state.get("run_id"),
             "worker_pid": state.get("pid"),
-            "captured_at_ms": snapshot.completed_at_ms,
+            "captured_at_ms": sensor_frame.completed_at_ms,
             "cycle_started_at_ms": cycle_started_at_ms,
             "cycle_completed_at_ms": perception_completed_at_ms,
             "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
             "perception_started_at_ms": perception_started_at_ms,
             "perception_completed_at_ms": perception_completed_at_ms,
             "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
-            "capture_to_perception_ms": perception_completed_at_ms - snapshot.completed_at_ms,
-            "sensor_snapshot": snapshot.to_dict(),
+            "capture_to_perception_ms": perception_completed_at_ms - sensor_frame.completed_at_ms,
+            "sensor_frame": sensor_frame.to_dict(),
             "perception": perception_dict,
             "perception_plugin_report": perception_plugin_report,
             "memory_plugin_report": memory_plugin_report,
@@ -678,10 +678,10 @@ def run_vehicle_automation(
                 "frame_index": context.frame_index,
                 "simulator_frame_index": simulator_frame_index,
                 "simulation_epoch": simulation_epoch,
-                "captured_at_ms": snapshot.completed_at_ms,
+                "captured_at_ms": sensor_frame.completed_at_ms,
                 "perception_completed_at_ms": perception_completed_at_ms,
                 "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
-                "capture_to_perception_ms": perception_completed_at_ms - snapshot.completed_at_ms,
+                "capture_to_perception_ms": perception_completed_at_ms - sensor_frame.completed_at_ms,
                 "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
                 "perception_json": display_path(frame_json_path)
                 if frame_json_path is not None
@@ -829,7 +829,7 @@ def run_vehicle_automation(
             # frame identity once the capture returns.
             provisional_id = f"capture_{capture_sequence:06d}"
             perception_output_dir = None
-            snapshot = car.read_sensors(
+            sensor_frame = car.read_sensors(
                 SensorReadRequest(
                     output_dir=frames_dir,
                     read_id=provisional_id,
@@ -900,7 +900,7 @@ def run_vehicle_automation(
                                 "mutation_attempted": False,
                             },
                         )
-            simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
+            simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
             if simulator_frame_index is None and hasattr(car, "last_simulator_frame_index"):
                 simulator_frame_index = getattr(car, "last_simulator_frame_index", None)
             if simulator_frame_index is not None:
@@ -912,22 +912,22 @@ def run_vehicle_automation(
                     "Chase sensor capture missing simulator frameIndex; "
                     "cannot assign camera-derived frame identity for reference alignment"
                 )
-            simulation_epoch = simulator_epoch_from_snapshot(snapshot)
+            simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
             if simulation_epoch is None:
                 raise ValueError(
                     "Chase sensor capture missing simulationEpoch; "
                     "cannot establish atomic run identity for reference alignment"
                 )
-            # Align SensorSnapshot.read_id with simulator identity (capture used a provisional id).
-            if snapshot.read_id != frame_id:
-                snapshot = replace(snapshot, read_id=frame_id)
+            # Align SensorFrame.read_id with simulator identity (capture used a provisional id).
+            if sensor_frame.read_id != frame_id:
+                sensor_frame = replace(sensor_frame, read_id=frame_id)
             if record:
                 perception_output_dir = perception_dir / frame_id
             chaser_reference = None
             if hasattr(car, "last_capture_chaser_reference"):
                 chaser_reference = getattr(car, "last_capture_chaser_reference", None)
 
-            front_reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
+            front_reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
             front_path = (
                 Path(front_reading.path)
                 if front_reading is not None and isinstance(front_reading.path, str)
@@ -945,9 +945,9 @@ def run_vehicle_automation(
                         front_path = target_path
                         if front_reading is not None:
                             updated = replace(front_reading, path=str(front_path))
-                            snapshot = replace(
-                                snapshot,
-                                readings={**snapshot.readings, FRONT_CAMERA_SENSOR_ID: updated},
+                            sensor_frame = replace(
+                                sensor_frame,
+                                readings={**sensor_frame.readings, FRONT_CAMERA_SENSOR_ID: updated},
                             )
                 except OSError:
                     pass
@@ -960,10 +960,10 @@ def run_vehicle_automation(
                 "simulator_frame_index": frame_index,
                 "simulation_epoch": simulation_epoch,
                 "capture_sequence": capture_sequence,
-                "captured_at_ms": snapshot.completed_at_ms,
+                "captured_at_ms": sensor_frame.completed_at_ms,
                 "capture_started_at_ms": captured_started_at_ms,
-                "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
-                "sensor_snapshot": snapshot.to_dict(),
+                "capture_duration_ms": sensor_frame.completed_at_ms - captured_started_at_ms,
+                "sensor_frame": sensor_frame.to_dict(),
             }
             # Evaluator-only: never placed on DecisionFrameContext / observation.
             if isinstance(chaser_reference, dict):
@@ -984,7 +984,7 @@ def run_vehicle_automation(
                 frame_id=frame_id,
                 frame_index=frame_index,
                 timestamp_ms=captured_started_at_ms,
-                sensor_snapshot=snapshot,
+                sensor_frame=sensor_frame,
                 mode="autonomy" if take_control else "observe_only",
                 metadata={
                     "vehicle_id": vehicle_id,
@@ -1018,8 +1018,8 @@ def run_vehicle_automation(
                     "simulator_frame_index": frame_index,
                     "simulation_epoch": simulation_epoch,
                     "capture_sequence": capture_sequence,
-                    "captured_at_ms": snapshot.completed_at_ms,
-                    "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
+                    "captured_at_ms": sensor_frame.completed_at_ms,
+                    "capture_duration_ms": sensor_frame.completed_at_ms - captured_started_at_ms,
                     "front_camera": display_path(latest_front_camera_path if not record else front_path),
                     "reference_aligned": isinstance(chaser_reference, dict)
                     and chaser_reference.get("simulator_frame_index") == frame_index

@@ -30,7 +30,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             capacity_eviction_count=0,
         )
         # Intermediate capacity eviction occurred (counter advanced on the
-        # published snapshot) even though the sampled final frame has headroom
+        # published state) even though the sampled final frame has headroom
         # and no tracked key. Counter is read from frame metadata only.
         expired = _chase_frame(
             22,

@@ -119,7 +119,7 @@ def _live_publication(
         "observation": {
             "observation_id": f"obs_{frame_id}",
             "created_at_ms": 1_000 + frame_index * 100,
-            "sensor_snapshot": {},
+            "sensor_frame": {},
             "perception_plugin_id": "lightweight_observer",
             "things": things,
             "signals": signals,

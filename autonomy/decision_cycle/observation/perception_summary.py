@@ -1,4 +1,4 @@
-"""Built-in observation plugin: perception evidence plus the sensor snapshot.
+"""Built-in observation plugin: perception evidence plus the sensor frame.
 
 ``PerceptionSummary`` adapts the cycle's perception evidence and sensor context
 into an ``Observation``. It is the observation step's default selection.
@@ -12,7 +12,7 @@ from typing import Any
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from autonomy.vehicle import SensorSnapshot
+from autonomy.vehicle import SensorFrame
 
 
 def timestamp_ms() -> int:
@@ -22,14 +22,14 @@ def timestamp_ms() -> int:
 def observation_from_perception(
     *,
     observation_id: str,
-    sensor_snapshot: SensorSnapshot | None,
+    sensor_frame: SensorFrame | None,
     perception: PerceptionText | None,
     metadata: dict[str, Any] | None = None,
     created_at_ms: int | None = None,
 ) -> Observation:
-    """Perception evidence plus the sensor snapshot as the current-frame record."""
+    """Perception evidence plus the sensor frame as the current-frame record."""
 
-    snapshot_dict = sensor_snapshot.to_dict() if sensor_snapshot is not None else {}
+    sensor_frame_dict = sensor_frame.to_dict() if sensor_frame is not None else {}
     observation_created_at_ms = (
         timestamp_ms() if created_at_ms is None else created_at_ms
     )
@@ -37,7 +37,7 @@ def observation_from_perception(
         return Observation(
             observation_id=observation_id,
             created_at_ms=observation_created_at_ms,
-            sensor_snapshot=snapshot_dict,
+            sensor_frame=sensor_frame_dict,
             summary=("observation_available=false reason=no_perception",),
             metadata=metadata or {},
         )
@@ -46,7 +46,7 @@ def observation_from_perception(
     return Observation(
         observation_id=observation_id,
         created_at_ms=observation_created_at_ms,
-        sensor_snapshot=snapshot_dict,
+        sensor_frame=sensor_frame_dict,
         perception_schema=perception.schema,
         perception_plugin_id=perception.plugin_id,
         summary=summary,
@@ -74,7 +74,7 @@ class PerceptionSummary:
             return None
         return observation_from_perception(
             observation_id=context.frame_id,
-            sensor_snapshot=context.sensor_snapshot,
+            sensor_frame=context.sensor_frame,
             perception=perception,
             metadata={"source": self.plugin_id},
         )

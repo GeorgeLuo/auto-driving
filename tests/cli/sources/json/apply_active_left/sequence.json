@@ -11,7 +11,7 @@
         "perception_plugin_id": "lightweight_observer",
         "perception_schema": "perception_text_v0",
         "schema": "decision_observation_v1",
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "signals": [],
         "summary": [
           "line"

@@ -165,7 +165,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             "captured_at_ms": latest["timestamp_ms"],
             "run_id": "run-live",
             "worker_pid": os.getpid(),
-            "sensor_snapshot": {
+            "sensor_frame": {
                 "readings": {"front_camera": {"read_id": latest["frame_id"]}}
             },
         }

@@ -27,7 +27,7 @@ from autonomy.decision_cycle.perception.plugin import (
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
 
 
@@ -126,8 +126,8 @@ class SelectionChangingPlugin:
         )
 
 
-def _snapshot(reading: SensorReading, read_id: str = "test-frame") -> SensorSnapshot:
-    return SensorSnapshot(
+def _sensor_frame(reading: SensorReading, read_id: str = "test-frame") -> SensorFrame:
+    return SensorFrame(
         read_id=read_id,
         readings={reading.sensor_id: reading},
         started_at_ms=reading.captured_at_ms,
@@ -158,7 +158,7 @@ class PluginRunnerTests(unittest.TestCase):
             },
         )
 
-        perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        perception = mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
 
         self.assertEqual(perception.schema, PERCEPTION_TEXT_SCHEMA)
         self.assertEqual(perception.status, "partial")
@@ -208,7 +208,7 @@ class PluginRunnerTests(unittest.TestCase):
             },
         )
 
-        perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        perception = mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
 
         self.assertEqual(perception.status, "partial")
         self.assertEqual([run.status for run in perception.plugin_runs], ["ok", "unavailable"])
@@ -225,13 +225,13 @@ class PluginRunnerTests(unittest.TestCase):
         )
         self.assertEqual(mapper.plugins, ())
         manager.add("working")
-        mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
         self.assertEqual(
             mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
         )
         self.assertEqual(set(mapper.plugin_specs), {"broken", "working"})
         manager.remove("working")
-        mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
         self.assertEqual(
             mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
         )
@@ -250,14 +250,14 @@ class PluginRunnerTests(unittest.TestCase):
         working = mapper.plugins[0]
 
         first = mapper.perceive(
-            build_perception_request(_snapshot(_array_reading(), "frame-1"))
+            build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
         )
         self.assertEqual([run.plugin_id for run in first.plugin_runs], ["working"])
 
         manager.add("unavailable")
         self.assertEqual(mapper.plugin_ids, ("working",))
         second = mapper.perceive(
-            build_perception_request(_snapshot(_array_reading(), "frame-2"))
+            build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
         )
         self.assertEqual(
             [run.plugin_id for run in second.plugin_runs],
@@ -267,7 +267,7 @@ class PluginRunnerTests(unittest.TestCase):
 
         manager.remove("working")
         third = mapper.perceive(
-            build_perception_request(_snapshot(_array_reading(), "frame-3"))
+            build_perception_request(_sensor_frame(_array_reading(), "frame-3"))
         )
         self.assertEqual(
             [run.plugin_id for run in third.plugin_runs], ["unavailable"]
@@ -289,10 +289,10 @@ class PluginRunnerTests(unittest.TestCase):
         try:
             mapper = PerceptionRunner(plugin_manager=manager)
             first = mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(), "frame-1"))
+                build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
             )
             second = mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(), "frame-2"))
+                build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
             )
 
             self.assertEqual(
@@ -360,7 +360,7 @@ class PluginRunnerTests(unittest.TestCase):
                 frame_id="frame-1",
                 frame_index=3,
                 timestamp_ms=10,
-                sensor_snapshot=_snapshot(_array_reading()),
+                sensor_frame=_sensor_frame(_array_reading()),
             )
         )
         executed = step.status()
@@ -395,7 +395,7 @@ class PluginRunnerTests(unittest.TestCase):
                 frame_id="frame-2",
                 frame_index=4,
                 timestamp_ms=20,
-                sensor_snapshot=_snapshot(_array_reading()),
+                sensor_frame=_sensor_frame(_array_reading()),
             )
         )
         reported = step.status()

@@ -61,7 +61,7 @@ from .streaming import stream_vehicle_perception
 from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
     discover_active_vehicles,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
     format_vehicle_status,
     get_vehicle_status,
 )
@@ -462,7 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream.add_argument(
         "--once",
         action="store_true",
-        help="Render one snapshot and exit.",
+        help="Render once and exit.",
     )
     perception_stream.add_argument(
         "--no-clear",
@@ -495,7 +495,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--once",
         action="store_true",
-        help="Render one snapshot and exit.",
+        help="Render once and exit.",
     )
     memory_stream.add_argument(
         "--no-clear",
@@ -1689,7 +1689,7 @@ def _handle_vehicles_active(args: argparse.Namespace) -> int:
 
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(format_active_vehicles_snapshot(payload, include_inactive=include_inactive))
+        print(format_active_vehicles(payload, include_inactive=include_inactive))
     return 0
 
 

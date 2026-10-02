@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
@@ -98,7 +99,7 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
                 sensor_frame={}, things=tuple(thing.to_dict() for thing in batch.things),
                 signals=tuple(signal.to_dict() for signal in batch.signals),
             ))
-            tracked = shared_memory["decision.observation"]
+            tracked = shared_memory[OBSERVATION_KEY]
             things = []
             for payload in tracked.things:
                 thing = PerceivedThing.from_dict(payload)

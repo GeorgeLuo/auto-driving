@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
@@ -183,7 +184,7 @@ def tracks_replay() -> list[dict[str, Any]]:
     """An obstruction appears, moves, leaves view for two frames, and returns.
 
     Each entry holds the memory report and the observation memory publishes in
-    place of the perceived one (``decision.observation``): the tracked things
+    place of the perceived one (``OBSERVATION_KEY``): the tracked things
     and the track events.
     """
 
@@ -195,7 +196,7 @@ def tracks_replay() -> list[dict[str, Any]]:
     for index, left_edge in enumerate(OBSTRUCTION_LEFT_EDGES):
         context, observation = tracks_frame_inputs(index, left_edge, shared_memory)
         report = runner.update(context, observation)
-        tracked = shared_memory["decision.observation"]
+        tracked = shared_memory[OBSERVATION_KEY]
         replay.append(
             {
                 "frame_id": context.frame_id,

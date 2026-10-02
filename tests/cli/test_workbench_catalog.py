@@ -49,7 +49,7 @@ class WorkbenchTests(unittest.TestCase):
             ("floor_continuity", "classical_regions"),
         )
         self.assertEqual(catalog.normalize_selection([]), ())
-        with self.assertRaisesRegex(PluginCatalogError, "unknown plugin id 'missing'"):
+        with self.assertRaisesRegex(PluginCatalogError, "unknown perception plugin\(s\) missing"):
             catalog.normalize_selection(["missing"])
         with self.assertRaisesRegex(PluginCatalogError, "duplicates"):
             catalog.normalize_selection(["frame", "frame"])
@@ -71,7 +71,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
         self.assertEqual(_plugin_ids(state["perception"]), ["classical_regions"])
         self.assertEqual(
-            state["machine_detail"]["pipeline"]["perception_preset"], "plugin_selection"
+            state["machine_detail"]["pipeline"]["perception_preset"], "custom"
         )
 
     def test_empty_selection_replays_raw_capture_and_allows_live_replacement(self) -> None:
@@ -308,3 +308,23 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reset["phase"], "idle")
             self.assertEqual(reset["timeline"], [])
             self.assertEqual(runner._shared_memory, {})
+
+
+class WorkbenchMatchesInspectTests(unittest.TestCase):
+    def test_selection_results_equal_inspect_results(self) -> None:
+        import json
+
+        from cli.automa_cli.perception_runs import inspect_perception
+
+        def canonical(value):
+            return json.loads(json.dumps(value, sort_keys=True, default=str))
+
+        with image_source(1) as root:
+            inspected = json.loads(
+                inspect_perception(root, plugins=["classical_regions"], json_output=True).message
+            )["frames"][0]["perception"]
+            runner = ImageReplayRunner(root, active_plugin_ids=["classical_regions"], cadence_ms=0)
+            runner.start()
+            shown = runner.wait(10)["perception"]
+        for key in ("status", "signals", "things", "limits"):
+            self.assertEqual(canonical(shown[key]), canonical(inspected[key]), key)

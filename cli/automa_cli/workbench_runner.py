@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any, Callable
 
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
@@ -20,7 +21,6 @@ from autonomy.decision_cycle.perception.interface import (
     PerceptionBackend,
     PerceptionText,
 )
-from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
@@ -29,9 +29,13 @@ from implementations.decision_cycle.catalog import (
     perception_preset_activation,
 )
 from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
-from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
+from implementations.decision_cycle.perception.presets import (
+    CUSTOM_PERCEPTION_PRESET,
+    DEFAULT_PERCEPTION_PRESET,
+)
 
 from .memory_report import memory_state
+from .perception_runs import run_perception
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -221,6 +225,14 @@ class ImageReplayRunner:
             # selection actions will refuse it at the catalog boundary.
             return tuple(str(item) for item in active_plugin_ids)
 
+    def _selection_preset(self, plugin_ids: Sequence[str]) -> str:
+        """The preset the selection equals, else ``custom``, from its activation."""
+
+        try:
+            return str(self._plugin_catalog.activation(plugin_ids).metadata["preset"])
+        except PluginCatalogError:
+            return CUSTOM_PERCEPTION_PRESET
+
     def _plugin_configuration(self) -> dict[str, Any]:
         return {
             "catalog_digest": self._plugin_catalog.digest,
@@ -240,9 +252,7 @@ class ImageReplayRunner:
             self._active_plugin_ids
         )
         self._state["machine_detail"]["pipeline"]["perception_preset"] = (
-            DEFAULT_PERCEPTION_PRESET
-            if list(self._active_plugin_ids) == ["frame", "floor_plane"]
-            else "plugin_selection"
+            self._selection_preset(self._active_plugin_ids)
         )
         self._state["machine_detail"]["pipeline"]["catalog_digest"] = (
             self._plugin_catalog.digest
@@ -738,7 +748,7 @@ class ImageReplayRunner:
     def _build_memory_step(self) -> Any:
         if self.memory_step_factory is not None:
             return self.memory_step_factory()
-        return MemoryRunner(plugin_manager=self._plugin_catalog.memory_manager())
+        return _default_memory_step()
 
     def _memory_plugin_id(self) -> str:
         """ID of the published memory plugin."""
@@ -1029,7 +1039,8 @@ class ImageReplayRunner:
                     if frame.absent or current.sensor_snapshot is None:
                         mapper.reset(current.shared_memory)
                         return None
-                    request = build_perception_request(
+                    return run_perception(
+                        mapper,
                         current.sensor_snapshot,
                         shared_memory=current.shared_memory,
                         metadata={
@@ -1038,7 +1049,6 @@ class ImageReplayRunner:
                             "sequence_index": frame.position,
                         },
                     )
-                    return mapper.perceive(request)
 
                 def observe(
                     current: DecisionFrameContext,
@@ -1368,11 +1378,7 @@ class ImageReplayRunner:
         )
         return {
             "pipeline": {
-                "perception_preset": (
-                    DEFAULT_PERCEPTION_PRESET
-                    if active_ids == ["frame", "floor_plane"]
-                    else "plugin_selection"
-                ),
+                "perception_preset": self._selection_preset(active_ids),
                 "memory_plugin_id": self._memory_plugin_id(),
                 "perception_plugin_report": _plugin_report(getattr(self, "_mapper", None)),
                 "memory_plugin_report": _plugin_report(getattr(self, "_memory_step", None)),

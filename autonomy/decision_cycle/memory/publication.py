@@ -21,8 +21,8 @@ from __future__ import annotations
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
 
-OBSERVATION_KEY = "decision.observation"
-EVIDENCE_KEY = "retained_evidence"
+OBSERVATION_KEY = "memory.observation"
+EVIDENCE_KEY = "memory.evidence"
 
 
 def withdraw_publication(shared_memory: SharedMemory) -> None:

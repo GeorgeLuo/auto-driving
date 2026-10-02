@@ -4,6 +4,30 @@
 
 var pluginSelectionDraft = null;
 var pluginSelectionDraftDigest = null;
+// The newest selection toggled while another request was in flight; sent when it settles.
+var pluginSelectionQueued = null;
+function queuePluginSelection(ids) {
+  pluginSelectionQueued = ids;
+  flushPluginSelection();
+}
+function flushPluginSelection() {
+  if (pluginSelectionQueued === null || actionInFlight) return;
+  var ids = pluginSelectionQueued;
+  pluginSelectionQueued = null;
+  action("select_plugins", { active_plugin_ids: ids });
+}
+// Once the server has answered, its selection replaces the draft unless a newer toggle is waiting.
+function settlePluginDraft() {
+  if (pluginSelectionQueued !== null) return;
+  pluginSelectionDraft = null;
+  pluginSelectionDraftDigest = null;
+  pluginCatalogRenderKey = null;
+}
+// A rejected or failed selection drops anything waiting and shows the server's selection.
+function revertPluginDraft() {
+  pluginSelectionQueued = null;
+  settlePluginDraft();
+}
 var pluginCatalogRenderKey = null;
 function selectedPluginIdsFromView() {
   return Array.prototype.map.call(
@@ -27,7 +51,7 @@ function renderPlugins() {
   var active = pluginSelectionDraft || stateActive;
   var allowed = state && state.controls && state.controls.allowed_actions
     ? state.controls.allowed_actions : [];
-  var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
+  var selectionAllowed = allowed.indexOf("select_plugins") >= 0;
   var renderKey = catalog ? "catalog:" + text(catalog.digest, "") : "empty";
   // Keep checkbox nodes through state polls so an in-progress click is not detached.
   if (renderKey === pluginCatalogRenderKey) {
@@ -60,9 +84,7 @@ function renderPlugins() {
       pluginSelectionDraft = selectedPluginIdsFromView();
       pluginSelectionDraftDigest = catalog ? catalog.digest : null;
       renderPluginSummary(catalog, plugins, pluginSelectionDraft);
-      action("select_plugins", {
-        active_plugin_ids: pluginSelectionDraft
-      });
+      queuePluginSelection(pluginSelectionDraft);
     });
     item.appendChild(checkbox);
     var copy = document.createElement("span");

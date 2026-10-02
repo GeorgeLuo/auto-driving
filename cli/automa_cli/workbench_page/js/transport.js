@@ -109,9 +109,7 @@ async function action(action, extra) {
     if (!response.ok || payload.ok === false) {
       if (requestGeneration === stateRequestGeneration) {
         if (action === "select_plugins") {
-          pluginSelectionDraft = null;
-          pluginSelectionDraftDigest = null;
-          pluginCatalogRenderKey = null;
+          revertPluginDraft();
           if (payload.state) render(payload.state);
         }
         setNotice(payload.message || "Action was rejected.");
@@ -125,18 +123,12 @@ async function action(action, extra) {
         clearRecordSelection();
         render(payload.state);
       }
-      if (["select_plugins", "start"].indexOf(action) >= 0) {
-        pluginSelectionDraft = null;
-        pluginSelectionDraftDigest = null;
-        pluginCatalogRenderKey = null;
-      }
+      if (["select_plugins", "start"].indexOf(action) >= 0) settlePluginDraft();
     }
   } catch (error) {
     if (requestGeneration === stateRequestGeneration) {
       if (action === "select_plugins") {
-        pluginSelectionDraft = null;
-        pluginSelectionDraftDigest = null;
-        pluginCatalogRenderKey = null;
+        revertPluginDraft();
         render();
       }
       setNotice("Workbench connection failed: " + error);
@@ -145,6 +137,7 @@ async function action(action, extra) {
     actionInFlight = false;
     if (requestGeneration === stateRequestGeneration) renderControls();
     schedulePoll(pollDelay());
+    flushPluginSelection();
   }
 }
 function renderControls() {

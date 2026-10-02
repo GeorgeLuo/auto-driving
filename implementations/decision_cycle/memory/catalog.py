@@ -21,7 +21,7 @@ _BOUNDED_EVIDENCE_CONFIG: dict[str, Any] = {
 MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
     {
         "spec": (
-            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
+            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger"
         ),
         "description": (
             "Bounded recency ledger of observation things and signals with "
@@ -32,7 +32,7 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
     },
     {
         "spec": (
-            "implementations.decision_cycle.memory.multi_obstruction_tracks.plugin:"
+            "implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin:"
             "MultiObstructionMemory"
         ),
         "description": (

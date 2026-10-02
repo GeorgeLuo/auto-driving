@@ -5,7 +5,7 @@ import unittest
 from typing import Any
 
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from implementations.decision_cycle.memory.multi_obstruction_tracks.plugin import (
+from implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin import (
     LEDGER_KEY,
     MultiObstructionMemory,
 )

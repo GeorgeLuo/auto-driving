@@ -40,7 +40,7 @@ class MemoryCommandTests(unittest.TestCase):
             self.assertEqual(update_payload["manifest"]["step"], "memory")
             self.assertEqual(
                 update_payload["manifest"]["plugin_specs"]["bounded_evidence"],
-                "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger",
+                "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
             )
             self.assertIsNotNone(update_payload["release"]["tree_sha256"])
 

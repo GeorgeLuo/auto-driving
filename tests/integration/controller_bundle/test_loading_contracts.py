@@ -131,7 +131,7 @@ class LoadingContractTests(unittest.TestCase):
         ).PerceptionPluginContract
         host_evidence = importlib.import_module("autonomy.decision_cycle.memory.evidence").RetainedEvidence
         host_ledger = importlib.import_module(
-            "implementations.decision_cycle.memory.bounded_evidence.plugin"
+            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin"
         ).BoundedEvidenceLedger
         metadata = {"controller_bundle": {"root_dir": str(self.bundle_root)}}
         perception = load_staged_runner(packaged_activation("perception", ["frame"], metadata=metadata))

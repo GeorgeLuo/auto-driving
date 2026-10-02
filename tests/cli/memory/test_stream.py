@@ -40,7 +40,7 @@ class MemoryStreamTests(unittest.TestCase):
                     "memory": {
                         "plugin_id": "bounded_evidence",
                         "plugin_spec": (
-                            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
+                            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger"
                         ),
                         "plugins": [
                             {

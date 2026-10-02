@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import os
 import unittest
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import urlopen

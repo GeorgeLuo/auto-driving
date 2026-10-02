@@ -16,6 +16,7 @@ from dataclasses import replace
 from uuid import uuid4
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -24,14 +25,13 @@ from autonomy.decision_cycle.perception.evidence.values import (
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.shared_memory import SharedMemory
 
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
-    EVIDENCE_KEY,
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     EvidenceLedger,
     bounds_from_config,
     detach_ledger,
     empty_ledger,
 )
-from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
     reduce_evidence,
 )
 from implementations.decision_cycle.perception.feeds.camera import (

@@ -15,7 +15,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 

@@ -5,7 +5,7 @@ import unittest
 
 from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     LEDGER_SCHEMA,
     EvidenceLedger,
     LedgerBounds,

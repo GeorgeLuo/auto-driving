@@ -191,12 +191,12 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
 
     # Formerly exported by implementations.memory
     ("implementations.decision_cycle.memory.bounded_evidence.plugin", "BoundedEvidenceLedger", "implementations.decision_cycle.memory.bounded_evidence.plugin", "BoundedEvidenceLedger"),
-    ("implementations.decision_cycle.memory.bounded_evidence.plugin", "reduce_evidence", "implementations.decision_cycle.memory.bounded_evidence.plugin", "reduce_evidence"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "EVIDENCE_KEY", "implementations.decision_cycle.memory.bounded_evidence.ledger", "EVIDENCE_KEY"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "EvidenceLedger", "implementations.decision_cycle.memory.bounded_evidence.ledger", "EvidenceLedger"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "bounds_from_config", "implementations.decision_cycle.memory.bounded_evidence.ledger", "bounds_from_config"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "detach_ledger", "implementations.decision_cycle.memory.bounded_evidence.ledger", "detach_ledger"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "empty_ledger", "implementations.decision_cycle.memory.bounded_evidence.ledger", "empty_ledger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.reduction", "reduce_evidence", "implementations.decision_cycle.memory.shared.evidence_ledger.reduction", "reduce_evidence"),
+    ("autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY", "autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger"),
 
     # implementations.operations
     ("implementations.operations", "CapturePulseStep", "implementations.operations.capture_pulse_sequence", "CapturePulseStep"),

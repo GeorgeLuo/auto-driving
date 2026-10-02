@@ -13,15 +13,16 @@ from autonomy.decision_cycle.activation import (
     read_step_activation,
     write_step_activation,
 )
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
-    EVIDENCE_KEY,
-    LEDGER_KEY,
-)
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
 from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
 from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+    LEDGER_KEY,
     BoundedEvidenceLedger,
-    _BoundedEvidenceReducer as BoundedEvidenceReducer,
+)
+from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
+    BoundedEvidenceReducer,
+    namespaced_record_id,
     reduce_evidence,
 )
 
@@ -351,10 +352,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(by_id["thing:1:8:plugin-b:9:shared_id"].location.zone, "right")
 
     def test_delimiter_containing_plugin_ids_do_not_collide(self) -> None:
-        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
-            namespaced_record_id,
-        )
-
         left = namespaced_record_id("thing", "shared", "plugin:a")
         right = namespaced_record_id("thing", "shared", "plugin_a")
         self.assertNotEqual(left, right)
@@ -374,10 +371,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(ids, {left, right})
 
     def test_namespace_preserves_absent_vs_literal_unknown_and_whitespace(self) -> None:
-        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
-            namespaced_record_id,
-        )
-
         absent = namespaced_record_id("thing", "shared", None)
         literal_unknown = namespaced_record_id("thing", "shared", "unknown")
         plain = namespaced_record_id("thing", "shared", "plugin")

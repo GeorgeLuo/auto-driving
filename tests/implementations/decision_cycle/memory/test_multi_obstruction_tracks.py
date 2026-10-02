@@ -4,7 +4,7 @@ import dataclasses
 import unittest
 from typing import Any
 
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.decision_cycle.memory.multi_obstruction_tracks.plugin import (
     LEDGER_KEY,
     MultiObstructionMemory,

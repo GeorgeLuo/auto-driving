@@ -60,7 +60,7 @@ from autonomy.decision_cycle.action_identifiers import (
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.serialization import canonical_json_utf8
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.runtime.control import AutonomyControl
 
 from .bundles import controller_bundle_paths

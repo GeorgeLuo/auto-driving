@@ -143,7 +143,7 @@ class LoadingContractTests(unittest.TestCase):
         self.assertIsNot(type(memory.runner.plugins[0]), host_ledger)
         with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
             staged = importlib.import_module(
-                "implementations.decision_cycle.memory.bounded_evidence.plugin"
+                "implementations.decision_cycle.memory.shared.evidence_ledger.reduction"
             )
             self.assertIn(str(self.bundle_root), staged.__file__ or "")
             self.assertIs(staged.RetainedEvidence, host_evidence)

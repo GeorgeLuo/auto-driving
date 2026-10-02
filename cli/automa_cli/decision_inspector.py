@@ -14,7 +14,7 @@ from autonomy.serialization import canonical_json_utf8
 from autonomy.decision_cycle.action.hold import HoldAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.decision_cycle.proposal.inspection import prepare_inspection_scenarios
 
 from .decision import (

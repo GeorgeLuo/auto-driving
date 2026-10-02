@@ -146,14 +146,22 @@ def perception_activation(
 ) -> StepActivation:
     """A perception activation from a named preset or an ordered plugin list.
 
-    A plugin list is recorded as the ``custom`` preset; with neither, the
-    default preset applies.
+    A plugin list, which may be empty, is labeled with the preset it equals,
+    else ``custom``; with neither argument the default preset applies.
     """
 
-    if preset is not None and plugins:
+    if preset is not None and plugins is not None:
         raise ValueError("choose either a perception preset or plugins, not both")
-    if plugins:
-        return packaged_activation("perception", plugins, metadata={"preset": CUSTOM_PERCEPTION_PRESET})
+    if plugins is not None:
+        label = next(
+            (
+                name
+                for name, entry in PERCEPTION_PRESETS.items()
+                if list(entry["plugins"]) == list(plugins) and not entry.get("plugin_configs")
+            ),
+            CUSTOM_PERCEPTION_PRESET,
+        )
+        return packaged_activation("perception", plugins, metadata={"preset": label})
     return perception_preset_activation(preset or DEFAULT_PERCEPTION_PRESET)
 
 

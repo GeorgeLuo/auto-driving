@@ -380,6 +380,26 @@ def _select_vehicle(
     return selected, reason, None
 
 
+def run_perception(
+    mapper: Any,
+    snapshot: SensorSnapshot,
+    *,
+    shared_memory: dict[str, Any],
+    metadata: dict[str, Any],
+    output_dir: Path | None = None,
+):
+    """Run perception on one snapshot; the step every consumer shares."""
+
+    return mapper.perceive(
+        build_perception_request(
+            snapshot,
+            shared_memory=shared_memory,
+            output_dir=output_dir,
+            metadata=metadata,
+        )
+    )
+
+
 def perceive_snapshot(
     mapper: Any,
     snapshot: SensorSnapshot,
@@ -402,13 +422,12 @@ def perceive_snapshot(
 
     if started is None:
         started = time.perf_counter()
-    perception = mapper.perceive(
-        build_perception_request(
-            snapshot,
-            shared_memory=shared_memory,
-            output_dir=result_dir,
-            metadata=metadata,
-        )
+    perception = run_perception(
+        mapper,
+        snapshot,
+        shared_memory=shared_memory,
+        metadata=metadata,
+        output_dir=result_dir,
     )
     duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
     record = _frame_record(

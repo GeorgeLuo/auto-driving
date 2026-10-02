@@ -19,13 +19,11 @@ WORKBENCH_MAX_ACTION_BYTES = 64 * 1024
 WORKBENCH_ACTIONS = (
     "validate",
     "select_plugins",
-    "set_plugins",
     "start",
     "pause",
     "resume",
     "step",
     "seek",
-    "cancel",
     "reset",
     "set_cadence",
     "set_loop",

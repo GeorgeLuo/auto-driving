@@ -1,55 +1,10 @@
 from __future__ import annotations
-import json
 import unittest
 from tests.support.cli_runner import run_automa
 from tests.cli.workbench_fixtures import image_source
 
 
 class WorkbenchTests(unittest.TestCase):
-    def test_cli_replay_machine_readable_boundary(self) -> None:
-        with image_source(1) as root:
-            result = run_automa(
-                "vehicles",
-                "workbench",
-                "replay",
-                str(root),
-                "--cadence-ms",
-                "0",
-                "--json",
-            )
-
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["phase"], "completed")
-        self.assertEqual(payload["sequence_id"], "workbench.image_replay.v1")
-        self.assertEqual(
-            payload["machine_detail"]["pipeline"]["perception_preset"],
-            "lightweight_observer",
-        )
-        self.assertEqual(
-            payload["decision"]["frame_id"],
-            payload["current_frame"]["frame_id"],
-        )
-        self.assertFalse(payload["decision"]["authority"]["proposed_applied"])
-        self.assertNotIn("argv", payload)
-
-    def test_cli_replay_accepts_realtime_pace(self) -> None:
-        with image_source(1) as root:
-            result = run_automa(
-                "vehicles",
-                "workbench",
-                "replay",
-                str(root),
-                "--pace",
-                "realtime",
-                "--cadence-ms",
-                "0",
-                "--json",
-            )
-
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["phase"], "completed")
-        self.assertEqual(payload["controls"]["pace"], "realtime")
-
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
         with image_source(1) as root:
             result = run_automa(

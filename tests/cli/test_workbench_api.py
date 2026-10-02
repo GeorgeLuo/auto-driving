@@ -70,15 +70,14 @@ class WorkbenchTests(unittest.TestCase):
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "active_plugin_ids": [],
                 }
             )
             raw_state = runner.wait(5)
             self.assertEqual(raw_started["state"]["run_active_plugin_ids"], [])
             self.assertEqual(raw_state["phase"], "completed")
-            self.assertEqual(raw_state["perception"]["status"], "empty")
-            self.assertEqual(raw_state["perception"]["plugin_runs"], ())
-            self.assertEqual(raw_state["perception"]["things"], ())
+            self.assertEqual(raw_state["steps"]["perception"]["status"], "empty")
+            self.assertEqual(raw_state["steps"]["perception"]["plugin_runs"], ())
+            self.assertEqual(raw_state["steps"]["perception"]["things"], ())
             selected = post(
                 {
                     "action": "select_plugins",
@@ -94,7 +93,6 @@ class WorkbenchTests(unittest.TestCase):
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "active_plugin_ids": ["classical_regions"],
                 }
             )
             state = runner.wait(5)
@@ -104,9 +102,49 @@ class WorkbenchTests(unittest.TestCase):
         )
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(
-            [item["plugin_id"] for item in state["perception"]["plugin_runs"]],
+            [item["plugin_id"] for item in state["steps"]["perception"]["plugin_runs"]],
             ["classical_regions"],
         )
+
+    def test_removed_actions_and_plugin_lists_on_other_actions_are_rejected(self) -> None:
+        with image_source(1) as root:
+            runner = ImageReplayRunner(cadence_ms=0)
+            base = serve_workbench(self, runner)
+            post = partial(post_action, base, timeout=2)
+
+            for body in (
+                {"action": "set_plugins", "active_plugin_ids": []},
+                {"action": "cancel"},
+                {"action": "start", "source_dir": str(root), "active_plugin_ids": []},
+                {"action": "validate", "source_dir": str(root), "active_plugin_ids": []},
+            ):
+                with self.assertRaises(HTTPError, msg=str(body)) as caught:
+                    post(body)
+                self.assertEqual(caught.exception.code, 400)
+
+    def test_page_files_are_served_and_nothing_else(self) -> None:
+        import re
+
+        server = WorkbenchServer(ImageReplayRunner(cadence_ms=0)).start()
+        self.addCleanup(server.stop)
+        base = server.url
+        page = urlopen(base, timeout=2).read().decode("utf-8")
+        paths = re.findall(r'(?:src|href)="/static/([^"]+)"', page)
+        self.assertIn("workbench.css", paths)
+        self.assertEqual(
+            sorted(path for path in paths if path.endswith(".js")),
+            sorted(f"js/{name}.js" for name in (
+                "core", "decision", "evidence", "frame", "main", "memory", "plugins", "transport",
+            )),
+        )
+        for path in paths:
+            served = urlopen(base + "static/" + path, timeout=2)
+            self.assertEqual(served.status, 200)
+            self.assertIn("javascript" if path.endswith(".js") else "css", served.headers["Content-Type"])
+        for blocked in ("static/../workbench_server.py", "static/js/../index.html", "static/index.html", "static/js/missing.js"):
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(base + blocked, timeout=2)
+            self.assertEqual(caught.exception.code, 404)
 
     def test_loopback_api_selection_reprocesses_the_displayed_frame(self) -> None:
         with image_source(3) as root:
@@ -124,7 +162,6 @@ class WorkbenchTests(unittest.TestCase):
                 {
                     "action": "start",
                     "source_dir": str(root),
-                    "active_plugin_ids": ["classical_regions"],
                     "cadence_ms": 30000,
                 }
             )
@@ -144,11 +181,11 @@ class WorkbenchTests(unittest.TestCase):
             # The running replay picks the displayed frame up without waiting
             # out the cadence.
             _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.frame_detail(first_id, run_id=run_id)
-            post({"action": "cancel", "run_id": run_id})
+            reprocessed = runner.state()
+            post({"action": "reset", "run_id": run_id})
 
         self.assertEqual(
-            [run["plugin_id"] for run in reprocessed["perception"]["plugin_runs"]],
+            [run["plugin_id"] for run in reprocessed["steps"]["perception"]["plugin_runs"]],
             ["floor_continuity"],
         )
 
@@ -174,10 +211,10 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], [])
             _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.frame_detail(first_id, run_id=run_id)
-            self.assertEqual(list(reprocessed["perception"]["plugin_runs"] or ()), [])
-            self.assertEqual(reprocessed["perception"]["status"], "empty")
-            runner.dispatch("cancel", run_id=run_id)
+            reprocessed = runner.state()
+            self.assertEqual(list(reprocessed["steps"]["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(reprocessed["steps"]["perception"]["status"], "empty")
+            runner.dispatch("reset", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(
         self,
@@ -217,12 +254,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(latest["phase"], "completed")
             frame_id = state["timeline"][0]["frame"]["frame_id"]
             query = urlencode({"run_id": run_id, "frame_id": frame_id})
-            detail = json.loads(
-                urlopen(base + "api/frame-detail?" + query, timeout=2).read()
-            )
-            self.assertEqual(detail["frame"]["frame_id"], frame_id)
-            self.assertEqual(detail["perception"]["status"], "ok")
-            self.assertEqual(detail["memory"]["health"], "healthy")
             frame = urlopen(
                 base + "api/frame?" + query,
                 timeout=2,
@@ -246,9 +277,9 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertNotEqual(second_start["state"]["run_id"], run_id)
             self.assertEqual(runner.wait(5)["phase"], "completed")
-            with self.assertRaises(HTTPError) as stale_detail:
-                urlopen(base + "api/frame-detail?" + query, timeout=2)
-            self.assertEqual(stale_detail.exception.code, 409)
+            with self.assertRaises(HTTPError) as stale_frame:
+                urlopen(base + "api/frame?" + query, timeout=2)
+            self.assertEqual(stale_frame.exception.code, 409)
 
             bad_body = json.dumps({"action": "start", "argv": ["--unsafe"]}).encode(
                 "utf-8"

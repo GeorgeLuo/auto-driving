@@ -52,7 +52,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
                             "zone": "left",
                             "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
                         },
-                        "provenance": {
+                        "origin": {
                             "frame_id": "donkey_frame_0",
                             "observation_id": "obs-0",
                         },
@@ -82,7 +82,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
         )
         self.assertEqual(view_payload["memory"]["epoch_id"], "epoch-2")
         self.assertEqual(
-            view_payload["memory"]["records"][0]["provenance"]["frame_id"],
+            view_payload["memory"]["records"][0]["origin"]["frame_id"],
             "donkey_frame_0",
         )
 

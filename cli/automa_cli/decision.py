@@ -248,15 +248,15 @@ RECORD_REQUIRED_KEYS = frozenset(
         "kind",
         "label",
         "confidence",
-        "provenance",
+        "origin",
         "location",
         "properties",
     }
 )
-PROVENANCE_REQUIRED_KEYS = frozenset(
+ORIGIN_REQUIRED_KEYS = frozenset(
     {
         "observation_id",
-        "evidence_id",
+        "observed_id",
         "coordinate_frame",
         "observed_at_ms",
         "updated_at_ms",
@@ -643,14 +643,14 @@ def _memory_summary(source: dict[str, Any] | None) -> dict[str, Any]:
         for item in value[:12]:
             if not isinstance(item, dict):
                 continue
-            prov = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+            origin = item.get("origin") if isinstance(item.get("origin"), dict) else {}
             records_out.append(
                 {
                     "record_id": item.get("record_id"),
                     "kind": item.get("kind"),
                     "confidence": item.get("confidence"),
-                    "frame_id": prov.get("frame_id"),
-                    "observation_id": prov.get("observation_id"),
+                    "frame_id": origin.get("frame_id"),
+                    "observation_id": origin.get("observation_id"),
                 }
             )
         return {
@@ -2460,11 +2460,11 @@ def strict_decode_apply_evidence(payload: object) -> tuple[RetainedEvidence, ...
                 "run_invalid",
                 "evidence record key set must match RetainedEvidence.to_dict().",
             )
-        provenance = item.get("provenance")
-        if not isinstance(provenance, dict) or set(provenance.keys()) != PROVENANCE_REQUIRED_KEYS:
+        origin = item.get("origin")
+        if not isinstance(origin, dict) or set(origin.keys()) != ORIGIN_REQUIRED_KEYS:
             raise DecisionSurfaceError(
                 "run_invalid",
-                "evidence record provenance must be a complete MemoryProvenance export.",
+                "evidence record origin must be a complete MemoryOrigin export.",
             )
         location = item.get("location")
         if location is not None:

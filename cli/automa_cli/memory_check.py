@@ -34,11 +34,11 @@ from .chase_max_age import (
     wait_for_chase_memory_key_expiry,
 )
 from .memory import (
-    build_memory_provenance_rows,
+    build_memory_origin_rows,
     memory_state_digest,
     post_memory_reset,
     probe_live_memory,
-    render_memory_provenance_extract_html,
+    render_memory_origin_extract_html,
 )
 from .memory_report import memory_state
 from .paths import ROOT, display_path, safe_path_part
@@ -307,7 +307,7 @@ def run_chase_reference_memory_check(
 
     _emit(
         output,
-        "Memory check (Chase reference: identity → alignment → provenance → "
+        "Memory check (Chase reference: identity → alignment → origin → "
         "max-age expiry → reset)",
     )
     _emit(output, f"vehicle: {vehicle_id}")
@@ -417,21 +417,21 @@ def run_chase_reference_memory_check(
         f"frames={alignment.get('frame_count')} aligned={alignment.get('aligned_count')}",
     )
 
-    provenance_score = score_chase_memory_provenance(frames)
+    origin_score = score_chase_memory_origin(frames)
     if (
-        provenance_score.get("passed")
-        and int(provenance_score.get("retained_prior_matches") or 0) < 1
+        origin_score.get("passed")
+        and int(origin_score.get("retained_prior_matches") or 0) < 1
     ):
-        provenance_score = {
-            **provenance_score,
+        origin_score = {
+            **origin_score,
             "passed": False,
             "reason": "sampled Chase window contains no retained prior-frame evidence",
         }
     phase_results.append(
         {
-            "phase": "memory_provenance",
-            "passed": bool(provenance_score.get("passed")),
-            "score": provenance_score,
+            "phase": "memory_origin",
+            "passed": bool(origin_score.get("passed")),
+            "score": origin_score,
             "frame_count": len(frames),
             "live_frame_ids": [frame.get("frame_id") for frame in frames],
             "lifecycle_source": "live_automation_worker",
@@ -439,9 +439,9 @@ def run_chase_reference_memory_check(
     )
     _emit(
         output,
-        f"phase: memory_provenance  "
-        f"{'PASS' if provenance_score.get('passed') else 'FAIL'}  "
-        f"{provenance_score.get('reason')}",
+        f"phase: memory_origin  "
+        f"{'PASS' if origin_score.get('passed') else 'FAIL'}  "
+        f"{origin_score.get('reason')}",
     )
 
     observe_score = score_chase_observe_only(frames)
@@ -509,7 +509,7 @@ def run_chase_reference_memory_check(
             "phase_results": phase_results,
             "recorded": False,
             "record_dir": None,
-            "provenance_extract": None,
+            "origin_extract": None,
             "error": reason,
         }
         if json_output:
@@ -628,7 +628,7 @@ def run_chase_reference_memory_check(
             if not frame_id:
                 reason = (
                     "max-age expiry passed but expiry frame has no frame_id; "
-                    "cannot record provenance image"
+                    "cannot record origin image"
                 )
                 expiry_score["passed"] = False
                 expiry_score["reason"] = reason
@@ -750,7 +750,7 @@ def run_chase_reference_memory_check(
         if isinstance(memory, dict) and memory.get("records"):
             present_state = memory
             break
-    provenance_rows = build_memory_provenance_rows(final=present_state, frames=frames)
+    origin_rows = build_memory_origin_rows(final=present_state, frames=frames)
 
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
@@ -764,7 +764,7 @@ def run_chase_reference_memory_check(
         "present_state": present_state,
         "final_state": reset_state if isinstance(reset_state, dict) else {},
         "history_boundary_state": boundary_state,
-        "provenance_rows": provenance_rows,
+        "origin_rows": origin_rows,
         "frames_sampled": [
             {
                 "frame_id": frame.get("frame_id"),
@@ -788,7 +788,7 @@ def run_chase_reference_memory_check(
         ),
         "recorded": False,
         "record_dir": None,
-        "provenance_extract": None,
+        "origin_extract": None,
     }
 
     record_error = _record_check_report(
@@ -945,7 +945,7 @@ def collect_chase_automation_frames(
     timeout_s: float,
     after_simulator_frame_index: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Collect an observed, ordered provenance window after the reset boundary."""
+    """Collect an observed, ordered origin window after the reset boundary."""
 
     deadline = time.monotonic() + max(1.0, float(timeout_s))
     collected: list[dict[str, Any]] = []
@@ -965,16 +965,16 @@ def collect_chase_automation_frames(
             if key and key not in seen_ids:
                 seen_ids.add(key)
                 trial = [*collected, frame]
-                trial_score = score_chase_memory_provenance(trial)
+                trial_score = score_chase_memory_origin(trial)
                 if trial_score.get("passed"):
                     collected = trial
                 else:
-                    anchor_score = score_chase_memory_provenance([frame])
+                    anchor_score = score_chase_memory_origin([frame])
                     if anchor_score.get("passed"):
                         collected = [frame]
                 if (
                     len(collected) >= min_frames
-                    and score_chase_memory_provenance(collected).get(
+                    and score_chase_memory_origin(collected).get(
                         "retained_prior_matches", 0
                     )
                     > 0
@@ -982,13 +982,13 @@ def collect_chase_automation_frames(
                     break
                 # Keep the candidate within the view server's exact-frame buffer.
                 if len(collected) >= 8:
-                    anchor_score = score_chase_memory_provenance([collected[-1]])
+                    anchor_score = score_chase_memory_origin([collected[-1]])
                     collected = [collected[-1]] if anchor_score.get("passed") else []
         time.sleep(0.05)
     return collected
 
 
-def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any]:
+def score_chase_memory_origin(frames: list[dict[str, Any]]) -> dict[str, Any]:
     """Require every memory state to cite an observed current/prior frame."""
 
     all_sampled: dict[str, int] = {}
@@ -1010,8 +1010,8 @@ def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any
     current_frame_matches = 0
     retained_prior_matches = 0
     mismatched: list[str] = []
-    missing_provenance: list[str] = []
-    future_provenance: list[str] = []
+    missing_origin: list[str] = []
+    future_origin: list[str] = []
 
     for frame in frames:
         if not isinstance(frame, dict):
@@ -1037,27 +1037,27 @@ def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any
                 continue
             record_id = str(record.get("record_id") or "<unnamed>")
             records_seen += 1
-            provenance = (
-                record.get("provenance")
-                if isinstance(record.get("provenance"), dict)
+            origin = (
+                record.get("origin")
+                if isinstance(record.get("origin"), dict)
                 else {}
             )
-            prov_frame = str(provenance.get("frame_id") or "").strip()
+            origin_frame = str(origin.get("frame_id") or "").strip()
             label = f"{containing_frame_id}:{record_id}"
-            if not prov_frame:
-                missing_provenance.append(label)
+            if not origin_frame:
+                missing_origin.append(label)
                 continue
 
-            source_index = observed.get(prov_frame)
+            source_index = observed.get(origin_frame)
             if source_index is None:
-                future_index = all_sampled.get(prov_frame)
+                future_index = all_sampled.get(origin_frame)
                 if future_index is not None and future_index > containing_index:
-                    future_provenance.append(f"{label}:{prov_frame}")
+                    future_origin.append(f"{label}:{origin_frame}")
                 else:
-                    mismatched.append(f"{label}:{prov_frame}")
+                    mismatched.append(f"{label}:{origin_frame}")
                 continue
             if source_index > containing_index:
-                future_provenance.append(f"{label}:{prov_frame}")
+                future_origin.append(f"{label}:{origin_frame}")
                 continue
 
             matched += 1
@@ -1069,27 +1069,27 @@ def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any
     passed = (
         records_seen > 0
         and not mismatched
-        and not missing_provenance
-        and not future_provenance
+        and not missing_origin
+        and not future_origin
         and matched == records_seen
     )
     return {
         "passed": passed,
         "frames_with_memory": frames_with_memory,
         "record_count": records_seen,
-        "matched_provenance_records": matched,
+        "matched_origin_records": matched,
         "current_frame_matches": current_frame_matches,
         "retained_prior_matches": retained_prior_matches,
         "mismatched": mismatched[:12],
-        "missing_provenance": missing_provenance[:12],
-        "future_provenance": future_provenance[:12],
+        "missing_origin": missing_origin[:12],
+        "future_origin": future_origin[:12],
         "sampled_frame_ids": sorted(all_sampled),
         "reason": (
-            "memory provenance cites only observed current/prior simulator frames "
+            "memory origin cites only observed current/prior simulator frames "
             f"(current={current_frame_matches} retained_prior={retained_prior_matches})"
             if passed
             else (
-                "memory provenance is empty, missing, unknown, or cites a future frame"
+                "memory origin is empty, missing, unknown, or cites a future frame"
             )
         ),
     }
@@ -1429,7 +1429,7 @@ def run_offline_memory_check(
         if isinstance(present_phase, dict) and isinstance(present_phase.get("state"), dict)
         else {}
     )
-    provenance_rows = build_memory_provenance_rows(final=present_state, frames=all_frames)
+    origin_rows = build_memory_origin_rows(final=present_state, frames=all_frames)
 
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
@@ -1445,7 +1445,7 @@ def run_offline_memory_check(
         ],
         "present_state": present_state,
         "final_state": phase_results[-1]["state"] if phase_results else {},
-        "provenance_rows": provenance_rows,
+        "origin_rows": origin_rows,
         "safety": {
             "movement_commands_sent": False,
             "action_policy": (
@@ -1460,7 +1460,7 @@ def run_offline_memory_check(
         },
         "recorded": False,
         "record_dir": None,
-        "provenance_extract": None,
+        "origin_extract": None,
     }
 
     record_error = _record_check_report(
@@ -1484,7 +1484,7 @@ def run_offline_memory_check(
     ]
     if report.get("recorded"):
         lines.append(f"Record: {report['record_dir']}")
-        lines.append(f"Provenance extract: {report['provenance_extract']}")
+        lines.append(f"Origin extract: {report['origin_extract']}")
     return CommandResult(exit_code, "\n".join(lines))
 
 
@@ -1677,7 +1677,7 @@ def run_physical_memory_check(
         present_keys=set(),
         prior_epoch=None,
     )
-    # Keys currently refreshed by the active implementation (provenance.frame_id match).
+    # Keys currently refreshed by the active implementation (origin.frame_id match).
     present_observed = currently_refreshed_memory_keys(present_cap["publication"])
     prior_epoch = str(present_mem.get("epoch_id") or "") or None
     phase_results.append(
@@ -1840,7 +1840,7 @@ def run_physical_memory_check(
 
     passed = all(bool(item.get("passed")) for item in phase_results)
     present_state = present_mem
-    provenance_rows = build_memory_provenance_rows(final=present_state, frames=all_frames)
+    origin_rows = build_memory_origin_rows(final=present_state, frames=all_frames)
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
@@ -1852,7 +1852,7 @@ def run_physical_memory_check(
         "phase_results": phase_results,
         "present_state": present_state,
         "final_state": reset_state,
-        "provenance_rows": provenance_rows,
+        "origin_rows": origin_rows,
         "safety": {
             "movement_commands_sent": False,
             "action_policy": "physical_observe_only",
@@ -1868,7 +1868,7 @@ def run_physical_memory_check(
         },
         "recorded": False,
         "record_dir": None,
-        "provenance_extract": None,
+        "origin_extract": None,
     }
 
     record_error = _record_check_report(
@@ -1892,7 +1892,7 @@ def run_physical_memory_check(
     ]
     if report.get("recorded"):
         lines.append(f"Record: {report['record_dir']}")
-        lines.append(f"Provenance extract: {report['provenance_extract']}")
+        lines.append(f"Origin extract: {report['origin_extract']}")
     return CommandResult(exit_code, "\n".join(lines))
 
 
@@ -1947,7 +1947,7 @@ def record_ids_from_memory(memory: dict[str, Any]) -> set[str]:
 def currently_refreshed_memory_keys(publication: dict[str, Any]) -> set[str]:
     """Keys the active step refreshed on this publication's frame.
 
-    Prefer memory records whose ``provenance.frame_id`` matches the publication
+    Prefer memory records whose ``origin.frame_id`` matches the publication
     frame id — that reuses the onboard implementation's admission behavior
     (including skipping explicit-false signals) instead of re-deriving keys in
     the CLI. Falls back to filtered observation keys when records are absent.
@@ -1962,10 +1962,10 @@ def currently_refreshed_memory_keys(publication: dict[str, Any]) -> set[str]:
         for record in records:
             if not isinstance(record, dict):
                 continue
-            provenance = (
-                record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+            origin = (
+                record.get("origin") if isinstance(record.get("origin"), dict) else {}
             )
-            if str(provenance.get("frame_id") or "").strip() != frame_id:
+            if str(origin.get("frame_id") or "").strip() != frame_id:
                 continue
             record_id = str(record.get("record_id") or "").strip()
             if record_id:
@@ -2543,11 +2543,11 @@ def _record_check_report(
     report.update(
         recorded=True,
         record_dir=record_info["record_dir"],
-        provenance_extract=record_info["provenance_extract"],
+        origin_extract=record_info["origin_extract"],
         record_manifest=record_info["manifest"],
     )
     _emit(output, f"record: {report['record_dir']}")
-    _emit(output, f"provenance extract: {report['provenance_extract']}")
+    _emit(output, f"origin extract: {report['origin_extract']}")
     return None
 
 
@@ -2559,7 +2559,7 @@ def write_memory_check_record(
     output_root: Path,
     captured_images: dict[str, bytes] | None = None,
 ) -> dict[str, Any]:
-    """Write bounded check artifacts and a provenance extract from present keys."""
+    """Write bounded check artifacts and an origin extract from present keys."""
 
     vehicle_id = str(report.get("vehicle_id") or "vehicle")
     run_id = f"{safe_path_part(vehicle_id)}-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -2571,9 +2571,9 @@ def write_memory_check_record(
         if isinstance(report.get("present_state"), dict)
         else {}
     )
-    provenance_rows = (
-        report.get("provenance_rows")
-        if isinstance(report.get("provenance_rows"), list)
+    origin_rows = (
+        report.get("origin_rows")
+        if isinstance(report.get("origin_rows"), list)
         else []
     )
     per_frame = []
@@ -2639,14 +2639,14 @@ def write_memory_check_record(
             image_paths[str(frame_id)] = display_path(path)
             frame_image_paths[str(frame_id)] = f"frames/{safe_name}"
 
-    extract_html = render_memory_provenance_extract_html(
+    extract_html = render_memory_origin_extract_html(
         vehicle_id=vehicle_id,
         payload=extract_payload,
         frames=all_frames,
-        provenance_rows=provenance_rows if isinstance(provenance_rows, list) else [],
+        origin_rows=origin_rows if isinstance(origin_rows, list) else [],
         frame_image_paths=frame_image_paths,
     )
-    extract_path = record_dir / "provenance_extract.html"
+    extract_path = record_dir / "origin_extract.html"
     extract_path.write_text(extract_html, encoding="utf-8")
 
     artifacts = [
@@ -2654,7 +2654,7 @@ def write_memory_check_record(
         "report.json",
         "sequence.json",
         "present_memory.json",
-        "provenance_extract.html",
+        "origin_extract.html",
     ]
     if image_paths:
         artifacts.append("frames/")
@@ -2689,7 +2689,7 @@ def write_memory_check_record(
         **report,
         "recorded": True,
         "record_dir": display_path(record_dir),
-        "provenance_extract": display_path(extract_path),
+        "origin_extract": display_path(extract_path),
         "record_manifest": manifest,
     }
     (record_dir / "report.json").write_text(
@@ -2698,7 +2698,7 @@ def write_memory_check_record(
     )
     return {
         "record_dir": display_path(record_dir),
-        "provenance_extract": display_path(extract_path),
+        "origin_extract": display_path(extract_path),
         "manifest": manifest,
     }
 
@@ -2716,7 +2716,7 @@ def captured_image_extension(blob: bytes) -> str:
 def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
     notes = [
         "Recording is disabled unless --record is passed.",
-        "Retained geometry is attributed to provenance.frame_id only.",
+        "Retained geometry is attributed to origin.frame_id only.",
         "Live-host records include exact source images when frame pairing is available.",
     ]
     if report.get("provider") == "chase-sim":
@@ -2735,7 +2735,7 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
         if max_age_passed:
             notes.append(
                 "The live Chase check covers history boundary, atomic reference alignment, "
-                "ordered provenance, max-age expiry without reset, observe-only isolation, "
+                "ordered origin, max-age expiry without reset, observe-only isolation, "
                 "and reset."
             )
         elif "max_age_expiry" in phases:
@@ -2746,7 +2746,7 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
         else:
             notes.append(
                 "The live Chase check covers history boundary, atomic reference alignment, "
-                "ordered provenance, observe-only isolation, and reset."
+                "ordered origin, observe-only isolation, and reset."
             )
     else:
         notes.append(

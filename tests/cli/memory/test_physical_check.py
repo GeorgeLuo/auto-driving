@@ -174,7 +174,7 @@ class MemoryCheckTests(unittest.TestCase):
             self.assertTrue(payload["recorded"])
             run_dir = next(output_root.iterdir())
             self.assertTrue((run_dir / "frames").is_dir())
-            extract = (run_dir / "provenance_extract.html").read_text(encoding="utf-8")
+            extract = (run_dir / "origin_extract.html").read_text(encoding="utf-8")
             self.assertIn("present_frame", extract)
             self.assertIn('<img src="frames/present_frame.jpg"', extract)
             self.assertIn('<img src="frames/dropout_frame.jpg"', extract)

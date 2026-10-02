@@ -98,15 +98,15 @@ class LiveRuntimeDecisionViewFixture:
             ][0]
         )
         record = raw["evidence"][0]
-        provenance = record["provenance"]
+        origin = record["origin"]
         thing = {
-            "thing_id": provenance["evidence_id"],
+            "thing_id": origin["observed_id"],
             "kind": record["kind"],
             "label": record["label"],
             "location": deepcopy(record["location"]),
             "confidence": record["confidence"],
             "properties": deepcopy(record["properties"]),
-            "source_plugin_id": provenance["source_plugin_id"],
+            "source_plugin_id": origin["source_plugin_id"],
         }
         raw["observation"]["things"] = [thing]
         if mutate is not None:

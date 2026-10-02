@@ -706,7 +706,7 @@ def build_parser() -> argparse.ArgumentParser:
             "health, key counts, retained keys, and a stable end-state digest. "
             "Runs two independent passes by default to prove determinism. "
             "Process-local; writes no history unless --record is passed. "
-            "With --record, freezes a bounded provenance extract (key → value → "
+            "With --record, freezes a bounded origin extract (key → value → "
             "source observation) under lab/runs/memory-replay/."
         ),
     )
@@ -747,7 +747,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Opt-in: write a bounded run directory with result, digest, sequence "
-            "copy, and provenance_extract.html. Disabled by default."
+            "copy, and origin_extract.html. Disabled by default."
         ),
     )
     memory_replay.set_defaults(handler=_handle_vehicles_memory_replay)
@@ -757,7 +757,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Evaluate memory lifecycle gates: present, dropout, max-age expiry, and reset. "
             "Chase (live automation) scores chaser-reference identity/alignment, retained-prior "
-            "provenance, max-age expiry without reset, observe-only control, and reset. "
+            "origin, max-age expiry without reset, observe-only control, and reset. "
             "Offline ids use a phase script. PiCar scores the live onboard step from "
             "publication.memory (no forced dropout, no local ephemeral reducer), waits "
             "for live age expiry, and POSTs onboard reset. Never moves the car. "
@@ -779,7 +779,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_check.add_argument(
         "--record",
         action="store_true",
-        help="Opt-in: write bounded report + provenance_extract.html (and Pi frames).",
+        help="Opt-in: write bounded report + origin_extract.html (and Pi frames).",
     )
     memory_check.add_argument(
         "--auto",

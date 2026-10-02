@@ -24,10 +24,10 @@ class MemoryReplayFixture:
                         "kind": "floor_boundary",
                         "label": "boundary",
                         "confidence": 0.9,
-                        "provenance": {
+                        "origin": {
                             "frame_id": "frame_001",
                             "observation_id": "obs_001",
-                            "evidence_id": "floor_boundary_000",
+                            "observed_id": "floor_boundary_000",
                         },
                     }
                 ],

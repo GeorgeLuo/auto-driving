@@ -26,7 +26,7 @@ function memoryRecordTitle(record, records) {
     if (memoryRecordLabel(candidate) === label) collisions += 1;
   });
   if (collisions < 2) return label;
-  var plugin = record.provenance && record.provenance.source_plugin_id;
+  var plugin = record.origin && record.origin.source_plugin_id;
   return plugin ? label + " · " + plugin : label;
 }
 function memoryRecordMatches(record, records, pattern) {
@@ -55,10 +55,10 @@ function paintMemorySelection(records) {
       kind: selected.kind,
       label: selected.label,
       confidence: selected.confidence,
-      provenance: selected.provenance,
+      origin: selected.origin,
       properties: selected.properties
     }, null, 2)
-    : "Select a server-produced memory record to inspect its provenance.";
+    : "Select a server-produced memory record to inspect its origin.";
 }
 function bindMemoryList() {
   if (elements.memoryRecords.getAttribute("data-bound") === "true") return;
@@ -91,7 +91,7 @@ function renderMemory() {
       ? "Memory update stopped this replay. See Failure for details."
       : "No retained evidence yet.";
     elements.memoryRecords.appendChild(noSnapshot);
-    elements.memorySelected.textContent = "Select a server-produced memory record to inspect its provenance.";
+    elements.memorySelected.textContent = "Select a server-produced memory record to inspect its origin.";
     return;
   }
   var metadata = memory.metadata || {};

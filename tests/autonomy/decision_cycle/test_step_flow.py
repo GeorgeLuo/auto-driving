@@ -11,7 +11,7 @@ from autonomy.decision_cycle.cycle import (
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -60,9 +60,9 @@ class DecisionStageFlowTests(unittest.TestCase):
                     kind="signal",
                     label="path clear evidence",
                     confidence=0.9,
-                    provenance=MemoryProvenance(
+                    origin=MemoryOrigin(
                         observation_id=observation.observation_id,
-                        evidence_id="path_clear",
+                        observed_id="path_clear",
                         coordinate_frame="image",
                         observed_at_ms=701,
                         updated_at_ms=702,

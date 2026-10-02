@@ -101,7 +101,7 @@ def _evidence_projection(
 
     The accepted cycle remains available unchanged under ``provenance``. This
     projection is the machine-visible rendering gate: an unavailable record
-    carries its raw provenance but never carries renderable geometry.
+    carries its raw origin but never carries renderable geometry.
     """
 
     observation_value = (
@@ -135,27 +135,27 @@ def _evidence_projection(
     projected: list[dict[str, Any]] = []
     for record in raw_records:
         record_id = record.get("record_id") if isinstance(record, dict) else None
-        provenance = record.get("provenance") if isinstance(record, dict) else None
+        origin = record.get("origin") if isinstance(record, dict) else None
         reason = ""
         matched_thing: dict[str, Any] | None = None
         if not isinstance(record, dict) or type(record_id) is not str or not record_id:
             reason = "invalid_record"
-        elif not isinstance(provenance, dict):
+        elif not isinstance(origin, dict):
             reason = "provenance_unavailable"
-        elif provenance.get("frame_id") != frame_id:
+        elif origin.get("frame_id") != frame_id:
             reason = "source_image_unavailable"
         elif type(observation_id) is not str or not observation_id:
             reason = "observation_unavailable"
-        elif provenance.get("observation_id") != observation_id:
+        elif origin.get("observation_id") != observation_id:
             reason = "observation_mismatch"
-        elif type(provenance.get("evidence_id")) is not str or not provenance.get("evidence_id"):
+        elif type(origin.get("observed_id")) is not str or not origin.get("observed_id"):
             reason = "provenance_unavailable"
         else:
             matches = [
                 thing
                 for thing in things
                 if isinstance(thing, dict)
-                and thing.get("thing_id") == provenance["evidence_id"]
+                and thing.get("thing_id") == origin["observed_id"]
             ]
             if not matches:
                 reason = "evidence_missing"
@@ -169,8 +169,8 @@ def _evidence_projection(
             if source_plugin_id is None:
                 source_plugin_id = observation_plugin_id
             if (
-                provenance.get("coordinate_frame") != "image"
-                or provenance.get("source_plugin_id") != source_plugin_id
+                origin.get("coordinate_frame") != "image"
+                or origin.get("source_plugin_id") != source_plugin_id
             ):
                 reason = "provenance_mismatch"
             elif not _supported_image_bbox(record.get("location")):
@@ -189,7 +189,7 @@ def _evidence_projection(
                 "record_id": record_id if type(record_id) is str else None,
                 "status": "available" if available else "unavailable",
                 "reason": reason,
-                "provenance": _json_copy(provenance) if isinstance(provenance, dict) else None,
+                "origin": _json_copy(origin) if isinstance(origin, dict) else None,
                 "record": _json_copy(record) if available else None,
             }
         )

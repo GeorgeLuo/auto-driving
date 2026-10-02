@@ -119,7 +119,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles stream memory` | Inspects live memory as a key→value ledger (terminal + local `/memory` map page on PiCar). Keys are `record_id`s; click a key to see the retained value. |
 | `vehicles memory enable / disable` | Select staged memory plugins; a running local automation applies the change on its next cycle. Multiple plugins run in selection order. |
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
-| `vehicles memory replay` | Offline: feeds a fixed observation sequence through staged (or ephemeral) memory and reports a stable end-state digest. Writes no history by default; pass `--record` for a bounded provenance extract under `lab/runs/memory-replay/`. |
+| `vehicles memory replay` | Offline: feeds a fixed observation sequence through staged (or ephemeral) memory and reports a stable end-state digest. Writes no history by default; pass `--record` for a bounded origin extract under `lab/runs/memory-replay/`. |
 | `vehicles memory check` | Lifecycle gates: present retention, dropout survival, max-age expiry, and reset (no movement). Chase/offline uses a phase script; PiCar samples live publications with placement prompts. Optional `--record` writes report + extract (and Pi JPEGs) under `lab/runs/memory-check/`. |
 | `vehicles perception viability` | Perception health check: 60s onboard cadence/freshness measurement on a PiCar (RSS when the vehicle supplies an `ssh_target`); the simulator passes with a stub. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |

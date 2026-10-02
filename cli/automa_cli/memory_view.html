@@ -519,11 +519,11 @@
           value.location.bbox_xyxy_norm.map((n) => Number(n).toFixed(3)).join(", ")
         );
       }
-      appendMetric(valueSummary, "provenance.frame_id", value.provenance?.frame_id || "—");
-      appendMetric(valueSummary, "provenance.observation_id", value.provenance?.observation_id || "—");
-      appendMetric(valueSummary, "provenance.evidence_id", value.provenance?.evidence_id || "—");
-      appendMetric(valueSummary, "provenance.updated_at_ms", value.provenance?.updated_at_ms ?? "—");
-      appendMetric(valueSummary, "source_plugin", value.provenance?.source_plugin_id || "—");
+      appendMetric(valueSummary, "origin.frame_id", value.origin?.frame_id || "—");
+      appendMetric(valueSummary, "origin.observation_id", value.origin?.observation_id || "—");
+      appendMetric(valueSummary, "origin.observed_id", value.origin?.observed_id || "—");
+      appendMetric(valueSummary, "origin.updated_at_ms", value.origin?.updated_at_ms ?? "—");
+      appendMetric(valueSummary, "source_plugin", value.origin?.source_plugin_id || "—");
       valueJson.textContent = JSON.stringify(value, null, 2);
     }
 

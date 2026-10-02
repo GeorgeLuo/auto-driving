@@ -18,7 +18,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
@@ -48,7 +48,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
@@ -78,7 +78,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
@@ -119,7 +119,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             [
                 {
                     "record_id": "thing:obstacle_000",
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
@@ -155,7 +155,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 {
                     "record_id": "thing:obstacle_000",
                     "updated_at_ms": old,
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000010",
                         "updated_at_ms": old,
                     },
@@ -170,7 +170,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 {
                     "record_id": "thing:new_obstacle",
                     "updated_at_ms": now,
-                    "provenance": {
+                    "origin": {
                         "frame_id": "chase_frame_000013",
                         "updated_at_ms": now,
                     },

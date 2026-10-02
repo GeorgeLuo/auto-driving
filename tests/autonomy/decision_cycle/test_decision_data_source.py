@@ -12,7 +12,7 @@ from autonomy.decision_cycle.proposal.inputs import (
     ready_envelope,
     unavailable_envelope,
 )
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from tests.support.action_fixtures import decision_chain, packaged_decision_chain
 
@@ -23,9 +23,9 @@ def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> Ret
         kind=kind,
         label=kind,
         confidence=0.9,
-        provenance=MemoryProvenance(
+        origin=MemoryOrigin(
             observation_id="obs",
-            evidence_id="ev",
+            observed_id="ev",
             coordinate_frame="image",
             observed_at_ms=1000,
             updated_at_ms=1000,

@@ -62,18 +62,42 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         with self.assertRaises(DecisionSurfaceError):
             strict_decode_apply_evidence(bad_location)
 
-        missing_provenance_key = [dict(good_evidence[0])]
-        missing_provenance_key[0]["provenance"] = {
+        missing_origin_key = [dict(good_evidence[0])]
+        missing_origin_key[0]["origin"] = {
             key: value
-            for key, value in good_evidence[0]["provenance"].items()
+            for key, value in good_evidence[0]["origin"].items()
             if key != "updated_at_ms"
         }
         with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_evidence(missing_provenance_key)
+            strict_decode_apply_evidence(missing_origin_key)
 
         # complete export accepted
         strict_decode_apply_observation(good_obs)
         self.assertEqual(len(strict_decode_apply_evidence(good_evidence)), len(good_evidence))
+
+    def test_strict_decode_rejects_retired_record_shapes(self) -> None:
+        # Transitional guard: a recording made before the rename is rejected,
+        # not read through an alias. Delete once no such recording is expected.
+        from cli.automa_cli.decision import DecisionSurfaceError
+
+        def retired_origin_key(record: dict) -> None:
+            record["provenance"] = record.pop("origin")
+
+        def retired_observed_id_key(record: dict) -> None:
+            origin = dict(record["origin"])
+            origin["evidence_id"] = origin.pop("observed_id")
+            record["origin"] = origin
+
+        good_evidence = json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
+            "evidence"
+        ]
+        for mutate in (retired_origin_key, retired_observed_id_key):
+            with self.subTest(shape=mutate.__name__):
+                recorded = dict(good_evidence[0])
+                mutate(recorded)
+                with self.assertRaises(DecisionSurfaceError) as ctx:
+                    strict_decode_apply_evidence([recorded])
+                self.assertEqual(ctx.exception.error, "run_invalid")
 
     def test_canonical_json_utf8_not_length_only(self) -> None:
         a = {"a": 1, "b": 2}

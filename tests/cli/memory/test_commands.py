@@ -61,11 +61,9 @@ class MemoryCommandTests(unittest.TestCase):
 
             info_payload = json.loads(info.stdout)
             self.assertEqual(info_payload["schema"], "vehicle_memory_info_v0")
-            self.assertEqual(info_payload["activation"]["plugin_id"], "bounded_evidence")
-            self.assertEqual(
-                info_payload["activation"]["plugin_id"],
-                "bounded_evidence",
-            )
+            self.assertEqual(info_payload["activation"]["plugins"], ["bounded_evidence"])
+            # A step holds a list of plugins; none of them stands for the step.
+            self.assertNotIn("plugin_id", info_payload["activation"])
             # Retention bounds belong to the plugin, not the activation.
             self.assertNotIn("bounds", info_payload["activation"])
 
@@ -94,11 +92,6 @@ class MemoryCommandTests(unittest.TestCase):
                 self.assertEqual(activation["plugins"], selected)
                 self.assertEqual(
                     activation["available_plugins"], ["bounded_evidence", "multi_obstruction_tracks"]
-                )
-                self.assertEqual(activation["plugin_id"], selected[-1] if selected else None)
-                self.assertEqual(
-                    activation["plugin_id"],
-                    "bounded_evidence" if selected else None,
                 )
                 if command == "disable" and changed:
                     replay = run_automa(

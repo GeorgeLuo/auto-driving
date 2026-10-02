@@ -1554,7 +1554,7 @@ def run_physical_memory_check(
     present_keys: set[str] = set()
     prior_epoch: str | None = None
     prior_reset_count: int | None = None
-    plugin_id_live: str | None = None
+    plugin_ids_live: list[str] = []
     max_age_ms: int | None = None
 
     def capture(placement: str, index: int, message: str) -> dict[str, Any] | CommandResult:
@@ -1664,11 +1664,7 @@ def run_physical_memory_check(
         return present_cap
     all_frames.append(present_cap["frame"])
     present_mem = present_cap["live_memory"]
-    plugin_id_live = (
-        str(present_mem.get("plugin_id"))
-        if present_mem.get("plugin_id") is not None
-        else None
-    )
+    plugin_ids_live = [str(item) for item in present_mem.get("plugin_ids") or []]
     bounds = present_mem.get("bounds") if isinstance(present_mem.get("bounds"), dict) else {}
     if bounds.get("max_age_ms") is not None:
         try:
@@ -1849,7 +1845,7 @@ def run_physical_memory_check(
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": "picar",
-        "plugin_id": plugin_id_live,
+        "plugin_ids": plugin_ids_live,
         "activation": "live_onboard",
         "passed": passed,
         "phases": ["present", "dropout", "expiry", "reset"],
@@ -1886,7 +1882,7 @@ def run_physical_memory_check(
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
     lines = [
         f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
-        f"Implementation: {plugin_id_live or 'live_onboard'}",
+        f"Plugins: {', '.join(plugin_ids_live) or 'live_onboard'}",
         "Lifecycle source: live onboard step",
         "Phases: "
         + ", ".join(
@@ -1934,7 +1930,7 @@ def live_memory_from_probe(probe: dict[str, Any]) -> dict[str, Any] | None:
         "record_count": record_count,
         "records": records,
         "epoch_id": probe.get("last_epoch_id"),
-        "plugin_id": probe.get("plugin_id"),
+        "plugin_ids": probe.get("plugin_ids"),
         "bounds": probe.get("bounds"),
     }
 

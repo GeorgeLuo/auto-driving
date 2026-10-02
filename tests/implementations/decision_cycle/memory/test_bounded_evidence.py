@@ -266,7 +266,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             self.assertEqual(state["health"], "healthy")
             self.assertEqual(state["record_count"], 1)
             self.assertEqual(state["plugin_id"], "bounded_evidence")
-            self.assertEqual(step.status()["plugin_id"], "bounded_evidence")
+            self.assertEqual(step.status()["plugin_ids"], ["bounded_evidence"])
             self.assertEqual(shared_memory[LEDGER_KEY].to_dict(), state)
             self.assertEqual(shared_memory[EVIDENCE_KEY], shared_memory[LEDGER_KEY].records)
 

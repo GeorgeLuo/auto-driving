@@ -351,8 +351,6 @@ def run_vehicle_automation(
         "memory": (
             {
                 "activation": display_path(memory_activation_path),
-                "plugin_id": memory_step.status()["plugin_id"],
-                "plugin_spec": memory_step.status()["plugin_spec"],
                 "status": memory_step.status(),
             }
             if memory_step is not None
@@ -488,8 +486,6 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "plugin_id": memory_step.status()["plugin_id"],
-                    "plugin_spec": memory_step.status()["plugin_spec"],
                     "status": memory_step.status(),
                 }
             state["updated_at_ms"] = _timestamp_ms()
@@ -728,8 +724,6 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "plugin_id": memory_step.status()["plugin_id"],
-                    "plugin_spec": memory_step.status()["plugin_spec"],
                     "status": memory_step.status(),
                 }
             perception_state = state.get("perception")

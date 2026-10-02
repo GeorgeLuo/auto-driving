@@ -30,7 +30,6 @@ class MultiObstructionMemoryTests(unittest.TestCase):
         tracked = shared_memory["decision.observation"]
         self.assertEqual([thing["thing_id"] for thing in tracked.things], ["obstruction_track_000"])
         self.assertEqual(tracked.metadata["tracking"]["track_events"], {0: "new"})
-        self.assertEqual(tracked.metadata["tracking_implementation"], "multi_obstruction_tracks")
         self.assertFalse(
             any(signal["signal_id"] == "multi_obstruction_candidates" for signal in tracked.signals)
         )

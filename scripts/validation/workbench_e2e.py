@@ -7,9 +7,10 @@ shown by seeking, as the page does, and compared with
 ``automa vehicles perception inspect`` over the same directory and plugins: the
 workbench must show the frame, status, and per-plugin signal and thing counts
 the CLI reports. Memory and decision state must be present for every frame.
-A second pass changes the plugin selection through the API while paused,
-running, seeking, and looping. A third selects memory plugins and compares them
-with the activation ``automa vehicles update memory --dry-run`` reports.
+The plugins are the ``multi_obstruction`` perception preset. A second pass
+changes the plugin selection through the API while paused, running, seeking,
+and looping. A third selects the plugins of memory presets and compares them
+with the activation ``automa vehicles update memory --preset --dry-run`` reports.
 
     scripts/validation/workbench_e2e.py
 """
@@ -27,7 +28,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121"
+PERCEPTION_PRESET = "multi_obstruction"
 PLUGINS = ("multi_obstruction_tracks", "floor_continuity", "classical_regions")
+MEMORY_PRESETS = ("multi_obstruction", "multi_obstruction_with_ledger")
 RUN_KEYS = ("plugin_id", "status", "error", "signal_count", "thing_count")
 
 
@@ -42,17 +45,17 @@ def plugin_options() -> list[str]:
     return options
 
 
-def inspect_frames() -> list[dict]:
-    """Frames as the CLI reports them for the same source and plugins."""
+def inspect_report() -> dict:
+    """The CLI's report for the same source, with the perception preset."""
 
     completed = subprocess.run(
-        automa("perception", "inspect", str(SOURCE), *plugin_options(), "--json"),
+        automa("perception", "inspect", str(SOURCE), "--preset", PERCEPTION_PRESET, "--json"),
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     if completed.returncode != 0:
         sys.stderr.write(completed.stderr)
         raise SystemExit(f"perception inspect exited {completed.returncode}")
-    return json.loads(completed.stdout)["frames"]
+    return json.loads(completed.stdout)
 
 
 class Workbench:
@@ -111,8 +114,15 @@ def runs(current: dict) -> list[str]:
 def check_parity() -> list[str]:
     """Show every frame of a finished run and compare it with ``inspect``."""
 
-    expected = inspect_frames()
+    report = inspect_report()
+    expected = report["frames"]
     problems: list[str] = []
+    mapper = report["mapper"]
+    if mapper["preset"] != PERCEPTION_PRESET or mapper["config"]["plugins"] != list(PLUGINS):
+        problems.append(
+            f"preset {PERCEPTION_PRESET} runs {mapper['config']['plugins']}, "
+            f"the workbench is served {list(PLUGINS)}"
+        )
     try:
         with serve() as workbench:
             started = workbench.wait_for(lambda s: s["position"] >= 1)
@@ -213,19 +223,21 @@ def check_memory_selector() -> list[str]:
             run_id = current["run_id"]
             paused = workbench.act(action="pause", run_id=run_id)
             position, frame_id = paused["position"], paused["current_frame"]["frame_id"]
-            for plugins in (["multi_obstruction_tracks"], ["bounded_evidence", "multi_obstruction_tracks"]):
-                label = "+".join(plugins)
-                options = [option for plugin in plugins for option in ("--plugin", plugin)]
+            for preset in MEMORY_PRESETS:
+                label = preset
                 completed = subprocess.run(
-                    automa("update", "memory", "--id", "workbench-e2e", *options, "--dry-run", "--json"),
+                    automa("update", "memory", "--id", "workbench-e2e", "--preset", preset, "--dry-run", "--json"),
                     cwd=ROOT, capture_output=True, text=True, check=False,
                 )
                 if completed.returncode != 0:
                     problems.append(f"{label}: update memory exited {completed.returncode}")
                     continue
-                expected = json.loads(completed.stdout)["manifest"]["plugins"]
+                manifest = json.loads(completed.stdout)["manifest"]
+                expected = manifest["plugins"]
+                if manifest["metadata"]["preset"] != preset:
+                    problems.append(f"{label}: update memory recorded preset {manifest['metadata']['preset']}")
                 selected = workbench.act(
-                    action="select_plugins", run_id=run_id, step="memory", active_plugin_ids=plugins,
+                    action="select_plugins", run_id=run_id, step="memory", active_plugin_ids=expected,
                 )
                 applied = selected["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"]
                 if applied != expected or selected["active_memory_plugin_ids"] != expected:

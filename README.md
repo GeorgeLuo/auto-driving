@@ -110,7 +110,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
-| `vehicles update memory` | Packages code and stages vehicle memory plugins locally (default `bounded_evidence`). |
+| `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
 | `vehicles info ...` | Reads staged perception, decision steps, or memory configuration; perception info also reports the live view URL. |
 | `vehicles decision inspect` | Opens a standalone inspector for saved decision inputs. Toggle obstruction side to inspect the proposal, plan, and action records; no live worker is needed. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
@@ -259,7 +259,7 @@ not part of either observer.
 
 The staged perception schema reports the available and enabled plugins. Stage
 a preset or an ordered plugin list; the plugins replace the staged selection and
-are recorded as the `custom` preset. A running worker applies the updated
+are recorded as the preset they equal, else `custom`. A running worker applies the updated
 selection at the next perception frame; if automation is stopped, it uses the
 selection the next time it starts:
 
@@ -267,6 +267,18 @@ selection the next time it starts:
 ./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles update perception --id chase-sim-chaser --plugin frame --plugin floor_plane
 ./cli/automa vehicles update perception --id chase-sim-chaser --preset visual_observer
+```
+
+### Memory Presets
+
+Memory is selected the same way. `--preset` names a preset from
+`implementations/decision_cycle/memory/presets.py`; `--plugin` selects packaged
+memory plugins in order, and is recorded as the preset it equals, else `custom`.
+The two are exclusive:
+
+```sh
+./cli/automa vehicles update memory --id chase-sim-chaser --preset multi_obstruction
+./cli/automa vehicles update memory --id chase-sim-chaser --plugin bounded_evidence --plugin multi_obstruction_tracks
 ```
 
 ## Physical PiRacer Workflow

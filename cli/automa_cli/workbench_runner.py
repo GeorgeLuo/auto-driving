@@ -18,8 +18,8 @@ from autonomy.decision_cycle.perception.interface import (
     PerceptionBackend,
     PerceptionText,
 )
-from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
-from implementations.decision_cycle.perception.presets import CUSTOM_PERCEPTION_PRESET
+from implementations.decision_cycle.catalog import CUSTOM_PRESET
+from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
 
 from .memory_report import memory_state
 from .workbench_contract import (
@@ -162,7 +162,7 @@ class ImageReplayRunner:
         try:
             return str(self._plugin_catalog.activation(plugin_ids).metadata["preset"])
         except PluginCatalogError:
-            return CUSTOM_PERCEPTION_PRESET
+            return CUSTOM_PRESET
 
     def _plugin_configuration(self) -> dict[str, Any]:
         return {
@@ -743,7 +743,7 @@ class ImageReplayRunner:
         plugins = report.get("plugins") if isinstance(report, dict) else None
         if isinstance(plugins, list) and plugins and plugins[-1].get("plugin_id"):
             return str(plugins[-1]["plugin_id"])
-        return DEFAULT_MEMORY_PLUGIN
+        return DEFAULT_MEMORY_PLUGINS[0]
 
     def _set_loop(self, loop: bool | None) -> dict[str, Any]:
         if not isinstance(loop, bool):

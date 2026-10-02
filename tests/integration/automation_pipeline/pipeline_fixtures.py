@@ -11,7 +11,7 @@ from autonomy.decision_cycle.perception.interface import (
     PerceptionText,
 )
 from cli.automa_cli import automation as automation_module
-from implementations.decision_cycle.catalog import packaged_activation, perception_preset_activation
+from implementations.decision_cycle.catalog import packaged_activation, preset_activation
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 
 
@@ -141,7 +141,7 @@ def _write_activations(
 ) -> None:
     """Stage perception and the packaged proposals; plan and action run their built-ins."""
 
-    packaged = perception_preset_activation(preset)
+    packaged = preset_activation("perception", preset)
     activation = step_activation(
         "perception",
         packaged.plugins if plugins is None else plugins,

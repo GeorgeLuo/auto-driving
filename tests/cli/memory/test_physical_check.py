@@ -107,7 +107,7 @@ class MemoryCheckTests(unittest.TestCase):
                     "last_record_count": 5,
                     "last_epoch_id": "epoch-1",
                     "reset_count": 1,
-                    "plugin_id": "bounded_evidence",
+                    "plugin_ids": ["bounded_evidence"],
                 }
             return {
                 "status": "live",
@@ -115,7 +115,7 @@ class MemoryCheckTests(unittest.TestCase):
                 "last_record_count": 4,
                 "last_epoch_id": "epoch-2",
                 "reset_count": 2,
-                "plugin_id": "bounded_evidence",
+                "plugin_ids": ["bounded_evidence"],
             }
 
         with tempfile.TemporaryDirectory() as tmp:

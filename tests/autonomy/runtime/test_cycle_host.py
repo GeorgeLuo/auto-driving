@@ -133,7 +133,7 @@ class CycleHostMemoryTests(unittest.TestCase):
                 sorted(["perception", "observation", "memory", "proposal", "plan", "action"]),
             )
             self.assertIsNone(status["steps"]["perception"])
-            self.assertEqual(status["steps"]["memory"]["plugin_id"], "recording_test")
+            self.assertEqual(status["steps"]["memory"]["plugin_ids"], ["recording_test"])
             self.assertEqual(
                 status["steps"]["memory"]["plugins"][0]["state"]["epoch_id"], "epoch-1"
             )

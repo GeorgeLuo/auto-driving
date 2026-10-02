@@ -8,7 +8,6 @@ resulting state to both the CLI and a small loopback HTTP page.
 
 from __future__ import annotations
 
-import json
 import os
 import time
 import webbrowser
@@ -20,7 +19,6 @@ from .workbench_contract import (
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
     WORKBENCH_DEFAULT_PACE,
-    WORKBENCH_ERROR_SCHEMA,
     WORKBENCH_HOST,
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
@@ -53,13 +51,10 @@ def run_workbench_replay(
     port: int = 0,
     serve: bool = False,
     open_browser: bool = False,
-    json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
     """Run one CLI replay, optionally keeping the loopback workbench alive."""
 
-    if json_output and (serve or open_browser):
-        return CommandResult(2, "--json cannot be combined with --serve or --open")
     if open_browser:
         serve = True
     runner: ImageReplayRunner | None = None
@@ -97,11 +92,6 @@ def run_workbench_replay(
                 return CommandResult(0, "workbench server stopped")
         state = runner.wait()
         exit_code = 0 if state.get("phase") == "completed" else 2
-        if json_output:
-            return CommandResult(
-                exit_code,
-                json.dumps(state, indent=2, sort_keys=True),
-            )
         return CommandResult(
             exit_code,
             _format_workbench_status(
@@ -111,17 +101,6 @@ def run_workbench_replay(
             ),
         )
     except (ReplayActionError, SourceValidationError) as exc:
-        state = runner.state() if runner is not None else None
-        if json_output:
-            payload = {
-                "schema": WORKBENCH_ERROR_SCHEMA,
-                "ok": False,
-                "boundary": getattr(exc, "boundary", "input"),
-                "message": str(exc),
-            }
-            if state is not None:
-                payload["state"] = state
-            return CommandResult(2, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(2, f"Workbench replay failed: {exc}")
     finally:
         if server is not None:

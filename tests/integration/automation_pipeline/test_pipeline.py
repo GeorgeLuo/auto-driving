@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.perception import set_vehicle_perception_plugin
+from cli.automa_cli.perception import update_vehicle_perception
 from tests.integration.automation_pipeline.pipeline_fixtures import (
     _FakeCar,
     _SlowMapper,
@@ -15,8 +15,23 @@ from tests.integration.automation_pipeline.pipeline_fixtures import (
 )
 
 
+_READY_STATUS = {
+    "layers": {
+        name: {"state": state}
+        for name, state in {
+            "simulator_server": "reachable",
+            "simulator_frontend": "connected",
+            "chase_game": "ready",
+            "vehicle": "discoverable",
+            "passive_capture": "available",
+            "automation_deployment": "deployed",
+        }.items()
+    },
+}
+
+
 class AutomationLivePipelineTests(unittest.TestCase):
-    def test_cli_plugin_enable_disable_updates_running_mapper_on_next_frame(self) -> None:
+    def test_cli_plugin_update_changes_running_mapper_on_next_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             vehicle_id = "chase-sim-chaser"
@@ -52,19 +67,17 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     applied_selections.append(tuple(mapper.plugin_ids))
                     if len(applied_selections) == 1:
                         cli_updates.append(
-                            set_vehicle_perception_plugin(
+                            update_vehicle_perception(
                                 vehicle_id=vehicle_id,
-                                plugin_id="floor_plane",
-                                enabled=True,
+                                plugins=["frame", "floor_plane"],
                                 json_output=True,
                             )
                         )
                     elif len(applied_selections) == 2:
                         cli_updates.append(
-                            set_vehicle_perception_plugin(
+                            update_vehicle_perception(
                                 vehicle_id=vehicle_id,
-                                plugin_id="frame",
-                                enabled=False,
+                                plugins=["floor_plane"],
                                 json_output=True,
                             )
                         )
@@ -75,6 +88,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.perception.RUNTIME_ROOT", runtime_root),
+                patch(
+                    "cli.automa_cli.perception.get_vehicle_status",
+                    return_value=_READY_STATUS,
+                ),
                 patch(
                     "cli.automa_cli.automation.discover_active_vehicles",
                     return_value={},

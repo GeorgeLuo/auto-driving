@@ -49,11 +49,15 @@ def run_physical_viability_measurement(
     fetch_publication: Callable[[str], dict[str, Any]] | None = None,
     sample_host_metrics: Callable[[], dict[str, Any]] | None = None,
 ) -> CommandResult:
-    """Measure onboard observation cadence/freshness for the deployed Pi observer."""
+    """Health-check perception on a vehicle, dispatching on its provider.
+
+    A PiCar is measured for onboard cadence/freshness. The simulator has no
+    probe yet and passes automatically; any other provider is refused.
+    """
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
-        include_chase_sim=False,
+        include_chase_sim=True,
         include_inactive=True,
     )
     vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
@@ -70,11 +74,14 @@ def run_physical_viability_measurement(
         )
     if vehicle is None:
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-    if vehicle.get("provider") != "picar":
+    provider = vehicle.get("provider")
+    if provider == "chase-sim":
+        return _simulator_stub_result(vehicle_id, json_output=json_output)
+    if provider != "picar":
         return CommandResult(
             2,
-            f"Vehicle {vehicle_id!r} is provider {vehicle.get('provider')!r}; "
-            "viability measurement supports physical PiCar only.",
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
+            "no perception viability probe exists for it.",
         )
     base_url = picar_base_url(vehicle)
     if not base_url:
@@ -83,7 +90,7 @@ def run_physical_viability_measurement(
     get_pub = fetch_publication or (
         lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
     )
-    host_sampler = sample_host_metrics or (lambda: _sample_pi_process_metrics())
+    host_sampler = sample_host_metrics or _ssh_host_sampler(vehicle)
 
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
@@ -92,7 +99,7 @@ def run_physical_viability_measurement(
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    _emit(output, "Physical perception viability measurement")
+    _emit(output, "Perception viability measurement")
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"endpoint: {base_url}")
     _emit(output, f"duration_s: {duration_s}")
@@ -135,7 +142,7 @@ def run_physical_viability_measurement(
                 }
             )
 
-        if now >= next_host_sample:
+        if host_sampler is not None and now >= next_host_sample:
             try:
                 host = host_sampler()
                 host["t_s"] = round(now - started, 3)
@@ -188,7 +195,7 @@ def run_physical_viability_measurement(
         "limits": [
             "Polls the publication endpoint; does not instrument in-process Donkey loop counters directly.",
             "Freshness uses frame_id transitions and published result_age_ms/duration_ms fields.",
-            "Host RSS/CPU are sampled from the remote manage.py process when SSH metrics are available.",
+            "Host RSS/CPU are sampled only when the vehicle supplies an ssh_target connection field.",
         ],
     }
 
@@ -206,6 +213,33 @@ def run_physical_viability_measurement(
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
     return CommandResult(exit_code, _format_report(report))
+
+
+def _simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
+    # The simulator has no viability probe yet; it passes without measuring.
+    report = {
+        "schema": "automa_physical_perception_viability_v0",
+        "vehicle_id": vehicle_id,
+        "provider": "chase-sim",
+        "passed": True,
+        "stub": True,
+        "gates": [],
+        "note": "No simulator viability probe exists yet; passing without measurement.",
+    }
+    if json_output:
+        return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
+    return CommandResult(
+        0,
+        f"Perception viability: PASS (stub)\nvehicle: {vehicle_id}\n{report['note']}",
+    )
+
+
+def _ssh_host_sampler(vehicle: dict[str, Any]) -> Callable[[], dict[str, Any]] | None:
+    connection = vehicle.get("connection")
+    target = connection.get("ssh_target") if isinstance(connection, dict) else None
+    if not target:
+        return None
+    return lambda: _sample_pi_process_metrics(ssh_target=str(target))
 
 
 def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float) -> dict[str, Any]:
@@ -353,10 +387,7 @@ def _evaluate_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _sample_pi_process_metrics(
-    *,
-    ssh_target: str = "piracer@piracer.local",
-) -> dict[str, Any]:
+def _sample_pi_process_metrics(*, ssh_target: str) -> dict[str, Any]:
     remote = (
         "pid=$(pgrep -f 'manage.py drive' | head -1); "
         "if [ -z \"$pid\" ]; then echo '{\"error\":\"manage.py drive process not found\"}'; exit 0; fi; "
@@ -426,7 +457,7 @@ def _first_number(values) -> float | None:
 def _format_report(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
-        f"Physical perception viability: {'PASS' if report['passed'] else 'FAIL'}",
+        f"Perception viability: {'PASS' if report['passed'] else 'FAIL'}",
         f"vehicle: {report['vehicle_id']}",
         f"endpoint: {report['base_url']}",
         f"elapsed_s: {metrics.get('elapsed_s')}",
@@ -455,7 +486,7 @@ def _format_report(report: dict[str, Any]) -> str:
 def _format_markdown(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
-        "# Physical perception viability",
+        "# Perception viability",
         "",
         f"- result: `{'PASS' if report['passed'] else 'FAIL'}`",
         f"- vehicle: `{report['vehicle_id']}`",

@@ -32,7 +32,7 @@ class MemoryActivationTests(unittest.TestCase):
             observation = Observation(
                 observation_id="obs_1",
                 created_at_ms=90,
-                sensor_snapshot={},
+                sensor_frame={},
                 summary=("hello",),
             )
             result = DecisionCycle(

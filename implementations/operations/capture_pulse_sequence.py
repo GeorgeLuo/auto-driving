@@ -42,7 +42,7 @@ def run_capture_pulse_sequence(
 
     for index, step in enumerate(steps):
         label = safe_label_suffix(step.label)
-        before_snapshot = car.read_sensors(
+        before_sensor_frame = car.read_sensors(
             SensorReadRequest(
                 output_dir=frames_dir,
                 read_id=f"{index:02d}_{label}_before",
@@ -51,7 +51,7 @@ def run_capture_pulse_sequence(
                 image_extension=image_extension,
             ),
         )
-        before_reading = before_snapshot.readings[FRONT_CAMERA_SENSOR_ID]
+        before_reading = before_sensor_frame.readings[FRONT_CAMERA_SENSOR_ID]
         if before_reading.path is None:
             raise RuntimeError(f"sensor {FRONT_CAMERA_SENSOR_ID!r} did not return an image path")
         before_path = Path(before_reading.path)
@@ -64,7 +64,7 @@ def run_capture_pulse_sequence(
         else:
             command = car.execute_pulse(step.pulse)
 
-        after_snapshot = car.read_sensors(
+        after_sensor_frame = car.read_sensors(
             SensorReadRequest(
                 output_dir=frames_dir,
                 read_id=f"{index:02d}_{label}_after",
@@ -73,7 +73,7 @@ def run_capture_pulse_sequence(
                 image_extension=image_extension,
             ),
         )
-        after_reading = after_snapshot.readings[FRONT_CAMERA_SENSOR_ID]
+        after_reading = after_sensor_frame.readings[FRONT_CAMERA_SENSOR_ID]
         if after_reading.path is None:
             raise RuntimeError(f"sensor {FRONT_CAMERA_SENSOR_ID!r} did not return an image path")
         after_path = Path(after_reading.path)
@@ -86,8 +86,8 @@ def run_capture_pulse_sequence(
                 "label": step.label,
                 "pulse": step.pulse.to_dict(),
                 "dry_run": dry_run,
-                "before_sensor_snapshot": before_snapshot.to_dict(),
-                "after_sensor_snapshot": after_snapshot.to_dict(),
+                "before_sensor_frame": before_sensor_frame.to_dict(),
+                "after_sensor_frame": after_sensor_frame.to_dict(),
                 "before_capture": before_capture,
                 "after_capture": after_capture,
                 "before_observation": before_observation,

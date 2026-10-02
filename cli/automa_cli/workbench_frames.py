@@ -18,7 +18,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionBackend, PerceptionText
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 
 from .perception_runs import run_perception
@@ -26,7 +26,7 @@ from .workbench_contract import WORKBENCH_SEQUENCE_ID
 from .workbench_source import ReplayFrame
 
 
-def snapshot_for_frame(frame: ReplayFrame) -> SensorSnapshot | None:
+def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
     if frame.absent or frame.image_path is None:
         return None
     reading = SensorReading(
@@ -40,7 +40,7 @@ def snapshot_for_frame(frame: ReplayFrame) -> SensorSnapshot | None:
             "sequence_index": frame.position,
         },
     )
-    return SensorSnapshot(
+    return SensorFrame(
         read_id=frame.frame_id,
         readings={FRONT_CAMERA_SENSOR_ID: reading},
         started_at_ms=frame.timestamp_ms,
@@ -117,12 +117,12 @@ def run_frame(
 ) -> FrameOutcome:
     """Run one frame through every step with the given active plugins."""
 
-    snapshot = snapshot_for_frame(frame)
+    sensor_frame = sensor_frame_for_replay_frame(frame)
     context = DecisionFrameContext(
         frame_id=frame.frame_id,
         frame_index=frame.frame_index,
         timestamp_ms=frame.timestamp_ms,
-        sensor_snapshot=snapshot,
+        sensor_frame=sensor_frame,
         mode="workbench_replay",
         shared_memory=shared_memory,
         metadata={
@@ -133,12 +133,12 @@ def run_frame(
     )
 
     def perceive(current: DecisionFrameContext) -> PerceptionText | None:
-        if frame.absent or current.sensor_snapshot is None:
+        if frame.absent or current.sensor_frame is None:
             mapper.reset(current.shared_memory)
             return None
         return run_perception(
             mapper,
-            current.sensor_snapshot,
+            current.sensor_frame,
             shared_memory=current.shared_memory,
             metadata={
                 "source": WORKBENCH_SEQUENCE_ID,
@@ -153,7 +153,7 @@ def run_frame(
     ) -> Observation:
         return observation_from_perception(
             observation_id=f"{frame.source_id}:{frame.frame_id}",
-            sensor_snapshot=current.sensor_snapshot,
+            sensor_frame=current.sensor_frame,
             perception=perception,
             metadata={
                 "source": WORKBENCH_SEQUENCE_ID,

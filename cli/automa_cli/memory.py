@@ -53,7 +53,7 @@ from .physical_observation import (
     post_memory_reset,
 )
 from .streaming import _publish_physical_view
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
@@ -1142,8 +1142,8 @@ def reset_vehicle_memory(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
                 ]
             ),
         )
@@ -1375,8 +1375,8 @@ def stream_vehicle_memory(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
                 ]
             ),
         )

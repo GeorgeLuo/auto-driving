@@ -640,7 +640,7 @@ class DecisionView:
                 "url": image_url,
             },
             "provenance": {
-                "sensor_snapshot": _json_copy(transaction.frame_record.get("sensor_snapshot")),
+                "sensor_frame": _json_copy(transaction.frame_record.get("sensor_frame")),
                 "observation": _json_copy(observation),
                 "evidence": _json_copy(evidence_input),
             },

@@ -2057,7 +2057,7 @@ def perception_text_from_publication(publication: dict[str, Any]) -> str:
     error = publication.get("error")
     if error:
         return f"health={health}\nerror={error}"
-    return f"health={health}\n(no perception payload in latest snapshot)"
+    return f"health={health}\n(no perception payload in latest state)"
 
 
 def picar_base_url(vehicle: dict[str, Any]) -> str | None:

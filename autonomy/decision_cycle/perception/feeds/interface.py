@@ -4,7 +4,7 @@ A plugin declares each input as a ``PerceptionPluginInput``: the name it reads,
 the shared feed ID, and the provider spec. A provider receives the
 perception request and that declaration. It raises
 ``PerceptionFeedUnavailable`` when the feed cannot be derived from
-the sensor snapshot.
+the sensor frame.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class PerceptionFeedUnavailable(RuntimeError):
-    """A declared plugin input cannot be derived from the sensor snapshot."""
+    """A declared plugin input cannot be derived from the sensor frame."""
 
 
 @dataclass(frozen=True)

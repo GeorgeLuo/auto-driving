@@ -59,7 +59,7 @@ class ObservationPublicationTests(unittest.TestCase):
         part.run(image_array=image, mode="user")
         part.wait_for_cycle()
 
-        payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms + 10)
+        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms + 10)
         self.assertEqual(payload["health"], "healthy")
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["mode"], "user")
@@ -121,7 +121,7 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(host=host, min_interval_s=0.0, preset="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
+        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
         self.assertIsNotNone(payload["memory"])
         state = payload["memory"]["plugins"][0]["state"]
         self.assertEqual(state["health"], "healthy")
@@ -139,7 +139,7 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.5)
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        completed = part.latest_snapshot.completed_at_ms
+        completed = part.latest_state.completed_at_ms
         stale = part.publish_latest(now_ms=completed + 5_000)
         self.assertEqual(stale["health"], "stale")
         self.assertTrue(stale["ok"])
@@ -156,7 +156,7 @@ class ObservationPublicationTests(unittest.TestCase):
         failing = AutonomyPilotPart(host=Boom(), min_interval_s=0.0)  # type: ignore[arg-type]
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
-        errored = failing.publish_latest(now_ms=failing.latest_snapshot.completed_at_ms)
+        errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)
         self.assertEqual(errored["health"], "error")
         self.assertFalse(errored["ok"])
         self.assertIn("RuntimeError", errored["error"] or "")
@@ -165,7 +165,7 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
         part.run(image_array=None, mode="user")
         part.wait_for_cycle()
-        payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
+        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
         self.assertEqual(payload["health"], "unavailable")
         jpeg, meta = part.publish_latest_frame_jpeg()
         self.assertIsNone(jpeg)
@@ -175,8 +175,8 @@ class ObservationPublicationTests(unittest.TestCase):
         part = self._hold_part()
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        assert part.latest_snapshot is not None
-        completed_at_ms = part.latest_snapshot.completed_at_ms
+        assert part.latest_state is not None
+        completed_at_ms = part.latest_state.completed_at_ms
 
         decision = part.publish_decision_latest(now_ms=completed_at_ms)
         self.assertEqual(decision["schema"], DECISION_PUBLICATION_SCHEMA)
@@ -199,16 +199,16 @@ class ObservationPublicationTests(unittest.TestCase):
             ["avoid_recent_obstruction"],
         )
         self.assertNotIn("producer_pid", published)
-        self.assertEqual(published["frame_id"], part.latest_snapshot.frame_id)
-        self.assertEqual(published["frame_index"], part.latest_snapshot.frame_index)
-        self.assertEqual(published["timestamp_ms"], part.latest_snapshot.captured_at_ms)
+        self.assertEqual(published["frame_id"], part.latest_state.frame_id)
+        self.assertEqual(published["frame_index"], part.latest_state.frame_index)
+        self.assertEqual(published["timestamp_ms"], part.latest_state.captured_at_ms)
         self.assertEqual(
             published["source_frame"],
             {
-                "frame_id": part.latest_snapshot.frame_id,
-                "frame_index": part.latest_snapshot.frame_index,
-                "captured_at_ms": part.latest_snapshot.captured_at_ms,
-                "completed_at_ms": part.latest_snapshot.completed_at_ms,
+                "frame_id": part.latest_state.frame_id,
+                "frame_index": part.latest_state.frame_index,
+                "captured_at_ms": part.latest_state.captured_at_ms,
+                "completed_at_ms": part.latest_state.completed_at_ms,
             },
         )
         self.assertEqual(sorted(published["cycle"]), ["action", "plan", "proposal"])
@@ -285,7 +285,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Single atomic call still pairs metadata and image.
         jpeg, meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)
-        self.assertEqual(meta["frame"]["frame_id"], part.latest_snapshot.frame_id)
+        self.assertEqual(meta["frame"]["frame_id"], part.latest_state.frame_id)
 
     def test_manage_and_web_wire_publication_routes(self) -> None:
         manage = (

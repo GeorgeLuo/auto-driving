@@ -15,7 +15,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin import MultiObstructionMemory
 from implementations.decision_cycle.perception.feeds.camera import CameraFrame
 from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import MultiObstructionTracksPlugin
@@ -83,7 +83,7 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
                 item["frame_id"], int(item["captured_at_ms"]), {"frame": frame},
                 diagnostics, {"sequence_index": position}, shared_memory=shared_memory,
             ))
-            sensors = SensorSnapshot(
+            sensors = SensorFrame(
                 read_id=item["frame_id"], readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
                     sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
                     captured_at_ms=frame.captured_at_ms, value=rgb,
@@ -92,10 +92,10 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
             )
             tracking.update(DecisionFrameContext(
                 frame_id=item["frame_id"], frame_index=position,
-                timestamp_ms=frame.captured_at_ms, sensor_snapshot=sensors, shared_memory=shared_memory,
+                timestamp_ms=frame.captured_at_ms, sensor_frame=sensors, shared_memory=shared_memory,
             ), Observation(
                 observation_id=item["frame_id"], created_at_ms=frame.captured_at_ms,
-                sensor_snapshot={}, things=tuple(thing.to_dict() for thing in batch.things),
+                sensor_frame={}, things=tuple(thing.to_dict() for thing in batch.things),
                 signals=tuple(signal.to_dict() for signal in batch.signals),
             ))
             tracked = shared_memory["decision.observation"]

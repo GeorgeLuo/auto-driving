@@ -46,7 +46,7 @@ STEP_PLUGINS: dict[str, tuple[dict[str, Any], ...]] = {
     "observation": (
         {
             "spec": "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary",
-            "description": "Perception evidence plus the sensor snapshot as the frame record.",
+            "description": "Perception evidence plus the sensor frame as the frame record.",
             "default_config": {},
         },
     ),

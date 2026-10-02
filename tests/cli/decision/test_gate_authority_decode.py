@@ -48,7 +48,7 @@ def _applied_frame() -> dict:
         timestamp_ms=1000,
         mode="local",
         observation=Observation(
-            observation_id="obs-1", created_at_ms=1000, sensor_snapshot={}, summary=("t",)
+            observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
         ),
         shared_memory={EVIDENCE_KEY: _left_obstruction()},
     )

@@ -1,6 +1,6 @@
 # Perception
 
-Packaged perception plugins: code that turns a sensor snapshot into perception
+Packaged perception plugins: code that turns a sensor frame into perception
 evidence. The framework that runs them lives in `autonomy/decision_cycle/perception/`.
 
 ## Layout

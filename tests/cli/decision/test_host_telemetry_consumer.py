@@ -196,7 +196,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                     timeout_s=1.0,
                 )
                 self.assertTrue(
-                    adapter.publish_snapshot(normalized, (b"jpeg", "image/jpeg"))
+                    adapter.publish_frame(normalized, (b"jpeg", "image/jpeg"))
                 )
 
         read_panel.assert_called_once()

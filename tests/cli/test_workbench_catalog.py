@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import unittest
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
-from autonomy.vehicle import SensorSnapshot
+from autonomy.vehicle import SensorFrame
 from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.memory.presets import MEMORY_PRESETS
 from cli.automa_cli.memory import update_vehicle_memory
@@ -40,7 +40,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(set(mapper.plugin_manager.available_ids), packaged)
         original = mapper.plugins[0]
         mapper.plugin_manager.add("floor_plane")
-        mapper.perceive(PerceptionRequest(SensorSnapshot(
+        mapper.perceive(PerceptionRequest(SensorFrame(
             read_id="test", readings={}, started_at_ms=100, completed_at_ms=100,
         )))
         self.assertEqual(mapper.plugin_ids, ("frame", "floor_plane"))
@@ -58,7 +58,7 @@ class WorkbenchTests(unittest.TestCase):
         with self.assertRaisesRegex(PluginCatalogError, "duplicates"):
             catalog.normalize_selection(["frame", "frame"])
         mapper = catalog.build(["floor_continuity", "classical_regions"])
-        perception = mapper.perceive(PerceptionRequest(SensorSnapshot(
+        perception = mapper.perceive(PerceptionRequest(SensorFrame(
             read_id="ordered", readings={}, started_at_ms=100, completed_at_ms=100,
         )))
         self.assertEqual(

@@ -49,7 +49,7 @@ from .physical_observation import (
     fetch_observation_publication,
     picar_base_url,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 MEMORY_CHECK_RESULT_SCHEMA = "vehicle_memory_check_v0"
@@ -1280,11 +1280,11 @@ def score_chaser_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, 
         observation = frame.get("observation") if isinstance(frame.get("observation"), dict) else {}
         if "chaser_reference" in observation:
             leaks.append(f"{frame.get('frame_id')}:observation.chaser_reference")
-        sensor = observation.get("sensor_snapshot")
+        sensor = observation.get("sensor_frame")
         if isinstance(sensor, dict):
             meta = sensor.get("metadata") if isinstance(sensor.get("metadata"), dict) else {}
             if "chaser_reference" in meta:
-                leaks.append(f"{frame.get('frame_id')}:observation.sensor_snapshot.metadata")
+                leaks.append(f"{frame.get('frame_id')}:observation.sensor_frame.metadata")
         memory = memory_state(frame.get("memory")) or {}
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
         for record in records:
@@ -2251,7 +2251,7 @@ def publication_to_check_frame(
         observation = {
             "observation_id": f"obs_live_{index:03d}",
             "created_at_ms": int(timestamp_ms),
-            "sensor_snapshot": {},
+            "sensor_frame": {},
             "perception_plugin_id": perception.get("plugin_id")
             or publication.get("preset")
             or "onboard_perception",
@@ -2373,7 +2373,7 @@ def build_default_memory_check_phases() -> list[dict[str, Any]]:
             "observation": {
                 "observation_id": f"obs_{index:03d}",
                 "created_at_ms": timestamp_ms,
-                "sensor_snapshot": {},
+                "sensor_frame": {},
                 "perception_plugin_id": "lightweight_observer",
                 "summary": [f"check phase frame {frame_id}"],
                 "things": things or [],

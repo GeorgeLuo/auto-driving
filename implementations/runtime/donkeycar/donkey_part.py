@@ -15,11 +15,11 @@ from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 logger = logging.getLogger(__name__)
 
-ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA = "automa_onboard_observation_snapshot_v0"
+ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state_v0"
 OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 DEFAULT_OBSERVATION_INTERVAL_S = 0.5
@@ -97,7 +97,7 @@ def stale_after_ms(min_interval_s: float) -> int:
 
 
 @dataclass
-class LatestObservationSnapshot:
+class LatestObservationState:
     """One detached onboard observation retained in memory for inspection."""
 
     frame_id: str
@@ -120,7 +120,7 @@ class LatestObservationSnapshot:
         """Bounded status view without the raw image or full perception payload."""
         perception = None if self.cycle is None else self.cycle.get("perception")
         return {
-            "schema": ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA,
+            "schema": ONBOARD_OBSERVATION_STATE_SCHEMA,
             "frame_id": self.frame_id,
             "frame_index": self.frame_index,
             "captured_at_ms": self.captured_at_ms,
@@ -195,7 +195,7 @@ class AutonomyPilotPart:
         self._memory_update_halted = False
         self._inflight_frame_id: str | None = None
         self._cycle_thread: threading.Thread | None = None
-        self.latest_snapshot: LatestObservationSnapshot | None = None
+        self.latest_state: LatestObservationState | None = None
         # The last cycle's result, the decision-step runners that produced it,
         # and whether that cycle failed. Replacing a decision step's runner
         # retires the result.
@@ -243,8 +243,8 @@ class AutonomyPilotPart:
         with self._lock:
             latest = (
                 None
-                if self.latest_snapshot is None
-                else self.latest_snapshot.to_status_dict()
+                if self.latest_state is None
+                else self.latest_state.to_status_dict()
             )
             camera = self.latest_camera_frame
             return {
@@ -283,7 +283,7 @@ class AutonomyPilotPart:
     def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
         """Return the publisher-owned current action result at read time.
 
-        The decision record is retained inside the same locked snapshot as the
+        The decision record is retained inside the same locked state as the
         camera frame. Read-time freshness is calculated from the producer's
         completion timestamp, so polling a stopped runtime cannot refresh an
         old result merely by reading it.
@@ -322,10 +322,10 @@ class AutonomyPilotPart:
                     "error": "no memory step is activated",
                 }
             # Replace the published memory report until the next cycle.
-            if self.latest_snapshot is not None and isinstance(self.latest_snapshot.cycle, dict):
-                cycle = dict(self.latest_snapshot.cycle)
+            if self.latest_state is not None and isinstance(self.latest_state.cycle, dict):
+                cycle = dict(self.latest_state.cycle)
                 cycle["memory"] = deepcopy(report)
-                self.latest_snapshot = replace(self.latest_snapshot, cycle=cycle)
+                self.latest_state = replace(self.latest_state, cycle=cycle)
             step = self.host.cycle.steps.memory
             step_status = step.status() if step is not None and callable(getattr(step, "status", None)) else None
             return {
@@ -339,9 +339,9 @@ class AutonomyPilotPart:
         """Return the exact processed frame JPEG with matching publication metadata."""
         read_at_ms = timestamp_ms()
         with self._lock:
-            snap = self.latest_snapshot
+            latest = self.latest_state
             publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
-            image = None if snap is None else snap.image
+            image = None if latest is None else latest.image
         if image is None:
             return None, publication
         try:
@@ -412,7 +412,7 @@ class AutonomyPilotPart:
     def _camera_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         camera = self.latest_camera_frame
         threshold_ms = stale_after_ms(self.min_interval_s)
-        observation = self.latest_snapshot
+        observation = self.latest_state
         perception_frame_id = None if observation is None else observation.frame_id
         if camera is None:
             health = PUBLICATION_HEALTH_WARMING if self.camera_frame_count == 0 else PUBLICATION_HEALTH_ABSENT
@@ -501,8 +501,8 @@ class AutonomyPilotPart:
         return True, camera.frame_id, camera.frame_index, self._skips_since_previous
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        """Build a publication from the currently locked snapshot/counters."""
-        snap = self.latest_snapshot
+        """Build a publication from the currently locked state and counters."""
+        latest = self.latest_state
         processed_count = self.processed_count
         skipped_count = self.skipped_count
         min_interval_s = self.min_interval_s
@@ -510,7 +510,7 @@ class AutonomyPilotPart:
         generation_id = self.generation_id
         threshold_ms = stale_after_ms(min_interval_s)
 
-        if snap is None:
+        if latest is None:
             health = (
                 PUBLICATION_HEALTH_WARMING
                 if processed_count == 0
@@ -541,20 +541,20 @@ class AutonomyPilotPart:
                 "latest_frame_path": LATEST_FRAME_PATH,
             }
 
-        age_ms = max(0, read_at_ms - int(snap.completed_at_ms))
-        if snap.status == "error":
+        age_ms = max(0, read_at_ms - int(latest.completed_at_ms))
+        if latest.status == "error":
             health = PUBLICATION_HEALTH_ERROR
-        elif snap.image is None:
+        elif latest.image is None:
             health = PUBLICATION_HEALTH_UNAVAILABLE
         elif age_ms > threshold_ms:
             health = PUBLICATION_HEALTH_STALE
         else:
             health = PUBLICATION_HEALTH_HEALTHY
 
-        perception = None if snap.cycle is None else deepcopy(snap.cycle.get("perception"))
-        observation = None if snap.cycle is None else deepcopy(snap.cycle.get("observation"))
+        perception = None if latest.cycle is None else deepcopy(latest.cycle.get("perception"))
+        observation = None if latest.cycle is None else deepcopy(latest.cycle.get("observation"))
         # Republish the memory report through the cycle publication.
-        memory = None if snap.cycle is None else deepcopy(snap.cycle.get("memory"))
+        memory = None if latest.cycle is None else deepcopy(latest.cycle.get("memory"))
         return {
             "schema": OBSERVATION_PUBLICATION_SCHEMA,
             "ok": health in {PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE},
@@ -565,22 +565,22 @@ class AutonomyPilotPart:
             "min_interval_s": min_interval_s,
             "processed_count": processed_count,
             "skipped_count": skipped_count,
-            "preset": preset or snap.preset,
+            "preset": preset or latest.preset,
             "generation_id": generation_id,
             "frame": {
-                "frame_id": snap.frame_id,
-                "frame_index": snap.frame_index,
-                "captured_at_ms": snap.captured_at_ms,
-                "completed_at_ms": snap.completed_at_ms,
-                "has_image": snap.image is not None,
+                "frame_id": latest.frame_id,
+                "frame_index": latest.frame_index,
+                "captured_at_ms": latest.captured_at_ms,
+                "completed_at_ms": latest.completed_at_ms,
+                "has_image": latest.image is not None,
                 "frame_path": LATEST_FRAME_PATH,
             },
-            "control": deepcopy(snap.control),
-            "mode": snap.mode,
-            "status": snap.status,
-            "error": snap.error,
-            "duration_ms": snap.duration_ms,
-            "skipped_since_previous": snap.skipped_since_previous,
+            "control": deepcopy(latest.control),
+            "mode": latest.mode,
+            "status": latest.status,
+            "error": latest.error,
+            "duration_ms": latest.duration_ms,
+            "skipped_since_previous": latest.skipped_since_previous,
             "perception": perception,
             "observation": observation,
             "memory": memory,
@@ -729,18 +729,18 @@ class AutonomyPilotPart:
     def _decision_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         """Build the physical decision wire payload, fail-closed at read time."""
 
-        snap = self.latest_snapshot
+        latest = self.latest_state
         threshold_ms = stale_after_ms(self.min_interval_s)
-        if snap is None:
+        if latest is None:
             return self._decision_unavailable(reason="missing", read_at_ms=read_at_ms)
-        decision = snap.decision_publication
+        decision = latest.decision_publication
         if decision is None:
             return self._decision_unavailable(
-                reason=snap.decision_error or "unavailable",
+                reason=latest.decision_error or "unavailable",
                 read_at_ms=read_at_ms,
             )
         # Replacing a decision step retires its result. Never
-        # replay the detached result retained by a prior camera snapshot.
+        # replay the detached result retained by a prior sensor frame.
         current = self._current_decision_result()
         if current is None or getattr(current, "status", "ok") != "ok":
             reason = (
@@ -836,7 +836,7 @@ class AutonomyPilotPart:
         skips_at_start: int,
     ) -> None:
         detached = image
-        sensor_snapshot = SensorSnapshot(
+        sensor_frame = SensorFrame(
             read_id=frame_id,
             readings={
                 FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -859,7 +859,7 @@ class AutonomyPilotPart:
                         frame_id=frame_id,
                         frame_index=frame_index,
                         timestamp_ms=captured_at_ms,
-                        sensor_snapshot=sensor_snapshot,
+                        sensor_frame=sensor_frame,
                         mode=mode_name,
                         user_steering=float(user_steering or 0.0),
                         user_throttle=float(user_throttle or 0.0),
@@ -904,7 +904,7 @@ class AutonomyPilotPart:
 
             pilot_steering, pilot_throttle = self._pilot_outputs(mode_name, control)
             control_dict = control.to_dict()
-            snapshot = LatestObservationSnapshot(
+            latest = LatestObservationState(
                 frame_id=frame_id,
                 frame_index=frame_index,
                 captured_at_ms=captured_at_ms,
@@ -926,7 +926,7 @@ class AutonomyPilotPart:
                 self._last_pilot_throttle = pilot_throttle
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict
-                self.latest_snapshot = snapshot
+                self.latest_state = latest
                 self._skips_since_previous = max(0, self._skips_since_previous - skips_at_start)
                 self.frame_index = frame_index + 1
                 self.processed_count += 1
@@ -952,7 +952,7 @@ class AutonomyPilotPart:
         """Hand off the latest completed source frame to the final observer.
 
         This is a bounded in-process identity handoff.  The source frame is
-        copied from the runtime-owned observation snapshot and is never
+        copied from the runtime-owned latest observation state and is never
         created by the DriveMode observer.  A held cadence tick therefore
         repeats the same source identity instead of becoming a new frame.
         """
@@ -962,15 +962,15 @@ class AutonomyPilotPart:
         if not callable(setter):
             return
         with self._lock:
-            snapshot = self.latest_snapshot
+            latest = self.latest_state
             source_frame = (
                 None
-                if snapshot is None
+                if latest is None
                 else {
-                    "frame_id": snapshot.frame_id,
-                    "frame_index": snapshot.frame_index,
-                    "captured_at_ms": snapshot.captured_at_ms,
-                    "completed_at_ms": snapshot.completed_at_ms,
+                    "frame_id": latest.frame_id,
+                    "frame_index": latest.frame_index,
+                    "captured_at_ms": latest.captured_at_ms,
+                    "completed_at_ms": latest.completed_at_ms,
                 }
             )
         try:

@@ -330,7 +330,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         observation = Observation(
             observation_id="obs",
             created_at_ms=1000,
-            sensor_snapshot={},
+            sensor_frame={},
         )
         first = runners.run(
             frame_id="frame_001",

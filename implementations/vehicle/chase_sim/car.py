@@ -23,7 +23,7 @@ from autonomy.vehicle import (
     CarInterface,
     SensorReadRequest,
     SensorReading,
-    SensorSnapshot,
+    SensorFrame,
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
@@ -261,7 +261,7 @@ class ChaseSimCar(CarInterface):
         self.timeout_s = float(timeout_s)
         self.client = MetricsUiWsClient(self.ws_url, timeout_s=self.timeout_s)
         # Evaluator-only chaser reference from the most recent capture. Not part of
-        # SensorSnapshot so it never enters observation/memory inputs.
+        # SensorFrame so it never enters observation/memory inputs.
         self._last_capture_chaser_reference: dict[str, Any] | None = None
         self._last_evaluator_reference: dict[str, Any] = {
             "status": "unavailable",
@@ -1128,7 +1128,7 @@ class ChaseSimCar(CarInterface):
         }
         return capture
 
-    def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:
+    def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         _reject_unsupported_sensors(request)
         started_ms = _timestamp_ms()
         readings: dict[str, SensorReading] = {}
@@ -1154,25 +1154,25 @@ class ChaseSimCar(CarInterface):
                 metadata=capture,
             )
 
-        snapshot_metadata: dict[str, Any] = {"vehicle": self.capabilities.to_dict()}
+        sensor_frame_metadata: dict[str, Any] = {"vehicle": self.capabilities.to_dict()}
         if self._last_simulator_frame_index is not None:
-            snapshot_metadata["simulator_frame_index"] = self._last_simulator_frame_index
-            snapshot_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
+            sensor_frame_metadata["simulator_frame_index"] = self._last_simulator_frame_index
+            sensor_frame_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
         if self._last_passive_capture:
             sensor = self._last_passive_capture.get("sensor")
             if isinstance(sensor, dict):
-                snapshot_metadata["simulation_epoch"] = sensor.get("simulation_epoch")
-            snapshot_metadata["passive_capture"] = {
+                sensor_frame_metadata["simulation_epoch"] = sensor.get("simulation_epoch")
+            sensor_frame_metadata["passive_capture"] = {
                 "status": self._last_passive_capture.get("status"),
                 "mutation_attempted": False,
             }
-            snapshot_metadata["evaluator_reference"] = self.last_evaluator_reference
+            sensor_frame_metadata["evaluator_reference"] = self.last_evaluator_reference
 
-        return SensorSnapshot(
+        return SensorFrame(
             read_id=request.read_id,
             readings=readings,
             started_at_ms=started_ms,
             completed_at_ms=_timestamp_ms(),
             request=request.to_dict(),
-            metadata=snapshot_metadata,
+            metadata=sensor_frame_metadata,
         )

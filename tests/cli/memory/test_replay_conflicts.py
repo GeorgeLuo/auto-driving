@@ -14,7 +14,7 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
     def test_replay_conflict_sequence_asserts_policy_and_counters(self) -> None:
         """Offline update-frame sequence for bounded_evidence conflict policy.
 
-        Replay only exposes a final snapshot, so intermediate invalidation and
+        Replay only exposes a final state, so intermediate invalidation and
         re-admission are asserted by replaying successive prefixes of the same
         fixture (no schema widening).
         """

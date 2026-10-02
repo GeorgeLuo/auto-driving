@@ -9,7 +9,7 @@
       "observation": {
         "observation_id": "obs_000",
         "created_at_ms": 1000,
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "perception_plugin_id": "lightweight_observer",
         "summary": ["frame 0 left boundary"],
         "things": [
@@ -42,7 +42,7 @@
       "observation": {
         "observation_id": "obs_001",
         "created_at_ms": 1200,
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "perception_plugin_id": "lightweight_observer",
         "summary": ["frame 1 boundary still left"],
         "things": [
@@ -75,7 +75,7 @@
       "observation": {
         "observation_id": "obs_002",
         "created_at_ms": 1400,
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "perception_plugin_id": "lightweight_observer",
         "summary": ["frame 2 clear floor"],
         "things": [],

@@ -280,7 +280,7 @@ def _publication_payload(
         },
         "perception": perception,
         "memory": memory,
-        "sensor_snapshot": source.get("sensor_snapshot"),
+        "sensor_frame": source.get("sensor_frame"),
         "observation": source.get("observation"),
         "control": source.get("control"),
         "engine": source.get("engine"),
@@ -360,9 +360,9 @@ def _image_dimensions(frame_path: Path) -> tuple[int, int]:
 
 
 def _frame_content_type(frame_path: Path, frame_record: dict[str, Any]) -> str:
-    snapshot = frame_record.get("sensor_snapshot")
-    if isinstance(snapshot, dict):
-        readings = snapshot.get("readings")
+    sensor_frame = frame_record.get("sensor_frame")
+    if isinstance(sensor_frame, dict):
+        readings = sensor_frame.get("readings")
         reading = readings.get("front_camera") if isinstance(readings, dict) else None
         metadata = reading.get("metadata") if isinstance(reading, dict) else None
         content_type = metadata.get("content_type") if isinstance(metadata, dict) else None

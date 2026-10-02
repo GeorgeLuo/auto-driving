@@ -1,6 +1,6 @@
 """Request context that resolves shared plugin feeds.
 
-A ``PerceptionRequest`` carries one sensor snapshot. Each feed is resolved
+A ``PerceptionRequest`` carries one sensor frame. Each feed is resolved
 once per request and shared by every plugin that declares it; a provider that
 raises ``PerceptionFeedUnavailable`` or returns nothing records an error
 for that feed.
@@ -14,7 +14,7 @@ from typing import Any, Callable, TypeVar
 
 from autonomy.decision_cycle.perception.feeds.interface import PerceptionFeedUnavailable
 from autonomy.shared_memory import SharedMemory
-from autonomy.vehicle import SensorReading, SensorSnapshot
+from autonomy.vehicle import SensorFrame, SensorReading
 
 
 FeedT = TypeVar("FeedT")
@@ -24,7 +24,7 @@ FeedT = TypeVar("FeedT")
 class PerceptionRequest:
     """Framework request used to resolve shared feeds for plugins."""
 
-    snapshot: SensorSnapshot
+    sensor_frame: SensorFrame
     output_dir: Path | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     _feeds: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -32,7 +32,7 @@ class PerceptionRequest:
     shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def sensor(self, sensor_id: str) -> SensorReading | None:
-        return self.snapshot.readings.get(sensor_id)
+        return self.sensor_frame.readings.get(sensor_id)
 
     def resolve_feed(
         self,

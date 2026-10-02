@@ -19,7 +19,7 @@ from .physical_observation import (
     picar_base_url,
     publication_to_frame_record,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 @dataclass(frozen=True)
@@ -50,8 +50,8 @@ def stream_vehicle_perception(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(payload, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(payload, include_inactive=True),
                 ]
             ),
         )

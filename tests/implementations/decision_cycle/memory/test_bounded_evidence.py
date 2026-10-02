@@ -37,7 +37,7 @@ def _observation(
     return Observation(
         observation_id=observation_id,
         created_at_ms=created_at_ms,
-        sensor_snapshot={},
+        sensor_frame={},
         perception_plugin_id="lightweight_observer",
         summary=("test",),
         things=things,
@@ -297,7 +297,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             },
         )
 
-    def test_returned_snapshot_is_detached_from_ledger_state(self) -> None:
+    def test_returned_state_is_detached_from_the_ledger(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         first = ledger.update(
             DecisionFrameContext("frame_1", 1, 1_000),
@@ -392,7 +392,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             Observation(
                 observation_id="o1",
                 created_at_ms=90,
-                sensor_snapshot={},
+                sensor_frame={},
                 perception_plugin_id=None,
                 summary=("test",),
                 things=(no_plugin, unknown_plugin),
@@ -430,7 +430,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {"thing:1:11:floor_plane:2:ok"})
 
-    def test_reduce_evidence_rehydrates_prior_snapshot(self) -> None:
+    def test_reduce_evidence_rehydrates_prior_state(self) -> None:
         config = {"max_records": 8, "max_age_ms": 5_000}
         ledger = BoundedEvidenceReducer(**config)
         first = ledger.update(

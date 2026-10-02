@@ -891,8 +891,6 @@ class ImageReplayRunner:
     def _reset(self) -> dict[str, Any]:
         with self._condition:
             self._generation += 1
-            if self._state["phase"] in {"running", "paused"}:
-                self._state["phase"] = "cancelled"
             self._cleanup_locked()
             self._shared_memory = {}
             image_source = self._image_source

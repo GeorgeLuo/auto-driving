@@ -211,7 +211,7 @@ class WorkbenchTests(unittest.TestCase):
                 runner.dispatch("seek", run_id=run_id, position=99)
             with self.assertRaises(ReplayActionError):
                 runner.dispatch("seek", run_id=run_id)
-            runner.dispatch("cancel", run_id=run_id)
+            runner.dispatch("reset", run_id=run_id)
 
         idle = ImageReplayRunner()
         with self.assertRaises(ReplayActionError):
@@ -258,7 +258,7 @@ class WorkbenchTests(unittest.TestCase):
             frame = urlopen(base + "api/frame?" + query, timeout=2)
             self.assertEqual(frame.status, 200)
             self.assertTrue(frame.read())
-            post({"action": "cancel", "run_id": run_id})
+            post({"action": "reset", "run_id": run_id})
 
     def test_realtime_pace_honors_recorded_frame_timestamps(self) -> None:
         with image_source(3) as root:

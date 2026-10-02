@@ -675,9 +675,6 @@
             <button type="button" id="stepButton" class="icon-btn" aria-label="Step one frame" title="Step">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
             </button>
-            <button type="button" id="cancelButton" class="icon-btn" aria-label="Cancel replay" title="Stop">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>
-            </button>
             <button type="button" id="resetButton" class="icon-btn" aria-label="Reset workbench" title="Reset">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
             </button>
@@ -838,7 +835,7 @@
         "progressText", "seekBar", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "loopToggle", "overlayToggle",
         "startButton", "pauseButton", "resumeButton", "stepButton",
-        "cancelButton", "resetButton", "notice",
+        "resetButton", "notice",
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
         "memoryCount", "memoryPolicy", "memoryDrops", "memoryDropsSummary", "memoryDropsText",
         "memorySearch", "memoryRecords", "failurePanel", "failureText",
@@ -1396,7 +1393,6 @@
         elements.resumeButton.hidden = !paused;
         elements.startButton.hidden = playing || paused || !canStart;
         setButton("stepButton", allowed.indexOf("step") >= 0);
-        setButton("cancelButton", allowed.indexOf("cancel") >= 0);
         setButton("resetButton", allowed.indexOf("reset") >= 0);
         elements.cadence.disabled = !state;
         var liveReplay = Boolean(state) && (state.phase === "running" || state.phase === "paused");
@@ -1939,8 +1935,7 @@
         }
         var payload = {
           source_dir: elements.sourceDir.value,
-          pace: cadence.pace,
-          active_plugin_ids: selectedPluginIdsFromView()
+          pace: cadence.pace
         };
         if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
         payload.loop = loopEnabled();
@@ -1949,7 +1944,6 @@
       elements.pauseButton.addEventListener("click", function () { action("pause"); });
       elements.resumeButton.addEventListener("click", function () { action("resume"); });
       elements.stepButton.addEventListener("click", function () { action("step"); });
-      elements.cancelButton.addEventListener("click", function () { action("cancel"); });
       elements.resetButton.addEventListener("click", function () { action("reset"); });
       elements.cadence.addEventListener("change", function () {
         cadenceDraft = state && state.phase === "idle";

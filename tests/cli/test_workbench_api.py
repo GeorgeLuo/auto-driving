@@ -70,7 +70,6 @@ class WorkbenchTests(unittest.TestCase):
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "active_plugin_ids": [],
                 }
             )
             raw_state = runner.wait(5)
@@ -94,7 +93,6 @@ class WorkbenchTests(unittest.TestCase):
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "active_plugin_ids": ["classical_regions"],
                 }
             )
             state = runner.wait(5)
@@ -107,6 +105,22 @@ class WorkbenchTests(unittest.TestCase):
             [item["plugin_id"] for item in state["perception"]["plugin_runs"]],
             ["classical_regions"],
         )
+
+    def test_removed_actions_and_plugin_lists_on_other_actions_are_rejected(self) -> None:
+        with image_source(1) as root:
+            runner = ImageReplayRunner(cadence_ms=0)
+            base = serve_workbench(self, runner)
+            post = partial(post_action, base, timeout=2)
+
+            for body in (
+                {"action": "set_plugins", "active_plugin_ids": []},
+                {"action": "cancel"},
+                {"action": "start", "source_dir": str(root), "active_plugin_ids": []},
+                {"action": "validate", "source_dir": str(root), "active_plugin_ids": []},
+            ):
+                with self.assertRaises(HTTPError, msg=str(body)) as caught:
+                    post(body)
+                self.assertEqual(caught.exception.code, 400)
 
     def test_loopback_api_selection_reprocesses_the_displayed_frame(self) -> None:
         with image_source(3) as root:
@@ -124,7 +138,6 @@ class WorkbenchTests(unittest.TestCase):
                 {
                     "action": "start",
                     "source_dir": str(root),
-                    "active_plugin_ids": ["classical_regions"],
                     "cadence_ms": 30000,
                 }
             )
@@ -145,7 +158,7 @@ class WorkbenchTests(unittest.TestCase):
             # out the cadence.
             _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
             reprocessed = runner.frame_detail(first_id, run_id=run_id)
-            post({"action": "cancel", "run_id": run_id})
+            post({"action": "reset", "run_id": run_id})
 
         self.assertEqual(
             [run["plugin_id"] for run in reprocessed["perception"]["plugin_runs"]],
@@ -177,7 +190,7 @@ class WorkbenchTests(unittest.TestCase):
             reprocessed = runner.frame_detail(first_id, run_id=run_id)
             self.assertEqual(list(reprocessed["perception"]["plugin_runs"] or ()), [])
             self.assertEqual(reprocessed["perception"]["status"], "empty")
-            runner.dispatch("cancel", run_id=run_id)
+            runner.dispatch("reset", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(
         self,

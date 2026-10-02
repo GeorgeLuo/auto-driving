@@ -142,10 +142,10 @@ def _state_action_set(phase: str) -> list[str]:
     if phase == "idle":
         return ["validate", "select_plugins", "start", "reset", "set_loop"]
     if phase == "running":
-        return ["pause", "seek", "cancel", "reset", "set_cadence", "set_loop", "select_plugins"]
+        return ["pause", "seek", "reset", "set_cadence", "set_loop", "select_plugins"]
     if phase == "paused":
-        return ["resume", "step", "seek", "cancel", "reset", "set_cadence", "set_loop", "select_plugins"]
-    if phase in {"completed", "failed", "cancelled"}:
+        return ["resume", "step", "seek", "reset", "set_cadence", "set_loop", "select_plugins"]
+    if phase in {"completed", "failed"}:
         return ["validate", "select_plugins", "start", "reset", "set_loop"]
     return []
 
@@ -480,7 +480,13 @@ class ImageReplayRunner:
         with self._action_lock:
             with self._lock:
                 self._check_run_id_locked(action, run_id)
-            if action in {"select_plugins", "set_plugins"}:
+            if active_plugin_ids is not None and action != "select_plugins":
+                raise ReplayActionError(
+                    "active_plugin_ids is only accepted by select_plugins",
+                    status_code=400,
+                    boundary="input",
+                )
+            if action == "select_plugins":
                 return self._select_plugins(active_plugin_ids)
             if action == "validate":
                 with self._lock:
@@ -490,7 +496,6 @@ class ImageReplayRunner:
                             boundary="lifecycle",
                         )
                 try:
-                    self._configure_plugins_if_requested(active_plugin_ids)
                     self.validate_source(source_dir)
                 except PluginCatalogError as exc:
                     with self._lock:
@@ -526,15 +531,6 @@ class ImageReplayRunner:
                     self._record_action_locked(action)
                 return self.state()
             if action == "start":
-                try:
-                    self._configure_plugins_if_requested(active_plugin_ids)
-                except PluginCatalogError as exc:
-                    raise ReplayActionError(
-                        str(exc),
-                        status_code=422,
-                        boundary="plugin_catalog",
-                        state=self.state(),
-                    ) from exc
                 return self.start(source_dir, cadence_ms=cadence_ms, pace=pace, loop=loop)
             if action == "set_cadence":
                 if cadence_ms is None and pace is None:
@@ -577,28 +573,9 @@ class ImageReplayRunner:
                 return self._step()
             if action == "seek":
                 return self._seek(position)
-            if action == "cancel":
-                return self._cancel()
             if action == "reset":
                 return self._reset()
         raise AssertionError(f"unhandled action {action}")
-
-    def _configure_plugins_if_requested(
-        self,
-        active_plugin_ids: list[str] | tuple[str, ...] | None,
-    ) -> None:
-        if active_plugin_ids is None:
-            return
-        with self._lock:
-            if self._state["phase"] in {"running", "paused"}:
-                raise ReplayActionError(
-                    "plugin configuration cannot change while replay is active",
-                    boundary="lifecycle",
-                )
-            self._active_plugin_ids = self._plugin_catalog.normalize_selection(
-                active_plugin_ids
-            )
-            self._apply_plugin_configuration_locked()
 
     def _select_plugins(
         self,
@@ -910,19 +887,6 @@ class ImageReplayRunner:
         )
         if completed >= total:
             self._wrap_or_complete_locked()
-
-    def _cancel(self) -> dict[str, Any]:
-        with self._condition:
-            if self._state["phase"] not in {"running", "paused"}:
-                raise ReplayActionError(
-                    "cancel requires a running or paused replay", boundary="lifecycle"
-                )
-            self._state["phase"] = "cancelled"
-            self._state["recovery_action"] = "start"
-            self._state["cleanup"] = self._cleanup_locked()
-            self._record_action_locked("cancel")
-            self._condition.notify_all()
-            return copy.deepcopy(self._state)
 
     def _reset(self) -> dict[str, Any]:
         with self._condition:
@@ -1260,7 +1224,6 @@ class ImageReplayRunner:
             in {
                 "validate",
                 "select_plugins",
-                "set_plugins",
                 "reset",
                 "set_loop",
             }

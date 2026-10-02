@@ -135,7 +135,7 @@ class WorkbenchTests(unittest.TestCase):
                 ],
                 ["floor_continuity"],
             )
-            runner.dispatch("cancel", run_id=run_id)
+            runner.dispatch("reset", run_id=run_id)
 
     def test_paused_plugin_toggle_reprocesses_the_current_frame(self) -> None:
         with image_source(3) as root:
@@ -206,7 +206,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(stepped["phase"], "paused")
             self.assertEqual(_plugin_ids(stepped["perception"]), ["floor_continuity"])
             self.assertNotEqual(stepped["current_frame"]["frame_id"], first_id)
-            runner.dispatch("cancel", run_id=run_id)
+            runner.dispatch("reset", run_id=run_id)
 
     def test_seek_shows_frames_with_the_current_selection(self) -> None:
         with image_source(4) as root:
@@ -244,7 +244,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(ahead["position"], 3)
             self.assertEqual(len(ahead["timeline"]), 3)
             self.assertEqual(_plugin_ids(ahead["perception"]), ["floor_continuity"])
-            runner.dispatch("cancel", run_id=run_id)
+            runner.dispatch("reset", run_id=run_id)
 
     def test_paused_selection_retains_instances_and_reprocesses(self) -> None:
         with image_source(3) as root:

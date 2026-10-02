@@ -9,6 +9,12 @@ using the same luminance transform. All cross-frame state lives in the host's
 shared map; the tracker and evidence reducer are recreated for each update.
 The retained-evidence ledger is kept at ``LEDGER_KEY`` and its records are
 published at ``EVIDENCE_KEY``, where ``avoid_recent_obstruction`` reads them.
+
+This plugin takes over both shared slots. Each update it removes any
+replacement observation at ``OBSERVATION_KEY``, then publishes its own when the
+observation it is given carries the candidate signal; that observation is the
+one passed to the step, not an earlier plugin's replacement. Its ledger's
+records replace any an earlier plugin published at ``EVIDENCE_KEY``.
 """
 from __future__ import annotations
 

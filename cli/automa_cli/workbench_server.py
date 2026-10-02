@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -28,7 +29,13 @@ from .workbench_contract import (
 from .workbench_source import SourceValidationError
 
 
-WORKBENCH_HTML_PATH = Path(__file__).with_name("workbench.html")
+WORKBENCH_PAGE_DIR = Path(__file__).with_name("workbench_page")
+# The page's own files, served read-only under /static/; nothing else is reachable.
+WORKBENCH_STATIC_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+}
+WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|js/[a-z]+\.js)$")
 
 
 class ReplayRunner(Protocol):
@@ -253,7 +260,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
     server: _WorkbenchHTTPServer
     content_security_policy = (
         "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
-        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+        "style-src 'self' 'unsafe-inline'; script-src 'self'"
     )
 
     def do_GET(self) -> None:
@@ -266,6 +273,9 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         request = urlparse(self.path)
         if request.path in {"/", "/index.html"}:
             self._serve_html(include_body=include_body)
+            return
+        if WORKBENCH_STATIC_PATTERN.match(request.path):
+            self._serve_file(request.path.removeprefix("/static/"), include_body=include_body)
             return
         if request.path == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)
@@ -425,8 +435,19 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         self._send_json(200, result)
 
     def _serve_html(self, *, include_body: bool) -> None:
+        self._serve_file("index.html", include_body=include_body)
+
+    def _serve_file(self, relative: str, *, include_body: bool) -> None:
+        path = WORKBENCH_PAGE_DIR / relative
         try:
-            body = WORKBENCH_HTML_PATH.read_bytes()
+            body = path.read_bytes()
+        except FileNotFoundError:
+            self._send_json(
+                404,
+                _error_payload("route", f"unknown route: /static/{relative}", None),
+                include_body=include_body,
+            )
+            return
         except OSError as exc:
             self._send_json(
                 500,
@@ -437,7 +458,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         self._send(
             200,
             body,
-            "text/html; charset=utf-8",
+            WORKBENCH_STATIC_TYPES.get(path.suffix, "text/html; charset=utf-8"),
             include_body=include_body,
         )
 

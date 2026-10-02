@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa Decision Playback Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/workbench.css">
+</head>
+<body>
+  <main class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand">Workbench</span>
+        <span class="kicker">SETUP</span>
+      </div>
+      <div class="sidebar-scroll">
+        <details class="sidebar-group" open>
+          <summary class="sidebar-group-label">
+            <span>Setup</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="sidebar-group-body">
+            <div class="field">
+              <span class="kicker">source</span>
+              <span id="sourceIdentity" class="muted">no source selected</span>
+            </div>
+            <label class="field" for="sourceDir">
+              <span class="kicker">directory</span>
+              <input id="sourceDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
+            </label>
+          </div>
+        </details>
+        <details class="sidebar-group" open>
+          <summary class="sidebar-group-label">
+            <span>Plugins</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="sidebar-group-body">
+            <span id="pluginSelectionSummary" class="muted">no catalog</span>
+            <div id="pluginCatalog" class="plugin-catalog">
+              <p class="muted help">Packaged plugins will appear here.</p>
+            </div>
+            <div id="pluginDigest" class="digest muted"></div>
+          </div>
+        </details>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <div class="workspace-tools">
+        <button type="button" class="text-action" data-recall="memoryFrame">Memory</button>
+        <button type="button" class="text-action" data-recall="evidenceFrame">Evidence</button>
+        <button type="button" class="text-action" data-recall="decisionFrame">Decision</button>
+      </div>
+      <section class="viewer-panel">
+        <div class="viewer" id="viewerStage">
+          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
+          <div id="viewerFrame" class="viewer-frame" hidden>
+            <img id="frameImage" alt="Current replay frame">
+            <canvas id="overlayCanvas" aria-hidden="true"></canvas>
+          </div>
+        </div>
+        <div class="frame-hud">
+          <span id="frameId" class="truncate">—</span>
+          <span id="frameIndex" class="muted">—</span>
+          <span id="frameTimestamp" class="muted">—</span>
+          <span id="perceptionStatus" class="muted">—</span>
+        </div>
+      </section>
+
+      <div class="playback">
+        <input id="seekBar" class="seek" type="range" min="0" max="0" value="0" aria-label="Replay position">
+        <div class="playback-bar">
+          <div class="playback-actions">
+            <button type="button" id="startButton" class="icon-btn outline" aria-label="Start replay" title="Start">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </button>
+            <button type="button" id="resumeButton" class="icon-btn outline" aria-label="Resume replay" title="Resume" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </button>
+            <button type="button" id="pauseButton" class="icon-btn outline" aria-label="Pause replay" title="Pause" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+            </button>
+            <button type="button" id="stepButton" class="icon-btn" aria-label="Step one frame" title="Step">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+            </button>
+            <button type="button" id="resetButton" class="icon-btn" aria-label="Reset workbench" title="Reset">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
+            </button>
+          </div>
+          <div class="playback-meta">
+            <select id="cadence" class="cadence-select" aria-label="Replay cadence">
+              <option value="0">as fast as possible</option>
+              <option value="100">100 ms</option>
+              <option value="250" selected>250 ms</option>
+              <option value="500">500 ms</option>
+              <option value="1000">1 second</option>
+              <option value="realtime">realtime</option>
+            </select>
+            <button type="button" id="loopToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle loop playback">loop</button>
+            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
+            <span id="progressText" class="muted">0 / 0</span>
+          </div>
+        </div>
+        <details id="failurePanel" class="help-details" hidden>
+          <summary>Failure boundary</summary>
+          <pre id="failureText"></pre>
+        </details>
+      </div>
+    </div>
+  </main>
+
+  <div id="floatLayer">
+          <article class="float-frame" id="memoryFrame" data-frame-anchor="tr" data-frame-width="280" data-frame-height="260">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Memory</strong>
+                <span id="memoryHealth" class="muted">no snapshot</span>
+                <span id="memorySelection" hidden>select a record</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Memory" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Memory" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <dl class="kv">
+                <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
+                <dt>Records</dt><dd id="memoryCount">—</dd>
+                <dt>Policy</dt><dd id="memoryPolicy">—</dd>
+              </dl>
+              <details id="memoryDrops" class="help-details" hidden>
+                <summary id="memoryDropsSummary">Dropped evidence</summary>
+                <pre id="memoryDropsText"></pre>
+              </details>
+              <input id="memorySearch" class="inline-edit memory-search" type="search" autocomplete="off" placeholder="Search..." aria-label="Filter memory records">
+              <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
+              <details class="help-details">
+                <summary>Selected record</summary>
+                <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
+              </details>
+            </div>
+          </article>
+          <article class="float-frame" id="evidenceFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Evidence</strong>
+                <span id="evidenceSummary" class="muted">no output</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Evidence" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Evidence" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <div class="metric-grid">
+                <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
+                <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
+              </div>
+              <pre id="evidenceText">No perception output yet.</pre>
+            </div>
+          </article>
+          <article class="float-frame" id="decisionFrame" data-frame-anchor="tl" data-frame-width="330" data-frame-height="300">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Decision</strong>
+                <span id="decisionSummary" class="muted">no cycle</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Decision" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Decision" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <dl class="kv">
+                <dt>Frame</dt><dd id="decisionFrameIdentity">—</dd>
+                <dt>Status</dt><dd id="decisionStatus">—</dd>
+                <dt>Selected</dt><dd id="decisionSelected">—</dd>
+                <dt>Proposed</dt><dd id="decisionProposed">—</dd>
+                <dt>Authority</dt><dd id="decisionAuthority">—</dd>
+                <dt>Reason</dt><dd id="decisionReason">—</dd>
+              </dl>
+              <details class="help-details">
+                <summary>Source references</summary>
+                <pre id="decisionSource">No decision cycle yet.</pre>
+              </details>
+              <details class="help-details">
+                <summary>Candidate proposals</summary>
+                <pre id="decisionCandidates">No decision cycle yet.</pre>
+              </details>
+            </div>
+          </article>
+  </div>
+
+  <span id="notice" class="notice" role="status"></span>
+
+  <script src="/static/js/core.js"></script>
+  <script src="/static/js/transport.js"></script>
+  <script src="/static/js/frame.js"></script>
+  <script src="/static/js/plugins.js"></script>
+  <script src="/static/js/evidence.js"></script>
+  <script src="/static/js/decision.js"></script>
+  <script src="/static/js/memory.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

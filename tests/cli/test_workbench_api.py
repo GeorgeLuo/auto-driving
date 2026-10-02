@@ -122,6 +122,30 @@ class WorkbenchTests(unittest.TestCase):
                     post(body)
                 self.assertEqual(caught.exception.code, 400)
 
+    def test_page_files_are_served_and_nothing_else(self) -> None:
+        import re
+
+        server = WorkbenchServer(ImageReplayRunner(cadence_ms=0)).start()
+        self.addCleanup(server.stop)
+        base = server.url
+        page = urlopen(base, timeout=2).read().decode("utf-8")
+        paths = re.findall(r'(?:src|href)="/static/([^"]+)"', page)
+        self.assertIn("workbench.css", paths)
+        self.assertEqual(
+            sorted(path for path in paths if path.endswith(".js")),
+            sorted(f"js/{name}.js" for name in (
+                "core", "decision", "evidence", "frame", "main", "memory", "plugins", "transport",
+            )),
+        )
+        for path in paths:
+            served = urlopen(base + "static/" + path, timeout=2)
+            self.assertEqual(served.status, 200)
+            self.assertIn("javascript" if path.endswith(".js") else "css", served.headers["Content-Type"])
+        for blocked in ("static/../workbench_server.py", "static/js/../index.html", "static/index.html", "static/js/missing.js"):
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(base + blocked, timeout=2)
+            self.assertEqual(caught.exception.code, 404)
+
     def test_loopback_api_selection_reprocesses_the_displayed_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(cadence_ms=30000)

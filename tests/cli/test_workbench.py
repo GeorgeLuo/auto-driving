@@ -183,8 +183,6 @@ class WorkbenchTests(unittest.TestCase):
             )
             runner.start()
             state = runner.wait(5)
-            first_frame_id = state["timeline"][0]["frame"]["frame_id"]
-            first_detail = runner.frame_detail(first_frame_id, run_id=state["run_id"])
 
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(state["sequence_id"], "workbench.image_replay.v1")
@@ -197,9 +195,8 @@ class WorkbenchTests(unittest.TestCase):
         self.assertGreaterEqual(state["steps"]["memory"]["record_count"], 2)
         self.assertNotIn("frames", state["source"])
         self.assertNotIn("perception", state["timeline"][0])
-        self.assertEqual(first_detail["steps"]["perception"]["status"], "ok")
-        self.assertIsNotNone(first_detail["steps"]["observation"]["observation_id"])
-        self.assertEqual(first_detail["steps"]["memory"]["health"], "healthy")
+        self.assertEqual(state["steps"]["perception"]["status"], "ok")
+        self.assertIsNotNone(state["steps"]["observation"]["observation_id"])
         self.assertTrue(state["timeline"][0]["memory_effect"]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
@@ -227,11 +224,8 @@ class WorkbenchTests(unittest.TestCase):
             )
             runner.start()
             state = runner.wait(5)
-            frame_id = state["timeline"][0]["frame"]["frame_id"]
-            detail = runner.frame_detail(frame_id, run_id=state["run_id"])
 
         decision = state["steps"]["decision"]
-        first_decision = detail["steps"]["decision"]
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(decision["frame_id"], state["current_frame"]["frame_id"])
         self.assertEqual(decision["plan"]["status"], "selected")
@@ -244,11 +238,9 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(decision["authority"]["proposed_applied"])
         self.assertEqual(
             state["timeline"][0]["decision"]["selected_proposal_id"],
-            first_decision["plan"]["selected_proposal_id"],
+            decision["plan"]["selected_proposal_id"],
         )
         self.assertFalse(state["timeline"][0]["decision"]["proposed_applied"])
-        self.assertEqual(first_decision["frame_id"], frame_id)
-        self.assertFalse(first_decision["authority"]["proposed_applied"])
         self.assertEqual(
             state["machine_detail"]["pipeline"]["decision_steps"],
             {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["hold"]},

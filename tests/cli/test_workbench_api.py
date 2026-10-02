@@ -181,7 +181,7 @@ class WorkbenchTests(unittest.TestCase):
             # The running replay picks the displayed frame up without waiting
             # out the cadence.
             _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.frame_detail(first_id, run_id=run_id)
+            reprocessed = runner.state()
             post({"action": "reset", "run_id": run_id})
 
         self.assertEqual(
@@ -211,7 +211,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], [])
             _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.frame_detail(first_id, run_id=run_id)
+            reprocessed = runner.state()
             self.assertEqual(list(reprocessed["steps"]["perception"]["plugin_runs"] or ()), [])
             self.assertEqual(reprocessed["steps"]["perception"]["status"], "empty")
             runner.dispatch("reset", run_id=run_id)

@@ -182,19 +182,6 @@ class ImageReplayRunner:
             self._plugin_catalog.digest
         )
 
-    def frame_detail(
-        self,
-        frame_id: str,
-        *,
-        run_id: str,
-    ) -> dict[str, Any] | None:
-        """Return one processed frame's server-owned detail for the active run."""
-
-        with self._lock:
-            self._require_run_id_locked(run_id)
-            detail = self._history.get(frame_id)
-            return copy.deepcopy(detail) if detail is not None else None
-
     def frame_bytes(
         self,
         frame_id: str | None = None,

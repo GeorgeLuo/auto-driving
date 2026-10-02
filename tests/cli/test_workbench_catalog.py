@@ -112,7 +112,7 @@ class WorkbenchTests(unittest.TestCase):
             _wait_until(
                 lambda: runner.state()["position"] == 1 and runner.state()["timeline"]
             )
-            reprocessed = runner.frame_detail(first_id, run_id=run_id)
+            reprocessed = runner.state()
             self.assertEqual(
                 [run["plugin_id"] for run in reprocessed["steps"]["perception"]["plugin_runs"]],
                 ["floor_continuity"],
@@ -129,9 +129,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(
                 [
                     run["plugin_id"]
-                    for run in runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"][
-                        "plugin_runs"
-                    ]
+                    for run in runner.state()["steps"]["perception"]["plugin_runs"]
                 ],
                 ["floor_continuity"],
             )
@@ -166,9 +164,7 @@ class WorkbenchTests(unittest.TestCase):
             timeline_len = len(paused["timeline"])
             first_id = paused["current_frame"]["frame_id"]
             self.assertEqual(_plugin_ids(paused["steps"]["perception"]), ["classical_regions"])
-            recorded_report = runner.frame_detail(first_id, run_id=run_id)[
-                "perception_plugin_report"
-            ]
+            recorded_report = paused["machine_detail"]["pipeline"]["perception_plugin_report"]
             self.assertEqual(recorded_report["applied_plugin_ids"], ["classical_regions"])
 
             both = runner.dispatch(
@@ -185,10 +181,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(both["current_frame"]["frame_id"], first_id)
             self.assertEqual(
                 _plugin_ids(both["steps"]["perception"]), ["floor_continuity", "classical_regions"]
-            )
-            self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"]),
-                ["floor_continuity", "classical_regions"],
             )
             self.assertEqual(
                 both["machine_detail"]["pipeline"]["perception_plugin_report"][
@@ -241,10 +233,6 @@ class WorkbenchTests(unittest.TestCase):
             back = runner.dispatch("seek", run_id=run_id, position=0)
             self.assertEqual(back["current_frame"]["frame_id"], first_id)
             self.assertEqual(_plugin_ids(back["steps"]["perception"]), ["floor_continuity"])
-            self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"]),
-                ["floor_continuity"],
-            )
 
             forward = runner.dispatch("seek", run_id=run_id, position=1)
             self.assertEqual(forward["current_frame"]["frame_id"], second_id)
@@ -312,10 +300,6 @@ class WorkbenchTests(unittest.TestCase):
                 ["floor_continuity", "classical_regions"],
             )
             self.assertIs(memory_step.plugins[0], memory_plugin)
-            self.assertEqual(
-                _plugin_ids(runner.frame_detail(first_id, run_id=run_id)["steps"]["perception"]),
-                ["floor_continuity", "classical_regions"],
-            )
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
 
             reset = runner.dispatch("reset", run_id=run_id)

@@ -8,28 +8,18 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any, Callable
 
-from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
-from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.interface import (
     PerceptionBackend,
     PerceptionText,
 )
-from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.decision_cycle.steps import decision_steps
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.catalog import (
-    packaged_activation,
-    perception_preset_activation,
-)
 from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
-from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
+from implementations.decision_cycle.perception.presets import CUSTOM_PERCEPTION_PRESET
 
 from .memory_report import memory_state
 from .workbench_contract import (
@@ -41,6 +31,13 @@ from .workbench_contract import (
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
+)
+from .workbench_frames import (
+    default_mapper,
+    default_memory_step,
+    plugin_report,
+    run_frame,
+    workbench_decision_steps,
 )
 from .workbench_plugins import (
     PluginCatalog,
@@ -59,79 +56,10 @@ from .workbench_source import (
 )
 
 
-def _snapshot_for_frame(frame: ReplayFrame) -> SensorSnapshot | None:
-    if frame.absent or frame.image_path is None:
-        return None
-    reading = SensorReading(
-        sensor_id=FRONT_CAMERA_SENSOR_ID,
-        sensor_kind="camera",
-        captured_at_ms=frame.timestamp_ms,
-        path=str(frame.image_path),
-        metadata={
-            "source_id": frame.source_id,
-            "frame_id": frame.frame_id,
-            "sequence_index": frame.position,
-        },
-    )
-    return SensorSnapshot(
-        read_id=frame.frame_id,
-        readings={FRONT_CAMERA_SENSOR_ID: reading},
-        started_at_ms=frame.timestamp_ms,
-        completed_at_ms=frame.timestamp_ms,
-        request={
-            "source": "workbench.image_replay.v1",
-            "requested_sensors": [FRONT_CAMERA_SENSOR_ID],
-        },
-        metadata={
-            "source_id": frame.source_id,
-            "sequence_index": frame.position,
-            "absence": False,
-        },
-    )
+def _empty_steps() -> dict[str, Any]:
+    """The per-step payloads of the displayed frame, before any frame ran."""
 
-
-def _default_mapper() -> PerceptionBackend:
-    return PerceptionRunner.from_activation(
-        perception_preset_activation(DEFAULT_PERCEPTION_PRESET)
-    )
-
-
-def _default_memory_step() -> MemoryRunner:
-    return MemoryRunner.from_activation(packaged_activation("memory"))
-
-
-def _workbench_decision_steps() -> Any:
-    """The packaged proposals, built-in plan, and hold action the workbench replays."""
-
-    return decision_steps({"proposal": packaged_activation("proposal")})
-
-
-def _decision_view(result: Any) -> dict[str, Any] | None:
-    """The decision steps' records for the workbench timeline."""
-
-    action = result.action
-    if action is None:
-        return None
-    return {
-        "frame_id": action.frame_id,
-        "status": action.status,
-        "reason": action.reason,
-        "proposal": result.proposal.to_dict() if result.proposal is not None else None,
-        "plan": result.plan.to_dict() if result.plan is not None else None,
-        "authority": action.authority.to_dict(),
-    }
-
-
-def _plugin_report(owner: Any) -> dict[str, Any] | None:
-    """Copy a step's common plugin envelope, when that step publishes one."""
-
-    report_for = getattr(owner, "plugin_report", None)
-    if not callable(report_for):
-        return None
-    report = report_for()
-    if not isinstance(report, dict):
-        return None
-    return copy.deepcopy(report)
+    return {"perception": None, "observation": None, "memory": None, "decision": None}
 
 
 def _safe_status(value: Any) -> str:
@@ -173,7 +101,7 @@ class ImageReplayRunner:
         self.source_dir = os.fspath(source_dir) if source_dir is not None else None
         self.max_frames = int(max_frames)
         self.max_image_bytes = int(max_image_bytes)
-        self.mapper_factory = mapper_factory or _default_mapper
+        self.mapper_factory = mapper_factory or default_mapper
         self._mapper_factory_explicit = mapper_factory is not None
         self.memory_step_factory = memory_step_factory
         self._lock = threading.RLock()
@@ -221,6 +149,14 @@ class ImageReplayRunner:
             # selection actions will refuse it at the catalog boundary.
             return tuple(str(item) for item in active_plugin_ids)
 
+    def _selection_preset(self, plugin_ids: Sequence[str]) -> str:
+        """The preset the selection equals, else ``custom``, from its activation."""
+
+        try:
+            return str(self._plugin_catalog.activation(plugin_ids).metadata["preset"])
+        except PluginCatalogError:
+            return CUSTOM_PERCEPTION_PRESET
+
     def _plugin_configuration(self) -> dict[str, Any]:
         return {
             "catalog_digest": self._plugin_catalog.digest,
@@ -240,26 +176,11 @@ class ImageReplayRunner:
             self._active_plugin_ids
         )
         self._state["machine_detail"]["pipeline"]["perception_preset"] = (
-            DEFAULT_PERCEPTION_PRESET
-            if list(self._active_plugin_ids) == ["frame", "floor_plane"]
-            else "plugin_selection"
+            self._selection_preset(self._active_plugin_ids)
         )
         self._state["machine_detail"]["pipeline"]["catalog_digest"] = (
             self._plugin_catalog.digest
         )
-
-    def frame_detail(
-        self,
-        frame_id: str,
-        *,
-        run_id: str,
-    ) -> dict[str, Any] | None:
-        """Return one processed frame's server-owned detail for the active run."""
-
-        with self._lock:
-            self._require_run_id_locked(run_id)
-            detail = self._history.get(frame_id)
-            return copy.deepcopy(detail) if detail is not None else None
 
     def frame_bytes(
         self,
@@ -398,7 +319,7 @@ class ImageReplayRunner:
                     )
                     mapper = self._build_mapper_for_selection(selected_plugin_ids)
                     memory_step = self._build_memory_step()
-                    decision_steps_ = _workbench_decision_steps()
+                    decision_steps_ = workbench_decision_steps()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "startup"),
@@ -620,8 +541,8 @@ class ImageReplayRunner:
                 pipeline["run_active_plugin_ids"] = list(normalized)
                 pipeline["active_plugin_ids"] = list(normalized)
                 pipeline["memory_plugin_id"] = self._memory_plugin_id()
-                pipeline["perception_plugin_report"] = _plugin_report(self._mapper)
-                pipeline["memory_plugin_report"] = _plugin_report(self._memory_step)
+                pipeline["perception_plugin_report"] = plugin_report(self._mapper)
+                pipeline["memory_plugin_report"] = plugin_report(self._memory_step)
             self._state["failure"] = None
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
@@ -667,7 +588,7 @@ class ImageReplayRunner:
         selected = self._active_plugin_ids
         mapper = self._build_mapper_for_selection(selected)
         memory_step = self._build_memory_step()
-        decision_steps_ = _workbench_decision_steps()
+        decision_steps_ = workbench_decision_steps()
         self._cleanup_locked()
         self._mapper = mapper
         self._memory_step = memory_step
@@ -738,12 +659,12 @@ class ImageReplayRunner:
     def _build_memory_step(self) -> Any:
         if self.memory_step_factory is not None:
             return self.memory_step_factory()
-        return MemoryRunner(plugin_manager=self._plugin_catalog.memory_manager())
+        return default_memory_step()
 
     def _memory_plugin_id(self) -> str:
         """ID of the published memory plugin."""
 
-        report = _plugin_report(getattr(self, "_memory_step", None))
+        report = plugin_report(getattr(self, "_memory_step", None))
         plugins = report.get("plugins") if isinstance(report, dict) else None
         if isinstance(plugins, list) and plugins and plugins[-1].get("plugin_id"):
             return str(plugins[-1]["plugin_id"])
@@ -870,10 +791,7 @@ class ImageReplayRunner:
         cached: dict[str, Any],
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
-        self._state["perception"] = copy.deepcopy(cached.get("perception"))
-        self._state["observation"] = copy.deepcopy(cached.get("observation"))
-        self._state["memory"] = copy.deepcopy(cached.get("memory"))
-        self._state["decision"] = copy.deepcopy(cached.get("decision"))
+        self._set_steps_locked(copy.deepcopy(cached["steps"]))
         completed = frame.position + 1
         total = len(self._image_source.frames) if self._image_source is not None else completed
         self._state["progress"]["completed"] = completed
@@ -1008,66 +926,17 @@ class ImageReplayRunner:
                 memory_step = self._memory_step
                 decision_steps_ = self._decision_steps
             try:
-                snapshot = _snapshot_for_frame(frame)
-                context = DecisionFrameContext(
-                    frame_id=frame.frame_id,
-                    frame_index=frame.frame_index,
-                    timestamp_ms=frame.timestamp_ms,
-                    sensor_snapshot=snapshot,
-                    mode="workbench_replay",
+                outcome = run_frame(
+                    frame,
+                    mapper=mapper,
+                    memory_step=memory_step,
+                    steps=decision_steps_,
                     shared_memory=self._shared_memory,
-                    metadata={
-                        "source": WORKBENCH_SEQUENCE_ID,
-                        "source_id": frame.source_id,
-                        "sequence_index": frame.position,
-                    },
                 )
-
-                def perceive(current: DecisionFrameContext) -> PerceptionText | None:
-                    if frame.absent or current.sensor_snapshot is None:
-                        mapper.reset(current.shared_memory)
-                        return None
-                    request = build_perception_request(
-                        current.sensor_snapshot,
-                        shared_memory=current.shared_memory,
-                        metadata={
-                            "source": WORKBENCH_SEQUENCE_ID,
-                            "source_id": frame.source_id,
-                            "sequence_index": frame.position,
-                        },
-                    )
-                    return mapper.perceive(request)
-
-                def observe(
-                    current: DecisionFrameContext,
-                    perception: PerceptionText | None,
-                ) -> Observation:
-                    return observation_from_perception(
-                        observation_id=f"{frame.source_id}:{frame.frame_id}",
-                        sensor_snapshot=current.sensor_snapshot,
-                        perception=perception,
-                        metadata={
-                            "source": WORKBENCH_SEQUENCE_ID,
-                            "source_id": frame.source_id,
-                            "sequence_index": frame.position,
-                            "absence_reason": frame.absence_reason,
-                        },
-                        created_at_ms=frame.timestamp_ms,
-                    )
-
-                result = DecisionCycle(
-                    DecisionSteps(
-                        perception=perceive,
-                        observation=observe,
-                        memory=memory_step,
-                        proposal=decision_steps_.proposal,
-                        plan=decision_steps_.plan,
-                        action=decision_steps_.action,
-                    ),
-                ).run(context)
-                decision_payload = _decision_view(result)
-                perception_plugin_report = _plugin_report(mapper)
-                memory_plugin_report = _plugin_report(memory_step)
+                result = outcome.result
+                decision_payload = outcome.decision
+                perception_plugin_report = outcome.perception_plugin_report
+                memory_plugin_report = outcome.memory_plugin_report
                 perception_payload = (
                     result.perception.to_dict() if result.perception else None
                 )
@@ -1076,12 +945,16 @@ class ImageReplayRunner:
                 )
                 memory_payload = copy.deepcopy(memory_state(result.memory))
                 with self._condition:
-                    previous_memory = self._state.get("memory")
+                    previous_memory = self._state["steps"]["memory"]
                     self._state["current_frame"] = frame.to_dict()
-                    self._state["perception"] = perception_payload
-                    self._state["observation"] = observation_payload
-                    self._state["memory"] = memory_payload
-                    self._state["decision"] = copy.deepcopy(decision_payload)
+                    self._set_steps_locked(
+                        {
+                            "perception": perception_payload,
+                            "observation": observation_payload,
+                            "memory": memory_payload,
+                            "decision": copy.deepcopy(decision_payload),
+                        }
+                    )
                     self._state["progress"]["completed"] = frame.position + 1
                     self._state["progress"]["percent"] = (
                         round(
@@ -1111,7 +984,7 @@ class ImageReplayRunner:
                     )
                     pipeline["memory_plugin_report"] = copy.deepcopy(memory_plugin_report)
                     detail["summary"] = copy.deepcopy(self._state["summary"])
-                    detail["decision"] = copy.deepcopy(decision_payload)
+                    detail["steps"]["decision"] = copy.deepcopy(decision_payload)
                     detail["active_plugin_ids"] = list(self._active_plugin_ids)
                     self._history[frame.frame_id] = detail
                     self._upsert_timeline_locked(detail)
@@ -1134,10 +1007,7 @@ class ImageReplayRunner:
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
-                    self._state["perception"] = None
-                    self._state["observation"] = None
-                    self._state["memory"] = None
-                    self._state["decision"] = None
+                    self._set_steps_locked(_empty_steps())
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
                         message=f"{type(exc).__name__}: {exc}",
@@ -1294,10 +1164,8 @@ class ImageReplayRunner:
             "progress": {"completed": 0, "total": 0, "percent": 0.0},
             "summary": self._summary(frames_completed=0, frames_total=0),
             "machine_detail": self._machine_detail(include_run=False),
-            "perception": None,
-            "observation": None,
-            "memory": None,
-            "decision": None,
+            "steps": _empty_steps(),
+            "steps_revision": 0,
             "timeline": [],
             "failure": None,
             "failure_boundary": None,
@@ -1366,14 +1234,10 @@ class ImageReplayRunner:
         )
         return {
             "pipeline": {
-                "perception_preset": (
-                    DEFAULT_PERCEPTION_PRESET
-                    if active_ids == ["frame", "floor_plane"]
-                    else "plugin_selection"
-                ),
+                "perception_preset": self._selection_preset(active_ids),
                 "memory_plugin_id": self._memory_plugin_id(),
-                "perception_plugin_report": _plugin_report(getattr(self, "_mapper", None)),
-                "memory_plugin_report": _plugin_report(getattr(self, "_memory_step", None)),
+                "perception_plugin_report": plugin_report(getattr(self, "_mapper", None)),
+                "memory_plugin_report": plugin_report(getattr(self, "_memory_step", None)),
                 "observation_adapter": "autonomy.decision_cycle.observation.perception_summary.observation_from_perception",
                 "decision_cycle": "autonomy.decision_cycle.cycle.DecisionCycle",
                 "decision_steps": self._decision_step_plugins(),
@@ -1407,6 +1271,12 @@ class ImageReplayRunner:
             "last_transition": None,
         }
 
+    def _set_steps_locked(self, steps: dict[str, Any]) -> None:
+        """Replace the displayed frame's step payloads; the revision tells the page they changed."""
+
+        self._state["steps"] = steps
+        self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1
+
     def _record_action_locked(self, action: str, **fields: Any) -> None:
         item = {"action": action, **fields, "at_ms": _now_ms()}
         detail = self._state.setdefault("machine_detail", self._machine_detail())
@@ -1433,9 +1303,12 @@ class ImageReplayRunner:
         }
         return {
             "frame": frame.to_dict(include_path=False),
-            "perception": result.perception.to_dict() if result.perception else None,
-            "observation": result.observation.to_dict() if result.observation else None,
-            "memory": memory,
+            "steps": {
+                "perception": result.perception.to_dict() if result.perception else None,
+                "observation": result.observation.to_dict() if result.observation else None,
+                "memory": memory,
+                "decision": None,
+            },
             "perception_status": result.perception.status
             if result.perception
             else None,
@@ -1473,7 +1346,7 @@ class ImageReplayRunner:
             "perception_status": detail["perception_status"],
             "memory_record_count": detail["memory_record_count"],
             "memory_effect": copy.deepcopy(detail["memory_effect"]),
-            "decision": self._decision_timeline_item(detail.get("decision")),
+            "decision": self._decision_timeline_item(detail["steps"]["decision"]),
             "duration_ms": detail["duration_ms"],
         }
 

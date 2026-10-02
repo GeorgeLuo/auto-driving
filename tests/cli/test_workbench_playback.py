@@ -15,7 +15,7 @@ from implementations.decision_cycle.memory.bounded_evidence.ledger import (
     LEDGER_KEY,
     EvidenceLedger,
 )
-from cli.automa_cli.workbench_runner import _default_memory_step
+from cli.automa_cli.workbench_frames import default_memory_step
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
     FixtureMapper,
@@ -68,7 +68,7 @@ class WorkbenchTests(unittest.TestCase):
         published = []
 
         def memory_factory():
-            step = _default_memory_step()
+            step = default_memory_step()
 
             class RecordingStep:
                 def __call__(self, context, observation):
@@ -96,7 +96,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["memory"], memory_state(reports[-1]))
+            self.assertEqual(completed["steps"]["memory"], memory_state(reports[-1]))
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))
@@ -189,7 +189,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(sought["position"], 3)
             self.assertEqual(len(mapper.calls), calls_after_first + 2)
             self.assertEqual(
-                sought["decision"]["frame_id"],
+                sought["steps"]["decision"]["frame_id"],
                 sought["current_frame"]["frame_id"],
             )
             self.assertEqual(
@@ -201,7 +201,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["phase"], "paused")
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
-            self.assertEqual(cached["decision"]["frame_id"], first_id)
+            self.assertEqual(cached["steps"]["decision"]["frame_id"], first_id)
             self.assertEqual(len(mapper.calls), calls_after_first + 2)
             cached_next = runner.dispatch("step", run_id=run_id)
             self.assertEqual(cached_next["current_frame"]["position"], 1)

@@ -215,7 +215,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "--plugin",
                 "frame",
                 "--plugin",
-                "floor_plane",
+                "classical_regions",
                 "--dry-run",
                 "--json",
                 runtime_root=runtime_root,
@@ -223,7 +223,7 @@ class PerceptionCommandTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["preset"], CUSTOM_PERCEPTION_PRESET)
-        self.assertEqual(payload["manifest"]["plugins"], ["frame", "floor_plane"])
+        self.assertEqual(payload["manifest"]["plugins"], ["frame", "classical_regions"])
         self.assertEqual(
             payload["manifest"]["metadata"]["preset_description"],
             CUSTOM_PERCEPTION_DESCRIPTION,

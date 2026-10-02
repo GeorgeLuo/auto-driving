@@ -1,8 +1,9 @@
-"""Packaged plugin catalog and selection for the replay workbench.
+"""Packaged perception plugin listing and selection for the replay workbench.
 
-The workbench offers every packaged perception plugin and runs the packaged
-default memory selection. Listing the catalog does not construct plugins;
-construction happens only after the operator selects plugins for a replay.
+The workbench offers every packaged perception plugin. A selection is checked
+and built through the same ``perception_activation`` the CLI uses. Listing the
+catalog does not construct plugins; construction happens only after the
+operator selects plugins for a replay.
 """
 
 from __future__ import annotations
@@ -12,10 +13,15 @@ import json
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.perception.interface import PerceptionBackend
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.plugins import PluginDefinition, PluginManagementError, PluginManager
-from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from autonomy.plugins import PluginDefinition
+from implementations.decision_cycle.catalog import (
+    packaged_activation,
+    perception_activation,
+    step_plugins,
+)
 from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
     PERCEPTION_PRESETS,
@@ -75,13 +81,8 @@ class PluginCatalog:
             "plugins": [item.to_dict(active_ids=active_ids) for item in self.plugins],
         }
 
-    def perception_manager(self) -> PluginManager:
-        """A fresh core manager over every packaged perception plugin."""
-
-        return packaged_activation("perception", []).plugin_manager()
-
     def normalize_selection(self, active_ids: Sequence[str] | None) -> tuple[str, ...]:
-        """Validate ids while preserving the core manager's selection order.
+        """Validate ids while preserving the given order.
 
         An empty selection is raw-capture mode: replay still displays frames,
         but no perception plugin runs.
@@ -95,24 +96,20 @@ class PluginCatalog:
             raise PluginCatalogError("active_plugin_ids must contain non-empty strings")
         if len(values) != len(set(values)):
             raise PluginCatalogError("active_plugin_ids must not contain duplicates")
-        manager = self.perception_manager()
+        return self.activation(values).plugins
+
+    def activation(self, active_ids: Sequence[str]) -> StepActivation:
+        """The CLI's activation for these ids; unknown ids are a catalog error."""
+
         try:
-            manager.select(values)
-        except PluginManagementError as exc:
+            return perception_activation(plugins=list(active_ids))
+        except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc
-        return manager.selected_ids
 
     def build_mapper(self, active_ids: Sequence[str]) -> PerceptionBackend:
         """Construct exactly the selected packaged perception plugins."""
 
-        manager = self.perception_manager()
-        manager.select(self.normalize_selection(active_ids))
-        return PerceptionRunner(manager)
-
-    def memory_manager(self) -> PluginManager:
-        """A core memory manager with the packaged default selection."""
-
-        return packaged_activation("memory").plugin_manager()
+        return PerceptionRunner.from_activation(self.activation(active_ids))
 
 
 def packaged_plugin_catalog() -> PluginCatalog:

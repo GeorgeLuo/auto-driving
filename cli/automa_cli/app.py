@@ -902,11 +902,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Open the loopback workbench page in a browser and imply --serve.",
     )
-    workbench_replay.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the final machine-readable workbench state.",
-    )
     workbench_replay.set_defaults(handler=_handle_vehicles_workbench_replay)
 
     info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
@@ -2045,8 +2040,7 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
         port=args.port,
         serve=args.serve,
         open_browser=args.open_browser,
-        json_output=args.json,
-        output=None if args.json else sys.stdout,
+        output=sys.stdout,
     )
     if result.message:
         print(result.message)

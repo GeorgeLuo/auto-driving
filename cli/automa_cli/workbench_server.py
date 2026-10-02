@@ -52,14 +52,6 @@ class ReplayRunner(Protocol):
     def dispatch(self, action: str, **kwargs: Any) -> dict[str, Any]:
         ...
 
-    def frame_detail(
-        self,
-        frame_id: str,
-        *,
-        run_id: str,
-    ) -> dict[str, Any] | None:
-        ...
-
     def frame_bytes(
         self,
         frame_id: str | None = None,
@@ -288,8 +280,8 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
             )
             self._send_json(200, payload, include_body=include_body)
             return
-        if request.path in {"/api/frame", "/api/frame-detail"}:
-            self._serve_frame(request.path, request.query, include_body=include_body)
+        if request.path == "/api/frame":
+            self._serve_frame(request.query, include_body=include_body)
             return
         self._send_json(
             404,
@@ -297,9 +289,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
             include_body=include_body,
         )
 
-    def _serve_frame(
-        self, route: str, query_string: str, *, include_body: bool
-    ) -> None:
+    def _serve_frame(self, query_string: str, *, include_body: bool) -> None:
         query = parse_qs(query_string, keep_blank_values=True)
         frame_id = _query_one(query, "frame_id")
         run_id = _query_one(query, "run_id")
@@ -331,28 +321,11 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
             )
             return
         try:
-            if route == "/api/frame-detail":
-                if not frame_id:
-                    self._send_json(
-                        400,
-                        _error_payload(
-                            "input",
-                            "run_id and frame_id are required",
-                            self.server.workbench.state_payload(),
-                        ),
-                        include_body=include_body,
-                    )
-                    return
-                detail = self.server.workbench.runner.frame_detail(
-                    frame_id,
-                    run_id=run_id,
-                )
-            else:
-                frame = self.server.workbench.runner.frame_bytes(
-                    frame_id,
-                    run_id=run_id,
-                    position=position,
-                )
+            frame = self.server.workbench.runner.frame_bytes(
+                frame_id,
+                run_id=run_id,
+                position=position,
+            )
         except ReplayActionError as exc:
             self._send_json(
                 exc.status_code,
@@ -363,20 +336,6 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
                 ),
                 include_body=include_body,
             )
-            return
-        if route == "/api/frame-detail":
-            if detail is None:
-                self._send_json(
-                    404,
-                    _error_payload(
-                        "frame",
-                        "processed frame detail is unavailable",
-                        self.server.workbench.state_payload(),
-                    ),
-                    include_body=include_body,
-                )
-                return
-            self._send_json(200, detail, include_body=include_body)
             return
         if frame is None:
             self._send_json(

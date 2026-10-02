@@ -254,12 +254,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(latest["phase"], "completed")
             frame_id = state["timeline"][0]["frame"]["frame_id"]
             query = urlencode({"run_id": run_id, "frame_id": frame_id})
-            detail = json.loads(
-                urlopen(base + "api/frame-detail?" + query, timeout=2).read()
-            )
-            self.assertEqual(detail["frame"]["frame_id"], frame_id)
-            self.assertEqual(detail["steps"]["perception"]["status"], "ok")
-            self.assertEqual(detail["steps"]["memory"]["health"], "healthy")
             frame = urlopen(
                 base + "api/frame?" + query,
                 timeout=2,
@@ -283,9 +277,9 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertNotEqual(second_start["state"]["run_id"], run_id)
             self.assertEqual(runner.wait(5)["phase"], "completed")
-            with self.assertRaises(HTTPError) as stale_detail:
-                urlopen(base + "api/frame-detail?" + query, timeout=2)
-            self.assertEqual(stale_detail.exception.code, 409)
+            with self.assertRaises(HTTPError) as stale_frame:
+                urlopen(base + "api/frame?" + query, timeout=2)
+            self.assertEqual(stale_frame.exception.code, 409)
 
             bad_body = json.dumps({"action": "start", "argv": ["--unsafe"]}).encode(
                 "utf-8"

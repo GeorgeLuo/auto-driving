@@ -5,13 +5,13 @@ from copy import deepcopy
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     serialized_ledger_bytes,
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
     CONFLICT_POLICY,
-    _BoundedEvidenceReducer as BoundedEvidenceReducer,
+    BoundedEvidenceReducer,
     json_values_equal,
     location_geometry_signature,
     namespaced_record_id,

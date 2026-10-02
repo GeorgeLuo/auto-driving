@@ -18,10 +18,9 @@ from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
-from implementations.decision_cycle.catalog import perception_activation
+from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
 from implementations.decision_cycle.perception.presets import (
     CUSTOM_PERCEPTION_DESCRIPTION,
-    CUSTOM_PERCEPTION_PRESET,
     PERCEPTION_PRESETS,
     available_perception_preset_ids,
 )
@@ -90,11 +89,11 @@ def ensure_local_perception_runtime(
         existing = _read_manifest(manifest_path)
 
     existing_preset = _manifest_preset(existing) if existing is not None else None
-    if existing is not None and existing_preset == CUSTOM_PERCEPTION_PRESET:
+    if existing is not None and existing_preset == CUSTOM_PRESET:
         staged = existing
     else:
         staged_preset = existing_preset if existing_preset in PERCEPTION_PRESETS else None
-        staged = _activation_manifest(vehicle, perception_activation(preset=staged_preset), bundle)
+        staged = _activation_manifest(vehicle, selection_activation("perception", preset=staged_preset), bundle)
         if existing is not None:
             existing_release = _manifest_bundle(existing).get("release")
             if isinstance(existing_release, dict):
@@ -114,7 +113,7 @@ def ensure_local_perception_runtime(
     manifest = staged
     if preset is not None or plugins:
         manifest = _activation_manifest(
-            vehicle, perception_activation(preset=preset, plugins=plugins), bundle
+            vehicle, selection_activation("perception", preset=preset, plugins=plugins), bundle
         )
         _manifest_bundle(manifest)["release"] = _manifest_bundle(staged).get("release")
 
@@ -306,7 +305,7 @@ def update_vehicle_perception(
             f"Unknown perception preset {preset!r}. Available presets: {available}.",
         )
     try:
-        activation = perception_activation(preset=preset, plugins=plugins)
+        activation = selection_activation("perception", preset=preset, plugins=plugins)
     except ValueError as exc:
         return CommandResult(2, str(exc))
     activation_name = activation.metadata["preset"]
@@ -575,11 +574,11 @@ def ensure_vehicle_perception_activation(
         manifest = _read_manifest(activation_path)
         existing_preset = _manifest_preset(manifest)
         if existing_preset in PERCEPTION_PRESETS:
-            manifest = _activation_manifest(vehicle, perception_activation(preset=existing_preset), bundle)
+            manifest = _activation_manifest(vehicle, selection_activation("perception", preset=existing_preset), bundle)
         elif existing_preset != "custom":
-            manifest = _activation_manifest(vehicle, perception_activation(preset=preset), bundle)
+            manifest = _activation_manifest(vehicle, selection_activation("perception", preset=preset), bundle)
     else:
-        manifest = _activation_manifest(vehicle, perception_activation(preset=preset), bundle)
+        manifest = _activation_manifest(vehicle, selection_activation("perception", preset=preset), bundle)
 
     _manifest_bundle(manifest)["release"] = release_activation_summary(release)
     _write_manifest(activation_path, manifest)

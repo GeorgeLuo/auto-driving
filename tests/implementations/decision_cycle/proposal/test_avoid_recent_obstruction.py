@@ -7,7 +7,7 @@ import unittest
 from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
     AvoidRecentObstruction,
     propose as _propose,

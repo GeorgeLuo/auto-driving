@@ -1,10 +1,8 @@
-"""Packaged memory plugins and the memory step's default selection."""
+"""Packaged memory plugins."""
 
 from __future__ import annotations
 
 from typing import Any
-
-DEFAULT_MEMORY_PLUGIN = "bounded_evidence"
 
 _BOUNDED_EVIDENCE_CONFIG: dict[str, Any] = {
     "max_records": 32,
@@ -21,7 +19,7 @@ _BOUNDED_EVIDENCE_CONFIG: dict[str, Any] = {
 MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
     {
         "spec": (
-            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
+            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger"
         ),
         "description": (
             "Bounded recency ledger of observation things and signals with "
@@ -32,7 +30,7 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
     },
     {
         "spec": (
-            "implementations.decision_cycle.memory.multi_obstruction_tracks.plugin:"
+            "implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin:"
             "MultiObstructionMemory"
         ),
         "description": (
@@ -43,4 +41,3 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": dict(_BOUNDED_EVIDENCE_CONFIG),
     },
 )
-DEFAULT_MEMORY_PLUGINS: tuple[str, ...] = (DEFAULT_MEMORY_PLUGIN,)

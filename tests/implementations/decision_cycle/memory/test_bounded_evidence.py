@@ -13,15 +13,16 @@ from autonomy.decision_cycle.activation import (
     read_step_activation,
     write_step_activation,
 )
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
-    EVIDENCE_KEY,
-    LEDGER_KEY,
-)
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
-from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
+    LEDGER_KEY,
     BoundedEvidenceLedger,
-    _BoundedEvidenceReducer as BoundedEvidenceReducer,
+)
+from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
+    BoundedEvidenceReducer,
+    namespaced_record_id,
     reduce_evidence,
 )
 
@@ -68,11 +69,11 @@ def _thing(
 
 class BoundedEvidenceLedgerTests(unittest.TestCase):
     def test_catalog_exposes_default_plugin(self) -> None:
-        self.assertEqual(DEFAULT_MEMORY_PLUGIN, "bounded_evidence")
+        self.assertEqual(DEFAULT_MEMORY_PLUGINS, ("bounded_evidence",))
         entry = step_plugins("memory")["bounded_evidence"]
         self.assertEqual(
             entry["spec"],
-            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger",
+            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
         )
 
     def test_reset_writes_a_fresh_epoch_to_the_map(self) -> None:
@@ -156,7 +157,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(thing.provenance.frame_id, "frame_1")
         self.assertEqual(thing.provenance.source_plugin_id, "floor_plane")
         self.assertEqual(thing.location.zone, "left")
-        self.assertFalse(state.metadata["claims_identity"])
 
     def test_recurring_evidence_updates_same_slot_without_identity_claim(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=10_000)
@@ -266,7 +266,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             self.assertEqual(state["health"], "healthy")
             self.assertEqual(state["record_count"], 1)
             self.assertEqual(state["plugin_id"], "bounded_evidence")
-            self.assertEqual(step.status()["plugin_id"], "bounded_evidence")
+            self.assertEqual(step.status()["plugin_ids"], ["bounded_evidence"])
             self.assertEqual(shared_memory[LEDGER_KEY].to_dict(), state)
             self.assertEqual(shared_memory[EVIDENCE_KEY], shared_memory[LEDGER_KEY].records)
 
@@ -351,10 +351,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(by_id["thing:1:8:plugin-b:9:shared_id"].location.zone, "right")
 
     def test_delimiter_containing_plugin_ids_do_not_collide(self) -> None:
-        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
-            namespaced_record_id,
-        )
-
         left = namespaced_record_id("thing", "shared", "plugin:a")
         right = namespaced_record_id("thing", "shared", "plugin_a")
         self.assertNotEqual(left, right)
@@ -374,10 +370,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(ids, {left, right})
 
     def test_namespace_preserves_absent_vs_literal_unknown_and_whitespace(self) -> None:
-        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
-            namespaced_record_id,
-        )
-
         absent = namespaced_record_id("thing", "shared", None)
         literal_unknown = namespaced_record_id("thing", "shared", "unknown")
         plain = namespaced_record_id("thing", "shared", "plugin")

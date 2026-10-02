@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from pathlib import Path
 from unittest.mock import patch
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON

@@ -114,7 +114,21 @@
                 "path": "implementations/decision_cycle/memory/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Memory plugins that retain evidence, and the memory catalog. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/."
+                "responsibility": "Memory plugins that retain evidence, and library code they share. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/.",
+                "children": [
+                  {
+                    "path": "implementations/decision_cycle/memory/plugins/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "One folder per memory plugin, named for its plugin_id."
+                  },
+                  {
+                    "path": "implementations/decision_cycle/memory/shared/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Topic library shared by more than one memory plugin: evidence_ledger. Not selectable plugins."
+                  }
+                ]
               },
               {
                 "path": "implementations/decision_cycle/proposal/",

@@ -11,10 +11,8 @@ from autonomy.decision_cycle.perception.evidence.values import (
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from cli.automa_cli.memory_report import memory_state
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
-    LEDGER_KEY,
-    EvidenceLedger,
-)
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
 from cli.automa_cli.workbench_frames import default_memory_step
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (

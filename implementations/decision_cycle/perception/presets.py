@@ -3,7 +3,7 @@
 A preset lists the plugins to run and config overrides for some of them. The
 default is a preset. An activation built from one records the preset name in
 its ``preset`` metadata key; a selection that is not a preset records
-``CUSTOM_PERCEPTION_PRESET``.
+``custom``.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from typing import Any
 
 
 DEFAULT_PERCEPTION_PRESET = "lightweight_observer"
-CUSTOM_PERCEPTION_PRESET = "custom"
 CUSTOM_PERCEPTION_DESCRIPTION = "Manual perception plugin selection."
 
 PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
@@ -36,6 +35,13 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
             "bounded scene tracks."
         ),
         "plugins": ["frame", "floor_plane", "motion_tracks"],
+    },
+    "multi_obstruction": {
+        "description": (
+            "Multi-obstruction candidates for the multi_obstruction_tracks "
+            "memory plugin, with floor continuity and classical color regions."
+        ),
+        "plugins": ["multi_obstruction_tracks", "floor_continuity", "classical_regions"],
     },
     "obstruction_observer": {
         "description": (

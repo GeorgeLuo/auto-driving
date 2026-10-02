@@ -2,9 +2,8 @@
 
 The workbench offers every packaged plugin of the steps whose selection the
 operator can change: perception and memory. A selection is checked and built
-through the activation the CLI uses for that step: ``perception_activation``
-for perception, and ``packaged_activation("memory", ...)``, which ``update
-memory`` calls, for memory. Listing a catalog does not construct plugins;
+through ``selection_activation``, the activation the CLI uses for that step.
+Listing a catalog does not construct plugins;
 construction happens only after the operator selects plugins for a replay.
 """
 
@@ -22,12 +21,8 @@ from autonomy.plugins import PluginDefinition
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     packaged_activation,
-    perception_activation,
+    selection_activation,
     step_plugins,
-)
-from implementations.decision_cycle.perception.presets import (
-    DEFAULT_PERCEPTION_PRESET,
-    PERCEPTION_PRESETS,
 )
 
 
@@ -107,9 +102,7 @@ class PluginCatalog:
         """The CLI's activation for these ids; unknown ids are a catalog error."""
 
         try:
-            if self.step == "perception":
-                return perception_activation(plugins=list(active_ids))
-            return packaged_activation(self.step, list(active_ids))
+            return selection_activation(self.step, plugins=list(active_ids))
         except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc
 
@@ -127,11 +120,7 @@ def packaged_plugin_catalog(step: str) -> PluginCatalog:
         raise PluginCatalogError(
             f"plugins can be selected for {' and '.join(SELECTABLE_STEPS)}, not {step!r}"
         )
-    default_ids = (
-        tuple(PERCEPTION_PRESETS[DEFAULT_PERCEPTION_PRESET]["plugins"])
-        if step == "perception"
-        else DEFAULT_STEP_PLUGINS[step]
-    )
+    default_ids = DEFAULT_STEP_PLUGINS[step]
     entries = step_plugins(step)
     definitions: dict[str, PluginDefinition] = {
         item.plugin_id: item

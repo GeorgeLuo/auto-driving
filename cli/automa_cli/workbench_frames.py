@@ -19,8 +19,7 @@ from autonomy.decision_cycle.perception.interface import PerceptionBackend, Perc
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.catalog import packaged_activation, perception_preset_activation
-from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
+from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 
 from .perception_runs import run_perception
 from .workbench_contract import WORKBENCH_SEQUENCE_ID
@@ -59,13 +58,11 @@ def snapshot_for_frame(frame: ReplayFrame) -> SensorSnapshot | None:
 
 
 def default_mapper() -> PerceptionBackend:
-    return PerceptionRunner.from_activation(
-        perception_preset_activation(DEFAULT_PERCEPTION_PRESET)
-    )
+    return PerceptionRunner.from_activation(selection_activation("perception"))
 
 
 def default_memory_step() -> MemoryRunner:
-    return MemoryRunner.from_activation(packaged_activation("memory"))
+    return MemoryRunner.from_activation(selection_activation("memory"))
 
 
 def workbench_decision_steps() -> Any:

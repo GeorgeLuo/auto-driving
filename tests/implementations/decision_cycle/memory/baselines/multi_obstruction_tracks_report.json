@@ -1,0 +1,1251 @@
+[
+ {
+  "frame_id": "frame_0",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 100,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_0",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_0",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6287,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 1,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 0,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "new"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_0",
+         "observation_id": "frame_0",
+         "observed_at_ms": 100,
+         "source_plugin_id": null,
+         "updated_at_ms": 100
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6287,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.1938,
+          0.2917,
+          0.425,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_left"
+        },
+        "properties": {
+         "association_score": 0.0,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.5456,
+         "source_bbox_xyxy_norm": [
+          0.1938,
+          0.2917,
+          0.425,
+          0.625
+         ],
+         "track_age_frames": 1,
+         "track_event": "new",
+         "track_id": 0,
+         "track_missed_frames": 0
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_0",
+         "observation_id": "frame_0",
+         "observed_at_ms": 100,
+         "source_plugin_id": null,
+         "updated_at_ms": 100
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.1938,
+      0.2917,
+      0.425,
+      0.625
+     ],
+     "confidence": 0.6287,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "new"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_1",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 200,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_1",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_1",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6284,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 1,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "matched"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_1",
+         "observation_id": "frame_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": null,
+         "updated_at_ms": 200
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6284,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.212,
+          0.2917,
+          0.4453,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_left"
+        },
+        "properties": {
+         "association_score": 0.8336,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.545,
+         "source_bbox_xyxy_norm": [
+          0.212,
+          0.2917,
+          0.4453,
+          0.625
+         ],
+         "track_age_frames": 2,
+         "track_event": "matched",
+         "track_id": 0,
+         "track_missed_frames": 0
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_1",
+         "observation_id": "frame_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": null,
+         "updated_at_ms": 200
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.212,
+      0.2917,
+      0.4453,
+      0.625
+     ],
+     "confidence": 0.6284,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_2",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 300,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_2",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_2",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6286,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 1,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "matched"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_2",
+         "observation_id": "frame_2",
+         "observed_at_ms": 300,
+         "source_plugin_id": null,
+         "updated_at_ms": 300
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6286,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.2387,
+          0.2917,
+          0.4707,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_left"
+        },
+        "properties": {
+         "association_score": 0.7948,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.5456,
+         "source_bbox_xyxy_norm": [
+          0.2387,
+          0.2917,
+          0.4707,
+          0.625
+         ],
+         "track_age_frames": 3,
+         "track_event": "matched",
+         "track_id": 0,
+         "track_missed_frames": 0
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_2",
+         "observation_id": "frame_2",
+         "observed_at_ms": 300,
+         "source_plugin_id": null,
+         "updated_at_ms": 300
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2387,
+      0.2917,
+      0.4707,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_3",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 400,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_3",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_3",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6283,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 1,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "matched"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_3",
+         "observation_id": "frame_3",
+         "observed_at_ms": 400,
+         "source_plugin_id": null,
+         "updated_at_ms": 400
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6283,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.2664,
+          0.2917,
+          0.4999,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_left"
+        },
+        "properties": {
+         "association_score": 0.7817,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.545,
+         "source_bbox_xyxy_norm": [
+          0.2664,
+          0.2917,
+          0.4999,
+          0.625
+         ],
+         "track_age_frames": 4,
+         "track_event": "matched",
+         "track_id": 0,
+         "track_missed_frames": 0
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_3",
+         "observation_id": "frame_3",
+         "observed_at_ms": 400,
+         "source_plugin_id": null,
+         "updated_at_ms": 400
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2664,
+      0.2917,
+      0.4999,
+      0.625
+     ],
+     "confidence": 0.6283,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_4",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 500,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_4",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_4",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6286,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 1,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "matched"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_4",
+         "observation_id": "frame_4",
+         "observed_at_ms": 500,
+         "source_plugin_id": null,
+         "updated_at_ms": 500
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6286,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.2964,
+          0.2917,
+          0.5284,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_left"
+        },
+        "properties": {
+         "association_score": 0.7769,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.5456,
+         "source_bbox_xyxy_norm": [
+          0.2964,
+          0.2917,
+          0.5284,
+          0.625
+         ],
+         "track_age_frames": 5,
+         "track_event": "matched",
+         "track_id": 0,
+         "track_missed_frames": 0
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_4",
+         "observation_id": "frame_4",
+         "observed_at_ms": 500,
+         "source_plugin_id": null,
+         "updated_at_ms": 500
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2964,
+      0.2917,
+      0.5284,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_5",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 600,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_5",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_5",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6286,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 0,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "held"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "source_plugin_id": null,
+         "updated_at_ms": 600
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6286,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.2964,
+          0.2917,
+          0.5284,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_left"
+        },
+        "properties": {
+         "association_score": 0.7769,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.5456,
+         "source_bbox_xyxy_norm": [
+          0.2964,
+          0.2917,
+          0.5284,
+          0.625
+         ],
+         "track_age_frames": 5,
+         "track_event": "held",
+         "track_id": 0,
+         "track_missed_frames": 1
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "source_plugin_id": null,
+         "updated_at_ms": 600
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2964,
+      0.2917,
+      0.5284,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "held"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_6",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 700,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_6",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_6",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6286,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 0,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "held"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "source_plugin_id": null,
+         "updated_at_ms": 600
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6286,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.2964,
+          0.2917,
+          0.5284,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_left"
+        },
+        "properties": {
+         "association_score": 0.7769,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.5456,
+         "source_bbox_xyxy_norm": [
+          0.2964,
+          0.2917,
+          0.5284,
+          0.625
+         ],
+         "track_age_frames": 5,
+         "track_event": "held",
+         "track_id": 0,
+         "track_missed_frames": 1
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_5",
+         "observation_id": "frame_5",
+         "observed_at_ms": 600,
+         "source_plugin_id": null,
+         "updated_at_ms": 600
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [],
+   "track_events": {
+    "0": "lost"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_7",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 800,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_7",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_7",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6287,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 1,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "reacquired"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_7",
+         "observation_id": "frame_7",
+         "observed_at_ms": 800,
+         "source_plugin_id": null,
+         "updated_at_ms": 800
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6287,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.3597,
+          0.2917,
+          0.5912,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_center"
+        },
+        "properties": {
+         "association_score": 0.0,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.5456,
+         "source_bbox_xyxy_norm": [
+          0.3597,
+          0.2917,
+          0.5912,
+          0.625
+         ],
+         "track_age_frames": 1,
+         "track_event": "reacquired",
+         "track_id": 0,
+         "track_missed_frames": 0
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_7",
+         "observation_id": "frame_7",
+         "observed_at_ms": 800,
+         "source_plugin_id": null,
+         "updated_at_ms": 800
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.3597,
+      0.2917,
+      0.5912,
+      0.625
+     ],
+     "confidence": 0.6287,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "reacquired"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_8",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "multi_obstruction_tracks",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 900,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-frame_8",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "frame_8",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "multi_obstruction_tracks",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.6284,
+        "kind": "signal",
+        "label": "multi_obstruction_tracks_available",
+        "location": null,
+        "properties": {
+         "active_track_count": 1,
+         "candidate_count": 1,
+         "floor_cutoff_y": 0.72,
+         "memory_tracks_read": 1,
+         "memory_tracks_written": 1,
+         "track_events": {
+          "0": "matched"
+         },
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "multi_obstruction_tracks_available",
+         "frame_id": "frame_8",
+         "observation_id": "frame_8",
+         "observed_at_ms": 900,
+         "source_plugin_id": null,
+         "updated_at_ms": 900
+        },
+        "record_id": "signal:0:34:multi_obstruction_tracks_available"
+       },
+       {
+        "confidence": 0.6284,
+        "kind": "obstacle",
+        "label": "temporally associated generic obstruction",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.4001,
+          0.2917,
+          0.6335,
+          0.625
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "mid_center"
+        },
+        "properties": {
+         "association_score": 0.7134,
+         "evidence": "floor_suppressed_edge_region",
+         "floor_suppressed": true,
+         "flow_support": 0.0,
+         "minimum_output_confidence": 0.0,
+         "minimum_output_confidence_events": [
+          "predicted",
+          "held"
+         ],
+         "output_bbox_shrink_x": 1.0,
+         "output_bbox_shrink_y": 1.0,
+         "shape_support": 0.545,
+         "source_bbox_xyxy_norm": [
+          0.4001,
+          0.2917,
+          0.6335,
+          0.625
+         ],
+         "track_age_frames": 2,
+         "track_event": "matched",
+         "track_id": 0,
+         "track_missed_frames": 0
+        },
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "obstruction_track_000",
+         "frame_id": "frame_8",
+         "observation_id": "frame_8",
+         "observed_at_ms": 900,
+         "source_plugin_id": null,
+         "updated_at_ms": 900
+        },
+        "record_id": "thing:0:21:obstruction_track_000"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=obstacle,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  },
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.4001,
+      0.2917,
+      0.6335,
+      0.625
+     ],
+     "confidence": 0.6284,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ }
+]

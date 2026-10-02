@@ -1,4 +1,4 @@
-"""Bounded recency ledger of observation evidence.
+"""Bounded reduction of observation evidence into an evidence ledger.
 
 Retains attributed things and signals across cycles with finite capacity and
 age. Recurring evidence_ids update the same ledger slot within an epoch; that
@@ -10,9 +10,8 @@ still agree (conflict policy ``bounded_evidence_structural_v2``). Record ids are
 namespaced by source plugin so two plugins cannot silently overwrite one
 another with the same local evidence id.
 
-The plugin keeps its ledger at ``LEDGER_KEY`` in shared memory and publishes
-the retained records at ``EVIDENCE_KEY`` for other plugins. Its reducer uses
-mutable working data for one update and is then discarded.
+``reduce_evidence`` reduces one cycle from an explicit prior ledger. The
+reducer uses mutable working data for one update and is then discarded.
 """
 
 from __future__ import annotations
@@ -25,12 +24,9 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
 from autonomy.serialization import ensure_strict_json_value
-from autonomy.shared_memory import SharedMemory
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
-    EVIDENCE_KEY,
-    LEDGER_KEY,
     EvidenceLedger,
     LedgerBounds,
     detach_ledger,
@@ -45,7 +41,7 @@ MAX_REPORTED_DROPS = 12
 MAX_REPORTED_ID_CHARS = 128
 
 
-class _BoundedEvidenceReducer:
+class BoundedEvidenceReducer:
     """Temporary working state for one reduction, or a standalone algorithm test."""
 
     plugin_id = "bounded_evidence"
@@ -185,7 +181,6 @@ class _BoundedEvidenceReducer:
     def _metadata(self, *, observation_id: str | None) -> dict[str, Any]:
         return {
             "policy": "bounded_evidence_recency",
-            "claims_identity": False,
             "observation_id": observation_id,
             "capacity_eviction_count": self._capacity_eviction_count,
             "conflict_policy": CONFLICT_POLICY,
@@ -386,7 +381,7 @@ def reduce_evidence(
     **config: Any,
 ) -> EvidenceLedger:
     """Reduce one cycle from an explicit prior ledger without retaining a reducer."""
-    reducer = _BoundedEvidenceReducer(**config)
+    reducer = BoundedEvidenceReducer(**config)
     reducer.plugin_id = plugin_id
     reducer._records = {record.record_id: record for record in previous.records}
     reducer._capacity_eviction_count = int(
@@ -402,80 +397,6 @@ def reduce_evidence(
             for item in ledger.summary
         ),
     )
-
-
-class BoundedEvidenceLedger:
-    """Memory plugin that keeps bounded retained evidence.
-
-    The plugin keeps its ``EvidenceLedger`` at ``LEDGER_KEY`` and publishes the
-    ledger's records at ``EVIDENCE_KEY``. Other keys in the map belong to other
-    producers.
-    """
-
-    plugin_id = "bounded_evidence"
-
-    def __init__(self, **config: Any) -> None:
-        self.config = config
-        reducer = _BoundedEvidenceReducer(**config)
-        self.bounds = reducer.bounds
-        self._empty = reducer.ledger()
-
-    def ledger(self, shared_memory: SharedMemory | None) -> EvidenceLedger:
-        """The stored ledger, or the initial empty ledger before the first update."""
-
-        current = shared_memory.get(LEDGER_KEY) if shared_memory is not None else None
-        return detach_ledger(current if isinstance(current, EvidenceLedger) else self._empty)
-
-    def status(self, shared_memory: SharedMemory | None) -> dict[str, Any]:
-        return self.ledger(shared_memory).to_dict()
-
-    def reset(self, shared_memory: SharedMemory) -> None:
-        previous = self.ledger(shared_memory)
-        next_epoch = _numbered_epoch(previous.epoch_id) + 1
-        epoch = f"epoch-{next_epoch}"
-        publish_ledger(
-            shared_memory,
-            replace(
-                self._empty,
-                memory_id=f"memory-reset-{next_epoch}",
-                epoch_id=epoch,
-                summary=(
-                    "memory_empty=true",
-                    f"epoch_id={epoch}",
-                    "policy=bounded_evidence_recency",
-                ),
-            ),
-        )
-
-    def update(
-        self,
-        context: DecisionFrameContext,
-        observation: Observation | None,
-    ) -> None:
-        if context.shared_memory is None:
-            raise ValueError("bounded evidence requires a shared-memory map")
-        publish_ledger(
-            context.shared_memory,
-            reduce_evidence(
-                self.ledger(context.shared_memory),
-                context,
-                observation,
-                plugin_id=self.plugin_id,
-                **self.config,
-            ),
-        )
-
-
-def publish_ledger(shared_memory: SharedMemory, ledger: EvidenceLedger) -> None:
-    """Store the ledger and publish its records for other plugins."""
-
-    shared_memory[LEDGER_KEY] = ledger
-    shared_memory[EVIDENCE_KEY] = ledger.records
-
-
-def _numbered_epoch(epoch_id: str) -> int:
-    number = epoch_id.removeprefix("epoch-") if epoch_id.startswith("epoch-") else ""
-    return max(1, int(number)) if number.isdecimal() else 1
 
 
 def namespaced_record_id(
@@ -585,17 +506,6 @@ def structural_conflict_reason(
         ):
             return "geometry_changed"
     return None
-
-
-def structurally_compatible(
-    retained: RetainedEvidence, candidate: RetainedEvidence
-) -> bool:
-    return structural_conflict_reason(retained, candidate) is None
-
-
-# Public aliases used by tests for table-driven coverage of pure helpers.
-_structurally_compatible = structurally_compatible
-_payload_equal = payload_equal
 
 
 def _group_has_contradiction(group: list[RetainedEvidence]) -> bool:

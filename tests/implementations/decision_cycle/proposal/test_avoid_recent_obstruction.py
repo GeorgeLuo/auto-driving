@@ -46,7 +46,7 @@ def _record(
         confidence=confidence,
         provenance=MemoryProvenance(
             observation_id="obs",
-            evidence_id="ev",
+            observed_id="ev",
             coordinate_frame=location_frame,
             observed_at_ms=updated_at_ms,
             updated_at_ms=updated_at_ms,
@@ -354,7 +354,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             confidence=0.8,
             provenance=MemoryProvenance(
                 observation_id="obs",
-                evidence_id="ev",
+                observed_id="ev",
                 coordinate_frame="image",
                 observed_at_ms=1000,
                 updated_at_ms=1000,

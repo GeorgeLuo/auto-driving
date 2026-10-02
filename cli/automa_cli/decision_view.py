@@ -148,14 +148,14 @@ def _evidence_projection(
             reason = "observation_unavailable"
         elif provenance.get("observation_id") != observation_id:
             reason = "observation_mismatch"
-        elif type(provenance.get("evidence_id")) is not str or not provenance.get("evidence_id"):
+        elif type(provenance.get("observed_id")) is not str or not provenance.get("observed_id"):
             reason = "provenance_unavailable"
         else:
             matches = [
                 thing
                 for thing in things
                 if isinstance(thing, dict)
-                and thing.get("thing_id") == provenance["evidence_id"]
+                and thing.get("thing_id") == provenance["observed_id"]
             ]
             if not matches:
                 reason = "evidence_missing"

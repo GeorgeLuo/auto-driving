@@ -27,7 +27,7 @@ class EvidenceLedgerTests(unittest.TestCase):
             confidence=0.8,
             provenance=MemoryProvenance(
                 observation_id="obs_1",
-                evidence_id="floor_boundary_000",
+                observed_id="floor_boundary_000",
                 coordinate_frame="image",
                 observed_at_ms=100,
                 updated_at_ms=150,

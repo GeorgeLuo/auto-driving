@@ -91,7 +91,7 @@ class ObservationPublicationTests(unittest.TestCase):
                         confidence=0.9,
                         provenance=MemoryProvenance(
                             observation_id="obs",
-                            evidence_id="boundary",
+                            observed_id="boundary",
                             coordinate_frame="image",
                             observed_at_ms=context.timestamp_ms,
                             updated_at_ms=context.timestamp_ms,

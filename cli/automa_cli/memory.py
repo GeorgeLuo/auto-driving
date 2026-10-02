@@ -735,7 +735,7 @@ def build_memory_provenance_rows(
                 "provenance": {
                     "frame_id": provenance.get("frame_id"),
                     "observation_id": provenance.get("observation_id"),
-                    "evidence_id": provenance.get("evidence_id"),
+                    "observed_id": provenance.get("observed_id"),
                     "updated_at_ms": provenance.get("updated_at_ms"),
                     "source_plugin_id": provenance.get("source_plugin_id"),
                     "coordinate_frame": provenance.get("coordinate_frame"),

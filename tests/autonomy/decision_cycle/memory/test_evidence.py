@@ -15,7 +15,7 @@ class RetainedEvidenceTests(unittest.TestCase):
     def provenance(self) -> MemoryProvenance:
         return MemoryProvenance(
             observation_id="obs_1",
-            evidence_id="floor_boundary_000",
+            observed_id="floor_boundary_000",
             coordinate_frame="image",
             observed_at_ms=100,
             updated_at_ms=150,
@@ -51,6 +51,14 @@ class RetainedEvidenceTests(unittest.TestCase):
         self.assertEqual(restored.record_id, "rec_1")
         self.assertEqual(restored.location.zone, "center")
         self.assertEqual(restored.provenance, record.provenance)
+
+    def test_the_old_provenance_key_is_not_read(self) -> None:
+        payload = self.retained().to_dict()
+        provenance = payload["provenance"]
+        provenance["evidence_id"] = provenance.pop("observed_id")
+
+        with self.assertRaisesRegex(ValueError, "observed_id"):
+            RetainedEvidence.from_dict(payload)
 
     def test_detach_evidence_isolates_nested_mutation(self) -> None:
         original = (self.retained("a"), self.retained("b"))

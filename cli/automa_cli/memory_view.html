@@ -521,7 +521,7 @@
       }
       appendMetric(valueSummary, "provenance.frame_id", value.provenance?.frame_id || "—");
       appendMetric(valueSummary, "provenance.observation_id", value.provenance?.observation_id || "—");
-      appendMetric(valueSummary, "provenance.evidence_id", value.provenance?.evidence_id || "—");
+      appendMetric(valueSummary, "provenance.observed_id", value.provenance?.observed_id || "—");
       appendMetric(valueSummary, "provenance.updated_at_ms", value.provenance?.updated_at_ms ?? "—");
       appendMetric(valueSummary, "source_plugin", value.provenance?.source_plugin_id || "—");
       valueJson.textContent = JSON.stringify(value, null, 2);

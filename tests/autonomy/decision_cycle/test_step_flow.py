@@ -62,7 +62,7 @@ class DecisionStageFlowTests(unittest.TestCase):
                     confidence=0.9,
                     provenance=MemoryProvenance(
                         observation_id=observation.observation_id,
-                        evidence_id="path_clear",
+                        observed_id="path_clear",
                         coordinate_frame="image",
                         observed_at_ms=701,
                         updated_at_ms=702,

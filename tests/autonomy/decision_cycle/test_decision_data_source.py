@@ -25,7 +25,7 @@ def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> Ret
         confidence=0.9,
         provenance=MemoryProvenance(
             observation_id="obs",
-            evidence_id="ev",
+            observed_id="ev",
             coordinate_frame="image",
             observed_at_ms=1000,
             updated_at_ms=1000,

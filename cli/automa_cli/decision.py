@@ -256,7 +256,7 @@ RECORD_REQUIRED_KEYS = frozenset(
 PROVENANCE_REQUIRED_KEYS = frozenset(
     {
         "observation_id",
-        "evidence_id",
+        "observed_id",
         "coordinate_frame",
         "observed_at_ms",
         "updated_at_ms",

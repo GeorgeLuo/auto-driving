@@ -26,7 +26,7 @@ def _left_obstruction() -> tuple[RetainedEvidence, ...]:
             confidence=0.8,
             provenance=MemoryProvenance(
                 observation_id="obs-1",
-                evidence_id="boundary",
+                observed_id="boundary",
                 coordinate_frame="image",
                 observed_at_ms=1000,
                 updated_at_ms=1000,

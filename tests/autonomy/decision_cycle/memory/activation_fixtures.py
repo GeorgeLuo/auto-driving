@@ -47,7 +47,7 @@ class _RecordingMemory:
                     confidence=1.0,
                     provenance=MemoryProvenance(
                         observation_id=observation.observation_id,
-                        evidence_id="observation",
+                        observed_id="observation",
                         coordinate_frame="image",
                         observed_at_ms=observation.created_at_ms,
                         updated_at_ms=context.timestamp_ms,

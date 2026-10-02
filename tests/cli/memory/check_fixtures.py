@@ -56,7 +56,7 @@ def _memory_record(
         "provenance": {
             "frame_id": frame_id,
             "observation_id": f"obs_{frame_id}",
-            "evidence_id": record_id.split(":", 1)[-1],
+            "observed_id": record_id.split(":", 1)[-1],
         },
         "location": {"frame": "image", "zone": "center"},
     }

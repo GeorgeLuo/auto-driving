@@ -17,10 +17,14 @@ from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 @dataclass(frozen=True)
 class MemoryProvenance:
-    """Attribution for one retained evidence record."""
+    """Attribution for one retained evidence record.
+
+    ``observation_id`` is the observation the record came from; ``observed_id``
+    is the id of the thing or signal in it that the record was derived from.
+    """
 
     observation_id: str
-    evidence_id: str
+    observed_id: str
     coordinate_frame: str
     observed_at_ms: int
     updated_at_ms: int
@@ -29,7 +33,7 @@ class MemoryProvenance:
 
     def __post_init__(self) -> None:
         _require_identifier(self.observation_id, field_name="observation_id")
-        _require_identifier(self.evidence_id, field_name="evidence_id")
+        _require_identifier(self.observed_id, field_name="observed_id")
         _require_identifier(self.coordinate_frame, field_name="coordinate_frame")
         object.__setattr__(
             self,
@@ -53,7 +57,7 @@ class MemoryProvenance:
     def from_dict(cls, data: dict[str, Any]) -> "MemoryProvenance":
         return cls(
             observation_id=str(data.get("observation_id") or ""),
-            evidence_id=str(data.get("evidence_id") or ""),
+            observed_id=str(data.get("observed_id") or ""),
             coordinate_frame=str(data.get("coordinate_frame") or "unknown"),
             observed_at_ms=int(data.get("observed_at_ms") or 0),
             updated_at_ms=int(data.get("updated_at_ms") or 0),

@@ -27,7 +27,7 @@ class MemoryReplayFixture:
                         "provenance": {
                             "frame_id": "frame_001",
                             "observation_id": "obs_001",
-                            "evidence_id": "floor_boundary_000",
+                            "observed_id": "floor_boundary_000",
                         },
                     }
                 ],

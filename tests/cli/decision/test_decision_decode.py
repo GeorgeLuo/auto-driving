@@ -75,6 +75,21 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         strict_decode_apply_observation(good_obs)
         self.assertEqual(len(strict_decode_apply_evidence(good_evidence)), len(good_evidence))
 
+    def test_strict_decode_rejects_the_old_provenance_key(self) -> None:
+        from cli.automa_cli.decision import DecisionSurfaceError
+
+        good_evidence = json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
+            "evidence"
+        ]
+        recorded = dict(good_evidence[0])
+        provenance = dict(recorded["provenance"])
+        provenance["evidence_id"] = provenance.pop("observed_id")
+        recorded["provenance"] = provenance
+
+        with self.assertRaises(DecisionSurfaceError) as ctx:
+            strict_decode_apply_evidence([recorded])
+        self.assertEqual(ctx.exception.error, "run_invalid")
+
     def test_canonical_json_utf8_not_length_only(self) -> None:
         a = {"a": 1, "b": 2}
         b = {"a": 2, "b": 1}

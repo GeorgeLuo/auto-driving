@@ -100,7 +100,7 @@ class LiveRuntimeDecisionViewFixture:
         record = raw["evidence"][0]
         provenance = record["provenance"]
         thing = {
-            "thing_id": provenance["evidence_id"],
+            "thing_id": provenance["observed_id"],
             "kind": record["kind"],
             "label": record["label"],
             "location": deepcopy(record["location"]),

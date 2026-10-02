@@ -38,7 +38,7 @@
           "properties": {},
           "provenance": {
             "coordinate_frame": "image",
-            "evidence_id": "ev_001",
+            "observed_id": "ev_001",
             "frame_id": "frame_001",
             "observation_id": "obs_001",
             "observed_at_ms": 1000,
@@ -87,7 +87,7 @@
           "properties": {},
           "provenance": {
             "coordinate_frame": "image",
-            "evidence_id": "ev_001",
+            "observed_id": "ev_001",
             "frame_id": "frame_002",
             "observation_id": "obs_001",
             "observed_at_ms": 2000,

@@ -412,7 +412,6 @@
         memory?.bounds?.max_records ?? "",
         memory?.bounds?.max_age_ms ?? "",
         memory?.plugin_id || "",
-        memory?.metadata?.claims_identity ?? false,
       ].join("\0");
       if (fingerprint === lastMetricsFingerprint) return;
       lastMetricsFingerprint = fingerprint;
@@ -430,7 +429,6 @@
       );
       appendMetric(ledgerMetrics, "Max age", memory?.bounds?.max_age_ms != null ? `${memory.bounds.max_age_ms} ms` : "—");
       appendMetric(ledgerMetrics, "Implementation", memory?.plugin_id || "—");
-      appendMetric(ledgerMetrics, "Claims identity", String(memory?.metadata?.claims_identity ?? false));
     }
 
     function renderLedger() {

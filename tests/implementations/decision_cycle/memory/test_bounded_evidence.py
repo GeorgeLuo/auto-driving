@@ -157,7 +157,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(thing.provenance.frame_id, "frame_1")
         self.assertEqual(thing.provenance.source_plugin_id, "floor_plane")
         self.assertEqual(thing.location.zone, "left")
-        self.assertFalse(state.metadata["claims_identity"])
 
     def test_recurring_evidence_updates_same_slot_without_identity_claim(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=10_000)
@@ -267,7 +266,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             self.assertEqual(state["health"], "healthy")
             self.assertEqual(state["record_count"], 1)
             self.assertEqual(state["plugin_id"], "bounded_evidence")
-            self.assertEqual(step.status()["plugin_id"], "bounded_evidence")
+            self.assertEqual(step.status()["plugin_ids"], ["bounded_evidence"])
             self.assertEqual(shared_memory[LEDGER_KEY].to_dict(), state)
             self.assertEqual(shared_memory[EVIDENCE_KEY], shared_memory[LEDGER_KEY].records)
 

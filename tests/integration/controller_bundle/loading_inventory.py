@@ -139,7 +139,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
 
     # Formerly exported by autonomy.memory
     ("autonomy.shared_memory", "SharedMemory", "autonomy.shared_memory", "SharedMemory"),
-    ("autonomy.decision_cycle.memory.execution.plugin_runtime", "format_exception_safely", "autonomy.decision_cycle.memory.execution.plugin_runtime", "format_exception_safely"),
+    ("autonomy.decision_cycle.memory.runner", "format_exception_safely", "autonomy.decision_cycle.memory.runner", "format_exception_safely"),
 
     # autonomy.serialization
     ("autonomy.serialization", "canonical_json_bytes", "autonomy.serialization", "canonical_json_size_bytes"),

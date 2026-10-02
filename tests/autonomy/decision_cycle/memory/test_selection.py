@@ -33,6 +33,13 @@ class _OrderedMemory(_RecordingMemory):
         super().update(context, observation)
 
 
+class _NotMemory:
+    """Constructs, but offers no ``update`` or ``reset``."""
+
+    def __init__(self, **config):
+        self.plugin_id = config["plugin_id"]
+
+
 SPEC = "tests.autonomy.decision_cycle.memory.test_selection:_OrderedMemory"
 
 
@@ -175,5 +182,37 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(step.plugin_ids, ("second",))
         self.assertEqual(step.plugins[0].implementation.plugin_id, "second")
         self.assertEqual(original.reset_count, 1)
+
+    def test_a_selection_that_cannot_load_raises_and_the_next_good_edit_recovers(self):
+        manager = PluginManager.from_specs(
+            "memory",
+            {
+                "first": SPEC,
+                "missing": "tests.autonomy.decision_cycle.memory.no_such_module:Nope",
+                "not_memory": f"{__name__}:_NotMemory",
+            },
+            {name: {"plugin_id": name} for name in ("first", "missing", "not_memory")},
+        )
+        manager.select(["first"])
+        step = MemoryRunner(plugin_manager=manager)
+        first = step.plugins[0]
+        context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
+        step.update(context, None)
+
+        # A selection that cannot load stops the step with the loader's own error.
+        manager.select(["missing"])
+        with self.assertRaisesRegex(ModuleNotFoundError, "no_such_module"):
+            step.update(context, None)
+        manager.select(["not_memory"])
+        with self.assertRaisesRegex(TypeError, "does not satisfy MemoryPlugin"):
+            step.update(context, None)
+        # Nothing was published: the plugin that was applied is still the one that runs.
+        self.assertEqual(step.plugin_ids, ("first",))
+        self.assertIs(step.plugins[0], first)
+
+        manager.select(["first"])
+        step.update(context, None)
+        self.assertIs(step.plugins[0], first)
+        self.assertEqual(first.update_count, 2)
 
 

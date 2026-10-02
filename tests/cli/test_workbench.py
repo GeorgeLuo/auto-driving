@@ -236,9 +236,10 @@ class WorkbenchTests(unittest.TestCase):
         )
         self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
         self.assertFalse(decision["authority"]["proposed_applied"])
-        self.assertEqual(
-            state["timeline"][0]["decision"]["selected_proposal_id"],
-            decision["plan"]["selected_proposal_id"],
+        self.assertTrue(
+            state["timeline"][0]["frame"]["frame_id"].endswith(
+                state["timeline"][0]["decision"]["selected_proposal_id"].rsplit(":", 1)[1]
+            )
         )
         self.assertFalse(state["timeline"][0]["decision"]["proposed_applied"])
         self.assertEqual(

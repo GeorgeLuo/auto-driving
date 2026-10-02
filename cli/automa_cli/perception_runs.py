@@ -21,7 +21,7 @@ from .perception_evaluation import evaluate_perception_frames
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from implementations.decision_cycle.catalog import perception_activation
+from implementations.decision_cycle.catalog import selection_activation
 
 from .perception import ensure_local_perception_runtime
 from .step_hosting import load_staged_runner
@@ -262,7 +262,7 @@ def _inspect_images(
     try:
         recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
         if plugins or preset is not None:
-            activation = perception_activation(preset=preset, plugins=plugins)
+            activation = selection_activation("perception", preset=preset, plugins=plugins)
             preset = activation.metadata["preset"]
         elif isinstance(recorded_mapper, dict):
             recorded = dict(recorded_mapper.get("config") or {})
@@ -274,7 +274,7 @@ def _inspect_images(
             )
             preset = recorded_mapper.get("preset") or "recorded"
         else:
-            activation = perception_activation()
+            activation = selection_activation("perception")
             preset = activation.metadata["preset"]
         mapper = PerceptionRunner.from_activation(activation)
         report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}

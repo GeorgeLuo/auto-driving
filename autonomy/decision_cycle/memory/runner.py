@@ -219,10 +219,7 @@ class MemoryRunner:
 
     def status(self) -> dict[str, Any]:
         with self._runtime_lock:
-            final = self.plugins[-1] if self.plugins else None
             return {
-                "plugin_id": final.plugin_id if final else None,
-                "plugin_spec": final.definition.entrypoint if final else None,
                 "activation": (
                     str(self.activation.source_path)
                     if self.activation and self.activation.source_path

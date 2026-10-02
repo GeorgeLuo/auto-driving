@@ -30,7 +30,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             # loaded after automation starts, exercising the lazy import context.
             staged = Path(bundle["root_dir"]) / "implementations/decision_cycle/memory/second.py"
             staged.write_text(
-                "from implementations.decision_cycle.memory.bounded_evidence.plugin import BoundedEvidenceLedger\n"
+                "from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import BoundedEvidenceLedger\n"
                 "class SecondLedger(BoundedEvidenceLedger):\n"
                 "    plugin_id = 'second'\n"
                 "    plugin_id = 'second'\n", encoding="utf-8",

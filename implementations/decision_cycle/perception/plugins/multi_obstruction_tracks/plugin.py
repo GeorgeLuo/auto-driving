@@ -1,6 +1,6 @@
 """Perception member of the Workbench obstruction pipeline.
 
-Use with ``implementations.decision_cycle.memory.multi_obstruction_tracks.plugin``: this plugin
+Use with ``implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin``: this plugin
 emits current-frame region candidates, and that memory plugin associates them
 into tracked obstacles. The resulting memory records are accepted by the
 ``avoid_recent_obstruction`` proposal plugin.

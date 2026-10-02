@@ -16,7 +16,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGIN
+from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
 
 from implementations.vehicle.chase_sim.frame_identity import (
     coerce_simulator_frame_index,
@@ -232,7 +232,7 @@ def run_chase_reference_memory_check(
     observation or memory inputs.
     """
 
-    selected = plugin_id or DEFAULT_MEMORY_PLUGIN
+    selected = plugin_id or DEFAULT_MEMORY_PLUGINS[0]
     automation_dir = _automation_dir(vehicle_id)
     latest_json_path = automation_dir / "latest_perception.json"
     state_path = automation_dir / "state.json"
@@ -1320,7 +1320,7 @@ def run_offline_memory_check(
 ) -> CommandResult:
     """Run lifecycle gates from a phase script (offline / non-host unit path)."""
 
-    selected = plugin_id or DEFAULT_MEMORY_PLUGIN
+    selected = plugin_id or DEFAULT_MEMORY_PLUGINS[0]
     known = tuple(sorted(step_plugins("memory")))
     if selected not in known:
         available = ", ".join(known) or "(none)"
@@ -1554,7 +1554,7 @@ def run_physical_memory_check(
     present_keys: set[str] = set()
     prior_epoch: str | None = None
     prior_reset_count: int | None = None
-    plugin_id_live: str | None = None
+    plugin_ids_live: list[str] = []
     max_age_ms: int | None = None
 
     def capture(placement: str, index: int, message: str) -> dict[str, Any] | CommandResult:
@@ -1664,11 +1664,7 @@ def run_physical_memory_check(
         return present_cap
     all_frames.append(present_cap["frame"])
     present_mem = present_cap["live_memory"]
-    plugin_id_live = (
-        str(present_mem.get("plugin_id"))
-        if present_mem.get("plugin_id") is not None
-        else None
-    )
+    plugin_ids_live = [str(item) for item in present_mem.get("plugin_ids") or []]
     bounds = present_mem.get("bounds") if isinstance(present_mem.get("bounds"), dict) else {}
     if bounds.get("max_age_ms") is not None:
         try:
@@ -1849,7 +1845,7 @@ def run_physical_memory_check(
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": "picar",
-        "plugin_id": plugin_id_live,
+        "plugin_ids": plugin_ids_live,
         "activation": "live_onboard",
         "passed": passed,
         "phases": ["present", "dropout", "expiry", "reset"],
@@ -1886,7 +1882,7 @@ def run_physical_memory_check(
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
     lines = [
         f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
-        f"Implementation: {plugin_id_live or 'live_onboard'}",
+        f"Plugins: {', '.join(plugin_ids_live) or 'live_onboard'}",
         "Lifecycle source: live onboard step",
         "Phases: "
         + ", ".join(
@@ -1934,7 +1930,7 @@ def live_memory_from_probe(probe: dict[str, Any]) -> dict[str, Any] | None:
         "record_count": record_count,
         "records": records,
         "epoch_id": probe.get("last_epoch_id"),
-        "plugin_id": probe.get("plugin_id"),
+        "plugin_ids": probe.get("plugin_ids"),
         "bounds": probe.get("bounds"),
     }
 

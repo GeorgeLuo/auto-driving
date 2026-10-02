@@ -205,6 +205,18 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
 
+    def test_default_selection_is_the_lightweight_observer_preset(self) -> None:
+        with image_source(1) as root:
+            runner = ImageReplayRunner(root, cadence_ms=0)
+            runner.start()
+            state = runner.wait(5)
+
+        self.assertEqual(state["phase"], "completed")
+        self.assertEqual(
+            state["machine_detail"]["pipeline"]["perception_preset"],
+            "lightweight_observer",
+        )
+
     def test_runner_persists_frame_correlated_decision_playback(self) -> None:
         with image_source(2) as root:
             mapper = DecisionFixtureMapper()

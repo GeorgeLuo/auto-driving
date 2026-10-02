@@ -1,0 +1,561 @@
+[
+ {
+  "frame_id": "present_0",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "bounded_evidence",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 100,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-present_0",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "claims_identity": false,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "present_0",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "bounded_evidence",
+      "record_count": 2,
+      "records": [
+       {
+        "confidence": 0.96,
+        "kind": "signal",
+        "label": "floor_visible",
+        "location": null,
+        "properties": {
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "floor_visible",
+         "frame_id": "present_0",
+         "observation_id": "present_0",
+         "observed_at_ms": 100,
+         "source_plugin_id": "lightweight_observer",
+         "updated_at_ms": 100
+        },
+        "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
+       },
+       {
+        "confidence": 0.9,
+        "kind": "floor_boundary",
+        "label": "floor_boundary:a",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.35,
+          0.45,
+          0.65,
+          0.95
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "center"
+        },
+        "properties": {},
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "a",
+         "frame_id": "present_0",
+         "observation_id": "present_0",
+         "observed_at_ms": 100,
+         "source_plugin_id": "floor_plane",
+         "updated_at_ms": 100
+        },
+        "record_id": "thing:1:11:floor_plane:1:a"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=2",
+       "epoch_id=epoch-1",
+       "kinds=floor_boundary,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  }
+ },
+ {
+  "frame_id": "present_1",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "bounded_evidence",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 200,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-present_1",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "claims_identity": false,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "present_1",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "bounded_evidence",
+      "record_count": 3,
+      "records": [
+       {
+        "confidence": 0.96,
+        "kind": "signal",
+        "label": "floor_visible",
+        "location": null,
+        "properties": {
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "floor_visible",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "lightweight_observer",
+         "updated_at_ms": 200
+        },
+        "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
+       },
+       {
+        "confidence": 0.9,
+        "kind": "floor_boundary",
+        "label": "floor_boundary:a",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.35,
+          0.45,
+          0.65,
+          0.95
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "left"
+        },
+        "properties": {},
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "a",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "floor_plane",
+         "updated_at_ms": 200
+        },
+        "record_id": "thing:1:11:floor_plane:1:a"
+       },
+       {
+        "confidence": 0.9,
+        "kind": "floor_boundary",
+        "label": "floor_boundary:b",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.35,
+          0.45,
+          0.65,
+          0.95
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "center"
+        },
+        "properties": {},
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "b",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "floor_plane",
+         "updated_at_ms": 200
+        },
+        "record_id": "thing:1:11:floor_plane:1:b"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=3",
+       "epoch_id=epoch-1",
+       "kinds=floor_boundary,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  }
+ },
+ {
+  "frame_id": "dropout_0",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "bounded_evidence",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 300,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-dropout_0",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "claims_identity": false,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": "dropout_0",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "bounded_evidence",
+      "record_count": 3,
+      "records": [
+       {
+        "confidence": 0.96,
+        "kind": "signal",
+        "label": "floor_visible",
+        "location": null,
+        "properties": {
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "floor_visible",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "lightweight_observer",
+         "updated_at_ms": 200
+        },
+        "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
+       },
+       {
+        "confidence": 0.9,
+        "kind": "floor_boundary",
+        "label": "floor_boundary:a",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.35,
+          0.45,
+          0.65,
+          0.95
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "left"
+        },
+        "properties": {},
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "a",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "floor_plane",
+         "updated_at_ms": 200
+        },
+        "record_id": "thing:1:11:floor_plane:1:a"
+       },
+       {
+        "confidence": 0.9,
+        "kind": "floor_boundary",
+        "label": "floor_boundary:b",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.35,
+          0.45,
+          0.65,
+          0.95
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "center"
+        },
+        "properties": {},
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "b",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "floor_plane",
+         "updated_at_ms": 200
+        },
+        "record_id": "thing:1:11:floor_plane:1:b"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=3",
+       "epoch_id=epoch-1",
+       "kinds=floor_boundary,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  }
+ },
+ {
+  "frame_id": "dropout_1",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "bounded_evidence",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 400,
+      "epoch_id": "epoch-1",
+      "health": "healthy",
+      "memory_id": "memory-dropout_1",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "claims_identity": false,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": null,
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "bounded_evidence",
+      "record_count": 3,
+      "records": [
+       {
+        "confidence": 0.96,
+        "kind": "signal",
+        "label": "floor_visible",
+        "location": null,
+        "properties": {
+         "value": true
+        },
+        "provenance": {
+         "coordinate_frame": "observation",
+         "evidence_id": "floor_visible",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "lightweight_observer",
+         "updated_at_ms": 200
+        },
+        "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
+       },
+       {
+        "confidence": 0.9,
+        "kind": "floor_boundary",
+        "label": "floor_boundary:a",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.35,
+          0.45,
+          0.65,
+          0.95
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "left"
+        },
+        "properties": {},
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "a",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "floor_plane",
+         "updated_at_ms": 200
+        },
+        "record_id": "thing:1:11:floor_plane:1:a"
+       },
+       {
+        "confidence": 0.9,
+        "kind": "floor_boundary",
+        "label": "floor_boundary:b",
+        "location": {
+         "bbox_xyxy_norm": [
+          0.35,
+          0.45,
+          0.65,
+          0.95
+         ],
+         "frame": "image",
+         "polygon_xy_norm": null,
+         "zone": "center"
+        },
+        "properties": {},
+        "provenance": {
+         "coordinate_frame": "image",
+         "evidence_id": "b",
+         "frame_id": "present_1",
+         "observation_id": "present_1",
+         "observed_at_ms": 200,
+         "source_plugin_id": "floor_plane",
+         "updated_at_ms": 200
+        },
+        "record_id": "thing:1:11:floor_plane:1:b"
+       }
+      ],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "retained_count=3",
+       "epoch_id=epoch-1",
+       "kinds=floor_boundary,signal",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  }
+ },
+ {
+  "frame_id": "expiry_0",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "bounded_evidence",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 20000,
+      "epoch_id": "epoch-1",
+      "health": "empty",
+      "memory_id": "memory-expiry_0",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "claims_identity": false,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 3,
+       "last_update_drops": [
+        {
+         "action": "removed",
+         "reason": "expired",
+         "record_id": "signal:1:20:lightweight_observer:13:floor_visible"
+        },
+        {
+         "action": "removed",
+         "reason": "expired",
+         "record_id": "thing:1:11:floor_plane:1:a"
+        },
+        {
+         "action": "removed",
+         "reason": "expired",
+         "record_id": "thing:1:11:floor_plane:1:b"
+        }
+       ],
+       "last_update_drops_omitted": 0,
+       "observation_id": "expiry_0",
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "bounded_evidence",
+      "record_count": 0,
+      "records": [],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "memory_empty=true",
+       "epoch_id=epoch-1",
+       "reason=no_retained_evidence"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  }
+ },
+ {
+  "frame_id": "reset",
+  "report": {
+   "plugins": [
+    {
+     "plugin_id": "bounded_evidence",
+     "state": {
+      "bounds": {
+       "eviction_policy": "oldest_first",
+       "max_age_ms": 10000,
+       "max_property_bytes": 4096,
+       "max_records": 32,
+       "max_serialized_bytes": 262144
+      },
+      "created_at_ms": 0,
+      "epoch_id": "epoch-2",
+      "health": "empty",
+      "memory_id": "memory-reset-2",
+      "metadata": {
+       "capacity_eviction_count": 0,
+       "claims_identity": false,
+       "conflict_count": 0,
+       "conflict_policy": "bounded_evidence_structural_v2",
+       "last_update_conflict_count": 0,
+       "last_update_drop_count": 0,
+       "last_update_drops": [],
+       "last_update_drops_omitted": 0,
+       "observation_id": null,
+       "policy": "bounded_evidence_recency"
+      },
+      "plugin_id": "bounded_evidence",
+      "record_count": 0,
+      "records": [],
+      "schema": "bounded_evidence_ledger_v0",
+      "summary": [
+       "memory_empty=true",
+       "epoch_id=epoch-2",
+       "policy=bounded_evidence_recency"
+      ]
+     }
+    }
+   ],
+   "schema": "memory_report_v0"
+  }
+ }
+]

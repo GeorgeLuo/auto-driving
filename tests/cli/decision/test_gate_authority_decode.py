@@ -13,7 +13,7 @@ from cli.automa_cli.decision import (
     build_decision_stream_frame,
 )
 from cli.automa_cli.decision_records import DecisionRunners
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from tests.cli.decision.decision_surfaces_fixtures import packaged_decision_steps, packaged_identity
 
 

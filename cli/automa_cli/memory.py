@@ -19,8 +19,15 @@ from autonomy.decision_cycle.activation import read_step_activation, write_step_
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.plugins import DuplicatePluginIdError
 
-from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_PLUGINS
+from implementations.decision_cycle.catalog import (
+    packaged_activation,
+    plugin_list_preset,
+    selection_activation,
+)
+from implementations.decision_cycle.memory.presets import (
+    MEMORY_PRESETS,
+    available_memory_preset_ids,
+)
 
 from .automation import (
     _automation_command_matches_vehicle,
@@ -104,21 +111,30 @@ class CommandResult:
 def update_vehicle_memory(
     *,
     vehicle_id: str,
+    preset: str | None = None,
     plugins: list[str] | None = None,
     dry_run: bool = False,
     json_output: bool = False,
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    selected = list(plugins) if plugins else list(DEFAULT_MEMORY_PLUGINS)
+    if preset is not None and plugins:
+        return CommandResult(2, "Choose either --preset or --plugin, not both.")
+    if preset is not None and preset not in MEMORY_PRESETS:
+        available = ", ".join(available_memory_preset_ids())
+        return CommandResult(
+            2,
+            f"Unknown memory preset {preset!r}. Available presets: {available}.",
+        )
     try:
-        activation = packaged_activation("memory", selected)
+        activation = selection_activation("memory", preset=preset, plugins=plugins or None)
     except DuplicatePluginIdError:
         # A packaged-catalog clash is not a bad selection; the CLI reports it.
         raise
     except ValueError as exc:
         return CommandResult(2, str(exc))
 
+    selected = list(activation.plugins)
     stream = output if verbose else None
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
@@ -132,6 +148,7 @@ def update_vehicle_memory(
     payload = {
         "schema": "vehicle_memory_update_v1",
         "vehicle_id": vehicle_id,
+        "preset": activation.metadata["preset"],
         "plugins": selected,
         "dry_run": dry_run,
         "activation": display_path(activation_path),
@@ -146,6 +163,7 @@ def update_vehicle_memory(
         "\n".join(
             [
                 f"{verb}: {vehicle_id} -> {', '.join(selected)}",
+                f"Preset: {activation.metadata['preset']}",
                 *(f"Plugin: {plugin_id} ({activation.plugin_specs[plugin_id]})" for plugin_id in selected),
                 f"Activation: {display_path(activation_path)}",
             ]
@@ -177,11 +195,8 @@ def set_vehicle_memory_plugin(
         changed = after != before
         if changed:
             metadata = deepcopy(dict(activation.metadata))
-            metadata["last_plugin_change"] = {
-                "plugin": plugin_id,
-                "enabled": enabled,
-                "changed_at_ms": int(time.time() * 1000),
-            }
+            # The staged plugins no longer match the preset they were staged from.
+            metadata["preset"] = plugin_list_preset("memory", after)
             candidate = replace_metadata(
                 type(activation)(
                     step="memory",
@@ -232,7 +247,7 @@ def ensure_vehicle_memory_activation(
         return path
     return stage_activation(
         bundle,
-        packaged_activation("memory", plugins),
+        selection_activation("memory", plugins=plugins),
         vehicle_id=vehicle_id,
         release=release,
     )
@@ -263,7 +278,6 @@ def get_vehicle_memory_info(
         activation = read_step_activation(activation_path, "memory")
         manager = activation.plugin_manager()
         available = manager.available
-        final = manager.selected[-1] if manager.selected else None
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         return CommandResult(
             2,
@@ -279,19 +293,10 @@ def get_vehicle_memory_info(
             "available_plugins": sorted(item.plugin_id for item in available),
             "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
             "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
-            "plugin_id": final.plugin_id if final else None,
-            "plugin_spec": final.entrypoint if final else None,
-            "plugin_config": dict(final.config) if final else None,
         },
-        "description": (
-            step_plugins("memory").get(final.plugin_id, {}).get("description")
-            if final
-            else None
-        ),
         "controller_bundle": activation.metadata.get("controller_bundle"),
         "lifecycle": {
             "methods": ["update", "reset", "status"],
-            "claims_identity": False,
         },
         "live": None,
     }
@@ -338,7 +343,6 @@ def replay_vehicle_memory(
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
     step: MemoryRunner | None = None
-    selected_implementation = plugin_id
     activation_source: str
 
     if plugin_id is not None:
@@ -378,7 +382,6 @@ def replay_vehicle_memory(
                 f"Could not load memory activation {display_path(activation_path)}: {exc}",
             )
         activation_source = display_path(activation_path)
-        selected_implementation = step.status()["plugin_id"]
         run_a = _run_memory_sequence(step=step, frames=frames)
         if verify_twice:
             step_b = load_staged_runner(read_step_activation(activation_path, "memory"))
@@ -392,7 +395,6 @@ def replay_vehicle_memory(
         "vehicle_id": vehicle_id,
         "sequence": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
         "frame_count": len(frames),
-        "plugin_id": selected_implementation,
         "plugin_ids": list(step.plugin_ids),
         "activation": activation_source,
         "digest": run_a["digest"],
@@ -443,7 +445,7 @@ def replay_vehicle_memory(
     lines = [
         f"Memory replay: {vehicle_id}",
         f"Sequence: {payload['sequence']} ({len(frames)} frames)",
-        f"Implementation: {selected_implementation}",
+        f"Plugins: {', '.join(step.plugin_ids)}",
         f"Activation: {activation_source}",
         f"Final health: {final.get('health')}  keys={final.get('record_count')}  epoch={final.get('epoch_id')}",
         f"Digest: {run_a['digest']}",
@@ -545,7 +547,7 @@ def write_memory_replay_record(
             "created_at_ms": int(time.time() * 1000),
             "opt_in": True,
             "writes_default_history": False,
-            "plugin_id": payload.get("plugin_id"),
+            "plugin_ids": payload.get("plugin_ids"),
             "digest": payload.get("digest"),
             "frame_count": frame_count,
             "bounds": {
@@ -1234,7 +1236,7 @@ def reset_vehicle_memory(
         return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
     lines = [
         f"Reset memory: {vehicle_id}",
-        f"Implementation: {after.get('plugin_id') or before.get('plugin_id') or '—'}",
+        f"Plugins: {', '.join(after.get('plugin_ids') or before.get('plugin_ids') or []) or '—'}",
         f"Epoch: {before.get('last_epoch_id') or '—'} -> {after.get('last_epoch_id') or '—'}",
         f"Keys: {before.get('last_record_count')} -> {after.get('last_record_count')}",
         f"Health: {before.get('last_health')} -> {after.get('last_health')}",
@@ -1646,8 +1648,6 @@ def _probe_physical_memory(
         "endpoint": f"{base_url}/autonomy/status",
         "drive_mode": status.get("drive_mode"),
         "has_memory": bool(control_meta.get("has_memory")),
-        "plugin_id": memory.get("plugin_id"),
-        "plugin_spec": memory.get("plugin_spec"),
         "activation": memory.get("activation"),
         "plugin_ids": memory.get("plugin_ids", []),
         "selected_plugin_ids": memory.get("selected_plugin_ids", []),
@@ -1749,10 +1749,6 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "vehicle_id": vehicle_id,
         "provider": "chase-sim",
         "status": "live",
-        "plugin_id": memory.get("plugin_id")
-        or status_block.get("plugin_id"),
-        "plugin_spec": memory.get("plugin_spec")
-        or status_block.get("plugin_spec"),
         "activation": memory.get("activation") or status_block.get("activation"),
         "plugin_ids": status_block.get("plugin_ids", []),
         "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
@@ -1923,11 +1919,10 @@ def assess_chase_memory_worker_liveness(
 def _format_memory_info(payload: dict[str, Any]) -> str:
     activation = payload["activation"]
     bounds = activation.get("bounds") if isinstance(activation.get("bounds"), dict) else {}
-    plugin_id = activation.get("plugin_id") or "none"
-    lines = [f"Memory: {payload['vehicle_id']} -> {plugin_id}"]
+    plugins = ", ".join(activation.get("plugins", [])) or "none"
+    lines = [f"Memory: {payload['vehicle_id']} -> {plugins}"]
     lines.extend(
         [
-            f"Implementation: {activation.get('plugin_spec', 'unknown')}",
             f"Activation: {activation['path']}",
             (
                 f"Bounds: max_records={bounds.get('max_records')} "
@@ -1937,7 +1932,6 @@ def _format_memory_info(payload: dict[str, Any]) -> str:
             f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
             f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
             "Lifecycle: update / reset / status",
-            "Identity claims: false",
         ]
     )
     live = payload.get("live")
@@ -1961,7 +1955,6 @@ def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
     if status == "live":
         lines.extend(
             [
-                f"Implementation: {live.get('plugin_id') or 'none'}",
                 f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}",
                 (
                     f"Health: {live.get('last_health') or 'unknown'} "

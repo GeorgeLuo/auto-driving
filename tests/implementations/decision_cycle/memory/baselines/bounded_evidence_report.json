@@ -19,7 +19,6 @@
       "memory_id": "memory-present_0",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -112,7 +111,6 @@
       "memory_id": "memory-present_1",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -232,7 +230,6 @@
       "memory_id": "memory-dropout_0",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -352,7 +349,6 @@
       "memory_id": "memory-dropout_1",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -472,7 +468,6 @@
       "memory_id": "memory-expiry_0",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,
@@ -533,7 +528,6 @@
       "memory_id": "memory-reset-2",
       "metadata": {
        "capacity_eviction_count": 0,
-       "claims_identity": false,
        "conflict_count": 0,
        "conflict_policy": "bounded_evidence_structural_v2",
        "last_update_conflict_count": 0,

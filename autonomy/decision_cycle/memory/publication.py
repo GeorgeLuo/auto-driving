@@ -1,9 +1,13 @@
-"""The current-cycle observation a memory plugin may publish for later steps.
+"""What a memory plugin may publish for later steps.
 
 A memory plugin may publish an ``Observation`` at ``OBSERVATION_KEY``; the
 cycle uses it in place of the current observation for subsequent steps when it
 describes the same observation. A failed memory update stops the cycle before
 the replacement is read.
+
+A memory plugin may also publish the ``RetainedEvidence`` records it holds, as
+a tuple at ``EVIDENCE_KEY``. Later steps read them there whichever plugin kept
+them.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
 
 OBSERVATION_KEY = "decision.observation"
+EVIDENCE_KEY = "retained_evidence"
 
 
 def withdraw_publication(shared_memory: SharedMemory) -> None:

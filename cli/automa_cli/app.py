@@ -36,6 +36,10 @@ from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
+from implementations.decision_cycle.memory.presets import (
+    DEFAULT_MEMORY_PRESET,
+    available_memory_preset_ids,
+)
 from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
     available_perception_preset_ids,
@@ -1344,16 +1348,20 @@ def build_parser() -> argparse.ArgumentParser:
         dest="vehicle_id",
         help="Vehicle id from `automa vehicles active`.",
     )
-    memory.add_argument(
+    memory_selection = memory.add_mutually_exclusive_group()
+    memory_selection.add_argument(
+        "--preset",
+        default=None,
+        choices=available_memory_preset_ids(),
+        help=f"Packaged memory preset to activate (default: {DEFAULT_MEMORY_PRESET}).",
+    )
+    memory_selection.add_argument(
         "--plugin",
         action="append",
         dest="plugins",
         default=None,
         metavar="PLUGIN_ID",
-        help=(
-            "Packaged memory plugin to select; repeat to select several in order "
-            f"(default: {', '.join(DEFAULT_STEP_PLUGINS['memory'])})."
-        ),
+        help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
     )
     memory.add_argument(
         "--dry-run",
@@ -2118,6 +2126,7 @@ def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
 def _handle_vehicles_update_memory(args: argparse.Namespace) -> int:
     result = update_vehicle_memory(
         vehicle_id=args.vehicle_id,
+        preset=args.preset,
         plugins=args.plugins,
         dry_run=args.dry_run,
         json_output=args.json,

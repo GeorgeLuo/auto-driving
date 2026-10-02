@@ -23,7 +23,7 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan", "autonomy.decision_cycle.plan.highest_confidence", "HighestConfidencePlan"),
     ("autonomy.decision_cycle.action.hold:HoldAction", "autonomy.decision_cycle.action.hold", "HoldAction"),
     ("implementations.decision_cycle.action.mode.plugin:ModeAction", "implementations.decision_cycle.action.mode.plugin", "ModeAction"),
-    ("implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger", "implementations.decision_cycle.memory.bounded_evidence.plugin", "BoundedEvidenceLedger"),
+    ("implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger", "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger"),
     ("implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin:AvoidRecentObstruction", "implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin", "AvoidRecentObstruction"),
     ("implementations.decision_cycle.perception.feeds.camera:provide_camera_frame", "implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame"),
     ("implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin", "implementations.decision_cycle.perception.plugins.motion_tracks.plugin", "MotionTracksPlugin"),
@@ -39,7 +39,7 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin", "CaptureFloorContinuityPlugin"),
     ("implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin", "TemporalFloorContinuityPlugin"),
     ("implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin", "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin", "MultiObstructionTracksPlugin"),
-    ("implementations.decision_cycle.memory.multi_obstruction_tracks.plugin:MultiObstructionMemory", "implementations.decision_cycle.memory.multi_obstruction_tracks.plugin", "MultiObstructionMemory"),
+    ("implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin:MultiObstructionMemory", "implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin", "MultiObstructionMemory"),
 )
 
 # (legacy module, canonical module). Both stay importable. They are not
@@ -190,13 +190,13 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.vehicle", "clamp_unit", "autonomy.vehicle.vehicle", "clamp_unit"),
 
     # Formerly exported by implementations.memory
-    ("implementations.decision_cycle.memory.bounded_evidence.plugin", "BoundedEvidenceLedger", "implementations.decision_cycle.memory.bounded_evidence.plugin", "BoundedEvidenceLedger"),
-    ("implementations.decision_cycle.memory.bounded_evidence.plugin", "reduce_evidence", "implementations.decision_cycle.memory.bounded_evidence.plugin", "reduce_evidence"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "EVIDENCE_KEY", "implementations.decision_cycle.memory.bounded_evidence.ledger", "EVIDENCE_KEY"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "EvidenceLedger", "implementations.decision_cycle.memory.bounded_evidence.ledger", "EvidenceLedger"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "bounds_from_config", "implementations.decision_cycle.memory.bounded_evidence.ledger", "bounds_from_config"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "detach_ledger", "implementations.decision_cycle.memory.bounded_evidence.ledger", "detach_ledger"),
-    ("implementations.decision_cycle.memory.bounded_evidence.ledger", "empty_ledger", "implementations.decision_cycle.memory.bounded_evidence.ledger", "empty_ledger"),
+    ("implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger", "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.reduction", "reduce_evidence", "implementations.decision_cycle.memory.shared.evidence_ledger.reduction", "reduce_evidence"),
+    ("autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY", "autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger"),
 
     # implementations.operations
     ("implementations.operations", "CapturePulseStep", "implementations.operations.capture_pulse_sequence", "CapturePulseStep"),

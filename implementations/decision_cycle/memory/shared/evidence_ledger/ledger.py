@@ -1,10 +1,8 @@
-"""The bounded-evidence ledger value, its bounds, and its shared-memory keys.
+"""The evidence ledger value and its bounds.
 
-``EvidenceLedger`` is the plugin's state: the retained records plus the epoch,
-bounds, and bookkeeping that later frames need. The plugin keeps it at
-``LEDGER_KEY``. ``EVIDENCE_KEY`` carries the retained records alone for other
-plugins; ``avoid_recent_obstruction`` reads it by default, and another memory
-plugin can publish its own records there instead.
+``EvidenceLedger`` is a memory plugin's state: the retained records plus the
+epoch, bounds, and bookkeeping that later frames need. Each plugin keeps it at
+its own shared-memory key and publishes the records alone at ``EVIDENCE_KEY``.
 """
 
 from __future__ import annotations
@@ -17,8 +15,6 @@ from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.serialization import canonical_json_size_bytes
 
 LEDGER_SCHEMA = "bounded_evidence_ledger_v0"
-LEDGER_KEY = "bounded_evidence.ledger"
-EVIDENCE_KEY = "retained_evidence"
 LEDGER_HEALTH_VALUES: frozenset[str] = frozenset(("empty", "healthy"))
 
 DEFAULT_MAX_RECORDS = 32

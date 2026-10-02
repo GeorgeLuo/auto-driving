@@ -21,7 +21,7 @@ from autonomy.decision_cycle.proposal.values import (
 from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
 DEFAULT_RETAINED_MAX_AGE_MS = 1000

@@ -8,10 +8,9 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from implementations.decision_cycle.catalog import perception_preset_activation
+from implementations.decision_cycle.catalog import CUSTOM_PRESET, preset_activation
 from implementations.decision_cycle.perception.presets import (
     CUSTOM_PERCEPTION_DESCRIPTION,
-    CUSTOM_PERCEPTION_PRESET,
     DEFAULT_PERCEPTION_PRESET,
 )
 from tests.support.cli_runner import run_automa
@@ -27,7 +26,7 @@ def _activation(
 ) -> dict:
     """A staged perception activation for ``preset`` (optionally reselected)."""
 
-    payload = perception_preset_activation(preset).to_payload()
+    payload = preset_activation("perception", preset).to_payload()
     if plugins is not None:
         payload["plugins"] = plugins
     payload["metadata"] = {
@@ -222,7 +221,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
         payload = json.loads(result.stdout)
-        self.assertEqual(payload["preset"], CUSTOM_PERCEPTION_PRESET)
+        self.assertEqual(payload["preset"], CUSTOM_PRESET)
         self.assertEqual(payload["manifest"]["plugins"], ["frame", "classical_regions"])
         self.assertEqual(
             payload["manifest"]["metadata"]["preset_description"],

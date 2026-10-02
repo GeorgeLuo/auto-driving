@@ -13,7 +13,7 @@ class MemoryReplayFixture:
             "schema": "vehicle_memory_replay_v0",
             "vehicle_id": "chase-sim-chaser",
             "frame_count": len(frames),
-            "plugin_id": "bounded_evidence",
+            "plugin_ids": ["bounded_evidence"],
             "digest": "abc",
             "final": {
                 "health": "healthy",

@@ -22,7 +22,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import LEDGER_KEY
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, proposal_runner
 
 RECORDING_SPEC = "tests.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
@@ -133,7 +133,7 @@ class CycleHostMemoryTests(unittest.TestCase):
                 sorted(["perception", "observation", "memory", "proposal", "plan", "action"]),
             )
             self.assertIsNone(status["steps"]["perception"])
-            self.assertEqual(status["steps"]["memory"]["plugin_id"], "recording_test")
+            self.assertEqual(status["steps"]["memory"]["plugin_ids"], ["recording_test"])
             self.assertEqual(
                 status["steps"]["memory"]["plugins"][0]["state"]["epoch_id"], "epoch-1"
             )

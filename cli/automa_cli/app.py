@@ -26,9 +26,8 @@ from .decision_inspector import run_decision_inspector
 from .decision_live import run_live_decision_monitor
 from .memory import (
     get_vehicle_memory_info,
-    replay_vehicle_memory,
+    inspect_memory,
     reset_vehicle_memory,
-    set_vehicle_memory_plugin,
     stream_vehicle_memory,
     update_vehicle_memory,
 )
@@ -647,7 +646,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_control = vehicle_commands.add_parser(
         "memory",
-        help="Operate vehicle memory (enable, disable, reset, replay, check).",
+        help="Operate vehicle memory (inspect, reset, check).",
     )
     memory_control.set_defaults(handler=_handle_vehicles_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -656,14 +655,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show memory-level commands.",
     )
     memory_help.set_defaults(handler=_handle_vehicles_memory_help)
-    for action in ("enable", "disable"):
-        selection = memory_commands.add_parser(
-            action, help=f"{action.capitalize()} a staged memory plugin for the next local automation cycle.",
-        )
-        selection.add_argument("--id", required=True, dest="vehicle_id")
-        selection.add_argument("plugin_id", help="Plugin ID from vehicles info memory.")
-        selection.add_argument("--json", action="store_true")
-        selection.set_defaults(handler=_handle_vehicles_memory_plugin, enabled=action == "enable")
     memory_reset = memory_commands.add_parser(
         "reset",
         help="Reset live memory to a new empty epoch on Chase or PiCar.",
@@ -697,60 +688,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable reset payload.",
     )
     memory_reset.set_defaults(handler=_handle_vehicles_memory_reset)
-    memory_replay = memory_commands.add_parser(
-        "replay",
-        help="Replay a fixed observation sequence through staged memory offline.",
+    memory_inspect = memory_commands.add_parser(
+        "inspect",
+        help="Show what a memory selection retains, from images or a recorded run.",
         description=(
-            "Feed a fixed observation sequence through the vehicle's staged "
-            "memory activation (or an ephemeral --plugin). Reports final "
-            "health, key counts, retained keys, and a stable end-state digest. "
-            "Runs two independent passes by default to prove determinism. "
-            "Process-local; writes no history unless --record is passed. "
-            "With --record, freezes a bounded origin extract (key → value → "
-            "source observation) under lab/runs/memory-replay/."
+            "Show what a memory selection retains. The source (an image, a directory of "
+            "images, or a recorded perception run) goes through perception and observation, "
+            "then the selected memory plugins, frame by frame. Reports each plugin's health, "
+            "record count and epoch after every frame, and the observation a plugin "
+            "published in place of the frame's own. It reads the source only; record live "
+            "frames with `perception inspect --record` and inspect that run."
         ),
     )
-    memory_replay.add_argument(
-        "sequence",
-        help=(
-            "Path to a sequence JSON file (schema automa_memory_observation_sequence_v0) "
-            "or a directory containing sequence.json / frame JSON files."
-        ),
+    memory_inspect.add_argument(
+        "source",
+        type=Path,
+        help="Image file, recorded perception run, or directory of images.",
     )
-    memory_replay.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id used to resolve the staged memory activation.",
-    )
-    memory_replay.add_argument(
-        "--plugin",
+    memory_inspect_selection = memory_inspect.add_mutually_exclusive_group()
+    memory_inspect_selection.add_argument(
+        "--preset",
+        choices=available_memory_preset_ids(),
         default=None,
-        metavar="PLUGIN_ID",
-        help=(
-            "Optional packaged memory plugin for an ephemeral offline replay "
-            "without reading the staged activation."
-        ),
+        help=f"Inspect one packaged memory preset (default: {DEFAULT_MEMORY_PRESET}).",
     )
-    memory_replay.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable replay payload (includes digest).",
+    memory_inspect_selection.add_argument(
+        "--plugin",
+        dest="plugins",
+        action="append",
+        default=None,
+        metavar="PLUGIN",
+        help="Inspect these packaged memory plugins, in order, with their default configs. Repeatable.",
     )
-    memory_replay.add_argument(
-        "--once",
-        action="store_true",
-        help="Skip the second independent pass (faster; less determinism proof).",
-    )
-    memory_replay.add_argument(
+    memory_inspect.add_argument(
         "--record",
         action="store_true",
-        help=(
-            "Opt-in: write a bounded run directory with result, digest, sequence "
-            "copy, and origin_extract.html. Disabled by default."
-        ),
+        help="Persist the source frames and the per-frame report.",
     )
-    memory_replay.set_defaults(handler=_handle_vehicles_memory_replay)
+    memory_inspect.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable report.",
+    )
+    memory_inspect.set_defaults(handler=_handle_vehicles_memory_inspect)
     memory_check = memory_commands.add_parser(
         "check",
         help="Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
@@ -1490,7 +1470,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
-                "- memory       operate memory (reset, replay, lifecycle check)",
+                "- memory       operate memory (inspect, reset, lifecycle check)",
                 "- decision     offline decision apply/replay (stage via update decision)",
                 (
                     "- workbench    replay images through perception, memory, and "
@@ -1944,9 +1924,8 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles memory commands",
                 "",
-                "- enable / disable  change selected memory plugins for the next local cycle",
+                "- inspect what a memory selection retains for an image source, frame by frame; optional --record",
                 "- reset   clear live retained evidence; start a new empty epoch",
-                "- replay  feed a fixed observation sequence offline; report digest; optional --record",
                 "- check   present/dropout/expiry/reset gates (Chase offline or Pi live); optional --record",
                 "- help    show this summary",
                 "",
@@ -1962,18 +1941,6 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_vehicles_memory_plugin(args: argparse.Namespace) -> int:
-    result = set_vehicle_memory_plugin(
-        vehicle_id=args.vehicle_id,
-        plugin_id=args.plugin_id,
-        enabled=args.enabled,
-        json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:
     result = reset_vehicle_memory(
         vehicle_id=args.vehicle_id,
@@ -1986,14 +1953,13 @@ def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
-    result = replay_vehicle_memory(
-        vehicle_id=args.vehicle_id,
-        sequence=args.sequence,
-        plugin_id=args.plugin,
-        json_output=args.json,
-        verify_twice=not args.once,
+def _handle_vehicles_memory_inspect(args: argparse.Namespace) -> int:
+    result = inspect_memory(
+        str(args.source),
+        preset=args.preset,
+        plugins=args.plugins,
         record=args.record,
+        json_output=args.json,
     )
     if result.message:
         print(result.message)

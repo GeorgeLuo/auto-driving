@@ -20,8 +20,8 @@ class PiRuntimeSmokeTests(unittest.TestCase):
 
         self.assertTrue(status["ok"])
         self.assertEqual(status["drive_mode"], "user")
-        self.assertTrue(status["engine"])
-        self.assertTrue(status["perception_preset"])
+        for step in ("perception", "memory", "proposal", "action"):
+            self.assertTrue(status["steps"][step], f"{step} step reports no plugins")
 
 
 if __name__ == "__main__":

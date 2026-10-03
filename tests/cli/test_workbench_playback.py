@@ -77,8 +77,8 @@ class WorkbenchTests(unittest.TestCase):
                     published.append(context.shared_memory[LEDGER_KEY])
                     return report
 
-                def reset(self):
-                    return step.reset()
+                def reset(self, shared_memory=None):
+                    return step.reset(shared_memory)
 
             return RecordingStep()
 

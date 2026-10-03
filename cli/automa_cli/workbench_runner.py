@@ -13,13 +13,11 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS
-from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.interface import (
     PerceptionBackend,
     PerceptionText,
 )
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
-from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
 
 from .memory_report import last_plugin_state, memory_summary
 from .workbench_contract import (
@@ -572,7 +570,6 @@ class ImageReplayRunner:
                     self._state["run_active_plugin_ids"] = list(normalized)
                     self._state["run_plugin_order"] = list(normalized)
                     pipeline["run_active_plugin_ids"] = list(normalized)
-                pipeline["memory_plugin_id"] = self._memory_plugin_id()
                 pipeline["perception_plugin_report"] = plugin_report(self._mapper)
                 pipeline["memory_plugin_report"] = plugin_report(self._memory_step)
             self._state["failure"] = None
@@ -735,15 +732,6 @@ class ImageReplayRunner:
         if self.memory_step_factory is not None:
             return self.memory_step_factory()
         return self._memory_catalog.build(self._active_memory_plugin_ids)
-
-    def _memory_plugin_id(self) -> str:
-        """ID of the published memory plugin."""
-
-        report = plugin_report(getattr(self, "_memory_step", None))
-        plugins = report.get("plugins") if isinstance(report, dict) else None
-        if isinstance(plugins, list) and plugins and plugins[-1].get("plugin_id"):
-            return str(plugins[-1]["plugin_id"])
-        return DEFAULT_MEMORY_PLUGINS[0]
 
     def _set_loop(self, loop: bool | None) -> dict[str, Any]:
         if not isinstance(loop, bool):
@@ -1053,7 +1041,6 @@ class ImageReplayRunner:
                     detail["perception_plugin_report"] = perception_plugin_report
                     detail["memory_plugin_report"] = memory_plugin_report
                     pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                    pipeline["memory_plugin_id"] = self._memory_plugin_id()
                     pipeline["perception_plugin_report"] = copy.deepcopy(
                         perception_plugin_report
                     )
@@ -1128,10 +1115,7 @@ class ImageReplayRunner:
                 mapper_status = f"error: {type(exc).__name__}: {exc}"
         if self._memory_step is not None:
             try:
-                if isinstance(self._memory_step, MemoryRunner):
-                    self._memory_step.reset(self._shared_memory)
-                else:
-                    self._memory_step.reset()
+                self._memory_step.reset(self._shared_memory)
                 memory_status = "reset"
             except Exception as exc:  # noqa: BLE001 - cleanup boundary
                 memory_status = f"error: {type(exc).__name__}: {exc}"
@@ -1315,7 +1299,6 @@ class ImageReplayRunner:
         return {
             "pipeline": {
                 "perception_preset": self._selection_preset(active_ids),
-                "memory_plugin_id": self._memory_plugin_id(),
                 "perception_plugin_report": plugin_report(getattr(self, "_mapper", None)),
                 "memory_plugin_report": plugin_report(getattr(self, "_memory_step", None)),
                 "observation_adapter": "autonomy.decision_cycle.observation.perception_summary.observation_from_perception",

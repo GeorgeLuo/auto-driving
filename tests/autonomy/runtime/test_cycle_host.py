@@ -16,6 +16,7 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.steps import decision_steps
@@ -216,7 +217,7 @@ class CycleHostMemoryTests(unittest.TestCase):
 
         def remember(context, observation):
             context.shared_memory["test.previous"] = context.frame_id
-            context.shared_memory["decision.observation"] = replace(observation, summary=("updated",))
+            context.shared_memory[OBSERVATION_KEY] = replace(observation, summary=("updated",))
             return {"schema": "memory_report_v0", "plugins": []}
 
         host, proposal = _host(observation=observe, memory=remember)

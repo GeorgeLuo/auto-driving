@@ -16,6 +16,8 @@ _BOUNDED_EVIDENCE_CONFIG: dict[str, Any] = {
 }
 
 # Each plugin declares its own ID (its ``plugin_id``); entries do not repeat it.
+# ``perception_plugins`` (optional) names the perception plugins whose output the
+# plugin reads. The workbench lists it; nothing checks the two selections against it.
 MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
     {
         "spec": (
@@ -38,6 +40,7 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
             "plugin into tracks across frames, with optical-flow history, lost-track handling, "
             "and a bounded evidence ledger."
         ),
+        "perception_plugins": ("multi_obstruction_tracks",),
         "default_config": dict(_BOUNDED_EVIDENCE_CONFIG),
     },
 )

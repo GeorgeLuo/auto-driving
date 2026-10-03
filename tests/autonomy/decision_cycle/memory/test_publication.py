@@ -4,6 +4,7 @@ import unittest
 from dataclasses import replace
 
 from autonomy.decision_cycle.memory.publication import (
+    EVIDENCE_KEY,
     OBSERVATION_KEY,
     observation_after_memory,
     withdraw_publication,
@@ -16,8 +17,9 @@ class MemoryPublicationTests(unittest.TestCase):
         self.observation = Observation("frame-1", 100, {})
         self.replacement = replace(self.observation, summary=("updated",))
 
-    def test_key(self) -> None:
-        self.assertEqual(OBSERVATION_KEY, "decision.observation")
+    def test_keys(self) -> None:
+        self.assertEqual(OBSERVATION_KEY, "memory.observation")
+        self.assertEqual(EVIDENCE_KEY, "memory.evidence")
 
     def test_withdraw_publication(self) -> None:
         shared = {OBSERVATION_KEY: self.replacement, "other": 1}

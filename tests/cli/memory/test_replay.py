@@ -66,6 +66,32 @@ class MemoryReplayTests(MemoryReplayFixture, unittest.TestCase):
         # Last observation updated signal; thing still retained from prior frames.
         self.assertEqual(payload_a["final"]["record_count"], 2)
 
+    def test_replay_reports_each_frames_memory_summary(self) -> None:
+        result = replay_vehicle_memory(
+            vehicle_id="chase-sim-chaser",
+            sequence=RECURRENCE_SOURCE,
+            plugin_id="bounded_evidence",
+            json_output=True,
+        )
+        self.assertEqual(result.exit_code, 0, result.message)
+        payload = json.loads(result.message)
+        per_frame = payload["per_frame"]
+        self.assertEqual(
+            [item["frame_id"] for item in per_frame],
+            ["frame_000", "frame_001", "frame_002"],
+        )
+        for item in per_frame:
+            self.assertEqual(
+                set(item),
+                {"frame_id", "frame_index", "timestamp_ms", "health", "record_count", "epoch_id"},
+            )
+        final = payload["final"]
+        last = per_frame[-1]
+        self.assertEqual(
+            (last["health"], last["record_count"], last["epoch_id"]),
+            (final["health"], final["record_count"], final["epoch_id"]),
+        )
+
     def test_replay_cli_json_matches_digest(self) -> None:
         result = run_automa(
             "vehicles",

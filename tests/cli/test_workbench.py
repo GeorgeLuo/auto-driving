@@ -193,6 +193,14 @@ class WorkbenchTests(unittest.TestCase):
         )
         self.assertEqual(state["steps"]["memory"]["health"], "healthy")
         self.assertGreaterEqual(state["steps"]["memory"]["record_count"], 2)
+        self.assertEqual(state["summary"]["memory_health"], "healthy")
+        self.assertEqual(
+            state["summary"]["memory_records"], state["steps"]["memory"]["record_count"]
+        )
+        self.assertEqual(
+            state["timeline"][-1]["memory_record_count"],
+            state["steps"]["memory"]["record_count"],
+        )
         self.assertNotIn("frames", state["source"])
         self.assertNotIn("perception", state["timeline"][0])
         self.assertEqual(state["steps"]["perception"]["status"], "ok")

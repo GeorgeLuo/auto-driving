@@ -42,7 +42,7 @@ from .bundles import (
 )
 from .step_activations import refresh_release, replace_metadata, stage_activation
 from .step_hosting import load_staged_runner
-from .memory_report import last_plugin_state
+from .memory_report import last_plugin_state, memory_summary
 from .paths import ROOT, display_path, safe_path_part
 from .runtime_view import RuntimeViewServer
 from .physical_observation import (
@@ -1104,9 +1104,7 @@ def _run_memory_sequence(
                 "frame_id": context.frame_id,
                 "frame_index": context.frame_index,
                 "timestamp_ms": context.timestamp_ms,
-                "health": final.get("health"),
-                "record_count": final.get("record_count", 0),
-                "epoch_id": final.get("epoch_id"),
+                **memory_summary(final),
             }
         )
     return {

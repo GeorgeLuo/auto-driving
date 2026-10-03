@@ -21,7 +21,7 @@ from autonomy.decision_cycle.perception.interface import (
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
 
-from .memory_report import last_plugin_state
+from .memory_report import last_plugin_state, memory_summary
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -1274,6 +1274,7 @@ class ImageReplayRunner:
         frames_total: int | None = None,
     ) -> dict[str, Any]:
         progress = self._state.get("progress", {}) if hasattr(self, "_state") else {}
+        memory_state = memory_summary(memory)
         summary = {
             "frames_completed": (
                 int(progress.get("completed", 0))
@@ -1289,8 +1290,8 @@ class ImageReplayRunner:
             "perception_things": len(perception.things) if perception else 0,
             "perception_signals": len(perception.signals) if perception else 0,
             "observation_available": observation is not None,
-            "memory_health": memory.get("health") if memory else None,
-            "memory_records": memory.get("record_count", 0) if memory else 0,
+            "memory_health": memory_state["health"],
+            "memory_records": memory_state["record_count"],
             "last_duration_ms": round(float(duration_ms), 3)
             if duration_ms is not None
             else None,
@@ -1391,7 +1392,7 @@ class ImageReplayRunner:
             "perception_status": result.perception.status
             if result.perception
             else None,
-            "memory_record_count": (memory or {}).get("record_count", 0),
+            "memory_record_count": memory_summary(memory)["record_count"],
             "memory_effect": {
                 "added": sorted(current_ids - previous_ids),
                 "removed": sorted(previous_ids - current_ids),

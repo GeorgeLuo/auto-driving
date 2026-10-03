@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from implementations.vehicle.chase_sim.frame_identity import format_chase_frame_id
 
-from .memory_report import memory_state
+from .memory_report import last_plugin_state
 
 # Always-on camera/floor evidence keeps refreshing and is not a max-age proof.
 _ALWAYS_ON_KEY_MARKERS = (
@@ -62,7 +62,7 @@ def frame_simulation_epoch(frame: dict[str, Any]) -> str | None:
 def frame_memory_epoch_id(frame: dict[str, Any]) -> str | None:
     """Memory generation identity published on the evaluation frame."""
 
-    memory = memory_state(frame.get("memory"))
+    memory = last_plugin_state(frame.get("memory"))
     if not isinstance(memory, dict):
         return None
     epoch = str(memory.get("epoch_id") or "").strip()
@@ -84,7 +84,7 @@ def frame_worker_pid(frame: dict[str, Any]) -> int | None:
 def frame_capacity_eviction_count(frame: dict[str, Any]) -> int | None:
     """Authoritative capacity-eviction total from frame memory metadata."""
 
-    memory = memory_state(frame.get("memory"))
+    memory = last_plugin_state(frame.get("memory"))
     if not isinstance(memory, dict):
         return None
     metadata = memory.get("metadata")
@@ -119,7 +119,7 @@ def extract_chase_lifecycle_keys(frames: list[dict[str, Any]]) -> set[str]:
         observed_index[format_chase_frame_id(containing_index)] = containing_index
 
         # Evaluation frames record the memory report; read the last plugin's state.
-        memory = memory_state(frame.get("memory"))
+        memory = last_plugin_state(frame.get("memory"))
         if memory is None:
             continue
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
@@ -215,7 +215,7 @@ def lifecycle_key_anchors_ms(
         if not isinstance(frame, dict):
             continue
         frame_ts = _optional_int(frame.get("timestamp_ms"))
-        memory = memory_state(frame.get("memory"))
+        memory = last_plugin_state(frame.get("memory"))
         if memory is None:
             continue
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
@@ -274,7 +274,7 @@ def require_valid_memory(frame: dict[str, Any]) -> dict[str, Any]:
 
     if "memory" not in frame:
         raise ValueError("frame is missing memory")
-    memory = memory_state(frame.get("memory"))
+    memory = last_plugin_state(frame.get("memory"))
     if not isinstance(memory, dict):
         raise ValueError("frame.memory is not an object")
     if "records" not in memory:

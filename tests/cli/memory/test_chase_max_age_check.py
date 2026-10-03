@@ -11,7 +11,7 @@ from tests.cli.memory.chase_max_age_fixtures import (
     _live_probe,
 )
 
-from cli.automa_cli.memory_report import memory_state
+from cli.automa_cli.memory_report import last_plugin_state
 from tests.support.memory_fixtures import memory_report
 
 
@@ -93,7 +93,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 # Rebuild so collection frames pick up post-reset worker epoch.
                 template = frames[cursor["n"]]
                 cursor["n"] += 1
-                records = list((memory_state(template.get("memory")) or {}).get("records") or [])
+                records = list((last_plugin_state(template.get("memory")) or {}).get("records") or [])
                 return _frame_with_current_epoch(
                     int(template["simulator_frame_index"]),
                     records,

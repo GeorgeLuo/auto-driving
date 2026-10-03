@@ -10,7 +10,7 @@ from autonomy.decision_cycle.perception.evidence.values import (
 )
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from cli.automa_cli.memory_report import memory_state
+from cli.automa_cli.memory_report import last_plugin_state
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
 from cli.automa_cli.workbench_frames import default_memory_step
@@ -94,7 +94,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["steps"]["memory"], memory_state(reports[-1]))
+            self.assertEqual(completed["steps"]["memory"], last_plugin_state(reports[-1]))
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))

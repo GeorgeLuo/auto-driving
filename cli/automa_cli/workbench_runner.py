@@ -21,7 +21,7 @@ from autonomy.decision_cycle.perception.interface import (
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
 
-from .memory_report import memory_state
+from .memory_report import last_plugin_state
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -1018,7 +1018,7 @@ class ImageReplayRunner:
                 observation_payload = (
                     result.observation.to_dict() if result.observation else None
                 )
-                memory_payload = copy.deepcopy(memory_state(result.memory))
+                memory_payload = copy.deepcopy(last_plugin_state(result.memory))
                 with self._condition:
                     previous_memory = self._state["steps"]["memory"]
                     self._state["current_frame"] = frame.to_dict()
@@ -1369,7 +1369,7 @@ class ImageReplayRunner:
         result: Any,
         previous_memory: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        memory = copy.deepcopy(memory_state(result.memory))
+        memory = copy.deepcopy(last_plugin_state(result.memory))
         previous_ids = {
             str(item.get("record_id"))
             for item in (previous_memory or {}).get("records", [])

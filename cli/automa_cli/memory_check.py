@@ -40,7 +40,7 @@ from .memory import (
     probe_live_memory,
     render_memory_origin_extract_html,
 )
-from .memory_report import memory_state
+from .memory_report import last_plugin_state
 from .paths import ROOT, display_path, safe_path_part
 from .perception_view import get_perception_view_status
 from .physical_observation import (
@@ -746,7 +746,7 @@ def run_chase_reference_memory_check(
     passed = all(bool(item.get("passed")) for item in phase_results)
     present_state = {}
     for frame in reversed(frames):
-        memory = memory_state(frame.get("memory"))
+        memory = last_plugin_state(frame.get("memory"))
         if isinstance(memory, dict) and memory.get("records"):
             present_state = memory
             break
@@ -813,7 +813,7 @@ def run_chase_reference_memory_check(
 def chase_reset_state_from_payload(reset_payload: dict[str, Any]) -> dict[str, Any]:
     """Normalize Chase worker reset result into an empty-state memory mapping."""
 
-    state = memory_state(reset_payload.get("report"))
+    state = last_plugin_state(reset_payload.get("report"))
     if isinstance(state, dict) and (
         state.get("health") in {"empty", "unavailable"}
         or state.get("record_count") == 0
@@ -829,7 +829,7 @@ def chase_reset_state_from_payload(reset_payload: dict[str, Any]) -> dict[str, A
     memory = reset_payload.get("memory")
     if isinstance(memory, dict):
         status_block = memory.get("status") if isinstance(memory.get("status"), dict) else memory
-        status = memory_state(status_block)
+        status = last_plugin_state(status_block)
         if isinstance(status, dict):
             health = status.get("health") or "empty"
             count = status.get("record_count")
@@ -1026,7 +1026,7 @@ def score_chase_memory_origin(frames: list[dict[str, Any]]) -> dict[str, Any]:
             observed[containing_frame_id] = containing_index
         observed[format_chase_frame_id(containing_index)] = containing_index
 
-        memory = memory_state(frame.get("memory")) or {}
+        memory = last_plugin_state(frame.get("memory")) or {}
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
         if not records:
             continue
@@ -1285,7 +1285,7 @@ def score_chaser_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, 
             meta = sensor.get("metadata") if isinstance(sensor.get("metadata"), dict) else {}
             if "chaser_reference" in meta:
                 leaks.append(f"{frame.get('frame_id')}:observation.sensor_frame.metadata")
-        memory = memory_state(frame.get("memory")) or {}
+        memory = last_plugin_state(frame.get("memory")) or {}
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
         for record in records:
             if not isinstance(record, dict):
@@ -1360,7 +1360,7 @@ def run_offline_memory_check(
             fresh = step.reset(shared_memory)
             shared_memory.clear()
             shared_memory.update(fresh)
-            final = memory_state(step.report()) or {}
+            final = last_plugin_state(step.report()) or {}
             frames_for_phase: list[dict[str, Any]] = []
         else:
             frames_for_phase = list(phase.get("frames") or [])
@@ -1812,7 +1812,7 @@ def run_physical_memory_check(
         )
     # Empty-state evidence comes from the atomic reset response, not a later probe
     # (the always-on cycle can repopulate memory before the next publication).
-    reset_state = memory_state(reset_payload.get("report"))
+    reset_state = last_plugin_state(reset_payload.get("report"))
     if not isinstance(reset_state, dict):
         return CommandResult(
             2,
@@ -1899,7 +1899,7 @@ def run_physical_memory_check(
 def live_memory_from_publication(publication: dict[str, Any]) -> dict[str, Any] | None:
     """Extract the last memory plugin's state from a publication's memory report."""
 
-    memory = memory_state(publication.get("memory"))
+    memory = last_plugin_state(publication.get("memory"))
     if not isinstance(memory, dict):
         return None
     # Normalize count if only records are present.
@@ -2578,7 +2578,7 @@ def write_memory_check_record(
     )
     per_frame = []
     for frame in all_frames:
-        memory = memory_state(frame.get("memory")) or {}
+        memory = last_plugin_state(frame.get("memory")) or {}
         per_frame.append(
             {
                 "frame_id": frame.get("frame_id"),
@@ -2795,7 +2795,7 @@ def _feed_frames(
             shared_memory=shared_memory,
         )
         report = step.update(context, observation)
-    return memory_state(report) or {}
+    return last_plugin_state(report) or {}
 
 
 def _emit(output: TextIO | None, message: str) -> None:

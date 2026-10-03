@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def memory_state(report: object) -> dict[str, Any] | None:
+def last_plugin_state(report: object) -> dict[str, Any] | None:
     """State of the last applied memory plugin, or None when there is none."""
 
     if not isinstance(report, dict):

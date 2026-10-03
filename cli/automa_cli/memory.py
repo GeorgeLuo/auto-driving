@@ -42,7 +42,7 @@ from .bundles import (
 )
 from .step_activations import refresh_release, replace_metadata, stage_activation
 from .step_hosting import load_staged_runner
-from .memory_report import memory_state
+from .memory_report import last_plugin_state
 from .paths import ROOT, display_path, safe_path_part
 from .runtime_view import RuntimeViewServer
 from .physical_observation import (
@@ -1089,7 +1089,7 @@ def _run_memory_sequence(
     # Fresh epoch for this pass (step already reset on construction).
     per_frame: list[dict[str, Any]] = []
     shared_memory: dict[str, Any] = {}
-    final = memory_state(step.report()) or {}
+    final = last_plugin_state(step.report()) or {}
     for frame in frames:
         observation = Observation.from_dict(frame["observation"])
         context = DecisionFrameContext(
@@ -1098,7 +1098,7 @@ def _run_memory_sequence(
             timestamp_ms=int(frame["timestamp_ms"]),
             shared_memory=shared_memory,
         )
-        final = memory_state(step.update(context, observation)) or {}
+        final = last_plugin_state(step.update(context, observation)) or {}
         per_frame.append(
             {
                 "frame_id": context.frame_id,
@@ -1523,8 +1523,8 @@ def _stream_physical_memory_with_inspector(
                 if fetch_error:
                     lines.append(f"publication: {fetch_error}")
                 # The published memory report's last plugin state.
-                elif isinstance(publication, dict) and memory_state(publication.get("memory")):
-                    mem = memory_state(publication.get("memory"))
+                elif isinstance(publication, dict) and last_plugin_state(publication.get("memory")):
+                    mem = last_plugin_state(publication.get("memory"))
                     lines.append(
                         f"publication memory: health={mem.get('health')} "
                         f"keys={mem.get('record_count')}"
@@ -1653,10 +1653,10 @@ def _probe_physical_memory(
         "selected_plugin_ids": memory.get("selected_plugin_ids", []),
         "plugins": memory.get("plugins", []),
         "plugin_report": memory.get("plugin_report"),
-        "bounds": (memory_state(memory) or {}).get("bounds"),
-        "last_health": (memory_state(memory) or {}).get("health"),
-        "last_epoch_id": (memory_state(memory) or {}).get("epoch_id"),
-        "last_record_count": (memory_state(memory) or {}).get("record_count"),
+        "bounds": (last_plugin_state(memory) or {}).get("bounds"),
+        "last_health": (last_plugin_state(memory) or {}).get("health"),
+        "last_epoch_id": (last_plugin_state(memory) or {}).get("epoch_id"),
+        "last_record_count": (last_plugin_state(memory) or {}).get("record_count"),
         "last_duration_ms": memory.get("last_duration_ms"),
         "last_error": memory.get("last_error"),
         "update_count": memory.get("update_count"),
@@ -1754,10 +1754,10 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
         "plugins": status_block.get("plugins", []),
         "plugin_report": status_block.get("plugin_report"),
-        "bounds": (memory_state(status_block) or {}).get("bounds"),
-        "last_health": (memory_state(status_block) or {}).get("health"),
-        "last_epoch_id": (memory_state(status_block) or {}).get("epoch_id"),
-        "last_record_count": (memory_state(status_block) or {}).get("record_count"),
+        "bounds": (last_plugin_state(status_block) or {}).get("bounds"),
+        "last_health": (last_plugin_state(status_block) or {}).get("health"),
+        "last_epoch_id": (last_plugin_state(status_block) or {}).get("epoch_id"),
+        "last_record_count": (last_plugin_state(status_block) or {}).get("record_count"),
         "last_duration_ms": status_block.get("last_duration_ms"),
         "last_error": status_block.get("last_error"),
         "update_count": status_block.get("update_count"),

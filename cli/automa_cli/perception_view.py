@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import quote, urljoin, urlparse
 from urllib.request import urlopen
 
-from .memory_report import memory_state
+from .memory_report import last_plugin_state
 
 from PIL import Image
 
@@ -263,7 +263,7 @@ def _publication_payload(
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
     # The last memory plugin's state from the frame record's memory report.
-    memory = memory_state(source.get("memory"))
+    memory = last_plugin_state(source.get("memory"))
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,

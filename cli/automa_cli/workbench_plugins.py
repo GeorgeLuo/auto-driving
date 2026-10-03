@@ -45,9 +45,10 @@ class PluginDescriptor:
     entrypoint: str
     config: dict[str, Any]
     default: bool = False
+    perception_plugins: tuple[str, ...] = ()
 
     def to_dict(self, *, active_ids: Sequence[str] = ()) -> dict[str, Any]:
-        return {
+        item = {
             "id": self.plugin_id,
             "name": self.plugin_id,
             "description": self.description,
@@ -56,6 +57,9 @@ class PluginDescriptor:
             "default": self.default,
             "active": self.plugin_id in active_ids,
         }
+        if self.perception_plugins:
+            item["perception_plugins"] = list(self.perception_plugins)
+        return item
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,7 @@ def packaged_plugin_catalog(step: str) -> PluginCatalog:
             entrypoint=definitions[plugin_id].entrypoint,
             config=dict(definitions[plugin_id].config),
             default=plugin_id in default_ids,
+            perception_plugins=tuple(entries[plugin_id].get("perception_plugins", ())),
         )
         for plugin_id in plugin_ids
     )

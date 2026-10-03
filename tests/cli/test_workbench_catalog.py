@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import unittest
+from unittest import mock
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorFrame
 from implementations.decision_cycle.catalog import step_plugins
@@ -310,6 +311,58 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reset["phase"], "idle")
             self.assertEqual(reset["timeline"], [])
             self.assertEqual(runner._shared_memory, {})
+
+    def test_running_perception_selection_that_cannot_be_built_keeps_the_working_run(self) -> None:
+        from autonomy.decision_cycle.perception import runner as perception_runner
+
+        instantiate = perception_runner.instantiate_plugin
+
+        def failing_instantiate(definition):
+            if definition.plugin_id == "floor_continuity":
+                raise RuntimeError("constructor failed")
+            return instantiate(definition)
+
+        with image_source(3) as root:
+            runner = ImageReplayRunner(root, cadence_ms=30000)
+            runner.dispatch("select_plugins", active_plugin_ids=["classical_regions"])
+            run_id = runner.start()["run_id"]
+            _wait_until(lambda: runner.state()["position"] == 1)
+            before = runner.state()
+            self.assertEqual(before["phase"], "running")
+            mapper = runner._mapper
+            memory_step = runner._memory_step
+            retained = dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"]
+            runner._shared_memory["retention-marker"] = "kept"
+
+            with mock.patch.object(perception_runner, "instantiate_plugin", failing_instantiate):
+                with self.assertRaises(ReplayActionError) as caught:
+                    runner.dispatch(
+                        "select_plugins", run_id=run_id,
+                        active_plugin_ids=["floor_continuity", "classical_regions"],
+                    )
+
+            self.assertEqual(caught.exception.status_code, 422)
+            self.assertEqual(caught.exception.boundary, "plugin_catalog")
+            self.assertIn("constructor failed", str(caught.exception))
+            state = runner.state()
+            self.assertEqual(state["phase"], "running")
+            self.assertEqual(state["position"], before["position"])
+            self.assertEqual(state["failure_boundary"], "plugin_catalog")
+            self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
+            self.assertIs(runner._mapper, mapper)
+            self.assertIs(runner._memory_step, memory_step)
+            self.assertEqual(mapper.plugin_manager.selected_ids, ("classical_regions",))
+            applied = dict(zip(mapper.plugin_ids, mapper.plugins))
+            self.assertEqual(list(applied), ["classical_regions"])
+            self.assertIs(applied["classical_regions"], retained)
+            self.assertEqual(runner._shared_memory["retention-marker"], "kept")
+
+            runner.dispatch("pause", run_id=run_id)
+            stepped = runner.dispatch("step", run_id=run_id)
+            self.assertEqual(stepped["phase"], "paused")
+            self.assertEqual(_plugin_ids(stepped["steps"]["perception"]), ["classical_regions"])
+            self.assertIs(dict(zip(mapper.plugin_ids, mapper.plugins))["classical_regions"], retained)
+            runner.dispatch("reset", run_id=run_id)
 
 
 class WorkbenchMatchesInspectTests(unittest.TestCase):

@@ -249,9 +249,7 @@ def _inspect_images(
         source_name = source.stem
     elif source.is_dir():
         source_dir = source
-        source_manifest = _read_json(source_dir / "run.json")
-        if not source_manifest:
-            source_manifest = _read_json(source_dir / "report.json")
+        source_manifest = read_run_manifest(source_dir)
         image_paths = _source_image_paths(source_dir, source_manifest)
         source_name = source_dir.name
     else:
@@ -260,19 +258,12 @@ def _inspect_images(
         return CommandResult(2, f"No applicable images found under {source}")
 
     try:
-        recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
+        recorded = recorded_selection(source_manifest)
         if plugins or preset is not None:
             activation = selection_activation("perception", preset=preset, plugins=plugins)
             preset = activation.metadata["preset"]
-        elif isinstance(recorded_mapper, dict):
-            recorded = dict(recorded_mapper.get("config") or {})
-            activation = step_activation(
-                "perception",
-                recorded.get("plugins") or [],
-                recorded.get("plugin_specs") or {},
-                recorded.get("plugin_configs") or {},
-            )
-            preset = recorded_mapper.get("preset") or "recorded"
+        elif recorded is not None:
+            activation, preset = recorded
         else:
             activation = selection_activation("perception")
             preset = activation.metadata["preset"]
@@ -656,6 +647,28 @@ def _resolve_manifest_image(source_dir: Path, value: str) -> Path | None:
         if resolved.is_file():
             return resolved
     return None
+
+
+def read_run_manifest(source_dir: Path) -> dict[str, Any]:
+    """A recorded run's own manifest (``run.json``, else ``report.json``), or ``{}``."""
+
+    return _read_json(source_dir / "run.json") or _read_json(source_dir / "report.json")
+
+
+def recorded_selection(manifest: dict[str, Any]) -> tuple[Any, str] | None:
+    """The perception activation and preset a recorded run names, or ``None``."""
+
+    recorded_mapper = manifest.get("mapper") if isinstance(manifest, dict) else None
+    if not isinstance(recorded_mapper, dict):
+        return None
+    recorded = dict(recorded_mapper.get("config") or {})
+    activation = step_activation(
+        "perception",
+        recorded.get("plugins") or [],
+        recorded.get("plugin_specs") or {},
+        recorded.get("plugin_configs") or {},
+    )
+    return activation, recorded_mapper.get("preset") or "recorded"
 
 
 def _read_json(path: Path) -> dict[str, Any]:

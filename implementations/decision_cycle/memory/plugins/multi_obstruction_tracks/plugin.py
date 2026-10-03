@@ -9,6 +9,12 @@ using the same luminance transform. All cross-frame state lives in the host's
 shared map; the tracker and evidence reducer are recreated for each update.
 The retained-evidence ledger is kept at ``LEDGER_KEY`` and its records are
 published at ``EVIDENCE_KEY``, where ``avoid_recent_obstruction`` reads them.
+
+This plugin takes over both shared slots. Each update it removes any
+replacement observation at ``OBSERVATION_KEY``, then publishes its own when the
+observation it is given carries the candidate signal; that observation is the
+one passed to the step, not an earlier plugin's replacement. Its ledger's
+records replace any an earlier plugin published at ``EVIDENCE_KEY``.
 """
 from __future__ import annotations
 
@@ -16,7 +22,7 @@ from dataclasses import replace
 from uuid import uuid4
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY, OBSERVATION_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -70,7 +76,7 @@ class MultiObstructionMemory:
 
     def reset(self, shared_memory: SharedMemory) -> None:
         epoch = f"epoch-{uuid4().hex}"
-        for key in (*self.history_keys, "decision.observation"):
+        for key in (*self.history_keys, OBSERVATION_KEY):
             shared_memory.pop(key, None)
         self._publish(
             shared_memory,
@@ -94,7 +100,7 @@ class MultiObstructionMemory:
         shared_memory = context.shared_memory
         if shared_memory is None:
             raise ValueError("tracking memory requires a host shared-memory map")
-        shared_memory.pop("decision.observation", None)
+        shared_memory.pop(OBSERVATION_KEY, None)
         marker = next((signal for signal in observation.signals
                        if signal.get("signal_id") == "multi_obstruction_candidates"), None) if observation else None
         if marker is None:
@@ -172,7 +178,7 @@ class MultiObstructionMemory:
         shared_memory["multi_obstruction_tracks.history"] = lookback_tracks
         shared_memory["multi_obstruction_tracks.previous_gray"] = gray
         shared_memory["multi_obstruction_tracks.next_track_id"] = tracker._next_track_id
-        shared_memory["decision.observation"] = tracked_observation
+        shared_memory[OBSERVATION_KEY] = tracked_observation
 
 
 def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float:

@@ -28,6 +28,9 @@ MEMORY_PRESETS: dict[str, dict[str, Any]] = {
         ),
         "plugins": ["multi_obstruction_tracks"],
     },
+    # Both plugins publish evidence at EVIDENCE_KEY, so proposals read the later
+    # plugin's records. The recency ledger's records stay in its own ledger and
+    # appear in the memory report.
     "multi_obstruction_with_ledger": {
         "description": (
             "The recency ledger, then obstruction tracks across frames."

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from cli.automa_cli.memory_report import memory_state
+from cli.automa_cli.memory_report import last_plugin_state
 from cli.automa_cli.physical_observation import publication_to_frame_record
 from cli.automa_cli.perception_view import (
     _publication_payload,
@@ -62,9 +62,9 @@ class MemoryViewPublicationTests(unittest.TestCase):
             "control": {"steering": 0.0, "throttle": 0.0},
         }
         frame_record = publication_to_frame_record(publication)
-        self.assertEqual(memory_state(frame_record["memory"])["health"], "healthy")
+        self.assertEqual(last_plugin_state(frame_record["memory"])["health"], "healthy")
         self.assertEqual(
-            memory_state(frame_record["memory"])["records"][0]["kind"], "floor_boundary"
+            last_plugin_state(frame_record["memory"])["records"][0]["kind"], "floor_boundary"
         )
 
         view_payload = _publication_payload(

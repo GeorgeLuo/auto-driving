@@ -7,6 +7,25 @@ anything other plugins read. ``update`` runs once per cycle; ``reset`` starts a
 new epoch and writes the plugin's fresh state to the map. ``status`` is an
 optional JSON summary of that state for diagnostics. Framework code owns
 selection, timing, and failure isolation.
+
+The CLI and the viewers it serves read four keys from a retained-evidence
+ledger's summary: ``epoch_id``, ``health`` (``empty`` or ``healthy``), ``bounds``
+and ``record_count``. The framework does not check for them. A summary that
+drops or renames one shows no value for it, and the CLI's reset check reads
+``health`` and ``record_count`` to tell that a reset emptied the memory.
+
+Several memory plugins may be selected together. They run in selection order on
+one host map, and each receives the same ``observation``, not a replacement an
+earlier plugin published. The framework does not merge or arbitrate between
+them; resolving what a later plugin overwrites is the implementer's job. These
+cause unexpected behavior:
+
+- A key two plugins write holds the later plugin's value. That includes a
+  private key that lacks the plugin's ``plugin_id`` prefix.
+- ``OBSERVATION_KEY`` and ``EVIDENCE_KEY`` (see ``publication``) hold one value
+  each. A later plugin that writes either replaces the earlier plugin's value,
+  and one that removes ``OBSERVATION_KEY`` drops an earlier replacement.
+- A plugin that raises stops the plugins after it and the cycle.
 """
 
 from __future__ import annotations

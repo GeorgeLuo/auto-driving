@@ -4,7 +4,7 @@ import dataclasses
 import unittest
 from typing import Any
 
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY, OBSERVATION_KEY
 from implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin import (
     LEDGER_KEY,
     MultiObstructionMemory,
@@ -27,7 +27,7 @@ class MultiObstructionMemoryTests(unittest.TestCase):
 
         memory.update(context, observation)
 
-        tracked = shared_memory["decision.observation"]
+        tracked = shared_memory[OBSERVATION_KEY]
         self.assertEqual([thing["thing_id"] for thing in tracked.things], ["obstruction_track_000"])
         self.assertEqual(tracked.metadata["tracking"]["track_events"], {0: "new"})
         self.assertFalse(
@@ -52,9 +52,9 @@ class MultiObstructionMemoryTests(unittest.TestCase):
             _update(memory, shared_memory, index)
 
         self.assertEqual(
-            shared_memory["decision.observation"].metadata["tracking"]["track_events"], {0: "lost"}
+            shared_memory[OBSERVATION_KEY].metadata["tracking"]["track_events"], {0: "lost"}
         )
-        self.assertEqual(shared_memory["decision.observation"].things, ())
+        self.assertEqual(shared_memory[OBSERVATION_KEY].things, ())
         self.assertIn(
             "thing:0:21:obstruction_track_000",
             {record.record_id for record in shared_memory[EVIDENCE_KEY]},
@@ -70,7 +70,7 @@ class MultiObstructionMemoryTests(unittest.TestCase):
         memory.update(context, dataclasses.replace(observation, signals=()))
 
         self.assertFalse(any(key in shared_memory for key in memory.history_keys))
-        self.assertNotIn("decision.observation", shared_memory)
+        self.assertNotIn(OBSERVATION_KEY, shared_memory)
 
     def test_reset_starts_a_new_empty_epoch_and_forgets_tracks(self) -> None:
         memory, shared_memory = MultiObstructionMemory(), {}
@@ -84,7 +84,7 @@ class MultiObstructionMemoryTests(unittest.TestCase):
         self.assertEqual((ledger.health, ledger.record_count), ("empty", 0))
         self.assertEqual(shared_memory[EVIDENCE_KEY], ())
         self.assertFalse(any(key in shared_memory for key in memory.history_keys))
-        self.assertNotIn("decision.observation", shared_memory)
+        self.assertNotIn(OBSERVATION_KEY, shared_memory)
 
     def test_requires_a_host_shared_memory_map(self) -> None:
         context, observation = tracks_frame_inputs(0, OBSTRUCTION_LEFT_EDGES[0], None)

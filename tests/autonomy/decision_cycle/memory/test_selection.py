@@ -9,6 +9,7 @@ from pathlib import Path
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA, read_step_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
@@ -151,10 +152,10 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(step.update(context, None)["plugins"], [])
         manager.add("first")
         self.assertEqual(step.update(context, None)["plugins"][0]["plugin_id"], "first")
-        shared["decision.observation"] = "published by the removed plugin"
+        shared[OBSERVATION_KEY] = "published by the removed plugin"
         manager.remove("first")
         self.assertEqual(step.update(context, None)["plugins"], [])
-        self.assertNotIn("decision.observation", shared)
+        self.assertNotIn(OBSERVATION_KEY, shared)
         self.assertEqual(step.status()["plugin_ids"], [])
 
     def test_prepare_selection_constructs_a_replacement_once(self):

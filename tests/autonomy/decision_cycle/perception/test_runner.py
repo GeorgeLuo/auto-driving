@@ -18,8 +18,8 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
     ViewLocation,
 )
-from autonomy.decision_cycle.perception.components.interface import (
-    PerceptionComponentUnavailable,
+from autonomy.decision_cycle.perception.feeds.interface import (
+    PerceptionFeedUnavailable,
 )
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
@@ -27,34 +27,34 @@ from autonomy.decision_cycle.perception.plugin import (
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from implementations.decision_cycle.catalog import step_plugins
 
 
 TEST_INPUT = PerceptionPluginInput(
     name="value",
-    component_id="test.component",
-    provider_spec=f"{__name__}:provide_test_component",
+    feed_id="test.feed",
+    provider_spec=f"{__name__}:provide_test_feed",
 )
 UNAVAILABLE_INPUT = PerceptionPluginInput(
     name="missing",
-    component_id="test.unavailable",
-    provider_spec=f"{__name__}:provide_unavailable_component",
+    feed_id="test.unavailable",
+    provider_spec=f"{__name__}:provide_unavailable_feed",
 )
 
 
-def provide_test_component(request, plugin_input):
+def provide_test_feed(request, plugin_input):
     del request, plugin_input
     return {"value": 42}
 
 
-def provide_unavailable_component(request, plugin_input):
+def provide_unavailable_feed(request, plugin_input):
     del request, plugin_input
-    raise PerceptionComponentUnavailable("test component is absent")
+    raise PerceptionFeedUnavailable("test feed is absent")
 
 
 class WorkingPlugin:
-    plugin_id = "working-test-v0"
+    plugin_id = "working"
     contract = PerceptionPluginContract(
         inputs=(TEST_INPUT,),
         description="Test fixture that emits one signal and one thing.",
@@ -84,7 +84,7 @@ class WorkingPlugin:
 
 
 class ExplodingPlugin:
-    plugin_id = "exploding-test-v0"
+    plugin_id = "exploding"
     contract = PerceptionPluginContract(inputs=(TEST_INPUT,))
 
     def perceive(self, inputs):
@@ -93,7 +93,7 @@ class ExplodingPlugin:
 
 
 class UnavailablePlugin:
-    plugin_id = "unavailable-test-v0"
+    plugin_id = "unavailable"
     contract = PerceptionPluginContract(inputs=(UNAVAILABLE_INPUT,))
 
     def __init__(self) -> None:
@@ -106,7 +106,7 @@ class UnavailablePlugin:
 
 
 class ConstructionFailurePlugin:
-    plugin_id = "construction-failure-v0"
+    plugin_id = "broken"
     contract = PerceptionPluginContract()
 
     def __init__(self) -> None:
@@ -114,7 +114,7 @@ class ConstructionFailurePlugin:
 
 
 class SelectionChangingPlugin:
-    plugin_id = "selection-changing-v0"
+    plugin_id = "selection_changing"
     contract = PerceptionPluginContract()
     manager = None
 
@@ -126,8 +126,8 @@ class SelectionChangingPlugin:
         )
 
 
-def _snapshot(reading: SensorReading, read_id: str = "test-frame") -> SensorSnapshot:
-    return SensorSnapshot(
+def _sensor_frame(reading: SensorReading, read_id: str = "test-frame") -> SensorFrame:
+    return SensorFrame(
         read_id=read_id,
         readings={reading.sensor_id: reading},
         started_at_ms=reading.captured_at_ms,
@@ -158,7 +158,7 @@ class PluginRunnerTests(unittest.TestCase):
             },
         )
 
-        perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        perception = mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
 
         self.assertEqual(perception.schema, PERCEPTION_TEXT_SCHEMA)
         self.assertEqual(perception.status, "partial")
@@ -168,8 +168,8 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(perception.signals[0].source_plugin_id, "working")
         self.assertEqual(perception.things[0].source_plugin_id, "working")
         self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
-        self.assertEqual(perception.plugin_runs[0].implementation_id, "working-test-v0")
-        self.assertEqual(mapper.plugins[0].plugin_id, "working-test-v0")
+        self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
+        self.assertEqual(mapper.plugins[0].plugin_id, "working")
         self.assertEqual(mapper.plugins[0].asserted_value, 42)
         reported = {
             item["plugin_id"]: item for item in mapper.plugin_report()["plugins"]
@@ -178,49 +178,18 @@ class PluginRunnerTests(unittest.TestCase):
             record = reported[run.plugin_id]
             self.assertEqual(
                 set(record),
-                {"plugin_id", "implementation_id", "duration_ms", "error"},
+                {"plugin_id", "duration_ms", "error"},
             )
-            self.assertEqual(record["implementation_id"], run.implementation_id)
+            self.assertEqual(record["plugin_id"], run.plugin_id)
             self.assertEqual(record["duration_ms"], run.duration_ms)
             self.assertEqual(record["error"], run.error)
-
-    def test_catalog_aliases_may_share_one_implementation(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "first_frame": f"{__name__}:WorkingPlugin",
-                "second_frame": f"{__name__}:WorkingPlugin",
-            }
-        )
-        manager.select(["first_frame", "second_frame"])
-        mapper = PerceptionRunner(plugin_manager=manager)
-
-        perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
-
-        self.assertEqual(mapper.plugin_ids, ("first_frame", "second_frame"))
-        self.assertEqual(
-            [plugin.plugin_id for plugin in mapper.plugins],
-            ["working-test-v0", "working-test-v0"],
-        )
-        self.assertEqual(
-            [run.plugin_id for run in perception.plugin_runs],
-            ["first_frame", "second_frame"],
-        )
-        self.assertEqual(
-            [run.implementation_id for run in perception.plugin_runs],
-            ["working-test-v0", "working-test-v0"],
-        )
-        self.assertEqual(
-            [signal.source_plugin_id for signal in perception.signals],
-            ["first_frame", "second_frame"],
-        )
 
     def test_runner_reset_is_optional_and_invokes_stateful_hook_when_present(self) -> None:
         mapper = PerceptionRunner.from_selection(
             plugins=["working", "frame"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
-                "frame": PERCEPTION_PLUGIN_SPECS["frame"],
+                "frame": step_plugins("perception")["frame"]["spec"],
             },
         )
         plugin = mapper.plugins[0]
@@ -239,7 +208,7 @@ class PluginRunnerTests(unittest.TestCase):
             },
         )
 
-        perception = mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        perception = mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
 
         self.assertEqual(perception.status, "partial")
         self.assertEqual([run.status for run in perception.plugin_runs], ["ok", "unavailable"])
@@ -256,13 +225,13 @@ class PluginRunnerTests(unittest.TestCase):
         )
         self.assertEqual(mapper.plugins, ())
         manager.add("working")
-        mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
         self.assertEqual(
             mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
         )
         self.assertEqual(set(mapper.plugin_specs), {"broken", "working"})
         manager.remove("working")
-        mapper.perceive(build_perception_request(_snapshot(_array_reading())))
+        mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
         self.assertEqual(
             mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
         )
@@ -281,14 +250,14 @@ class PluginRunnerTests(unittest.TestCase):
         working = mapper.plugins[0]
 
         first = mapper.perceive(
-            build_perception_request(_snapshot(_array_reading(), "frame-1"))
+            build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
         )
         self.assertEqual([run.plugin_id for run in first.plugin_runs], ["working"])
 
         manager.add("unavailable")
         self.assertEqual(mapper.plugin_ids, ("working",))
         second = mapper.perceive(
-            build_perception_request(_snapshot(_array_reading(), "frame-2"))
+            build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
         )
         self.assertEqual(
             [run.plugin_id for run in second.plugin_runs],
@@ -298,7 +267,7 @@ class PluginRunnerTests(unittest.TestCase):
 
         manager.remove("working")
         third = mapper.perceive(
-            build_perception_request(_snapshot(_array_reading(), "frame-3"))
+            build_perception_request(_sensor_frame(_array_reading(), "frame-3"))
         )
         self.assertEqual(
             [run.plugin_id for run in third.plugin_runs], ["unavailable"]
@@ -320,10 +289,10 @@ class PluginRunnerTests(unittest.TestCase):
         try:
             mapper = PerceptionRunner(plugin_manager=manager)
             first = mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(), "frame-1"))
+                build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
             )
             second = mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(), "frame-2"))
+                build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
             )
 
             self.assertEqual(
@@ -373,7 +342,7 @@ class PluginRunnerTests(unittest.TestCase):
                             "working": f"{__name__}:WorkingPlugin",
                             "exploding": f"{__name__}:ExplodingPlugin",
                         },
-                        "metadata": {"algorithm": "test-observer"},
+                        "metadata": {"preset": "test-observer"},
                     }
                 ),
                 encoding="utf-8",
@@ -391,24 +360,24 @@ class PluginRunnerTests(unittest.TestCase):
                 frame_id="frame-1",
                 frame_index=3,
                 timestamp_ms=10,
-                sensor_snapshot=_snapshot(_array_reading()),
+                sensor_frame=_sensor_frame(_array_reading()),
             )
         )
         executed = step.status()
         record = executed["plugin_report"]["plugins"][0]
         self.assertEqual(record["plugin_id"], "working")
-        self.assertEqual(record["implementation_id"], "working-test-v0")
+        self.assertEqual(record["plugin_id"], "working")
         self.assertGreaterEqual(record["duration_ms"], 0)
         self.assertIsNone(record["error"])
         self.assertEqual(
             set(record),
-            {"plugin_id", "implementation_id", "duration_ms", "error"},
+            {"plugin_id", "duration_ms", "error"},
         )
         self.assertEqual(executed["last_plugin_runs"][0]["status"], "ok")
         self.assertEqual(executed["last_plugin_runs"][0]["duration_ms"], record["duration_ms"])
         self.assertEqual(step.plugin_report(), executed["plugin_report"])
-        self.assertEqual(result.plugin_runs[0].implementation_id, "working-test-v0")
-        self.assertEqual(step.plugins[0].plugin_id, "working-test-v0")
+        self.assertEqual(result.plugin_runs[0].plugin_id, "working")
+        self.assertEqual(step.plugins[0].plugin_id, "working")
 
         step.plugin_manager.select(["exploding"])
         waiting = step.status()
@@ -426,7 +395,7 @@ class PluginRunnerTests(unittest.TestCase):
                 frame_id="frame-2",
                 frame_index=4,
                 timestamp_ms=20,
-                sensor_snapshot=_snapshot(_array_reading()),
+                sensor_frame=_sensor_frame(_array_reading()),
             )
         )
         reported = step.status()
@@ -434,14 +403,14 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(reported["plugin_report"]["applied_plugin_ids"], ["exploding"])
         self.assertEqual(reported["plugin_report"]["selected_plugin_ids"], ["exploding"])
         self.assertEqual(failed_record["plugin_id"], "exploding")
-        self.assertEqual(failed_record["implementation_id"], "exploding-test-v0")
+        self.assertEqual(failed_record["plugin_id"], "exploding")
         self.assertGreaterEqual(failed_record["duration_ms"], 0)
         self.assertIn("expected test failure", failed_record["error"])
         self.assertNotIn("status", failed_record)
         self.assertEqual(reported["last_plugin_runs"][0]["status"], "error")
         self.assertEqual(reported["last_plugin_runs"][0]["plugin_id"], "exploding")
         self.assertEqual(failed.plugin_runs[0].plugin_id, "exploding")
-        self.assertEqual(step.plugins[0].plugin_id, "exploding-test-v0")
+        self.assertEqual(step.plugins[0].plugin_id, "exploding")
         self.assertEqual(step.plugin_report(), reported["plugin_report"])
 
         step.reset()

@@ -2,8 +2,7 @@
 
 ``PerceptionText`` is current evidence, with one ``PerceptionPluginRun`` per
 plugin. ``PerceptionBackend`` is anything that runs perception on a
-``PerceptionRequest``: the step's ``PerceptionRunner``, or an offline tool
-such as a lab candidate running in a worker process.
+``PerceptionRequest``, such as the step's ``PerceptionRunner``.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
 from autonomy.shared_memory import SharedMemory
 
@@ -32,14 +31,12 @@ class PerceptionPluginRun:
     thing_count: int
     artifact_count: int
     error: str | None = None
-    implementation_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionPluginRun":
-        implementation_id = data.get("implementation_id")
         return cls(
             plugin_id=str(data.get("plugin_id") or "unknown"),
             status=str(data.get("status") or "error"),
@@ -48,9 +45,6 @@ class PerceptionPluginRun:
             thing_count=int(data.get("thing_count") or 0),
             artifact_count=int(data.get("artifact_count") or 0),
             error=str(data["error"]) if data.get("error") is not None else None,
-            implementation_id=(
-                str(implementation_id) if implementation_id else None
-            ),
         )
 
 

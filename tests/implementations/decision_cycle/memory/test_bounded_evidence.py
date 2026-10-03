@@ -13,18 +13,16 @@ from autonomy.decision_cycle.activation import (
     read_step_activation,
     write_step_activation,
 )
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
-    EVIDENCE_KEY,
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
     LEDGER_KEY,
-)
-from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.catalog import (
-    DEFAULT_MEMORY_PLUGIN,
-    MEMORY_PLUGINS,
-)
-from implementations.decision_cycle.memory.bounded_evidence.plugin import (
     BoundedEvidenceLedger,
-    _BoundedEvidenceReducer as BoundedEvidenceReducer,
+)
+from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
+    BoundedEvidenceReducer,
+    namespaced_record_id,
     reduce_evidence,
 )
 
@@ -39,7 +37,7 @@ def _observation(
     return Observation(
         observation_id=observation_id,
         created_at_ms=created_at_ms,
-        sensor_snapshot={},
+        sensor_frame={},
         perception_plugin_id="lightweight_observer",
         summary=("test",),
         things=things,
@@ -65,17 +63,17 @@ def _thing(
             "bbox_xyxy_norm": [0.4, 0.5, 0.6, 0.9],
         },
         "properties": {"width_fraction": 0.2},
-        "source_plugin_id": "floor-plane-v0",
+        "source_plugin_id": "floor_plane",
     }
 
 
 class BoundedEvidenceLedgerTests(unittest.TestCase):
     def test_catalog_exposes_default_plugin(self) -> None:
-        self.assertEqual(DEFAULT_MEMORY_PLUGIN, "bounded_evidence")
-        entry = MEMORY_PLUGINS["bounded_evidence"]
+        self.assertEqual(DEFAULT_MEMORY_PLUGINS, ("bounded_evidence",))
+        entry = step_plugins("memory")["bounded_evidence"]
         self.assertEqual(
             entry["spec"],
-            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger",
+            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
         )
 
     def test_reset_writes_a_fresh_epoch_to_the_map(self) -> None:
@@ -132,7 +130,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
         self.assertEqual(memory[LEDGER_KEY].record_count, 1)
 
-    def test_retains_things_and_signals_with_provenance(self) -> None:
+    def test_retains_things_and_signals_with_origin(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         context = DecisionFrameContext("frame_1", 1, 1_000)
         observation = _observation(
@@ -150,16 +148,15 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         state = ledger.update(context, observation)
         self.assertEqual(state.health, "healthy")
         self.assertEqual(state.record_count, 2)
-        self.assertEqual(state.implementation_id, "bounded_evidence")
+        self.assertEqual(state.plugin_id, "bounded_evidence")
         by_id = {record.record_id: record for record in state.records}
-        self.assertIn("thing:1:14:floor-plane-v0:18:floor_boundary_000", by_id)
+        self.assertIn("thing:1:11:floor_plane:18:floor_boundary_000", by_id)
         self.assertIn("signal:1:20:lightweight_observer:13:floor_visible", by_id)
-        thing = by_id["thing:1:14:floor-plane-v0:18:floor_boundary_000"]
-        self.assertEqual(thing.provenance.observation_id, "obs_1")
-        self.assertEqual(thing.provenance.frame_id, "frame_1")
-        self.assertEqual(thing.provenance.source_plugin_id, "floor-plane-v0")
+        thing = by_id["thing:1:11:floor_plane:18:floor_boundary_000"]
+        self.assertEqual(thing.origin.observation_id, "obs_1")
+        self.assertEqual(thing.origin.frame_id, "frame_1")
+        self.assertEqual(thing.origin.source_plugin_id, "floor_plane")
         self.assertEqual(thing.location.zone, "left")
-        self.assertFalse(state.metadata["claims_identity"])
 
     def test_recurring_evidence_updates_same_slot_without_identity_claim(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=10_000)
@@ -182,11 +179,11 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(first.record_count, 1)
         self.assertEqual(second.record_count, 1)
         record = second.records[0]
-        self.assertEqual(record.record_id, "thing:1:14:floor-plane-v0:18:floor_boundary_000")
+        self.assertEqual(record.record_id, "thing:1:11:floor_plane:18:floor_boundary_000")
         self.assertEqual(record.location.zone, "right")
         self.assertEqual(record.confidence, 0.95)
-        self.assertEqual(record.provenance.observation_id, "obs_2")
-        self.assertEqual(record.provenance.updated_at_ms, 200)
+        self.assertEqual(record.origin.observation_id, "obs_2")
+        self.assertEqual(record.origin.updated_at_ms, 200)
 
     def test_survives_dropout_until_max_age_then_expires(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=300)
@@ -222,9 +219,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ids = {record.record_id for record in state.records}
         self.assertEqual(
             ids,
-            {"thing:1:14:floor-plane-v0:1:b", "thing:1:14:floor-plane-v0:1:c"},
+            {"thing:1:11:floor_plane:1:b", "thing:1:11:floor_plane:1:c"},
         )
-        self.assertNotIn("thing:1:14:floor-plane-v0:1:a", ids)
+        self.assertNotIn("thing:1:11:floor_plane:1:a", ids)
         self.assertEqual(state.metadata.get("capacity_eviction_count"), 1)
 
     def test_reset_starts_new_empty_epoch(self) -> None:
@@ -268,8 +265,8 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             state = result.memory["plugins"][0]["state"]
             self.assertEqual(state["health"], "healthy")
             self.assertEqual(state["record_count"], 1)
-            self.assertEqual(state["implementation_id"], "bounded_evidence")
-            self.assertEqual(step.status()["implementation_id"], "bounded_evidence")
+            self.assertEqual(state["plugin_id"], "bounded_evidence")
+            self.assertEqual(step.status()["plugin_ids"], ["bounded_evidence"])
             self.assertEqual(shared_memory[LEDGER_KEY].to_dict(), state)
             self.assertEqual(shared_memory[EVIDENCE_KEY], shared_memory[LEDGER_KEY].records)
 
@@ -295,12 +292,12 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(
             ids,
             {
-                "thing:1:14:floor-plane-v0:6:strong",
+                "thing:1:11:floor_plane:6:strong",
                 "signal:1:20:lightweight_observer:8:boundary",
             },
         )
 
-    def test_returned_snapshot_is_detached_from_ledger_state(self) -> None:
+    def test_returned_state_is_detached_from_the_ledger(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         first = ledger.update(
             DecisionFrameContext("frame_1", 1, 1_000),
@@ -332,7 +329,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             _observation("o1", created_at_ms=90, things=(huge, small)),
         )
         ids = {record.record_id for record in state.records}
-        self.assertEqual(ids, {"thing:1:14:floor-plane-v0:5:small"})
+        self.assertEqual(ids, {"thing:1:11:floor_plane:5:small"})
 
     def test_plugins_with_same_local_id_do_not_collide(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
@@ -354,10 +351,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(by_id["thing:1:8:plugin-b:9:shared_id"].location.zone, "right")
 
     def test_delimiter_containing_plugin_ids_do_not_collide(self) -> None:
-        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
-            namespaced_record_id,
-        )
-
         left = namespaced_record_id("thing", "shared", "plugin:a")
         right = namespaced_record_id("thing", "shared", "plugin_a")
         self.assertNotEqual(left, right)
@@ -377,10 +370,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(ids, {left, right})
 
     def test_namespace_preserves_absent_vs_literal_unknown_and_whitespace(self) -> None:
-        from implementations.decision_cycle.memory.bounded_evidence.plugin import (
-            namespaced_record_id,
-        )
-
         absent = namespaced_record_id("thing", "shared", None)
         literal_unknown = namespaced_record_id("thing", "shared", "unknown")
         plain = namespaced_record_id("thing", "shared", "plugin")
@@ -403,7 +392,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             Observation(
                 observation_id="o1",
                 created_at_ms=90,
-                sensor_snapshot={},
+                sensor_frame={},
                 perception_plugin_id=None,
                 summary=("test",),
                 things=(no_plugin, unknown_plugin),
@@ -439,9 +428,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             _observation("o1", created_at_ms=90, things=(bad, good)),
         )
         ids = {record.record_id for record in state.records}
-        self.assertEqual(ids, {"thing:1:14:floor-plane-v0:2:ok"})
+        self.assertEqual(ids, {"thing:1:11:floor_plane:2:ok"})
 
-    def test_reduce_evidence_rehydrates_prior_snapshot(self) -> None:
+    def test_reduce_evidence_rehydrates_prior_state(self) -> None:
         config = {"max_records": 8, "max_age_ms": 5_000}
         ledger = BoundedEvidenceReducer(**config)
         first = ledger.update(
@@ -458,13 +447,13 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             first,
             context,
             observation,
-            implementation_id="bounded_evidence",
+            plugin_id="bounded_evidence",
             **config,
         )
 
         self.assertEqual(actual.to_dict(), expected.to_dict())
         self.assertEqual(first.record_count, 1)
-        self.assertEqual(first.records[0].record_id, "thing:1:14:floor-plane-v0:1:a")
+        self.assertEqual(first.records[0].record_id, "thing:1:11:floor_plane:1:a")
 
     def test_reduce_evidence_does_not_retain_state_between_calls(self) -> None:
         config = {"max_records": 8, "max_age_ms": 5_000}
@@ -480,22 +469,22 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             previous,
             context,
             observation,
-            implementation_id="example_memory",
+            plugin_id="example_memory",
             **config,
         )
         second = reduce_evidence(
             previous,
             context,
             observation,
-            implementation_id="example_memory",
+            plugin_id="example_memory",
             **config,
         )
 
         self.assertEqual(first.to_dict(), second.to_dict())
         self.assertEqual(first.epoch_id, previous.epoch_id)
-        self.assertEqual(first.implementation_id, "example_memory")
+        self.assertEqual(first.plugin_id, "example_memory")
         self.assertEqual(previous.record_count, 1)
-        self.assertEqual(previous.records[0].record_id, "thing:1:14:floor-plane-v0:1:a")
+        self.assertEqual(previous.records[0].record_id, "thing:1:11:floor_plane:1:a")
 
 
 if __name__ == "__main__":

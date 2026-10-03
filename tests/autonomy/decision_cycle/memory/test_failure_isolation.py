@@ -4,8 +4,7 @@ import tempfile
 import unittest
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.execution.plugin_runtime import DEFAULT_MAX_DIAGNOSTIC_CHARS
-from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.memory.runner import DEFAULT_MAX_DIAGNOSTIC_CHARS, MemoryRunner
 from autonomy.decision_cycle.activation import read_step_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
@@ -64,6 +63,29 @@ class MemoryFailureIsolationTests(unittest.TestCase):
                 )
             self.assertEqual(shared, before)
             self.assertEqual(step.report()["plugins"][0]["state"]["records"][0]["record_id"], "rec-obs_a")
+
+    def test_failed_withdrawal_with_nothing_selected_reports_that_error(self) -> None:
+        class RefusesWithdrawal(dict):
+            def pop(self, *args):
+                raise RuntimeError("withdraw exploded")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["plugins"] = []
+            step = MemoryRunner.from_activation(
+                read_step_activation(_write_payload(tmp, payload), "memory")
+            )
+            self.assertEqual(step.plugin_ids, ())
+
+            with self.assertRaisesRegex(RuntimeError, "withdraw exploded"):
+                step.update(
+                    DecisionFrameContext("frame_w", 3, 300, shared_memory=RefusesWithdrawal()),
+                    None,
+                )
+
+            status = step.status()
+            self.assertEqual(status["failure_count"], 1)
+            self.assertIn("withdraw exploded", status["last_error"])
 
     def test_reset_failure_is_recorded_with_a_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

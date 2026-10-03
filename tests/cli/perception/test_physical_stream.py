@@ -24,7 +24,7 @@ def _publication(**overrides):
         "min_interval_s": 0.5,
         "processed_count": 12,
         "skipped_count": 40,
-        "algorithm": "lightweight_observer",
+        "preset": "lightweight_observer",
         "mode": "user",
         "drive_mode": "user",
         "control": {
@@ -72,7 +72,7 @@ class PhysicalObservationAdapterTests(unittest.TestCase):
 
 
 class PhysicalStreamCommandTests(unittest.TestCase):
-    def test_stream_once_renders_physical_onboard_snapshot(self) -> None:
+    def test_stream_once_renders_physical_onboard_state(self) -> None:
         vehicle = {
             "vehicle_id": "piracer",
             "provider": "picar",

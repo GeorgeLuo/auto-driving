@@ -1,6 +1,6 @@
 """Perception step runner.
 
-``PerceptionRunner`` resolves the component inputs each selected perception
+``PerceptionRunner`` resolves the feed inputs each selected perception
 plugin's contract declares, runs the plugins in selection order on one sensor
 frame, and merges their evidence into one ``PerceptionText``.
 """
@@ -28,9 +28,10 @@ from autonomy.plugins import (
     PluginSelectionRuntime,
     instantiate_plugin,
     plugin_report as build_plugin_report,
+    require_plugin_id,
 )
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
-from autonomy.decision_cycle.perception.components.interface import ComponentProvider
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.interface import FeedProvider
 from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.evidence.rendering import signal_line, thing_line
 from autonomy.decision_cycle.perception.evidence.values import (
@@ -91,9 +92,9 @@ class PerceptionRunner:
         self.last_output: PerceptionText | None = None
         self.last_duration_ms: float | None = None
         self.last_frame_index: int | None = None
-        self._component_providers: dict[str, ComponentProvider] = {}
-        self._component_provider_specs: dict[str, str] = {}
-        self._pending_providers: dict[str, ComponentProvider] | None = None
+        self._feed_providers: dict[str, FeedProvider] = {}
+        self._feed_provider_specs: dict[str, str] = {}
+        self._pending_providers: dict[str, FeedProvider] | None = None
         self._pending_provider_specs: dict[str, str] | None = None
         self._execution_runs: tuple[PerceptionPluginRun, ...] = ()
         self._apply_selection()
@@ -129,7 +130,7 @@ class PerceptionRunner:
         """Perceive the context's sensor frame; without one, reset and return None."""
 
         with self._runtime_lock:
-            if context.sensor_snapshot is None:
+            if context.sensor_frame is None:
                 self.reset(context.shared_memory)
                 self.last_frame_index = context.frame_index
                 return None
@@ -140,7 +141,7 @@ class PerceptionRunner:
             try:
                 self.last_output = self.perceive(
                     build_perception_request(
-                        context.sensor_snapshot,
+                        context.sensor_frame,
                         shared_memory=context.shared_memory,
                         output_dir=Path(output_dir) if isinstance(output_dir, str) else None,
                         metadata={
@@ -224,18 +225,14 @@ class PerceptionRunner:
         records = []
         for definition, plugin in self._selection_runtime.applied:
             run = runs.get(definition.plugin_id)
-            implementation_id = plugin.plugin_id
             duration_ms = None
             error = None
             if run is not None:
-                if run.implementation_id:
-                    implementation_id = run.implementation_id
                 duration_ms = run.duration_ms
                 error = run.error
             records.append(
                 {
                     "plugin_id": definition.plugin_id,
-                    "implementation_id": implementation_id,
                     "duration_ms": duration_ms,
                     "error": error,
                 }
@@ -248,28 +245,27 @@ class PerceptionRunner:
 
     def _describe_schema(self) -> dict[str, Any]:
         report = self._plugin_report()
-        component_consumers: dict[str, list[str]] = {}
-        component_providers: dict[str, str] = {}
+        feed_consumers: dict[str, list[str]] = {}
+        feed_providers: dict[str, str] = {}
         plugin_schemas = []
         available = self.plugin_manager.available
         for definition, plugin in self._selection_runtime.applied:
             contract = plugin.contract
             for item in contract.inputs:
-                component_consumers.setdefault(item.component_id, []).append(
+                feed_consumers.setdefault(item.feed_id, []).append(
                     definition.plugin_id
                 )
-                component_providers[item.component_id] = item.provider_spec
+                feed_providers[item.feed_id] = item.provider_spec
             plugin_schemas.append(
                 {
                     "plugin_id": definition.plugin_id,
-                    "implementation_id": plugin.plugin_id,
                     "spec": definition.entrypoint,
                     "config": deepcopy(dict(definition.config)),
                     "contract": contract.to_dict(),
                 }
             )
         return {
-            "schema": "perception_algorithm_schema_v2",
+            "schema": "perception_schema_v2",
             "plugin_id": self.plugin_id,
             "runner": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "configuration": {
@@ -284,14 +280,14 @@ class PerceptionRunner:
             },
             "inputs": [
                 {
-                    "component_id": component_id,
-                    "provider_spec": component_providers[component_id],
+                    "feed_id": feed_id,
+                    "provider_spec": feed_providers[feed_id],
                     "required": True,
                     "required_by": plugin_ids,
                     "source": "resolved once by the framework and injected by plugin-local name",
                     "missing_behavior": "framework marks the plugin unavailable without invoking it",
                 }
-                for component_id, plugin_ids in sorted(component_consumers.items())
+                for feed_id, plugin_ids in sorted(feed_consumers.items())
             ],
             "plugins": plugin_schemas,
             "output": {
@@ -360,7 +356,6 @@ class PerceptionRunner:
                     thing_count=len(attributed_things),
                     artifact_count=len(execution.artifacts),
                     error=execution.error,
-                    implementation_id=plugin.plugin_id,
                 )
             )
             lines.append(
@@ -429,7 +424,7 @@ class PerceptionRunner:
 
     def _prepare_selection(self) -> None:
         candidate_provider_specs: dict[str, str] | None = None
-        candidate_providers: dict[str, ComponentProvider] | None = None
+        candidate_providers: dict[str, FeedProvider] | None = None
 
         def validate(candidate_plugins: tuple[Any, ...]) -> None:
             nonlocal candidate_provider_specs, candidate_providers
@@ -440,20 +435,20 @@ class PerceptionRunner:
                 for item in plugin.contract.inputs:
                     spec = item.provider_spec
                     if spec not in candidate_providers:
-                        provider = self._component_providers.get(spec)
+                        provider = self._feed_providers.get(spec)
                         if provider is None:
                             provider = _load_symbol(spec)
                         if not callable(provider):
-                            raise TypeError(f"component provider {spec!r} is not callable")
+                            raise TypeError(f"feed provider {spec!r} is not callable")
                         candidate_providers[spec] = provider
                     # Specs that name the same provider (a legacy and a
                     # canonical path) agree.
-                    existing = candidate_provider_specs.get(item.component_id)
+                    existing = candidate_provider_specs.get(item.feed_id)
                     if existing is None:
-                        candidate_provider_specs[item.component_id] = spec
+                        candidate_provider_specs[item.feed_id] = spec
                     elif candidate_providers[existing] is not candidate_providers[spec]:
                         raise ValueError(
-                            f"component {item.component_id!r} declares conflicting providers: "
+                            f"feed {item.feed_id!r} declares conflicting providers: "
                             f"{existing!r} and {spec!r}"
                         )
 
@@ -477,15 +472,15 @@ class PerceptionRunner:
         # Publish only after prepared plugins and their providers have been validated.
         self.plugin_ids = tuple(definition.plugin_id for definition, _plugin in applied)
         self.plugins = tuple(plugin for _definition, plugin in applied)
-        self._component_provider_specs = specs
-        self._component_providers = providers
+        self._feed_provider_specs = specs
+        self._feed_providers = providers
 
     def _load_plugin(self, definition: PluginDefinition) -> Any:
         if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
             plugin = self._provided[definition.plugin_id]
         else:
             plugin = instantiate_plugin(definition)
-        _validate_plugin(definition.plugin_id, plugin)
+        _validate_plugin(plugin, definition)
         return plugin
 
     def _discard_selection(self) -> None:
@@ -513,7 +508,7 @@ class PerceptionRunner:
             )
 
         try:
-            components, missing = self._resolve_inputs(plugin.contract, request)
+            feeds, missing = self._resolve_inputs(plugin.contract, request)
             if missing:
                 if plugin.contract.state_mode != "stateless":
                     _reset_plugin(plugin, request.shared_memory)
@@ -526,9 +521,9 @@ class PerceptionRunner:
                     error=f"required input unavailable: {details}",
                 )
             inputs = PerceptionPluginInputs(
-                frame_id=request.snapshot.read_id,
-                captured_at_ms=request.snapshot.completed_at_ms,
-                components=components,
+                frame_id=request.sensor_frame.read_id,
+                captured_at_ms=request.sensor_frame.completed_at_ms,
+                feeds=feeds,
                 diagnostics=diagnostics,
                 metadata=request.metadata,
                 shared_memory=request.shared_memory,
@@ -570,31 +565,31 @@ class PerceptionRunner:
         contract: PerceptionPluginContract,
         request: PerceptionRequest,
     ) -> tuple[dict[str, Any], dict[str, str]]:
-        components: dict[str, Any] = {}
+        feeds: dict[str, Any] = {}
         missing: dict[str, str] = {}
         for item in contract.inputs:
-            provider = self._component_provider(item.provider_spec)
-            component = request.resolve_component(
-                item.component_id,
+            provider = self._feed_provider(item.provider_spec)
+            feed = request.resolve_feed(
+                item.feed_id,
                 lambda provider=provider, item=item: provider(request, item),
             )
-            if component is None:
+            if feed is None:
                 missing[item.name] = (
-                    request.component_error(item.component_id)
-                    or "component provider returned no value"
+                    request.feed_error(item.feed_id)
+                    or "feed provider returned no value"
                 )
             else:
-                components[item.name] = component
-        return components, missing
+                feeds[item.name] = feed
+        return feeds, missing
 
-    def _component_provider(self, spec: str) -> ComponentProvider:
-        provider = self._component_providers.get(spec)
+    def _feed_provider(self, spec: str) -> FeedProvider:
+        provider = self._feed_providers.get(spec)
         if provider is not None:
             return provider
         provider = _load_symbol(spec)
         if not callable(provider):
-            raise TypeError(f"component provider {spec!r} is not callable")
-        self._component_providers[spec] = provider
+            raise TypeError(f"feed provider {spec!r} is not callable")
+        self._feed_providers[spec] = provider
         return provider
 
 
@@ -639,10 +634,8 @@ def _load_symbol(spec: str) -> Any:
     return getattr(module, name)
 
 
-def _validate_plugin(configured_id: str, plugin: Any) -> None:
-    plugin_id = getattr(plugin, "plugin_id", None)
-    if not isinstance(plugin_id, str) or not plugin_id:
-        raise TypeError(f"configured plugin {configured_id!r} must expose a non-empty plugin_id")
+def _validate_plugin(plugin: Any, definition: PluginDefinition) -> None:
+    plugin_id = require_plugin_id(plugin, definition)
     if not isinstance(getattr(plugin, "contract", None), PerceptionPluginContract):
         raise TypeError(f"plugin {plugin_id!r} must expose PerceptionPluginContract as contract")
     if not callable(getattr(plugin, "perceive", None)):

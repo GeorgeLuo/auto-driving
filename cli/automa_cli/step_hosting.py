@@ -18,9 +18,9 @@ from autonomy.decision_cycle.steps import step_runner
 
 from .staged_bundle import StagedBundleImport
 
-# Implementations and lab plugins come from the staged bundle. autonomy stays
-# on the host so plugins and the cycle share the host's value classes.
-BUNDLE_PREFIXES = ("implementations", "lab")
+# Plugins come from the staged bundle's implementations. autonomy stays on the
+# host so plugins and the cycle share the host's value classes.
+BUNDLE_PREFIXES = ("implementations",)
 
 
 class StagedStep:

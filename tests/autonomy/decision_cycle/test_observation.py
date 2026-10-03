@@ -14,12 +14,12 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
     ViewLocation,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 
 class ObservationAdaptationTests(unittest.TestCase):
     def test_perception_becomes_inspectable_decision_observation(self) -> None:
-        sensor_snapshot = SensorSnapshot(
+        sensor_frame = SensorFrame(
             read_id="frame_007",
             readings={
                 FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -65,7 +65,7 @@ class ObservationAdaptationTests(unittest.TestCase):
 
         observation = observation_from_perception(
             observation_id="frame_007",
-            sensor_snapshot=sensor_snapshot,
+            sensor_frame=sensor_frame,
             perception=perception,
             metadata={"source": "test-observe-step"},
             created_at_ms=0,
@@ -82,14 +82,14 @@ class ObservationAdaptationTests(unittest.TestCase):
         self.assertEqual(observation.metadata["limits"], list(perception.limits))
         self.assertEqual(observation.metadata["source"], "test-observe-step")
 
-        camera = observation.sensor_snapshot["readings"][FRONT_CAMERA_SENSOR_ID]
+        camera = observation.sensor_frame["readings"][FRONT_CAMERA_SENSOR_ID]
         self.assertTrue(camera["has_value"])
         self.assertNotIn("value", camera)
 
         serialized = observation.to_dict()
         json.dumps(serialized)
         serialized["things"][0]["properties"]["appearance"]["color"] = "blue"
-        serialized["sensor_snapshot"]["readings"][FRONT_CAMERA_SENSOR_ID]["metadata"][
+        serialized["sensor_frame"]["readings"][FRONT_CAMERA_SENSOR_ID]["metadata"][
             "capture"
         ]["source"] = "changed-camera"
 
@@ -98,7 +98,7 @@ class ObservationAdaptationTests(unittest.TestCase):
             "red",
         )
         self.assertEqual(
-            observation.sensor_snapshot["readings"][FRONT_CAMERA_SENSOR_ID]["metadata"][
+            observation.sensor_frame["readings"][FRONT_CAMERA_SENSOR_ID]["metadata"][
                 "capture"
             ]["source"],
             "test-camera",
@@ -107,13 +107,13 @@ class ObservationAdaptationTests(unittest.TestCase):
     def test_missing_perception_produces_explicit_empty_observation(self) -> None:
         observation = observation_from_perception(
             observation_id="frame_008",
-            sensor_snapshot=None,
+            sensor_frame=None,
             perception=None,
             metadata={"source": "manual-observe-step"},
             created_at_ms=800,
         )
 
-        self.assertEqual(observation.sensor_snapshot, {})
+        self.assertEqual(observation.sensor_frame, {})
         self.assertIsNone(observation.perception_schema)
         self.assertIsNone(observation.perception_plugin_id)
         self.assertEqual(

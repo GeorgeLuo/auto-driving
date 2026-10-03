@@ -18,16 +18,12 @@ WORKBENCH_PACES = ("fixed", "realtime")
 WORKBENCH_MAX_ACTION_BYTES = 64 * 1024
 WORKBENCH_ACTIONS = (
     "validate",
-    "refresh_plugins",
-    "inspect_plugins",
     "select_plugins",
-    "set_plugins",
     "start",
     "pause",
     "resume",
     "step",
     "seek",
-    "cancel",
     "reset",
     "set_cadence",
     "set_loop",

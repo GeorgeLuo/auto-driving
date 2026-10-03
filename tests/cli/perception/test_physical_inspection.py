@@ -25,7 +25,7 @@ class PerceptionCommandTests(unittest.TestCase):
             "schema": "automa_physical_observation_publication_v0",
             "ok": True,
             "health": "healthy",
-            "algorithm": "lightweight_observer",
+            "preset": "lightweight_observer",
             "mode": "user",
             "result_age_ms": 120,
             "duration_ms": 280,
@@ -63,7 +63,7 @@ class PerceptionCommandTests(unittest.TestCase):
 
         self.assertEqual(json_result.exit_code, 0)
         payload = json.loads(json_result.message)
-        self.assertEqual(payload["activation"]["algorithm"], "sim_debug")
+        self.assertEqual(payload["activation"]["preset"], "sim_debug")
         self.assertTrue(payload["live_observation"]["available"])
         self.assertEqual(payload["live_observation"]["provider"], "picar")
         self.assertEqual(
@@ -97,7 +97,7 @@ class PerceptionCommandTests(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.message)
-        self.assertEqual(payload["activation"]["algorithm"], "sim_debug")
+        self.assertEqual(payload["activation"]["preset"], "sim_debug")
         self.assertFalse(payload["live_observation"]["available"])
         self.assertIn(
             "not found among discoverable vehicles",
@@ -284,7 +284,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("No active perception algorithm found", result.message)
+        self.assertIn("No active perception preset found", result.message)
 
     def test_no_local_staging_rejects_reachable_non_piracer(self) -> None:
         vehicle = {
@@ -304,7 +304,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("No active perception algorithm found", result.message)
+        self.assertIn("No active perception preset found", result.message)
 
     def test_local_activation_error_is_not_hidden_by_reachable_picar(self) -> None:
         vehicle = {

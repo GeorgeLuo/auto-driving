@@ -11,8 +11,8 @@ from implementations.vehicle.chase_sim.car import (
     ChaseSimCar,
 )
 from implementations.vehicle.chase_sim.frame_identity import (
-    simulator_epoch_from_snapshot,
-    simulator_frame_index_from_snapshot,
+    simulator_epoch_from_sensor_frame,
+    simulator_frame_index_from_sensor_frame,
 )
 from tests.implementations.vehicle.chase_frame_identity_fixtures import (
     ChaseFrameIdentityFixture,
@@ -24,7 +24,7 @@ from tests.implementations.vehicle.chase_frame_identity_fixtures import (
 
 
 class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
-    def test_read_sensors_uses_one_atomic_query_and_keeps_reference_outside_snapshot(
+    def test_read_sensors_uses_one_atomic_query_and_keeps_reference_outside_the_sensor_frame(
         self,
     ) -> None:
         car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
@@ -49,7 +49,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                 "capture must not use the sequential snapshot path"
             ),
         ):
-            snapshot = car.read_sensors(
+            sensor_frame = car.read_sensors(
                 SensorReadRequest(
                     output_dir=Path(tmp),
                     read_id="atomic",
@@ -58,9 +58,9 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                 )
             )
             image_exists = Path(
-                snapshot.readings[FRONT_CAMERA_SENSOR_ID].path or ""
+                sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].path or ""
             ).is_file()
-            image_path = Path(snapshot.readings[FRONT_CAMERA_SENSOR_ID].path or "")
+            image_path = Path(sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].path or "")
             image_bytes = image_path.read_bytes()
 
         query.assert_called_once_with(
@@ -76,9 +76,9 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         self.assertEqual(get_state.call_count, 2)
         self.assertEqual(get_debug.call_count, 2)
         self.assertEqual(car.last_simulator_frame_index, 123)
-        self.assertEqual(simulator_frame_index_from_snapshot(snapshot), 123)
-        self.assertEqual(simulator_epoch_from_snapshot(snapshot), "chase-run:test")
-        reading = snapshot.readings[FRONT_CAMERA_SENSOR_ID]
+        self.assertEqual(simulator_frame_index_from_sensor_frame(sensor_frame), 123)
+        self.assertEqual(simulator_epoch_from_sensor_frame(sensor_frame), "chase-run:test")
+        reading = sensor_frame.readings[FRONT_CAMERA_SENSOR_ID]
         self.assertEqual(
             reading.metadata["identity_pairing"], "atomic_evaluation_capture"
         )
@@ -89,14 +89,14 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             base64.b64decode(_PNG_DATA_URL.split(",", 1)[1]),
         )
         self.assertEqual(
-            snapshot.readings[FRONT_CAMERA_SENSOR_ID].metadata["content_type"],
+            sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].metadata["content_type"],
             "image/png",
         )
-        self.assertNotIn("chaser_reference", snapshot.metadata)
-        self.assertNotIn("visibleWallCount", str(snapshot.to_dict()))
-        self.assertNotIn("actor-control-reference", str(snapshot.to_dict()))
+        self.assertNotIn("chaser_reference", sensor_frame.metadata)
+        self.assertNotIn("visibleWallCount", str(sensor_frame.to_dict()))
+        self.assertNotIn("actor-control-reference", str(sensor_frame.to_dict()))
         self.assertEqual(
-            snapshot.readings[FRONT_CAMERA_SENSOR_ID].metadata["evaluator_reference"][
+            sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].metadata["evaluator_reference"][
                 "status"
             ],
             "available",
@@ -118,7 +118,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             "get_play_debug",
             side_effect=[_session_debug(), _session_debug()],
         ):
-            snapshot = car.read_sensors(
+            sensor_frame = car.read_sensors(
                 SensorReadRequest(
                     output_dir=Path(tmp),
                     read_id="malformed-reference",
@@ -132,7 +132,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             car.last_evaluator_reference["path"],
             "evaluator.reference.actionFrameIndex",
         )
-        self.assertIn(FRONT_CAMERA_SENSOR_ID, snapshot.readings)
+        self.assertIn(FRONT_CAMERA_SENSOR_ID, sensor_frame.readings)
 
     def test_missing_evaluator_reference_does_not_block_sensor_capture(self) -> None:
         car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.3)
@@ -151,7 +151,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             "get_play_debug",
             side_effect=[_session_debug(), _session_debug()],
         ):
-            snapshot = car.read_sensors(
+            sensor_frame = car.read_sensors(
                 SensorReadRequest(
                     output_dir=Path(tmp),
                     read_id="missing-reference",
@@ -162,7 +162,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         self.assertIsNone(car.last_capture_chaser_reference)
         self.assertEqual(car.last_evaluator_reference["status"], "unavailable")
         self.assertEqual(
-            snapshot.readings[FRONT_CAMERA_SENSOR_ID].metadata["evaluator_reference"],
+            sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].metadata["evaluator_reference"],
             {
                 "status": "unavailable",
                 "reason": "reference_missing",

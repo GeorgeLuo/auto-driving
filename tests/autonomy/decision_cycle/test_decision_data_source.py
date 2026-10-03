@@ -12,7 +12,7 @@ from autonomy.decision_cycle.proposal.inputs import (
     ready_envelope,
     unavailable_envelope,
 )
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from tests.support.action_fixtures import decision_chain, packaged_decision_chain
 
@@ -23,9 +23,9 @@ def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> Ret
         kind=kind,
         label=kind,
         confidence=0.9,
-        provenance=MemoryProvenance(
+        origin=MemoryOrigin(
             observation_id="obs",
-            evidence_id="ev",
+            observed_id="ev",
             coordinate_frame="image",
             observed_at_ms=1000,
             updated_at_ms=1000,
@@ -164,7 +164,7 @@ class DecisionDataSourceTests(unittest.TestCase):
             frame_id="f",
             frame_index=0,
             timestamp_ms=1,
-            observation={"observation_id": "obs", "created_at_ms": 1, "sensor_snapshot": cleaned, "things": [], "signals": [], "summary": [], "artifacts": {}, "metadata": {}, "schema": "decision_observation_v1"},
+            observation={"observation_id": "obs", "created_at_ms": 1, "sensor_frame": cleaned, "things": [], "signals": [], "summary": [], "artifacts": {}, "metadata": {}, "schema": "decision_observation_v1"},
         )
         self.assertEqual(source.observation.status, "ready")
 
@@ -344,7 +344,7 @@ class DecisionDataSourceTests(unittest.TestCase):
         obs = Observation(
             observation_id="obs-1",
             created_at_ms=1,
-            sensor_snapshot={},
+            sensor_frame={},
             summary=(),
             things=(),
             signals=(),
@@ -401,7 +401,7 @@ class DecisionDataSourceTests(unittest.TestCase):
         obs = Observation(
             observation_id="o",
             created_at_ms=1,
-            sensor_snapshot={},
+            sensor_frame={},
             metadata={"EvaluatorOutput": {"direction": "left"}},
         )
         with self.assertRaises(ValueError):
@@ -459,7 +459,7 @@ class DecisionDataSourceTests(unittest.TestCase):
         obs = Observation(
             observation_id="obs-runner",
             created_at_ms=1,
-            sensor_snapshot={},
+            sensor_frame={},
         )
         result = engine.run(
             frame_id="f",

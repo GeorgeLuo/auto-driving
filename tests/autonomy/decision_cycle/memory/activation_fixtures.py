@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
@@ -45,9 +45,9 @@ class _RecordingMemory:
                     kind="observation_presence",
                     label="observed",
                     confidence=1.0,
-                    provenance=MemoryProvenance(
+                    origin=MemoryOrigin(
                         observation_id=observation.observation_id,
-                        evidence_id="observation",
+                        observed_id="observation",
                         coordinate_frame="image",
                         observed_at_ms=observation.created_at_ms,
                         updated_at_ms=context.timestamp_ms,

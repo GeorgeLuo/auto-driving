@@ -14,7 +14,7 @@ from .physical_observation import (
     fetch_observation_publication,
     picar_base_url,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 VIABILITY_OUTPUT_ROOT = Path(
@@ -49,11 +49,15 @@ def run_physical_viability_measurement(
     fetch_publication: Callable[[str], dict[str, Any]] | None = None,
     sample_host_metrics: Callable[[], dict[str, Any]] | None = None,
 ) -> CommandResult:
-    """Measure onboard observation cadence/freshness for the deployed Pi observer."""
+    """Health-check perception on a vehicle, dispatching on its provider.
+
+    A PiCar is measured for onboard cadence/freshness. The simulator has no
+    probe yet and passes automatically; any other provider is refused.
+    """
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
-        include_chase_sim=False,
+        include_chase_sim=True,
         include_inactive=True,
     )
     vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
@@ -63,18 +67,21 @@ def run_physical_viability_measurement(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
                 ]
             ),
         )
     if vehicle is None:
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-    if vehicle.get("provider") != "picar":
+    provider = vehicle.get("provider")
+    if provider == "chase-sim":
+        return _simulator_stub_result(vehicle_id, json_output=json_output)
+    if provider != "picar":
         return CommandResult(
             2,
-            f"Vehicle {vehicle_id!r} is provider {vehicle.get('provider')!r}; "
-            "viability measurement supports physical PiCar only.",
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
+            "no perception viability probe exists for it.",
         )
     base_url = picar_base_url(vehicle)
     if not base_url:
@@ -83,7 +90,7 @@ def run_physical_viability_measurement(
     get_pub = fetch_publication or (
         lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
     )
-    host_sampler = sample_host_metrics or (lambda: _sample_pi_process_metrics())
+    host_sampler = sample_host_metrics or _ssh_host_sampler(vehicle)
 
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
@@ -92,7 +99,7 @@ def run_physical_viability_measurement(
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    _emit(output, "Physical perception viability measurement")
+    _emit(output, "Perception viability measurement")
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"endpoint: {base_url}")
     _emit(output, f"duration_s: {duration_s}")
@@ -135,7 +142,7 @@ def run_physical_viability_measurement(
                 }
             )
 
-        if now >= next_host_sample:
+        if host_sampler is not None and now >= next_host_sample:
             try:
                 host = host_sampler()
                 host["t_s"] = round(now - started, 3)
@@ -188,7 +195,7 @@ def run_physical_viability_measurement(
         "limits": [
             "Polls the publication endpoint; does not instrument in-process Donkey loop counters directly.",
             "Freshness uses frame_id transitions and published result_age_ms/duration_ms fields.",
-            "Host RSS/CPU are sampled from the remote manage.py process when SSH metrics are available.",
+            "Host RSS/CPU are sampled only when the vehicle supplies an ssh_target connection field.",
         ],
     }
 
@@ -208,6 +215,33 @@ def run_physical_viability_measurement(
     return CommandResult(exit_code, _format_report(report))
 
 
+def _simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
+    # The simulator has no viability probe yet; it passes without measuring.
+    report = {
+        "schema": "automa_physical_perception_viability_v0",
+        "vehicle_id": vehicle_id,
+        "provider": "chase-sim",
+        "passed": True,
+        "stub": True,
+        "gates": [],
+        "note": "No simulator viability probe exists yet; passing without measurement.",
+    }
+    if json_output:
+        return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
+    return CommandResult(
+        0,
+        f"Perception viability: PASS (stub)\nvehicle: {vehicle_id}\n{report['note']}",
+    )
+
+
+def _ssh_host_sampler(vehicle: dict[str, Any]) -> Callable[[], dict[str, Any]] | None:
+    connection = vehicle.get("connection")
+    target = connection.get("ssh_target") if isinstance(connection, dict) else None
+    if not target:
+        return None
+    return lambda: _sample_pi_process_metrics(ssh_target=str(target))
+
+
 def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float) -> dict[str, Any]:
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
     control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
@@ -216,7 +250,7 @@ def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float)
         "wall_ms": wall_ms,
         "health": publication.get("health"),
         "mode": publication.get("mode") or publication.get("drive_mode"),
-        "algorithm": publication.get("algorithm"),
+        "preset": publication.get("preset"),
         "frame_id": frame.get("frame_id"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),
@@ -284,8 +318,8 @@ def _compute_metrics(
         "duration_ms": _distribution(durations),
         "control_always_zero": control_zero,
         "mode_always_user": mode_user,
-        "algorithms_seen": sorted(
-            {str(s.get("algorithm")) for s in healthy if s.get("algorithm")}
+        "presets_seen": sorted(
+            {str(s.get("preset")) for s in healthy if s.get("preset")}
         ),
         "host": {
             "sample_count": len(host_samples),
@@ -353,10 +387,7 @@ def _evaluate_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _sample_pi_process_metrics(
-    *,
-    ssh_target: str = "piracer@piracer.local",
-) -> dict[str, Any]:
+def _sample_pi_process_metrics(*, ssh_target: str) -> dict[str, Any]:
     remote = (
         "pid=$(pgrep -f 'manage.py drive' | head -1); "
         "if [ -z \"$pid\" ]; then echo '{\"error\":\"manage.py drive process not found\"}'; exit 0; fi; "
@@ -426,7 +457,7 @@ def _first_number(values) -> float | None:
 def _format_report(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
-        f"Physical perception viability: {'PASS' if report['passed'] else 'FAIL'}",
+        f"Perception viability: {'PASS' if report['passed'] else 'FAIL'}",
         f"vehicle: {report['vehicle_id']}",
         f"endpoint: {report['base_url']}",
         f"elapsed_s: {metrics.get('elapsed_s')}",
@@ -455,7 +486,7 @@ def _format_report(report: dict[str, Any]) -> str:
 def _format_markdown(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
-        "# Physical perception viability",
+        "# Perception viability",
         "",
         f"- result: `{'PASS' if report['passed'] else 'FAIL'}`",
         f"- vehicle: `{report['vehicle_id']}`",
@@ -495,3 +526,281 @@ def _emit(output: TextIO | None, message: str) -> None:
     if output is None:
         return
     print(message, file=output, flush=True)
+
+
+MEMORY_VIABILITY_OUTPUT_ROOT = Path(
+    os.environ.get(
+        "AUTOMA_MEMORY_VIABILITY_OUTPUT_ROOT",
+        ROOT / "lab" / "runs" / "memory-viability",
+    )
+)
+
+REQUIRED_P95_UPDATE_MS = 100.0
+MEMORY_HEALTH_VALUES = {"empty", "healthy"}
+
+
+def run_memory_viability_measurement(
+    *,
+    vehicle_id: str,
+    duration_s: float = DEFAULT_DURATION_S,
+    sample_period_s: float = DEFAULT_SAMPLE_PERIOD_S,
+    timeout_s: float = 3.0,
+    record: bool = True,
+    json_output: bool = False,
+    output: TextIO | None = None,
+    probe: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+) -> CommandResult:
+    """Health-check memory on a vehicle, dispatching on its provider.
+
+    A PiCar's live memory step is polled for a bounded interval. The simulator
+    has no probe yet and passes automatically; any other provider is refused.
+    """
+    discovery = discover_active_vehicles(
+        timeout_s=timeout_s,
+        include_picar=True,
+        include_chase_sim=True,
+        include_inactive=True,
+    )
+    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
+    if error:
+        return CommandResult(
+            2,
+            "\n\n".join(
+                [
+                    error,
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
+                ]
+            ),
+        )
+    if vehicle is None:
+        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+    provider = vehicle.get("provider")
+    if provider == "chase-sim":
+        return _memory_simulator_stub_result(vehicle_id, json_output=json_output)
+    if provider != "picar":
+        return CommandResult(
+            2,
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
+            "no memory viability probe exists for it.",
+        )
+
+    from .memory import probe_live_memory
+
+    get_probe = probe or (
+        lambda target: probe_live_memory(
+            vehicle_id=vehicle_id, vehicle=target, timeout_s=timeout_s
+        )
+    )
+    duration_s = max(1.0, float(duration_s))
+    sample_period_s = max(0.05, float(sample_period_s))
+    run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
+    out_dir = MEMORY_VIABILITY_OUTPUT_ROOT / run_id if record else None
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    _emit(output, "Memory viability measurement")
+    _emit(output, f"vehicle: {vehicle_id}")
+    _emit(output, f"duration_s: {duration_s}")
+    _emit(output, f"sample_period_s: {sample_period_s}")
+    if out_dir is not None:
+        _emit(output, f"record: {display_path(out_dir)}")
+    _emit(output, "")
+
+    samples: list[dict[str, Any]] = []
+    started = time.monotonic()
+    deadline = started + duration_s
+    while time.monotonic() < deadline:
+        now = time.monotonic()
+        wall_ms = int(time.time() * 1000)
+        try:
+            samples.append(
+                _extract_memory_sample(get_probe(vehicle), wall_ms=wall_ms, mono_s=now - started)
+            )
+        except Exception as exc:
+            samples.append(
+                {
+                    "t_s": round(now - started, 3),
+                    "wall_ms": wall_ms,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(sample_period_s, remaining))
+
+    elapsed_s = max(time.monotonic() - started, 1e-6)
+    metrics = _compute_memory_metrics(samples, elapsed_s=elapsed_s)
+    gates = _evaluate_memory_gates(metrics)
+    report = {
+        "schema": "automa_physical_memory_viability_v0",
+        "run_id": run_id,
+        "vehicle_id": vehicle_id,
+        "duration_s_requested": duration_s,
+        "duration_s_elapsed": round(elapsed_s, 3),
+        "sample_period_s": sample_period_s,
+        "requirements": {
+            "max_p95_update_ms": REQUIRED_P95_UPDATE_MS,
+            "health_values": sorted(MEMORY_HEALTH_VALUES),
+            "no_failures": True,
+            "epoch_must_not_change": True,
+        },
+        "metrics": metrics,
+        "gates": gates,
+        "passed": all(bool(item.get("passed")) for item in gates),
+        "sample_count": len(samples),
+        "samples": samples,
+        "limits": [
+            "Polls the live memory step's status; does not instrument the Donkey loop.",
+            "Update duration is the step's own last_duration_ms, not the cycle's wall time.",
+        ],
+    }
+
+    if out_dir is not None:
+        (out_dir / "report.json").write_text(
+            json.dumps(report, indent=2, sort_keys=True, default=str),
+            encoding="utf-8",
+        )
+        report["out_dir"] = display_path(out_dir)
+        report["report_json"] = display_path(out_dir / "report.json")
+
+    exit_code = 0 if report["passed"] else 1
+    if json_output:
+        return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
+    return CommandResult(exit_code, _format_memory_report(report))
+
+
+def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
+    # The simulator has no viability probe yet; it passes without measuring.
+    report = {
+        "schema": "automa_physical_memory_viability_v0",
+        "vehicle_id": vehicle_id,
+        "provider": "chase-sim",
+        "passed": True,
+        "stub": True,
+        "gates": [],
+        "note": "No simulator viability probe exists yet; passing without measurement.",
+    }
+    if json_output:
+        return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
+    return CommandResult(
+        0,
+        f"Memory viability: PASS (stub)\nvehicle: {vehicle_id}\n{report['note']}",
+    )
+
+
+def _extract_memory_sample(
+    probe: dict[str, Any], *, wall_ms: int, mono_s: float
+) -> dict[str, Any]:
+    return {
+        "t_s": round(mono_s, 3),
+        "wall_ms": wall_ms,
+        "status": probe.get("status"),
+        "health": probe.get("last_health"),
+        "epoch_id": probe.get("last_epoch_id"),
+        "record_count": probe.get("last_record_count"),
+        "update_count": probe.get("update_count"),
+        "reset_count": probe.get("reset_count"),
+        "failure_count": probe.get("failure_count"),
+        "duration_ms": probe.get("last_duration_ms"),
+        "last_error": probe.get("last_error"),
+        "error": probe.get("error"),
+    }
+
+
+def _counter_delta(samples: list[dict[str, Any]], key: str) -> int | None:
+    counts = [int(s[key]) for s in samples if isinstance(s.get(key), int)]
+    return counts[-1] - counts[0] if len(counts) >= 2 else None
+
+
+def _compute_memory_metrics(samples: list[dict[str, Any]], *, elapsed_s: float) -> dict[str, Any]:
+    live = [s for s in samples if s.get("status") == "live" and s.get("error") is None]
+    durations = [float(s["duration_ms"]) for s in live if _is_number(s.get("duration_ms"))]
+    updates = _counter_delta(live, "update_count")
+    return {
+        "elapsed_s": round(elapsed_s, 3),
+        "sample_count": len(samples),
+        "live_sample_count": len(live),
+        "update_count_delta": updates,
+        "updates_per_s": round(updates / elapsed_s, 4) if updates is not None else None,
+        "failure_count_delta": _counter_delta(live, "failure_count"),
+        "reset_count_delta": _counter_delta(live, "reset_count"),
+        "epochs_seen": sorted({str(s["epoch_id"]) for s in live if s.get("epoch_id")}),
+        "health_seen": sorted({str(s["health"]) for s in live if s.get("health")}),
+        "errors_seen": sorted({str(s["last_error"]) for s in live if s.get("last_error")})[:5],
+        "update_duration_ms": _distribution(durations),
+        "last_record_count": next(
+            (s["record_count"] for s in reversed(live) if s.get("record_count") is not None),
+            None,
+        ),
+    }
+
+
+def _evaluate_memory_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    updates = metrics.get("update_count_delta")
+    failures = metrics.get("failure_count_delta")
+    duration = metrics.get("update_duration_ms") or {}
+    p95 = duration.get("p95")
+    health = set(metrics.get("health_seen") or [])
+    return [
+        {
+            "id": "live_samples_present",
+            "passed": int(metrics.get("live_sample_count") or 0) > 0,
+            "detail": f"live_sample_count={metrics.get('live_sample_count')}",
+        },
+        {
+            "id": "memory_updates_advance",
+            "passed": _is_number(updates) and updates > 0,
+            "detail": f"update_count_delta={updates}",
+        },
+        {
+            "id": "no_memory_failures",
+            "passed": failures in (None, 0) and not metrics.get("errors_seen"),
+            "detail": (
+                f"failure_count_delta={failures} errors_seen={metrics.get('errors_seen')}"
+            ),
+        },
+        {
+            "id": "epoch_stable",
+            "passed": metrics.get("reset_count_delta") in (None, 0)
+            and len(metrics.get("epochs_seen") or []) <= 1,
+            "detail": (
+                f"reset_count_delta={metrics.get('reset_count_delta')} "
+                f"epochs_seen={metrics.get('epochs_seen')}"
+            ),
+        },
+        {
+            "id": "health_is_known",
+            "passed": bool(health) and health <= MEMORY_HEALTH_VALUES,
+            "detail": f"health_seen={sorted(health)}",
+        },
+        {
+            "id": "p95_update_duration_at_most_100ms",
+            "passed": _is_number(p95) and float(p95) <= REQUIRED_P95_UPDATE_MS,
+            "detail": f"p95_update_duration_ms={p95} required<={REQUIRED_P95_UPDATE_MS}",
+        },
+    ]
+
+
+def _format_memory_report(report: dict[str, Any]) -> str:
+    metrics = report["metrics"]
+    lines = [
+        f"Memory viability: {'PASS' if report['passed'] else 'FAIL'}",
+        f"vehicle: {report['vehicle_id']}",
+        f"elapsed_s: {metrics.get('elapsed_s')}",
+        f"updates_per_s: {metrics.get('updates_per_s')}",
+        f"update_duration_ms p50/p95: {_dist_pair(metrics.get('update_duration_ms'))}",
+        f"epochs_seen: {metrics.get('epochs_seen')}",
+        f"health_seen: {metrics.get('health_seen')}",
+        f"records: {metrics.get('last_record_count')}",
+        "",
+        "gates:",
+    ]
+    for gate in report["gates"]:
+        lines.append(
+            f"- {'PASS' if gate['passed'] else 'FAIL'} {gate['id']}: {gate['detail']}"
+        )
+    if report.get("out_dir"):
+        lines.extend(["", f"record: {report['out_dir']}"])
+    return "\n".join(lines)

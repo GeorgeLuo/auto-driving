@@ -11,21 +11,17 @@ from collections import Counter, defaultdict
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReadRequest, SensorReading
 
-from .lab_plugins import LabPerceptionMapper, candidate_status, discover_candidates
 from .paths import ROOT, display_path, safe_path_part
-from .perception_evaluation import evaluate_perception_frames, write_review_html
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
-    PERCEPTION_ALGORITHMS,
-)
+from .perception_evaluation import evaluate_perception_frames
+from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from implementations.decision_cycle.catalog import perception_algorithm_activation
+from implementations.decision_cycle.catalog import selection_activation
 
 from .perception import ensure_local_perception_runtime
 from .step_hosting import load_staged_runner
@@ -42,13 +38,13 @@ def _selection(activation) -> dict[str, Any]:
         "plugin_configs": dict(activation.plugin_configs),
     }
 from .vehicle_access import create_vehicle_access
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 DEFAULT_FRAME_COUNT = 5
 DEFAULT_INTERVAL_S = 0.25
 _PERCEPTION_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-APPLY_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_APPLY_ROOT", ROOT / "runtime" / "perception-applies"))
+INSPECT_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_INSPECT_ROOT", ROOT / "runtime" / "perception-inspections"))
 
 
 @dataclass(frozen=True)
@@ -57,24 +53,69 @@ class CommandResult:
     message: str
 
 
-def run_perception_experiment(
+def inspect_perception(
+    source: Path | None = None,
     *,
     vehicle_id: str | None = None,
-    frames: int = DEFAULT_FRAME_COUNT,
-    interval_s: float = DEFAULT_INTERVAL_S,
-    timeout_s: float = 3.0,
+    frames: int | None = None,
+    interval_s: float | None = None,
+    timeout_s: float | None = None,
     record: bool = False,
     json_output: bool = False,
-    candidate_id: str | None = None,
-    candidate_config: dict[str, Any] | None = None,
-    algorithm: str | None = None,
+    preset: str | None = None,
+    plugins: list[str] | None = None,
 ) -> CommandResult:
-    if candidate_id is not None and algorithm is not None:
-        return CommandResult(2, "Choose either --candidate or --algorithm, not both.")
-    if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
-        return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
-    if candidate_config and candidate_id is None:
-        return CommandResult(2, "Candidate parameter overrides require --candidate.")
+    """Show what a perception selection detects, from images or a live vehicle.
+
+    With ``source`` (an image, a directory of images, or a recorded run) the
+    selection is applied to those images. Without it, frames are read from an
+    active vehicle. With neither ``preset`` nor ``plugins``, a recorded run's
+    own selection applies to a source, and a vehicle's staged selection to a
+    live read.
+    """
+
+    if preset is not None and plugins:
+        return CommandResult(2, "Choose either --preset or --plugin, not both.")
+    if preset is not None and preset not in PERCEPTION_PRESETS:
+        return CommandResult(2, f"Unknown perception preset {preset!r}.")
+    if source is not None:
+        live_only = {
+            "--id": vehicle_id,
+            "--frames": frames,
+            "--interval-s": interval_s,
+            "--timeout-s": timeout_s,
+        }
+        given = [flag for flag, value in live_only.items() if value is not None]
+        if given:
+            return CommandResult(
+                2, f"{', '.join(given)} read a live vehicle and cannot be combined with a source."
+            )
+        return _inspect_images(
+            source, record=record, json_output=json_output, preset=preset, plugins=plugins
+        )
+    return _inspect_vehicle(
+        vehicle_id=vehicle_id,
+        frames=DEFAULT_FRAME_COUNT if frames is None else frames,
+        interval_s=DEFAULT_INTERVAL_S if interval_s is None else interval_s,
+        timeout_s=3.0 if timeout_s is None else timeout_s,
+        record=record,
+        json_output=json_output,
+        preset=preset,
+        plugins=plugins,
+    )
+
+
+def _inspect_vehicle(
+    *,
+    vehicle_id: str | None,
+    frames: int,
+    interval_s: float,
+    timeout_s: float,
+    record: bool,
+    json_output: bool,
+    preset: str | None,
+    plugins: list[str] | None,
+) -> CommandResult:
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
@@ -88,7 +129,7 @@ def run_perception_experiment(
             "\n\n".join(
                 [
                     error or "No active vehicle is available.",
-                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                    format_active_vehicles(discovery, include_inactive=True),
                     "Prepare a simulator with: ./cli/automa simulators ensure",
                 ]
             ),
@@ -96,23 +137,20 @@ def run_perception_experiment(
 
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
-        if candidate_id is not None:
-            mapper = LabPerceptionMapper(candidate_id, config_overrides=candidate_config)
-            mapper_record = mapper.report_descriptor()
-            record_root = mapper.candidate.runs_dir
-        else:
-            prepared_runtime = ensure_local_perception_runtime(vehicle=vehicle, algorithm=algorithm)
-            manifest = prepared_runtime["manifest"]
-            activation = step_activation_from_payload(manifest, step="perception")
-            mapper = load_staged_runner(activation)
-            mapper_record = {
-                "algorithm": activation.metadata.get("algorithm"),
-                "spec": RUNNER_SPEC,
-                "config": _selection(activation),
-                "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
-                "bundle_refreshed": prepared_runtime["refreshed"],
-            }
-            record_root = Path(prepared_runtime["bundle"]["runtime_dir"]) / "perception-runs"
+        prepared_runtime = ensure_local_perception_runtime(
+            vehicle=vehicle, preset=preset, plugins=plugins
+        )
+        manifest = prepared_runtime["manifest"]
+        activation = step_activation_from_payload(manifest, step="perception")
+        mapper = load_staged_runner(activation)
+        mapper_record = {
+            "preset": activation.metadata.get("preset"),
+            "spec": RUNNER_SPEC,
+            "config": _selection(activation),
+            "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
+            "bundle_refreshed": prepared_runtime["refreshed"],
+        }
+        record_root = Path(prepared_runtime["bundle"]["runtime_dir"]) / "perception-runs"
     except Exception as exc:
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
@@ -120,9 +158,7 @@ def run_perception_experiment(
     run_id = _run_id("perception", str(vehicle.get("vehicle_id") or "vehicle"))
     record_dir = record_root / run_id if record else None
     workspace = _workspace_context(record_dir, prefix="automa_perception_")
-    mapper_context: AbstractContextManager[Any] = (
-        mapper if isinstance(mapper, LabPerceptionMapper) else nullcontext(mapper)
-    )
+    mapper_context: AbstractContextManager[Any] = nullcontext(mapper)
 
     try:
         with workspace as workspace_value, mapper_context as active_mapper:
@@ -139,7 +175,7 @@ def run_perception_experiment(
             for index in range(frame_count):
                 frame_id = f"frame_{index:06d}"
                 started = time.perf_counter()
-                snapshot = access.car.read_sensors(
+                sensor_frame = access.car.read_sensors(
                     SensorReadRequest(
                         output_dir=frames_dir,
                         read_id=frame_id,
@@ -148,40 +184,24 @@ def run_perception_experiment(
                         image_extension=access.image_extension,
                     )
                 )
-                perception_output_dir = results_dir / frame_id if record else None
-                perception = active_mapper.perceive(
-                    build_perception_request(
-                        snapshot,
-                        shared_memory=shared_memory,
-                        output_dir=perception_output_dir,
-                        metadata={
-                            "run_id": run_id,
-                            "frame_index": index,
-                            "vehicle_id": vehicle.get("vehicle_id"),
-                            "recording": record,
-                        },
-                    )
-                )
-                duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
-                reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-                record_item = _frame_record(
+                reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
+                record_item, _ = perceive_sensor_frame(
+                    active_mapper,
+                    sensor_frame,
                     frame_id=frame_id,
                     frame_index=index,
                     image_path=reading.path if reading is not None else None,
-                    snapshot=snapshot,
-                    perception=perception,
-                    duration_ms=duration_ms,
-                    runtime_metrics=_runtime_metrics(active_mapper),
+                    shared_memory=shared_memory,
+                    metadata={
+                        "run_id": run_id,
+                        "frame_index": index,
+                        "vehicle_id": vehicle.get("vehicle_id"),
+                        "recording": record,
+                    },
+                    result_dir=results_dir / frame_id if record else None,
+                    started=started,
                 )
                 frame_records.append(record_item)
-                if record:
-                    frame_result_dir = results_dir / frame_id
-                    frame_result_dir.mkdir(parents=True, exist_ok=True)
-                    (frame_result_dir / "perception.json").write_text(
-                        json.dumps(record_item, indent=2, sort_keys=True),
-                        encoding="utf-8",
-                    )
-                    (frame_result_dir / "perception.txt").write_text(perception.text + "\n", encoding="utf-8")
                 if index + 1 < frame_count and interval_s > 0:
                     time.sleep(max(0.0, float(interval_s)))
 
@@ -209,21 +229,14 @@ def run_perception_experiment(
     return CommandResult(exit_code, _format_report(report))
 
 
-def apply_perception_experiment(
+def _inspect_images(
     source: Path,
     *,
-    record: bool = False,
-    json_output: bool = False,
-    candidate_id: str | None = None,
-    candidate_config: dict[str, Any] | None = None,
-    algorithm: str | None = None,
+    record: bool,
+    json_output: bool,
+    preset: str | None,
+    plugins: list[str] | None,
 ) -> CommandResult:
-    if candidate_id is not None and algorithm is not None:
-        return CommandResult(2, "Choose either --candidate or --algorithm, not both.")
-    if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
-        return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
-    if candidate_config and candidate_id is None:
-        return CommandResult(2, "Candidate parameter overrides require --candidate.")
     source = source.expanduser().resolve()
     if not source.exists():
         return CommandResult(2, f"Apply source does not exist: {source}")
@@ -247,35 +260,29 @@ def apply_perception_experiment(
         return CommandResult(2, f"No applicable images found under {source}")
 
     try:
-        if candidate_id is not None:
-            mapper = LabPerceptionMapper(candidate_id, config_overrides=candidate_config)
-            report_mapper = mapper.report_descriptor()
-            record_root = mapper.candidate.runs_dir
+        recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
+        if plugins or preset is not None:
+            activation = selection_activation("perception", preset=preset, plugins=plugins)
+            preset = activation.metadata["preset"]
+        elif isinstance(recorded_mapper, dict):
+            recorded = dict(recorded_mapper.get("config") or {})
+            activation = step_activation(
+                "perception",
+                recorded.get("plugins") or [],
+                recorded.get("plugin_specs") or {},
+                recorded.get("plugin_configs") or {},
+            )
+            preset = recorded_mapper.get("preset") or "recorded"
         else:
-            recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
-            if algorithm is not None:
-                activation = perception_algorithm_activation(algorithm)
-            elif isinstance(recorded_mapper, dict) and not str(
-                recorded_mapper.get("algorithm") or ""
-            ).startswith("candidate:"):
-                recorded = dict(recorded_mapper.get("config") or {})
-                activation = step_activation(
-                    "perception",
-                    recorded.get("plugins") or [],
-                    recorded.get("plugin_specs") or {},
-                    recorded.get("plugin_configs") or {},
-                )
-                algorithm = recorded_mapper.get("algorithm") or "recorded"
-            else:
-                activation = perception_algorithm_activation(DEFAULT_PERCEPTION_ALGORITHM)
-                algorithm = DEFAULT_PERCEPTION_ALGORITHM
-            mapper = PerceptionRunner.from_activation(activation)
-            report_mapper = {"algorithm": algorithm, "spec": RUNNER_SPEC, "config": _selection(activation)}
-            record_root = APPLY_ROOT
+            activation = selection_activation("perception")
+            preset = activation.metadata["preset"]
+        mapper = PerceptionRunner.from_activation(activation)
+        report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}
+        record_root = INSPECT_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
 
-    run_id = _run_id("apply", source_name)
+    run_id = _run_id("inspect", source_name)
     record_dir = record_root / run_id if record else None
     if record_dir is not None:
         try:
@@ -286,9 +293,7 @@ def apply_perception_experiment(
                 f"Apply record directory already exists (refusing overwrite): {record_dir}",
             )
     workspace = _workspace_context(record_dir, prefix="automa_apply_")
-    mapper_context: AbstractContextManager[Any] = (
-        mapper if isinstance(mapper, LabPerceptionMapper) else nullcontext(mapper)
-    )
+    mapper_context: AbstractContextManager[Any] = nullcontext(mapper)
 
     try:
         with workspace as workspace_value, mapper_context as active_mapper:
@@ -302,7 +307,7 @@ def apply_perception_experiment(
             for index, image_path in enumerate(image_paths):
                 frame_id = f"frame_{index:06d}"
                 captured_at_ms = int(image_path.stat().st_mtime * 1000)
-                snapshot = SensorSnapshot(
+                sensor_frame = SensorFrame(
                     read_id=frame_id,
                     readings={
                         FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -310,45 +315,28 @@ def apply_perception_experiment(
                             sensor_kind="camera",
                             captured_at_ms=captured_at_ms,
                             path=str(image_path),
-                            metadata={"source": "apply"},
+                            metadata={"source": "images"},
                         )
                     },
                     started_at_ms=captured_at_ms,
                     completed_at_ms=captured_at_ms,
-                    metadata={"source": "apply", "source_path": str(source)},
+                    metadata={"source": "images", "source_path": str(source)},
                 )
-                started = time.perf_counter()
-                perception = active_mapper.perceive(
-                    build_perception_request(
-                        snapshot,
-                        shared_memory=shared_memory,
-                        output_dir=(results_dir / frame_id) if record else None,
-                        metadata={"run_id": run_id, "frame_index": index, "apply": True},
-                    )
-                )
-                duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
-                item = _frame_record(
+                item, _ = perceive_sensor_frame(
+                    active_mapper,
+                    sensor_frame,
                     frame_id=frame_id,
                     frame_index=index,
                     image_path=str(image_path),
-                    snapshot=snapshot,
-                    perception=perception,
-                    duration_ms=duration_ms,
-                    runtime_metrics=_runtime_metrics(active_mapper),
+                    shared_memory=shared_memory,
+                    metadata={"run_id": run_id, "frame_index": index},
+                    result_dir=(results_dir / frame_id) if record else None,
                 )
                 frame_records.append(item)
-                if record:
-                    frame_result_dir = results_dir / frame_id
-                    frame_result_dir.mkdir(parents=True, exist_ok=True)
-                    (frame_result_dir / "perception.json").write_text(
-                        json.dumps(item, indent=2, sort_keys=True),
-                        encoding="utf-8",
-                    )
-                    (frame_result_dir / "perception.txt").write_text(perception.text + "\n", encoding="utf-8")
 
             report = _experiment_report(
                 run_id=run_id,
-                source={"kind": "apply", "path": str(source)},
+                source={"kind": "images", "path": str(source)},
                 mapper=report_mapper,
                 frames=frame_records,
                 recording=record,
@@ -364,93 +352,6 @@ def apply_perception_experiment(
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True))
     return CommandResult(exit_code, _format_report(report))
 
-
-def compare_perception_candidates(
-    source_dir: Path,
-    *,
-    record: bool = False,
-    json_output: bool = False,
-    output: TextIO | None = None,
-) -> CommandResult:
-    source_dir = source_dir.expanduser().resolve()
-    if not source_dir.is_dir():
-        return CommandResult(2, f"Comparison source is not a directory: {source_dir}")
-    ready = [
-        candidate
-        for candidate in discover_candidates()
-        if candidate_status(candidate)["ready"]
-    ]
-    if not ready:
-        return CommandResult(
-            2,
-            "No ready perception candidates. Run `./cli/automa vehicles perception candidates` for setup guidance.",
-        )
-
-    results: list[dict[str, Any]] = []
-    failures: list[dict[str, Any]] = []
-    for index, candidate in enumerate(ready, start=1):
-        if output is not None:
-            print(
-                f"Comparing {candidate.candidate_id} ({index}/{len(ready)})...",
-                file=output,
-                flush=True,
-            )
-        result = apply_perception_experiment(
-            source_dir,
-            record=record,
-            json_output=True,
-            candidate_id=candidate.candidate_id,
-        )
-        if result.exit_code != 0:
-            # Human table stays one-line; JSON retains full structured/raw detail.
-            raw = result.message or ""
-            human_err = raw.strip().splitlines()[0] if raw.strip() else "unknown error"
-            if len(human_err) > 200:
-                human_err = human_err[:197] + "..."
-            if human_err.startswith("{"):
-                human_err = f"candidate execution failed (exit {result.exit_code})"
-            failures.append(
-                {
-                    "candidate": candidate.candidate_id,
-                    "error": human_err,
-                    "error_detail": raw,
-                    "exit_code": result.exit_code,
-                }
-            )
-            continue
-        report = json.loads(result.message)
-        summary = report["summary"]
-        health = summary["representation_health"]
-        results.append({
-            "candidate": candidate.candidate_id,
-            "health_score": health["score"],
-            "continuity_match_fraction": health["continuity"]["mean_match_fraction"],
-            "continuity_iou": health["continuity"]["mean_matched_iou"],
-            "steady_median_ms": summary["latency_ms"]["steady_median"],
-            "steady_p95_ms": summary["latency_ms"]["steady_p95"],
-            "cold_start_ms": summary["latency_ms"]["cold_start"],
-            "peak_rss_mb": summary["memory_mb"]["peak_rss"],
-            "thing_kinds": summary["thing_kinds"],
-            "failed_frames": summary["failed_frames"],
-            "run_dir": report.get("run_dir"),
-            "review": report.get("review"),
-        })
-
-    payload = {
-        "schema": "perception_candidate_comparison_v0",
-        "source": str(source_dir),
-        "recording": record,
-        "interpretation": (
-            "Representation health measures contract validity and temporal stability, not semantic accuracy. "
-            "Latency and memory are directly comparable only on the same host and run conditions."
-        ),
-        "results": results,
-        "failures": failures,
-    }
-    exit_code = 0 if results and not failures else 1 if results else 2
-    if json_output:
-        return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_comparison(payload))
 
 
 def _select_vehicle(
@@ -479,12 +380,81 @@ def _select_vehicle(
     return selected, reason, None
 
 
+def run_perception(
+    mapper: Any,
+    sensor_frame: SensorFrame,
+    *,
+    shared_memory: dict[str, Any],
+    metadata: dict[str, Any],
+    output_dir: Path | None = None,
+):
+    """Run perception on one sensor frame; the step every consumer shares."""
+
+    return mapper.perceive(
+        build_perception_request(
+            sensor_frame,
+            shared_memory=shared_memory,
+            output_dir=output_dir,
+            metadata=metadata,
+        )
+    )
+
+
+def perceive_sensor_frame(
+    mapper: Any,
+    sensor_frame: SensorFrame,
+    *,
+    frame_id: str,
+    frame_index: int,
+    image_path: str | None,
+    shared_memory: dict[str, Any],
+    metadata: dict[str, Any],
+    result_dir: Path | None = None,
+    started: float | None = None,
+) -> tuple[dict[str, Any], Any]:
+    """Perceive one sensor frame and return its frame record and the perception.
+
+    With ``result_dir`` the plugins write their outputs there and the frame's
+    ``perception.json`` and ``perception.txt`` are saved beside them. ``started``
+    is a ``time.perf_counter()`` reading that begins ``duration_ms`` earlier
+    than this call, for callers that time the sensor read too.
+    """
+
+    if started is None:
+        started = time.perf_counter()
+    perception = run_perception(
+        mapper,
+        sensor_frame,
+        shared_memory=shared_memory,
+        metadata=metadata,
+        output_dir=result_dir,
+    )
+    duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+    record = _frame_record(
+        frame_id=frame_id,
+        frame_index=frame_index,
+        image_path=image_path,
+        sensor_frame=sensor_frame,
+        perception=perception,
+        duration_ms=duration_ms,
+        runtime_metrics=_runtime_metrics(),
+    )
+    if result_dir is not None:
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "perception.json").write_text(
+            json.dumps(record, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        (result_dir / "perception.txt").write_text(perception.text + "\n", encoding="utf-8")
+    return record, perception
+
+
 def _frame_record(
     *,
     frame_id: str,
     frame_index: int,
     image_path: str | None,
-    snapshot: SensorSnapshot,
+    sensor_frame: SensorFrame,
     perception,
     duration_ms: float,
     runtime_metrics: dict[str, Any],
@@ -493,7 +463,7 @@ def _frame_record(
         "frame_id": frame_id,
         "frame_index": frame_index,
         "image_path": image_path,
-        "captured_at_ms": snapshot.completed_at_ms,
+        "captured_at_ms": sensor_frame.completed_at_ms,
         "duration_ms": duration_ms,
         "status": perception.status,
         "signal_count": len(perception.signals),
@@ -582,8 +552,6 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 def _write_report(run_dir: Path, report: dict[str, Any]) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
-    review_path = write_review_html(run_dir, report)
-    report["review"] = display_path(review_path)
     (run_dir / "run.json").write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     (run_dir / "summary.txt").write_text(_format_report(report) + "\n", encoding="utf-8")
 
@@ -592,13 +560,10 @@ def _format_report(report: dict[str, Any]) -> str:
     summary = report["summary"]
     source = report["source"]
     source_label = source.get("vehicle_id") or source.get("path") or source.get("kind")
-    # Lead with human-scannable identity: review path and outcome before details.
     lines = [
         "Perception experiment",
         "---------------------",
     ]
-    if report.get("review"):
-        lines.append(f"review: {report['review']}")
     if report.get("run_dir"):
         lines.append(f"run: {report['run_dir']}")
     lines.append(f"source: {source_label}")
@@ -606,7 +571,7 @@ def _format_report(report: dict[str, Any]) -> str:
         lines.append(f"selection: {source['selection']}")
     lines.extend(
         [
-            f"algorithm: {report['mapper'].get('algorithm')}",
+            f"preset: {report['mapper'].get('preset')}",
             f"frames: {summary['frames']}",
             f"failed frames: {summary['failed_frames']}",
             f"statuses: {_format_counts(summary['status_counts'])}",
@@ -633,30 +598,6 @@ def _format_counts(counts: dict[str, Any]) -> str:
         return "none"
     return ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
 
-
-def _format_comparison(payload: dict[str, Any]) -> str:
-    lines = [
-        "Perception candidate comparison",
-        "-------------------------------",
-        f"source: {payload['source']}",
-        "health is representation stability, not semantic accuracy",
-        "",
-        f"{'candidate':<20} {'health':>7} {'match':>7} {'IoU':>7} {'steady':>10} {'RSS':>11}",
-    ]
-    for item in payload["results"]:
-        lines.append(
-            f"{item['candidate']:<20} {item['health_score']:>7.3f} "
-            f"{item['continuity_match_fraction']:>7.3f} {item['continuity_iou']:>7.3f} "
-            f"{item['steady_median_ms']:>8.1f}ms {item['peak_rss_mb']:>8.1f}MiB"
-        )
-        lines.append(f"  evidence: {_format_counts(item['thing_kinds'])}")
-        if item.get("review"):
-            lines.append(f"  review: {item['review']}")
-    for failure in payload["failures"]:
-        lines.append(f"- {failure['candidate']} failed: {failure['error']}")
-        # Full detail stays in JSON (error_detail); keep human table compact.
-    lines.append(f"recording: {'on' if payload['recording'] else 'off'}")
-    return "\n".join(lines)
 
 
 def _source_image_paths(source_dir: Path, manifest: dict[str, Any]) -> list[Path]:
@@ -733,15 +674,12 @@ def _run_id(kind: str, source: str) -> str:
     import uuid
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    # Microseconds + short uuid so sequential applies in the same second never collide.
+    # Microseconds + short uuid so sequential runs in the same second never collide.
     stamp = f"{timestamp}-{int(time.time() * 1_000_000) % 1_000_000:06d}-{uuid.uuid4().hex[:8]}"
     return f"{kind}-{safe_path_part(source)}-{stamp}"
 
 
-def _runtime_metrics(mapper: Any) -> dict[str, Any]:
-    candidate_metrics = getattr(mapper, "last_runtime_metrics", None)
-    if isinstance(candidate_metrics, dict) and candidate_metrics:
-        return dict(candidate_metrics)
+def _runtime_metrics() -> dict[str, Any]:
     peak = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     divisor = 1024.0 * 1024.0 if sys.platform == "darwin" else 1024.0
     return {"peak_rss_mb": round(peak / divisor, 3)}

@@ -8,7 +8,7 @@ from cli.automa_cli.vehicles import (
     Candidate,
     _picar_candidates,
     _probe_picar,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
 )
 from tests.support.cli_runner import run_automa
 
@@ -23,7 +23,7 @@ class VehicleDiscoveryTests(unittest.TestCase):
             [("http://piracer.local:8887", "default")],
         )
 
-    def test_scenario_first_time_discovery_can_return_machine_readable_empty_snapshot(self) -> None:
+    def test_scenario_first_time_discovery_can_return_machine_readable_empty_listing(self) -> None:
         result = run_automa("vehicles", "active", "--no-picar", "--no-sim", "--json")
 
         payload = json.loads(result.stdout)
@@ -58,7 +58,7 @@ class VehicleDiscoveryTests(unittest.TestCase):
         self.assertFalse(result.active)
         self.assertIn("server is not listening", result.error or "")
         self.assertEqual(result.diagnostics["runtime_state"], "server_not_listening")
-        snapshot = format_active_vehicles_snapshot(
+        listing = format_active_vehicles(
             {
                 "active_count": 0,
                 "vehicles": [],
@@ -66,9 +66,9 @@ class VehicleDiscoveryTests(unittest.TestCase):
             },
             include_inactive=True,
         )
-        self.assertIn("runtime=server_not_listening", snapshot)
-        self.assertIn("tcp=no", snapshot)
-        self.assertIn("http=no", snapshot)
+        self.assertIn("runtime=server_not_listening", listing)
+        self.assertIn("tcp=no", listing)
+        self.assertIn("http=no", listing)
 
     def test_picar_probe_reports_listener_without_http_readiness(self) -> None:
         with (

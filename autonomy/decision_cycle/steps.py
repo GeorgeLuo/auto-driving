@@ -13,7 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.action import hold
 from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.activation import (
     STEPS,
@@ -25,10 +24,8 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.memory.runner import MemoryRunner
-from autonomy.decision_cycle.observation import perception_summary
 from autonomy.decision_cycle.observation.runner import ObservationRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.decision_cycle.plan import highest_confidence
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 
@@ -42,9 +39,15 @@ STEP_RUNNERS: dict[str, Any] = {
 }
 
 _BUILTINS = {
-    "observation": (perception_summary.PLUGIN_ID, perception_summary.PLUGIN_SPEC),
-    "plan": (highest_confidence.PLUGIN_ID, highest_confidence.PLUGIN_SPEC),
-    "action": (hold.PLUGIN_ID, hold.PLUGIN_SPEC),
+    "observation": (
+        "perception_summary",
+        "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary",
+    ),
+    "plan": (
+        "highest_confidence",
+        "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan",
+    ),
+    "action": ("hold", "autonomy.decision_cycle.action.hold:HoldAction"),
 }
 
 

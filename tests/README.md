@@ -87,7 +87,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi \
 ```
 
 This path sends read-only requests to `/autonomy/status`. It requires an
-available autonomy manager, a loaded decision engine and perception algorithm,
+available autonomy manager, a loaded decision engine and perception preset,
 and Donkey drive mode `user`. It does not send drive or mode-change requests,
 restart the runtime, use SSH, capture frames, or move the vehicle. An unreachable
 or unsafe endpoint is reported as `unavailable` with exit code 2 before the test

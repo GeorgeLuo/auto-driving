@@ -10,12 +10,10 @@ from autonomy.decision_cycle.perception.evidence.values import (
 )
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from cli.automa_cli.memory_report import memory_state
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
-    LEDGER_KEY,
-    EvidenceLedger,
-)
-from cli.automa_cli.workbench_runner import _default_memory_step
+from cli.automa_cli.memory_report import last_plugin_state
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
+from cli.automa_cli.workbench_frames import default_memory_step
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
     FixtureMapper,
@@ -41,7 +39,7 @@ class RecordingMapper(FixtureMapper):
 
 
 class SharedMemoryProbe:
-    plugin_id = "shared-memory-probe"
+    plugin_id = "probe"
     contract = PerceptionPluginContract()
 
     def __init__(self):
@@ -68,7 +66,7 @@ class WorkbenchTests(unittest.TestCase):
         published = []
 
         def memory_factory():
-            step = _default_memory_step()
+            step = default_memory_step()
 
             class RecordingStep:
                 def __call__(self, context, observation):
@@ -79,8 +77,8 @@ class WorkbenchTests(unittest.TestCase):
                     published.append(context.shared_memory[LEDGER_KEY])
                     return report
 
-                def reset(self):
-                    return step.reset()
+                def reset(self, shared_memory=None):
+                    return step.reset(shared_memory)
 
             return RecordingStep()
 
@@ -96,7 +94,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["memory"], memory_state(reports[-1]))
+            self.assertEqual(completed["steps"]["memory"], last_plugin_state(reports[-1]))
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))
@@ -189,7 +187,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(sought["position"], 3)
             self.assertEqual(len(mapper.calls), calls_after_first + 2)
             self.assertEqual(
-                sought["decision"]["frame_id"],
+                sought["steps"]["decision"]["frame_id"],
                 sought["current_frame"]["frame_id"],
             )
             self.assertEqual(
@@ -201,7 +199,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["phase"], "paused")
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
-            self.assertEqual(cached["decision"]["frame_id"], first_id)
+            self.assertEqual(cached["steps"]["decision"]["frame_id"], first_id)
             self.assertEqual(len(mapper.calls), calls_after_first + 2)
             cached_next = runner.dispatch("step", run_id=run_id)
             self.assertEqual(cached_next["current_frame"]["position"], 1)
@@ -211,7 +209,7 @@ class WorkbenchTests(unittest.TestCase):
                 runner.dispatch("seek", run_id=run_id, position=99)
             with self.assertRaises(ReplayActionError):
                 runner.dispatch("seek", run_id=run_id)
-            runner.dispatch("cancel", run_id=run_id)
+            runner.dispatch("reset", run_id=run_id)
 
         idle = ImageReplayRunner()
         with self.assertRaises(ReplayActionError):
@@ -258,7 +256,7 @@ class WorkbenchTests(unittest.TestCase):
             frame = urlopen(base + "api/frame?" + query, timeout=2)
             self.assertEqual(frame.status, 200)
             self.assertTrue(frame.read())
-            post({"action": "cancel", "run_id": run_id})
+            post({"action": "reset", "run_id": run_id})
 
     def test_realtime_pace_honors_recorded_frame_timestamps(self) -> None:
         with image_source(3) as root:

@@ -9,7 +9,7 @@ runs the plugins selected for the step:
 - ``observation(context, perception)`` returns the current-frame record.
 - ``memory(context, observation)`` lets memory plugins update the host map
   and returns their report. A memory plugin may replace the observation for
-  the later steps through ``shared_memory["decision.observation"]``.
+  the later steps through ``OBSERVATION_KEY`` in ``memory.publication``.
 - ``proposal(context, observation)`` returns the candidates.
 - ``plan(context, proposal)`` returns the plan over those candidates.
 - ``action(context, proposal, plan)`` returns the authorized control.

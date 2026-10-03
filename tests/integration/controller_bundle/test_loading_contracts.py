@@ -131,7 +131,7 @@ class LoadingContractTests(unittest.TestCase):
         ).PerceptionPluginContract
         host_evidence = importlib.import_module("autonomy.decision_cycle.memory.evidence").RetainedEvidence
         host_ledger = importlib.import_module(
-            "implementations.decision_cycle.memory.bounded_evidence.plugin"
+            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin"
         ).BoundedEvidenceLedger
         metadata = {"controller_bundle": {"root_dir": str(self.bundle_root)}}
         perception = load_staged_runner(packaged_activation("perception", ["frame"], metadata=metadata))
@@ -143,7 +143,7 @@ class LoadingContractTests(unittest.TestCase):
         self.assertIsNot(type(memory.runner.plugins[0]), host_ledger)
         with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
             staged = importlib.import_module(
-                "implementations.decision_cycle.memory.bounded_evidence.plugin"
+                "implementations.decision_cycle.memory.shared.evidence_ledger.reduction"
             )
             self.assertIn(str(self.bundle_root), staged.__file__ or "")
             self.assertIs(staged.RetainedEvidence, host_evidence)
@@ -158,14 +158,3 @@ class LoadingContractTests(unittest.TestCase):
         finally:
             extra.unlink(missing_ok=True)
             sys.modules.pop("autonomy.vehicle.only_in_bundle", None)
-
-    def test_staging_loads_lab_modules_from_the_bundle(self) -> None:
-        lab = self.bundle_root / "lab"
-        lab.mkdir()
-        (lab / "__init__.py").write_text("", encoding="utf-8")
-        (lab / "probe.py").write_text("MARKER = 'bundle'\n", encoding="utf-8")
-        with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
-            probe = importlib.import_module("lab.probe")
-            self.assertEqual(probe.MARKER, "bundle")
-            self.assertIn(str(self.bundle_root), probe.__file__ or "")
-        self.assertNotIn("lab.probe", sys.modules)

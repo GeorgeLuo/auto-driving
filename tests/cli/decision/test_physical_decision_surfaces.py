@@ -206,7 +206,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             run_id="donkey-run-http-fixture",
         )
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
-        assert part.latest_snapshot is not None
+        assert part.latest_state is not None
         # CLI subprocess wall-clock now_ms is independent of this fixture. Stamp
         # published_at_ms at request time so current acceptance does not depend
         # on cold-start beating stale_after_ms, while expiry remains explicit.
@@ -230,7 +230,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     return
                 if self.path == "/autonomy/decision/latest":
                     template = part.publish_decision_latest(
-                        now_ms=part.latest_snapshot.completed_at_ms
+                        now_ms=part.latest_state.completed_at_ms
                     )
                     if not template.get("ok") or not isinstance(
                         template.get("decision"), dict

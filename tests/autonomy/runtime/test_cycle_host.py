@@ -16,13 +16,14 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import LEDGER_KEY
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, proposal_runner
 
 RECORDING_SPEC = "tests.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
@@ -67,7 +68,9 @@ class _RecordingProposal:
         return self.runner(context, observation)
 
 
-def _memory_step(root: Path, *, fail_on_update: bool = False) -> MemoryRunner:
+def _memory_step(
+    root: Path, *, fail_on_update: bool = False, extra_specs: dict[str, str] | None = None
+) -> MemoryRunner:
     path = root / "active.json"
     path.write_text(
         json.dumps(
@@ -75,7 +78,7 @@ def _memory_step(root: Path, *, fail_on_update: bool = False) -> MemoryRunner:
                 "schema": STEP_ACTIVATION_SCHEMA,
                 "step": "memory",
                 "plugins": ["recording_test"],
-                "plugin_specs": {"recording_test": RECORDING_SPEC},
+                "plugin_specs": {"recording_test": RECORDING_SPEC, **(extra_specs or {})},
                 "plugin_configs": {"recording_test": {"fail_on_update": fail_on_update}},
             }
         ),
@@ -107,7 +110,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             step = _memory_step(Path(tmp))
             host, _ = _host(
                 observation=lambda context, perception: Observation(
-                    observation_id="obs-1", created_at_ms=1, sensor_snapshot={}, summary=("test",)
+                    observation_id="obs-1", created_at_ms=1, sensor_frame={}, summary=("test",)
                 ),
                 memory=step,
             )
@@ -133,7 +136,7 @@ class CycleHostMemoryTests(unittest.TestCase):
                 sorted(["perception", "observation", "memory", "proposal", "plan", "action"]),
             )
             self.assertIsNone(status["steps"]["perception"])
-            self.assertEqual(status["steps"]["memory"]["implementation_id"], "recording_test")
+            self.assertEqual(status["steps"]["memory"]["plugin_ids"], ["recording_test"])
             self.assertEqual(
                 status["steps"]["memory"]["plugins"][0]["state"]["epoch_id"], "epoch-1"
             )
@@ -151,6 +154,17 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertIsNone(host.last_result)
             self.assertEqual(host.status()["error_count"], 1)
             self.assertIn("forced-update-failure", host.status()["last_error"])
+
+    def test_bad_memory_selection_edit_stops_before_later_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            step = _memory_step(Path(tmp), extra_specs={"missing": "no_such_module:Nope"})
+            host, proposal = _host(memory=step)
+            step.plugin_manager.select(["missing"])
+            with self.assertRaisesRegex(MemoryUpdateError, "no_such_module"):
+                host.run(DecisionFrameContext("frame_x", 0, 1))
+            self.assertIsNone(proposal.last_shared_memory)
+            self.assertEqual(host.status()["error_count"], 1)
+            self.assertIn("no_such_module", host.status()["last_error"])
 
     def test_default_steps_hold_while_memory_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -203,7 +217,7 @@ class CycleHostMemoryTests(unittest.TestCase):
 
         def remember(context, observation):
             context.shared_memory["test.previous"] = context.frame_id
-            context.shared_memory["decision.observation"] = replace(observation, summary=("updated",))
+            context.shared_memory[OBSERVATION_KEY] = replace(observation, summary=("updated",))
             return {"schema": "memory_report_v0", "plugins": []}
 
         host, proposal = _host(observation=observe, memory=remember)

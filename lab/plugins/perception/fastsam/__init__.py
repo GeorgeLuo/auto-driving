@@ -1,1 +1,0 @@
-"""FastSAM region-proposal candidate."""

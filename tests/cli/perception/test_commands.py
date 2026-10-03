@@ -25,7 +25,7 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("invalid choice: 'replay'", result.stderr)
 
-    def test_perception_apply_is_offline_and_does_not_record_by_default(self) -> None:
+    def test_perception_inspect_is_offline_and_does_not_record_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = root / "frames"
@@ -34,22 +34,22 @@ class PerceptionCommandTests(unittest.TestCase):
 
             Image.new("RGB", (32, 24), (30, 40, 50)).save(frames / "000.png")
             Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
-            apply_root = root / "applies"
+            inspect_root = root / "applies"
             result = run_automa(
                 "vehicles",
                 "perception",
-                "apply",
+                "inspect",
                 str(frames),
                 "--json",
-                extra_env={"AUTOMA_PERCEPTION_APPLY_ROOT": str(apply_root)},
+                extra_env={"AUTOMA_PERCEPTION_INSPECT_ROOT": str(inspect_root)},
             )
 
             payload = json.loads(result.stdout)
             self.assertEqual(payload["schema"], "perception_experiment_v0")
-            self.assertEqual(payload["source"]["kind"], "apply")
+            self.assertEqual(payload["source"]["kind"], "images")
             self.assertEqual(payload["summary"]["frames"], 2)
             self.assertFalse(payload["recording"])
-            self.assertFalse(apply_root.exists())
+            self.assertFalse(inspect_root.exists())
 
     def test_scenario_deployed_perception_schema_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -73,12 +73,12 @@ class PerceptionCommandTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["schema"], "vehicle_perception_info_v0")
-        self.assertEqual(payload["activation"]["algorithm"], "sim_debug")
+        self.assertEqual(payload["activation"]["preset"], "sim_debug")
         self.assertEqual(
-            payload["algorithm_schema"]["schema"], "perception_algorithm_schema_v2"
+            payload["perception_schema"]["schema"], "perception_schema_v2"
         )
         self.assertEqual(
-            payload["algorithm_schema"]["output"]["schema"], "perception_text_v2"
+            payload["perception_schema"]["output"]["schema"], "perception_text_v2"
         )
         self.assertFalse(payload["published_view"]["available"])
 
@@ -109,7 +109,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "frame_index": 2,
                 "captured_at_ms": 1000,
                 "perception": {"things": [], "signals": []},
-                "sensor_snapshot": {
+                "sensor_frame": {
                     "readings": {
                         "front_camera": {
                             "metadata": {"content_type": "image/png"},

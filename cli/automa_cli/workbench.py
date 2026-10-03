@@ -8,7 +8,6 @@ resulting state to both the CLI and a small loopback HTTP page.
 
 from __future__ import annotations
 
-import json
 import os
 import time
 import webbrowser
@@ -20,7 +19,6 @@ from .workbench_contract import (
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
     WORKBENCH_DEFAULT_PACE,
-    WORKBENCH_ERROR_SCHEMA,
     WORKBENCH_HOST,
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
@@ -29,17 +27,15 @@ from .workbench_runner import ImageReplayRunner
 from .workbench_plugins import (
     PluginCatalog,
     PluginCatalogError,
-    build_plugin_catalog,
-    discover_plugin_catalog,
     packaged_plugin_catalog,
 )
 from .workbench_server import WorkbenchServer
 from .workbench_source import (
-    ImageFeed,
+    ImageSource,
     ReplayFrame,
     SourceValidationError,
     WORKBENCH_DEFAULT_MAX_FRAMES,
-    load_image_feed,
+    load_image_source,
     normalize_image_directory,
 )
 
@@ -47,7 +43,6 @@ from .workbench_source import (
 def run_workbench_replay(
     source_dir: str | os.PathLike[str],
     *,
-    plugin_dir: str | os.PathLike[str] | None = None,
     active_plugin_ids: list[str] | tuple[str, ...] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
@@ -56,13 +51,10 @@ def run_workbench_replay(
     port: int = 0,
     serve: bool = False,
     open_browser: bool = False,
-    json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
     """Run one CLI replay, optionally keeping the loopback workbench alive."""
 
-    if json_output and (serve or open_browser):
-        return CommandResult(2, "--json cannot be combined with --serve or --open")
     if open_browser:
         serve = True
     runner: ImageReplayRunner | None = None
@@ -71,7 +63,6 @@ def run_workbench_replay(
     try:
         runner = ImageReplayRunner(
             source_dir,
-            plugin_dir=plugin_dir,
             active_plugin_ids=active_plugin_ids,
             cadence_ms=cadence_ms,
             pace=pace,
@@ -101,11 +92,6 @@ def run_workbench_replay(
                 return CommandResult(0, "workbench server stopped")
         state = runner.wait()
         exit_code = 0 if state.get("phase") == "completed" else 2
-        if json_output:
-            return CommandResult(
-                exit_code,
-                json.dumps(state, indent=2, sort_keys=True),
-            )
         return CommandResult(
             exit_code,
             _format_workbench_status(
@@ -115,17 +101,6 @@ def run_workbench_replay(
             ),
         )
     except (ReplayActionError, SourceValidationError) as exc:
-        state = runner.state() if runner is not None else None
-        if json_output:
-            payload = {
-                "schema": WORKBENCH_ERROR_SCHEMA,
-                "ok": False,
-                "boundary": getattr(exc, "boundary", "input"),
-                "message": str(exc),
-            }
-            if state is not None:
-                payload["state"] = state
-            return CommandResult(2, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(2, f"Workbench replay failed: {exc}")
     finally:
         if server is not None:
@@ -150,7 +125,6 @@ def _format_workbench_status(
         f"sequence: {state.get('sequence_id')}",
         f"run_id: {state.get('run_id') or '(none)'}",
         f"source: {source.get('source_path') or source.get('path') or '(none)'}",
-        f"plugin_dir: {state.get('plugin_dir') or '(packaged default)'}",
         f"active_plugins: {active_plugins_text}",
         f"plugin_order: {active_plugins_text}",
         f"catalog_digest: {state.get('run_catalog_digest') or state.get('catalog_digest') or '(none)'}",
@@ -182,7 +156,7 @@ def _format_workbench_status(
 
 
 __all__ = [
-    "ImageFeed",
+    "ImageSource",
     "ImageReplayRunner",
     "PluginCatalog",
     "PluginCatalogError",
@@ -195,10 +169,8 @@ __all__ = [
     "WORKBENCH_DEFAULT_PACE",
     "WORKBENCH_PACES",
     "WORKBENCH_SEQUENCE_ID",
-    "load_image_feed",
+    "load_image_source",
     "normalize_image_directory",
     "run_workbench_replay",
-    "build_plugin_catalog",
-    "discover_plugin_catalog",
     "packaged_plugin_catalog",
 ]

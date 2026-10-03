@@ -42,17 +42,27 @@ class StepActivationTests(unittest.TestCase):
     def test_every_step_reads_the_same_document(self) -> None:
         for step in STEPS:
             with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
-                path = _write(tmp, _payload(step, metadata={"algorithm": "preset"}))
+                path = _write(tmp, _payload(step, metadata={"preset": "preset"}))
                 activation = read_step_activation(path, step)
                 self.assertEqual(activation.step, step)
                 self.assertEqual(activation.plugins, ("first",))
                 self.assertEqual(activation.source_path, path)
-                self.assertEqual(activation.metadata, {"algorithm": "preset"})
+                self.assertEqual(activation.metadata, {"preset": "preset"})
                 manager = activation.plugin_manager()
                 self.assertEqual(manager.step, step)
                 self.assertEqual(manager.available_ids, ("first", "second"))
                 self.assertEqual(manager.selected_ids, ("first",))
 
+    def test_repeated_plugin_id_in_a_document_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            text = json.dumps(_payload())
+            path.write_text(
+                text.replace('"second": ', '"first": "other:Plugin", "second": '),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "repeats key 'first'"):
+                read_step_activation(path, "memory")
 
     def test_write_round_trips_under_the_step_directory(self) -> None:
         activation = step_activation(

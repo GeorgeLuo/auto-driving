@@ -11,7 +11,7 @@
         "perception_plugin_id": "lightweight_observer",
         "perception_schema": "perception_text_v0",
         "schema": "decision_observation_v1",
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "signals": [],
         "summary": [
           "line"
@@ -36,9 +36,9 @@
             "zone": "left"
           },
           "properties": {},
-          "provenance": {
+          "origin": {
             "coordinate_frame": "image",
-            "evidence_id": "ev_001",
+            "observed_id": "ev_001",
             "frame_id": "frame_001",
             "observation_id": "obs_001",
             "observed_at_ms": 1000,
@@ -60,7 +60,7 @@
         "perception_plugin_id": "lightweight_observer",
         "perception_schema": "perception_text_v0",
         "schema": "decision_observation_v1",
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "signals": [],
         "summary": [
           "line"
@@ -85,9 +85,9 @@
             "zone": "right"
           },
           "properties": {},
-          "provenance": {
+          "origin": {
             "coordinate_frame": "image",
-            "evidence_id": "ev_001",
+            "observed_id": "ev_001",
             "frame_id": "frame_002",
             "observation_id": "obs_001",
             "observed_at_ms": 2000,

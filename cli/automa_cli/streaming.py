@@ -19,7 +19,7 @@ from .physical_observation import (
     picar_base_url,
     publication_to_frame_record,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
 @dataclass(frozen=True)
@@ -50,8 +50,8 @@ def stream_vehicle_perception(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(payload, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(payload, include_inactive=True),
                 ]
             ),
         )
@@ -304,7 +304,7 @@ def _render_physical_perception_screen(
         age_ms: Any = "unknown"
         thing_count: Any = "unknown"
         signal_count: Any = "unknown"
-        algorithm = "unknown"
+        preset = "unknown"
         control_text = "unknown"
         duration_ms: Any = "unknown"
         processed: Any = "unknown"
@@ -326,7 +326,7 @@ def _render_physical_perception_screen(
         thing_count = len(things) if isinstance(things, list) else "unknown"
         signals = perception.get("signals")
         signal_count = len(signals) if isinstance(signals, list) else "unknown"
-        algorithm = publication.get("algorithm") or "unknown"
+        preset = publication.get("preset") or "unknown"
         control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
         control_text = (
             f"steering={control.get('steering', 'unknown')} "
@@ -360,7 +360,7 @@ def _render_physical_perception_screen(
         "",
         f"vehicle: {vehicle_id}",
         f"source: physical onboard  endpoint: {base_url}",
-        f"status: {health}  drive_mode: {mode}  algorithm: {algorithm}",
+        f"status: {health}  drive_mode: {mode}  preset: {preset}",
         f"control: {control_text}",
         (
             f"cadence: min_interval_s={min_interval}  processed={processed}  "

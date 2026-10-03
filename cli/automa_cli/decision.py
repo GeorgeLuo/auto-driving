@@ -36,7 +36,7 @@ from autonomy.decision_cycle.proposal.inputs import (
 )
 from autonomy.decision_cycle.action.hold import (
     HOLD_IDLE_REASON,
-    PLUGIN_ID as HOLD_PLUGIN_ID,
+    HoldAction,
     idle_output,
 )
 from autonomy.decision_cycle.action.values import (
@@ -59,8 +59,8 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.serialization import canonical_json_utf8
-from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, PLUGIN_ID as MODE_PLUGIN_ID
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.runtime.control import AutonomyControl
 
 from .bundles import controller_bundle_paths
@@ -232,7 +232,7 @@ OBSERVATION_REQUIRED_KEYS = frozenset(
         "schema",
         "observation_id",
         "created_at_ms",
-        "sensor_snapshot",
+        "sensor_frame",
         "perception_schema",
         "perception_plugin_id",
         "summary",
@@ -248,15 +248,15 @@ RECORD_REQUIRED_KEYS = frozenset(
         "kind",
         "label",
         "confidence",
-        "provenance",
+        "origin",
         "location",
         "properties",
     }
 )
-PROVENANCE_REQUIRED_KEYS = frozenset(
+ORIGIN_REQUIRED_KEYS = frozenset(
     {
         "observation_id",
-        "evidence_id",
+        "observed_id",
         "coordinate_frame",
         "observed_at_ms",
         "updated_at_ms",
@@ -361,15 +361,15 @@ def _error_result(
 def _action_authority_description(plugin_id: str | None) -> dict[str, Any]:
     """How the staged action plugin authorizes control, for operator-facing summaries."""
 
-    if plugin_id == HOLD_PLUGIN_ID:
+    if plugin_id == HoldAction.plugin_id:
         return {
-            "gate_id": HOLD_PLUGIN_ID,
+            "gate_id": HoldAction.plugin_id,
             "proposed_applied": False,
             "authorized_idle_reason": HOLD_IDLE_REASON,
         }
-    if plugin_id == MODE_PLUGIN_ID:
+    if plugin_id == ModeAction.plugin_id:
         return {
-            "gate_id": MODE_PLUGIN_ID,
+            "gate_id": ModeAction.plugin_id,
             "proposed_applied": f"in {'/'.join(sorted(LIVE_MODES))} drive modes",
             "authorized_idle_reason": None,
         }
@@ -643,14 +643,14 @@ def _memory_summary(source: dict[str, Any] | None) -> dict[str, Any]:
         for item in value[:12]:
             if not isinstance(item, dict):
                 continue
-            prov = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+            origin = item.get("origin") if isinstance(item.get("origin"), dict) else {}
             records_out.append(
                 {
                     "record_id": item.get("record_id"),
                     "kind": item.get("kind"),
                     "confidence": item.get("confidence"),
-                    "frame_id": prov.get("frame_id"),
-                    "observation_id": prov.get("observation_id"),
+                    "frame_id": origin.get("frame_id"),
+                    "observation_id": origin.get("observation_id"),
                 }
             )
         return {
@@ -744,7 +744,7 @@ def _authority_summary(
         "cycle_reason": authority.get("cycle_reason")
         if authority.get("cycle_reason") is not None
         else (cycle.get("reason") or ""),
-        "gate_id": authority.get("gate_id") or HOLD_PLUGIN_ID,
+        "gate_id": authority.get("gate_id") or HoldAction.plugin_id,
     }
 
 
@@ -1362,7 +1362,7 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
             details={"field": field},
         )
     authorized_output = payload.get("authorized_output")
-    if gate_id == HOLD_PLUGIN_ID:
+    if gate_id == HoldAction.plugin_id:
         if payload.get("proposed_applied") is not False:
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
@@ -2460,11 +2460,11 @@ def strict_decode_apply_evidence(payload: object) -> tuple[RetainedEvidence, ...
                 "run_invalid",
                 "evidence record key set must match RetainedEvidence.to_dict().",
             )
-        provenance = item.get("provenance")
-        if not isinstance(provenance, dict) or set(provenance.keys()) != PROVENANCE_REQUIRED_KEYS:
+        origin = item.get("origin")
+        if not isinstance(origin, dict) or set(origin.keys()) != ORIGIN_REQUIRED_KEYS:
             raise DecisionSurfaceError(
                 "run_invalid",
-                "evidence record provenance must be a complete MemoryProvenance export.",
+                "evidence record origin must be a complete MemoryOrigin export.",
             )
         location = item.get("location")
         if location is not None:
@@ -2637,12 +2637,12 @@ def _apply_vehicle_decision_body(
     identity = _read_surface_identity(bundle, vehicle_id=vehicle_id)
     steps = identity["steps"]
     action_plugins = (steps.get("action") or {}).get("plugins") or []
-    if action_plugins != [HOLD_PLUGIN_ID]:
+    if action_plugins != [HoldAction.plugin_id]:
         raise DecisionSurfaceError(
             "wrong_action",
-            f"decision apply replays the {HOLD_PLUGIN_ID!r} action only; "
+            f"decision apply replays the {HoldAction.plugin_id!r} action only; "
             f"the staged action plugins are {action_plugins!r}. "
-            f"Run: ./cli/automa vehicles update action --id <vehicle> --plugin {HOLD_PLUGIN_ID}",
+            f"Run: ./cli/automa vehicles update action --id <vehicle> --plugin {HoldAction.plugin_id}",
             vehicle_id=vehicle_id,
         )
 

@@ -25,7 +25,7 @@ class PhysicalViabilityTests(unittest.TestCase):
             return {
                 "health": "healthy",
                 "mode": "user",
-                "algorithm": "lightweight_observer",
+                "preset": "lightweight_observer",
                 "processed_count": idx + 1,
                 "skipped_count": idx * 4,
                 "min_interval_s": 0.5,
@@ -81,26 +81,24 @@ class PhysicalViabilityTests(unittest.TestCase):
             self.assertGreaterEqual(report["metrics"]["fresh_results_per_s"], 2.0)
             self.assertTrue((Path(report["out_dir"]) / "report.json").exists())
 
-    def test_rejects_non_picar(self) -> None:
-        vehicle = {
-            "vehicle_id": "chase",
-            "provider": "chase-sim",
-            "connection": {"ws_url": "ws://x"},
-        }
-        with patch(
-            "cli.automa_cli.physical_viability.discover_active_vehicles",
-            return_value={"active": [vehicle], "inactive": []},
-        ), patch(
-            "cli.automa_cli.physical_viability.find_vehicle_by_id",
-            return_value=(vehicle, None),
-        ):
-            result = run_physical_viability_measurement(
-                vehicle_id="chase",
-                duration_s=1.0,
-                record=False,
-            )
-        self.assertEqual(result.exit_code, 2)
-        self.assertIn("physical PiCar only", result.message)
+    def test_simulator_passes_with_a_stub_and_unknown_providers_are_refused(self) -> None:
+        results = {}
+        for provider in ("chase-sim", "other"):
+            vehicle = {"vehicle_id": "v", "provider": provider, "connection": {}}
+            with patch(
+                "cli.automa_cli.physical_viability.discover_active_vehicles",
+                return_value={"active": [vehicle], "inactive": []},
+            ), patch(
+                "cli.automa_cli.physical_viability.find_vehicle_by_id",
+                return_value=(vehicle, None),
+            ):
+                results[provider] = run_physical_viability_measurement(
+                    vehicle_id="v", duration_s=1.0, record=False, json_output=True
+                )
+        self.assertEqual(results["chase-sim"].exit_code, 0)
+        self.assertTrue(json.loads(results["chase-sim"].message)["stub"])
+        self.assertEqual(results["other"].exit_code, 2)
+        self.assertIn("no perception viability probe", results["other"].message)
 
 
 if __name__ == "__main__":

@@ -109,7 +109,7 @@ def discover_active_vehicles(
     return payload
 
 
-def format_active_vehicles_snapshot(
+def format_active_vehicles(
     payload: dict[str, Any],
     *,
     include_inactive: bool = False,
@@ -699,7 +699,7 @@ def _vehicle_next_action(
                 "automation_not_deployed",
                 command=(
                     "./cli/automa vehicles update perception "
-                    f"--id {vehicle_id} --algorithm lightweight_observer"
+                    f"--id {vehicle_id} --preset lightweight_observer"
                 ),
                 expected_state="automation_deployment=deployed",
             ),

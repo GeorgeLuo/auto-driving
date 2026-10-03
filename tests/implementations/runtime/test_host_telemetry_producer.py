@@ -479,7 +479,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         self.assertTrue(records["ok"])
         self.assertEqual(len(records["records"]), 2)
         self.assertEqual(records["records"][0]["source_frame"], records["records"][1]["source_frame"])
-        self.assertEqual(part.latest_snapshot.frame_index, 0)
+        self.assertEqual(part.latest_state.frame_index, 0)
         self.assertEqual(records["records"][1]["host_tick"]["skipped_since_previous"], 0)
 
     def test_observer_failure_preserves_drive_mode_output_and_shutdown_stops_store(self) -> None:

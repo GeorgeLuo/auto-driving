@@ -3,15 +3,20 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.cycle_host import AutonomyCycleHost
 from cli.automa_cli.automation import _automation_command_matches_vehicle
 from cli.automa_cli.memory import (
     assess_chase_memory_worker_liveness,
     probe_live_memory,
     stream_vehicle_memory,
 )
+from implementations.decision_cycle.catalog import packaged_activation
 from tests.support.cli_runner import run_automa
 
 # Mirrors start_automation launcher argv: ... automation run --id <vehicle_id> ...
@@ -36,12 +41,9 @@ class MemoryStreamTests(unittest.TestCase):
                 "last_control": {
                     "metadata": {"has_memory": True},
                 },
-                "components": {
+                "steps": {
                     "memory": {
-                        "implementation_id": "bounded_evidence",
-                        "implementation_spec": (
-                            "implementations.decision_cycle.memory.bounded_evidence.plugin:BoundedEvidenceLedger"
-                        ),
+                        "plugin_ids": ["bounded_evidence"],
                         "plugins": [
                             {
                                 "plugin_id": "bounded_evidence",
@@ -67,7 +69,6 @@ class MemoryStreamTests(unittest.TestCase):
                             "plugins": [
                                 {
                                     "plugin_id": "bounded_evidence",
-                                    "implementation_id": "bounded_evidence",
                                     "duration_ms": 3.0,
                                     "error": None,
                                 }
@@ -84,7 +85,8 @@ class MemoryStreamTests(unittest.TestCase):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
 
         self.assertEqual(live["status"], "live")
-        self.assertEqual(live["implementation_id"], "bounded_evidence")
+        self.assertEqual(live["plugin_ids"], ["bounded_evidence"])
+        self.assertNotIn("plugin_id", live)
         self.assertEqual(live["last_record_count"], 7)
         self.assertTrue(live["has_memory"])
         self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
@@ -99,7 +101,7 @@ class MemoryStreamTests(unittest.TestCase):
         status = {
             "ok": True,
             "drive_mode": "user",
-            "autonomy": {"components": {"perception": {"algorithm": "lightweight_observer"}}},
+            "autonomy": {"steps": {"perception": {"plugin_ids": ["floor_continuity"]}, "memory": None}},
         }
         with patch(
             "cli.automa_cli.memory.fetch_autonomy_status",
@@ -108,6 +110,33 @@ class MemoryStreamTests(unittest.TestCase):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
         self.assertEqual(live["status"], "absent")
         self.assertIn("update core", live["error"])
+
+    def test_probe_reads_what_the_cycle_host_publishes(self) -> None:
+        # The Pi serves ``host.status()`` as ``autonomy``; read it from a real host
+        # so the probe and the writer cannot drift apart again.
+        vehicle = {
+            "vehicle_id": "piracer",
+            "provider": "picar",
+            "connection": {"base_url": "http://piracer.local:8887"},
+        }
+        host = AutonomyCycleHost(
+            steps=replace(
+                decision_steps(),
+                memory=MemoryRunner.from_activation(packaged_activation("memory")),
+            )
+        )
+        status = {"ok": True, "drive_mode": "user", "autonomy": host.status()}
+        with patch("cli.automa_cli.memory.fetch_autonomy_status", return_value=status):
+            live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
+
+        self.assertEqual(live["status"], "live")
+        self.assertEqual(live["plugin_ids"], ["bounded_evidence"])
+        self.assertEqual(live["selected_plugin_ids"], ["bounded_evidence"])
+
+        status["autonomy"] = AutonomyCycleHost(steps=decision_steps()).status()
+        with patch("cli.automa_cli.memory.fetch_autonomy_status", return_value=status):
+            absent = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
+        self.assertEqual(absent["status"], "absent")
 
     def test_stream_once_json_uses_discovery(self) -> None:
         vehicle = {
@@ -126,9 +155,9 @@ class MemoryStreamTests(unittest.TestCase):
             "ok": True,
             "drive_mode": "user",
             "autonomy": {
-                "components": {
+                "steps": {
                     "memory": {
-                        "implementation_id": "bounded_evidence",
+                        "plugin_ids": ["bounded_evidence"],
                         "plugins": [
                             {
                                 "plugin_id": "bounded_evidence",
@@ -160,7 +189,7 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_memory_live_v0")
         self.assertEqual(payload["status"], "live")
         self.assertEqual(payload["vehicle_id"], "piracer")
-        self.assertEqual(payload["implementation_id"], "bounded_evidence")
+        self.assertEqual(payload["plugin_ids"], ["bounded_evidence"])
         self.assertEqual(payload["last_record_count"], 3)
 
     def test_chase_stream_once_live_exits_zero(self) -> None:
@@ -281,7 +310,6 @@ class MemoryStreamTests(unittest.TestCase):
                         "pid": 424242,
                         "updated_at_ms": now,
                         "memory": {
-                            "implementation_id": "bounded_evidence",
                             "status": {
                                 "plugins": [
                                     {
@@ -318,7 +346,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {
                     "last_health": "healthy",
                     "last_record_count": 2,
@@ -344,7 +371,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 60_000,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -368,7 +394,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -400,7 +425,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -454,7 +478,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -478,7 +501,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -502,7 +524,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now + 86_400_000,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -528,7 +549,6 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now + 500,
             "memory": {
-                "implementation_id": "bounded_evidence",
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
@@ -565,7 +585,6 @@ class MemoryStreamTests(unittest.TestCase):
                         "pid": 424242,
                         "updated_at_ms": now - 1_000,
                         "memory": {
-                            "implementation_id": "bounded_evidence",
                             "status": {
                                 "plugins": [
                                     {

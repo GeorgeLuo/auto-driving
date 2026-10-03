@@ -77,16 +77,16 @@ class WorkbenchTests(unittest.TestCase):
     def test_directory_adapter_honors_manifest_order_and_absence(self) -> None:
         with TemporaryDirectory() as directory:
             workspace = Path(directory)
-            root = workspace / "lab/plugins/perception/example/runs/fixture-run"
+            root = workspace / "lab/runs/fixture-run"
             image_root = workspace / "lab/runs/capture"
             root.mkdir(parents=True)
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
             write_manifest(root, {
                 "source_id": "fixture.sequence",
-                "run_dir": "lab/plugins/perception/example/runs/fixture-run",
+                "run_dir": "lab/runs/fixture-run",
                 "source": {
-                    "kind": "apply",
+                    "kind": "images",
                     "path": "/previous/location/auto-driving/lab/runs/capture",
                 },
                 "frames": [
@@ -136,7 +136,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(broken_state["phase"], "failed")
             self.assertEqual(broken_state["failure_boundary"], "source")
             self.assertEqual(broken_mapper.calls, [])
-            self.assertIsNone(broken_state["perception"])
+            self.assertIsNone(broken_state["steps"]["perception"])
 
     def test_runner_fails_closed_on_mapper_and_memory_errors(self) -> None:
         with image_source(2) as root:
@@ -150,7 +150,7 @@ class WorkbenchTests(unittest.TestCase):
             state = runner.wait(5) if started["phase"] == "running" else started
             self.assertEqual(state["phase"], "failed")
             self.assertEqual(state["failure_boundary"], "perception")
-            self.assertEqual(state["perception"]["status"], "error")
+            self.assertEqual(state["steps"]["perception"]["status"], "error")
 
             memory_mapper = FixtureMapper()
             memory_runner = ImageReplayRunner(
@@ -167,8 +167,8 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
-            self.assertIsNone(memory_state["memory"])
-            self.assertIsNone(memory_state["decision"])
+            self.assertIsNone(memory_state["steps"]["memory"])
+            self.assertIsNone(memory_state["steps"]["decision"])
             self.assertIn("injected memory failure", memory_state["failure"]["message"])
             self.assertEqual(len(memory_mapper.calls), 1)
             self.assertEqual(memory_state["progress"]["completed"], 0)
@@ -183,27 +183,44 @@ class WorkbenchTests(unittest.TestCase):
             )
             runner.start()
             state = runner.wait(5)
-            first_frame_id = state["timeline"][0]["frame"]["frame_id"]
-            first_detail = runner.frame_detail(first_frame_id, run_id=state["run_id"])
 
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(state["sequence_id"], "workbench.image_replay.v1")
         self.assertEqual(state["progress"]["completed"], 2)
         self.assertEqual(len(mapper.calls), 2)
         self.assertEqual(
-            state["observation"]["metadata"]["source"], "workbench.image_replay.v1"
+            state["steps"]["observation"]["metadata"]["source"], "workbench.image_replay.v1"
         )
-        self.assertEqual(state["memory"]["health"], "healthy")
-        self.assertGreaterEqual(state["memory"]["record_count"], 2)
+        self.assertEqual(state["steps"]["memory"]["health"], "healthy")
+        self.assertGreaterEqual(state["steps"]["memory"]["record_count"], 2)
+        self.assertEqual(state["summary"]["memory_health"], "healthy")
+        self.assertEqual(
+            state["summary"]["memory_records"], state["steps"]["memory"]["record_count"]
+        )
+        self.assertEqual(
+            state["timeline"][-1]["memory_record_count"],
+            state["steps"]["memory"]["record_count"],
+        )
         self.assertNotIn("frames", state["source"])
         self.assertNotIn("perception", state["timeline"][0])
-        self.assertEqual(first_detail["perception"]["status"], "ok")
-        self.assertIsNotNone(first_detail["observation"]["observation_id"])
-        self.assertEqual(first_detail["memory"]["health"], "healthy")
+        self.assertEqual(state["steps"]["perception"]["status"], "ok")
+        self.assertIsNotNone(state["steps"]["observation"]["observation_id"])
         self.assertTrue(state["timeline"][0]["memory_effect"]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
+
+    def test_default_selection_is_the_lightweight_observer_preset(self) -> None:
+        with image_source(1) as root:
+            runner = ImageReplayRunner(root, cadence_ms=0)
+            runner.start()
+            state = runner.wait(5)
+
+        self.assertEqual(state["phase"], "completed")
+        self.assertEqual(
+            state["machine_detail"]["pipeline"]["perception_preset"],
+            "lightweight_observer",
+        )
 
     def test_runner_persists_frame_correlated_decision_playback(self) -> None:
         with image_source(2) as root:
@@ -215,11 +232,8 @@ class WorkbenchTests(unittest.TestCase):
             )
             runner.start()
             state = runner.wait(5)
-            frame_id = state["timeline"][0]["frame"]["frame_id"]
-            detail = runner.frame_detail(frame_id, run_id=state["run_id"])
 
-        decision = state["decision"]
-        first_decision = detail["decision"]
+        decision = state["steps"]["decision"]
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(decision["frame_id"], state["current_frame"]["frame_id"])
         self.assertEqual(decision["plan"]["status"], "selected")
@@ -230,13 +244,12 @@ class WorkbenchTests(unittest.TestCase):
         )
         self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
         self.assertFalse(decision["authority"]["proposed_applied"])
-        self.assertEqual(
-            state["timeline"][0]["decision"]["selected_proposal_id"],
-            first_decision["plan"]["selected_proposal_id"],
+        self.assertTrue(
+            state["timeline"][0]["frame"]["frame_id"].endswith(
+                state["timeline"][0]["decision"]["selected_proposal_id"].rsplit(":", 1)[1]
+            )
         )
         self.assertFalse(state["timeline"][0]["decision"]["proposed_applied"])
-        self.assertEqual(first_decision["frame_id"], frame_id)
-        self.assertFalse(first_decision["authority"]["proposed_applied"])
         self.assertEqual(
             state["machine_detail"]["pipeline"]["decision_steps"],
             {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["hold"]},
@@ -275,7 +288,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(len(mapper.calls), 1)
         self.assertTrue(state["timeline"][1]["frame"]["absent"])
-        self.assertEqual(state["observation"]["metadata"]["absence_reason"], "dropout")
+        self.assertEqual(state["steps"]["observation"]["metadata"]["absence_reason"], "dropout")
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
         with image_source(2) as root:

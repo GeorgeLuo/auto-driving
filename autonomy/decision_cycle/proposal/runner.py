@@ -111,12 +111,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         require_ascii_id(definition.plugin_id, field_name="plugin_id")
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
-        # Candidates are admitted only under the ID they were selected by.
-        if plugin.plugin_id != definition.plugin_id:
-            raise TypeError(
-                f"proposal plugin {definition.entrypoint} declares plugin_id "
-                f"{plugin.plugin_id!r}, selected as {definition.plugin_id!r}"
-            )
 
     @property
     def evidence_key(self) -> str | None:

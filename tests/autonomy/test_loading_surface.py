@@ -2,16 +2,13 @@
 
 Scanning the tree does not rebuild the baseline: a catalog or export list can
 stop mentioning an old path without dropping its check. The scan only reports
-a spec, export, lab import, or manifest field that the inventory does not
-already record, which means a change reaches consumers outside it.
+a spec or export that the inventory does not already record, which means a change reaches consumers outside it.
 """
 
 from __future__ import annotations
 
 import ast
 import importlib
-import json
-import subprocess
 import unittest
 from pathlib import Path
 
@@ -29,10 +26,8 @@ _SOURCE_ROOTS = (
     ROOT / "scripts",
     ROOT / "deploy" / "targets" / "donkeycar" / "app",
 )
-_SPEC_PREFIXES = ("autonomy.", "implementations.", "cli.", "lab.")
-_MODULE_PREFIXES = ("autonomy.", "implementations.", "lab.", "cli.")
-_IMPORT_PREFIXES = ("autonomy", "implementations", "cli")
-_MANIFEST_SPEC_KEYS = ("entrypoint", "provider_spec", "implementation_spec")
+_SPEC_PREFIXES = ("autonomy.", "implementations.", "cli.")
+_MODULE_PREFIXES = ("autonomy.", "implementations.", "cli.")
 _OUTSIDE_BASELINE = (
     "paths outside the migration baseline; this change reaches consumers "
     "the inventory does not pin"
@@ -49,12 +44,6 @@ def _python_files(roots: tuple[Path, ...]) -> list[Path]:
                 continue
             files.append(path)
     return files
-
-
-def _git_files(pattern: str) -> list[Path]:
-    # Tracked lab sources only. Untracked experiments are not consumers.
-    output = subprocess.check_output(["git", "ls-files", pattern], cwd=ROOT, text=True)
-    return [ROOT / line for line in output.splitlines() if line]
 
 
 def _module_name(path: Path) -> str:
@@ -128,20 +117,6 @@ def _static_exports(path: Path) -> list[str] | None:
     return names
 
 
-def _manifest_specs(value: object) -> list[tuple[str, str]]:
-    found: list[tuple[str, str]] = []
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if key in _MANIFEST_SPEC_KEYS and isinstance(item, str):
-                found.append((key, item))
-            else:
-                found.extend(_manifest_specs(item))
-    elif isinstance(value, list):
-        for item in value:
-            found.extend(_manifest_specs(item))
-    return found
-
-
 def _known_specs() -> set[str]:
     known: set[str] = set()
     for spec, module_name, attribute in LEGACY_SPECS:
@@ -169,14 +144,14 @@ def _known_modules() -> set[str]:
 class LoadingSurfaceTests(unittest.TestCase):
     def test_changes_outside_the_baseline_are_visible(self) -> None:
         # Absence of a recorded path from the tree is not a failure. A new spec,
-        # export, lab import, or manifest field that the inventory does not
+        # or export that the inventory does not
         # already name is a larger consumer surface than the baseline.
         known_specs = _known_specs()
         known_exports = _known_exports()
         known_modules = _known_modules()
         outside: list[str] = []
 
-        for path in _python_files(_SOURCE_ROOTS) + _git_files("lab/**/*.py"):
+        for path in _python_files(_SOURCE_ROOTS):
             relative = path.relative_to(ROOT).as_posix()
             for value, lineno in _string_constants(path):
                 location = f"{relative}:{lineno}"
@@ -202,13 +177,6 @@ class LoadingSurfaceTests(unittest.TestCase):
                     if value not in known_modules:
                         outside.append(f"{location} module {value}")
 
-        for path in _git_files("lab/**/plugin.json"):
-            relative = path.relative_to(ROOT).as_posix()
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            for key, value in _manifest_specs(payload):
-                if not _is_import_spec(value) or value not in known_specs:
-                    outside.append(f"{relative} {key} {value}")
-
         for path in _python_files((ROOT / "autonomy", ROOT / "implementations")):
             relative = path.relative_to(ROOT).as_posix()
             exported = _static_exports(path)
@@ -219,34 +187,6 @@ class LoadingSurfaceTests(unittest.TestCase):
             for name in exported:
                 if (module_name, name) not in known_exports:
                     outside.append(f"{relative} export {module_name}.{name}")
-
-        for path in _git_files("lab/**/*.py"):
-            relative = path.relative_to(ROOT).as_posix()
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
-                    if node.level:
-                        continue
-                    module_name = node.module or ""
-                    if module_name not in _IMPORT_PREFIXES and not module_name.startswith(
-                        tuple(prefix + "." for prefix in _IMPORT_PREFIXES)
-                    ):
-                        continue
-                    for alias in node.names:
-                        if alias.name == "*":
-                            outside.append(f"{relative}:{node.lineno} import {module_name}.*")
-                            continue
-                        if (module_name, alias.name) not in known_exports:
-                            outside.append(
-                                f"{relative}:{node.lineno} import {module_name}.{alias.name}"
-                            )
-                elif isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name in _IMPORT_PREFIXES or alias.name.startswith(
-                            tuple(prefix + "." for prefix in _IMPORT_PREFIXES)
-                        ):
-                            if alias.name not in known_modules:
-                                outside.append(f"{relative}:{node.lineno} module {alias.name}")
 
         self.assertEqual(outside, [], _OUTSIDE_BASELINE)
 

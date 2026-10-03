@@ -71,7 +71,7 @@ class ReplayFrame:
 
 
 @dataclass(frozen=True)
-class ImageFeed:
+class ImageSource:
     source_path: Path
     source_id: str
     frames: tuple[ReplayFrame, ...]
@@ -96,7 +96,7 @@ def normalize_image_directory(
     source_root: Path | None = None,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
     max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
-) -> ImageFeed:
+) -> ImageSource:
     """Validate and normalize one location-independent image directory."""
 
     if not isinstance(source_dir, (str, os.PathLike)):
@@ -189,7 +189,7 @@ def normalize_image_directory(
         for position, entry in enumerate(entries)
     )
     _validate_frame_sequence(frames)
-    return ImageFeed(
+    return ImageSource(
         source_path=source_path,
         source_id=source_id,
         frames=frames,
@@ -197,11 +197,42 @@ def normalize_image_directory(
     )
 
 
+def normalize_image_file(
+    image_path: str | os.PathLike[str],
+    *,
+    max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
+) -> ImageSource:
+    """Validate one image file as a one-frame source."""
+
+    raw_path = os.fspath(image_path)
+    if "\x00" in raw_path:
+        raise SourceValidationError("image path contains a NUL byte")
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_symlink():
+        raise SourceValidationError("source image may not be a symlink")
+    path = candidate.resolve()
+    if not path.is_file():
+        raise SourceValidationError(f"source image does not exist: {path}")
+    digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "-", path.name).strip("-") or "image"
+    source_id = f"image-file:{name[:80]}:{digest}"
+    frame = _build_frame(
+        source_id=source_id,
+        position=0,
+        entry={"image_path": path.name},
+        source_path=path.parent,
+        recorded_root=None,
+        recorded_source=None,
+        max_image_bytes=max_image_bytes,
+    )
+    return ImageSource(source_path=path, source_id=source_id, frames=(frame,))
+
+
 def content_type_for_path(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
-load_image_feed = normalize_image_directory
+load_image_source = normalize_image_directory
 
 
 def _read_manifest(source_path: Path) -> tuple[Path | None, dict[str, Any] | None]:
@@ -563,13 +594,13 @@ def _path_contains_symlink(path: Path, root: Path) -> bool:
 
 
 __all__ = [
-    "ImageFeed",
+    "ImageSource",
     "ReplayFrame",
     "SourceValidationError",
     "WORKBENCH_ADAPTER",
     "WORKBENCH_DEFAULT_MAX_FRAMES",
     "WORKBENCH_DEFAULT_MAX_IMAGE_BYTES",
     "content_type_for_path",
-    "load_image_feed",
+    "load_image_source",
     "normalize_image_directory",
 ]

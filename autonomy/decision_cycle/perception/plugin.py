@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal, Mapping, Protocol, TypeVar, runtime_checkable
 
-from autonomy.decision_cycle.perception.components.interface import PerceptionPluginInput
+from autonomy.decision_cycle.perception.feeds.interface import PerceptionPluginInput
 from autonomy.decision_cycle.perception.diagnostics.sink import (
     PerceptionDiagnosticSink,
     _safe_name,
@@ -22,7 +22,7 @@ from autonomy.shared_memory import SharedMemory
 
 PLUGIN_STATE_MODES = ("stateless", "pairwise", "windowed")
 PluginStateMode = Literal["stateless", "pairwise", "windowed"]
-ComponentT = TypeVar("ComponentT")
+FeedT = TypeVar("FeedT")
 
 
 class PerceptionPluginWarmingUp(RuntimeError):
@@ -60,11 +60,11 @@ class PerceptionPluginContract:
 
     def __post_init__(self) -> None:
         input_names = [item.name for item in self.inputs]
-        component_ids = [item.component_id for item in self.inputs]
+        feed_ids = [item.feed_id for item in self.inputs]
         if len(input_names) != len(set(input_names)):
             raise ValueError("plugin input names must be unique")
-        if len(component_ids) != len(set(component_ids)):
-            raise ValueError("plugin component ids must be unique")
+        if len(feed_ids) != len(set(feed_ids)):
+            raise ValueError("plugin feed ids must be unique")
         if self.state_mode not in PLUGIN_STATE_MODES:
             raise ValueError(f"unsupported plugin state mode: {self.state_mode!r}")
         if len(self.diagnostic_artifacts) != len(set(self.diagnostic_artifacts)):
@@ -95,19 +95,19 @@ class PerceptionPluginInputs:
 
     frame_id: str
     captured_at_ms: int
-    components: Mapping[str, Any]
+    feeds: Mapping[str, Any]
     diagnostics: PerceptionDiagnosticSink
     metadata: Mapping[str, Any] = field(default_factory=dict)
     shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "components", MappingProxyType(dict(self.components)))
+        object.__setattr__(self, "feeds", MappingProxyType(dict(self.feeds)))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
-    def require(self, name: str, expected_type: type[ComponentT]) -> ComponentT:
-        if name not in self.components:
+    def require(self, name: str, expected_type: type[FeedT]) -> FeedT:
+        if name not in self.feeds:
             raise KeyError(f"plugin input {name!r} was not injected")
-        value = self.components[name]
+        value = self.feeds[name]
         if not isinstance(value, expected_type):
             raise TypeError(
                 f"plugin input {name!r} is {type(value).__name__}, "

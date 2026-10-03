@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from cli.automa_cli.decision import (
@@ -13,7 +13,7 @@ from cli.automa_cli.decision import (
     build_decision_stream_frame,
 )
 from cli.automa_cli.decision_records import DecisionRunners
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from tests.cli.decision.decision_surfaces_fixtures import packaged_decision_steps, packaged_identity
 
 
@@ -24,13 +24,13 @@ def _left_obstruction() -> tuple[RetainedEvidence, ...]:
             kind="floor_boundary",
             label="floor boundary",
             confidence=0.8,
-            provenance=MemoryProvenance(
+            origin=MemoryOrigin(
                 observation_id="obs-1",
-                evidence_id="boundary",
+                observed_id="boundary",
                 coordinate_frame="image",
                 observed_at_ms=1000,
                 updated_at_ms=1000,
-                source_plugin_id="floor-plane-v0",
+                source_plugin_id="floor_plane",
                 frame_id="frame-1",
             ),
             location=ViewLocation(
@@ -48,7 +48,7 @@ def _applied_frame() -> dict:
         timestamp_ms=1000,
         mode="local",
         observation=Observation(
-            observation_id="obs-1", created_at_ms=1000, sensor_snapshot={}, summary=("t",)
+            observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
         ),
         shared_memory={EVIDENCE_KEY: _left_obstruction()},
     )

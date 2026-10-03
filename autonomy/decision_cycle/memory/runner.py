@@ -4,18 +4,23 @@
 plugin through ``MemoryPluginRuntime`` in selection order. Its return value is
 a report of each plugin's own state summary for diagnostics; decisions read
 plugin-published keys in the host map, not the report.
+
+``MemoryPluginRuntime`` times and reports one applied plugin. It sits here, in
+the runner's file, as perception keeps its per-plugin execution in its own.
+Update failures propagate so the cycle stops; reset failures are recorded and
+leave the host to clear the map.
 """
 
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from threading import RLock
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.memory.execution.plugin_runtime import MemoryPluginRuntime
-from autonomy.decision_cycle.memory.plugin import MemoryPlugin
+from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.memory.publication import withdraw_publication
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import (
@@ -27,11 +32,93 @@ from autonomy.plugins import (
     PluginDefinition,
     PluginManager,
     PluginSelectionRuntime,
+    instantiate_plugin,
     plugin_report as build_plugin_report,
+    require_plugin_id,
 )
 from autonomy.shared_memory import SharedMemory
 
 MEMORY_REPORT_SCHEMA = "memory_report_v0"
+
+# Cap for status and worker-facing diagnostic strings.
+DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_024
+
+
+class MemoryPluginRuntime:
+    """Time and report one applied memory plugin."""
+
+    def __init__(
+        self,
+        definition: PluginDefinition,
+        plugin: MemoryPlugin,
+        *,
+        source_path: Path | None = None,
+    ) -> None:
+        self.definition = definition
+        self.plugin_id = definition.plugin_id
+        self.source_path = source_path
+        self.implementation = plugin
+        self.last_duration_ms: float | None = None
+        self.last_error: str | None = None
+        self.update_count = 0
+        self.reset_count = 0
+        self.failure_count = 0
+        # The map the plugin last worked in, for status reads between cycles.
+        self._shared_memory: SharedMemory | None = None
+
+    def __call__(self, context: DecisionFrameContext, observation: Observation | None) -> None:
+        self.update(context, observation)
+
+    def update(self, context: DecisionFrameContext, observation: Observation | None) -> None:
+        started = time.perf_counter()
+        if context.shared_memory is not None:
+            self._shared_memory = context.shared_memory
+        try:
+            self.implementation.update(context, observation)
+            self.last_error = None
+        except Exception as exc:  # noqa: BLE001 - step isolation boundary
+            self.failure_count += 1
+            self.last_error = _diagnostic(exc)
+            raise
+        finally:
+            self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+            self.update_count += 1
+
+    def reset(self, shared_memory: SharedMemory | None = None) -> None:
+        started = time.perf_counter()
+        if shared_memory is not None:
+            self._shared_memory = shared_memory
+        try:
+            if self._shared_memory is None:
+                raise ValueError("memory reset requires a shared-memory map")
+            self.implementation.reset(self._shared_memory)
+            self.last_error = None
+        except Exception as exc:  # noqa: BLE001 - step isolation boundary
+            self.failure_count += 1
+            self.last_error = _diagnostic(exc)
+        self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+        self.reset_count += 1
+
+    def plugin_status(self) -> dict[str, Any] | None:
+        """The plugin's own summary of its state, or None when it offers none."""
+
+        try:
+            return plugin_status(self.implementation, self._shared_memory)
+        except Exception as exc:  # noqa: BLE001 - status must not fail the caller
+            return {"status_error": _diagnostic(exc)}
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "plugin_id": self.plugin_id,
+            "plugin_spec": self.definition.entrypoint,
+            "activation": str(self.source_path) if self.source_path is not None else None,
+            "update_count": self.update_count,
+            "reset_count": self.reset_count,
+            "failure_count": self.failure_count,
+            "last_duration_ms": self.last_duration_ms,
+            "last_error": self.last_error,
+            "state": self.plugin_status(),
+        }
 
 
 class MemoryRunner:
@@ -81,11 +168,13 @@ class MemoryRunner:
         return cls(manager, provided=plugins)
 
     def _load_plugin(self, definition: PluginDefinition) -> MemoryPluginRuntime:
-        provided = None
         if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
-            provided = self._provided[definition.plugin_id]
-        source_path = self.activation.source_path if self.activation else definition.source
-        return MemoryPluginRuntime(definition, source_path=source_path, plugin=provided)
+            plugin = self._provided[definition.plugin_id]
+        else:
+            plugin = instantiate_plugin(definition)
+        _validate_plugin(plugin, definition)
+        source_path = self.activation.source_path if self.activation else None
+        return MemoryPluginRuntime(definition, plugin, source_path=source_path)
 
     def prepare_selection(self) -> None:
         """Load the manager selection without resetting or publishing it."""
@@ -130,7 +219,11 @@ class MemoryRunner:
     def update(
         self, context: DecisionFrameContext, observation: Observation | None,
     ) -> dict[str, Any]:
-        """Run each selected plugin in order and return the memory report."""
+        """Run each selected plugin in order and return the memory report.
+
+        A selection that cannot load raises here, before any plugin runs, and
+        leaves the applied plugins in place.
+        """
 
         with self._runtime_lock:
             self._apply_selection(context.shared_memory)
@@ -141,9 +234,9 @@ class MemoryRunner:
                     plugin.update(context, observation)
                 if not self.plugins and context.shared_memory is not None:
                     withdraw_publication(context.shared_memory)
-            except Exception:
+            except Exception as exc:
                 self.failure_count += 1
-                self.last_error = plugin.last_error
+                self.last_error = _diagnostic(exc)
                 raise
             finally:
                 self.update_count += 1
@@ -190,7 +283,6 @@ class MemoryRunner:
             "plugins": [
                 {
                     "plugin_id": plugin.plugin_id,
-                    "implementation_id": plugin.implementation_id,
                     "state": plugin.plugin_status(),
                 }
                 for plugin in self.plugins
@@ -207,7 +299,6 @@ class MemoryRunner:
         records = [
             {
                 "plugin_id": plugin.plugin_id,
-                "implementation_id": plugin.implementation_id,
                 "duration_ms": plugin.last_duration_ms,
                 "error": plugin.last_error,
             }
@@ -221,10 +312,7 @@ class MemoryRunner:
 
     def status(self) -> dict[str, Any]:
         with self._runtime_lock:
-            final = self.plugins[-1] if self.plugins else None
             return {
-                "implementation_id": final.implementation_id if final else None,
-                "implementation_spec": final.definition.entrypoint if final else None,
                 "activation": (
                     str(self.activation.source_path)
                     if self.activation and self.activation.source_path
@@ -241,3 +329,35 @@ class MemoryRunner:
                 "last_duration_ms": self.last_duration_ms,
                 "last_error": self.last_error,
             }
+
+
+def _validate_plugin(plugin: Any, definition: PluginDefinition) -> None:
+    if not isinstance(plugin, MemoryPlugin):
+        raise TypeError(f"memory plugin {definition.entrypoint} does not satisfy MemoryPlugin")
+    require_plugin_id(plugin, definition)
+
+
+def _diagnostic(exc: BaseException) -> str:
+    return _truncate_text(format_exception_safely(exc), DEFAULT_MAX_DIAGNOSTIC_CHARS)
+
+
+def format_exception_safely(exc: BaseException) -> str:
+    """Format an exception without letting ``__str__`` bypass isolation."""
+
+    type_name = type(exc).__name__
+    try:
+        detail = str(exc)
+    except Exception:  # noqa: BLE001 - secondary failure must not escape
+        return f"{type_name}: <unprintable exception>"
+    return f"{type_name}: {detail}"
+
+
+def _truncate_text(value: str, max_chars: int) -> str:
+    text = str(value)
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3] + "..."

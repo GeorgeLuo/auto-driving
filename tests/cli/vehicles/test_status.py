@@ -174,7 +174,7 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertEqual(
             payload["next_action"]["command"],
             "./cli/automa vehicles update perception "
-            "--id chase-sim-chaser --algorithm lightweight_observer",
+            "--id chase-sim-chaser --preset lightweight_observer",
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 

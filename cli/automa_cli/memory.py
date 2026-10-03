@@ -40,7 +40,7 @@ from .bundles import (
 from .step_activations import refresh_release, stage_activation
 from .memory_report import last_plugin_state, memory_summary
 from .paths import ROOT, display_path, safe_path_part
-from .perception_runs import read_run_manifest, recorded_selection
+from .perception_runs import read_run_manifest, recorded_selection, selection_config
 from .runtime_view import RuntimeViewServer
 from .physical_observation import (
     fetch_autonomy_status,
@@ -288,10 +288,7 @@ def inspect_memory(
             "source_id": image_source.source_id,
             "frame_count": len(frames),
         },
-        "perception": {
-            "preset": perception_preset,
-            "plugins": list(perception.plugins),
-        },
+        "perception": {"preset": perception_preset, "config": selection_config(perception)},
         "memory": {"preset": activation.metadata["preset"], "plugins": list(activation.plugins)},
         "frames": frames,
         "final": memory_step.report(),
@@ -357,7 +354,7 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
         "Memory inspect",
         "--------------",
         f"Source: {source['path']} ({source['frame_count']} frames)",
-        f"Perception: {report['perception']['preset']} ({', '.join(report['perception']['plugins'])})",
+        f"Perception: {report['perception']['preset']} ({', '.join(report['perception']['config']['plugins'])})",
         f"Memory: {report['memory']['preset']} ({', '.join(report['memory']['plugins'])})",
         "",
         "Frame  Plugin  Health  Records  Epoch  Observation  Replacement",

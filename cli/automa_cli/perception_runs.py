@@ -29,7 +29,7 @@ from .step_hosting import load_staged_runner
 RUNNER_SPEC = "autonomy.decision_cycle.perception.runner:PerceptionRunner"
 
 
-def _selection(activation) -> dict[str, Any]:
+def selection_config(activation) -> dict[str, Any]:
     """The perception selection a recorded run names as its runner config."""
 
     return {
@@ -146,7 +146,7 @@ def _inspect_vehicle(
         mapper_record = {
             "preset": activation.metadata.get("preset"),
             "spec": RUNNER_SPEC,
-            "config": _selection(activation),
+            "config": selection_config(activation),
             "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
             "bundle_refreshed": prepared_runtime["refreshed"],
         }
@@ -268,7 +268,7 @@ def _inspect_images(
             activation = selection_activation("perception")
             preset = activation.metadata["preset"]
         mapper = PerceptionRunner.from_activation(activation)
-        report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}
+        report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": selection_config(activation)}
         record_root = INSPECT_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
@@ -656,19 +656,32 @@ def read_run_manifest(source_dir: Path) -> dict[str, Any]:
 
 
 def recorded_selection(manifest: dict[str, Any]) -> tuple[Any, str] | None:
-    """The perception activation and preset a recorded run names, or ``None``."""
+    """The perception activation and preset a recorded run names, or ``None``.
 
-    recorded_mapper = manifest.get("mapper") if isinstance(manifest, dict) else None
-    if not isinstance(recorded_mapper, dict):
+    A perception run records it as ``mapper``; a memory inspection as
+    ``perception``, which must carry a ``config`` to count.
+    """
+
+    if not isinstance(manifest, dict):
         return None
-    recorded = dict(recorded_mapper.get("config") or {})
+    mapper = manifest.get("mapper")
+    if isinstance(mapper, dict):
+        return _recorded_activation(mapper)
+    perception = manifest.get("perception")
+    if isinstance(perception, dict) and isinstance(perception.get("config"), dict):
+        return _recorded_activation(perception)
+    return None
+
+
+def _recorded_activation(record: dict[str, Any]) -> tuple[Any, str]:
+    recorded = dict(record.get("config") or {})
     activation = step_activation(
         "perception",
         recorded.get("plugins") or [],
         recorded.get("plugin_specs") or {},
         recorded.get("plugin_configs") or {},
     )
-    return activation, recorded_mapper.get("preset") or "recorded"
+    return activation, record.get("preset") or "recorded"
 
 
 def _read_json(path: Path) -> dict[str, Any]:

@@ -17,6 +17,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import DuplicatePluginIdError
 
 from implementations.decision_cycle.catalog import selection_activation
@@ -39,6 +40,7 @@ from .bundles import (
 from .step_activations import refresh_release, stage_activation
 from .memory_report import last_plugin_state, memory_summary
 from .paths import ROOT, display_path, safe_path_part
+from .perception_runs import read_run_manifest, recorded_selection, selection_config
 from .runtime_view import RuntimeViewServer
 from .physical_observation import (
     fetch_autonomy_status,
@@ -49,7 +51,7 @@ from .physical_observation import (
 )
 from .streaming import _publish_physical_view
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
-from .workbench_frames import default_mapper, run_frame
+from .workbench_frames import run_frame
 from .workbench_source import SourceValidationError, normalize_image_directory, normalize_image_file
 
 
@@ -181,6 +183,7 @@ def get_vehicle_memory_info(
         "vehicle_id": vehicle_id,
         "activation": {
             "path": display_path(activation_path),
+            "preset": activation.metadata.get("preset"),
             "plugins": list(manager.selected_ids),
             "available_plugins": sorted(item.plugin_id for item in available),
             "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
@@ -226,7 +229,14 @@ def inspect_memory(
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read memory inspect source: {exc}")
     try:
-        mapper = default_mapper()
+        # A recorded run replays under the perception selection it was recorded with.
+        recorded = recorded_selection(read_run_manifest(path)) if path.is_dir() else None
+        if recorded is not None:
+            perception, perception_preset = recorded
+        else:
+            perception = selection_activation("perception")
+            perception_preset = perception.metadata["preset"]
+        mapper = PerceptionRunner.from_activation(perception)
         memory_step = MemoryRunner.from_activation(activation)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
@@ -278,6 +288,7 @@ def inspect_memory(
             "source_id": image_source.source_id,
             "frame_count": len(frames),
         },
+        "perception": {"preset": perception_preset, "config": selection_config(perception)},
         "memory": {"preset": activation.metadata["preset"], "plugins": list(activation.plugins)},
         "frames": frames,
         "final": memory_step.report(),
@@ -343,6 +354,7 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
         "Memory inspect",
         "--------------",
         f"Source: {source['path']} ({source['frame_count']} frames)",
+        f"Perception: {report['perception']['preset']} ({', '.join(report['perception']['config']['plugins'])})",
         f"Memory: {report['memory']['preset']} ({', '.join(report['memory']['plugins'])})",
         "",
         "Frame  Plugin  Health  Records  Epoch  Observation  Replacement",
@@ -1172,17 +1184,10 @@ def assess_chase_memory_worker_liveness(
 
 def _format_memory_info(payload: dict[str, Any]) -> str:
     activation = payload["activation"]
-    bounds = activation.get("bounds") if isinstance(activation.get("bounds"), dict) else {}
-    plugins = ", ".join(activation.get("plugins", [])) or "none"
-    lines = [f"Memory: {payload['vehicle_id']} -> {plugins}"]
+    lines = [f"Memory: {payload['vehicle_id']} -> {activation.get('preset') or 'unknown'}"]
     lines.extend(
         [
             f"Activation: {activation['path']}",
-            (
-                f"Bounds: max_records={bounds.get('max_records')} "
-                f"max_age_ms={bounds.get('max_age_ms')} "
-                f"eviction={bounds.get('eviction_policy')}"
-            ),
             f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
             f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
             "Lifecycle: update / reset / status",

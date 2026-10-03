@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from dataclasses import replace
@@ -11,8 +12,9 @@ import cv2
 import numpy as np
 
 from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
-from cli.automa_cli import memory
+from cli.automa_cli import memory, perception_runs
 from cli.automa_cli.memory import inspect_memory
+from cli.automa_cli.perception_runs import inspect_perception
 from tests.support.cli_runner import run_automa
 
 SUMMARY_KEYS = {"plugin_id", "health", "record_count", "epoch_id"}
@@ -116,6 +118,41 @@ class MemoryInspectTests(unittest.TestCase):
         )
         report = self.inspect(run)
         self.assertEqual([item["timestamp_ms"] for item in report["frames"]], [5000, 5400])
+
+    def record_perception_run(self, plugins: list[str]) -> Path:
+        # Perception stamps a frame with its file's mtime; give each its own millisecond.
+        for index, image in enumerate(sorted(self.frames.glob("*.png"))):
+            os.utime(image, (1_000 + index, 1_000 + index))
+        perception_root = self.tmp / "perception-runs"
+        with patch.object(perception_runs, "INSPECT_ROOT", perception_root):
+            recorded = inspect_perception(self.frames, plugins=plugins, record=True, json_output=True)
+        self.assertEqual(recorded.exit_code, 0, recorded.message)
+        return perception_root / json.loads(recorded.message)["run_id"]
+
+    def test_a_recorded_run_replays_under_its_own_perception_selection(self) -> None:
+        plain = self.inspect()
+        self.assertEqual(plain["perception"]["config"]["plugins"], ["frame", "floor_plane"])
+        self.assertGreater(plain["frames"][0]["observation"]["things"], 0)
+
+        run = self.record_perception_run(["frame"])
+        report = self.inspect(run)
+        self.assertEqual(report["perception"]["config"]["plugins"], ["frame"])
+        self.assertEqual(report["perception"]["preset"], json.loads((run / "run.json").read_text())["mapper"]["preset"])
+        self.assertLess(
+            report["frames"][0]["observation"]["things"], plain["frames"][0]["observation"]["things"]
+        )
+        self.assertIn("Perception: ", inspect_memory(str(run)).message)
+
+    def test_a_recorded_inspection_keeps_the_perception_selection_it_replayed_under(self) -> None:
+        first = self.inspect(self.record_perception_run(["frame"]), record=True)
+        again = self.inspect(first["run_dir"])
+        self.assertEqual(again["perception"], first["perception"])
+        self.assertEqual(again["perception"]["config"]["plugins"], ["frame"])
+
+    def test_a_perception_block_without_a_config_is_not_a_recorded_selection(self) -> None:
+        for manifest in ({}, {"perception": {"preset": "x"}}, {"perception": "x"}, {"mapper": "x"}):
+            with self.subTest(manifest=manifest):
+                self.assertIsNone(perception_runs.recorded_selection(manifest))
 
     def test_a_single_image_is_a_one_frame_source(self) -> None:
         report = self.inspect(self.frames / "frame_0.png")

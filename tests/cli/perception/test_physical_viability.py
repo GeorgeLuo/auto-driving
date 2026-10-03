@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.physical_viability import run_physical_viability_measurement
+from cli.automa_cli.physical_viability import run_perception_viability_measurement
 
 
 class PhysicalViabilityTests(unittest.TestCase):
@@ -53,7 +53,7 @@ class PhysicalViabilityTests(unittest.TestCase):
                 "cli.automa_cli.physical_viability.find_vehicle_by_id",
                 return_value=(vehicle, None),
             ), patch(
-                "cli.automa_cli.physical_viability.VIABILITY_OUTPUT_ROOT",
+                "cli.automa_cli.physical_viability.PERCEPTION_VIABILITY_OUTPUT_ROOT",
                 out_root,
             ), patch(
                 "cli.automa_cli.physical_viability.time.monotonic",
@@ -62,7 +62,7 @@ class PhysicalViabilityTests(unittest.TestCase):
                 "cli.automa_cli.physical_viability.time.sleep",
                 side_effect=fake_sleep,
             ):
-                result = run_physical_viability_measurement(
+                result = run_perception_viability_measurement(
                     vehicle_id="piracer",
                     duration_s=1.0,
                     sample_period_s=0.125,
@@ -92,7 +92,7 @@ class PhysicalViabilityTests(unittest.TestCase):
                 "cli.automa_cli.physical_viability.find_vehicle_by_id",
                 return_value=(vehicle, None),
             ):
-                results[provider] = run_physical_viability_measurement(
+                results[provider] = run_perception_viability_measurement(
                     vehicle_id="v", duration_s=1.0, record=False, json_output=True
                 )
         self.assertEqual(results["chase-sim"].exit_code, 0)

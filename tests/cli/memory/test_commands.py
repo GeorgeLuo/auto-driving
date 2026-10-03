@@ -65,6 +65,17 @@ class MemoryCommandTests(unittest.TestCase):
             self.assertNotIn("plugin_id", info_payload["activation"])
             # Retention bounds belong to the plugin, not the activation.
             self.assertNotIn("bounds", info_payload["activation"])
+            self.assertEqual(info_payload["activation"]["preset"], update_payload["preset"])
+
+    def test_info_text_names_the_staged_preset_like_perception_info(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            run_automa("vehicles", "update", "memory", "--id", "test-car", runtime_root=runtime_root)
+            info = run_automa("vehicles", "info", "memory", "--id", "test-car", runtime_root=runtime_root)
+            lines = info.stdout.splitlines()
+            self.assertEqual(lines[0], "Memory: test-car -> recency_ledger")
+            self.assertIn("Enabled plugins: bounded_evidence", lines)
+            self.assertNotIn("Bounds:", info.stdout)
 
     def test_info_lists_staged_plugins_without_loading_unselected_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -29,7 +29,7 @@ from .step_hosting import load_staged_runner
 RUNNER_SPEC = "autonomy.decision_cycle.perception.runner:PerceptionRunner"
 
 
-def _selection(activation) -> dict[str, Any]:
+def selection_config(activation) -> dict[str, Any]:
     """The perception selection a recorded run names as its runner config."""
 
     return {
@@ -146,7 +146,7 @@ def _inspect_vehicle(
         mapper_record = {
             "preset": activation.metadata.get("preset"),
             "spec": RUNNER_SPEC,
-            "config": _selection(activation),
+            "config": selection_config(activation),
             "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
             "bundle_refreshed": prepared_runtime["refreshed"],
         }
@@ -249,9 +249,7 @@ def _inspect_images(
         source_name = source.stem
     elif source.is_dir():
         source_dir = source
-        source_manifest = _read_json(source_dir / "run.json")
-        if not source_manifest:
-            source_manifest = _read_json(source_dir / "report.json")
+        source_manifest = read_run_manifest(source_dir)
         image_paths = _source_image_paths(source_dir, source_manifest)
         source_name = source_dir.name
     else:
@@ -260,24 +258,17 @@ def _inspect_images(
         return CommandResult(2, f"No applicable images found under {source}")
 
     try:
-        recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
+        recorded = recorded_selection(source_manifest)
         if plugins or preset is not None:
             activation = selection_activation("perception", preset=preset, plugins=plugins)
             preset = activation.metadata["preset"]
-        elif isinstance(recorded_mapper, dict):
-            recorded = dict(recorded_mapper.get("config") or {})
-            activation = step_activation(
-                "perception",
-                recorded.get("plugins") or [],
-                recorded.get("plugin_specs") or {},
-                recorded.get("plugin_configs") or {},
-            )
-            preset = recorded_mapper.get("preset") or "recorded"
+        elif recorded is not None:
+            activation, preset = recorded
         else:
             activation = selection_activation("perception")
             preset = activation.metadata["preset"]
         mapper = PerceptionRunner.from_activation(activation)
-        report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}
+        report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": selection_config(activation)}
         record_root = INSPECT_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
@@ -656,6 +647,41 @@ def _resolve_manifest_image(source_dir: Path, value: str) -> Path | None:
         if resolved.is_file():
             return resolved
     return None
+
+
+def read_run_manifest(source_dir: Path) -> dict[str, Any]:
+    """A recorded run's own manifest (``run.json``, else ``report.json``), or ``{}``."""
+
+    return _read_json(source_dir / "run.json") or _read_json(source_dir / "report.json")
+
+
+def recorded_selection(manifest: dict[str, Any]) -> tuple[Any, str] | None:
+    """The perception activation and preset a recorded run names, or ``None``.
+
+    A perception run records it as ``mapper``; a memory inspection as
+    ``perception``, which must carry a ``config`` to count.
+    """
+
+    if not isinstance(manifest, dict):
+        return None
+    mapper = manifest.get("mapper")
+    if isinstance(mapper, dict):
+        return _recorded_activation(mapper)
+    perception = manifest.get("perception")
+    if isinstance(perception, dict) and isinstance(perception.get("config"), dict):
+        return _recorded_activation(perception)
+    return None
+
+
+def _recorded_activation(record: dict[str, Any]) -> tuple[Any, str]:
+    recorded = dict(record.get("config") or {})
+    activation = step_activation(
+        "perception",
+        recorded.get("plugins") or [],
+        recorded.get("plugin_specs") or {},
+        recorded.get("plugin_configs") or {},
+    )
+    return activation, record.get("preset") or "recorded"
 
 
 def _read_json(path: Path) -> dict[str, Any]:

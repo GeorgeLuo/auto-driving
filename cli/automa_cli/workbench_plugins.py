@@ -88,18 +88,18 @@ class PluginCatalog:
     def normalize_selection(self, active_ids: Sequence[str] | None) -> tuple[str, ...]:
         """Validate ids while preserving the given order.
 
-        An empty selection is raw-capture mode: replay still displays frames,
-        but no perception plugin runs.
+        An empty selection runs no plugin of this catalog's step; replay still
+        displays frames. For perception that is raw-capture mode.
         """
 
         raw_values = [] if active_ids is None else list(active_ids)
         if any(not isinstance(value, str) for value in raw_values):
-            raise PluginCatalogError("active_plugin_ids must contain non-empty strings")
+            raise PluginCatalogError(f"{self.step} plugin ids must contain non-empty strings")
         values = [value.strip() for value in raw_values]
         if any(not value for value in values):
-            raise PluginCatalogError("active_plugin_ids must contain non-empty strings")
+            raise PluginCatalogError(f"{self.step} plugin ids must contain non-empty strings")
         if len(values) != len(set(values)):
-            raise PluginCatalogError("active_plugin_ids must not contain duplicates")
+            raise PluginCatalogError(f"{self.step} plugin ids must not contain duplicates")
         return self.activation(values).plugins
 
     def activation(self, active_ids: Sequence[str]) -> StepActivation:

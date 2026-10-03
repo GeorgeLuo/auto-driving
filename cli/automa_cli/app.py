@@ -31,7 +31,6 @@ from .memory import (
     stream_vehicle_memory,
     update_vehicle_memory,
 )
-from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
@@ -55,7 +54,10 @@ from .perception_runs import (
 from .workbench import run_workbench_replay
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
-from .physical_viability import run_physical_viability_measurement
+from .physical_viability import (
+    run_memory_viability_measurement,
+    run_physical_viability_measurement,
+)
 from .streaming import stream_vehicle_perception
 from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
@@ -646,7 +648,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_control = vehicle_commands.add_parser(
         "memory",
-        help="Operate vehicle memory (inspect, reset, check).",
+        help="Operate vehicle memory (inspect, viability, reset).",
     )
     memory_control.set_defaults(handler=_handle_vehicles_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -731,71 +733,51 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable report.",
     )
     memory_inspect.set_defaults(handler=_handle_vehicles_memory_inspect)
-    memory_check = memory_commands.add_parser(
-        "check",
-        help="Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
+    memory_viability = memory_commands.add_parser(
+        "viability",
+        help="Health-check memory on a vehicle.",
         description=(
-            "Evaluate memory lifecycle gates: present, dropout, max-age expiry, and reset. "
-            "Chase (live automation) scores chaser-reference identity/alignment, retained-prior "
-            "origin, max-age expiry without reset, observe-only control, and reset. "
-            "Offline ids use a phase script. PiCar scores the live onboard step from "
-            "publication.memory (no forced dropout, no local ephemeral reducer), waits "
-            "for live age expiry, and POSTs onboard reset. Never moves the car. "
-            "Pass --record for a bounded report, source frames, and extract."
+            "Health-check memory on a vehicle. A PiCar's live memory step is polled for a "
+            "bounded interval (default 60s) to record update cadence, update duration, "
+            "failures, health, and epoch stability. "
+            "The simulator has no probe yet and passes automatically."
         ),
     )
-    memory_check.add_argument(
+    memory_viability.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id (Chase staging id or discovered PiCar).",
+        help="Physical vehicle id from `automa vehicles active` (picar only).",
     )
-    memory_check.add_argument(
-        "--plugin",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged memory plugin (default: bounded_evidence check bounds).",
+    memory_viability.add_argument(
+        "--duration-s",
+        type=float,
+        default=60.0,
+        help="Measurement window in seconds (default: 60).",
     )
-    memory_check.add_argument(
-        "--record",
-        action="store_true",
-        help="Opt-in: write bounded report + origin_extract.html (and Pi frames).",
+    memory_viability.add_argument(
+        "--sample-period-s",
+        type=float,
+        default=0.25,
+        help="Status poll period in seconds (default: 0.25).",
     )
-    memory_check.add_argument(
-        "--auto",
-        action="store_true",
-        help="Pi only: capture without Enter prompts (for automated tests).",
-    )
-    memory_check.add_argument(
+    memory_viability.add_argument(
         "--timeout-s",
         type=float,
         default=3.0,
-        help="HTTP/probe timeout seconds (Pi publication fetch; Chase probe/reset wait).",
+        help="Per-request timeout in seconds (default: 3).",
     )
-    memory_check.add_argument(
-        "--fresh-timeout-s",
-        type=float,
-        default=12.0,
-        help=(
-            "Seconds to wait for fresh frames: Pi observation frame id; "
-            "Chase automation sample collection."
-        ),
+    memory_viability.add_argument(
+        "--no-record",
+        action="store_true",
+        help="Do not write a viability report directory.",
     )
-    memory_check.add_argument(
-        "--expiry-timeout-s",
-        type=float,
-        default=None,
-        help=(
-            "Optional max wait for max-age expiry phase (Pi and Chase). "
-            "Default is configured max_age_ms plus a small grace window."
-        ),
-    )
-    memory_check.add_argument(
+    memory_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the full machine-readable check report.",
+        help="Print the machine-readable viability report.",
     )
-    memory_check.set_defaults(handler=_handle_vehicles_memory_check)
+    memory_viability.set_defaults(handler=_handle_vehicles_memory_viability)
 
     workbench = vehicle_commands.add_parser(
         "workbench",
@@ -1470,7 +1452,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
-                "- memory       operate memory (inspect, reset, lifecycle check)",
+                "- memory       operate memory (inspect, viability, reset)",
                 "- decision     offline decision apply/replay (stage via update decision)",
                 (
                     "- workbench    replay images through perception, memory, and "
@@ -1925,8 +1907,8 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
                 "automa vehicles memory commands",
                 "",
                 "- inspect what a memory selection retains for an image source, frame by frame; optional --record",
+                "- viability  health-check memory (PiCar update cadence/failures/epoch; simulator stub)",
                 "- reset   clear live retained evidence; start a new empty epoch",
-                "- check   present/dropout/expiry/reset gates (Chase offline or Pi live); optional --record",
                 "- help    show this summary",
                 "",
                 "Stage an implementation with: ./cli/automa vehicles update memory --id <vehicle>",
@@ -1966,17 +1948,15 @@ def _handle_vehicles_memory_inspect(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
-    result = run_vehicle_memory_check(
+def _handle_vehicles_memory_viability(args: argparse.Namespace) -> int:
+    result = run_memory_viability_measurement(
         vehicle_id=args.vehicle_id,
-        plugin_id=args.plugin,
-        record=args.record,
+        duration_s=args.duration_s,
+        sample_period_s=args.sample_period_s,
+        timeout_s=args.timeout_s,
+        record=not args.no_record,
         json_output=args.json,
         output=None if args.json else sys.stdout,
-        auto=bool(getattr(args, "auto", False)),
-        timeout_s=float(getattr(args, "timeout_s", 3.0)),
-        fresh_timeout_s=float(getattr(args, "fresh_timeout_s", 12.0)),
-        expiry_timeout_s=getattr(args, "expiry_timeout_s", None),
     )
     if result.message:
         print(result.message)

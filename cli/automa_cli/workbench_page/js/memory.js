@@ -78,7 +78,7 @@ function renderMemory() {
       state.failure_boundary === "memory";
     memoryListSignature = "";
     elements.memoryRecords.textContent = "";
-    setText("memoryHealth", updateFailed ? "update failed" : "no snapshot");
+    setText("memoryHealth", updateFailed ? "update failed" : "no frame yet");
     setText("memoryEpoch", null);
     setText("memoryCount", null);
     setText("memoryPolicy", null);

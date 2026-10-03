@@ -1,29 +1,25 @@
-"""Stage, inspect, stream, reset, and replay vehicle memory."""
+"""Stage, inspect, stream and reset vehicle memory."""
 
 from __future__ import annotations
 
-import hashlib
-import html
 import json
 import os
-import stat as stat_mod
+import shutil
 import time
-from copy import deepcopy
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
+from autonomy.decision_cycle.activation import read_step_activation
+from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.plugins import DuplicatePluginIdError
 
-from implementations.decision_cycle.catalog import (
-    packaged_activation,
-    plugin_list_preset,
-    selection_activation,
-)
+from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.memory.presets import (
     MEMORY_PRESETS,
     available_memory_preset_ids,
@@ -40,8 +36,7 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .step_activations import refresh_release, replace_metadata, stage_activation
-from .step_hosting import load_staged_runner
+from .step_activations import refresh_release, stage_activation
 from .memory_report import last_plugin_state, memory_summary
 from .paths import ROOT, display_path, safe_path_part
 from .runtime_view import RuntimeViewServer
@@ -54,33 +49,15 @@ from .physical_observation import (
 )
 from .streaming import _publish_physical_view
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
+from .workbench_frames import default_mapper, run_frame
+from .workbench_source import SourceValidationError, normalize_image_directory, normalize_image_file
 
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
-MEMORY_OBSERVATION_SEQUENCE_SCHEMA = "automa_memory_observation_sequence_v0"
-MEMORY_REPLAY_RESULT_SCHEMA = "vehicle_memory_replay_v0"
-MEMORY_REPLAY_RECORD_SCHEMA = "automa_memory_replay_record_v0"
-# Opt-in recording is intentionally small and explicit.
-MEMORY_REPLAY_RECORD_ARTIFACTS = (
-    "manifest.json",
-    "result.json",
-    "sequence.json",
-    "final_memory.json",
-    "digest.txt",
-    "origin_extract.html",
+INSPECT_ROOT = Path(
+    os.environ.get("AUTOMA_MEMORY_INSPECT_ROOT", ROOT / "runtime" / "memory-inspections")
 )
-# Enforceable ceilings for opt-in replay records (not live host history).
-MEMORY_REPLAY_MAX_FRAMES = int(os.environ.get("AUTOMA_MEMORY_REPLAY_MAX_FRAMES", "256"))
-MEMORY_REPLAY_MAX_RECORD_BYTES = int(
-    os.environ.get("AUTOMA_MEMORY_REPLAY_MAX_RECORD_BYTES", str(8 * 1024 * 1024))
-)
-# Preflight ceiling for monolithic sequence JSON before full parse.
-MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES = int(
-    os.environ.get(
-        "AUTOMA_MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES",
-        str(32 * 1024 * 1024),
-    )
-)
+MEMORY_INSPECT_SCHEMA = "memory_inspect_v0"
 # Chase memory probe treats workers older than this as stale.
 CHASE_MEMORY_PROBE_MAX_AGE_MS = int(
     os.environ.get("AUTOMA_CHASE_MEMORY_PROBE_MAX_AGE_MS", "30000")
@@ -89,17 +66,6 @@ CHASE_MEMORY_PROBE_MAX_AGE_MS = int(
 CHASE_MEMORY_PROBE_CLOCK_SKEW_MS = int(
     os.environ.get("AUTOMA_CHASE_MEMORY_PROBE_CLOCK_SKEW_MS", "2000")
 )
-
-
-def memory_replay_output_root() -> Path:
-    """Resolve opt-in replay record root (env-overridable at call time)."""
-
-    return Path(
-        os.environ.get(
-            "AUTOMA_MEMORY_REPLAY_OUTPUT_ROOT",
-            str(ROOT / "lab" / "runs" / "memory-replay"),
-        )
-    )
 
 
 @dataclass(frozen=True)
@@ -118,21 +84,9 @@ def update_vehicle_memory(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    if preset is not None and plugins:
-        return CommandResult(2, "Choose either --preset or --plugin, not both.")
-    if preset is not None and preset not in MEMORY_PRESETS:
-        available = ", ".join(available_memory_preset_ids())
-        return CommandResult(
-            2,
-            f"Unknown memory preset {preset!r}. Available presets: {available}.",
-        )
-    try:
-        activation = selection_activation("memory", preset=preset, plugins=plugins or None)
-    except DuplicatePluginIdError:
-        # A packaged-catalog clash is not a bad selection; the CLI reports it.
-        raise
-    except ValueError as exc:
-        return CommandResult(2, str(exc))
+    activation, error = _selected_memory(preset, plugins)
+    if error is not None:
+        return error
 
     selected = list(activation.plugins)
     stream = output if verbose else None
@@ -169,68 +123,6 @@ def update_vehicle_memory(
             ]
         ),
     )
-
-
-def set_vehicle_memory_plugin(
-    *,
-    vehicle_id: str,
-    plugin_id: str,
-    enabled: bool,
-    json_output: bool = False,
-) -> CommandResult:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    try:
-        activation = read_step_activation(activation_path, "memory")
-        manager = activation.plugin_manager()
-        available = sorted(manager.available_ids)
-        if plugin_id not in available:
-            return CommandResult(2, f"Unknown memory plugin {plugin_id!r}. Available: {', '.join(available)}.")
-        before = list(manager.selected_ids)
-        if enabled:
-            manager.add(plugin_id)
-        else:
-            manager.remove(plugin_id)
-        after = list(manager.selected_ids)
-        changed = after != before
-        if changed:
-            metadata = deepcopy(dict(activation.metadata))
-            # The staged plugins no longer match the preset they were staged from.
-            metadata["preset"] = plugin_list_preset("memory", after)
-            candidate = replace_metadata(
-                type(activation)(
-                    step="memory",
-                    plugins=tuple(after),
-                    plugin_specs=activation.plugin_specs,
-                    plugin_configs=activation.plugin_configs,
-                ),
-                metadata,
-            )
-            # Validate the whole candidate selection before publishing the edit.
-            load_staged_runner(candidate)
-            write_step_activation(activation_path, candidate)
-    except Exception as exc:  # Plugin construction is a CLI preflight boundary.
-        return CommandResult(2, f"Could not change memory plugins: {exc}")
-    payload = {
-        "schema": "vehicle_memory_plugin_update_v0",
-        "vehicle_id": vehicle_id,
-        "activation": display_path(activation_path),
-        "plugin": plugin_id,
-        "enabled": enabled,
-        "changed": changed,
-        "plugins_before": before,
-        "plugins_after": after,
-        "available_plugins": available,
-    }
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    action = "enabled" if enabled else "disabled"
-    return CommandResult(0, "\n".join([
-        f"{'Updated' if changed else 'Unchanged'}: {plugin_id} {action} for {vehicle_id}",
-        f"Activation: {display_path(activation_path)}",
-        f"Enabled plugins: {', '.join(after) or 'none'}",
-        "A running local automation applies this change on its next memory cycle.",
-    ]))
 
 
 def ensure_vehicle_memory_activation(
@@ -310,808 +202,172 @@ def get_vehicle_memory_info(
     return CommandResult(0, _format_memory_info(payload))
 
 
-def replay_vehicle_memory(
-    *,
-    vehicle_id: str,
-    sequence: str | Path,
-    plugin_id: str | None = None,
-    json_output: bool = False,
-    verify_twice: bool = True,
-    record: bool = False,
-    output_root: Path | None = None,
-) -> CommandResult:
-    """Replay a fixed observation sequence through the staged memory activation.
-
-    Offline and process-local: does not talk to the live host, does not write
-    history by default, and reports a stable end-state digest for comparison.
-    Pass ``record=True`` for an explicit bounded run directory with a frozen
-    origin extract (key → value → source frame/observation).
-    """
-
-    sequence_path = Path(sequence).expanduser()
-    try:
-        frames = load_memory_observation_sequence(
-            sequence_path,
-            max_frames=MEMORY_REPLAY_MAX_FRAMES,
-            max_sequence_file_bytes=MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES,
-        )
-    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return CommandResult(2, f"Could not load observation sequence {sequence_path}: {exc}")
-    if not frames:
-        return CommandResult(2, f"Observation sequence {sequence_path} contains no frames.")
-
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    step: MemoryRunner | None = None
-    activation_source: str
-
-    if plugin_id is not None:
-        try:
-            ephemeral = packaged_activation("memory", [plugin_id])
-        except DuplicatePluginIdError:
-            # A packaged-catalog clash is not a bad selection; the CLI reports it.
-            raise
-        except ValueError as exc:
-            return CommandResult(2, str(exc))
-        step = MemoryRunner.from_activation(ephemeral)
-        activation_source = f"ephemeral:{plugin_id}"
-        run_a = _run_memory_sequence(step=step, frames=frames)
-        if verify_twice:
-            step_b = MemoryRunner.from_activation(ephemeral)
-            run_b = _run_memory_sequence(step=step_b, frames=frames)
-        else:
-            run_b = run_a
-    else:
-        if not activation_path.exists():
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"No active memory implementation found for {vehicle_id!r}.",
-                        f"Expected activation: {display_path(activation_path)}",
-                        "Run: ./cli/automa vehicles update memory --id <vehicle_id>",
-                        "Or pass --plugin for an ephemeral offline replay.",
-                    ]
-                ),
-            )
-        try:
-            step = load_staged_runner(read_step_activation(activation_path, "memory"))
-        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
-            return CommandResult(
-                2,
-                f"Could not load memory activation {display_path(activation_path)}: {exc}",
-            )
-        activation_source = display_path(activation_path)
-        run_a = _run_memory_sequence(step=step, frames=frames)
-        if verify_twice:
-            step_b = load_staged_runner(read_step_activation(activation_path, "memory"))
-            run_b = _run_memory_sequence(step=step_b, frames=frames)
-        else:
-            run_b = run_a
-
-    deterministic = run_a["digest"] == run_b["digest"]
-    payload: dict[str, Any] = {
-        "schema": MEMORY_REPLAY_RESULT_SCHEMA,
-        "vehicle_id": vehicle_id,
-        "sequence": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
-        "frame_count": len(frames),
-        "plugin_ids": list(step.plugin_ids),
-        "activation": activation_source,
-        "digest": run_a["digest"],
-        "deterministic": deterministic,
-        "final": run_a["final"],
-        "per_frame": run_a["per_frame"],
-        "second_pass_digest": run_b["digest"] if verify_twice else None,
-        "recorded": False,
-        "record_dir": None,
-        "origin_extract": None,
-    }
-    if not deterministic:
-        if json_output:
-            return CommandResult(2, json.dumps(payload, indent=2, sort_keys=True))
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Memory replay is non-deterministic for {vehicle_id}.",
-                    f"Digest pass 1: {run_a['digest']}",
-                    f"Digest pass 2: {run_b['digest']}",
-                ]
-            ),
-        )
-
-    if record:
-        try:
-            record_info = write_memory_replay_record(
-                vehicle_id=vehicle_id,
-                sequence_path=sequence_path,
-                frames=frames,
-                payload=payload,
-                output_root=output_root or memory_replay_output_root(),
-                max_frames=MEMORY_REPLAY_MAX_FRAMES,
-                max_record_bytes=MEMORY_REPLAY_MAX_RECORD_BYTES,
-            )
-        except (OSError, ValueError) as exc:
-            return CommandResult(2, f"Could not write memory replay record: {exc}")
-        payload["recorded"] = True
-        payload["record_dir"] = record_info["record_dir"]
-        payload["origin_extract"] = record_info["origin_extract"]
-        payload["record_manifest"] = record_info["manifest"]
-        payload["record_bounds"] = record_info["manifest"].get("bounds")
-
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    final = run_a["final"]
-    lines = [
-        f"Memory replay: {vehicle_id}",
-        f"Sequence: {payload['sequence']} ({len(frames)} frames)",
-        f"Plugins: {', '.join(step.plugin_ids)}",
-        f"Activation: {activation_source}",
-        f"Final health: {final.get('health')}  keys={final.get('record_count')}  epoch={final.get('epoch_id')}",
-        f"Digest: {run_a['digest']}",
-        "Deterministic: yes (two independent passes matched)",
-    ]
-    if record:
-        lines.append(f"Record: {payload['record_dir']}")
-        lines.append(f"Origin extract: {payload['origin_extract']}")
-    else:
-        lines.append("Record: disabled (pass --record to freeze a bounded origin extract)")
-    records = final.get("records") if isinstance(final.get("records"), list) else []
-    if records:
-        lines.append("Retained keys:")
-        for record_item in records[:12]:
-            if not isinstance(record_item, dict):
-                continue
-            lines.append(
-                f"  - {record_item.get('record_id')}  kind={record_item.get('kind')}  "
-                f"conf={record_item.get('confidence')}"
-            )
-        if len(records) > 12:
-            lines.append(f"  … {len(records) - 12} more")
-    return CommandResult(0, "\n".join(lines))
-
-
-def write_memory_replay_record(
-    *,
-    vehicle_id: str,
-    sequence_path: Path,
-    frames: list[dict[str, Any]],
-    payload: dict[str, Any],
-    output_root: Path,
-    max_frames: int = MEMORY_REPLAY_MAX_FRAMES,
-    max_record_bytes: int = MEMORY_REPLAY_MAX_RECORD_BYTES,
-) -> dict[str, Any]:
-    """Write an explicit, bounded memory-replay record with origin extract.
-
-    Default replay writes nothing. This path is opt-in only and never stores
-    live camera history; it freezes sequence observations beside retained keys.
-    Enforces configured frame-count and total artifact-byte ceilings.
-    """
-
-    frame_count = len(frames)
-    if frame_count > int(max_frames):
-        raise ValueError(
-            f"record refuses {frame_count} frames; max_frames={int(max_frames)}"
-        )
-
-    run_id = f"{safe_path_part(vehicle_id)}-{time.strftime('%Y%m%d-%H%M%S')}"
-    record_dir = Path(output_root) / run_id
-    record_dir.mkdir(parents=True, exist_ok=False)
-
-    try:
-        final = payload.get("final") if isinstance(payload.get("final"), dict) else {}
-        sequence_payload = {
-            "schema": MEMORY_OBSERVATION_SEQUENCE_SCHEMA,
-            "source": (
-                display_path(sequence_path.resolve())
-                if sequence_path.exists()
-                else str(sequence_path)
-            ),
-            "frames": frames,
-        }
-        origin_rows = build_memory_origin_rows(final=final, frames=frames)
-        extract_html = render_memory_origin_extract_html(
-            vehicle_id=vehicle_id,
-            payload=payload,
-            frames=frames,
-            origin_rows=origin_rows,
-        )
-
-        (record_dir / "sequence.json").write_text(
-            json.dumps(sequence_payload, indent=2, sort_keys=True, default=str),
-            encoding="utf-8",
-        )
-        (record_dir / "final_memory.json").write_text(
-            json.dumps(final, indent=2, sort_keys=True, default=str),
-            encoding="utf-8",
-        )
-        (record_dir / "digest.txt").write_text(
-            f"{payload.get('digest')}\n", encoding="utf-8"
-        )
-        extract_path = record_dir / "origin_extract.html"
-        extract_path.write_text(extract_html, encoding="utf-8")
-
-        total_bytes = _directory_byte_size(record_dir)
-        # Early reject only when already over the hard ceiling; manifest/result
-        # growth is enforced by the authoritative stabilize measurement.
-        if total_bytes > int(max_record_bytes):
-            raise ValueError(
-                f"record artifacts are {total_bytes} bytes before manifest/result; "
-                f"max_record_bytes={int(max_record_bytes)}"
-            )
-
-        manifest = {
-            "schema": MEMORY_REPLAY_RECORD_SCHEMA,
-            "run_id": run_id,
-            "vehicle_id": vehicle_id,
-            "created_at_ms": int(time.time() * 1000),
-            "opt_in": True,
-            "writes_default_history": False,
-            "plugin_ids": payload.get("plugin_ids"),
-            "digest": payload.get("digest"),
-            "frame_count": frame_count,
-            "bounds": {
-                "artifacts": list(MEMORY_REPLAY_RECORD_ARTIFACTS),
-                "max_frames": int(max_frames),
-                "max_record_bytes": int(max_record_bytes),
-                "frames_in_record": frame_count,
-                "includes_raw_camera_images": False,
-                "includes_live_host_state": False,
-                "retained_evidence_labeled_as": "retained_not_current",
-            },
-            "artifacts": {
-                name: display_path(record_dir / name)
-                for name in MEMORY_REPLAY_RECORD_ARTIFACTS
-            },
-            "origin_row_count": len(origin_rows),
-            "notes": [
-                "Recording is disabled unless --record is passed.",
-                "Retained image-space geometry is attributed to origin.frame_id only.",
-                "This extract does not treat stale coordinates as current camera geometry.",
-                f"Frame count is capped at {int(max_frames)}; total artifact bytes at {int(max_record_bytes)}.",
-            ],
-        }
-        # Stabilize the self-referential bytes_in_record field and rewrite both
-        # manifest and result so nested bounds match the final on-disk total.
-        total_bytes = _stabilize_record_byte_count(
-            record_dir=record_dir,
-            manifest=manifest,
-            payload=payload,
-            extract_path=extract_path,
-            origin_rows=origin_rows,
-            max_record_bytes=int(max_record_bytes),
-        )
-        manifest["bounds"]["bytes_in_record"] = total_bytes
-    except Exception as exc:
-        # Fail closed: do not leave a partial oversize/invalid record tree.
-        try:
-            _remove_tree_strict(record_dir)
-        except OSError as cleanup_exc:
-            raise ValueError(
-                f"{exc}; also failed to clean partial record at {record_dir}: {cleanup_exc}"
-            ) from cleanup_exc
-        raise
-
-    return {
-        "record_dir": display_path(record_dir),
-        "origin_extract": display_path(extract_path),
-        "manifest": manifest,
-    }
-
-
-def _stabilize_record_byte_count(
-    *,
-    record_dir: Path,
-    manifest: dict[str, Any],
-    payload: dict[str, Any],
-    extract_path: Path,
-    origin_rows: list[dict[str, Any]],
-    max_record_bytes: int,
-) -> int:
-    """Rewrite manifest/result until bytes_in_record matches on-disk total."""
-
-    total_bytes = 0
-    for _ in range(8):
-        # Provisional size for this iteration; write manifest + result, then measure.
-        total_bytes = _directory_byte_size(record_dir)
-        # Estimate growth from rewriting both files with the size field present.
-        manifest["bounds"]["bytes_in_record"] = total_bytes
-        result_payload = {
-            **payload,
-            "recorded": True,
-            "record_dir": display_path(record_dir),
-            "origin_extract": display_path(extract_path),
-            "record_manifest": manifest,
-            "origin_rows": origin_rows,
-            "record_bounds": manifest.get("bounds"),
-        }
-        (record_dir / "manifest.json").write_text(
-            json.dumps(manifest, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        (record_dir / "result.json").write_text(
-            json.dumps(result_payload, indent=2, sort_keys=True, default=str),
-            encoding="utf-8",
-        )
-        measured = _directory_byte_size(record_dir)
-        if measured > max_record_bytes:
-            raise ValueError(
-                f"record total size is {measured} bytes; "
-                f"max_record_bytes={max_record_bytes}"
-            )
-        if measured == total_bytes:
-            return measured
-        # Decimal-digit boundary: update and rewrite until stable.
-        total_bytes = measured
-        manifest["bounds"]["bytes_in_record"] = measured
-    # Final verification after loop.
-    measured = _directory_byte_size(record_dir)
-    if measured > max_record_bytes:
-        raise ValueError(
-            f"record total size is {measured} bytes; max_record_bytes={max_record_bytes}"
-        )
-    if manifest["bounds"].get("bytes_in_record") != measured:
-        raise ValueError(
-            f"could not stabilize bytes_in_record (declared "
-            f"{manifest['bounds'].get('bytes_in_record')} vs on-disk {measured})"
-        )
-    return measured
-
-
-def _directory_byte_size(root: Path) -> int:
-    """Sum regular-file sizes under root; fail closed if any artifact cannot be measured."""
-
-    total = 0
-    for path in root.rglob("*"):
-        try:
-            st = path.lstat()
-        except OSError as exc:
-            raise OSError(
-                f"could not measure record artifact {path}: {exc}"
-            ) from exc
-        # Count regular files only; directories are structure, not payload bytes.
-        if stat_mod.S_ISREG(st.st_mode):
-            total += st.st_size
-        elif stat_mod.S_ISLNK(st.st_mode):
-            # Symlinks are unexpected in a record tree; still measure the link node.
-            total += st.st_size
-    return total
-
-
-def _remove_tree_strict(path: Path) -> None:
-    """Remove a record directory and fail if anything remains."""
-
-    if not path.exists():
-        return
-    errors: list[str] = []
-    for child in sorted(path.rglob("*"), reverse=True):
-        try:
-            if child.is_file() or child.is_symlink():
-                child.unlink()
-            elif child.is_dir():
-                child.rmdir()
-        except OSError as exc:
-            errors.append(f"{child}: {exc}")
-    try:
-        if path.exists():
-            path.rmdir()
-    except OSError as exc:
-        errors.append(f"{path}: {exc}")
-    if path.exists() or errors:
-        detail = "; ".join(errors) if errors else "path still exists"
-        raise OSError(f"failed to remove partial record tree {path}: {detail}")
-
-
-def build_memory_origin_rows(
-    *,
-    final: dict[str, Any],
-    frames: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Pair each retained key with its source sequence frame observation."""
-
-    frames_by_id = {str(frame.get("frame_id")): frame for frame in frames}
-    records = final.get("records") if isinstance(final.get("records"), list) else []
-    rows: list[dict[str, Any]] = []
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        origin = record.get("origin") if isinstance(record.get("origin"), dict) else {}
-        frame_id = str(origin.get("frame_id") or "")
-        source_frame = frames_by_id.get(frame_id)
-        source_observation = (
-            source_frame.get("observation")
-            if isinstance(source_frame, dict) and isinstance(source_frame.get("observation"), dict)
-            else None
-        )
-        location = record.get("location") if isinstance(record.get("location"), dict) else {}
-        rows.append(
-            {
-                "key": record.get("record_id"),
-                "kind": record.get("kind"),
-                "label": record.get("label"),
-                "confidence": record.get("confidence"),
-                "retained_not_current": True,
-                "location": location,
-                "origin": {
-                    "frame_id": origin.get("frame_id"),
-                    "observation_id": origin.get("observation_id"),
-                    "observed_id": origin.get("observed_id"),
-                    "updated_at_ms": origin.get("updated_at_ms"),
-                    "source_plugin_id": origin.get("source_plugin_id"),
-                    "coordinate_frame": origin.get("coordinate_frame"),
-                },
-                "source_frame_present_in_sequence": source_frame is not None,
-                "source_observation": source_observation,
-                "source_frame_index": (
-                    source_frame.get("frame_index") if isinstance(source_frame, dict) else None
-                ),
-                "source_timestamp_ms": (
-                    source_frame.get("timestamp_ms") if isinstance(source_frame, dict) else None
-                ),
-            }
-        )
-    rows.sort(key=lambda item: str(item.get("key") or ""))
-    return rows
-
-
-def render_memory_origin_extract_html(
-    *,
-    vehicle_id: str,
-    payload: dict[str, Any],
-    frames: list[dict[str, Any]],
-    origin_rows: list[dict[str, Any]],
-    frame_image_paths: dict[str, str] | None = None,
-) -> str:
-    """Render a compact HTML extract: retained key → value → source observation."""
-
-    final = payload.get("final") if isinstance(payload.get("final"), dict) else {}
-    rows_html: list[str] = []
-    for row in origin_rows:
-        location = row.get("location") if isinstance(row.get("location"), dict) else {}
-        origin = row.get("origin") if isinstance(row.get("origin"), dict) else {}
-        source_obs = row.get("source_observation") if isinstance(row.get("source_observation"), dict) else {}
-        source_block = (
-            f"<pre>{html.escape(json.dumps(source_obs, indent=2, sort_keys=True, default=str))}</pre>"
-            if source_obs
-            else "<p class='warn'>Source observation not found in recorded sequence "
-            f"for frame_id={html.escape(str(origin.get('frame_id')))}.</p>"
-        )
-        rows_html.append(
-            "\n".join(
-                [
-                    "<section class='record'>",
-                    f"<h3>key <code>{html.escape(str(row.get('key')))}</code></h3>",
-                    "<p class='badge'>retained evidence — not current camera geometry</p>",
-                    "<dl>",
-                    f"<dt>kind</dt><dd>{html.escape(str(row.get('kind')))}</dd>",
-                    f"<dt>label</dt><dd>{html.escape(str(row.get('label')))}</dd>",
-                    f"<dt>confidence</dt><dd>{html.escape(str(row.get('confidence')))}</dd>",
-                    f"<dt>location.zone</dt><dd>{html.escape(str(location.get('zone') or '—'))}</dd>",
-                    f"<dt>location.frame</dt><dd>{html.escape(str(location.get('frame') or '—'))}</dd>",
-                    f"<dt>origin.frame_id</dt><dd><code>{html.escape(str(origin.get('frame_id') or '—'))}</code></dd>",
-                    f"<dt>origin.observation_id</dt><dd><code>{html.escape(str(origin.get('observation_id') or '—'))}</code></dd>",
-                    f"<dt>source in sequence</dt><dd>{'yes' if row.get('source_frame_present_in_sequence') else 'no'}</dd>",
-                    "</dl>",
-                    "<h4>Mapped value (retained)</h4>",
-                    f"<pre>{html.escape(json.dumps({k: row.get(k) for k in ('key','kind','label','confidence','location','origin')}, indent=2, sort_keys=True, default=str))}</pre>",
-                    "<h4>Source observation at origin.frame_id</h4>",
-                    source_block,
-                    "</section>",
-                ]
-            )
-        )
-
-    timeline = []
-    for item in payload.get("per_frame") or []:
-        if not isinstance(item, dict):
-            continue
-        timeline.append(
-            "<li>"
-            f"<code>{html.escape(str(item.get('frame_id')))}</code> "
-            f"keys={html.escape(str(item.get('record_count')))} "
-            f"health={html.escape(str(item.get('health')))}"
-            "</li>"
-        )
-
-    frame_images = frame_image_paths or {}
-    frame_figures: list[str] = []
-    for frame in frames:
-        frame_id = str(frame.get("frame_id") or "").strip()
-        image_path = frame_images.get(frame_id)
-        if not frame_id or not image_path:
-            continue
-        frame_figures.append(
-            "<figure>"
-            f"<img src=\"{html.escape(image_path, quote=True)}\" "
-            f"alt=\"Captured source frame {html.escape(frame_id, quote=True)}\">"
-            f"<figcaption><code>{html.escape(frame_id)}</code></figcaption>"
-            "</figure>"
-        )
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Memory origin extract — {html.escape(vehicle_id)}</title>
-  <style>
-    :root {{ font-family: ui-sans-serif, system-ui, sans-serif; color: #17191c; }}
-    body {{ margin: 24px; max-width: 960px; }}
-    h1 {{ font-size: 1.25rem; }}
-    .meta, .badge, .warn {{ color: #62676f; }}
-    .badge {{
-      display: inline-block; border: 1px solid #d9dde2; border-radius: 999px;
-      padding: 2px 8px; font-size: 12px; background: #f6f7f8;
-    }}
-    .warn {{ color: #a35b00; }}
-    .record {{
-      border: 1px solid #d9dde2; border-radius: 8px; padding: 12px 14px; margin: 14px 0;
-      background: #fafbfc;
-    }}
-    dl {{ display: grid; grid-template-columns: 12rem 1fr; gap: 4px 10px; }}
-    dt {{ color: #62676f; }}
-    dd {{ margin: 0; word-break: break-word; }}
-    pre {{
-      background: #0f1418; color: #e7eef5; padding: 10px; border-radius: 6px;
-      overflow: auto; font-size: 12px; line-height: 1.4;
-    }}
-    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }}
-    .note {{
-      border-left: 3px solid #176b87; padding: 8px 12px; background: #e7f3f8; margin: 16px 0;
-    }}
-    .frame-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }}
-    figure {{ margin: 0; }}
-    figure img {{ display: block; width: 100%; height: auto; border: 1px solid #d9dde2; }}
-    figcaption {{ margin-top: 5px; color: #62676f; }}
-  </style>
-</head>
-<body>
-  <h1>Memory origin extract</h1>
-  <p class="meta">
-    vehicle=<strong>{html.escape(vehicle_id)}</strong>
-    · implementation=<code>{html.escape(str(payload.get('plugin_id')))}</code>
-    · digest=<code>{html.escape(str(payload.get('digest')))}</code>
-    · frames={html.escape(str(payload.get('frame_count')))}
-    · final keys={html.escape(str(final.get('record_count')))}
-    · health={html.escape(str(final.get('health')))}
-  </p>
-  <div class="note">
-    Retained evidence is attributed to <code>origin.frame_id</code> / observation identity.
-    Image-space locations below are <strong>not</strong> current camera geometry; they are
-    frozen claims from the source observation that produced each key.
-  </div>
-  <h2>Replay timeline</h2>
-  <ol>
-    {''.join(timeline) or '<li>no per-frame rows</li>'}
-  </ol>
-  <h2>Captured source frames</h2>
-  <div class="frame-grid">
-    {''.join(frame_figures) if frame_figures else '<p class="meta">No captured frame images in this extract.</p>'}
-  </div>
-  <h2>Retained keys → mapped values → source observations</h2>
-  {''.join(rows_html) if rows_html else '<p class="meta">No retained records in final state.</p>'}
-  <h2>Sequence frames present</h2>
-  <p class="meta">{html.escape(', '.join(str(frame.get('frame_id')) for frame in frames))}</p>
-</body>
-</html>
-"""
-
-
-def load_memory_observation_sequence(
-    path: Path,
-    *,
-    max_frames: int | None = None,
-    max_sequence_file_bytes: int | None = None,
-) -> list[dict[str, Any]]:
-    """Load a memory observation sequence from a JSON file or directory.
-
-    When ``max_frames`` is set, refuse sequences larger than that bound during
-    load (directory iteration stops at max+1; monolithic JSON uses a file-size
-    preflight before full parse).
-    """
-
-    if not path.exists():
-        raise FileNotFoundError(f"sequence path does not exist: {path}")
-    frame_limit = int(max_frames) if max_frames is not None else None
-    file_byte_limit = (
-        int(max_sequence_file_bytes)
-        if max_sequence_file_bytes is not None
-        else None
-    )
-    if path.is_dir():
-        for name in ("sequence.json", "memory_sequence.json", "observation_sequence.json"):
-            candidate = path / name
-            if candidate.is_file():
-                return load_memory_observation_sequence(
-                    candidate,
-                    max_frames=frame_limit,
-                    max_sequence_file_bytes=file_byte_limit,
-                )
-        # Directory of frame JSON files: scan incrementally, reject at max+1,
-        # then sort only the accepted bounded list for deterministic load order.
-        frame_files: list[Path] = []
-        for item in path.iterdir():
-            try:
-                is_json_frame = (
-                    item.is_file()
-                    and item.suffix.lower() == ".json"
-                    and item.name != "manifest.json"
-                )
-            except OSError as exc:
-                raise ValueError(f"could not inspect sequence entry {item}: {exc}") from exc
-            if not is_json_frame:
-                continue
-            frame_files.append(item)
-            if frame_limit is not None and len(frame_files) > frame_limit:
-                raise ValueError(
-                    f"sequence directory has more than {frame_limit} frame files; "
-                    f"max allowed is {frame_limit}"
-                )
-        if not frame_files:
-            raise ValueError(f"directory has no sequence.json or frame JSON files: {path}")
-        frame_files.sort(key=lambda item: item.name)
-        frames: list[dict[str, Any]] = []
-        for index, frame_file in enumerate(frame_files):
-            if file_byte_limit is not None:
-                try:
-                    size = frame_file.stat().st_size
-                except OSError as exc:
-                    raise ValueError(f"could not stat {frame_file}: {exc}") from exc
-                if size > file_byte_limit:
-                    raise ValueError(
-                        f"frame file {frame_file.name} is {size} bytes; "
-                        f"max sequence file bytes is {file_byte_limit}"
-                    )
-            payload = json.loads(frame_file.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict):
-                raise ValueError(f"{frame_file} is not a JSON object")
-            frames.append(
-                _normalize_sequence_frame(
-                    payload, default_index=index, source=frame_file.name
-                )
-            )
-        return frames
-
-    if file_byte_limit is not None:
-        try:
-            file_size = path.stat().st_size
-        except OSError as exc:
-            raise ValueError(f"could not stat sequence file {path}: {exc}") from exc
-        if file_size > file_byte_limit:
-            raise ValueError(
-                f"sequence file is {file_size} bytes; "
-                f"max allowed is {file_byte_limit} "
-                "(raise AUTOMA_MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES to override)"
-            )
-
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("sequence file must contain a JSON object")
-    if payload.get("schema") == MEMORY_OBSERVATION_SEQUENCE_SCHEMA or isinstance(
-        payload.get("frames"), list
-    ):
-        frames_data = payload.get("frames") or []
-        if not isinstance(frames_data, list):
-            raise ValueError("sequence frames must be a list")
-        # Count dict frames without normalizing past the limit.
-        dict_count = sum(1 for item in frames_data if isinstance(item, dict))
-        if frame_limit is not None and dict_count > frame_limit:
-            raise ValueError(
-                f"sequence has {dict_count} frames; max allowed is {frame_limit}"
-            )
-        frames = []
-        for index, item in enumerate(frames_data):
-            if not isinstance(item, dict):
-                continue
-            if frame_limit is not None and len(frames) >= frame_limit:
-                break
-            frames.append(
-                _normalize_sequence_frame(
-                    item, default_index=index, source=f"frames[{index}]"
-                )
-            )
-        return frames
-    # Single frame record reused as a one-frame sequence.
-    return [_normalize_sequence_frame(payload, default_index=0, source=path.name)]
-
-
-def memory_state_digest(state: dict[str, Any]) -> str:
-    """Stable digest of the final plugin's memory state (records + health, not process identity)."""
-
-    records = state.get("records") if isinstance(state.get("records"), list) else []
-    normalized_records = []
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        # Canonicalize nested structures with sorted JSON.
-        normalized_records.append(json.loads(json.dumps(record, sort_keys=True, default=str)))
-    normalized_records.sort(key=lambda item: str(item.get("record_id") or ""))
-    body = {
-        "plugin_id": state.get("plugin_id"),
-        "health": state.get("health"),
-        "record_count": state.get("record_count", len(normalized_records)),
-        "bounds": state.get("bounds"),
-        "records": normalized_records,
-        "summary": state.get("summary"),
-        "metadata": state.get("metadata"),
-    }
-    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _normalize_sequence_frame(
-    payload: dict[str, Any],
-    *,
-    default_index: int,
+def inspect_memory(
     source: str,
-) -> dict[str, Any]:
-    observation_payload = payload.get("observation")
-    if observation_payload is None and (
-        payload.get("observation_id") is not None or payload.get("things") is not None
-    ):
-        observation_payload = payload
-    if not isinstance(observation_payload, dict):
-        raise ValueError(f"{source}: frame requires an observation object")
-
-    frame_id = str(payload.get("frame_id") or observation_payload.get("frame_id") or f"frame_{default_index:06d}")
-    frame_index = payload.get("frame_index")
-    if frame_index is None:
-        frame_index = default_index
-    timestamp_ms = payload.get("timestamp_ms")
-    if timestamp_ms is None:
-        timestamp_ms = observation_payload.get("created_at_ms")
-    if timestamp_ms is None:
-        timestamp_ms = default_index * 100
-    # Ensure observation has an id.
-    if not observation_payload.get("observation_id"):
-        observation_payload = {
-            **observation_payload,
-            "observation_id": f"obs_{default_index:06d}",
-        }
-    if observation_payload.get("created_at_ms") is None:
-        observation_payload = {
-            **observation_payload,
-            "created_at_ms": int(timestamp_ms),
-        }
-    return {
-        "frame_id": frame_id,
-        "frame_index": int(frame_index),
-        "timestamp_ms": int(timestamp_ms),
-        "observation": observation_payload,
-        "source": source,
-    }
-
-
-def _run_memory_sequence(
     *,
-    step: MemoryRunner,
-    frames: list[dict[str, Any]],
-) -> dict[str, Any]:
-    # Fresh epoch for this pass (step already reset on construction).
-    per_frame: list[dict[str, Any]] = []
+    preset: str | None = None,
+    plugins: list[str] | None = None,
+    record: bool = False,
+    json_output: bool = False,
+) -> CommandResult:
+    """Run an image source through perception, observation and memory, frame by frame.
+
+    Reports what each memory plugin retained after every frame, and the
+    observation a plugin published in place of the frame's own. It reads the
+    source only; live frames come from ``perception inspect --record``.
+    """
+
+    activation, error = _selected_memory(preset, plugins)
+    if error is not None:
+        return error
+    path = Path(source).expanduser()
+    try:
+        image_source = normalize_image_file(path) if path.is_file() else normalize_image_directory(path)
+    except SourceValidationError as exc:
+        return CommandResult(2, f"Could not read memory inspect source: {exc}")
+    try:
+        mapper = default_mapper()
+        memory_step = MemoryRunner.from_activation(activation)
+    except Exception as exc:  # Plugin construction is a CLI preflight boundary.
+        return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
+
     shared_memory: dict[str, Any] = {}
-    final = last_plugin_state(step.report()) or {}
-    for frame in frames:
-        observation = Observation.from_dict(frame["observation"])
-        context = DecisionFrameContext(
-            frame_id=str(frame["frame_id"]),
-            frame_index=int(frame["frame_index"]),
-            timestamp_ms=int(frame["timestamp_ms"]),
-            shared_memory=shared_memory,
-        )
-        final = last_plugin_state(step.update(context, observation)) or {}
-        per_frame.append(
+    frames: list[dict[str, Any]] = []
+    for frame in image_source.frames:
+        seen: dict[str, Observation | None] = {}
+
+        def memory(context: DecisionFrameContext, observation: Observation | None) -> dict[str, Any]:
+            seen["observation"] = observation
+            return memory_step(context, observation)
+
+        try:
+            outcome = run_frame(
+                frame,
+                mapper=mapper,
+                memory_step=memory,
+                steps=DecisionSteps(),
+                shared_memory=shared_memory,
+            )
+        except Exception as exc:  # Plugins are third-party code; name the frame that broke.
+            return CommandResult(
+                2, f"Memory inspect failed at {frame.frame_id}: {type(exc).__name__}: {exc}"
+            )
+        result = outcome.result
+        published = shared_memory.get(OBSERVATION_KEY)
+        frames.append(
             {
-                "frame_id": context.frame_id,
-                "frame_index": context.frame_index,
-                "timestamp_ms": context.timestamp_ms,
-                **memory_summary(final),
+                "frame_id": frame.frame_id,
+                "frame_index": frame.frame_index,
+                "timestamp_ms": frame.timestamp_ms,
+                "absence_reason": frame.absence_reason,
+                "plugins": [
+                    {"plugin_id": item.get("plugin_id"), **memory_summary(item.get("state"))}
+                    for item in (result.memory or {}).get("plugins") or []
+                ],
+                "observation": _observation_counts(seen.get("observation")),
+                "replacement": _observation_counts(published if result.observation is published else None),
             }
         )
-    return {
-        "final": final,
-        "per_frame": per_frame,
-        "digest": memory_state_digest(final),
+
+    run_id = _inspect_run_id(image_source.source_id)
+    report = {
+        "schema": MEMORY_INSPECT_SCHEMA,
+        "run_id": run_id,
+        "source": {
+            "path": str(image_source.source_path),
+            "source_id": image_source.source_id,
+            "frame_count": len(frames),
+        },
+        "memory": {"preset": activation.metadata["preset"], "plugins": list(activation.plugins)},
+        "frames": frames,
+        "final": memory_step.report(),
+        "run_dir": None,
     }
+    if record:
+        run_dir = INSPECT_ROOT / run_id
+        try:
+            run_dir.mkdir(parents=True, exist_ok=False)
+            report["run_dir"] = str(run_dir)
+            frames_dir = run_dir / "frames"
+            frames_dir.mkdir()
+            for frame in image_source.frames:
+                if frame.image_path is not None:
+                    shutil.copyfile(frame.image_path, frames_dir / f"frame_{frame.position:06d}{frame.image_path.suffix.lower()}")
+            (run_dir / "report.json").write_text(
+                json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+        except OSError as exc:
+            return CommandResult(2, f"Could not record memory inspect run {run_dir}: {exc}")
+    if json_output:
+        return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
+    return CommandResult(0, _format_inspect_report(report))
+
+
+def _selected_memory(preset: str | None, plugins: list[str] | None) -> tuple[Any, CommandResult | None]:
+    """The memory selection a command names, or the error to report for it."""
+
+    if preset is not None and plugins:
+        return None, CommandResult(2, "Choose either --preset or --plugin, not both.")
+    if preset is not None and preset not in MEMORY_PRESETS:
+        available = ", ".join(available_memory_preset_ids())
+        return None, CommandResult(
+            2, f"Unknown memory preset {preset!r}. Available presets: {available}."
+        )
+    try:
+        return selection_activation("memory", preset=preset, plugins=plugins or None), None
+    except DuplicatePluginIdError:
+        # A packaged-catalog clash is not a bad selection; the CLI reports it.
+        raise
+    except ValueError as exc:
+        return None, CommandResult(2, str(exc))
+
+
+def _observation_counts(observation: Observation | None) -> dict[str, Any] | None:
+    if observation is None:
+        return None
+    return {
+        "observation_id": observation.observation_id,
+        "things": len(observation.things),
+        "signals": len(observation.signals),
+    }
+
+
+def _inspect_run_id(source_id: str) -> str:
+    stamp = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    return f"inspect-{safe_path_part(source_id)}-{stamp}"
+
+
+def _format_inspect_report(report: dict[str, Any]) -> str:
+    source = report["source"]
+    lines = [
+        "Memory inspect",
+        "--------------",
+        f"Source: {source['path']} ({source['frame_count']} frames)",
+        f"Memory: {report['memory']['preset']} ({', '.join(report['memory']['plugins'])})",
+        "",
+        "Frame  Plugin  Health  Records  Epoch  Observation  Replacement",
+    ]
+    for frame in report["frames"]:
+        observation = frame["observation"]
+        replacement = frame["replacement"]
+        seen = f"{observation['things']}t/{observation['signals']}s" if observation else "-"
+        replaced = f"{replacement['things']}t/{replacement['signals']}s" if replacement else "-"
+        for item in frame["plugins"]:
+            lines.append(
+                f"{frame['frame_index']}  {item['plugin_id']}  {item['health']}  "
+                f"{item['record_count']}  {item['epoch_id']}  {seen}  {replaced}"
+            )
+    lines.append("")
+    lines.append("Final")
+    for item in (report["final"] or {}).get("plugins") or []:
+        summary = memory_summary(item.get("state"))
+        lines.append(
+            f"  {item.get('plugin_id')}: {summary['health']}, "
+            f"{summary['record_count']} records, epoch {summary['epoch_id']}"
+        )
+    if report["run_dir"]:
+        lines.extend(["", f"Recorded: {display_path(Path(report['run_dir']))}"])
+    return "\n".join(lines)
 
 
 def reset_vehicle_memory(

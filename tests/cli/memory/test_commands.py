@@ -11,7 +11,6 @@ from implementations.decision_cycle.memory.presets import (
     MEMORY_PRESETS,
 )
 from tests.support.cli_runner import run_automa
-from tests.cli.memory.replay_fixtures import RECURRENCE_SOURCE
 
 
 class MemoryCommandTests(unittest.TestCase):
@@ -67,43 +66,7 @@ class MemoryCommandTests(unittest.TestCase):
             # Retention bounds belong to the plugin, not the activation.
             self.assertNotIn("bounds", info_payload["activation"])
 
-    def test_memory_enable_disable_commands_round_trip_through_info(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            run_automa("vehicles", "update", "memory", "--id", "test-car", runtime_root=runtime_root)
-            for command, selected, changed in (
-                ("disable", [], True),
-                ("disable", [], False),
-                ("enable", ["bounded_evidence"], True),
-                ("enable", ["bounded_evidence"], False),
-            ):
-                result = run_automa(
-                    "vehicles", "memory", command, "--id", "test-car", "bounded_evidence", "--json",
-                    runtime_root=runtime_root,
-                )
-                payload = json.loads(result.stdout)
-                self.assertEqual(payload["plugins_after"], selected)
-                self.assertEqual(payload["changed"], changed)
-                info = run_automa(
-                    "vehicles", "info", "memory", "--id", "test-car", "--json",
-                    runtime_root=runtime_root,
-                )
-                activation = json.loads(info.stdout)["activation"]
-                self.assertEqual(activation["plugins"], selected)
-                self.assertEqual(
-                    activation["available_plugins"], ["bounded_evidence", "multi_obstruction_tracks"]
-                )
-                if command == "disable" and changed:
-                    replay = run_automa(
-                        "vehicles", "memory", "replay", str(RECURRENCE_SOURCE),
-                        "--id", "test-car", "--json", runtime_root=runtime_root,
-                    )
-                    result = json.loads(replay.stdout)
-                    self.assertEqual(result["plugin_ids"], [])
-                    self.assertEqual(result["final"], {})
-                    self.assertTrue(result["deterministic"])
-
-    def test_info_and_selection_share_staged_catalog_without_loading_unselected_plugins(self) -> None:
+    def test_info_lists_staged_plugins_without_loading_unselected_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             run_automa("vehicles", "update", "memory", "--id", "test-car", runtime_root=runtime_root)
@@ -117,19 +80,6 @@ class MemoryCommandTests(unittest.TestCase):
             )
             expected = ["bounded_evidence", "missing", "multi_obstruction_tracks"]
             self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
-            disabled = run_automa(
-                "vehicles", "memory", "disable", "--id", "test-car", "missing", "--json",
-                runtime_root=runtime_root,
-            )
-            self.assertEqual(json.loads(disabled.stdout)["available_plugins"], expected)
-            self.assertFalse(json.loads(disabled.stdout)["changed"])
-            saved = path.read_text()
-            rejected = run_automa(
-                "vehicles", "memory", "enable", "--id", "test-car", "missing",
-                runtime_root=runtime_root, check=False,
-            )
-            self.assertNotEqual(rejected.returncode, 0)
-            self.assertEqual(path.read_text(), saved)
 
     def test_memory_update_dry_run_does_not_write_activation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,27 +179,6 @@ class MemoryCommandTests(unittest.TestCase):
             for preset in MEMORY_PRESETS:
                 self.assertIn(preset, unknown.stderr)
             self.assertFalse((runtime_root / "test-car").exists())
-
-    def test_disabling_a_plugin_relabels_the_staged_preset(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            path = runtime_root / "test-car/bundle/runtime/memory/active.json"
-            run_automa(
-                "vehicles", "update", "memory", "--id", "test-car",
-                "--preset", "multi_obstruction_with_ledger", runtime_root=runtime_root,
-            )
-            self.assertEqual(json.loads(path.read_text())["metadata"]["preset"], "multi_obstruction_with_ledger")
-            for command, plugin, label in (
-                ("disable", "bounded_evidence", "multi_obstruction"),
-                ("disable", "multi_obstruction_tracks", "custom"),
-                ("enable", "multi_obstruction_tracks", "multi_obstruction"),
-            ):
-                with self.subTest(command=command, plugin=plugin):
-                    run_automa(
-                        "vehicles", "memory", command, "--id", "test-car", plugin,
-                        runtime_root=runtime_root,
-                    )
-                    self.assertEqual(json.loads(path.read_text())["metadata"]["preset"], label)
 
     def test_memory_info_missing_activation_is_actionable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

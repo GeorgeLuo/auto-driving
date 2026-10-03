@@ -292,10 +292,6 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertIs(memory_step.plugins[0], memory_plugin)
             self.assertEqual(memory_step.plugin_manager.selected_ids, ("bounded_evidence",))
-            self.assertEqual(
-                both["machine_detail"]["pipeline"]["memory_plugin_id"],
-                "bounded_evidence",
-            )
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
 
             stepped = runner.dispatch("step", run_id=run_id)

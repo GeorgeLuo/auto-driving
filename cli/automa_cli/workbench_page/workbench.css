@@ -561,6 +561,12 @@ h3, .kicker, dt, .metric .label {
 }
 .plugin-entry:has(input:checked) strong { color: var(--fg); }
 .plugin-entry small { display: none; }
+.plugin-entry .plugin-needs {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .digest { display: none; }
 pre {
   white-space: pre-wrap;

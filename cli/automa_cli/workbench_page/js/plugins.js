@@ -60,6 +60,11 @@ function selectedPluginIdsFromView(panel) {
     function (input) { return input.getAttribute("data-plugin-id"); }
   ).filter(function (value) { return value; });
 }
+// A plugin that reads another step's plugin output names it; the listing only says so.
+function pluginNeedsText(plugin) {
+  var needed = Array.isArray(plugin.perception_plugins) ? plugin.perception_plugins : [];
+  return needed.length ? "needs perception: " + needed.join(", ") : "";
+}
 function renderPluginSummary(panel, catalog, plugins, active) {
   setText(panel.summaryId, active.length + " active · " + plugins.length + " available");
   setText(panel.digestId, catalog ? "catalog " + text(catalog.digest) : "");
@@ -119,6 +124,13 @@ function renderPluginPanel(step) {
     copy.appendChild(title);
     if (plugin.description) title.title = plugin.description;
     item.appendChild(copy);
+    var needs = pluginNeedsText(plugin);
+    if (needs) {
+      var note = document.createElement("span");
+      note.className = "plugin-needs muted help";
+      note.textContent = needs;
+      item.appendChild(note);
+    }
     container.appendChild(item);
   });
   renderPluginSummary(panel, catalog, plugins, active);

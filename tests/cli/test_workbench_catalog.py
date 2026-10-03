@@ -350,6 +350,29 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
         self.assertEqual(catalog["digest"], packaged_plugin_catalog("memory").digest)
         self.assertNotEqual(catalog["digest"], state["plugin_catalog"]["digest"])
 
+    def test_memory_catalog_lists_the_perception_plugins_a_plugin_reads(self) -> None:
+        catalog = ImageReplayRunner().state()["memory_plugin_catalog"]
+        listed = {item["id"]: item for item in catalog["plugins"]}
+        self.assertEqual(
+            listed["multi_obstruction_tracks"]["perception_plugins"], ["multi_obstruction_tracks"]
+        )
+        self.assertNotIn("perception_plugins", listed["bounded_evidence"])
+        # Each declaration names a packaged perception plugin.
+        for item in listed.values():
+            self.assertLessEqual(set(item.get("perception_plugins", ())), set(step_plugins("perception")))
+        # Listing only: selecting the plugin without its perception plugin is accepted.
+        runner = ImageReplayRunner()
+        runner.dispatch(
+            "select_plugins", step="memory", active_plugin_ids=["multi_obstruction_tracks"]
+        )
+        state = runner.state()
+        self.assertEqual(state["active_memory_plugin_ids"], ["multi_obstruction_tracks"])
+        self.assertNotIn("multi_obstruction_tracks", state["active_plugin_ids"])
+        # The perception listing declares none.
+        self.assertTrue(
+            all("perception_plugins" not in item for item in state["plugin_catalog"]["plugins"])
+        )
+
     def test_unknown_memory_plugins_and_other_steps_are_rejected(self) -> None:
         runner = ImageReplayRunner()
         with self.assertRaises(ReplayActionError) as unknown:

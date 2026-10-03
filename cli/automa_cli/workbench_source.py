@@ -197,6 +197,37 @@ def normalize_image_directory(
     )
 
 
+def normalize_image_file(
+    image_path: str | os.PathLike[str],
+    *,
+    max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
+) -> ImageSource:
+    """Validate one image file as a one-frame source."""
+
+    raw_path = os.fspath(image_path)
+    if "\x00" in raw_path:
+        raise SourceValidationError("image path contains a NUL byte")
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_symlink():
+        raise SourceValidationError("source image may not be a symlink")
+    path = candidate.resolve()
+    if not path.is_file():
+        raise SourceValidationError(f"source image does not exist: {path}")
+    digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "-", path.name).strip("-") or "image"
+    source_id = f"image-file:{name[:80]}:{digest}"
+    frame = _build_frame(
+        source_id=source_id,
+        position=0,
+        entry={"image_path": path.name},
+        source_path=path.parent,
+        recorded_root=None,
+        recorded_source=None,
+        max_image_bytes=max_image_bytes,
+    )
+    return ImageSource(source_path=path, source_id=source_id, frames=(frame,))
+
+
 def content_type_for_path(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 

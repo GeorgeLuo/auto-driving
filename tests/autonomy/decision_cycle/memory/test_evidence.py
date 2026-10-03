@@ -52,26 +52,6 @@ class RetainedEvidenceTests(unittest.TestCase):
         self.assertEqual(restored.location.zone, "center")
         self.assertEqual(restored.origin, record.origin)
 
-    def test_retired_record_shapes_are_not_read(self) -> None:
-        # Transitional guard against a read alias for the retired keys. Delete
-        # once no export made before the rename is expected to exist.
-        def retired_origin_key(payload: dict) -> None:
-            payload["provenance"] = payload.pop("origin")
-
-        def retired_observed_id_key(payload: dict) -> None:
-            origin = payload["origin"]
-            origin["evidence_id"] = origin.pop("observed_id")
-
-        for mutate, expected in (
-            (retired_origin_key, "origin"),
-            (retired_observed_id_key, "observed_id"),
-        ):
-            with self.subTest(shape=mutate.__name__):
-                payload = self.retained().to_dict()
-                mutate(payload)
-                with self.assertRaisesRegex(ValueError, expected):
-                    RetainedEvidence.from_dict(payload)
-
     def test_detach_evidence_isolates_nested_mutation(self) -> None:
         original = (self.retained("a"), self.retained("b"))
 

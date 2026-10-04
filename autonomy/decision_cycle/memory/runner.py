@@ -22,7 +22,6 @@ from typing import Any
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
-from autonomy.decision_cycle.memory.publication import withdraw_publication
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import (
     PROVIDED_ENTRYPOINT,
@@ -236,8 +235,6 @@ class MemoryRunner:
             try:
                 for plugin in self.plugins:
                     plugin.update(memory_context, observation)
-                if not self.plugins and context.shared_memory is not None:
-                    withdraw_publication(context.shared_memory)
             except Exception as exc:
                 self.failure_count += 1
                 self.last_error = _diagnostic(exc)
@@ -263,8 +260,6 @@ class MemoryRunner:
                 plugin.reset(shared_memory)
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error or self.last_error
-            if not self.plugins and shared_memory is not None:
-                withdraw_publication(shared_memory)
             self.reset_count += 1
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
             if shared_memory is None:

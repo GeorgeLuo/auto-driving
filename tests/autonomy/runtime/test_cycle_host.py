@@ -16,7 +16,6 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
-from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.steps import decision_steps
@@ -208,7 +207,7 @@ class CycleHostMemoryTests(unittest.TestCase):
         self.assertEqual(_state(result.memory)["epoch_id"], "epoch-3")
         self.assertEqual(host.shared_memory[LEDGER_KEY].epoch_id, "epoch-3")
 
-    def test_host_shares_context_and_delivers_memory_updated_observation(self) -> None:
+    def test_host_shares_the_map_across_cycles_and_delivers_the_observation(self) -> None:
         seen = []
 
         def observe(context, perception):
@@ -217,14 +216,12 @@ class CycleHostMemoryTests(unittest.TestCase):
 
         def remember(context, observation):
             context.shared_memory["test.previous"] = context.frame_id
-            context.shared_memory[OBSERVATION_KEY] = replace(observation, summary=("updated",))
             return {"schema": "memory_report_v0", "plugins": []}
 
         host, proposal = _host(observation=observe, memory=remember)
         for index in range(2):
             result = host.run(DecisionFrameContext(f"frame-{index}", index, index))
-            self.assertEqual(result.observation.summary, ("updated",))
-            self.assertEqual(proposal.last_observation.summary, ("updated",))
+            self.assertIs(proposal.last_observation, result.observation)
             self.assertEqual(result.memory["plugins"], [])
         self.assertEqual(seen, [None, "frame-0"])
 

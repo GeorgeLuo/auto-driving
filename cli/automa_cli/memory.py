@@ -15,7 +15,6 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import read_step_activation
-from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import DuplicatePluginIdError
@@ -214,8 +213,7 @@ def inspect_memory(
 ) -> CommandResult:
     """Run an image source through perception, observation and memory, frame by frame.
 
-    Reports what each memory plugin retained after every frame, and the
-    observation a plugin published in place of the frame's own. Perception runs
+    Reports what each memory plugin retained after every frame. Perception runs
     the selection a recorded run names, else the default; tracked things reach
     memory only through that selection. It reads the source only; live frames
     come from ``perception inspect --record``.
@@ -260,7 +258,6 @@ def inspect_memory(
                 2, f"Memory inspect failed at {frame.frame_id}: {type(exc).__name__}: {exc}"
             )
         result = outcome.result
-        published = shared_memory.get(OBSERVATION_KEY)
         frames.append(
             {
                 "frame_id": frame.frame_id,
@@ -272,7 +269,6 @@ def inspect_memory(
                     for item in (result.memory or {}).get("plugins") or []
                 ],
                 "observation": _observation_counts(seen.get("observation")),
-                "replacement": _observation_counts(published if result.observation is published else None),
             }
         )
 
@@ -354,17 +350,15 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
         f"Perception: {report['perception']['preset']} ({', '.join(report['perception']['plugins'])})",
         f"Memory: {report['memory']['preset']} ({', '.join(report['memory']['plugins'])})",
         "",
-        "Frame  Plugin  Health  Records  Epoch  Observation  Replacement",
+        "Frame  Plugin  Health  Records  Epoch  Observation",
     ]
     for frame in report["frames"]:
         observation = frame["observation"]
-        replacement = frame["replacement"]
         seen = f"{observation['things']}t/{observation['signals']}s" if observation else "-"
-        replaced = f"{replacement['things']}t/{replacement['signals']}s" if replacement else "-"
         for item in frame["plugins"]:
             lines.append(
                 f"{frame['frame_index']}  {item['plugin_id']}  {item['health']}  "
-                f"{item['record_count']}  {item['epoch_id']}  {seen}  {replaced}"
+                f"{item['record_count']}  {item['epoch_id']}  {seen}"
             )
     lines.append("")
     lines.append("Final")

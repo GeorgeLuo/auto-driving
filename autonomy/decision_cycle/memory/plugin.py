@@ -20,16 +20,14 @@ drops or renames one shows no value for it, and the CLI's reset check reads
 ``health`` and ``record_count`` to tell that a reset emptied the memory.
 
 Several memory plugins may be selected together. They run in selection order on
-one host map, and each receives the same ``observation``, not a replacement an
-earlier plugin published. The framework does not merge or arbitrate between
+one host map, and each receives the same ``observation``. The framework does not merge or arbitrate between
 them; resolving what a later plugin overwrites is the implementer's job. These
 cause unexpected behavior:
 
 - A key two plugins write holds the later plugin's value. That includes a
   private key that lacks the plugin's ``plugin_id`` prefix.
-- ``OBSERVATION_KEY`` and ``EVIDENCE_KEY`` (see ``publication``) hold one value
-  each. A later plugin that writes either replaces the earlier plugin's value,
-  and one that removes ``OBSERVATION_KEY`` drops an earlier replacement.
+- ``EVIDENCE_KEY`` (see ``publication``) holds one value. A later plugin that
+  writes it replaces the earlier plugin's value.
 - A plugin that raises stops the plugins after it and the cycle.
 """
 

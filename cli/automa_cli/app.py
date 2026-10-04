@@ -698,8 +698,7 @@ def build_parser() -> argparse.ArgumentParser:
             "images, or a recorded perception run) goes through perception and observation, "
             "then the selected memory plugins, frame by frame. Perception runs the selection "
             "a recorded run names, else the default. Reports each plugin's health, "
-            "record count and epoch after every frame, and the observation a plugin "
-            "published in place of the frame's own. It reads the source only; record live "
+            "record count and epoch after every frame. It reads the source only; record live "
             "frames with `perception inspect --record` and inspect that run."
         ),
     )

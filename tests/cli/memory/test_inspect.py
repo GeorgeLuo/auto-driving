@@ -3,14 +3,12 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 import cv2
 import numpy as np
 
-from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from cli.automa_cli import memory
 from cli.automa_cli.memory import inspect_memory
 from implementations.decision_cycle.catalog import selection_activation
@@ -28,18 +26,6 @@ def write_frames(root: Path, count: int = 3) -> Path:
         cv2.rectangle(image, (left, 90), (left + 80, 200), (30, 30, 200), -1)
         cv2.imwrite(str(root / f"frame_{index}.png"), image)
     return root
-
-
-class StubMemory:
-    """A memory step that publishes a replacement observation with no things."""
-
-    def __call__(self, context, observation):
-        context.shared_memory[OBSERVATION_KEY] = replace(observation, things=())
-        return self.report()
-
-    def report(self):
-        state = {"health": "healthy", "record_count": 1, "epoch_id": "epoch-stub"}
-        return {"schema": "memory_report_v0", "plugins": [{"plugin_id": "stub", "state": state}]}
 
 
 class MemoryInspectTests(unittest.TestCase):
@@ -89,16 +75,6 @@ class MemoryInspectTests(unittest.TestCase):
         for item in report["frames"]:
             self.assertEqual([plugin["plugin_id"] for plugin in item["plugins"]], ["bounded_evidence"])
         self.assertEqual(len(report["final"]["plugins"]), 1)
-
-    def test_reports_the_replacement_observation_next_to_the_frames_own(self) -> None:
-        plain = self.inspect()
-        self.assertIsNone(plain["frames"][0]["replacement"])
-        with patch.object(memory.MemoryRunner, "from_activation", return_value=StubMemory()):
-            report = self.inspect()
-        for item in report["frames"]:
-            self.assertGreater(item["observation"]["things"], 0)
-            self.assertEqual(item["replacement"]["things"], 0)
-            self.assertEqual(item["replacement"]["observation_id"], item["observation"]["observation_id"])
 
     def test_perception_runs_the_selection_a_recorded_run_names(self) -> None:
         plain = self.inspect()

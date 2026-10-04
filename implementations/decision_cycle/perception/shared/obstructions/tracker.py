@@ -51,7 +51,13 @@ def _track_from_lookback(item: Any) -> _Track | None:
 
 
 class ObstructionTrackState:
-    """Association and temporal state owned by the memory implementation."""
+    """Association of region candidates into tracks across frames.
+
+    A perception plugin builds one per frame, restores it from the history it
+    keeps in the host map (``_restore_from_history``, ``_previous_gray``,
+    ``_next_track_id``), associates, and writes the history back
+    (``_lookback_tracks``).
+    """
 
     def __init__(
         self,

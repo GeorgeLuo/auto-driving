@@ -112,13 +112,13 @@ class WorkbenchTests(unittest.TestCase):
         post = partial(post_action, base, timeout=2)
 
         catalog = runner.state()["memory_plugin_catalog"]
-        self.assertIn("multi_obstruction_tracks", [item["id"] for item in catalog["plugins"]])
+        self.assertEqual([item["id"] for item in catalog["plugins"]], ["bounded_evidence"])
         selected = post({
             "action": "select_plugins",
             "step": "memory",
-            "active_plugin_ids": ["multi_obstruction_tracks"],
+            "active_plugin_ids": [],
         })["state"]
-        self.assertEqual(selected["active_memory_plugin_ids"], ["multi_obstruction_tracks"])
+        self.assertEqual(selected["active_memory_plugin_ids"], [])
         self.assertEqual(selected["active_plugin_ids"], ["frame", "floor_plane"])
 
         for body, code in (
@@ -130,9 +130,7 @@ class WorkbenchTests(unittest.TestCase):
             with self.assertRaises(HTTPError, msg=str(body)) as caught:
                 post(body)
             self.assertEqual(caught.exception.code, code, str(body))
-        self.assertEqual(
-            runner.state()["active_memory_plugin_ids"], ["multi_obstruction_tracks"]
-        )
+        self.assertEqual(runner.state()["active_memory_plugin_ids"], [])
 
     def test_removed_actions_and_plugin_lists_on_other_actions_are_rejected(self) -> None:
         with image_source(1) as root:

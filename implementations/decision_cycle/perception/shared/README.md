@@ -11,7 +11,7 @@ when more than one plugin, a memory plugin, or a tool needs it.
 | `image/` | Whole-frame image operations: contrast, frame analysis. |
 | `landmarks/` | Landmark distance estimates. |
 | `motion/` | Scene motion between frames. |
-| `obstructions/` | Box geometry: clamping, zones, center distance. |
+| `obstructions/` | Box geometry (clamping, zones, center distance) and the obstruction track associator. |
 | `regions/` | Color-region detection. |
 | `serialization/` | Canonical JSON for digests and payloads. |
 

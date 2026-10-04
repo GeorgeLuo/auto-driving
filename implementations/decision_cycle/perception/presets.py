@@ -38,8 +38,8 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
     },
     "multi_obstruction": {
         "description": (
-            "Multi-obstruction candidates for the multi_obstruction_tracks "
-            "memory plugin, with floor continuity and classical color regions."
+            "Multi-obstruction tracks across frames, with floor continuity "
+            "and classical color regions."
         ),
         "plugins": ["multi_obstruction_tracks", "floor_continuity", "classical_regions"],
     },

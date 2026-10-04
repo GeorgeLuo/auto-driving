@@ -70,17 +70,19 @@ from .geometry import (
 class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
     """Fuse shared CV substrategies before the existing obstruction tracker.
 
-    Detection emits candidates; the shared-memory companion produces obstacle
-    records. Detector configuration and candidate filtering are inherited from
-    ``MultiObstructionTracksPlugin``.  Issue 219 contributes current-frame
-    proposal generators only; line and junction detections remain supporting
-    measurements and cannot create a standalone object cluster.
+    The fused candidates are associated into tracks by the inherited
+    ``MultiObstructionTracksPlugin`` tracker, with its history under this
+    plugin's own id. Detector configuration and candidate filtering are
+    inherited too. Issue 219 contributes current-frame proposal generators
+    only; line and junction detections remain supporting measurements and
+    cannot create a standalone object cluster.
     """
 
     plugin_id = "composite_box_fusion"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
-        state_mode="stateless",
+        state_mode="windowed",
+        memory_required=True,
         description=(
             "Combine edge, partial-face, photometric, floor, line, and junction "
             "evidence, then reuse multi-obstruction association and flow support."
@@ -91,8 +93,8 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             "raw RGB remains available for photometric and floor features",
         ),
         emits=(
-            "signal multi_obstruction_candidates",
-            "multiple image-space region proposals with bounded temporal ids",
+            "signal multi_obstruction_tracks_available",
+            "multiple image-space obstruction tracks with bounded temporal ids",
             "per-source composite proposal measurements",
         ),
         limitations=(

@@ -36,7 +36,7 @@ class DeclaredIdTests(unittest.TestCase):
         with self._clashing_actions():
             with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate action plugin id 'hold'"):
                 catalog.step_plugins("action")
-            self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence", "multi_obstruction_tracks"])
+            self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence"])
 
     def test_cli_reports_the_clash_and_exits_2(self) -> None:
         stderr = io.StringIO()
@@ -106,15 +106,11 @@ class PresetActivationTests(unittest.TestCase):
         def label(step: str, plugins: list[str]) -> str:
             return catalog.selection_activation(step, plugins=plugins).metadata["preset"]
 
-        self.assertEqual(label("memory", ["multi_obstruction_tracks"]), "multi_obstruction")
-        self.assertEqual(
-            label("memory", ["bounded_evidence", "multi_obstruction_tracks"]),
-            "multi_obstruction_with_ledger",
-        )
+        self.assertEqual(label("memory", ["bounded_evidence"]), "recency_ledger")
         self.assertEqual(label("perception", ["frame", "floor_plane"]), "lightweight_observer")
         # Order matters, an empty list is no preset, and a preset with config
         # overrides is not equalled by its plugin list alone.
-        self.assertEqual(label("memory", ["multi_obstruction_tracks", "bounded_evidence"]), catalog.CUSTOM_PRESET)
+        self.assertEqual(label("perception", ["floor_plane", "frame"]), catalog.CUSTOM_PRESET)
         self.assertEqual(label("memory", []), catalog.CUSTOM_PRESET)
         self.assertEqual(
             label("perception", ["frame", "floor_plane", "obstruction_tracks"]), catalog.CUSTOM_PRESET

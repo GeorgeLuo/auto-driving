@@ -78,7 +78,7 @@ class MemoryCommandTests(unittest.TestCase):
                 "vehicles", "info", "memory", "--id", "test-car", "--json",
                 runtime_root=runtime_root,
             )
-            expected = ["bounded_evidence", "missing", "multi_obstruction_tracks"]
+            expected = ["bounded_evidence", "missing"]
             self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
 
     def test_memory_update_dry_run_does_not_write_activation(self) -> None:
@@ -148,8 +148,7 @@ class MemoryCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             for plugins, label in (
-                (["multi_obstruction_tracks"], "multi_obstruction"),
-                (["multi_obstruction_tracks", "bounded_evidence"], "custom"),
+                (["bounded_evidence"], "recency_ledger"),
             ):
                 with self.subTest(plugins=plugins):
                     options = [option for plugin in plugins for option in ("--plugin", plugin)]

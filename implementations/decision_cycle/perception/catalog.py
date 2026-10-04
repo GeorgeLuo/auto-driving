@@ -203,7 +203,7 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
     },
     {
         "spec": "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin",
-        "description": "Floor-suppressed obstruction candidates for the multi_obstruction_tracks memory plugin to track.",
+        "description": "Floor-suppressed obstruction candidates associated into tracks across frames, with optical-flow support.",
         "default_config": _MULTI_OBSTRUCTION_TRACKS_CONFIG,
     },
 )

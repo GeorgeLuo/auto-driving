@@ -60,8 +60,4 @@ eq([perception().queued, memory().queued, perception().draft, memory().draft], [
 finish();
 eq(sent.length, 2, "nothing extra sent after revert");
 
-// the listing says which perception plugins a memory plugin reads, and nothing otherwise
-eq(ctx.pluginNeedsText({ perception_plugins: ["a", "b"] }), "needs perception: a, b", "declared perception plugins are listed");
-eq(ctx.pluginNeedsText({}), "", "no declaration, no note");
-eq(ctx.pluginNeedsText({ perception_plugins: [] }), "", "empty declaration, no note");
 console.log("queue ok");

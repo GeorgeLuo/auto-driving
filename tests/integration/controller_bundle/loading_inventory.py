@@ -39,7 +39,6 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin", "CaptureFloorContinuityPlugin"),
     ("implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin", "TemporalFloorContinuityPlugin"),
     ("implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin", "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin", "MultiObstructionTracksPlugin"),
-    ("implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin:MultiObstructionMemory", "implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin", "MultiObstructionMemory"),
 )
 
 # (legacy module, canonical module). Both stay importable. They are not

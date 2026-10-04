@@ -14,6 +14,7 @@ leave the host to clear the map.
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -222,16 +223,19 @@ class MemoryRunner:
         """Run each selected plugin in order and return the memory report.
 
         A selection that cannot load raises here, before any plugin runs, and
-        leaves the applied plugins in place.
+        leaves the applied plugins in place. Plugins get the frame context
+        without ``sensor_frame``: memory reads the shared map and the
+        observation, and perception puts anything it needs from the feed there.
         """
 
+        memory_context = replace(context, sensor_frame=None)
         with self._runtime_lock:
             self._apply_selection(context.shared_memory)
             started = time.perf_counter()
             self.last_error = None
             try:
                 for plugin in self.plugins:
-                    plugin.update(context, observation)
+                    plugin.update(memory_context, observation)
                 if not self.plugins and context.shared_memory is not None:
                     withdraw_publication(context.shared_memory)
             except Exception as exc:

@@ -17,6 +17,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import DuplicatePluginIdError
 
 from implementations.decision_cycle.catalog import selection_activation
@@ -49,7 +50,8 @@ from .physical_observation import (
 )
 from .streaming import _publish_physical_view
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
-from .workbench_frames import default_mapper, run_frame
+from .perception_runs import recorded_perception_selection, recorded_run_manifest
+from .workbench_frames import run_frame
 from .workbench_source import SourceValidationError, normalize_image_directory, normalize_image_file
 
 
@@ -213,8 +215,10 @@ def inspect_memory(
     """Run an image source through perception, observation and memory, frame by frame.
 
     Reports what each memory plugin retained after every frame, and the
-    observation a plugin published in place of the frame's own. It reads the
-    source only; live frames come from ``perception inspect --record``.
+    observation a plugin published in place of the frame's own. Perception runs
+    the selection a recorded run names, else the default; tracked things reach
+    memory only through that selection. It reads the source only; live frames
+    come from ``perception inspect --record``.
     """
 
     activation, error = _selected_memory(preset, plugins)
@@ -226,7 +230,10 @@ def inspect_memory(
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read memory inspect source: {exc}")
     try:
-        mapper = default_mapper()
+        perception_activation, perception_preset = recorded_perception_selection(
+            recorded_run_manifest(path) if path.is_dir() else {}
+        )
+        mapper = PerceptionRunner.from_activation(perception_activation)
         memory_step = MemoryRunner.from_activation(activation)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
@@ -278,6 +285,7 @@ def inspect_memory(
             "source_id": image_source.source_id,
             "frame_count": len(frames),
         },
+        "perception": {"preset": perception_preset, "plugins": list(perception_activation.plugins)},
         "memory": {"preset": activation.metadata["preset"], "plugins": list(activation.plugins)},
         "frames": frames,
         "final": memory_step.report(),
@@ -343,6 +351,7 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
         "Memory inspect",
         "--------------",
         f"Source: {source['path']} ({source['frame_count']} frames)",
+        f"Perception: {report['perception']['preset']} ({', '.join(report['perception']['plugins'])})",
         f"Memory: {report['memory']['preset']} ({', '.join(report['memory']['plugins'])})",
         "",
         "Frame  Plugin  Health  Records  Epoch  Observation  Replacement",

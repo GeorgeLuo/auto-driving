@@ -276,8 +276,8 @@ memory plugins in order, and is recorded as the preset it equals, else `custom`.
 The two are exclusive:
 
 ```sh
-./cli/automa vehicles update memory --id chase-sim-chaser --preset multi_obstruction
-./cli/automa vehicles update memory --id chase-sim-chaser --plugin bounded_evidence --plugin multi_obstruction_tracks
+./cli/automa vehicles update memory --id chase-sim-chaser --preset recency_ledger
+./cli/automa vehicles update memory --id chase-sim-chaser --plugin bounded_evidence
 ```
 
 ## Physical PiRacer Workflow

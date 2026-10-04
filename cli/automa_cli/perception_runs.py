@@ -53,6 +53,29 @@ class CommandResult:
     message: str
 
 
+def recorded_run_manifest(source_dir: Path) -> dict[str, Any]:
+    """The manifest of a recorded run directory, or ``{}`` for a plain image directory."""
+
+    return _read_json(source_dir / "run.json") or _read_json(source_dir / "report.json")
+
+
+def recorded_perception_selection(source_manifest: dict[str, Any]) -> tuple[Any, str]:
+    """The perception selection a recorded run names, else the default, and its preset label."""
+
+    recorded_mapper = source_manifest.get("mapper")
+    if not isinstance(recorded_mapper, dict):
+        activation = selection_activation("perception")
+        return activation, activation.metadata["preset"]
+    recorded = dict(recorded_mapper.get("config") or {})
+    activation = step_activation(
+        "perception",
+        recorded.get("plugins") or [],
+        recorded.get("plugin_specs") or {},
+        recorded.get("plugin_configs") or {},
+    )
+    return activation, recorded_mapper.get("preset") or "recorded"
+
+
 def inspect_perception(
     source: Path | None = None,
     *,
@@ -249,9 +272,7 @@ def _inspect_images(
         source_name = source.stem
     elif source.is_dir():
         source_dir = source
-        source_manifest = _read_json(source_dir / "run.json")
-        if not source_manifest:
-            source_manifest = _read_json(source_dir / "report.json")
+        source_manifest = recorded_run_manifest(source_dir)
         image_paths = _source_image_paths(source_dir, source_manifest)
         source_name = source_dir.name
     else:
@@ -260,22 +281,11 @@ def _inspect_images(
         return CommandResult(2, f"No applicable images found under {source}")
 
     try:
-        recorded_mapper = source_manifest.get("mapper") if isinstance(source_manifest, dict) else None
         if plugins or preset is not None:
             activation = selection_activation("perception", preset=preset, plugins=plugins)
             preset = activation.metadata["preset"]
-        elif isinstance(recorded_mapper, dict):
-            recorded = dict(recorded_mapper.get("config") or {})
-            activation = step_activation(
-                "perception",
-                recorded.get("plugins") or [],
-                recorded.get("plugin_specs") or {},
-                recorded.get("plugin_configs") or {},
-            )
-            preset = recorded_mapper.get("preset") or "recorded"
         else:
-            activation = selection_activation("perception")
-            preset = activation.metadata["preset"]
+            activation, preset = recorded_perception_selection(source_manifest)
         mapper = PerceptionRunner.from_activation(activation)
         report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}
         record_root = INSPECT_ROOT

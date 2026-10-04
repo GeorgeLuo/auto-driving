@@ -113,7 +113,7 @@ class PresetActivationTests(unittest.TestCase):
         self.assertEqual(label("perception", ["floor_plane", "frame"]), catalog.CUSTOM_PRESET)
         self.assertEqual(label("memory", []), catalog.CUSTOM_PRESET)
         self.assertEqual(
-            label("perception", ["frame", "floor_plane", "obstruction_tracks"]), catalog.CUSTOM_PRESET
+            label("perception", ["frame", "floor_plane", "multi_obstruction_tracks"]), catalog.CUSTOM_PRESET
         )
 
     def test_selection_errors_name_the_step(self) -> None:

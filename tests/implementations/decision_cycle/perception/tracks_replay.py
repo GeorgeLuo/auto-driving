@@ -95,10 +95,10 @@ def tracked_frame(batch: PerceptionEvidenceBatch) -> dict[str, Any]:
     )
 
 
-def tracks_replay() -> list[dict[str, Any]]:
+def tracks_replay(plugin: MultiObstructionTracksPlugin | None = None) -> list[dict[str, Any]]:
     """An obstruction appears, moves, leaves view for two frames, and returns."""
 
-    plugin = MultiObstructionTracksPlugin()
+    plugin = plugin or MultiObstructionTracksPlugin()
     shared_memory: dict[str, Any] = {}
     return [
         {

@@ -16,7 +16,7 @@ clusters, raw/union/robust/median/intersection hypotheses, and deterministic
 selector choices before the inherited tracker receives a selected geometry.
 
 The detector now emits current-frame region proposals and a tracking-config
-marker. The `multi_obstruction_tracks` memory plugin owns temporal
+marker. The `multi_obstruction_tracks` perception plugin owns temporal
 association, optical-flow history, lost tracks, and ID allocation in the host
 map; select it alongside this plugin or the object-separated variant. Diagnostic scratch
 is call-local; selector-response caches remain content-addressed experiment

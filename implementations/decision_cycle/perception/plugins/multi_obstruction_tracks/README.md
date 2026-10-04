@@ -16,7 +16,8 @@ than held as unsupported ghost obstacles. Association uses a hard spatial gate
 before the score tie-break, and both detector misses and lost-identity expiry
 are bounded by configuration.
 
-Track association, optical-flow history, and ID allocation belong to the
-`multi_obstruction_tracks` memory plugin; select both to get tracks. The
-durability scoring and diagnostic panels are scripts under
-`scripts/perception/multi_obstruction_tracks/`.
+Track association, optical-flow history, and ID allocation live in this
+plugin and keep their history in the host map, so a replacement instance
+continues the same tracks. The `obstruction_observer` preset selects it after
+`frame` and `floor_plane`. The durability scoring and diagnostic panels are
+scripts under `scripts/perception/multi_obstruction_tracks/`.

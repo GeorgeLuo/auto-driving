@@ -25,7 +25,7 @@ class InspectionRecordingTests(unittest.TestCase):
             "AUTOMA_MEMORY_INSPECT_ROOT": str(self.root / "memory"),
         }
 
-    def inspect(self, step: str, source: Path, *options: str) -> dict:
+    def inspect(self, step: str, source: Path, *options: str, exit_code: int = 0) -> dict:
         result = run_automa(
             "vehicles",
             step,
@@ -34,7 +34,9 @@ class InspectionRecordingTests(unittest.TestCase):
             *options,
             "--json",
             extra_env=self.env,
+            check=False,
         )
+        self.assertEqual(result.returncode, exit_code, result.stdout + result.stderr)
         return json.loads(result.stdout)
 
     def test_equal_timestamp_perception_recording_replays_after_memory_recording_moves(
@@ -42,6 +44,16 @@ class InspectionRecordingTests(unittest.TestCase):
     ) -> None:
         for path in self.frames.iterdir():
             os.utime(path, (5, 5))
+        (self.frames / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "frames": [
+                        {"image_path": f"frame_{index}.png", "timestamp_ms": 5000}
+                        for index in range(3)
+                    ],
+                }
+            )
+        )
         perception = self.inspect(
             "perception", self.frames, "--preset", "obstruction_observer", "--record"
         )
@@ -182,12 +194,12 @@ class InspectionRecordingTests(unittest.TestCase):
             overridden["final"]["plugins"][0]["state"]["bounds"]["max_age_ms"], 10000
         )
 
-        perceived = self.inspect("perception", Path(recorded["run_dir"]))
+        perceived = self.inspect("perception", Path(recorded["run_dir"]), exit_code=1)
         self.assertEqual(
-            [frame["frame_index"] for frame in perceived["frames"]], [7, 12]
+            [frame["frame_index"] for frame in perceived["frames"]], [7, 9, 12]
         )
         self.assertEqual(
-            [frame["captured_at_ms"] for frame in perceived["frames"]], [5000, 5800]
+            [frame["captured_at_ms"] for frame in perceived["frames"]], [5000, 5000, 5800]
         )
 
     def test_empty_recorded_selections_remain_empty_until_overridden(self) -> None:

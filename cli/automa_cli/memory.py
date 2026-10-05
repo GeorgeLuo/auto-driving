@@ -64,6 +64,7 @@ from .vehicles import (
 )
 from .workbench_frames import run_frame
 from .workbench_source import (
+    WORKBENCH_DEFAULT_MAX_FRAMES,
     SourceValidationError,
     normalize_image_directory,
     normalize_image_file,
@@ -223,6 +224,7 @@ def inspect_memory(
     plugins: list[str] | None = None,
     record: bool = False,
     json_output: bool = False,
+    max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
 ) -> CommandResult:
     """Run an image source through perception, observation and memory, frame by frame.
 
@@ -237,9 +239,17 @@ def inspect_memory(
         return error
     path = Path(source).expanduser()
     try:
-        image_source = normalize_image_file(path) if path.is_file() else normalize_image_directory(path)
+        if max_frames <= 0:
+            raise SourceValidationError("max_frames must be greater than zero")
+        image_source = (
+            normalize_image_file(path)
+            if path.is_file()
+            else normalize_image_directory(path, max_frames=max_frames)
+        )
         _manifest_path, source_manifest = (
-            read_image_manifest(image_source.source_path) if path.is_dir() else (None, None)
+            read_image_manifest(image_source.source_path)
+            if path.is_dir()
+            else (None, None)
         )
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read memory inspect source: {exc}")

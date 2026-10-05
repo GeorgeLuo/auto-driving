@@ -2,6 +2,8 @@
 
 Frame indices order a recording. Timestamps may repeat at millisecond
 resolution, but cannot go backwards; replay keeps the recorded times.
+Unmanifested images use case-insensitive filename order and synthetic one-second
+intervals. Filesystem mtimes do not describe when a frame was captured.
 """
 
 from __future__ import annotations
@@ -130,6 +132,14 @@ def normalize_image_directory(
         raise SourceValidationError(f"source path is not a directory: {source_path}")
 
     manifest_path, manifest = read_image_manifest(source_path)
+    if (
+        manifest is not None
+        and "frames" not in manifest
+        and "camera_frames" not in manifest
+    ):
+        captures = _startup_capture_entries(source_path, manifest)
+        if captures:
+            manifest = {**manifest, "frames": captures}
     if manifest_path is not None and manifest_path.name == "report.json":
         entries = manifest.get("frames")
         if (
@@ -369,6 +379,36 @@ def _lexical_image_paths(source_path: Path) -> list[Path]:
             )
         return supported_files(frames_dir)
     return []
+
+
+def _startup_capture_entries(source_path: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep operation captures in before/after order through the common adapter."""
+
+    results = manifest.get("results")
+    if not isinstance(results, list):
+        return []
+    entries: list[dict[str, Any]] = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        for key in ("before_capture", "after_capture"):
+            capture = result.get(key)
+            value = capture.get("path") if isinstance(capture, dict) else None
+            if not isinstance(value, str) or not value.strip():
+                continue
+            declared = Path(value).expanduser()
+            candidate = declared if declared.is_absolute() else source_path / declared
+            if not candidate.is_file() or not _is_within(
+                candidate.resolve(), source_path
+            ):
+                archived = source_path / "frames" / declared.name
+                if archived.is_file():
+                    candidate = archived
+            entry: dict[str, Any] = {"image_path": str(candidate)}
+            if "captured_at_ms" in capture:
+                entry["timestamp_ms"] = capture["captured_at_ms"]
+            entries.append(entry)
+    return entries
 
 
 def _build_frame(

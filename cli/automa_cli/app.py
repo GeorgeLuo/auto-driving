@@ -708,7 +708,9 @@ def build_parser() -> argparse.ArgumentParser:
             "perception and memory selections, including their configs; --preset or --plugin "
             "overrides memory. Otherwise each step uses its default. Reports each plugin's health, "
             "record count and epoch after every frame. It reads the source only; record live "
-            "frames with `perception inspect --record` and inspect that run."
+            "frames with `perception inspect --record` and inspect that run. Absent frames "
+            "update memory with an empty observation. Unmanifested images use filename order "
+            "and times 0, 1000, 2000, ... ms, as perception inspect and workbench replay do."
         ),
     )
     memory_inspect.add_argument(
@@ -988,7 +990,10 @@ def build_parser() -> argparse.ArgumentParser:
             "one, frames are read from an active vehicle without taking movement control; "
             "when several are active, the simulator is selected by default. Recorded "
             "perception and memory runs restore their perception selection and preserve "
-            "frame identity and timestamps; --preset or --plugin overrides that selection."
+            "frame identity and timestamps; --preset or --plugin overrides that selection. "
+            "Absent frames are reported as unavailable and reset temporal state. "
+            "Unmanifested images use filename order and times 0, 1000, 2000, ... ms, "
+            "as memory inspect and workbench replay do."
         ),
     )
     perception_inspect.add_argument(
@@ -1051,6 +1056,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable report.",
     )
     perception_inspect.set_defaults(handler=_handle_vehicles_perception_inspect)
+
+    for inspection in (perception_inspect, memory_inspect):
+        inspection.add_argument(
+            "--max-frames",
+            type=int,
+            default=WORKBENCH_DEFAULT_MAX_FRAMES,
+            help=(
+                "Reject image directories or recordings above this frame count; "
+                f"increase for larger sources (default: {WORKBENCH_DEFAULT_MAX_FRAMES})."
+            ),
+        )
 
     perception_viability = perception_commands.add_parser(
         "viability",
@@ -2006,6 +2022,7 @@ def _handle_vehicles_memory_inspect(args: argparse.Namespace) -> int:
         plugins=args.plugins,
         record=args.record,
         json_output=args.json,
+        max_frames=args.max_frames,
     )
     if result.message:
         print(result.message)
@@ -2170,6 +2187,7 @@ def _handle_vehicles_perception_inspect(args: argparse.Namespace) -> int:
         json_output=args.json,
         preset=args.preset,
         plugins=args.plugins,
+        max_frames=args.max_frames,
     )
     if result.message:
         print(result.message)

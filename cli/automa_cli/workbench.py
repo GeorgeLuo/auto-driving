@@ -11,7 +11,10 @@ from __future__ import annotations
 import os
 import time
 import webbrowser
+from collections.abc import Sequence
 from typing import Any, TextIO
+
+from implementations.decision_cycle.catalog import selection_activation
 
 from .perception_runs import CommandResult
 from .workbench_contract import (
@@ -43,7 +46,10 @@ from .workbench_source import (
 def run_workbench_replay(
     source_dir: str | os.PathLike[str],
     *,
-    active_plugin_ids: list[str] | tuple[str, ...] | None = None,
+    perception_preset: str | None = None,
+    perception_plugins: Sequence[str] | None = None,
+    memory_preset: str | None = None,
+    memory_plugins: Sequence[str] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -53,8 +59,28 @@ def run_workbench_replay(
     open_browser: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Run one CLI replay, optionally keeping the loopback workbench alive."""
+    """Run one CLI replay, optionally keeping the loopback workbench alive.
 
+    Perception and memory each start from a packaged preset or an ordered
+    plugin list, as the inspect and update commands take them; with neither,
+    the step's default preset. A preset keeps its plugin configs. Page checkboxes
+    retain selected plugins' order and append newly checked plugins. Changing a
+    step's ordered selection uses catalog default configs for that step; the
+    other step keeps its selection and configs. Submitting the same ordered list
+    keeps the current configs and pass.
+    """
+
+    try:
+        activations = {
+            "perception": selection_activation(
+                "perception", preset=perception_preset, plugins=perception_plugins
+            ),
+            "memory": selection_activation(
+                "memory", preset=memory_preset, plugins=memory_plugins
+            ),
+        }
+    except ValueError as exc:
+        return CommandResult(2, f"Workbench replay failed: {exc}")
     if open_browser:
         serve = True
     runner: ImageReplayRunner | None = None
@@ -63,7 +89,7 @@ def run_workbench_replay(
     try:
         runner = ImageReplayRunner(
             source_dir,
-            active_plugin_ids=active_plugin_ids,
+            activations=activations,
             cadence_ms=cadence_ms,
             pace=pace,
             max_frames=max_frames,
@@ -117,17 +143,19 @@ def _format_workbench_status(
 ) -> str:
     source = state.get("source") or {}
     progress = state.get("progress") or {}
-    active_plugins = state.get("run_active_plugin_ids") or state.get("active_plugin_ids") or []
-    active_plugins_text = ", ".join(str(item) for item in active_plugins) or "(none)"
+    pipeline = (state.get("machine_detail") or {}).get("pipeline") or {}
     lines = [
         "automa decision playback workbench",
         f"phase: {state.get('phase')}",
         f"sequence: {state.get('sequence_id')}",
         f"run_id: {state.get('run_id') or '(none)'}",
         f"source: {source.get('source_path') or source.get('path') or '(none)'}",
-        f"active_plugins: {active_plugins_text}",
-        f"plugin_order: {active_plugins_text}",
-        f"catalog_digest: {state.get('run_catalog_digest') or state.get('catalog_digest') or '(none)'}",
+        "perception: " + _selection_text(
+            pipeline.get("perception_preset"), state.get("active_perception_plugin_ids")
+        ),
+        "memory: " + _selection_text(
+            pipeline.get("memory_preset"), state.get("active_memory_plugin_ids")
+        ),
         f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
     ]
     if server_url:
@@ -143,16 +171,23 @@ def _format_workbench_status(
     cleanup = state.get("cleanup")
     if isinstance(cleanup, dict):
         lines.append(
-            "cleanup: mapper={mapper}; memory={memory}; "
+            "cleanup: perception={perception}; memory={memory}; "
             "source_read_only={source_read_only}; "
             "movement_control={movement_control}".format(
-                mapper=cleanup.get("mapper"),
+                perception=cleanup.get("perception"),
                 memory=cleanup.get("memory"),
                 source_read_only=cleanup.get("source_read_only"),
                 movement_control=cleanup.get("movement_control"),
             )
         )
     return "\n".join(lines)
+
+
+def _selection_text(preset: Any, plugin_ids: Any) -> str:
+    """A step's selection as the inspect commands print it: preset (plugins)."""
+
+    plugins = ", ".join(str(item) for item in plugin_ids or []) or "none"
+    return f"{preset or '(none)'} ({plugins})"
 
 
 __all__ = [

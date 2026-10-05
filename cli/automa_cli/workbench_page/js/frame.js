@@ -378,7 +378,7 @@ function drawOverlay() {
     context.fillText(label.text, x, y);
   });
 }
-["memoryFrame", "evidenceFrame", "decisionFrame"].forEach(function (id) {
+["memoryFrame", "perceptionFrame", "decisionFrame"].forEach(function (id) {
   bindFloatingFrame(document.getElementById(id));
 });
 Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {

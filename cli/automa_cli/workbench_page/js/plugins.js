@@ -4,22 +4,18 @@
 
 // Each panel keeps its own draft, and the newest selection toggled while another request
 // was in flight (queued; sent when it settles).
-function newPluginPanel(catalogId, summaryId, digestId, catalogKey, activeKey) {
+function newPluginPanel(step) {
   return {
-    catalogId: catalogId, summaryId: summaryId, digestId: digestId,
-    catalogKey: catalogKey, activeKey: activeKey,
+    step: step, catalogId: step + "PluginCatalog",
+    summaryId: step + "PluginSelectionSummary", digestId: step + "PluginDigest",
+    orderId: step + "PluginOrder", presetKey: step + "_preset",
+    catalogKey: step + "_plugin_catalog", activeKey: "active_" + step + "_plugin_ids",
     draft: null, draftDigest: null, queued: null, renderKey: null
   };
 }
 var pluginPanels = {
-  perception: newPluginPanel(
-    "pluginCatalog", "pluginSelectionSummary", "pluginDigest",
-    "plugin_catalog", "active_plugin_ids"
-  ),
-  memory: newPluginPanel(
-    "memoryPluginCatalog", "memoryPluginSelectionSummary", "memoryPluginDigest",
-    "memory_plugin_catalog", "active_memory_plugin_ids"
-  )
+  perception: newPluginPanel("perception"),
+  memory: newPluginPanel("memory")
 };
 function queuePluginSelection(step, ids) {
   pluginPanels[step].queued = ids;
@@ -55,13 +51,23 @@ function revertPluginDraft(step) {
   settlePluginDraft(step);
 }
 function selectedPluginIdsFromView(panel) {
-  return Array.prototype.map.call(
+  var checked = Array.prototype.map.call(
     elements[panel.catalogId].querySelectorAll("input[data-plugin-id]:checked"),
     function (input) { return input.getAttribute("data-plugin-id"); }
   ).filter(function (value) { return value; });
+  // Catalog display order is not execution order. Retain the draft or CLI
+  // selection's order, removing unchecked ids and appending newly checked ids.
+  var previous = panel.draft || (state && state[panel.activeKey]) || [];
+  return previous.filter(function (id) { return checked.indexOf(id) >= 0; }).concat(
+    checked.filter(function (id) { return previous.indexOf(id) < 0; })
+  );
 }
 function renderPluginSummary(panel, catalog, plugins, active) {
-  setText(panel.summaryId, active.length + " active · " + plugins.length + " available");
+  var pipeline = state && state.machine_detail && state.machine_detail.pipeline;
+  var preset = panel.draft !== null ? "selection pending" : text(pipeline && pipeline[panel.presetKey]);
+  setText(panel.summaryId, preset + " · " + active.length + " active · " + plugins.length + " available");
+  setText(panel.orderId, active.length ? "Run order: " + active.join(" → ")
+    : "No " + panel.step + " plugins selected.");
   setText(panel.digestId, catalog ? "catalog " + text(catalog.digest) : "");
 }
 function renderPluginPanel(step) {
@@ -70,9 +76,9 @@ function renderPluginPanel(step) {
   var catalog = state && state[panel.catalogKey];
   var plugins = catalog && Array.isArray(catalog.plugins) ? catalog.plugins : [];
   var stateActive = state && Array.isArray(state[panel.activeKey]) ? state[panel.activeKey] : [];
-  if (!catalog || panel.draftDigest !== catalog.digest) {
-    panel.draft = stateActive.slice();
-    panel.draftDigest = catalog ? catalog.digest : null;
+  if (!catalog || (panel.draft !== null && panel.draftDigest !== catalog.digest)) {
+    panel.draft = null;
+    panel.draftDigest = null;
   }
   var active = panel.draft || stateActive;
   var allowed = state && state.controls && state.controls.allowed_actions
@@ -85,6 +91,7 @@ function renderPluginPanel(step) {
       container.querySelectorAll("input[data-plugin-id]"),
       function (input) {
         input.disabled = !selectionAllowed;
+        input.checked = active.indexOf(input.getAttribute("data-plugin-id")) >= 0;
       }
     );
     renderPluginSummary(panel, catalog, plugins, active);

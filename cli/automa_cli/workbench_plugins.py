@@ -2,8 +2,9 @@
 
 The workbench offers every packaged plugin of the steps whose selection the
 operator can change: perception and memory. A selection is checked and built
-through ``selection_activation``, the activation the CLI uses for that step.
-Listing a catalog does not construct plugins;
+through ``selection_activation``, the activation the CLI uses for that step,
+so a preset given on the command line keeps its plugin configs. Listing a
+catalog does not construct plugins;
 construction happens only after the operator selects plugins for a replay.
 """
 
@@ -106,11 +107,11 @@ class PluginCatalog:
         except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc
 
-    def build(self, active_ids: Sequence[str]) -> PerceptionRunner | MemoryRunner:
-        """Construct exactly the selected packaged plugins, as the step's runner."""
+    def build(self, activation: StepActivation) -> PerceptionRunner | MemoryRunner:
+        """Construct exactly the activation's plugins and configs, as the step's runner."""
 
         runner = PerceptionRunner if self.step == "perception" else MemoryRunner
-        return runner.from_activation(self.activation(active_ids))
+        return runner.from_activation(activation)
 
 
 def packaged_plugin_catalog(step: str) -> PluginCatalog:

@@ -8,6 +8,7 @@ from tests.cli.workbench_fixtures import (
     ImageReplayRunner,
     _wait_until,
     image_source,
+    perception_activations,
     post_action,
     serve_workbench,
     write_manifest,
@@ -23,13 +24,20 @@ class SelectionRebuildTests(unittest.TestCase):
         self.assertIn("Changing perception or memory plugins", help_text)
         self.assertIn("rebuilds both pipelines", help_text)
         self.assertIn("displayed frame before returning", help_text)
+        self.assertIn("append newly checked plugins", help_text)
+        self.assertIn("changed ordered selection uses default configs for that step", help_text)
+        self.assertIn("other step keeps its selection and configs", help_text)
+        self.assertIn("same ordered selection keeps the current configs and pass", help_text)
 
     def test_either_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
         for phase in ("running", "paused"):
             for step in ("perception", "memory"):
                 with self.subTest(phase=phase, step=step), image_source(1) as root:
                     runner = ImageReplayRunner(
-                        root, active_plugin_ids=["frame"], cadence_ms=30000, loop=True
+                        root,
+                        activations=perception_activations("frame"),
+                        cadence_ms=30000,
+                        loop=True,
                     )
                     base = serve_workbench(self, runner)
                     if step == "memory":
@@ -87,14 +95,13 @@ class SelectionRebuildTests(unittest.TestCase):
                         ],
                         selected_ids
                         if step == "perception"
-                        else shown["active_plugin_ids"],
+                        else shown["active_perception_plugin_ids"],
                     )
-                    other_key = (
-                        "active_memory_plugin_ids"
-                        if step == "perception"
-                        else "active_plugin_ids"
+                    other = "memory" if step == "perception" else "perception"
+                    self.assertEqual(
+                        selected[f"active_{other}_plugin_ids"],
+                        shown[f"active_{other}_plugin_ids"],
                     )
-                    self.assertEqual(selected[other_key], shown[other_key])
                     self.assertEqual(
                         selected["steps"]["memory"]["plugin_id"], "bounded_evidence"
                     )
@@ -102,7 +109,7 @@ class SelectionRebuildTests(unittest.TestCase):
                         self.assertEqual(selected["position"], 1)
                         self.assertEqual(len(selected["timeline"]), 1)
                         self.assertEqual(runner._memory_step.update_count, 1)
-                        unchanged_mapper = runner._mapper
+                        unchanged_step = runner._perception_step
                         unchanged = post_action(
                             base,
                             {
@@ -112,7 +119,7 @@ class SelectionRebuildTests(unittest.TestCase):
                                 "active_plugin_ids": selected_ids,
                             },
                         )["state"]
-                        self.assertIs(runner._mapper, unchanged_mapper)
+                        self.assertIs(runner._perception_step, unchanged_step)
                         self.assertEqual(unchanged["position"], 1)
                     post_action(base, {"action": "reset", "run_id": run_id})
 
@@ -139,9 +146,9 @@ class SelectionRebuildTests(unittest.TestCase):
                 )
                 runner = ImageReplayRunner(
                     root,
-                    active_plugin_ids=tracked
-                    if step == "memory"
-                    else ["frame", "floor_plane"],
+                    activations=perception_activations(
+                        *(tracked if step == "memory" else ["frame", "floor_plane"])
+                    ),
                     cadence_ms=30000,
                 )
                 base = serve_workbench(self, runner)
@@ -186,7 +193,7 @@ class SelectionRebuildTests(unittest.TestCase):
                 self.assertEqual(runner._memory_step.update_count, 2)
 
                 reference = ImageReplayRunner(
-                    root, active_plugin_ids=tracked, cadence_ms=30000
+                    root, activations=perception_activations(*tracked), cadence_ms=30000
                 )
                 self.addCleanup(reference.close)
                 reference_id = reference.start()["run_id"]

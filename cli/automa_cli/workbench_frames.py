@@ -12,14 +12,12 @@ from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
-from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionBackend, PerceptionText
-from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from implementations.decision_cycle.catalog import packaged_activation, selection_activation
+from implementations.decision_cycle.catalog import packaged_activation
 
 from .perception_runs import run_perception
 from .workbench_contract import WORKBENCH_SEQUENCE_ID
@@ -55,14 +53,6 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
             "absence": False,
         },
     )
-
-
-def default_mapper() -> PerceptionBackend:
-    return PerceptionRunner.from_activation(selection_activation("perception"))
-
-
-def default_memory_step() -> MemoryRunner:
-    return MemoryRunner.from_activation(selection_activation("memory"))
 
 
 def workbench_decision_steps() -> Any:
@@ -110,7 +100,7 @@ class FrameOutcome:
 def run_frame(
     frame: ReplayFrame,
     *,
-    mapper: PerceptionBackend,
+    perception_step: PerceptionBackend,
     memory_step: Any,
     steps: Any,
     shared_memory: dict[str, Any],
@@ -134,10 +124,10 @@ def run_frame(
 
     def perceive(current: DecisionFrameContext) -> PerceptionText | None:
         if frame.absent or current.sensor_frame is None:
-            mapper.reset(current.shared_memory)
+            perception_step.reset(current.shared_memory)
             return None
         return run_perception(
-            mapper,
+            perception_step,
             current.sensor_frame,
             shared_memory=current.shared_memory,
             metadata={
@@ -175,7 +165,7 @@ def run_frame(
         ),
     ).run(context)
     decision_payload = decision_view(result)
-    perception_plugin_report = plugin_report(mapper)
+    perception_plugin_report = plugin_report(perception_step)
     memory_plugin_report = plugin_report(memory_step)
 
     return FrameOutcome(

@@ -17,10 +17,18 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     ViewLocation,
 )
+from autonomy.decision_cycle.activation import StepActivation
+from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
     WorkbenchServer,
 )
+
+
+def perception_activations(*plugin_ids: str) -> dict[str, StepActivation]:
+    """Runner activations that select these perception plugins, in order."""
+
+    return {"perception": selection_activation("perception", plugins=list(plugin_ids))}
 
 
 @contextmanager

@@ -158,7 +158,7 @@ class WorkbenchTests(unittest.TestCase):
             broken_state = ImageReplayRunner(
                 broken,
                 cadence_ms=0,
-                mapper_factory=lambda: broken_mapper,
+                perception_step_factory=lambda: broken_mapper,
             ).start()
             self.assertEqual(broken_state["phase"], "failed")
             self.assertEqual(broken_state["failure_boundary"], "source")
@@ -171,7 +171,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: error_mapper,
+                perception_step_factory=lambda: error_mapper,
             )
             started = runner.start()
             state = runner.wait(5) if started["phase"] == "running" else started
@@ -183,7 +183,7 @@ class WorkbenchTests(unittest.TestCase):
             memory_runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: memory_mapper,
+                perception_step_factory=lambda: memory_mapper,
                 memory_step_factory=lambda: ErrorMemory(),
             )
             memory_started = memory_runner.start()
@@ -202,11 +202,11 @@ class WorkbenchTests(unittest.TestCase):
 
     def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
         with image_source(2) as root:
-            mapper = FixtureMapper()
+            perception_step = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                perception_step_factory=lambda: perception_step,
             )
             runner.start()
             state = runner.wait(5)
@@ -214,7 +214,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(state["sequence_id"], "workbench.image_replay.v1")
         self.assertEqual(state["progress"]["completed"], 2)
-        self.assertEqual(len(mapper.calls), 2)
+        self.assertEqual(len(perception_step.calls), 2)
         self.assertEqual(
             state["steps"]["observation"]["metadata"]["source"], "workbench.image_replay.v1"
         )
@@ -237,25 +237,24 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
 
-    def test_default_selection_is_the_lightweight_observer_preset(self) -> None:
+    def test_each_step_starts_from_its_default_preset(self) -> None:
         with image_source(1) as root:
             runner = ImageReplayRunner(root, cadence_ms=0)
             runner.start()
             state = runner.wait(5)
 
         self.assertEqual(state["phase"], "completed")
-        self.assertEqual(
-            state["machine_detail"]["pipeline"]["perception_preset"],
-            "lightweight_observer",
-        )
+        pipeline = state["machine_detail"]["pipeline"]
+        self.assertEqual(pipeline["perception_preset"], "lightweight_observer")
+        self.assertEqual(pipeline["memory_preset"], "recency_ledger")
 
     def test_runner_persists_frame_correlated_decision_playback(self) -> None:
         with image_source(2) as root:
-            mapper = DecisionFixtureMapper()
+            perception_step = DecisionFixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                perception_step_factory=lambda: perception_step,
             )
             runner.start()
             state = runner.wait(5)
@@ -303,30 +302,30 @@ class WorkbenchTests(unittest.TestCase):
                     },
                 ]
             })
-            mapper = FixtureMapper()
+            perception_step = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                perception_step_factory=lambda: perception_step,
             )
             runner.start()
             state = runner.wait(5)
 
         self.assertEqual(state["phase"], "completed")
-        self.assertEqual(len(mapper.calls), 1)
+        self.assertEqual(len(perception_step.calls), 1)
         self.assertTrue(state["timeline"][1]["frame"]["absent"])
         self.assertEqual(state["steps"]["observation"]["metadata"]["absence_reason"], "dropout")
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
         with image_source(2) as root:
-            mapper = BlockingSecondMapper()
+            perception_step = BlockingSecondMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                perception_step_factory=lambda: perception_step,
             )
             runner.start()
-            self.assertTrue(mapper.second_started.wait(3))
+            self.assertTrue(perception_step.second_started.wait(3))
             try:
                 active = runner.state()
                 self.assertEqual(len(active["timeline"]), 1)
@@ -335,5 +334,5 @@ class WorkbenchTests(unittest.TestCase):
                     active["timeline"][0]["frame"]["frame_id"],
                 )
             finally:
-                mapper.release_second.set()
+                perception_step.release_second.set()
             self.assertEqual(runner.wait(5)["phase"], "completed")

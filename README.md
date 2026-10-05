@@ -257,15 +257,6 @@ Older memory recordings contain only summary fields. They use default step
 selections and image-directory ordering and timing, because those reports did
 not save executable configs or an image inventory.
 
-The workbench reads the same recorded frame order and timing. Its plugin
-checkboxes select plugins from the current catalog with their default configs;
-they do not restore a recording's step configs. Perception tracks and memory
-evidence carry state across frames, so changing either step's selection during
-a running or paused replay rebuilds both pipelines with a fresh shared map and
-runs from the first frame to the displayed frame before the action returns.
-This includes the last frame still displayed between loop passes. The other
-step keeps its selection; selecting the same plugins again leaves the pass as it is.
-
 For a physical vehicle, `vehicles perception inspect --id piracer` currently fetches
 Pi camera frames and runs perception on them on the development machine.
 It does not prove that the Pi executed or published the perception result.
@@ -299,6 +290,55 @@ The two are exclusive:
 ```sh
 ./cli/automa vehicles update memory --id chase-sim-chaser --preset recency_ledger
 ./cli/automa vehicles update memory --id chase-sim-chaser --plugin bounded_evidence
+```
+
+## Decision Playback Workbench
+
+The workbench reads the same recorded frame order and timing. `vehicles
+workbench replay` starts each step from `--perception-preset` or
+`--perception-plugin` and `--memory-preset` or `--memory-plugin`, as the
+inspect and update commands take them. With neither flag, a step uses its
+default preset. The CLI and page show each step's preset and ordered plugins.
+The page's catalog lists available plugins; its separate **Run order** shows
+execution order. Newly checked plugins run last, and retained plugins keep
+their order. Unchecking every plugin disables its plugins.
+
+```sh
+./cli/automa vehicles workbench replay path/to/images --perception-preset multi_obstruction --memory-preset recency_ledger --serve
+```
+
+A preset keeps its plugin configs until that step's ordered selection changes.
+A changed selection uses catalog defaults for every selected plugin; it does
+not restore a recording's step configs or a tuned preset just because its ids
+match. Start with the named preset again to restore its tuning. The other step
+keeps its selection and configs. Submitting the same ordered list again keeps
+the current configs and pass.
+
+Perception tracks and memory evidence carry state across frames, so changing
+either step's selection during a running or paused replay rebuilds both
+pipelines with a fresh shared map and runs from the first frame to the displayed
+frame before the action returns. This includes the last frame still displayed
+between loop passes.
+
+For workbench API integrations, `GET /api/state` reports schema
+`workbench_image_replay_state_v2`. Read `<step>_plugin_catalog` for availability
+and default configs, `active_<step>_plugin_ids` for the selected execution order,
+and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
+`custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
+plugins that were applied. Replace v1's generic perception `plugin_catalog` and
+`active_plugin_ids` with the step-named fields; use the catalog's `digest` in
+place of `catalog_digest` / `run_catalog_digest`, and the selected or applied ids
+in place of `plugin_order` / `run_plugin_order` / `run_active_plugin_ids`.
+Cleanup now names `perception` instead of `mapper`. The removed CLI flags
+`--plugin`, `--active-plugin`, and `--active-plugin-id` become
+`--perception-plugin`; memory uses `--memory-plugin`.
+
+Send `POST /api/action` with an explicit step for either selection; omitting
+`step` is a 400 input error. `active_plugin_ids` remains the common request field
+and may be empty. Include the current state's `run_id` during playback:
+
+```json
+{"action": "select_plugins", "step": "memory", "active_plugin_ids": [], "run_id": "<current run_id>"}
 ```
 
 ## Physical PiRacer Workflow

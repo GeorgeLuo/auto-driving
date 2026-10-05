@@ -805,8 +805,13 @@ def build_parser() -> argparse.ArgumentParser:
             "local image directory. The server owns source ordering, perception, "
             "observation, bounded memory, decision state, and any selected "
             "packaged plugins. Recorded perception and memory runs preserve frame order "
-            "and timestamps; choose the plugins to run from the current catalog. "
-            "Without --serve, one replay runs "
+            "and timestamps. Perception and memory each start from a packaged preset "
+            "or an ordered plugin list, as the inspect and update commands take "
+            "them; a preset keeps its plugin configs. Page checkboxes retain the order "
+            "of selected plugins and append newly checked plugins. A changed ordered "
+            "selection uses default configs for that step; the other step keeps its "
+            "selection and configs. The same ordered selection keeps the current "
+            "configs and pass. Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
             "pause, step, reset, and another run. Changing perception or memory "
             "plugins in a running or paused served replay rebuilds both pipelines "
@@ -817,17 +822,35 @@ def build_parser() -> argparse.ArgumentParser:
         "source_dir",
         help="Directory containing supported images and optional ordered manifest.",
     )
-    workbench_replay.add_argument(
-        "--plugin",
-        "--active-plugin",
-        "--active-plugin-id",
-        dest="active_plugin_ids",
-        action="append",
+    workbench_replay_perception = workbench_replay.add_mutually_exclusive_group()
+    workbench_replay_perception.add_argument(
+        "--perception-preset",
         default=None,
-        help=(
-            "Select one packaged perception plugin id; repeat to select more, in "
-            "order. Omit this option for the default lightweight selection."
-        ),
+        choices=available_perception_preset_ids(),
+        help=f"Packaged perception preset to replay (default: {DEFAULT_PERCEPTION_PRESET}).",
+    )
+    workbench_replay_perception.add_argument(
+        "--perception-plugin",
+        action="append",
+        dest="perception_plugins",
+        default=None,
+        metavar="PLUGIN_ID",
+        help="Packaged perception plugin to select instead of a preset; repeat to select several in order.",
+    )
+    workbench_replay_memory = workbench_replay.add_mutually_exclusive_group()
+    workbench_replay_memory.add_argument(
+        "--memory-preset",
+        default=None,
+        choices=available_memory_preset_ids(),
+        help=f"Packaged memory preset to replay (default: {DEFAULT_MEMORY_PRESET}).",
+    )
+    workbench_replay_memory.add_argument(
+        "--memory-plugin",
+        action="append",
+        dest="memory_plugins",
+        default=None,
+        metavar="PLUGIN_ID",
+        help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
     )
     workbench_replay.add_argument(
         "--cadence-ms",
@@ -1992,7 +2015,10 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
 def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
-        active_plugin_ids=args.active_plugin_ids,
+        perception_preset=args.perception_preset,
+        perception_plugins=args.perception_plugins,
+        memory_preset=args.memory_preset,
+        memory_plugins=args.memory_plugins,
         cadence_ms=args.cadence_ms,
         pace=args.pace,
         max_frames=args.max_frames,

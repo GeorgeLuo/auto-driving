@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from autonomy.decision_cycle.activation import read_step_activation
+from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import preset_activation
 from implementations.decision_cycle.memory.presets import (
     DEFAULT_MEMORY_PRESET,
@@ -84,14 +86,43 @@ class MemoryCommandTests(unittest.TestCase):
     def test_info_names_the_staged_preset_as_perception_info_does(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            run_automa("vehicles", "update", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
-            info = ("vehicles", "info", "memory", "--id", "chase-sim-chaser")
-            payload = json.loads(run_automa(*info, "--json", runtime_root=runtime_root).stdout)
-            text = run_automa(*info, runtime_root=runtime_root).stdout.splitlines()
+            staged = {}
+            presets = {}
+            for step in ("perception", "memory"):
+                updated = run_automa(
+                    "vehicles",
+                    "update",
+                    step,
+                    "--id",
+                    "chase-sim-chaser",
+                    runtime_root=runtime_root,
+                    check=False,
+                )
+                self.assertIn(f"Updated {step}: chase-sim-chaser", updated.stdout)
+                info = ("vehicles", "info", step, "--id", "chase-sim-chaser")
+                payload = json.loads(
+                    run_automa(*info, "--json", runtime_root=runtime_root).stdout
+                )
+                text = run_automa(*info, runtime_root=runtime_root).stdout.splitlines()
+                activation = payload["activation"]
+                preset = activation["preset"]
+                self.assertEqual(
+                    text[0], f"{step.title()}: chase-sim-chaser -> {preset}"
+                )
+                self.assertEqual(
+                    text[1], f"Enabled plugins: {', '.join(activation['plugins'])}"
+                )
+                staged[step] = read_step_activation(activation["path"], step)
+                presets[step] = preset
 
-            self.assertEqual(payload["activation"]["preset"], DEFAULT_MEMORY_PRESET)
-            self.assertEqual(text[0], f"Memory: chase-sim-chaser -> {DEFAULT_MEMORY_PRESET}")
-            self.assertEqual(text[1], f"Enabled plugins: {', '.join(payload['activation']['plugins'])}")
+            self.assertEqual(presets["memory"], DEFAULT_MEMORY_PRESET)
+            runner = ImageReplayRunner(activations=staged)
+            try:
+                pipeline = runner.state()["machine_detail"]["pipeline"]
+                for step, preset in presets.items():
+                    self.assertEqual(pipeline[f"{step}_preset"], preset)
+            finally:
+                runner.close()
 
     def test_memory_update_dry_run_does_not_write_activation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

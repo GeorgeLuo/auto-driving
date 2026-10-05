@@ -157,11 +157,6 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.plugins.obstruction_tracks.plugin:MultiObstructionTracksPlugin",
-        "description": "",
-        "default_config": {},
-    },
-    {
         "spec": "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin",
         "description": "",
         "default_config": {},

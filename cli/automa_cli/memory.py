@@ -11,14 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
-from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.plugins import DuplicatePluginIdError
-
 from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.memory.presets import (
     MEMORY_PRESETS,
@@ -36,10 +35,9 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .step_activations import refresh_release, stage_activation
+from .inspection_runs import recorded_selection, selection_record
 from .memory_report import last_plugin_state, memory_summary
 from .paths import ROOT, display_path, safe_path_part
-from .runtime_view import RuntimeViewServer
 from .physical_observation import (
     fetch_autonomy_status,
     fetch_observation_publication,
@@ -47,12 +45,21 @@ from .physical_observation import (
     picar_base_url,
     post_memory_reset,
 )
+from .runtime_view import RuntimeViewServer
+from .step_activations import refresh_release, stage_activation
 from .streaming import _publish_physical_view
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
-from .perception_runs import recorded_perception_selection, recorded_run_manifest
+from .vehicles import (
+    discover_active_vehicles,
+    find_vehicle_by_id,
+    format_active_vehicles,
+)
 from .workbench_frames import run_frame
-from .workbench_source import SourceValidationError, normalize_image_directory, normalize_image_file
-
+from .workbench_source import (
+    SourceValidationError,
+    normalize_image_directory,
+    normalize_image_file,
+    read_image_manifest,
+)
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 INSPECT_ROOT = Path(
@@ -213,10 +220,10 @@ def inspect_memory(
 ) -> CommandResult:
     """Run an image source through perception, observation and memory, frame by frame.
 
-    Reports what each memory plugin retained after every frame. Perception runs
-    the selection a recorded run names, else the default; tracked things reach
-    memory only through that selection. It reads the source only; live frames
-    come from ``perception inspect --record``.
+    Reports what each memory plugin retained after every frame. A recorded run
+    restores its executable perception and memory selections; explicit flags
+    override memory. Otherwise each step uses its default. It reads the source
+    only; live frames come from ``perception inspect --record``.
     """
 
     activation, error = _selected_memory(preset, plugins)
@@ -225,12 +232,18 @@ def inspect_memory(
     path = Path(source).expanduser()
     try:
         image_source = normalize_image_file(path) if path.is_file() else normalize_image_directory(path)
+        _manifest_path, source_manifest = (
+            read_image_manifest(image_source.source_path) if path.is_dir() else (None, None)
+        )
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read memory inspect source: {exc}")
     try:
-        perception_activation, perception_preset = recorded_perception_selection(
-            recorded_run_manifest(path) if path.is_dir() else {}
+        source_manifest = source_manifest or {}
+        perception_activation = (
+            recorded_selection("perception", source_manifest) or selection_activation("perception")
         )
+        if preset is None and plugins is None:
+            activation = recorded_selection("memory", source_manifest) or activation
         mapper = PerceptionRunner.from_activation(perception_activation)
         memory_step = MemoryRunner.from_activation(activation)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
@@ -263,6 +276,7 @@ def inspect_memory(
                 "frame_id": frame.frame_id,
                 "frame_index": frame.frame_index,
                 "timestamp_ms": frame.timestamp_ms,
+                "image_path": str(frame.image_path) if frame.image_path is not None else None,
                 "absence_reason": frame.absence_reason,
                 "plugins": [
                     {"plugin_id": item.get("plugin_id"), **memory_summary(item.get("state"))}
@@ -276,13 +290,17 @@ def inspect_memory(
     report = {
         "schema": MEMORY_INSPECT_SCHEMA,
         "run_id": run_id,
+        "source_id": image_source.source_id,
         "source": {
             "path": str(image_source.source_path),
             "source_id": image_source.source_id,
             "frame_count": len(frames),
         },
-        "perception": {"preset": perception_preset, "plugins": list(perception_activation.plugins)},
-        "memory": {"preset": activation.metadata["preset"], "plugins": list(activation.plugins)},
+        "perception": {
+            **selection_record(perception_activation),
+            "plugins": list(perception_activation.plugins),
+        },
+        "memory": {**selection_record(activation), "plugins": list(activation.plugins)},
         "frames": frames,
         "final": memory_step.report(),
         "run_dir": None,
@@ -294,9 +312,13 @@ def inspect_memory(
             report["run_dir"] = str(run_dir)
             frames_dir = run_dir / "frames"
             frames_dir.mkdir()
-            for frame in image_source.frames:
+            for frame, recorded_frame in zip(image_source.frames, report["frames"]):
                 if frame.image_path is not None:
-                    shutil.copyfile(frame.image_path, frames_dir / f"frame_{frame.position:06d}{frame.image_path.suffix.lower()}")
+                    relative = (
+                        Path("frames") / f"frame_{frame.position:06d}{frame.image_path.suffix.lower()}"
+                    )
+                    shutil.copyfile(frame.image_path, run_dir / relative)
+                    recorded_frame["image_path"] = relative.as_posix()
             (run_dir / "report.json").write_text(
                 json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )

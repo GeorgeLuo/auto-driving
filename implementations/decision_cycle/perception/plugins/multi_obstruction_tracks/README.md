@@ -11,12 +11,27 @@ The output is deliberately generic `obstacle` evidence. It does not claim a
 semantic class, depth, traversability, or autonomous object identity. Each
 record carries a track id, association score, separate `shape_support` and
 `flow_support` evidence scores, and an explicit `new`, `matched`, `held`, or
-`reacquired` status. Lost tracks are recorded in the diagnostic summary rather
+`reacquired` status. Lost track ids are recorded in the `association` measurements rather
 than held as unsupported ghost obstacles. Association uses a hard spatial gate
 before the score tie-break, and both detector misses and lost-identity expiry
 are bounded by configuration.
 
-Track association, optical-flow history, and ID allocation belong to the
-`multi_obstruction_tracks` memory plugin; select both to get tracks. The
-durability scoring and diagnostic panels are scripts under
-`scripts/perception/multi_obstruction_tracks/`.
+Track association, optical-flow history, and ID allocation live in this
+plugin and keep their history in the host map, so a replacement instance
+continues the same tracks. The `obstruction_observer` preset selects it after
+`frame` and `floor_plane`. The durability scoring and diagnostic panels are
+scripts under `scripts/perception/multi_obstruction_tracks/`.
+
+`obstruction_tracks` has been retired. Use this plugin for explicit selections.
+Existing staged selections containing `obstruction_tracks`, including previously
+staged `obstruction_observer` presets, must be restaged. Activations store plugin
+IDs and entrypoints; the preset name in metadata does not rewrite them. To
+restage the preset:
+
+```sh
+./cli/automa vehicles update perception --id VEHICLE --preset obstruction_observer
+```
+
+The preset keeps its name and tuning and now selects `multi_obstruction_tracks`.
+The composite variants also track their own detections and do not need this
+plugin as a companion.

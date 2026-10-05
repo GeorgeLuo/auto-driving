@@ -113,12 +113,12 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
 | `vehicles info ...` | Reads staged perception, decision steps, or memory configuration; perception info also reports the live view URL. |
 | `vehicles decision inspect` | Opens a standalone inspector for saved decision inputs. Toggle obstruction side to inspect the proposal, plan, and action records; no live worker is needed. [Sample command and input](examples/decision-inspection/README.md). |
-| `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
+| `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched perception view (link to Memory map). |
 | `vehicles stream memory` | Inspects live memory as a key→value ledger (terminal + local `/memory` map page on PiCar). Keys are `record_id`s; click a key to see the retained value. |
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
-| `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception run through perception, observation and the selected memory plugins, and reports each plugin's health, record count and epoch after every frame, plus any observation memory published in its place. `--preset` or `--plugin` picks the memory selection. Writes nothing by default; `--record` saves the source frames and the report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
+| `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. Writes nothing by default; `--record` saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
 | `vehicles memory viability` | Memory health check: 60s poll of the live memory step on a PiCar (update cadence, duration, failures, health, epoch stability); the simulator passes with a stub. Writes `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
 | `vehicles perception viability` | Perception health check: 60s onboard cadence/freshness measurement on a PiCar (RSS when the vehicle supplies an `ssh_target`); the simulator passes with a stub. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
@@ -244,6 +244,22 @@ their default configs from `implementations/decision_cycle/perception/catalog.py
 
 No captures or reports are retained by default. Add `--record` when overlays
 and per-frame JSON are wanted.
+
+Both inspection commands restore the perception selection and frame identity
+and timestamps from a recording. Memory inspection also restores a recorded
+memory selection unless `--preset` or `--plugin` overrides it. Equal timestamps
+are allowed at millisecond resolution; frame indices preserve ordering and
+timestamps cannot go backwards. Memory recordings copy their images with
+relative paths, so replay still works after moving the recording or removing
+the original source.
+
+Older memory recordings contain only summary fields. They use default step
+selections and image-directory ordering and timing, because those reports did
+not save executable configs or an image inventory.
+
+The workbench reads the same recorded frame order and timing. Its plugin
+checkboxes select plugins from the current catalog with their default configs;
+they do not restore a recording's step configs.
 
 For a physical vehicle, `vehicles perception inspect --id piracer` currently fetches
 Pi camera frames and runs perception on them on the development machine.

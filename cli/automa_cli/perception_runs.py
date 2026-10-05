@@ -13,34 +13,36 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReadRequest, SensorReading
-
-from .paths import ROOT, display_path, safe_path_part
-from .perception_evaluation import evaluate_perception_frames
-from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
-from autonomy.decision_cycle.activation import step_activation, step_activation_from_payload
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.vehicle import (
+    FRONT_CAMERA_SENSOR_ID,
+    SensorFrame,
+    SensorReading,
+    SensorReadRequest,
+)
 from implementations.decision_cycle.catalog import selection_activation
+from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
+from .inspection_runs import recorded_selection, selection_record
+from .paths import ROOT, display_path, safe_path_part
 from .perception import ensure_local_perception_runtime
+from .perception_evaluation import evaluate_perception_frames
 from .step_hosting import load_staged_runner
+from .vehicle_access import create_vehicle_access
+from .vehicles import (
+    discover_active_vehicles,
+    find_vehicle_by_id,
+    format_active_vehicles,
+)
+from .workbench_source import (
+    SourceValidationError,
+    normalize_image_directory,
+    read_image_manifest,
+)
 
 RUNNER_SPEC = "autonomy.decision_cycle.perception.runner:PerceptionRunner"
-
-
-def _selection(activation) -> dict[str, Any]:
-    """The perception selection a recorded run names as its runner config."""
-
-    return {
-        "plugins": list(activation.plugins),
-        "plugin_specs": dict(activation.plugin_specs),
-        "plugin_configs": dict(activation.plugin_configs),
-    }
-from .vehicle_access import create_vehicle_access
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
-
-
 DEFAULT_FRAME_COUNT = 5
 DEFAULT_INTERVAL_S = 0.25
 _PERCEPTION_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -51,29 +53,6 @@ INSPECT_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_INSPECT_ROOT", ROOT / "run
 class CommandResult:
     exit_code: int
     message: str
-
-
-def recorded_run_manifest(source_dir: Path) -> dict[str, Any]:
-    """The manifest of a recorded run directory, or ``{}`` for a plain image directory."""
-
-    return _read_json(source_dir / "run.json") or _read_json(source_dir / "report.json")
-
-
-def recorded_perception_selection(source_manifest: dict[str, Any]) -> tuple[Any, str]:
-    """The perception selection a recorded run names, else the default, and its preset label."""
-
-    recorded_mapper = source_manifest.get("mapper")
-    if not isinstance(recorded_mapper, dict):
-        activation = selection_activation("perception")
-        return activation, activation.metadata["preset"]
-    recorded = dict(recorded_mapper.get("config") or {})
-    activation = step_activation(
-        "perception",
-        recorded.get("plugins") or [],
-        recorded.get("plugin_specs") or {},
-        recorded.get("plugin_configs") or {},
-    )
-    return activation, recorded_mapper.get("preset") or "recorded"
 
 
 def inspect_perception(
@@ -167,9 +146,8 @@ def _inspect_vehicle(
         activation = step_activation_from_payload(manifest, step="perception")
         mapper = load_staged_runner(activation)
         mapper_record = {
-            "preset": activation.metadata.get("preset"),
+            **selection_record(activation),
             "spec": RUNNER_SPEC,
-            "config": _selection(activation),
             "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
             "bundle_refreshed": prepared_runtime["refreshed"],
         }
@@ -263,6 +241,7 @@ def _inspect_images(
     source = source.expanduser().resolve()
     if not source.exists():
         return CommandResult(2, f"Apply source does not exist: {source}")
+    recorded_frames = None
     if source.is_file():
         if source.suffix.lower() not in _PERCEPTION_IMAGE_EXTENSIONS:
             return CommandResult(2, f"Apply source is not a supported image: {source}")
@@ -272,8 +251,23 @@ def _inspect_images(
         source_name = source.stem
     elif source.is_dir():
         source_dir = source
-        source_manifest = recorded_run_manifest(source_dir)
-        image_paths = _source_image_paths(source_dir, source_manifest)
+        try:
+            _manifest_path, source_manifest = read_image_manifest(source_dir)
+            source_manifest = source_manifest or {}
+            if isinstance(source_manifest.get("frames"), list) and any(
+                isinstance(frame, dict) and "image_path" in frame
+                for frame in source_manifest["frames"]
+            ):
+                # Replay recorded identity and time; copied files' mtimes are unrelated.
+                image_source = normalize_image_directory(
+                    source_dir, max_frames=max(1, len(source_manifest["frames"]))
+                )
+                recorded_frames = [frame for frame in image_source.frames if not frame.absent]
+                image_paths = [frame.image_path for frame in recorded_frames]
+            else:
+                image_paths = _source_image_paths(source_dir, source_manifest)
+        except SourceValidationError as exc:
+            return CommandResult(2, f"Could not read perception inspect source: {exc}")
         source_name = source_dir.name
     else:
         return CommandResult(2, f"Apply source is not a file or directory: {source}")
@@ -281,13 +275,14 @@ def _inspect_images(
         return CommandResult(2, f"No applicable images found under {source}")
 
     try:
-        if plugins or preset is not None:
+        if plugins is not None or preset is not None:
             activation = selection_activation("perception", preset=preset, plugins=plugins)
-            preset = activation.metadata["preset"]
         else:
-            activation, preset = recorded_perception_selection(source_manifest)
+            activation = (
+                recorded_selection("perception", source_manifest) or selection_activation("perception")
+            )
         mapper = PerceptionRunner.from_activation(activation)
-        report_mapper = {"preset": preset, "spec": RUNNER_SPEC, "config": _selection(activation)}
+        report_mapper = {**selection_record(activation), "spec": RUNNER_SPEC}
         record_root = INSPECT_ROOT
     except Exception as exc:
         return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
@@ -315,8 +310,12 @@ def _inspect_images(
             active_mapper.reset()
             frame_records: list[dict[str, Any]] = []
             for index, image_path in enumerate(image_paths):
-                frame_id = f"frame_{index:06d}"
-                captured_at_ms = int(image_path.stat().st_mtime * 1000)
+                frame = recorded_frames[index] if recorded_frames is not None else None
+                frame_id = frame.frame_id if frame is not None else f"frame_{index:06d}"
+                frame_index = frame.frame_index if frame is not None else index
+                captured_at_ms = (
+                    frame.timestamp_ms if frame is not None else int(image_path.stat().st_mtime * 1000)
+                )
                 sensor_frame = SensorFrame(
                     read_id=frame_id,
                     readings={
@@ -336,11 +335,11 @@ def _inspect_images(
                     active_mapper,
                     sensor_frame,
                     frame_id=frame_id,
-                    frame_index=index,
+                    frame_index=frame_index,
                     image_path=str(image_path),
                     shared_memory=shared_memory,
-                    metadata={"run_id": run_id, "frame_index": index},
-                    result_dir=(results_dir / frame_id) if record else None,
+                    metadata={"run_id": run_id, "frame_index": frame_index},
+                    result_dir=(results_dir / f"frame_{index:06d}") if record else None,
                 )
                 frame_records.append(item)
 
@@ -666,16 +665,6 @@ def _resolve_manifest_image(source_dir: Path, value: str) -> Path | None:
         if resolved.is_file():
             return resolved
     return None
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return value if isinstance(value, dict) else {}
 
 
 def _run_id(kind: str, source: str) -> str:

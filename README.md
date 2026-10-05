@@ -126,6 +126,11 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
+Every `vehicles update <step>` stages only for a known vehicle. A `chase-sim-*`
+id, or a vehicle with staged perception (the first autonomy deployment stages
+it), is known without the network. Any other id must be discoverable within
+`--timeout-s`.
+
 Use `help` at a command-group level and `--help` for final command options:
 
 ```sh

@@ -1236,7 +1236,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help=_STAGING_VEHICLE_ID_HELP,
     )
     perception.add_argument(
         "--timeout-s",
@@ -1298,7 +1298,13 @@ def build_parser() -> argparse.ArgumentParser:
             "--id",
             required=True,
             dest="vehicle_id",
-            help="Vehicle id from `automa vehicles active`.",
+            help=_STAGING_VEHICLE_ID_HELP,
+        )
+        step_parser.add_argument(
+            "--timeout-s",
+            type=float,
+            default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+            help=_STAGING_DISCOVERY_TIMEOUT_HELP,
         )
         step_parser.add_argument(
             "--plugin",
@@ -1337,7 +1343,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help=_STAGING_VEHICLE_ID_HELP,
+    )
+    memory.add_argument(
+        "--timeout-s",
+        type=float,
+        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        help=_STAGING_DISCOVERY_TIMEOUT_HELP,
     )
     memory_selection = memory.add_mutually_exclusive_group()
     memory_selection.add_argument(
@@ -1619,6 +1631,15 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
 _TIMEOUT_INPUT_ERROR = "timeout_invalid"
 _TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
 _TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
+# Every `vehicles update <step>` resolves its vehicle with `staging_vehicle`.
+_STAGING_VEHICLE_ID_HELP = (
+    "Vehicle id from `automa vehicles active`. A chase-sim-* id, or a vehicle with "
+    "staged perception, is known without discovery."
+)
+_STAGING_DISCOVERY_TIMEOUT_HELP = (
+    "Vehicle discovery timeout in seconds, for an id not known without discovery "
+    f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+)
 
 
 def _validate_timeout_input(
@@ -2102,10 +2123,18 @@ def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_update_memory(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles update memory",
+        json_output=args.json,
+        human_stream=sys.stdout,
+    ):
+        return 2
     result = update_vehicle_memory(
         vehicle_id=args.vehicle_id,
         preset=args.preset,
         plugins=args.plugins,
+        timeout_s=args.timeout_s,
         dry_run=args.dry_run,
         json_output=args.json,
         verbose=args.verbose,
@@ -2181,11 +2210,19 @@ def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command=f"automa vehicles update {args.step}",
+        json_output=args.json,
+        human_stream=sys.stdout,
+    ):
+        return 2
     exit_code, message = update_vehicle_step(
         vehicle_id=args.vehicle_id,
         step=args.step,
         plugins=args.plugins,
         runtime_root=DECISION_RUNTIME_ROOT,
+        timeout_s=args.timeout_s,
         dry_run=args.dry_run,
         json_output=args.json,
         verbose=args.verbose,

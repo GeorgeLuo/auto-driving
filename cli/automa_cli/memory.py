@@ -46,9 +46,10 @@ from .physical_observation import (
     post_memory_reset,
 )
 from .runtime_view import RuntimeViewServer
-from .step_activations import refresh_release, stage_activation
+from .step_activations import refresh_release, stage_activation, staging_vehicle
 from .streaming import _publish_physical_view
 from .vehicles import (
+    DEFAULT_CHASE_READINESS_TIMEOUT_S,
     discover_active_vehicles,
     find_vehicle_by_id,
     format_active_vehicles,
@@ -87,6 +88,7 @@ def update_vehicle_memory(
     vehicle_id: str,
     preset: str | None = None,
     plugins: list[str] | None = None,
+    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
     dry_run: bool = False,
     json_output: bool = False,
     verbose: bool = False,
@@ -98,6 +100,9 @@ def update_vehicle_memory(
 
     selected = list(activation.plugins)
     stream = output if verbose else None
+    _, unknown = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=timeout_s, output=stream)
+    if unknown is not None:
+        return CommandResult(2, unknown)
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"

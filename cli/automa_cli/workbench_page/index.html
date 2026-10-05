@@ -40,11 +40,11 @@
           </summary>
           <div class="sidebar-group-body">
             <span class="kicker">perception</span>
-            <span id="pluginSelectionSummary" class="muted">no catalog</span>
-            <div id="pluginCatalog" class="plugin-catalog">
+            <span id="perceptionPluginSelectionSummary" class="muted">no catalog</span>
+            <div id="perceptionPluginCatalog" class="plugin-catalog">
               <p class="muted help">Packaged plugins will appear here.</p>
             </div>
-            <div id="pluginDigest" class="digest muted"></div>
+            <div id="perceptionPluginDigest" class="digest muted"></div>
             <span class="kicker">memory</span>
             <span id="memoryPluginSelectionSummary" class="muted">no catalog</span>
             <div id="memoryPluginCatalog" class="plugin-catalog">
@@ -59,8 +59,8 @@
 
     <div class="workspace">
       <div class="workspace-tools">
+        <button type="button" class="text-action" data-recall="perceptionFrame">Perception</button>
         <button type="button" class="text-action" data-recall="memoryFrame">Memory</button>
-        <button type="button" class="text-action" data-recall="evidenceFrame">Evidence</button>
         <button type="button" class="text-action" data-recall="decisionFrame">Decision</button>
       </div>
       <section class="viewer-panel">
@@ -157,28 +157,28 @@
               </details>
             </div>
           </article>
-          <article class="float-frame" id="evidenceFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
+          <article class="float-frame" id="perceptionFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
             <div class="float-frame-header" data-frame-header>
               <div class="float-frame-title">
                 <span class="grip" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
                 </span>
-                <strong>Evidence</strong>
-                <span id="evidenceSummary" class="muted">no output</span>
+                <strong>Perception</strong>
+                <span id="perceptionSummary" class="muted">no output</span>
               </div>
               <div class="float-frame-controls">
-                <button type="button" class="icon-btn" data-frame-close aria-label="Close Evidence" title="Close">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Perception" title="Close">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
-                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Evidence" title="Minimize"></button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Perception" title="Minimize"></button>
               </div>
             </div>
             <div class="float-frame-body" data-frame-body>
               <div class="metric-grid">
-                <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
-                <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
+                <div class="metric"><div class="label">Plugin runs</div><div id="perceptionPluginRuns" class="value">—</div></div>
+                <div class="metric"><div class="label">Things / signals</div><div id="perceptionCounts" class="value">—</div></div>
               </div>
-              <pre id="evidenceText">No perception output yet.</pre>
+              <pre id="perceptionLines">No perception output yet.</pre>
             </div>
           </article>
           <article class="float-frame" id="decisionFrame" data-frame-anchor="tl" data-frame-width="330" data-frame-height="300">
@@ -224,7 +224,7 @@
   <script src="/static/js/transport.js"></script>
   <script src="/static/js/frame.js"></script>
   <script src="/static/js/plugins.js"></script>
-  <script src="/static/js/evidence.js"></script>
+  <script src="/static/js/perception.js"></script>
   <script src="/static/js/decision.js"></script>
   <script src="/static/js/memory.js"></script>
   <script src="/static/js/main.js"></script>

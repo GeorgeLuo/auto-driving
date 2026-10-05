@@ -6,7 +6,7 @@ from typing import Any
 
 
 WORKBENCH_SEQUENCE_ID = "workbench.image_replay.v1"
-WORKBENCH_STATE_SCHEMA = "workbench_image_replay_state_v1"
+WORKBENCH_STATE_SCHEMA = "workbench_image_replay_state_v2"
 WORKBENCH_SERVER_SCHEMA = "workbench_server_v1"
 WORKBENCH_ACTION_RESULT_SCHEMA = "workbench_action_result_v1"
 WORKBENCH_ERROR_SCHEMA = "workbench_error_v1"

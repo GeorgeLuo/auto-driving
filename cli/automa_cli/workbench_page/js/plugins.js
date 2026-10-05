@@ -13,8 +13,8 @@ function newPluginPanel(catalogId, summaryId, digestId, catalogKey, activeKey) {
 }
 var pluginPanels = {
   perception: newPluginPanel(
-    "pluginCatalog", "pluginSelectionSummary", "pluginDigest",
-    "plugin_catalog", "active_plugin_ids"
+    "perceptionPluginCatalog", "perceptionPluginSelectionSummary", "perceptionPluginDigest",
+    "perception_plugin_catalog", "active_perception_plugin_ids"
   ),
   memory: newPluginPanel(
     "memoryPluginCatalog", "memoryPluginSelectionSummary", "memoryPluginDigest",

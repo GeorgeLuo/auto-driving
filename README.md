@@ -257,10 +257,14 @@ Older memory recordings contain only summary fields. They use default step
 selections and image-directory ordering and timing, because those reports did
 not save executable configs or an image inventory.
 
-The workbench reads the same recorded frame order and timing. Its plugin
-checkboxes select plugins from the current catalog with their default configs;
-they do not restore a recording's step configs. Perception tracks and memory
-evidence carry state across frames, so changing either step's selection during
+The workbench reads the same recorded frame order and timing. `vehicles
+workbench replay` starts each step from `--perception-preset` or
+`--perception-plugin` and `--memory-preset` or `--memory-plugin`, as the
+inspect and update commands take them, and prints each step's preset and
+plugins. A preset keeps its plugin configs until that step's checkboxes
+change. The checkboxes select plugins from the current catalog with their
+default configs; they do not restore a recording's step configs. Perception
+tracks and memory evidence carry state across frames, so changing either step's selection during
 a running or paused replay rebuilds both pipelines with a fresh shared map and
 runs from the first frame to the displayed frame before the action returns.
 This includes the last frame still displayed between loop passes. The other

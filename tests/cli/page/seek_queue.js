@@ -15,7 +15,7 @@ const ctx = {
   flushPluginSelection() {
     if (!pluginToggleWaiting || ctx.actionInFlight) return;
     pluginToggleWaiting = false;
-    ctx.action("select_plugins", { active_plugin_ids: ["a"] });
+    ctx.action("select_plugins", { step: "perception", active_plugin_ids: ["a"] });
   },
   fetch(url, init) {
     const body = JSON.parse(init.body);

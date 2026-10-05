@@ -7,7 +7,7 @@ shown by seeking, as the page does, and compared with
 ``automa vehicles perception inspect`` over the same directory and plugins: the
 workbench must show the frame, status, and per-plugin signal and thing counts
 the CLI reports. Memory and decision state must be present for every frame.
-The plugins are the ``multi_obstruction`` perception preset. A second pass
+Both are given the ``multi_obstruction`` perception preset. A second pass
 changes the plugin selection through the API while paused, running, seeking,
 and looping. A third selects the plugins of memory presets and compares them
 with the activation ``automa vehicles update memory --preset --dry-run`` reports.
@@ -29,20 +29,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121"
 PERCEPTION_PRESET = "multi_obstruction"
-PLUGINS = ("multi_obstruction_tracks", "floor_continuity", "classical_regions")
 MEMORY_PRESETS = ("recency_ledger",)
 RUN_KEYS = ("plugin_id", "status", "error", "signal_count", "thing_count")
 
 
 def automa(*args: str) -> list[str]:
     return [sys.executable, str(ROOT / "cli/automa"), "vehicles", *args]
-
-
-def plugin_options() -> list[str]:
-    options: list[str] = []
-    for plugin_id in PLUGINS:
-        options += ["--plugin", plugin_id]
-    return options
 
 
 def inspect_report() -> dict:
@@ -89,15 +81,14 @@ class Workbench:
 
 
 @contextmanager
-def serve(plugins: bool = True):
+def serve():
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     command = automa(
         "workbench", "replay", str(SOURCE), "--serve", "--port", str(port), "--cadence-ms", "0",
+        "--perception-preset", PERCEPTION_PRESET,
     )
-    if plugins:
-        command += plugin_options()
     server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
         yield Workbench(f"http://127.0.0.1:{port}")
@@ -117,16 +108,18 @@ def check_parity() -> list[str]:
     report = inspect_report()
     expected = report["frames"]
     problems: list[str] = []
-    mapper = report["mapper"]
-    if mapper["preset"] != PERCEPTION_PRESET or mapper["config"]["plugins"] != list(PLUGINS):
-        problems.append(
-            f"preset {PERCEPTION_PRESET} runs {mapper['config']['plugins']}, "
-            f"the workbench is served {list(PLUGINS)}"
-        )
+    inspected = report["mapper"]
     try:
         with serve() as workbench:
             started = workbench.wait_for(lambda s: s["position"] >= 1)
             run_id = started["run_id"]
+            served = started["machine_detail"]["pipeline"]["perception_preset"]
+            plugins = started["active_perception_plugin_ids"]
+            if (served, plugins) != (inspected["preset"], inspected["config"]["plugins"]):
+                problems.append(
+                    f"workbench runs {served} {plugins}, "
+                    f"inspect runs {inspected['preset']} {inspected['config']['plugins']}"
+                )
             workbench.act(action="pause", run_id=run_id)
             # Seeking ahead processes the unseen frames; chunks keep each request short.
             for ahead in range(50, len(expected) + 49, 50):
@@ -181,7 +174,10 @@ def check_selector() -> list[str]:
             run_id = current["run_id"]
             paused = act(action="pause", run_id=run_id)
             frame_id = paused["current_frame"]["frame_id"]
-            selected = act(action="select_plugins", run_id=run_id, active_plugin_ids=["floor_continuity"])
+            selected = act(
+                action="select_plugins", run_id=run_id, step="perception",
+                active_plugin_ids=["floor_continuity"],
+            )
             if selected["current_frame"]["frame_id"] != frame_id or runs(selected) != ["floor_continuity"]:
                 problems.append(f"paused selection did not reprocess {frame_id}: {runs(selected)}")
             if len(selected["timeline"]) != paused["position"]:
@@ -194,7 +190,10 @@ def check_selector() -> list[str]:
             if ahead["position"] != target + 1 or runs(ahead) != ["floor_continuity"]:
                 problems.append(f"seek past recorded frames to {target} landed at {ahead['position'] - 1}")
             act(action="resume", run_id=run_id)
-            running = act(action="select_plugins", run_id=run_id, active_plugin_ids=["classical_regions"])
+            running = act(
+                action="select_plugins", run_id=run_id, step="perception",
+                active_plugin_ids=["classical_regions"],
+            )
             if runs(running) != ["classical_regions"]:
                 problems.append(f"running selection returned {runs(running)}")
             if running["phase"] != "running":

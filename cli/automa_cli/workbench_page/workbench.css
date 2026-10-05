@@ -128,7 +128,7 @@ h3, .kicker, dt, .metric .label {
   align-content: start;
   gap: 6px;
 }
-.truncate, #sourceIdentity, #pluginSelectionSummary, #memoryPluginSelectionSummary, .inline-edit, .digest {
+.truncate, #sourceIdentity, #perceptionPluginSelectionSummary, #memoryPluginSelectionSummary, .inline-edit, .digest {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -155,8 +155,8 @@ h3, .kicker, dt, .metric .label {
   flex: 0 1 auto;
   white-space: nowrap;
 }
-.panel-heading > .muted, .panel-heading > .text-action, .panel-heading > #pluginSelectionSummary,
-.panel-heading > #memoryHealth, .panel-heading > #evidenceSummary,
+.panel-heading > .muted, .panel-heading > .text-action, .panel-heading > #perceptionPluginSelectionSummary,
+.panel-heading > #memoryHealth, .panel-heading > #perceptionSummary,
 .panel-heading > #sourceIdentity {
   flex: 1 1 auto;
   min-width: 0;
@@ -503,13 +503,7 @@ h3, .kicker, dt, .metric .label {
   white-space: nowrap;
   color: var(--fg);
 }
-.evidence-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-.record-list, .plugin-catalog, #evidenceText, #memorySelected {
+.record-list, .plugin-catalog, #perceptionLines, #memorySelected {
   min-height: 0;
   overflow: auto;
 }

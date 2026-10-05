@@ -66,7 +66,7 @@ function render(nextState, options) {
     var stepsKey = text(state.run_id, "") + ":" + text(state.steps_revision, "");
     if (stepsKey !== renderedStepsKey) {
       renderedStepsKey = stepsKey;
-      renderEvidence();
+      renderPerception();
       renderMemory();
       renderDecision();
     }

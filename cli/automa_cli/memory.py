@@ -261,7 +261,7 @@ def inspect_memory(
         try:
             outcome = run_frame(
                 frame,
-                mapper=mapper,
+                perception_step=mapper,
                 memory_step=memory,
                 steps=DecisionSteps(),
                 shared_memory=shared_memory,

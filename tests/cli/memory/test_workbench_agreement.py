@@ -16,6 +16,44 @@ from tests.cli.memory.test_inspect import write_frames
 class WorkbenchAgreesWithInspectTests(unittest.TestCase):
     """The workbench shows what `memory inspect` reports for the same frames."""
 
+    def test_workbench_reads_a_memory_recordings_frame_identity_and_time(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            memory, "INSPECT_ROOT", Path(directory) / "inspections"
+        ):
+            root = Path(directory)
+            frames = write_frames(root / "frames", count=2)
+            (frames / "manifest.json").write_text(json.dumps({
+                "frames": [
+                    {
+                        "frame_id": "capture-5", "frame_index": 5,
+                        "image_path": "frame_0.png", "timestamp_ms": 5000,
+                    },
+                    {
+                        "frame_id": "capture-8", "frame_index": 8,
+                        "image_path": "frame_1.png", "timestamp_ms": 5000,
+                    },
+                ],
+            }))
+            result = inspect_memory(str(frames), record=True, json_output=True)
+            self.assertEqual(result.exit_code, 0, result.message)
+            inspected = json.loads(result.message)
+            runner = ImageReplayRunner(inspected["run_dir"], cadence_ms=0, loop=False)
+            self.addCleanup(runner.close)
+            runner.start()
+            completed = runner.wait(5)
+        self.assertEqual(completed["phase"], "completed")
+        self.assertEqual(
+            [
+                (item["frame"]["frame_id"], item["frame"]["timestamp_ms"])
+                for item in completed["timeline"]
+            ],
+            [(frame["frame_id"], frame["timestamp_ms"]) for frame in inspected["frames"]],
+        )
+        self.assertEqual(
+            json.loads(json.dumps(completed["steps"]["memory"])),
+            inspected["final"]["plugins"][0]["state"],
+        )
+
     def test_workbench_memory_equals_inspect_for_the_same_source_and_selection(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.object(
             memory, "INSPECT_ROOT", Path(directory) / "inspections"

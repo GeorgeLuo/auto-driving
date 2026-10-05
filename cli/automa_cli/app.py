@@ -463,12 +463,17 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream.add_argument(
         "--once",
         action="store_true",
-        help="Render once and exit.",
+        help="Render once and exit; exit 2 unless perception is live.",
     )
     perception_stream.add_argument(
         "--no-clear",
         action="store_true",
         help="Do not clear the terminal before each render.",
+    )
+    perception_stream.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable live perception probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
     )
     perception_stream.set_defaults(handler=_handle_vehicles_stream_perception)
 
@@ -496,7 +501,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--once",
         action="store_true",
-        help="Render once and exit.",
+        help="Render once and exit; exit 2 unless memory is live.",
     )
     memory_stream.add_argument(
         "--no-clear",
@@ -506,7 +511,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live memory probes (one JSON object per refresh).",
+        help="Print machine-readable live memory probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
@@ -1855,6 +1860,7 @@ def _handle_vehicles_stream_perception(args: argparse.Namespace) -> int:
         refresh_s=args.refresh_s,
         once=args.once,
         no_clear=args.no_clear,
+        json_output=args.json,
         output=sys.stdout,
     )
     if result.message:

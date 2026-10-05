@@ -10,12 +10,11 @@ from unittest.mock import patch
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from cli.automa_cli.automation import _automation_command_matches_vehicle
-from cli.automa_cli.memory import (
-    assess_chase_memory_worker_liveness,
-    probe_live_memory,
-    stream_vehicle_memory,
+from cli.automa_cli.automation import (
+    _automation_command_matches_vehicle,
+    assess_chase_worker_liveness,
 )
+from cli.automa_cli.memory import probe_live_memory, stream_vehicle_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.support.cli_runner import run_automa
 
@@ -353,9 +352,10 @@ class MemoryStreamTests(unittest.TestCase):
                 },
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=False):
-            verdict = assess_chase_memory_worker_liveness(
+        with patch("cli.automa_cli.automation._pid_alive", return_value=False):
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id="chase-sim-chaser",
@@ -374,11 +374,12 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
         ):
-            verdict = assess_chase_memory_worker_liveness(
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id="chase-sim-chaser",
@@ -397,12 +398,13 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._process_command",
+        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.automation._process_command",
             return_value="python -m other_service --worker",
         ):
-            verdict = assess_chase_memory_worker_liveness(
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id="chase-sim-chaser",
@@ -434,11 +436,12 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertFalse(
             _automation_command_matches_vehicle(longer_id_command, "chase-sim-chaser")
         )
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._process_command", return_value=longer_id_command
+        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.automation._process_command", return_value=longer_id_command
         ):
-            verdict = assess_chase_memory_worker_liveness(
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id="chase-sim-chaser",
@@ -481,11 +484,12 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._process_command", return_value=None
+        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.automation._process_command", return_value=None
         ):
-            verdict = assess_chase_memory_worker_liveness(
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id="chase-sim-chaser",
@@ -504,11 +508,12 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
         ):
-            verdict = assess_chase_memory_worker_liveness(
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id=None,
@@ -527,11 +532,12 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
         ):
-            verdict = assess_chase_memory_worker_liveness(
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id="chase-sim-chaser",
@@ -552,11 +558,12 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
         ):
-            verdict = assess_chase_memory_worker_liveness(
+            verdict = assess_chase_worker_liveness(
                 state=state,
+                step="memory",
                 probed_at_ms=now,
                 max_age_ms=30_000,
                 vehicle_id="chase-sim-chaser",
@@ -612,8 +619,8 @@ class MemoryStreamTests(unittest.TestCase):
             with patch("cli.automa_cli.memory.RUNTIME_ROOT", runtime_root), patch(
                 "cli.automa_cli.memory._automation_dir",
                 return_value=state_path.parent,
-            ), patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-                "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
+            ), patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+                "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
             ), patch(
                 "cli.automa_cli.memory.time.time", return_value=now / 1000.0
             ):

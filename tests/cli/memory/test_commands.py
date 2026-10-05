@@ -81,6 +81,18 @@ class MemoryCommandTests(unittest.TestCase):
             expected = ["bounded_evidence", "missing"]
             self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
 
+    def test_info_names_the_staged_preset_as_perception_info_does(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            run_automa("vehicles", "update", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
+            info = ("vehicles", "info", "memory", "--id", "chase-sim-chaser")
+            payload = json.loads(run_automa(*info, "--json", runtime_root=runtime_root).stdout)
+            text = run_automa(*info, runtime_root=runtime_root).stdout.splitlines()
+
+            self.assertEqual(payload["activation"]["preset"], DEFAULT_MEMORY_PRESET)
+            self.assertEqual(text[0], f"Memory: chase-sim-chaser -> {DEFAULT_MEMORY_PRESET}")
+            self.assertEqual(text[1], f"Enabled plugins: {', '.join(payload['activation']['plugins'])}")
+
     def test_memory_update_dry_run_does_not_write_activation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
@@ -192,7 +204,7 @@ class MemoryCommandTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("No active memory implementation", result.stdout)
+        self.assertIn("No active memory preset found", result.stdout)
         self.assertIn("vehicles update memory", result.stdout)
 
 

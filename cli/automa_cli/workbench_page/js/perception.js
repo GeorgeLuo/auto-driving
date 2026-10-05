@@ -5,10 +5,13 @@
 function renderPerception() {
   var perception = currentPayload("perception");
   if (!perception) {
-    setText("perceptionSummary", "no output");
+    var frame = currentFrame();
+    var absent = frame && frame.absent;
+    setText("perceptionSummary", absent ? "absent" : "no output");
+    elements.perceptionSummary.title = "";
     setText("perceptionPluginRuns", null);
     setText("perceptionCounts", null);
-    elements.perceptionLines.textContent = "No perception output yet.";
+    elements.perceptionLines.textContent = absent ? text(frame.absence_reason) : "—";
     return;
   }
   var pluginRunIds = Array.isArray(perception.plugin_runs)

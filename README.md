@@ -324,7 +324,8 @@ run:
 ```
 
 The report prints to the terminal: the source, the perception selection,
-per-frame statuses, latency, representation health and each plugin's counts.
+aggregate statuses, latency, representation health and each plugin's status
+counts. `--json` includes each frame's identity, timing and plugin outputs.
 `--record` also saves the selection, timing, per-frame plugin outputs and the
 report as `report.json` under `runtime/perception-inspections/<run>/`, and
 prints that directory after `Recorded:`. A live recording keeps its captured
@@ -336,7 +337,25 @@ A recording restores its perception selection, frame identity and timestamps;
 read uses the vehicle's staged selection and images use the default preset.
 Both inspection commands read recorded frames the same way: equal timestamps
 are allowed at millisecond resolution, frame indices preserve ordering and
-timestamps cannot go backwards.
+timestamps cannot go backwards. Camera manifests (`camera_frames`) and
+inspection reports (`frames`) preserve their declared order and timing. Without
+a manifest, images are ordered by filename, ignoring case, and assigned times
+of 0, 1000, 2000, ... milliseconds; file mtimes are not capture times. Both
+commands use the shared adapter's generated frame IDs and validate images
+before running plugins or recording a report. Recordings preserve those IDs.
+Operation reports preserve their before/after capture order through the same
+source adapter, including archived copies in `frames/`.
+
+Dropout frames remain in the report with their identity, time and absence
+reason. Perception inspection reports them as `unavailable`. Both inspection
+commands and workbench replay reset perception's temporal state without
+invoking its plugins at these positions. A completed perception
+inspection exits 1 when any frame is partial, unavailable or in error; otherwise
+it exits 0. Source, plugin-loading and execution exceptions exit 2.
+
+Image directories and recordings default to a 512-frame limit in both inspection
+commands and workbench replay. Pass `--max-frames N` to read a larger source.
+This bound does not limit live perception capture (`--frames` controls that).
 
 For a physical vehicle, `vehicles perception inspect --id piracer` currently fetches
 Pi camera frames and runs perception on them on the development machine.
@@ -394,7 +413,11 @@ original source.
 
 A recording restores its perception and memory selections, frame identity and
 timestamps; `--preset` or `--plugin` overrides memory. Without a recording each
-step uses its default.
+step uses its default. Source ordering, timing, validation and `--max-frames`
+follow perception inspection and workbench replay. On a dropout frame memory
+receives an empty observation carrying the absence metadata and can age
+retained evidence. A completed memory inspection exits 0, including these
+frames; source, plugin-loading and execution exceptions exit 2.
 
 Older memory recordings contain only summary fields. They use default step
 selections and image-directory ordering and timing, because those reports did
@@ -410,6 +433,8 @@ default preset. The CLI and page show each step's preset and ordered plugins.
 The page's catalog lists available plugins; its separate **Run order** shows
 execution order. Newly checked plugins run last, and retained plugins keep
 their order. Unchecking every plugin disables its plugins.
+Recorded dropout positions remain seekable. The page labels perception as
+absent and shows the reason while memory can still show retained records.
 
 ```sh
 ./cli/automa vehicles workbench replay path/to/images --perception-preset multi_obstruction --memory-preset recency_ledger --serve

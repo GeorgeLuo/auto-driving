@@ -22,7 +22,16 @@ continues the same tracks. The `obstruction_observer` preset selects it after
 `frame` and `floor_plane`. The durability scoring and diagnostic panels are
 scripts under `scripts/perception/multi_obstruction_tracks/`.
 
-`obstruction_tracks` has been retired. Use this plugin for explicit selections;
-restage custom activations that name the old plugin. The `obstruction_observer`
-preset uses this plugin with its existing tuning. The composite variants also
-track their own detections and do not need this plugin as a companion.
+`obstruction_tracks` has been retired. Use this plugin for explicit selections.
+Existing staged selections containing `obstruction_tracks`, including previously
+staged `obstruction_observer` presets, must be restaged. Activations store plugin
+IDs and entrypoints; the preset name in metadata does not rewrite them. To
+restage the preset:
+
+```sh
+./cli/automa vehicles update perception --id VEHICLE --preset obstruction_observer
+```
+
+The preset keeps its name and tuning and now selects `multi_obstruction_tracks`.
+The composite variants also track their own detections and do not need this
+plugin as a companion.

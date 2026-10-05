@@ -76,9 +76,11 @@ function renderMemory() {
   if (!memory) {
     var updateFailed = state && state.phase === "failed" &&
       state.failure_boundary === "memory";
+    var disabled = state && Array.isArray(state.active_memory_plugin_ids) &&
+      state.active_memory_plugin_ids.length === 0;
     memoryListSignature = "";
     elements.memoryRecords.textContent = "";
-    setText("memoryHealth", updateFailed ? "update failed" : "no frame yet");
+    setText("memoryHealth", updateFailed ? "update failed" : disabled ? "disabled" : "no frame yet");
     setText("memoryEpoch", null);
     setText("memoryCount", null);
     setText("memoryPolicy", null);
@@ -89,7 +91,7 @@ function renderMemory() {
     noSnapshot.className = "memory-empty muted help";
     noSnapshot.textContent = updateFailed
       ? "Memory update stopped this replay. See Failure for details."
-      : "No retained evidence yet.";
+      : disabled ? "No memory plugins selected." : "No retained evidence yet.";
     elements.memoryRecords.appendChild(noSnapshot);
     elements.memorySelected.textContent = "Select a server-produced memory record to inspect its origin.";
     return;

@@ -236,7 +236,7 @@ function renderFrame() {
     elements.frameImage.removeAttribute("src");
     elements.viewerFrame.hidden = true;
     elements.emptyState.hidden = false;
-    elements.emptyState.textContent = "Choose an image directory and start a replay.\nThe server owns the pipeline; this page only renders its state.";
+    elements.emptyState.textContent = "No frame selected";
     return;
   }
   setText("frameId", frame.frame_id);
@@ -251,7 +251,7 @@ function renderFrame() {
     elements.overlayCanvas.height = 1;
     elements.viewerFrame.hidden = true;
     elements.emptyState.hidden = false;
-    elements.emptyState.textContent = "This sequence position has no image.\nReason: " + text(frame.absence_reason, "not provided");
+    elements.emptyState.textContent = "Absent frame · " + text(frame.absence_reason, "reason not provided");
     return;
   }
   var imageKey = text(state.run_id, "") + ":" + text(frame.frame_id, "");

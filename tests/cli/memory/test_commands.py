@@ -83,7 +83,7 @@ class MemoryCommandTests(unittest.TestCase):
             expected = ["bounded_evidence", "missing"]
             self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
 
-    def test_info_names_the_staged_preset_as_perception_info_does(self) -> None:
+    def test_info_names_the_staged_preset_and_plugins_as_perception_info_does(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             staged = {}
@@ -111,6 +111,12 @@ class MemoryCommandTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     text[1], f"Enabled plugins: {', '.join(activation['plugins'])}"
+                )
+                self.assertEqual(
+                    activation["available_plugins"], sorted(activation["plugin_specs"])
+                )
+                self.assertEqual(
+                    text[2], f"Available plugins: {', '.join(activation['available_plugins'])}"
                 )
                 staged[step] = read_step_activation(activation["path"], step)
                 presets[step] = preset

@@ -111,7 +111,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
-| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info open with the staged preset; perception info also reports the live view URL, and memory info the live memory step. |
+| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info open with the staged preset and its enabled and available plugins; perception info also reports the live view URL, and memory info the live memory step. |
 | `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
@@ -285,11 +285,36 @@ restarting the worker:
 ./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
 
-### Perception Experiments
+### Perception Plugins
 
-Inspect what a selection detects: observe five frames from a usable vehicle
-without taking movement control, or apply a preset or a plugin selection to one
-existing image or an image directory:
+`--plugin` selects packaged perception plugins by catalog key, in order, with
+their default configs from `implementations/decision_cycle/perception/catalog.py`.
+`--preset` selects a named preset from
+`implementations/decision_cycle/perception/presets.py`. The two are exclusive,
+and a plugin list is recorded as the preset it equals, else `custom`.
+
+`vehicles info perception` reports the staged preset, its enabled plugins and
+the available ones. Staging replaces the selection. A running worker applies a
+changed plugin list at its next frame and changed plugin configs when it
+restarts; a stopped one uses the selection the next time it starts:
+
+```sh
+./cli/automa vehicles info perception --id chase-sim-chaser
+./cli/automa vehicles update perception --id chase-sim-chaser --plugin frame --plugin floor_plane
+./cli/automa vehicles update perception --id chase-sim-chaser --preset visual_observer
+```
+
+`lightweight_observer` is the production-oriented frame and floor-boundary
+chain. `visual_observer` adds feature-motion tracks and is intentionally much
+slower. Artifact-only VLM preprocessing remains an optional diagnostic plugin,
+not part of either observer.
+
+### Perception Inspection
+
+Inspect what a perception selection detects: observe five frames from a usable
+vehicle without taking movement control, or apply a preset or a plugin
+selection to an image, an image directory, or a recorded perception or memory
+run:
 
 ```sh
 ./cli/automa vehicles perception inspect
@@ -298,60 +323,105 @@ existing image or an image directory:
 ./cli/automa vehicles perception inspect path/to/images --preset visual_observer
 ```
 
-`--plugin` selects packaged perception plugins by catalog key, in order, with
-their default configs from `implementations/decision_cycle/perception/catalog.py`.
-`--preset` selects a named preset from
-`implementations/decision_cycle/perception/presets.py`.
+The report prints to the terminal: the source, the perception selection,
+aggregate statuses, latency, representation health and each plugin's status
+counts. `--json` includes each frame's identity, timing and plugin outputs.
+`--record` also saves the selection, timing, per-frame plugin outputs and the
+report as `report.json` under `runtime/perception-inspections/<run>/`, and
+prints that directory after `Recorded:`. A live recording keeps its captured
+frames in `frames/`; an image recording refers to the source images where they
+are.
 
-Results print to the terminal; add `--record` to also save overlays and
-per-frame JSON under a timestamped run directory.
+A recording restores its perception selection, frame identity and timestamps;
+`--preset` or `--plugin` overrides the selection. Without a recording, a live
+read uses the vehicle's staged selection and images use the default preset.
+Both inspection commands read recorded frames the same way: equal timestamps
+are allowed at millisecond resolution, frame indices preserve ordering and
+timestamps cannot go backwards. Camera manifests (`camera_frames`) and
+inspection reports (`frames`) preserve their declared order and timing. Without
+a manifest, images are ordered by filename, ignoring case, and assigned times
+of 0, 1000, 2000, ... milliseconds; file mtimes are not capture times. Both
+commands use the shared adapter's generated frame IDs and validate images
+before running plugins or recording a report. Recordings preserve those IDs.
+Operation reports preserve their before/after capture order through the same
+source adapter, including archived copies in `frames/`.
 
-Both inspection commands restore the perception selection and frame identity
-and timestamps from a recording. Memory inspection also restores a recorded
-memory selection unless `--preset` or `--plugin` overrides it. Equal timestamps
-are allowed at millisecond resolution; frame indices preserve ordering and
-timestamps cannot go backwards. Memory recordings copy their images with
-relative paths, so replay still works after moving the recording or removing
-the original source.
+Dropout frames remain in the report with their identity, time and absence
+reason. Perception inspection reports them as `unavailable`. Both inspection
+commands and workbench replay reset perception's temporal state without
+invoking its plugins at these positions. A completed perception
+inspection exits 1 when any frame is partial, unavailable or in error; otherwise
+it exits 0. Source, plugin-loading and execution exceptions exit 2.
 
-Older memory recordings contain only summary fields. They use default step
-selections and image-directory ordering and timing, because those reports did
-not save executable configs or an image inventory.
+Image directories and recordings default to a 512-frame limit in both inspection
+commands and workbench replay. Pass `--max-frames N` to read a larger source.
+This bound does not limit live perception capture (`--frames` controls that).
 
 For a physical vehicle, `vehicles perception inspect --id piracer` currently fetches
 Pi camera frames and runs perception on them on the development machine.
 It does not prove that the Pi executed or published the perception result.
 
-`lightweight_observer` is the production-oriented frame and floor-boundary
-chain. `visual_observer` adds feature-motion tracks and is intentionally much
-slower. Artifact-only VLM preprocessing remains an optional diagnostic plugin,
-not part of either observer.
+### Memory Plugins
 
-### Perception Plugins
+`--plugin` selects packaged memory plugins by catalog key, in order, with their
+default configs from `implementations/decision_cycle/memory/catalog.py`.
+`--preset` selects a named preset from
+`implementations/decision_cycle/memory/presets.py`. The two are exclusive,
+and a plugin list is recorded as the preset it equals, else `custom`.
 
-The staged perception schema reports the available and enabled plugins. Stage
-a preset or an ordered plugin list; the plugins replace the staged selection and
-are recorded as the preset they equal, else `custom`. A running worker applies the updated
-selection at the next perception frame; if automation is stopped, it uses the
-selection the next time it starts:
-
-```sh
-./cli/automa vehicles info perception --id chase-sim-chaser
-./cli/automa vehicles update perception --id chase-sim-chaser --plugin frame --plugin floor_plane
-./cli/automa vehicles update perception --id chase-sim-chaser --preset visual_observer
-```
-
-### Memory Presets
-
-Memory is selected the same way. `--preset` names a preset from
-`implementations/decision_cycle/memory/presets.py`; `--plugin` selects packaged
-memory plugins in order, and is recorded as the preset it equals, else `custom`.
-The two are exclusive:
+`vehicles info memory` reports the staged preset, its enabled plugins and the
+available ones. Staging replaces the selection. A running worker applies a
+changed plugin list at its next frame and changed plugin configs when it
+restarts; a stopped one uses the selection the next time it starts:
 
 ```sh
-./cli/automa vehicles update memory --id chase-sim-chaser --preset recency_ledger
+./cli/automa vehicles info memory --id chase-sim-chaser
 ./cli/automa vehicles update memory --id chase-sim-chaser --plugin bounded_evidence
+./cli/automa vehicles update memory --id chase-sim-chaser --preset recency_ledger
 ```
+
+`recency_ledger`, the default, keeps a bounded ledger of observation things and
+signals with age expiry and oldest-first eviction.
+
+### Memory Inspection
+
+Inspect what a memory selection retains: run an image, an image directory, or
+a recorded perception or memory run through perception, observation and memory:
+
+```sh
+./cli/automa vehicles memory inspect path/to/images
+./cli/automa vehicles memory inspect path/to/images --plugin bounded_evidence
+```
+
+Memory inspection reads its source only. To inspect memory over frames from a
+vehicle, record them with perception inspection, then inspect the directory it
+prints after `Recorded:`. Memory runs the same perception selection over the
+same frames:
+
+```sh
+./cli/automa vehicles perception inspect --id chase-sim-chaser --frames 20 --record
+./cli/automa vehicles memory inspect runtime/perception-inspections/<run>
+```
+
+The report prints to the terminal: the source, both step selections, and each
+memory plugin's health, record count and epoch after every frame. `--record`
+also saves the source frames, timing, both step selections and the report as
+`report.json` under `runtime/memory-inspections/<run>/`, and prints that
+directory after `Recorded:`. Memory recordings copy their images with relative
+paths, so replay still works after moving the recording or removing the
+original source.
+
+A recording restores its perception and memory selections, frame identity and
+timestamps; `--preset` or `--plugin` overrides memory. Without a recording each
+step uses its default. Source ordering, timing, validation and `--max-frames`
+follow perception inspection and workbench replay. On a dropout frame memory
+receives an empty observation carrying the absence metadata and can age
+retained evidence. A completed memory inspection exits 0, including these
+frames; source, plugin-loading and execution exceptions exit 2.
+
+Older memory recordings contain only summary fields. They use default step
+selections and image-directory ordering and timing, because those reports did
+not save executable configs or an image inventory.
 
 ## Decision Playback Workbench
 
@@ -363,6 +433,8 @@ default preset. The CLI and page show each step's preset and ordered plugins.
 The page's catalog lists available plugins; its separate **Run order** shows
 execution order. Newly checked plugins run last, and retained plugins keep
 their order. Unchecking every plugin disables its plugins.
+Recorded dropout positions remain seekable. The page labels perception as
+absent and shows the reason while memory can still show retained records.
 
 ```sh
 ./cli/automa vehicles workbench replay path/to/images --perception-preset multi_obstruction --memory-preset recency_ledger --serve

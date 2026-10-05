@@ -25,7 +25,7 @@ class InspectionRecordingTests(unittest.TestCase):
             "AUTOMA_MEMORY_INSPECT_ROOT": str(self.root / "memory"),
         }
 
-    def inspect(self, step: str, source: Path, *options: str) -> dict:
+    def inspect(self, step: str, source: Path, *options: str, exit_code: int = 0) -> dict:
         result = run_automa(
             "vehicles",
             step,
@@ -34,7 +34,9 @@ class InspectionRecordingTests(unittest.TestCase):
             *options,
             "--json",
             extra_env=self.env,
+            check=False,
         )
+        self.assertEqual(result.returncode, exit_code, result.stdout + result.stderr)
         return json.loads(result.stdout)
 
     def test_equal_timestamp_perception_recording_replays_after_memory_recording_moves(
@@ -42,11 +44,21 @@ class InspectionRecordingTests(unittest.TestCase):
     ) -> None:
         for path in self.frames.iterdir():
             os.utime(path, (5, 5))
+        (self.frames / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "frames": [
+                        {"image_path": f"frame_{index}.png", "timestamp_ms": 5000}
+                        for index in range(3)
+                    ],
+                }
+            )
+        )
         perception = self.inspect(
             "perception", self.frames, "--preset", "obstruction_observer", "--record"
         )
         memory = self.inspect("memory", Path(perception["run_dir"]), "--record")
-        self.assertEqual(memory["perception"]["config"], perception["mapper"]["config"])
+        self.assertEqual(memory["perception"], perception["perception"])
         self.assertEqual(
             [frame["timestamp_ms"] for frame in memory["frames"]], [5000] * 3
         )
@@ -79,7 +91,7 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(replay["final"], memory["final"])
 
         perceived = self.inspect("perception", moved)
-        self.assertEqual(perceived["mapper"]["config"], perception["mapper"]["config"])
+        self.assertEqual(perceived["perception"], perception["perception"])
         self.assertEqual(
             [frame["captured_at_ms"] for frame in perceived["frames"]], [5000] * 3
         )
@@ -87,6 +99,27 @@ class InspectionRecordingTests(unittest.TestCase):
             [frame["frame_id"] for frame in perceived["frames"]],
             [frame["frame_id"] for frame in memory["frames"]],
         )
+
+    def test_both_inspect_reports_name_the_perception_selection_alike(self) -> None:
+        perception = run_automa(
+            "vehicles", "perception", "inspect", str(self.frames),
+            "--preset", "obstruction_observer", "--record",
+            extra_env=self.env,
+        ).stdout.splitlines()
+        recorded = Path(perception[-1].removeprefix("Recorded: "))
+        memory = run_automa(
+            "vehicles", "memory", "inspect", str(recorded), extra_env=self.env
+        ).stdout.splitlines()
+
+        self.assertEqual((perception[0], memory[0]), ("Perception inspect", "Memory inspect"))
+        self.assertTrue(perception[2].startswith("Source: "), perception)
+        self.assertTrue(memory[2].startswith("Source: "), memory)
+        self.assertTrue(perception[3].startswith("Perception: obstruction_observer ("), perception)
+        self.assertEqual(memory[3], perception[3])
+        self.assertEqual(recorded.parent, self.root / "perception")
+        report = json.loads((recorded / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["schema"], "perception_inspect_v0")
+        self.assertEqual(sorted(path.name for path in recorded.glob("*.json")), ["report.json"])
 
     def test_recording_preserves_dropout_frames_and_custom_memory_bounds(self) -> None:
         perception = selection_activation("perception", preset="multi_obstruction")
@@ -98,11 +131,11 @@ class InspectionRecordingTests(unittest.TestCase):
                 "bounded_evidence": {"max_age_ms": 600, "max_records": 16}
             },
         }
-        (self.frames / "run.json").write_text(
+        (self.frames / "report.json").write_text(
             json.dumps(
                 {
                     "source_id": "recording.fixture",
-                    "mapper": {
+                    "perception": {
                         "preset": "multi_obstruction",
                         "config": {
                             "plugins": list(perception.plugins),
@@ -161,16 +194,16 @@ class InspectionRecordingTests(unittest.TestCase):
             overridden["final"]["plugins"][0]["state"]["bounds"]["max_age_ms"], 10000
         )
 
-        perceived = self.inspect("perception", Path(recorded["run_dir"]))
+        perceived = self.inspect("perception", Path(recorded["run_dir"]), exit_code=1)
         self.assertEqual(
-            [frame["frame_index"] for frame in perceived["frames"]], [7, 12]
+            [frame["frame_index"] for frame in perceived["frames"]], [7, 9, 12]
         )
         self.assertEqual(
-            [frame["captured_at_ms"] for frame in perceived["frames"]], [5000, 5800]
+            [frame["captured_at_ms"] for frame in perceived["frames"]], [5000, 5000, 5800]
         )
 
     def test_empty_recorded_selections_remain_empty_until_overridden(self) -> None:
-        (self.frames / "run.json").write_text(
+        (self.frames / "report.json").write_text(
             json.dumps(
                 {
                     "perception": {
@@ -193,12 +226,12 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(replay["perception"]["plugins"], [])
         self.assertEqual(replay["memory"]["plugins"], [])
         perception = self.inspect("perception", Path(memory["run_dir"]))
-        self.assertEqual(perception["mapper"]["config"]["plugins"], [])
+        self.assertEqual(perception["perception"]["plugins"], [])
         self.assertEqual(perception["frames"][0]["plugin_runs"], [])
         override = self.inspect(
             "perception", Path(memory["run_dir"]), "--plugin", "frame"
         )
-        self.assertEqual(override["mapper"]["config"]["plugins"], ["frame"])
+        self.assertEqual(override["perception"]["plugins"], ["frame"])
 
     def test_other_report_metadata_does_not_replace_image_directory_source(self) -> None:
         (self.frames / "report.json").write_text(json.dumps({"results": []}))

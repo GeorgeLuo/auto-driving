@@ -225,6 +225,7 @@ def get_vehicle_perception_info(
                     "path": display_path(manifest_path),
                     "preset": _manifest_preset(manifest),
                     "plugins": list(manifest["plugins"]),
+                    "available_plugins": sorted(manifest["plugin_specs"]),
                     "plugin_specs": dict(manifest["plugin_specs"]),
                     "plugin_configs": dict(manifest["plugin_configs"]),
                 },
@@ -800,6 +801,9 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
             f"Perception: {payload['vehicle_id']} -> {preset}",
         ]
         lines.append(f"Enabled plugins: {', '.join(_configured_plugins(activation)) or 'none'}")
+        lines.append(
+            f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}"
+        )
         lines.extend(
             [
                 _format_published_view(payload.get("published_view")),

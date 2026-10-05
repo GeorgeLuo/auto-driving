@@ -12,23 +12,31 @@ from PIL import Image
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli import perception as perception_module
-from implementations.decision_cycle.catalog import preset_activation
+from cli.automa_cli.memory import inspect_memory
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
-    _source_image_paths,
     inspect_perception,
     perceive_sensor_frame,
 )
 from cli.automa_cli.vehicle_access import VehicleAccess
-from implementations.decision_cycle.catalog import step_plugins
+from cli.automa_cli.workbench_source import normalize_image_directory
+from implementations.decision_cycle.catalog import preset_activation, step_plugins
 
 
 class FakeFrameCar:
-    def __init__(self) -> None:
+    def __init__(self, dropout_reads: tuple[int, ...] = ()) -> None:
         self.read_count = 0
+        self.dropout_reads = dropout_reads
 
     def read_sensors(self, request):
         self.read_count += 1
+        if self.read_count in self.dropout_reads:
+            return SensorFrame(
+                read_id=request.read_id,
+                readings={},
+                started_at_ms=self.read_count,
+                completed_at_ms=self.read_count,
+            )
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (48, 32), (25 + self.read_count, 35, 45)).save(path)
@@ -84,11 +92,12 @@ class PerceptionRunTests(unittest.TestCase):
             preset = inspect_perception(image, preset="visual_observer", json_output=True)
             custom = inspect_perception(image, plugins=["frame"], json_output=True)
 
-        self.assertEqual(json.loads(preset.message)["mapper"]["preset"], "visual_observer")
-        self.assertEqual(json.loads(custom.message)["mapper"]["preset"], "custom")
+        self.assertEqual(json.loads(preset.message)["perception"]["preset"], "visual_observer")
+        self.assertEqual(json.loads(custom.message)["perception"]["preset"], "custom")
+        self.assertEqual(json.loads(custom.message)["perception"]["plugins"], ["frame"])
 
     def test_perceive_sensor_frame_returns_the_record_and_saves_results_only_on_request(self) -> None:
-        mapper = PerceptionRunner.from_activation(preset_activation("perception", "lightweight_observer"))
+        runner = PerceptionRunner.from_activation(preset_activation("perception", "lightweight_observer"))
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "frame.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
@@ -114,7 +123,7 @@ class PerceptionRunTests(unittest.TestCase):
                 metadata={},
             )
 
-            record, perception = perceive_sensor_frame(mapper, sensor_frame, **common)
+            record, perception = perceive_sensor_frame(runner, sensor_frame, **common)
             self.assertEqual(record["perception"], perception.to_dict())
             self.assertEqual(record["status"], perception.status)
             self.assertEqual(record["captured_at_ms"], 7)
@@ -122,7 +131,7 @@ class PerceptionRunTests(unittest.TestCase):
 
             result_dir = Path(tmp) / "results" / "frame_000000"
             record, perception = perceive_sensor_frame(
-                mapper, sensor_frame, result_dir=result_dir, started=time.perf_counter() - 5.0, **common
+                runner, sensor_frame, result_dir=result_dir, started=time.perf_counter() - 5.0, **common
             )
             saved = json.loads((result_dir / "perception.json").read_text(encoding="utf-8"))
             self.assertEqual(saved, json.loads(json.dumps(record)))
@@ -193,7 +202,7 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(staged["metadata"]["preset"], "lightweight_observer")
         self.assertEqual(kept["manifest"]["metadata"]["preset"], "lightweight_observer")
 
-    def test_inspect_manifest_falls_back_to_archived_frame_copy(self) -> None:
+    def test_inspect_manifest_remaps_archived_frame_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = root / "frames"
@@ -201,6 +210,7 @@ class PerceptionRunTests(unittest.TestCase):
             archived = frames / "frame_000000.png"
             Image.new("RGB", (8, 8), (10, 20, 30)).save(archived)
             manifest = {
+                "run_dir": "/original/machine/run",
                 "frames": [
                     {
                         "image_path": "/original/machine/run/frames/frame_000000.png",
@@ -208,7 +218,8 @@ class PerceptionRunTests(unittest.TestCase):
                 ]
             }
 
-            paths = _source_image_paths(root, manifest)
+            (root / "report.json").write_text(json.dumps(manifest))
+            paths = [frame.image_path for frame in normalize_image_directory(root).frames]
 
         self.assertEqual(paths, [archived.resolve()])
 
@@ -254,7 +265,8 @@ class PerceptionRunTests(unittest.TestCase):
                 ]
             }
 
-            paths = _source_image_paths(root, manifest)
+            (root / "report.json").write_text(json.dumps(manifest))
+            paths = [frame.image_path for frame in normalize_image_directory(root).frames]
 
         self.assertEqual(
             [path.name for path in paths], ["00_before.png", "00_after.png"]
@@ -294,7 +306,7 @@ class PerceptionRunTests(unittest.TestCase):
             "active_count": 2,
             "inactive": [],
         }
-        mapper = PerceptionRunner.from_selection(
+        runner = PerceptionRunner.from_selection(
             plugins=["frame"],
             plugin_specs={"frame": step_plugins("perception")["frame"]["spec"]},
         )
@@ -307,7 +319,9 @@ class PerceptionRunTests(unittest.TestCase):
                     "runtime_dir": str(root / "bundle" / "runtime"),
                 },
                 "manifest": {
-                    **preset_activation("perception", "lightweight_observer").to_payload(),
+                    **preset_activation(
+                        "perception", "lightweight_observer"
+                    ).to_payload(),
                 },
                 "source": {"tree_sha256": "test-tree"},
                 "refreshed": False,
@@ -322,7 +336,8 @@ class PerceptionRunTests(unittest.TestCase):
                     return_value=runtime,
                 ),
                 patch(
-                    "cli.automa_cli.perception_runs.load_staged_runner", return_value=mapper
+                    "cli.automa_cli.perception_runs.load_staged_runner",
+                    return_value=runner,
                 ),
                 patch(
                     "cli.automa_cli.perception_runs.create_vehicle_access",
@@ -333,17 +348,62 @@ class PerceptionRunTests(unittest.TestCase):
                     ),
                 ),
             ):
-                result = inspect_perception(
-                    frames=2, interval_s=0, json_output=True
+                result = inspect_perception(frames=2, interval_s=0, json_output=True)
+                inspect_root = root / "inspections"
+                with patch("cli.automa_cli.perception_runs.INSPECT_ROOT", inspect_root):
+                    recorded = json.loads(
+                        inspect_perception(
+                            frames=1, interval_s=0, record=True, json_output=True
+                        ).message
+                    )
+                saved = json.loads(
+                    (inspect_root / recorded["run_id"] / "report.json").read_text(
+                        encoding="utf-8"
+                    )
                 )
+                # Memory inspect reads a live recording, as the README walks through.
+                remembered = json.loads(
+                    inspect_memory(
+                        str(inspect_root / recorded["run_id"]), json_output=True
+                    ).message
+                )
+                fake_car.dropout_reads = (5,)
+                with patch("cli.automa_cli.perception_runs.INSPECT_ROOT", inspect_root):
+                    dropout_result = inspect_perception(
+                        frames=3, interval_s=0, record=True, json_output=True
+                    )
+                dropout = json.loads(dropout_result.message)
+                dropout_memory = inspect_memory(
+                    str(inspect_root / dropout["run_id"]), json_output=True
+                )
+                remembered_dropout = json.loads(dropout_memory.message)
 
         payload = json.loads(result.message)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(payload["source"]["vehicle_id"], "chase-sim-chaser")
         self.assertIn("simulator preferred", payload["source"]["selection"])
         self.assertEqual(payload["summary"]["frames"], 2)
-        self.assertEqual(fake_car.read_count, 2)
-        self.assertFalse(payload["recording"])
+        self.assertIsNone(payload["run_dir"])
+        self.assertTrue(recorded["run_id"].startswith("inspect-chase-sim-chaser-"))
+        self.assertEqual(saved["schema"], "perception_inspect_v0")
+        self.assertEqual(saved["perception"]["preset"], "lightweight_observer")
+        self.assertEqual(fake_car.read_count, 6)
+        self.assertEqual(remembered["source"]["frame_count"], 1)
+        self.assertEqual(remembered["perception"]["preset"], "lightweight_observer")
+        self.assertEqual(
+            remembered["perception"]["plugins"], saved["perception"]["plugins"]
+        )
+        self.assertEqual(dropout_result.exit_code, 1)
+        self.assertEqual(dropout["frames"][1]["absence_reason"], "front camera missing")
+        self.assertEqual(dropout["frames"][1]["plugin_runs"], [])
+        self.assertEqual(dropout_memory.exit_code, 0, dropout_memory.message)
+        self.assertEqual(remembered_dropout["source"]["frame_count"], 3)
+        self.assertEqual(
+            [frame["timestamp_ms"] for frame in remembered_dropout["frames"]], [4, 5, 6]
+        )
+        self.assertEqual(
+            remembered_dropout["frames"][1]["absence_reason"], "front camera missing"
+        )
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 """Executable step selections stored by offline inspections.
 
-Perception recordings use ``mapper``; memory recordings name both steps under
-``perception`` and ``memory``. Each selection uses the same ``preset`` and
-``config`` shape. Plugin names alone describe a run but cannot restore it.
+Each inspection records a step's selection under the step's name: perception
+recordings hold ``perception``, and memory recordings hold ``perception`` and
+``memory``. Each selection uses the same ``preset`` and ``config`` shape. Plugin
+names alone describe a run but cannot restore it.
 """
 
 from __future__ import annotations
@@ -35,19 +36,16 @@ def recorded_selection(step: str, manifest: dict[str, Any]) -> StepActivation | 
     same activation error as a staged selection.
     """
 
-    keys = ("mapper", "perception") if step == "perception" else (step,)
-    for key in keys:
-        record = manifest.get(key)
-        if not isinstance(record, dict) or "config" not in record:
-            continue
-        config = record["config"]
-        if not isinstance(config, dict):
-            raise TypeError(f"recorded {step} config must be an object")
-        return step_activation(
-            step,
-            config.get("plugins", []),
-            config.get("plugin_specs", {}),
-            config.get("plugin_configs", {}),
-            metadata={"preset": record.get("preset") or "recorded"},
-        )
-    return None
+    record = manifest.get(step)
+    if not isinstance(record, dict) or "config" not in record:
+        return None
+    config = record["config"]
+    if not isinstance(config, dict):
+        raise TypeError(f"recorded {step} config must be an object")
+    return step_activation(
+        step,
+        config.get("plugins", []),
+        config.get("plugin_specs", {}),
+        config.get("plugin_configs", {}),
+        metadata={"preset": record.get("preset") or "recorded"},
+    )

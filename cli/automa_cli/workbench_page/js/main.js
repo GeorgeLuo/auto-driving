@@ -27,7 +27,9 @@ function render(nextState, options) {
     }
   }
   var perception = currentPayload("perception");
-  setText("perceptionStatus", perception && perception.status);
+  var displayedFrame = currentFrame();
+  setText("perceptionStatus", displayedFrame && displayedFrame.absent
+    ? "absent" : perception && perception.status);
   var progress = state.progress || {};
   setText("progressText", text(progress.completed, "0") + " / " + text(progress.total, "0"));
   var total = Number(progress.total) || 0;

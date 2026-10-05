@@ -46,7 +46,13 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .step_activations import bundle_activation_path, decision_identity, read_bundle_activation
+from .step_activations import (
+    bundle_activation_path,
+    bundle_activation_problems,
+    decision_identity,
+    format_activation_problems,
+    read_bundle_activation,
+)
 from .step_hosting import load_staged_runner, sync_live_selection
 from .runtime_view import RuntimeViewServer
 from .perception_view import (
@@ -224,6 +230,9 @@ def run_vehicle_automation(
                 ]
             ),
         )
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
     try:
         perception_activation = read_step_activation(manifest_path, "perception")
         memory_activation = read_bundle_activation(bundle, "memory")
@@ -1170,6 +1179,11 @@ def start_vehicle_automation_background(
     process_path = automation_dir / "process.json"
     log_path = automation_dir / "automation.log"
 
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
+
     existing = _read_json(process_path)
     existing_pid = existing.get("pid") if isinstance(existing, dict) else None
     if isinstance(existing_pid, int) and _pid_alive(existing_pid):
@@ -1932,8 +1946,13 @@ def restart_vehicle_automation(
     record: bool = False,
     verbose: bool = False,
     log_to_disk: bool = False,
+    open_view: bool = False,
     wait_s: float = 3.0,
 ) -> CommandResult:
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
     stop_result = stop_vehicle_automation(vehicle_id=vehicle_id, wait_s=wait_s)
     if stop_result.exit_code != 0:
         return stop_result
@@ -1947,6 +1966,7 @@ def restart_vehicle_automation(
         record=record,
         verbose=verbose,
         log_to_disk=log_to_disk,
+        open_view=open_view,
     )
     message = "\n\n".join(part for part in (stop_result.message, start_result.message) if part)
     return CommandResult(start_result.exit_code, message)
@@ -2070,7 +2090,8 @@ def _collect_automation_status(
                     )
                     if published_view.get("available"):
                         break
-        worker_recovery = (
+        activation_problems = bundle_activation_problems(bundle, vehicle_name)
+        worker_recovery = activation_problems[0]["command"] if activation_problems else (
             f"./cli/automa vehicles automation restart --id {vehicle_name}"
             if worker_status in {"error", "stale"}
             else None
@@ -2105,9 +2126,11 @@ def _collect_automation_status(
         statuses.append(
             {
                 "vehicle_id": vehicle_name,
+                "activation_problems": activation_problems,
                 "deployed": bundle_root.exists()
                 and perception_manifest_path.exists()
-                and decision["deployed"],
+                and decision["deployed"]
+                and not activation_problems,
                 "bundle_root": display_path(bundle_root),
                 "automation_runtime_exists": automation_dir.exists(),
                 "automation_dir": display_path(automation_dir),
@@ -2232,6 +2255,9 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
                 f"  log: {_status_log_label(process)}",
             ]
         )
+        problems = item.get("activation_problems")
+        if isinstance(problems, list) and problems:
+            lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
         reason = process.get("reason")
         if isinstance(reason, str) and reason:
             lines.append(f"  problem: {reason}")

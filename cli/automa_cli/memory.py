@@ -46,6 +46,8 @@ from .physical_observation import (
 )
 from .runtime_view import RuntimeViewServer
 from .step_activations import (
+    bundle_activation_problems,
+    format_activation_problems,
     refresh_release,
     stage_activation,
     staging_vehicle,
@@ -180,6 +182,9 @@ def get_vehicle_memory_info(
             ),
         )
 
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=("memory",))
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
     try:
         activation = read_step_activation(activation_path, "memory")
         manager = activation.plugin_manager()

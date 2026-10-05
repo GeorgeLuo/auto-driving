@@ -178,6 +178,28 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(preserved["manifest"]["metadata"]["preset"], "custom")
         self.assertEqual(preserved["manifest"]["plugins"], ["frame"])
 
+    def test_invalid_staged_runtime_names_its_restage_command_and_is_kept(self) -> None:
+        vehicle = {
+            "vehicle_id": "chase-sim-test",
+            "vehicle_kind": "chase-sim-ws",
+            "provider": "chase-sim",
+            "connection": {"ws_url": "ws://example.invalid/ws"},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chase-sim-test/bundle/runtime/perception/active.json"
+            path.parent.mkdir(parents=True)
+            path.write_text('{"schema":"automa_perception_activation_v0"}', encoding="utf-8")
+            with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
+                with self.assertRaises(ValueError) as raised:
+                    perception_module.ensure_local_perception_runtime(vehicle=vehicle, preset="visual_observer")
+            self.assertEqual(path.read_text(encoding="utf-8"), '{"schema":"automa_perception_activation_v0"}')
+
+        self.assertIn("Invalid perception activation:", str(raised.exception))
+        self.assertIn(
+            "Restage with your intended selection: ./cli/automa vehicles update perception --id chase-sim-test",
+            str(raised.exception),
+        )
+
     def test_explicit_selection_runs_without_restaging_the_vehicle(self) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-test",

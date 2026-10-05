@@ -32,7 +32,15 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .step_activations import ensure_builtin_activations, staging_metadata, staging_vehicle, step_update_error
+from .step_activations import (
+    BUILTIN_STEPS,
+    bundle_activation_problems,
+    ensure_builtin_activations,
+    format_activation_problems,
+    staging_metadata,
+    staging_vehicle,
+    step_update_error,
+)
 from .step_hosting import load_staged_runner
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
@@ -82,6 +90,9 @@ def ensure_local_perception_runtime(
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
+    if problems:
+        raise ValueError(format_activation_problems(problems))
     existing: dict[str, Any] | None = None
     if manifest_path.exists():
         existing = _read_manifest(manifest_path)
@@ -164,10 +175,10 @@ def get_vehicle_perception_info(
     }
 
     if has_local_activation:
-        try:
-            manifest = _read_manifest(manifest_path)
-        except ValueError as exc:
-            return CommandResult(2, str(exc))
+        problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
+        if problems:
+            return CommandResult(2, format_activation_problems(problems))
+        manifest = _read_manifest(manifest_path)
 
         bundle_root_text = _manifest_bundle(manifest).get("root_dir")
         if not isinstance(bundle_root_text, str) or not bundle_root_text:
@@ -365,6 +376,15 @@ def update_vehicle_perception(
         if restart:
             lines.append("would restart WS controller handoff and capture a sample perception")
         return CommandResult(0, "\n".join(lines))
+
+    # Built-in staging also refreshes an existing proposal's release metadata.
+    # Validate the documents it reads before packaging or writing.
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=(*BUILTIN_STEPS, "proposal"))
+    if problems:
+        return CommandResult(*step_update_error(
+            vehicle_id, "perception", "invalid_activation", format_activation_problems(problems),
+            json_output=json_output, activation_problems=problems,
+        ))
 
     perception_runtime_dir.mkdir(parents=True, exist_ok=True)
     release = sync_controller_bundle(bundle, output=stream)

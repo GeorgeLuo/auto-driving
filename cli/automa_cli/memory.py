@@ -731,7 +731,7 @@ def _stream_physical_memory_with_inspector(
     timeout_s: float,
     output: TextIO | None,
 ) -> CommandResult:
-    """Poll status, feed the shared loopback publication, and open /memory inspector."""
+    """Poll status, feed the shared loopback publication, and serve the /memory inspector."""
 
     stream = output
     base_url = picar_base_url(vehicle)

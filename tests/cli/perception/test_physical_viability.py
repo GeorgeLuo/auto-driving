@@ -98,7 +98,7 @@ class PhysicalViabilityTests(unittest.TestCase):
         self.assertEqual(results["chase-sim"].exit_code, 0)
         self.assertTrue(json.loads(results["chase-sim"].message)["stub"])
         self.assertEqual(results["other"].exit_code, 2)
-        self.assertIn("no perception viability probe", results["other"].message)
+        self.assertIn("perception viability measures picar vehicles", results["other"].message)
 
 
 if __name__ == "__main__":

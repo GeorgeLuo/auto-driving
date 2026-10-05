@@ -51,8 +51,8 @@ def run_perception_viability_measurement(
 ) -> CommandResult:
     """Health-check perception on a vehicle, dispatching on its provider.
 
-    A PiCar is measured for onboard cadence/freshness. The simulator has no
-    probe yet and passes automatically; any other provider is refused.
+    A PiCar is measured for onboard cadence/freshness. The simulator passes
+    with a stub result; any other provider is refused.
     """
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -81,7 +81,7 @@ def run_perception_viability_measurement(
         return CommandResult(
             2,
             f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "no perception viability probe exists for it.",
+            "perception viability measures picar vehicles and passes chase-sim with a stub.",
         )
     base_url = picar_base_url(vehicle)
     if not base_url:
@@ -216,7 +216,7 @@ def run_perception_viability_measurement(
 
 
 def _perception_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
-    # The simulator has no viability probe yet; it passes without measuring.
+    # The simulator gets a stub pass; measurement runs on PiCar.
     report = {
         "schema": "automa_physical_perception_viability_v0",
         "vehicle_id": vehicle_id,
@@ -224,7 +224,7 @@ def _perception_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> 
         "passed": True,
         "stub": True,
         "gates": [],
-        "note": "No simulator viability probe exists yet; passing without measurement.",
+        "note": "Simulator viability is a stub pass; measurement runs on PiCar.",
     }
     if json_output:
         return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
@@ -553,7 +553,7 @@ def run_memory_viability_measurement(
     """Health-check memory on a vehicle, dispatching on its provider.
 
     A PiCar's live memory step is polled for a bounded interval. The simulator
-    has no probe yet and passes automatically; any other provider is refused.
+    passes with a stub result; any other provider is refused.
     """
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -582,7 +582,7 @@ def run_memory_viability_measurement(
         return CommandResult(
             2,
             f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "no memory viability probe exists for it.",
+            "memory viability measures picar vehicles and passes chase-sim with a stub.",
         )
 
     from .memory import probe_live_memory
@@ -672,7 +672,7 @@ def run_memory_viability_measurement(
 
 
 def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
-    # The simulator has no viability probe yet; it passes without measuring.
+    # The simulator gets a stub pass; measurement runs on PiCar.
     report = {
         "schema": "automa_physical_memory_viability_v0",
         "vehicle_id": vehicle_id,
@@ -680,7 +680,7 @@ def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> Comm
         "passed": True,
         "stub": True,
         "gates": [],
-        "note": "No simulator viability probe exists yet; passing without measurement.",
+        "note": "Simulator viability is a stub pass; measurement runs on PiCar.",
     }
     if json_output:
         return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))

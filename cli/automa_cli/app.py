@@ -445,7 +445,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Show the latest perception output, replacing the terminal view as it updates. "
             "Chase uses the local automation worker; PiCar polls onboard "
-            "/autonomy/observation/latest and opens a local frame-matched view."
+            "/autonomy/observation/latest and serves a local frame-matched view whose "
+            "URL the terminal shows."
         ),
     )
     perception_stream.add_argument(
@@ -468,12 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream.add_argument(
         "--no-clear",
         action="store_true",
-        help="Do not clear the terminal before each render.",
+        help="Print each render below the previous one, keeping earlier renders in scrollback.",
     )
     perception_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live perception probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
+        help="Print one vehicle_perception_live_v0 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     perception_stream.set_defaults(handler=_handle_vehicles_stream_perception)
 
@@ -481,9 +482,10 @@ def build_parser() -> argparse.ArgumentParser:
         "memory",
         help="Inspect live memory as a key→value ledger (terminal + local map page).",
         description=(
-            "Inspect live memory as a key→value ledger. Terminal shows health and counts; "
-            "on PiCar a local loopback page lists record_id keys and the selected value. "
-            "Chase reads automation worker state. No history is written by default."
+            "Inspect live memory as a key→value ledger, replacing the terminal view as it updates. "
+            "Terminal shows health and counts. Chase reads automation worker state; PiCar "
+            "serves a local map page, whose URL the terminal shows, listing record_id keys "
+            "and the selected value."
         ),
     )
     memory_stream.add_argument(
@@ -506,12 +508,12 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--no-clear",
         action="store_true",
-        help="Do not clear the terminal before each render.",
+        help="Print each render below the previous one, keeping earlier renders in scrollback.",
     )
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live memory probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
+        help="Print one vehicle_memory_live_v0 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
@@ -522,7 +524,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Read automation/latest_decision.json for the staged proposal, plan, and "
             "action steps. "
             "Accepts only generation-matched frames from a running live worker within the "
-            "configured max age. No history is written. Use --once for a single accepted frame."
+            "configured max age, replacing the terminal view as each arrives. Use --once for "
+            "a single accepted frame."
         ),
     )
     decision_stream.add_argument(
@@ -545,7 +548,7 @@ def build_parser() -> argparse.ArgumentParser:
     decision_stream.add_argument(
         "--no-clear",
         action="store_true",
-        help="Do not clear the terminal before each render.",
+        help="Print each render below the previous one, keeping earlier renders in scrollback.",
     )
     decision_stream.add_argument(
         "--json",
@@ -570,14 +573,14 @@ def build_parser() -> argparse.ArgumentParser:
     decision_help.set_defaults(handler=_handle_vehicles_decision_help)
     decision_inspect = decision_control_commands.add_parser(
         "inspect", help="Open an offline decision inspector for a saved input sequence.",
-        description="Compute left/right proposal scenarios from one saved frame. No live worker or capture is needed.",
+        description="Compute left/right proposal scenarios offline from one saved frame and serve them on a local inspector page.",
     )
     decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
     decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
     decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged hold-action configuration; otherwise use packaged defaults.")
     decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
     decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
-    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts and exit without starting a server.")
+    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts as JSON and exit, in place of the local inspector page.")
     decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
     decision_apply = decision_control_commands.add_parser(
         "apply",
@@ -585,8 +588,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Feed a recorded observation+memory sequence through the vehicle's staged "
             "hold-action activation. Requires --id. Reports a deterministic digest "
-            "(canonical_json_utf8 byte equality across two passes). Writes no files unless "
-            "--record is passed for exact-frame HTML under lab/runs/decision-apply/."
+            "(canonical_json_utf8 byte equality across two passes); --record also saves "
+            "exact-frame HTML under lab/runs/decision-apply/."
         ),
     )
     decision_apply.add_argument(
@@ -610,8 +613,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--record",
         action="store_true",
         help=(
-            "Opt-in: write a bounded exact-frame review directory with HTML, digest, and "
-            "manifest. Disabled by default."
+            "Also save a bounded exact-frame review directory with HTML, digest, and "
+            "manifest."
         ),
     )
     decision_apply.set_defaults(handler=_handle_vehicles_decision_apply)
@@ -668,7 +671,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Reset the activated memory step on the live host. Chase uses the "
             "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms an "
-            "empty epoch via live probe. Does not move the vehicle or write history."
+            "empty epoch via live probe. Does not move the vehicle."
         ),
     )
     memory_reset.add_argument(

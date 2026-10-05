@@ -301,7 +301,8 @@ def _stream_physical_perception(
     if not json_output and not base_url:
         return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
 
-    # JSON output is for tooling, so it serves no view and writes no frame.
+    # The terminal view comes with the local view and its frame file; JSON
+    # output prints the probe alone.
     view_server: RuntimeViewServer | None = None
     view_error: str | None = None
     frame_path: Path | None = None

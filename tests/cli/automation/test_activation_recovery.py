@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision_cycle.activation import STEPS
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from tests.support.cli_runner import run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 from tests.support.runtime_fixtures import write_runtime_fixture
@@ -154,6 +154,62 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                         self.assertEqual(path.read_text(encoding="utf-8"), contents)
                         self.assertFalse((bundle / "runtime/perception/active.json").exists())
                         self.assertFalse((bundle / "releases").exists())
+
+    def test_info_and_decision_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
+        with fake_metrics_ui_server() as ws_url:
+            for step in STEPS:
+                with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
+                    runtime_root = Path(tmp) / "vehicles"
+                    path = runtime_root / VEHICLE_ID / "bundle/runtime" / step / "active.json"
+                    path.parent.mkdir(parents=True)
+                    path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
+                    env = {"CHASE_UI_WS_URL": ws_url}
+                    command = f"./cli/automa vehicles update {step} --id {VEHICLE_ID}"
+                    # Decision info lists all six steps; the other surfaces read their own.
+                    surfaces = [("info", "decision")]
+                    if step in ("perception", "memory"):
+                        surfaces.append(("info", step))
+                    if step in DECISION_STEPS:
+                        surfaces.append(("stream", "decision", "--once"))
+                    for surface in surfaces:
+                        result = run_automa(
+                            "vehicles", *surface, "--id", VEHICLE_ID,
+                            runtime_root=runtime_root, extra_env=env, check=False,
+                        )
+                        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                        self.assertEqual(result.stderr, "")
+                        self.assertIn(f"Invalid {step} activation:", result.stdout)
+                        self.assertIn(f"Restage with your intended selection: {command}", result.stdout)
+                    machine = run_automa(
+                        "vehicles", "info", "decision", "--id", VEHICLE_ID, "--json",
+                        runtime_root=runtime_root, extra_env=env, check=False,
+                    )
+                    payload = json.loads(machine.stdout)
+                    self.assertEqual(payload["error"], "activation_invalid")
+                    self.assertEqual(payload["details"]["activation_problems"][0]["command"], command)
+
+    def test_autonomy_update_diagnoses_every_invalid_step_before_packaging(self) -> None:
+        vehicle_id = "picar-test"
+        for step in STEPS:
+            with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
+                runtime_root = Path(tmp) / "vehicles"
+                bundle = runtime_root / vehicle_id / "bundle"
+                path = bundle / "runtime" / step / "active.json"
+                path.parent.mkdir(parents=True)
+                original = json.dumps({"schema": f"automa_{step}_activation_v0"})
+                path.write_text(original, encoding="utf-8")
+                result = run_automa(
+                    "vehicles", "update", "autonomy", "--id", vehicle_id,
+                    "--skip-discovery", "--ssh-target", "pi@127.0.0.1",
+                    runtime_root=runtime_root, check=False,
+                )
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(result.stderr, "")
+                self.assertIn(f"Invalid {step} activation:", result.stdout)
+                self.assertIn(f"./cli/automa vehicles update {step} --id {vehicle_id}", result.stdout)
+                self.assertEqual(path.read_text(encoding="utf-8"), original)
+                self.assertEqual(list(bundle.iterdir()), [bundle / "runtime"])
+                self.assertEqual(list((bundle / "runtime").iterdir()), [path.parent])
 
 
 if __name__ == "__main__":

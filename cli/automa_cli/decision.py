@@ -48,7 +48,7 @@ from autonomy.decision_cycle.action.result import (
     ACTION_RESULT_SCHEMA,
     ActionResult,
 )
-from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
@@ -67,7 +67,9 @@ from .bundles import controller_bundle_paths
 from .decision_records import DecisionRecords, DecisionRunners, activations_from_payloads
 from .step_activations import (
     bundle_activation_path,
+    bundle_activation_problems,
     decision_identity,
+    format_activation_problems,
     proposal_plugin_ids,
     step_info,
 )
@@ -376,6 +378,24 @@ def _action_authority_description(plugin_id: str | None) -> dict[str, Any]:
     return {"gate_id": plugin_id, "proposed_applied": None, "authorized_idle_reason": None}
 
 
+def _require_valid_activations(
+    bundle: dict[str, str],
+    *,
+    vehicle_id: str,
+    steps: tuple[str, ...],
+) -> None:
+    """Refuse invalid staged documents with each owning step's restage command."""
+
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=steps)
+    if problems:
+        raise DecisionSurfaceError(
+            "activation_invalid",
+            format_activation_problems(problems),
+            vehicle_id=vehicle_id,
+            details={"activation_problems": problems},
+        )
+
+
 def _read_surface_identity(
     bundle: dict[str, str],
     *,
@@ -384,14 +404,8 @@ def _read_surface_identity(
 ) -> dict[str, Any]:
     """The staged decision steps every operator-facing decision surface reads."""
 
-    try:
-        identity = decision_identity(bundle)
-    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            f"Invalid decision step activation under {display_path(Path(bundle['runtime_dir']))}: {exc}",
-            vehicle_id=vehicle_id,
-        ) from exc
+    _require_valid_activations(bundle, vehicle_id=vehicle_id, steps=DECISION_STEPS)
+    identity = decision_identity(bundle)
     if require_proposal and identity["steps"]["proposal"] is None:
         raise DecisionSurfaceError(
             "activation_missing",
@@ -428,6 +442,8 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
             json_output=json_output,
         )
     try:
+        # Info lists every step's selection, so it reads all six documents.
+        _require_valid_activations(bundle, vehicle_id=vehicle_id, steps=STEPS)
         identity = _read_surface_identity(bundle, vehicle_id=vehicle_id, require_proposal=False)
     except DecisionSurfaceError as err:
         return _error_result(err, json_output=json_output)

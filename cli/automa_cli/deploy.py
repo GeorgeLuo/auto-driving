@@ -40,8 +40,10 @@ from .paths import display_path, safe_path_part
 from .perception import ensure_vehicle_perception_activation
 from .step_activations import (
     bundle_activation_path,
+    bundle_activation_problems,
     decision_generation_id,
     ensure_builtin_activations,
+    format_activation_problems,
     read_bundle_activation,
 )
 from .vehicles import discover_active_vehicles, find_vehicle_by_id
@@ -390,6 +392,12 @@ def update_vehicle_autonomy(
         if json_output:
             return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(0, _format_autonomy_dry_run(payload))
+
+    # The deployment refreshes and ships every staged step. Validate the
+    # documents it reads before packaging or writing.
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
 
     release = sync_controller_bundle(bundle, output=output)
     perception_activation_path = ensure_vehicle_perception_activation(

@@ -473,7 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live perception probes (one JSON object per refresh; no local page).",
+        help="Print machine-readable live perception probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
     )
     perception_stream.set_defaults(handler=_handle_vehicles_stream_perception)
 
@@ -511,7 +511,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live memory probes (one JSON object per refresh; no local page).",
+        help="Print machine-readable live memory probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 

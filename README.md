@@ -130,9 +130,28 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 one `vehicle_<step>_live_v0` probe per refresh and opens no local page.
 `--once` exits 2 unless the probe's `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
+Discovery failures also emit one `unavailable` JSON probe and exit 2, even
+without `--once`. Terminal streams show the same probe verdict and reason;
+perception labels the worker's state and the onboard publication's health
+separately from that verdict.
 On Chase, both steps are live only while this vehicle's automation worker is
 running and its state is under 30s old
-(`AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS`).
+(`AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS`). This is the capture-loop heartbeat,
+not the completion time of each step. Perception additionally requires a
+result from the current automation run and reports its frame identity and
+`age_ms`; memory reports the retained step's lifecycle and plugin state.
+
+On PiCar, perception reads `/autonomy/observation/latest`: a healthy publication
+with a perception payload is live, and `age_ms` comes from the Pi's clock.
+Memory reads the retained step in `/autonomy/status`: the step's presence is
+live, while `last_health`, `last_error`, and counters report its update health.
+Use the nested perception result and plugin reports to inspect plugin outcomes;
+`live` describes availability rather than promising that every plugin succeeded.
+
+Worker probe overrides are `AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS` (default
+30000) and `AUTOMA_CHASE_WORKER_PROBE_CLOCK_SKEW_MS` (default 2000). These
+replace the former memory-only `AUTOMA_CHASE_MEMORY_PROBE_MAX_AGE_MS` and
+`AUTOMA_CHASE_MEMORY_PROBE_CLOCK_SKEW_MS` names.
 
 Use `help` at a command-group level and `--help` for final command options:
 

@@ -112,7 +112,8 @@ class PhysicalStreamCommandTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             text = buffer.getvalue()
             self.assertIn("source: physical onboard", text)
-            self.assertIn("status: healthy", text)
+            self.assertIn("status: live", text)
+            self.assertIn("publication: healthy", text)
             self.assertIn("donkey_frame_000011", text)
             self.assertIn("steering=0.0", text)
             self.assertIn("floor visible", text)
@@ -148,7 +149,8 @@ class PhysicalStreamCommandTests(unittest.TestCase):
             # The screen already carries the error; the result does not repeat it.
             self.assertEqual(result.message, "")
             self.assertIn("connection refused", buffer.getvalue())
-            self.assertIn("status: unavailable", buffer.getvalue())
+            self.assertIn("status: error", buffer.getvalue())
+            self.assertIn("publication: unavailable", buffer.getvalue())
 
     def test_chase_stream_still_requires_automation_runtime(self) -> None:
         vehicle = {

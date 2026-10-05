@@ -226,6 +226,65 @@ class PerceptionStreamJsonTests(unittest.TestCase):
             memory["error"].replace("memory", "<step>"),
         )
 
+    def test_chase_terminal_shows_the_probe_status_and_reason_for_its_exit(
+        self,
+    ) -> None:
+        cases = (
+            (_chase_state(), _chase_record(), True),
+            (_chase_state(updated_at_ms=NOW - 60_000), _chase_record(), True),
+            (_chase_state(), _chase_record(run_id="previous-run"), True),
+            (_chase_state(status="completed"), _chase_record(), True),
+            (_chase_state(), _chase_record(), False),
+        )
+        for state, record, pid_alive in cases:
+            with (
+                self.subTest(state=state, pid_alive=pid_alive),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                path = Path(tmp) / "automation"
+                self._write_chase(path, state=state, record=record)
+                (path / "process.json").write_text(
+                    json.dumps({"pid": 999999}), encoding="utf-8"
+                )
+                machine, json_text = self._stream_chase(
+                    path, pid_alive=pid_alive, json_output=True
+                )
+                terminal, screen = self._stream_chase(
+                    path, pid_alive=pid_alive, no_clear=True
+                )
+                probe = json.loads(json_text)
+                self.assertEqual(terminal.exit_code, machine.exit_code)
+                self.assertEqual(terminal.message, "")
+                self.assertIn(f"status: {probe['status']}", screen)
+                self.assertIn(f"worker: {state['status']}", screen)
+                self.assertIn(f"pid: {probe['worker_pid']}", screen)
+                if probe.get("error"):
+                    self.assertIn(probe["error"], screen)
+
+    def test_physical_terminal_shows_the_probe_status_and_publication_health(
+        self,
+    ) -> None:
+        for health in ("healthy", "warming", "stale", "error"):
+            with (
+                self.subTest(health=health),
+                patch.object(
+                    streaming,
+                    "fetch_observation_publication",
+                    return_value=_publication(health=health),
+                ),
+                patch.object(streaming, "RuntimeViewServer"),
+                patch.object(streaming, "physical_observation_dir"),
+                patch.object(streaming, "_publish_physical_view"),
+            ):
+                machine, json_text = self._stream(PICAR, json_output=True)
+                terminal, screen = self._stream(PICAR, no_clear=True)
+                probe = json.loads(json_text)
+                self.assertEqual(terminal.exit_code, machine.exit_code)
+                self.assertIn(f"status: {probe['status']}", screen)
+                self.assertIn(f"publication: {health}", screen)
+                if probe.get("error"):
+                    self.assertIn(probe["error"], screen)
+
     def test_cli_stream_perception_help_lists_json(self) -> None:
         result = run_automa("vehicles", "stream", "perception", "--help", check=False)
         self.assertEqual(result.returncode, 0)

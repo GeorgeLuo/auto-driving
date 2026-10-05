@@ -808,7 +808,9 @@ def build_parser() -> argparse.ArgumentParser:
             "and timestamps; choose the plugins to run from the current catalog. "
             "Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
-            "pause, step, reset, and another run."
+            "pause, step, reset, and another run. Changing perception or memory "
+            "plugins in a running or paused served replay rebuilds both pipelines "
+            "and replays from the first frame to the displayed frame before returning."
         ),
     )
     workbench_replay.add_argument(

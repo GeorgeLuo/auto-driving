@@ -598,7 +598,10 @@ class ImageReplayRunner:
         replay as it was.
         """
 
-        displayed = int(self._state["position"])
+        # A loop resets the next position to zero while its last frame stays
+        # displayed. Catch up to that frame, rather than the next-pass counter.
+        current_frame = self._state.get("current_frame")
+        displayed = int(current_frame["position"]) + 1 if current_frame else 0
         previous = self._selected_ids(step)
         self._set_selected_ids(step, normalized)
         try:

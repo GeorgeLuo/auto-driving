@@ -15,9 +15,14 @@ from commit `2e0a49d`. Step 3 enumerates bounded raw proposals, spatial
 clusters, raw/union/robust/median/intersection hypotheses, and deterministic
 selector choices before the inherited tracker receives a selected geometry.
 
-The detector now emits current-frame region proposals and a tracking-config
-marker. The `multi_obstruction_tracks` perception plugin owns temporal
-association, optical-flow history, lost tracks, and ID allocation in the host
-map; select it alongside this plugin or the object-separated variant. Diagnostic scratch
-is call-local; selector-response caches remain content-addressed experiment
-inputs rather than temporal tracking history.
+This plugin and the object-separated variant each inherit temporal association
+from `MultiObstructionTracksPlugin`. Each emits tracked `obstacle` things and
+the `multi_obstruction_tracks_available` signal, and keeps optical-flow history
+and ID allocation at `perception.<plugin_id>.history` in the host map. Select
+one directly, for example `perception inspect images --plugin composite_box_fusion`.
+Selecting `multi_obstruction_tracks` alongside it runs an independent detector
+and tracker and emits evidence from both. The memory `bounded_evidence` plugin
+retains the tracked things for later steps.
+
+Diagnostic scratch is call-local; selector-response caches remain
+content-addressed experiment inputs rather than temporal tracking history.

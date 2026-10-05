@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
 from cli.automa_cli.workbench import normalize_image_directory
+from cli.automa_cli.workbench_source import SourceValidationError
 from tests.cli.workbench_fixtures import (
     BlockingSecondMapper,
     DecisionFixtureMapper,
@@ -17,6 +20,30 @@ from tests.cli.workbench_fixtures import (
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_recorded_frames_can_share_a_timestamp_but_cannot_go_backwards(self) -> None:
+        with image_source(2) as root:
+            frames = [
+                {
+                    "frame_id": "a", "frame_index": 7,
+                    "image_path": "frame_00.png", "timestamp_ms": 5000,
+                },
+                {
+                    "frame_id": "b", "frame_index": 9,
+                    "image_path": "frame_01.png", "timestamp_ms": 5000,
+                },
+            ]
+            write_manifest(root, {"frames": frames})
+            source = normalize_image_directory(root)
+            self.assertEqual([frame.timestamp_ms for frame in source.frames], [5000, 5000])
+            runner = ImageReplayRunner(root, cadence_ms=0, loop=False)
+            self.addCleanup(runner.close)
+            runner.start()
+            self.assertEqual(runner.wait(5)["phase"], "completed")
+            frames[1]["timestamp_ms"] = 4999
+            write_manifest(root, {"frames": frames})
+            with self.assertRaisesRegex(SourceValidationError, "non-decreasing"):
+                normalize_image_directory(root)
+
     def test_directory_adapter_loads_ordered_camera_frame_stream_manifest(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

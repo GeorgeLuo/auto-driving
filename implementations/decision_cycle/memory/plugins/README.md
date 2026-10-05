@@ -21,8 +21,13 @@ One folder per plugin, named for its `plugin_id`. For example, the
 - A retained-evidence ledger's status summary uses the names in
   `autonomy/decision_cycle/memory/interface.py`: `LEDGER_SUMMARY_KEYS`
   (`epoch_id`, `health`, `bounds`, `record_count`). `health` is `empty` or
-  `healthy`. The framework does not require them. The CLI and viewers show
-  no value for a name the summary drops, and the reset check reads `health`
-  and `record_count` to tell that a reset emptied the memory.
+  `healthy`. The framework does not require them. Live CLI probes return null
+  for missing fields. Inspect frame rows default a missing `record_count` to
+  0, preserve an explicit null, and omit `bounds`. The reset check reads
+  `health` and `record_count` to tell that a reset emptied the memory.
+- The report keeps every applied plugin's status. Inspect reports each
+  separately; current live summaries and the workbench use the last applied
+  plugin's state. That selection does not identify which plugin published
+  `EVIDENCE_KEY`, and a later plugin may publish only its own private state.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's
   modules.

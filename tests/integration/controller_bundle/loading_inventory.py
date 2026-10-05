@@ -28,7 +28,6 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.feeds.camera:provide_camera_frame", "implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame"),
     ("implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin", "implementations.decision_cycle.perception.plugins.motion_tracks.plugin", "MotionTracksPlugin"),
     ("implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin", "implementations.decision_cycle.perception.plugins.frame.plugin", "FrameObservationPlugin"),
-    ("implementations.decision_cycle.perception.plugins.obstruction_tracks.plugin:MultiObstructionTracksPlugin", "implementations.decision_cycle.perception.plugins.obstruction_tracks.plugin", "MultiObstructionTracksPlugin"),
     ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin", "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin"),
     ("implementations.decision_cycle.perception.plugins.floor_plane.plugin:FloorPlanePlugin", "implementations.decision_cycle.perception.plugins.floor_plane.plugin", "FloorPlanePlugin"),
@@ -39,7 +38,6 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin", "CaptureFloorContinuityPlugin"),
     ("implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin", "TemporalFloorContinuityPlugin"),
     ("implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin", "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin", "MultiObstructionTracksPlugin"),
-    ("implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin:MultiObstructionMemory", "implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin", "MultiObstructionMemory"),
 )
 
 # (legacy module, canonical module). Both stay importable. They are not

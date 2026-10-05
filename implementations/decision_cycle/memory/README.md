@@ -8,7 +8,7 @@ cycle's observation. The framework that runs them lives in
 
 | Path | Holds |
 |---|---|
-| `catalog.py` | `MEMORY_PLUGINS`: one entry per plugin, with its `spec`, description and default config, and the `perception_plugins` it reads, if any. |
+| `catalog.py` | `MEMORY_PLUGINS`: one entry per plugin, with its `spec`, description and default config. |
 | `presets.py` | `MEMORY_PRESETS`: named, ordered selections of catalog plugins. `DEFAULT_MEMORY_PRESET` names the default; `DEFAULT_MEMORY_PLUGINS` is its plugin list. |
 | `plugins/` | One folder per plugin, named for its `plugin_id`. See `plugins/README.md`. |
 | `shared/` | Plain library code used by more than one plugin. See `shared/README.md`. |
@@ -27,12 +27,9 @@ equals, else `custom`. `automa vehicles update memory --preset NAME` stages one.
 | Preset | Plugins |
 |---|---|
 | `recency_ledger` (default) | `bounded_evidence` |
-| `multi_obstruction` | `multi_obstruction_tracks` |
-| `multi_obstruction_with_ledger` | `bounded_evidence`, `multi_obstruction_tracks` |
 
-`multi_obstruction` is also a perception preset: its tracks plugin emits the
-region candidates that the memory plugin of the same name associates into
-tracked obstacles. The tracks entry names that perception plugin in
-`perception_plugins`, and the workbench shows it on the plugin list. Nothing
-checks the two selections against it: without the perception plugin the memory
-plugin finds no candidates and keeps a plain ledger.
+Memory plugins read the shared map and the observation, not the camera feed:
+the framework hands them a frame context without `sensor_frame`. Obstruction
+tracking is perception's work: the `multi_obstruction_tracks` perception plugin
+keeps track history in the map and emits tracked things, and `bounded_evidence`
+retains them for the `avoid_recent_obstruction` proposal plugin.

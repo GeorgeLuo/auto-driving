@@ -399,29 +399,6 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
         self.assertEqual(catalog["digest"], packaged_plugin_catalog("memory").digest)
         self.assertNotEqual(catalog["digest"], state["plugin_catalog"]["digest"])
 
-    def test_memory_catalog_lists_the_perception_plugins_a_plugin_reads(self) -> None:
-        catalog = ImageReplayRunner().state()["memory_plugin_catalog"]
-        listed = {item["id"]: item for item in catalog["plugins"]}
-        self.assertEqual(
-            listed["multi_obstruction_tracks"]["perception_plugins"], ["multi_obstruction_tracks"]
-        )
-        self.assertNotIn("perception_plugins", listed["bounded_evidence"])
-        # Each declaration names a packaged perception plugin.
-        for item in listed.values():
-            self.assertLessEqual(set(item.get("perception_plugins", ())), set(step_plugins("perception")))
-        # Listing only: selecting the plugin without its perception plugin is accepted.
-        runner = ImageReplayRunner()
-        runner.dispatch(
-            "select_plugins", step="memory", active_plugin_ids=["multi_obstruction_tracks"]
-        )
-        state = runner.state()
-        self.assertEqual(state["active_memory_plugin_ids"], ["multi_obstruction_tracks"])
-        self.assertNotIn("multi_obstruction_tracks", state["active_plugin_ids"])
-        # The perception listing declares none.
-        self.assertTrue(
-            all("perception_plugins" not in item for item in state["plugin_catalog"]["plugins"])
-        )
-
     def test_unknown_memory_plugins_and_other_steps_are_rejected(self) -> None:
         runner = ImageReplayRunner()
         with self.assertRaises(ReplayActionError) as unknown:
@@ -475,54 +452,56 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             before = runner._memory_step
 
             selected = runner.dispatch(
-                "select_plugins", run_id=run_id, step="memory",
-                active_plugin_ids=["multi_obstruction_tracks"],
+                "select_plugins", run_id=run_id, step="memory", active_plugin_ids=[]
             )
             self.assertIsNot(runner._memory_step, before)
-            # Memory ran over frames 0..3 under the new plugin, not only the displayed one.
+            # Memory ran over frames 0..3 under the new selection, not only the displayed one.
             self.assertEqual(runner._memory_step.update_count, 4)
-            self.assertEqual(runner._memory_step.plugin_ids, ("multi_obstruction_tracks",))
+            self.assertEqual(runner._memory_step.plugin_ids, ())
             self.assertEqual(selected["phase"], "paused")
             self.assertEqual(selected["position"], 4)
             self.assertEqual(len(selected["timeline"]), 4)
             self.assertEqual(selected["current_frame"]["frame_id"], frame_id)
-            self.assertEqual(selected["active_memory_plugin_ids"], ["multi_obstruction_tracks"])
+            self.assertEqual(selected["active_memory_plugin_ids"], [])
             self.assertEqual(
                 [item["id"] for item in selected["memory_plugin_catalog"]["plugins"] if item["active"]],
-                ["multi_obstruction_tracks"],
+                [],
             )
-            self.assertEqual(selected["steps"]["memory"]["plugin_id"], "multi_obstruction_tracks")
+            self.assertIsNone(selected["steps"]["memory"])
             self.assertEqual(
                 selected["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"],
-                ["multi_obstruction_tracks"],
+                [],
             )
             # The perception selection is untouched.
             self.assertEqual(selected["active_plugin_ids"], shown["active_plugin_ids"])
 
+            emptied = runner._memory_step
             unchanged = runner.dispatch(
-                "select_plugins", run_id=run_id, step="memory",
-                active_plugin_ids=["multi_obstruction_tracks"],
-            )
-            self.assertEqual(runner._memory_step.update_count, 4)
-            self.assertEqual(unchanged["position"], 4)
-
-            empty = runner.dispatch(
                 "select_plugins", run_id=run_id, step="memory", active_plugin_ids=[]
             )
-            self.assertEqual(empty["position"], 4)
-            self.assertEqual(runner._memory_step.plugin_ids, ())
+            self.assertIs(runner._memory_step, emptied)
+            self.assertEqual(unchanged["position"], 4)
+
+            restored = runner.dispatch(
+                "select_plugins", run_id=run_id, step="memory", active_plugin_ids=["bounded_evidence"]
+            )
+            self.assertEqual(restored["position"], 4)
+            self.assertEqual(runner._memory_step.update_count, 4)
+            self.assertEqual(runner._memory_step.plugin_ids, ("bounded_evidence",))
+            self.assertEqual(restored["steps"]["memory"]["plugin_id"], "bounded_evidence")
             runner.dispatch("reset", run_id=run_id)
 
     def test_memory_selection_before_start_applies_to_the_run(self) -> None:
         with image_source(2) as root:
             runner = self._runner(root, cadence_ms=0)
-            runner.dispatch(
-                "select_plugins", step="memory", active_plugin_ids=["multi_obstruction_tracks"]
-            )
+            runner.dispatch("select_plugins", step="memory", active_plugin_ids=[])
             runner.start()
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
-        self.assertEqual(state["steps"]["memory"]["plugin_id"], "multi_obstruction_tracks")
+        self.assertIsNone(state["steps"]["memory"])
+        self.assertEqual(
+            state["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"], []
+        )
 
     def test_running_memory_selection_restarts_the_pass_and_the_replay_finishes(self) -> None:
         with image_source(12) as root:
@@ -530,16 +509,14 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             started = runner.start()
             _wait_until(lambda: runner.state()["position"] >= 3)
             runner.dispatch(
-                "select_plugins", run_id=started["run_id"], step="memory",
-                active_plugin_ids=["multi_obstruction_tracks"],
+                "select_plugins", run_id=started["run_id"], step="memory", active_plugin_ids=[]
             )
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(len(state["timeline"]), 12)
-        self.assertEqual(state["steps"]["memory"]["plugin_id"], "multi_obstruction_tracks")
+        self.assertIsNone(state["steps"]["memory"])
         self.assertEqual(
-            state["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"],
-            ["multi_obstruction_tracks"],
+            state["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"], []
         )
 
     def test_memory_selection_that_cannot_be_built_leaves_the_replay_as_it_was(self) -> None:
@@ -559,8 +536,7 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             before = runner._memory_step
             with self.assertRaises(ReplayActionError) as caught:
                 runner.dispatch(
-                    "select_plugins", run_id=run_id, step="memory",
-                    active_plugin_ids=["multi_obstruction_tracks"],
+                    "select_plugins", run_id=run_id, step="memory", active_plugin_ids=[]
                 )
             state = runner.state()
             self.assertEqual(caught.exception.status_code, 422)

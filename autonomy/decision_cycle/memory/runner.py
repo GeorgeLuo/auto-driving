@@ -14,6 +14,7 @@ leave the host to clear the map.
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -21,7 +22,6 @@ from typing import Any
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
-from autonomy.decision_cycle.memory.publication import withdraw_publication
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import (
     PROVIDED_ENTRYPOINT,
@@ -222,18 +222,19 @@ class MemoryRunner:
         """Run each selected plugin in order and return the memory report.
 
         A selection that cannot load raises here, before any plugin runs, and
-        leaves the applied plugins in place.
+        leaves the applied plugins in place. Plugins get the frame context
+        without ``sensor_frame``: memory reads the shared map and the
+        observation, and perception puts anything it needs from the feed there.
         """
 
+        memory_context = replace(context, sensor_frame=None)
         with self._runtime_lock:
             self._apply_selection(context.shared_memory)
             started = time.perf_counter()
             self.last_error = None
             try:
                 for plugin in self.plugins:
-                    plugin.update(context, observation)
-                if not self.plugins and context.shared_memory is not None:
-                    withdraw_publication(context.shared_memory)
+                    plugin.update(memory_context, observation)
             except Exception as exc:
                 self.failure_count += 1
                 self.last_error = _diagnostic(exc)
@@ -259,8 +260,6 @@ class MemoryRunner:
                 plugin.reset(shared_memory)
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error or self.last_error
-            if not self.plugins and shared_memory is not None:
-                withdraw_publication(shared_memory)
             self.reset_count += 1
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
             if shared_memory is None:

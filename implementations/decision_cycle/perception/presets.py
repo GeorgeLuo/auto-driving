@@ -38,8 +38,8 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
     },
     "multi_obstruction": {
         "description": (
-            "Multi-obstruction candidates for the multi_obstruction_tracks "
-            "memory plugin, with floor continuity and classical color regions."
+            "Multi-obstruction tracks across frames, with floor continuity "
+            "and classical color regions."
         ),
         "plugins": ["multi_obstruction_tracks", "floor_continuity", "classical_regions"],
     },
@@ -48,9 +48,9 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
             "Generic obstruction observer: frame facts, floor suppression, and "
             "bounded multi-region temporal tracks."
         ),
-        "plugins": ["frame", "floor_plane", "obstruction_tracks"],
+        "plugins": ["frame", "floor_plane", "multi_obstruction_tracks"],
         "plugin_configs": {
-            "obstruction_tracks": {
+            "multi_obstruction_tracks": {
                 "max_tracks": 4,
                 "floor_cutoff_y": 0.72,
                 "minimum_object_height": 0.10,

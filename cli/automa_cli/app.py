@@ -695,24 +695,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show what a memory selection retains, from images or a recorded run.",
         description=(
             "Show what a memory selection retains. The source (an image, a directory of "
-            "images, or a recorded perception run) goes through perception and observation, "
-            "then the selected memory plugins, frame by frame. Reports each plugin's health, "
-            "record count and epoch after every frame, and the observation a plugin "
-            "published in place of the frame's own. It reads the source only; record live "
+            "images, or a recorded perception or memory run) goes through perception and observation, "
+            "then the selected memory plugins, frame by frame. A recorded run restores its "
+            "perception and memory selections, including their configs; --preset or --plugin "
+            "overrides memory. Otherwise each step uses its default. Reports each plugin's health, "
+            "record count and epoch after every frame. It reads the source only; record live "
             "frames with `perception inspect --record` and inspect that run."
         ),
     )
     memory_inspect.add_argument(
         "source",
         type=Path,
-        help="Image file, recorded perception run, or directory of images.",
+        help="Image file, recorded perception or memory run, or directory of images.",
     )
     memory_inspect_selection = memory_inspect.add_mutually_exclusive_group()
     memory_inspect_selection.add_argument(
         "--preset",
         choices=available_memory_preset_ids(),
         default=None,
-        help=f"Inspect one packaged memory preset (default: {DEFAULT_MEMORY_PRESET}).",
+        help=f"Override memory with this preset (without a recorded selection: {DEFAULT_MEMORY_PRESET}).",
     )
     memory_inspect_selection.add_argument(
         "--plugin",
@@ -725,7 +726,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_inspect.add_argument(
         "--record",
         action="store_true",
-        help="Persist the source frames and the per-frame report.",
+        help="Persist source frames, timing, both step selections and the per-frame report for replay.",
     )
     memory_inspect.add_argument(
         "--json",
@@ -803,7 +804,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Run the bounded decision playback workbench against an ordered "
             "local image directory. The server owns source ordering, perception, "
             "observation, bounded memory, decision state, and any selected "
-            "manifest-backed plugins. "
+            "packaged plugins. Recorded perception and memory runs preserve frame order "
+            "and timestamps; choose the plugins to run from the current catalog. "
             "Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
             "pause, step, reset, and another run."
@@ -950,7 +952,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Show what a perception selection detects. With a source (an image, a directory "
             "of images, or a recorded run) the selection is applied to those images. Without "
             "one, frames are read from an active vehicle without taking movement control; "
-            "when several are active, the simulator is selected by default."
+            "when several are active, the simulator is selected by default. Recorded "
+            "perception and memory runs restore their perception selection and preserve "
+            "frame identity and timestamps; --preset or --plugin overrides that selection."
         ),
     )
     perception_inspect.add_argument(
@@ -958,7 +962,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         type=Path,
         default=None,
-        help="Image file, recorded perception run, or directory of images. Omit to read a live vehicle.",
+        help="Image file, recorded perception or memory run, or directory of images. Omit to read a live vehicle.",
     )
     perception_inspect_selection = perception_inspect.add_mutually_exclusive_group()
     perception_inspect_selection.add_argument(

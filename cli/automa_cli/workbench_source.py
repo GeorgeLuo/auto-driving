@@ -1,4 +1,8 @@
-"""Bounded image-directory input for the perception-memory workbench."""
+"""Bounded image-directory input shared by offline inspection and the workbench.
+
+Frame indices order a recording. Timestamps may repeat at millisecond
+resolution, but cannot go backwards; replay keeps the recorded times.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ WORKBENCH_UNSUPPORTED_IMAGE_EXTENSIONS = {
     ".avif",
 }
 
-_MANIFEST_NAMES = ("manifest.json", "run.json")
+_MANIFEST_NAMES = ("manifest.json", "run.json", "report.json")
 _SOURCE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
@@ -125,7 +129,18 @@ def normalize_image_directory(
     if not source_path.is_dir():
         raise SourceValidationError(f"source path is not a directory: {source_path}")
 
-    manifest_path, manifest = _read_manifest(source_path)
+    manifest_path, manifest = read_image_manifest(source_path)
+    if manifest_path is not None and manifest_path.name == "report.json":
+        entries = manifest.get("frames")
+        if (
+            "frames" not in manifest and "camera_frames" not in manifest
+        ) or (
+            manifest.get("schema") == "memory_inspect_v0"
+            and isinstance(entries, list)
+            and all(isinstance(frame, dict) and "image_path" not in frame for frame in entries)
+        ):
+            # Other reports and older memory summaries have no image inventory.
+            manifest_path, manifest = None, None
     if manifest is not None:
         entries = manifest.get("frames")
         if entries is None and "camera_frames" in manifest:
@@ -235,7 +250,8 @@ def content_type_for_path(path: Path) -> str:
 load_image_source = normalize_image_directory
 
 
-def _read_manifest(source_path: Path) -> tuple[Path | None, dict[str, Any] | None]:
+def read_image_manifest(source_path: Path) -> tuple[Path | None, dict[str, Any] | None]:
+    """Read an ordered manifest or either inspection's recorded report."""
     for name in _MANIFEST_NAMES:
         path = source_path / name
         if not os.path.lexists(path):
@@ -566,9 +582,9 @@ def _validate_frame_sequence(frames: tuple[ReplayFrame, ...]) -> None:
     if any(current <= previous for previous, current in zip(indices, indices[1:])):
         raise SourceValidationError("frame_index values must be strictly increasing")
     if any(
-        current <= previous for previous, current in zip(timestamps, timestamps[1:])
+        current < previous for previous, current in zip(timestamps, timestamps[1:])
     ):
-        raise SourceValidationError("timestamp_ms values must be strictly increasing")
+        raise SourceValidationError("timestamp_ms values must be non-decreasing")
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -603,4 +619,5 @@ __all__ = [
     "content_type_for_path",
     "load_image_source",
     "normalize_image_directory",
+    "read_image_manifest",
 ]

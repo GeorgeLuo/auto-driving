@@ -1,10 +1,9 @@
 """Reference avoid_recent_obstruction proposal plugin (M006-04).
 
 Reads retained evidence from shared memory at ``evidence_key`` (by default
-the key ``bounded_evidence`` publishes). The Workbench
-``multi_obstruction_tracks`` memory plugin publishes its tracks at the same
-key. It accepts records by kind and location, regardless of which perception
-or memory implementation produced them.
+the key ``bounded_evidence`` publishes). It accepts records by kind and
+location, regardless of which perception or memory implementation produced
+them.
 """
 
 from __future__ import annotations

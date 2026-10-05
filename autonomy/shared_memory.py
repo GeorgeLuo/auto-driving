@@ -19,9 +19,7 @@ this map.
 Perception, memory, and proposal plugins all read and write this map. Which
 keys a plugin reads and where it publishes are the plugin's choice; plugins
 that exchange values agree on the key (for example, memory plugins that retain
-evidence publish records a proposal plugin reads). A memory plugin may publish
-a current-cycle Observation at ``OBSERVATION_KEY`` (in ``memory.publication``)
-for subsequent steps.
+evidence publish records a proposal plugin reads).
 """
 
 from collections.abc import MutableMapping

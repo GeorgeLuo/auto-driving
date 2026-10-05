@@ -1,8 +1,10 @@
-"""Perception member of the Workbench obstruction pipeline.
+"""Obstruction tracks for the Workbench obstruction pipeline.
 
-Use with ``implementations.decision_cycle.memory.plugins.multi_obstruction_tracks.plugin``: this plugin
-emits current-frame region candidates, and that memory plugin associates them
-into tracked obstacles. The resulting memory records are accepted by the
+Detects floor-suppressed region candidates in the current frame and associates
+them into tracks across frames, with optical-flow support. Track history (the
+previous grayscale image, track records, and the next track id) lives in the
+host map at ``perception.<plugin_id>.history``. The tracked things are the
+plugin's evidence; the memory step retains them for the
 ``avoid_recent_obstruction`` proposal plugin.
 """
 
@@ -29,6 +31,9 @@ from implementations.decision_cycle.perception.feeds.camera import (
 )
 from implementations.decision_cycle.perception.shared.image.contrast import normalize_gray
 from implementations.decision_cycle.perception.shared.obstructions.boxes import clamp, zone
+from implementations.decision_cycle.perception.shared.obstructions.tracker import (
+    ObstructionTrackState,
+)
 
 
 TRACKING_CONFIG_FIELDS = (
@@ -47,27 +52,30 @@ TRACKING_CONFIG_FIELDS = (
 
 
 class MultiObstructionTracksPlugin:
-    """Detect candidates; cross-frame tracking is owned by the memory plugin."""
+    """Detect floor-suppressed candidates and associate them into tracks."""
 
     plugin_id = "multi_obstruction_tracks"
     contract = PerceptionPluginContract(
         inputs=(FRONT_CAMERA_RGB_INPUT,),
-        state_mode="stateless",
+        state_mode="windowed",
+        memory_required=True,
         description=(
-            "Detect floor-suppressed candidates for the tracking memory plugin."
+            "Detect floor-suppressed obstruction candidates and associate them "
+            "into tracks across frames, with optical-flow support."
         ),
         assumptions=(
             "obstruction regions have enough rectangular edge and shape support",
+            "adjacent-frame image geometry changes within the association window",
             "lower-frame floor/background regions are not themselves obstructions",
         ),
         emits=(
-            "signal multi_obstruction_candidates",
-            "image-space region proposals for memory-stage association",
+            "signal multi_obstruction_tracks_available",
+            "image-space obstruction tracks with bounded temporal ids",
         ),
         limitations=(
             "regions are generic image evidence, not semantic objects",
-            "camera motion and lighting can split or merge regions",
-            "tracking requires the Workbench memory implementation",
+            "camera motion and lighting can split, merge, or misassociate regions",
+            "lost tracks are dropped after a bounded grace period",
         ),
         diagnostic_artifacts=("edge_summary",),
     )
@@ -157,24 +165,74 @@ class MultiObstructionTracksPlugin:
         self.minimum_output_confidence = clamp(float(minimum_output_confidence), 0.0, 1.0)
 
 
-    def reset(self) -> None:
-        pass  # Detection has no cross-frame state.
+    @property
+    def _memory_key(self) -> str:
+        return f"perception.{self.plugin_id}.history"
+
+    def reset(self, shared_memory=None) -> None:
+        if shared_memory is not None:
+            shared_memory.pop(self._memory_key, None)
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        if inputs.shared_memory is None:
+            raise ValueError(f"{self.plugin_id} requires host shared memory")
         frame = inputs.require("frame", CameraFrame)
-        candidates, _gray, detector_summary = self._detect_candidates(frame.rgb)
-        config = {name: getattr(self, name) for name in TRACKING_CONFIG_FIELDS}
-        normalization = {name: getattr(self, name) for name in (
-            "contrast_normalization", "contrast_clip_limit", "contrast_tile_size", "contrast_gamma",
-        )}
+        candidates, gray, detector_summary = self._detect_candidates(frame.rgb)
+
+        # The associator is rebuilt each frame from the history in the map.
+        tracker = ObstructionTrackState(
+            **{name: getattr(self, name) for name in TRACKING_CONFIG_FIELDS}
+        )
+        history = inputs.shared_memory.get(self._memory_key)
+        history = history if isinstance(history, dict) else {}
+        tracks_read = tracker._restore_from_history(history.get("tracks"))
+        tracker._previous_gray = history.get("previous_gray")
+        tracker._next_track_id = history.get("next_track_id", tracker._next_track_id)
+        active, events, association = tracker._associate(candidates, gray=gray)
+
+        things = tuple(
+            tracker._materialize(track, events.get(track.track_id, "matched"))
+            for track in active
+            if tracker._should_emit_track(track, events.get(track.track_id, "matched"))
+        )
+        tracks = tracker._lookback_tracks()
+        inputs.shared_memory[self._memory_key] = {
+            "tracks": tracks,
+            "previous_gray": gray,
+            "next_track_id": tracker._next_track_id,
+        }
+
+        track_events = {str(track_id): event for track_id, event in events.items()}
         if inputs.diagnostics.enabled:
             inputs.diagnostics.emit_json("edge_summary", "edge_summary.json", detector_summary)
         return PerceptionEvidenceBatch(
-            things=tuple(candidates),
-            signals=(PerceptionSignal("multi_obstruction_candidates", True, 1.0, {
-                "tracking_config": config, "normalization": normalization,
-            }),),
-            measurements={"candidate_count": len(candidates), "detector": detector_summary},
+            things=things,
+            signals=(
+                PerceptionSignal(
+                    "multi_obstruction_tracks_available",
+                    bool(things),
+                    _mean_confidence(things),
+                    {
+                        "candidate_count": len(candidates),
+                        "active_track_count": len(things),
+                        "track_events": track_events,
+                        "floor_cutoff_y": tracker.floor_cutoff_y,
+                        "history_tracks_read": tracks_read,
+                        "history_tracks_written": len(tracks),
+                    },
+                ),
+            ),
+            measurements={
+                "candidate_count": len(candidates),
+                "active_track_count": len(things),
+                "track_ids": [thing.thing_id for thing in things],
+                "track_events": events,
+                "detector": detector_summary,
+                "association": association,
+                "floor_cutoff_y": tracker.floor_cutoff_y,
+                "history_tracks_read": tracks_read,
+                "history_tracks_written": len(tracks),
+            },
         )
 
     def _detect_candidates(
@@ -435,6 +493,12 @@ def _proposals_related(
         return True
     vertical_gap = max(0.0, max(a[1], b[1]) - min(a[3], b[3]))
     return horizontal_overlap >= 0.35 and vertical_gap <= gap
+
+
+def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float:
+    if not things:
+        return 0.0
+    return float(sum(thing.confidence for thing in things) / len(things))
 
 
 def _odd_kernel(value: int) -> int:

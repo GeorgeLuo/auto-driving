@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121"
 PERCEPTION_PRESET = "multi_obstruction"
 PLUGINS = ("multi_obstruction_tracks", "floor_continuity", "classical_regions")
-MEMORY_PRESETS = ("multi_obstruction", "multi_obstruction_with_ledger")
+MEMORY_PRESETS = ("recency_ledger",)
 RUN_KEYS = ("plugin_id", "status", "error", "signal_count", "thing_count")
 
 

@@ -3,16 +3,16 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 import cv2
 import numpy as np
 
-from autonomy.decision_cycle.memory.publication import OBSERVATION_KEY
 from cli.automa_cli import memory
 from cli.automa_cli.memory import inspect_memory
+from implementations.decision_cycle.catalog import selection_activation
+from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.support.cli_runner import run_automa
 
 SUMMARY_KEYS = {"plugin_id", "health", "record_count", "epoch_id"}
@@ -26,18 +26,6 @@ def write_frames(root: Path, count: int = 3) -> Path:
         cv2.rectangle(image, (left, 90), (left + 80, 200), (30, 30, 200), -1)
         cv2.imwrite(str(root / f"frame_{index}.png"), image)
     return root
-
-
-class StubMemory:
-    """A memory step that publishes a replacement observation with no things."""
-
-    def __call__(self, context, observation):
-        context.shared_memory[OBSERVATION_KEY] = replace(observation, things=())
-        return self.report()
-
-    def report(self):
-        state = {"health": "healthy", "record_count": 1, "epoch_id": "epoch-stub"}
-        return {"schema": "memory_report_v0", "plugins": [{"plugin_id": "stub", "state": state}]}
 
 
 class MemoryInspectTests(unittest.TestCase):
@@ -81,25 +69,48 @@ class MemoryInspectTests(unittest.TestCase):
             (final["health"], final["record_count"], final["epoch_id"]),
         )
 
-    def test_shows_every_plugins_summary(self) -> None:
-        report = self.inspect(plugins=["bounded_evidence", "multi_obstruction_tracks"])
-        self.assertEqual(report["memory"]["plugins"], ["bounded_evidence", "multi_obstruction_tracks"])
+    def test_shows_the_selected_plugins_summary(self) -> None:
+        report = self.inspect(plugins=["bounded_evidence"])
+        self.assertEqual(report["memory"]["plugins"], ["bounded_evidence"])
         for item in report["frames"]:
-            self.assertEqual(
-                [plugin["plugin_id"] for plugin in item["plugins"]],
-                ["bounded_evidence", "multi_obstruction_tracks"],
-            )
-        self.assertEqual(len(report["final"]["plugins"]), 2)
+            self.assertEqual([plugin["plugin_id"] for plugin in item["plugins"]], ["bounded_evidence"])
+        self.assertEqual(len(report["final"]["plugins"]), 1)
 
-    def test_reports_the_replacement_observation_next_to_the_frames_own(self) -> None:
+    def test_perception_runs_the_selection_a_recorded_run_names(self) -> None:
         plain = self.inspect()
-        self.assertIsNone(plain["frames"][0]["replacement"])
-        with patch.object(memory.MemoryRunner, "from_activation", return_value=StubMemory()):
-            report = self.inspect()
-        for item in report["frames"]:
-            self.assertGreater(item["observation"]["things"], 0)
-            self.assertEqual(item["replacement"]["things"], 0)
-            self.assertEqual(item["replacement"]["observation_id"], item["observation"]["observation_id"])
+        self.assertEqual(plain["perception"]["preset"], DEFAULT_PERCEPTION_PRESET)
+        self.assertNotIn("multi_obstruction_tracks", plain["perception"]["plugins"])
+
+        selection = selection_activation("perception", preset="multi_obstruction")
+        run = write_frames(self.tmp / "run")
+        (run / "run.json").write_text(
+            json.dumps(
+                {
+                    "frames": [
+                        {"image_path": f"frame_{index}.png", "timestamp_ms": 5000 + 400 * index}
+                        for index in range(3)
+                    ],
+                    "mapper": {
+                        "preset": "multi_obstruction",
+                        "config": {
+                            "plugins": list(selection.plugins),
+                            "plugin_specs": dict(selection.plugin_specs),
+                            "plugin_configs": dict(selection.plugin_configs),
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        report = self.inspect(run, plugins=["bounded_evidence"])
+        self.assertEqual(report["perception"]["preset"], "multi_obstruction")
+        self.assertEqual(report["perception"]["plugins"], list(selection.plugins))
+        retained = [
+            record["record_id"] for record in report["final"]["plugins"][0]["state"]["records"]
+        ]
+        self.assertTrue(
+            any(":multi_obstruction_tracks:" in record_id for record_id in retained), retained
+        )
 
     def test_frame_times_come_from_the_source_manifest(self) -> None:
         run = write_frames(self.tmp / "run", count=2)

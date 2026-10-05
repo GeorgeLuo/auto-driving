@@ -107,11 +107,11 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(
-                edits, [["bounded_evidence", "multi_obstruction_tracks", "second"]] * 4
+                edits, [["bounded_evidence", "second"]] * 4
             )
             self.assertEqual(
                 steps[0].status()["available_plugins"],
-                ["bounded_evidence", "multi_obstruction_tracks", "second"],
+                ["bounded_evidence", "second"],
             )
             self.assertEqual(applied, [
                 ("bounded_evidence",), ("bounded_evidence", "second"), ("second",), (), ("bounded_evidence",),

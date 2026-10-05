@@ -17,7 +17,7 @@ from .physical_observation import (
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
-VIABILITY_OUTPUT_ROOT = Path(
+PERCEPTION_VIABILITY_OUTPUT_ROOT = Path(
     os.environ.get(
         "AUTOMA_PERCEPTION_VIABILITY_OUTPUT_ROOT",
         ROOT / "lab" / "runs" / "perception-viability",
@@ -37,7 +37,7 @@ class CommandResult:
     message: str
 
 
-def run_physical_viability_measurement(
+def run_perception_viability_measurement(
     *,
     vehicle_id: str,
     duration_s: float = DEFAULT_DURATION_S,
@@ -76,7 +76,7 @@ def run_physical_viability_measurement(
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
     provider = vehicle.get("provider")
     if provider == "chase-sim":
-        return _simulator_stub_result(vehicle_id, json_output=json_output)
+        return _perception_simulator_stub_result(vehicle_id, json_output=json_output)
     if provider != "picar":
         return CommandResult(
             2,
@@ -95,7 +95,7 @@ def run_physical_viability_measurement(
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
     run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
-    out_dir = VIABILITY_OUTPUT_ROOT / run_id if record else None
+    out_dir = PERCEPTION_VIABILITY_OUTPUT_ROOT / run_id if record else None
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -122,7 +122,7 @@ def run_physical_viability_measurement(
         wall_ms = int(time.time() * 1000)
         try:
             publication = get_pub(base_url)
-            sample = _extract_sample(publication, wall_ms=wall_ms, mono_s=now - started)
+            sample = _extract_perception_sample(publication, wall_ms=wall_ms, mono_s=now - started)
             frame_id = sample.get("frame_id")
             if frame_id is not None:
                 frame_id_s = str(frame_id)
@@ -162,13 +162,13 @@ def run_physical_viability_measurement(
         time.sleep(min(sample_period_s, remaining))
 
     elapsed_s = max(time.monotonic() - started, 1e-6)
-    metrics = _compute_metrics(
+    metrics = _compute_perception_metrics(
         samples=samples,
         host_samples=host_samples,
         elapsed_s=elapsed_s,
         fresh_transitions=fresh_transitions,
     )
-    gates = _evaluate_gates(metrics)
+    gates = _evaluate_perception_gates(metrics)
     report = {
         "schema": "automa_physical_perception_viability_v0",
         "run_id": run_id,
@@ -204,7 +204,7 @@ def run_physical_viability_measurement(
             json.dumps(report, indent=2, sort_keys=True, default=str),
             encoding="utf-8",
         )
-        (out_dir / "summary.md").write_text(_format_markdown(report), encoding="utf-8")
+        (out_dir / "summary.md").write_text(_format_perception_markdown(report), encoding="utf-8")
         report["out_dir"] = display_path(out_dir)
         report["report_json"] = display_path(out_dir / "report.json")
         report["summary_md"] = display_path(out_dir / "summary.md")
@@ -212,10 +212,10 @@ def run_physical_viability_measurement(
     exit_code = 0 if report["passed"] else 1
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
-    return CommandResult(exit_code, _format_report(report))
+    return CommandResult(exit_code, _format_perception_report(report))
 
 
-def _simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
+def _perception_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
     # The simulator has no viability probe yet; it passes without measuring.
     report = {
         "schema": "automa_physical_perception_viability_v0",
@@ -242,7 +242,7 @@ def _ssh_host_sampler(vehicle: dict[str, Any]) -> Callable[[], dict[str, Any]] |
     return lambda: _sample_pi_process_metrics(ssh_target=str(target))
 
 
-def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float) -> dict[str, Any]:
+def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float) -> dict[str, Any]:
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
     control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
     return {
@@ -263,7 +263,7 @@ def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float)
     }
 
 
-def _compute_metrics(
+def _compute_perception_metrics(
     *,
     samples: list[dict[str, Any]],
     host_samples: list[dict[str, Any]],
@@ -341,7 +341,7 @@ def _compute_metrics(
     }
 
 
-def _evaluate_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     fresh_hz = float(metrics.get("fresh_results_per_s") or 0.0)
     min_interval = metrics.get("configured_min_interval_s")
     configured_hz = (
@@ -454,7 +454,7 @@ def _first_number(values) -> float | None:
     return None
 
 
-def _format_report(report: dict[str, Any]) -> str:
+def _format_perception_report(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
         f"Perception viability: {'PASS' if report['passed'] else 'FAIL'}",
@@ -483,7 +483,7 @@ def _format_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_markdown(report: dict[str, Any]) -> str:
+def _format_perception_markdown(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
         "# Perception viability",

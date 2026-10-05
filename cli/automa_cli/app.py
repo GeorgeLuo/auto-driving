@@ -56,7 +56,7 @@ from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_viability import (
     run_memory_viability_measurement,
-    run_physical_viability_measurement,
+    run_perception_viability_measurement,
 )
 from .streaming import stream_vehicle_perception
 from .vehicles import (
@@ -2169,7 +2169,7 @@ def _handle_vehicles_perception_inspect(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
-    result = run_physical_viability_measurement(
+    result = run_perception_viability_measurement(
         vehicle_id=args.vehicle_id,
         duration_s=args.duration_s,
         sample_period_s=args.sample_period_s,

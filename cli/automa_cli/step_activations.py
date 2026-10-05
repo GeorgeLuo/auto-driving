@@ -67,16 +67,19 @@ def read_bundle_activation(bundle: dict[str, str], step: str) -> StepActivation 
     return read_step_activation_if_present(bundle_activation_path(bundle, step), step)
 
 
-def bundle_activation_problems(bundle: dict[str, str], vehicle_id: str) -> list[dict[str, str]]:
+def bundle_activation_problems(
+    bundle: dict[str, str], vehicle_id: str, *, steps: tuple[str, ...] = STEPS,
+) -> list[dict[str, str]]:
     """Diagnose existing staged documents using the core's common step reader.
 
     Missing optional steps retain their built-in or empty behavior. An invalid
     document needs explicit restaging; checking never changes its selection or
-    configs. Each diagnosis includes the owning step's update command.
+    configs. Each diagnosis includes the owning step's update command. Callers
+    pass the ``steps`` they read, so a command reports exactly what blocks it.
     """
 
     problems: list[dict[str, str]] = []
-    for step in STEPS:
+    for step in steps:
         try:
             read_bundle_activation(bundle, step)
         except (OSError, TypeError, ValueError) as exc:

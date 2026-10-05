@@ -90,6 +90,9 @@ def ensure_local_perception_runtime(
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
+    if problems:
+        raise ValueError(format_activation_problems(problems))
     existing: dict[str, Any] | None = None
     if manifest_path.exists():
         existing = _read_manifest(manifest_path)
@@ -172,10 +175,10 @@ def get_vehicle_perception_info(
     }
 
     if has_local_activation:
-        try:
-            manifest = _read_manifest(manifest_path)
-        except ValueError as exc:
-            return CommandResult(2, str(exc))
+        problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
+        if problems:
+            return CommandResult(2, format_activation_problems(problems))
+        manifest = _read_manifest(manifest_path)
 
         bundle_root_text = _manifest_bundle(manifest).get("root_dir")
         if not isinstance(bundle_root_text, str) or not bundle_root_text:
@@ -376,10 +379,7 @@ def update_vehicle_perception(
 
     # Built-in staging also refreshes an existing proposal's release metadata.
     # Validate the documents it reads before packaging or writing.
-    problems = [
-        problem for problem in bundle_activation_problems(bundle, vehicle_id)
-        if problem["step"] in (*BUILTIN_STEPS, "proposal")
-    ]
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=(*BUILTIN_STEPS, "proposal"))
     if problems:
         return CommandResult(*step_update_error(
             vehicle_id, "perception", "invalid_activation", format_activation_problems(problems),

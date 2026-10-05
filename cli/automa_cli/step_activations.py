@@ -35,7 +35,11 @@ from implementations.decision_cycle.catalog import (
 )
 from implementations.vehicle.chase_sim import ChaseSimCar
 
-from .bundles import controller_bundle_paths, release_activation_summary, sync_controller_bundle
+from .bundles import (
+    controller_bundle_paths,
+    release_activation_summary,
+    sync_controller_bundle,
+)
 from .paths import display_path, safe_path_part
 from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
@@ -72,9 +76,12 @@ def staging_vehicle(
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The vehicle every ``vehicles update <step>`` stages for, or why it is unknown.
 
-    A Chase sim id and a vehicle with staged perception are known without the
-    network; any other id must be discoverable. ``offline=False`` always
-    discovers, for commands that need the live vehicle.
+    A Chase sim id and a vehicle whose identity was recorded by any staged
+    step are known without discovery. Identity must match the requested id;
+    directory names alone do not establish it. The newest valid matching
+    record supplies the connection. Any other id must be discoverable.
+    ``offline=False`` always discovers, for commands that need the live vehicle.
+    ``timeout_s`` bounds each discovery probe, not the whole update command.
     """
 
     vehicle = None
@@ -126,16 +133,29 @@ def _offline_sim_vehicle(vehicle_id: str) -> dict[str, Any] | None:
 
 
 def _offline_staged_vehicle(bundle: dict[str, str], vehicle_id: str) -> dict[str, Any] | None:
-    """The vehicle recorded by its staged perception, the step that records the provider."""
+    """The newest matching vehicle identity recorded by any valid staged step."""
 
-    try:
-        activation = read_bundle_activation(bundle, "perception")
-    except (OSError, ValueError):
+    records: list[dict[str, Any]] = []
+    for step in STEPS:
+        try:
+            activation = read_bundle_activation(bundle, step)
+        except (OSError, ValueError):
+            continue
+        metadata = dict(activation.metadata) if activation is not None else {}
+        if metadata.get("vehicle_id") != vehicle_id:
+            continue
+        provider = metadata.get("provider")
+        if isinstance(provider, str) and provider:
+            records.append(metadata)
+    if not records:
         return None
-    metadata = activation.metadata if activation is not None else {}
-    provider = metadata.get("provider")
-    if not isinstance(provider, str) or not provider:
-        return None
+    # Historical perception records already carry this timestamp. Records
+    # without one remain usable, behind identities written by current staging.
+    metadata = max(
+        records,
+        key=lambda item: item["activated_at_ms"] if isinstance(item.get("activated_at_ms"), int) else 0,
+    )
+    provider = metadata["provider"]
     runtime = metadata.get("runtime")
     connection = runtime.get("connection") if isinstance(runtime, dict) else None
     return {
@@ -160,8 +180,11 @@ def staging_metadata(
     vehicle_id: str | None,
     bundle: dict[str, str],
     release: dict[str, Any] | None = None,
+    vehicle: dict[str, Any] | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Staging provenance, including a resolved vehicle's identity when supplied."""
+
     metadata: dict[str, Any] = {
         "vehicle_id": vehicle_id,
         "activated_at_ms": int(time.time() * 1000),
@@ -173,6 +196,15 @@ def staging_metadata(
             "release": release_activation_summary(release) if release is not None else None,
         },
     }
+    if vehicle is not None:
+        metadata.update({
+            "provider": vehicle.get("provider"),
+            "vehicle_kind": vehicle.get("vehicle_kind"),
+            "runtime": {
+                "kind": "ws_cli_controller" if vehicle.get("provider") == "chase-sim" else "onboard_controller",
+                "connection": deepcopy(vehicle.get("connection")),
+            },
+        })
     metadata.update(deepcopy(extra or {}))
     return metadata
 
@@ -183,12 +215,13 @@ def stage_activation(
     *,
     vehicle_id: str | None,
     release: dict[str, Any] | None = None,
+    vehicle: dict[str, Any] | None = None,
     extra_metadata: dict[str, Any] | None = None,
 ) -> Path:
-    """Write ``activation`` for its step with the CLI's staging metadata."""
+    """Write ``activation`` with staging provenance and any resolved vehicle identity."""
 
     metadata = {**dict(activation.metadata), **staging_metadata(
-        vehicle_id=vehicle_id, bundle=bundle, release=release, extra=extra_metadata
+        vehicle_id=vehicle_id, bundle=bundle, release=release, vehicle=vehicle, extra=extra_metadata
     )}
     return write_step_activation(
         bundle_activation_path(bundle, activation.step), replace_metadata(activation, metadata)
@@ -282,6 +315,28 @@ def proposal_plugin_ids(steps: dict[str, Any]) -> list[str]:
     return list(plugins) if isinstance(plugins, list) else []
 
 
+def step_update_error(
+    vehicle_id: str, step: str, error: str, message: str,
+    *, json_output: bool, **details: Any,
+) -> tuple[int, str]:
+    """One staging error envelope; vehicle resolution failures use it for every step."""
+
+    if not json_output:
+        return 2, message
+    return 2, json.dumps(
+        {
+            "schema": "vehicle_step_update_error_v0",
+            "vehicle_id": vehicle_id,
+            "step": step,
+            "error": error,
+            "message": message,
+            **details,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+
+
 def update_vehicle_step(
     *,
     vehicle_id: str,
@@ -298,22 +353,6 @@ def update_vehicle_step(
 
     require_step(step)
 
-    def failed(error: str, message: str, **details: Any) -> tuple[int, str]:
-        if not json_output:
-            return 2, message
-        return 2, json.dumps(
-            {
-                "schema": "vehicle_step_update_error_v0",
-                "vehicle_id": vehicle_id,
-                "step": step,
-                "error": error,
-                "message": message,
-                **details,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-
     try:
         activation = packaged_activation(step, plugins)
         # Construct the runner once so a selection that cannot load is never staged.
@@ -322,24 +361,26 @@ def update_vehicle_step(
         # A packaged-catalog clash is not a bad selection; the CLI reports it.
         raise
     except (TypeError, ValueError) as exc:
-        return failed(
+        return step_update_error(
+            vehicle_id, step,
             "invalid_selection",
             f"Cannot stage {step} plugins: {exc}",
+            json_output=json_output,
             available_plugins=sorted(step_plugins(step)),
         )
 
-    _, unknown = staging_vehicle(
+    vehicle, unknown = staging_vehicle(
         vehicle_id, runtime_root=runtime_root, timeout_s=timeout_s, output=output if verbose else None
     )
     if unknown is not None:
-        return failed("unknown_vehicle", unknown)
+        return step_update_error(vehicle_id, step, "unknown_vehicle", unknown, json_output=json_output)
 
     bundle = vehicle_bundle(vehicle_id, runtime_root)
     path = bundle_activation_path(bundle, step)
     release: dict[str, Any] | None = None
     if not dry_run:
         release = sync_controller_bundle(bundle, output=output if verbose else None)
-        path = stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release)
+        path = stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
         if step in DECISION_STEPS:
             from .decision import invalidate_latest_decision_frame
 
@@ -400,6 +441,7 @@ __all__ = [
     "staging_metadata",
     "staging_vehicle",
     "step_info",
+    "step_update_error",
     "update_vehicle_step",
     "vehicle_bundle",
 ]

@@ -1243,8 +1243,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock Chase readiness deadline in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            _STAGING_DISCOVERY_TIMEOUT_HELP + " Also bounds each Chase readiness "
+            "check after staging and live simulator operations with --restart."
         ),
     )
     perception_selection = perception.add_mutually_exclusive_group()
@@ -1275,7 +1275,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception.add_argument(
         "--restart",
         action="store_true",
-        help="Re-prepare the simulator WS controller and capture a sample perception.",
+        help="Discover the live simulator, re-prepare its WS controller, and capture a sample perception; local identity metadata does not bypass discovery.",
     )
     perception.add_argument(
         "--verbose",
@@ -1634,10 +1634,10 @@ _TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
 # Every `vehicles update <step>` resolves its vehicle with `staging_vehicle`.
 _STAGING_VEHICLE_ID_HELP = (
     "Vehicle id from `automa vehicles active`. A chase-sim-* id, or a vehicle with "
-    "staged perception, is known without discovery."
+    "matching identity metadata in any staged step, is known without discovery."
 )
 _STAGING_DISCOVERY_TIMEOUT_HELP = (
-    "Vehicle discovery timeout in seconds, for an id not known without discovery "
+    "Timeout in seconds for each vehicle discovery probe when local identity is unavailable "
     f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
 )
 

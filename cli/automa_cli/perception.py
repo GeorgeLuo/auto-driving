@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -33,7 +32,7 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .step_activations import ensure_builtin_activations, staging_vehicle
+from .step_activations import ensure_builtin_activations, staging_metadata, staging_vehicle, step_update_error
 from .step_hosting import load_staged_runner
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
@@ -316,7 +315,7 @@ def update_vehicle_perception(
         vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=timeout_s, offline=not restart, output=stream
     )
     if vehicle is None:
-        return CommandResult(2, unknown)
+        return CommandResult(*step_update_error(vehicle_id, "perception", "unknown_vehicle", unknown, json_output=json_output))
 
     provider = vehicle.get("provider")
     if restart and provider != "chase-sim":
@@ -613,30 +612,23 @@ def _activation_metadata_base(
     vehicle: dict[str, Any],
     bundle: dict[str, str],
 ) -> dict[str, Any]:
-    provider = vehicle.get("provider")
-    runtime_kind = "ws_cli_controller" if provider == "chase-sim" else "onboard_controller"
-    return {
-        "vehicle_id": vehicle.get("vehicle_id"),
-        "vehicle_kind": vehicle.get("vehicle_kind"),
-        "provider": vehicle.get("provider"),
-        "activated_at_ms": int(time.time() * 1000),
-        "runtime": {
-            "kind": runtime_kind,
-            "connection": vehicle.get("connection"),
-        },
-        "controller_bundle": {
-            "root_dir": bundle["root_dir"],
-            "autonomy_dir": bundle["autonomy_dir"],
-            "implementations_dir": bundle["implementations_dir"],
-            "perception_dir": bundle["perception_dir"],
-            "runtime_dir": bundle["runtime_dir"],
-            "perception_runtime_dir": bundle["perception_runtime_dir"],
-            "copied_from": {
-                "autonomy": str(AUTONOMY_DIR),
-                "implementations": str(IMPLEMENTATIONS_DIR),
+    return staging_metadata(
+        vehicle_id=vehicle.get("vehicle_id"), bundle=bundle, vehicle=vehicle,
+        extra={
+            "controller_bundle": {
+                "root_dir": bundle["root_dir"],
+                "autonomy_dir": bundle["autonomy_dir"],
+                "implementations_dir": bundle["implementations_dir"],
+                "perception_dir": bundle["perception_dir"],
+                "runtime_dir": bundle["runtime_dir"],
+                "perception_runtime_dir": bundle["perception_runtime_dir"],
+                "copied_from": {
+                    "autonomy": str(AUTONOMY_DIR),
+                    "implementations": str(IMPLEMENTATIONS_DIR),
+                },
             },
         },
-    }
+    )
 
 
 def _restart_and_sample_sim_controller(

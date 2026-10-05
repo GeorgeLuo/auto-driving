@@ -46,7 +46,7 @@ from .physical_observation import (
     post_memory_reset,
 )
 from .runtime_view import RuntimeViewServer
-from .step_activations import refresh_release, stage_activation, staging_vehicle
+from .step_activations import refresh_release, stage_activation, staging_vehicle, step_update_error
 from .streaming import _publish_physical_view
 from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
@@ -100,9 +100,9 @@ def update_vehicle_memory(
 
     selected = list(activation.plugins)
     stream = output if verbose else None
-    _, unknown = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=timeout_s, output=stream)
+    vehicle, unknown = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=timeout_s, output=stream)
     if unknown is not None:
-        return CommandResult(2, unknown)
+        return CommandResult(*step_update_error(vehicle_id, "memory", "unknown_vehicle", unknown, json_output=json_output))
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
@@ -110,7 +110,7 @@ def update_vehicle_memory(
 
     if not dry_run:
         release = sync_controller_bundle(bundle, output=stream)
-        stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release)
+        stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
 
     payload = {
         "schema": "vehicle_memory_update_v1",

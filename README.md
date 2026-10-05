@@ -153,6 +153,30 @@ Worker probe overrides are `AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS` (default
 replace the former memory-only `AUTOMA_CHASE_MEMORY_PROBE_MAX_AGE_MS` and
 `AUTOMA_CHASE_MEMORY_PROBE_CLOCK_SKEW_MS` names.
 
+Every `vehicles update <step>` stages only for a known vehicle. A `chase-sim-*`
+id, or a vehicle with matching identity metadata in any staged step, is known
+without discovery. Every successful step update records the vehicle id,
+provider, kind, and connection in the activation's metadata. Offline staging
+uses the newest valid identity matching the exact requested id. A directory
+name alone does not identify a vehicle.
+
+Otherwise the id must be discoverable; `--timeout-s` bounds each discovery
+probe. `--dry-run` checks resolution without writing an activation or making a
+new id known offline. Existing perception identity metadata remains usable.
+Older memory or decision activations without provider metadata require a
+matching identity in another step or discovery on the next update.
+
+Perception additionally reports Chase readiness after staging. Its
+`--timeout-s` also bounds each live readiness check and simulator operation;
+it is not a deadline for the entire update command. Perception `--restart`
+requires live discovery even when a local identity exists.
+
+For every step, an unknown-vehicle failure under `--json` returns
+`vehicle_step_update_error_v0` with `vehicle_id`, `step`, `error: unknown_vehicle`,
+and the discovery diagnostic in `message`; the command exits 2 and stages
+nothing. This resolution error is shared even though successful update payloads
+contain different step-specific results, such as perception readiness.
+
 Use `help` at a command-group level and `--help` for final command options:
 
 ```sh

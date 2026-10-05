@@ -547,7 +547,7 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             for preset, entry in MEMORY_PRESETS.items():
                 plugins = list(entry["plugins"])
                 manifest = json.loads(update_vehicle_memory(
-                    vehicle_id="workbench-parity", preset=preset,
+                    vehicle_id="chase-sim-chaser", preset=preset,
                     dry_run=True, json_output=True,
                 ).message)["manifest"]
                 runner = self._runner(root)

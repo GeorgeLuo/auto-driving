@@ -8,7 +8,12 @@ import webbrowser
 from dataclasses import dataclass
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.memory.runner import MEMORY_REPORT_SCHEMA
+from autonomy.decision_cycle.memory.interface import (
+    MEMORY_REPORT_SCHEMA,
+    RECORD_COUNT,
+    MemoryPluginReport,
+    MemoryReport,
+)
 from .decision import (
     CommandResult,
     DecisionSurfaceError,
@@ -155,15 +160,18 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         # The publication carries the evidence the decision read, not the memory
         # step's report; present it as one labeled entry for the memory panel.
         "memory": (
-            {
-                "schema": MEMORY_REPORT_SCHEMA,
-                "plugins": [
-                    {
-                        "plugin_id": "decision_evidence",
-                        "state": {"records": evidence_value, "record_count": len(evidence_value)},
-                    }
-                ],
-            }
+            MemoryReport(
+                schema=MEMORY_REPORT_SCHEMA,
+                plugins=(
+                    MemoryPluginReport(
+                        plugin_id="decision_evidence",
+                        state={
+                            "records": evidence_value,
+                            RECORD_COUNT: len(evidence_value),
+                        },
+                    ),
+                ),
+            ).to_dict()
             if evidence_value is not None
             else None
         ),

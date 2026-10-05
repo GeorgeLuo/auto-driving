@@ -14,6 +14,13 @@ from typing import Any, TextIO
 from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.memory.interface import (
+    BOUNDS,
+    EPOCH_ID,
+    HEALTH,
+    LEDGER_HEALTH_EMPTY,
+    RECORD_COUNT,
+)
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
@@ -35,7 +42,7 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .inspection_runs import recorded_selection, selection_record
-from .memory_report import last_plugin_state, memory_summary
+from .memory_report import last_plugin_state, ledger_summary, memory_summary
 from .paths import ROOT, display_path, safe_path_part
 from .physical_observation import (
     fetch_autonomy_status,
@@ -529,7 +536,7 @@ def reset_vehicle_memory(
     after_count = after.get("last_record_count")
     after_health = after.get("last_health")
     confirmed = after.get("status") == "live" and (
-        after_count in {0, None} or after_health in {"empty", "unavailable"}
+        after_count in {0, None} or after_health in {LEDGER_HEALTH_EMPTY, "unavailable"}
     )
     payload["confirmed_empty"] = bool(confirmed)
     if json_output:
@@ -620,7 +627,10 @@ def _reset_chase_memory(
         if (
             live.get("status") == "live"
             and live.get("last_epoch_id") not in {None, before.get("last_epoch_id")}
-            and (live.get("last_record_count") in {0, None} or live.get("last_health") == "empty")
+            and (
+                live.get("last_record_count") in {0, None}
+                or live.get("last_health") == LEDGER_HEALTH_EMPTY
+            )
         ):
             try:
                 request_path.unlink(missing_ok=True)
@@ -815,10 +825,10 @@ def _stream_physical_memory_with_inspector(
                     lines.append(f"publication: {fetch_error}")
                 # The published memory report's last plugin state.
                 elif isinstance(publication, dict) and last_plugin_state(publication.get("memory")):
-                    mem = last_plugin_state(publication.get("memory"))
+                    mem = last_plugin_state(publication.get("memory")) or {}
                     lines.append(
-                        f"publication memory: health={mem.get('health')} "
-                        f"keys={mem.get('record_count')}"
+                        f"publication memory: health={mem.get(HEALTH)} "
+                        f"keys={mem.get(RECORD_COUNT)}"
                     )
                 print("\n".join(lines), file=stream, flush=True)
 
@@ -873,6 +883,18 @@ def probe_live_memory(
             "live memory supports picar and chase-sim."
         ),
         "probed_at_ms": int(time.time() * 1000),
+    }
+
+
+def _ledger_probe_fields(report: object) -> dict[str, Any]:
+    """Live-probe fields taken from the last plugin's ledger summary."""
+
+    summary = ledger_summary(last_plugin_state(report))
+    return {
+        BOUNDS: summary[BOUNDS],
+        "last_health": summary[HEALTH],
+        "last_epoch_id": summary[EPOCH_ID],
+        "last_record_count": summary[RECORD_COUNT],
     }
 
 
@@ -942,10 +964,7 @@ def _probe_physical_memory(
         "selected_plugin_ids": memory.get("selected_plugin_ids", []),
         "plugins": memory.get("plugins", []),
         "plugin_report": memory.get("plugin_report"),
-        "bounds": (last_plugin_state(memory) or {}).get("bounds"),
-        "last_health": (last_plugin_state(memory) or {}).get("health"),
-        "last_epoch_id": (last_plugin_state(memory) or {}).get("epoch_id"),
-        "last_record_count": (last_plugin_state(memory) or {}).get("record_count"),
+        **_ledger_probe_fields(memory),
         "last_duration_ms": memory.get("last_duration_ms"),
         "last_error": memory.get("last_error"),
         "update_count": memory.get("update_count"),
@@ -1043,10 +1062,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
         "plugins": status_block.get("plugins", []),
         "plugin_report": status_block.get("plugin_report"),
-        "bounds": (last_plugin_state(status_block) or {}).get("bounds"),
-        "last_health": (last_plugin_state(status_block) or {}).get("health"),
-        "last_epoch_id": (last_plugin_state(status_block) or {}).get("epoch_id"),
-        "last_record_count": (last_plugin_state(status_block) or {}).get("record_count"),
+        **_ledger_probe_fields(status_block),
         "last_duration_ms": status_block.get("last_duration_ms"),
         "last_error": status_block.get("last_error"),
         "update_count": status_block.get("update_count"),

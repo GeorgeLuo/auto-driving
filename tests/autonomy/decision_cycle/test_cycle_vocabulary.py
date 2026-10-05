@@ -19,7 +19,7 @@ from autonomy.decision_cycle.steps import STEP_RUNNERS
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.proposal.inputs import DECISION_DATA_SOURCE_SCHEMA, DecisionDataSource
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
-from autonomy.decision_cycle.memory.runner import MEMORY_REPORT_SCHEMA
+from autonomy.decision_cycle.memory.interface import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.runtime.control import AutonomyControl
 from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET

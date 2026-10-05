@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from autonomy.decision_cycle.memory.interface import (
+    MEMORY_REPORT_SCHEMA,
+    MemoryPluginReport,
+    MemoryReport,
+)
+
 
 def memory_report(state: dict[str, Any], *, plugin_id: str = "bounded_evidence") -> dict[str, Any]:
     """A one-plugin memory report whose plugin state is ``state``."""
 
-    return {
-        "schema": "memory_report_v0",
-        "plugins": [{"plugin_id": plugin_id, "state": state}],
-    }
+    return MemoryReport(
+        schema=MEMORY_REPORT_SCHEMA,
+        plugins=(MemoryPluginReport(plugin_id=plugin_id, state=state),),
+    ).to_dict()

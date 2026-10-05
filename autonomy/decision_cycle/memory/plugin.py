@@ -13,11 +13,18 @@ the feed. The context it receives has no ``sensor_frame``. Anything memory needs
 from the feed reaches it through the observation or the map, written by a
 perception plugin.
 
-The CLI and the viewers it serves read four keys from a retained-evidence
-ledger's summary: ``epoch_id``, ``health`` (``empty`` or ``healthy``), ``bounds``
-and ``record_count``. The framework does not check for them. A summary that
-drops or renames one shows no value for it, and the CLI's reset check reads
-``health`` and ``record_count`` to tell that a reset emptied the memory.
+The CLI and the viewers it serves read four fields from a retained-evidence
+ledger's summary. Their names are ``LEDGER_SUMMARY_KEYS`` in ``interface``:
+``epoch_id``, ``health`` (``empty`` or ``healthy``, ``LEDGER_HEALTH_VALUES``),
+``bounds`` and ``record_count``. The framework does not check for them. Live
+CLI probes return None for missing fields. Inspect frame rows default a
+missing ``record_count`` to 0, preserve an explicit None, and omit ``bounds``.
+The CLI's reset check reads ``health`` and ``record_count`` to tell that a
+reset emptied the memory.
+
+The report retains every applied plugin's status. Current live summaries and
+the workbench read the last applied plugin's state; that plugin need not be
+the one that published ``EVIDENCE_KEY``. Inspect reports each plugin separately.
 
 Several memory plugins may be selected together. They run in selection order on
 one host map, and each receives the same ``observation``. The framework does not merge or arbitrate between

@@ -40,18 +40,19 @@
           </summary>
           <div class="sidebar-group-body">
             <span class="kicker">perception</span>
-            <span id="perceptionPluginSelectionSummary" class="muted">no catalog</span>
+            <span id="perceptionPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+            <span id="perceptionPluginOrder" class="plugin-order muted help"></span>
             <div id="perceptionPluginCatalog" class="plugin-catalog">
               <p class="muted help">Packaged plugins will appear here.</p>
             </div>
             <div id="perceptionPluginDigest" class="digest muted"></div>
             <span class="kicker">memory</span>
-            <span id="memoryPluginSelectionSummary" class="muted">no catalog</span>
+            <span id="memoryPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+            <span id="memoryPluginOrder" class="plugin-order muted help"></span>
             <div id="memoryPluginCatalog" class="plugin-catalog">
               <p class="muted help">Packaged plugins will appear here.</p>
             </div>
             <div id="memoryPluginDigest" class="digest muted"></div>
-            <p class="muted help">Changing either step's plugins replays from the first frame to the displayed one.</p>
           </div>
         </details>
       </div>
@@ -65,7 +66,7 @@
       </div>
       <section class="viewer-panel">
         <div class="viewer" id="viewerStage">
-          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
+          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.</div>
           <div id="viewerFrame" class="viewer-frame" hidden>
             <img id="frameImage" alt="Current replay frame">
             <canvas id="overlayCanvas" aria-hidden="true"></canvas>

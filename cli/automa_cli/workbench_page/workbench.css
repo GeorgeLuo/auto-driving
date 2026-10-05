@@ -128,12 +128,13 @@ h3, .kicker, dt, .metric .label {
   align-content: start;
   gap: 6px;
 }
-.truncate, #sourceIdentity, #perceptionPluginSelectionSummary, #memoryPluginSelectionSummary, .inline-edit, .digest {
+.truncate, #sourceIdentity, .inline-edit, .digest {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
+.plugin-selection-summary, .plugin-order { overflow-wrap: anywhere; }
 .workspace {
   overflow: hidden;
   padding: 16px 16px 4px;

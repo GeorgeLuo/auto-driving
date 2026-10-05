@@ -24,6 +24,10 @@ class SelectionRebuildTests(unittest.TestCase):
         self.assertIn("Changing perception or memory plugins", help_text)
         self.assertIn("rebuilds both pipelines", help_text)
         self.assertIn("displayed frame before returning", help_text)
+        self.assertIn("append newly checked plugins", help_text)
+        self.assertIn("changed ordered selection uses default configs for that step", help_text)
+        self.assertIn("other step keeps its selection and configs", help_text)
+        self.assertIn("same ordered selection keeps the current configs and pass", help_text)
 
     def test_either_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
         for phase in ("running", "paused"):

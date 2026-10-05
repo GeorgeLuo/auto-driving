@@ -915,8 +915,8 @@ def build_parser() -> argparse.ArgumentParser:
     info_help.set_defaults(handler=_handle_vehicles_info_help)
     perception_info = info_commands.add_parser(
         "perception",
-        help="Show the staged perception schema and current published view URL.",
-        description="Show the staged perception schema and current published view URL.",
+        help="Show the staged perception preset and plugins, their schema and the published view URL.",
+        description="Show the staged perception preset and plugins, their schema and the published view URL.",
     )
     perception_info.add_argument(
         "--id",

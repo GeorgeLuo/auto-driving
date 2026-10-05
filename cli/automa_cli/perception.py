@@ -32,7 +32,15 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .step_activations import ensure_builtin_activations, staging_metadata, staging_vehicle, step_update_error
+from .step_activations import (
+    BUILTIN_STEPS,
+    bundle_activation_problems,
+    ensure_builtin_activations,
+    format_activation_problems,
+    staging_metadata,
+    staging_vehicle,
+    step_update_error,
+)
 from .step_hosting import load_staged_runner
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
@@ -365,6 +373,18 @@ def update_vehicle_perception(
         if restart:
             lines.append("would restart WS controller handoff and capture a sample perception")
         return CommandResult(0, "\n".join(lines))
+
+    # Built-in staging also refreshes an existing proposal's release metadata.
+    # Validate the documents it reads before packaging or writing.
+    problems = [
+        problem for problem in bundle_activation_problems(bundle, vehicle_id)
+        if problem["step"] in (*BUILTIN_STEPS, "proposal")
+    ]
+    if problems:
+        return CommandResult(*step_update_error(
+            vehicle_id, "perception", "invalid_activation", format_activation_problems(problems),
+            json_output=json_output, activation_problems=problems,
+        ))
 
     perception_runtime_dir.mkdir(parents=True, exist_ok=True)
     release = sync_controller_bundle(bundle, output=stream)

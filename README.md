@@ -12,11 +12,19 @@ proposal in live drive modes for the first bounded live-control path.
 
 ## Setup
 
-Install the local runtime and analysis dependencies:
+From the repository root, create and activate a local environment, then install
+runtime and analysis dependencies:
 
 ```sh
+python3 -m venv .venv
+source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
+
+Activate the existing environment with `source .venv/bin/activate` in each new
+terminal. The CLI uses that terminal's `python3`; it is a repository executable,
+so no package installation or PATH change is needed. Without activation, use
+`.venv/bin/python cli/automa help`.
 
 Use the CLI from the repository root:
 
@@ -201,6 +209,9 @@ operator's current simulator session:
 
 ```sh
 ./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles update memory \
+  --id chase-sim-chaser \
+  --preset recency_ledger
 ./cli/automa vehicles update perception \
   --id chase-sim-chaser \
   --preset lightweight_observer
@@ -213,6 +224,22 @@ operator's current simulator session:
 ./cli/automa vehicles automation stop --id chase-sim-chaser
 ./cli/automa vehicles status --id chase-sim-chaser
 ```
+
+The memory update stages the Memory view's ledger; without a memory activation,
+the live cycle has no memory plugins. Each update replaces only its named
+step's selection/configs. For an existing tuned deployment, use your intended
+selection instead of copying these default presets; a preset/plugin selection
+uses its packaged configs.
+
+`runtime/` survives Git branch changes. Old per-step schemas, including
+`automa_memory_activation_v0`, are incompatible with the shared
+`automa_step_activation_v0` documents. Status reports an invalid deployment and
+the affected step's `vehicles update <step>` command. Restage that step with
+your intended selection, then check status again. Startup and restart check
+existing staged documents before launching or stopping a worker. An invalid
+optional step blocks startup; an absent optional step keeps its built-in or
+empty behavior. Physical deployments also need compatible local activations
+before the next `vehicles update autonomy`.
 
 See the
 [Chase simulator-to-perception CLI journey](docs/reference/cli-simulator-perception-journey.md)
@@ -264,12 +291,15 @@ Stop or restart the worker:
 
 ```sh
 ./cli/automa vehicles automation stop --id chase-sim-chaser
-./cli/automa vehicles automation restart --id chase-sim-chaser
+./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --frames 0 --open-view
 ```
 
 Useful run options:
 
-- `--frames N` makes a bounded capture run.
+- `--frames N` makes a bounded capture run. `--frames 0` starts an unbounded
+  background worker; the launch command returns after readiness. Use
+  `vehicles automation stop` to stop it. Ctrl-C in a terminal stream stops
+  that stream, not the worker.
 - `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds.
 - `--interval-s 0` captures as quickly as the vehicle interface allows.
 - `--observe-only` preserves the current simulator session and applies no control.
@@ -282,7 +312,7 @@ restarting the worker:
 
 ```sh
 ./cli/automa vehicles update perception --id chase-sim-chaser --preset sim_debug
-./cli/automa vehicles automation restart --id chase-sim-chaser
+./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --frames 0 --open-view
 ```
 
 ### Perception Plugins
@@ -543,10 +573,12 @@ startup.
 ### Physical Activation State
 
 The first physical autonomy deployment creates the default
-`lightweight_observer` perception activation, `idle` decision activation, and
-`bounded_evidence` memory activation when none exist. The Pi loads those
-activations. The Donkey assembly runs the shared autonomy cycle independently of
-`run_pilot`. Each drive-loop tick publishes the newest camera sample on
+`lightweight_observer` perception activation, built-in observation/plan/action
+activations, and `bounded_evidence` memory activation when none exist. No
+proposal is staged by default, so the cycle holds. Existing staged selections
+are preserved. The Pi loads those activations. The Donkey assembly runs the
+shared autonomy cycle independently of `run_pilot`. Each drive-loop tick
+publishes the newest camera sample on
 `/autonomy/camera/latest` and does not wait for perception, so a capture can
 record at the loop rate (`DRIVE_LOOP_HZ`, 20 Hz) instead of the perception
 cadence. Perception still runs at `AUTONOMY_OBSERVATION_INTERVAL_S` (default

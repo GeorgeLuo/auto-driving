@@ -16,10 +16,19 @@ Use `help` to descend through command groups and `--help` for the final command:
 
 ## Primary Journey
 
-Run these commands from the repository root:
+Run these commands from the repository root with the environment from
+[README Setup](../../README.md#setup) activated. This example selects packaged
+perception and memory presets. For an existing tuned deployment, stage your
+intended selections instead: each update replaces its named step's configs.
+`runtime/` persists across branch changes; incompatible activations must be
+explicitly restaged using the recovery that status prints.
 
 ```sh
 ./cli/automa vehicles status --chase-url http://localhost:5050
+
+./cli/automa vehicles update memory \
+  --id chase-sim-chaser \
+  --preset recency_ledger
 
 ./cli/automa vehicles update perception \
   --id chase-sim-chaser \
@@ -44,10 +53,16 @@ Use either `--chase-url` or the compatibility option `--chase-ws-url`, not
 both. When neither is supplied, Automa uses `CHASE_UI_WS_URL` when set and
 otherwise connects to `http://localhost:5050`.
 
-`update perception` stages the packaged observer and safe idle decision
-activation. It does not start a worker or apply movement. For the primary Chase
-path it rechecks the same environment and passive-capture prerequisites used by
-automation, then reports whether the run command is ready.
+`update memory` stages the memory preset. Without it, an otherwise fresh cycle
+has no memory plugins. `update perception` stages the observer and fills absent
+observation, plan and action activations with their built-in plugins. Existing
+selections are preserved; proposals are staged separately. An incompatible
+existing observation, plan, action or proposal activation must be restaged
+before updating perception, which refreshes their release metadata.
+Neither update command starts a worker or applies movement. For the primary
+Chase path, the perception update rechecks the same environment and
+passive-capture prerequisites used by automation, then reports whether the run
+command is ready. Memory staging does not require a live simulator.
 
 `automation run --observe-only` preserves the current scenario, playback
 state, control source, and input. It succeeds only after one camera frame, the
@@ -55,9 +70,17 @@ perception result for that frame, and the loopback view health all agree on the
 same live worker generation. `--open-view` is explicit. A browser-launch
 failure leaves the healthy worker running and prints the URL for manual use.
 
-`--frames 0` runs until the explicit `automation stop` command. Stopping the
-worker keeps its local deployment staged and makes its previous view
-unavailable or stale, never current.
+`--frames 0` starts an unbounded background worker; the launch command returns
+once the correlated view is ready. Use `automation stop` to stop the worker.
+Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
+restart, keep `--observe-only` explicit:
+
+```sh
+./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --frames 0 --open-view
+```
+
+Stopping the worker keeps its local deployment staged and makes its previous
+view unavailable or stale, never current.
 
 ## State Vocabulary
 
@@ -123,7 +146,8 @@ blocked. Run the command as printed, or perform the named external change.
 | Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
-| Deployment absent | Run the printed `vehicles update perception` command |
+| Deployment absent | Run the printed `vehicles update perception` command; stage memory separately when you want its ledger |
+| Staged step invalid (including a retired schema) | Status and startup identify its step and activation path. Run its `vehicles update <step>` command with your intended selection, then rerun status. Checking never rewrites configs, and known invalid documents prevent worker startup or restart |
 | Worker stopped | Run the printed observation-only `automation run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 

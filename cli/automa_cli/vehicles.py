@@ -693,6 +693,18 @@ def _vehicle_next_action(
             "passive_capture",
             "run observation-only automation",
         )
+    deployment = layers["automation_deployment"].get("details") or {}
+    problems = deployment.get("activation_problems") or []
+    if problems:
+        return (
+            action(
+                "step_activation_invalid",
+                command=problems[0]["command"],
+                expected_state="automation_deployment=deployed",
+            ),
+            "automation_deployment",
+            "run observation-only automation",
+        )
     if layers["automation_deployment"]["state"] != "deployed":
         return (
             action(
@@ -794,6 +806,10 @@ def _format_vehicle_status_card(card: dict[str, Any]) -> list[str]:
     ):
         layer = layers.get(name) if isinstance(layers.get(name), dict) else {}
         lines.append(f"{name}: {layer.get('state', 'unknown')}")
+    deployment = layers.get("automation_deployment", {}).get("details") or {}
+    for problem in deployment.get("activation_problems") or []:
+        lines.append(f"Invalid {problem['step']} activation: {problem['activation']}")
+        lines.append(f"Reason: {problem['reason']}")
     worker = (
         layers.get("automation_worker")
         if isinstance(layers.get("automation_worker"), dict)

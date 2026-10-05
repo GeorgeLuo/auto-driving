@@ -235,7 +235,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--frames",
         type=int,
         default=0,
-        help="Number of camera frames to capture. 0 means run until Ctrl-C.",
+        help=(
+            "Number of camera frames to capture. 0 means an unbounded background "
+            "worker; stop it with vehicles automation stop."
+        ),
     )
     automation_run.add_argument(
         "--observe-only",
@@ -318,8 +321,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation_restart = automation_commands.add_parser(
         "restart",
-        help="Restart the automation worker and verify its first camera frame.",
-        description="Restart the automation worker and verify its first camera frame.",
+        help="Restart the automation worker and verify its correlated runtime view.",
+        description="Restart the automation worker and verify its correlated runtime view.",
     )
     automation_restart.add_argument(
         "--id",
@@ -346,12 +349,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--frames",
         type=int,
         default=0,
-        help="Number of camera frames to capture. 0 means unbounded.",
+        help=(
+            "Number of camera frames to capture. 0 means an unbounded background "
+            "worker; stop it with vehicles automation stop."
+        ),
     )
     automation_restart.add_argument(
         "--observe-only",
         action="store_true",
-        help="Run perception without taking over simulator WS control.",
+        help=(
+            "Passively observe without changing scenario, playback, control source, "
+            "input, or applying vehicle control."
+        ),
+    )
+    automation_restart.add_argument(
+        "--open-view",
+        action="store_true",
+        help=(
+            "Open the local Automa runtime views after the first correlated "
+            "camera/perception publication is healthy."
+        ),
     )
     automation_restart.add_argument(
         "--record",
@@ -1256,9 +1273,11 @@ def build_parser() -> argparse.ArgumentParser:
         "perception",
         help="Stage a perception preset or plugins in a vehicle's local controller bundle.",
         description=(
-            "Idempotently stage a perception preset (or plugin list) and safe idle decision in a "
-            "local vehicle bundle. For Chase, the result reports whether the same "
-            "passive capture gate is ready for observation-only automation."
+            "Stage a perception preset or plugin list in a local vehicle bundle. "
+            "Absent observation, plan and action activations receive their built-in "
+            "plugins; existing selections are preserved, and proposals and memory "
+            "are staged separately. For Chase, the result checks passive capture "
+            "and staged activations for observation-only automation."
         ),
     )
     perception.add_argument(
@@ -1856,6 +1875,7 @@ def _handle_vehicles_automation_restart(args: argparse.Namespace) -> int:
         record=args.record,
         verbose=args.verbose,
         log_to_disk=args.log_to_disk,
+        open_view=args.open_view,
         wait_s=args.wait_s,
     )
     if result.message:

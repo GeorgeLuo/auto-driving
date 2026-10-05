@@ -46,7 +46,7 @@ from .physical_observation import (
 )
 from .runtime_view import RuntimeViewServer
 from .step_activations import refresh_release, stage_activation
-from .streaming import _publish_physical_view, once_stream_outcome
+from .streaming import _publish_physical_view, once_stream_outcome, unavailable_stream_outcome
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
@@ -630,7 +630,11 @@ def stream_vehicle_memory(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll live memory lifecycle health for Chase or PiCar."""
+    """Poll live memory lifecycle health for Chase or PiCar.
+
+    JSON mode emits probes even when discovery fails. ``live`` means the
+    retained step is available; update health stays in the plugin diagnostics.
+    """
 
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -641,17 +645,30 @@ def stream_vehicle_memory(
     vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
     if error:
         return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
+            *unavailable_stream_outcome(
+                step="memory",
+                vehicle_id=vehicle_id,
+                message="\n\n".join(
+                    [
+                        error,
+                        "Discovery:",
+                        format_active_vehicles(discovery, include_inactive=True),
+                    ]
+                ),
+                json_output=json_output,
+                stream=output,
+            )
         )
     if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+        return CommandResult(
+            *unavailable_stream_outcome(
+                step="memory",
+                vehicle_id=vehicle_id,
+                message=f"Vehicle {vehicle_id!r} was not found.",
+                json_output=json_output,
+                stream=output,
+            )
+        )
 
     if vehicle.get("provider") == "picar" and not json_output:
         return _stream_physical_memory_with_inspector(

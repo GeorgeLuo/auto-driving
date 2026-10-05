@@ -9,7 +9,6 @@ from typing import Any, TextIO
 from .automation import (
     CHASE_WORKER_PROBE_MAX_AGE_MS,
     _automation_dir,
-    _pid_alive,
     assess_chase_worker_liveness,
 )
 from .paths import display_path
@@ -53,7 +52,12 @@ def stream_vehicle_perception(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll the latest perception for Chase or PiCar."""
+    """Poll the latest perception for Chase or PiCar.
+
+    JSON mode emits probes even when discovery fails. Terminal mode renders
+    the same probe verdict used by ``--once``; worker state and publication
+    health remain separate diagnostics.
+    """
 
     payload = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -64,17 +68,30 @@ def stream_vehicle_perception(
     vehicle, error = find_vehicle_by_id(payload, vehicle_id)
     if error:
         return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(payload, include_inactive=True),
-                ]
-            ),
+            *unavailable_stream_outcome(
+                step="perception",
+                vehicle_id=vehicle_id,
+                message="\n\n".join(
+                    [
+                        error,
+                        "Discovery:",
+                        format_active_vehicles(payload, include_inactive=True),
+                    ]
+                ),
+                json_output=json_output,
+                stream=output,
+            )
         )
     if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+        return CommandResult(
+            *unavailable_stream_outcome(
+                step="perception",
+                vehicle_id=vehicle_id,
+                message=f"Vehicle {vehicle_id!r} was not found.",
+                json_output=json_output,
+                stream=output,
+            )
+        )
 
     provider = vehicle.get("provider")
     if provider == "chase-sim":
@@ -98,8 +115,13 @@ def stream_vehicle_perception(
             output=output,
         )
     return CommandResult(
-        2,
-        f"Vehicle {vehicle_id!r} is provider {provider!r}; perception stream supports chase-sim and picar.",
+        *unavailable_stream_outcome(
+            step="perception",
+            vehicle_id=vehicle_id,
+            message=f"Vehicle {vehicle_id!r} is provider {provider!r}; perception stream supports chase-sim and picar.",
+            json_output=json_output,
+            stream=output,
+        )
     )
 
 
@@ -150,6 +172,36 @@ def probe_live_perception(
         ),
         "probed_at_ms": _timestamp_ms(),
     }
+
+
+def unavailable_stream_outcome(
+    *,
+    step: str,
+    vehicle_id: str,
+    message: str,
+    json_output: bool,
+    stream: TextIO | None,
+) -> tuple[int, str]:
+    """Preserve JSON stream output when discovery or provider selection fails.
+
+    Preflight failures terminate with exit 2 in either mode. JSON mode emits
+    one unavailable probe, including with ``--once`` omitted; terminal mode
+    returns the discovery diagnostic for the CLI handler to print.
+    """
+
+    if not json_output:
+        return 2, message
+    live = {
+        "schema": f"vehicle_{step}_live_v0",
+        "vehicle_id": vehicle_id,
+        "status": "unavailable",
+        "error": message,
+        "probed_at_ms": _timestamp_ms(),
+    }
+    line = json.dumps(live, sort_keys=True)
+    if stream is not None:
+        print(line, file=stream, flush=True)
+    return once_stream_outcome(step=step, live=live, line=line, stream=stream)
 
 
 def once_stream_outcome(
@@ -211,6 +263,7 @@ def _stream_chase_perception(
             else:
                 line = _render_chase_perception_screen(
                     vehicle_id=vehicle_id,
+                    live=live,
                     state=_read_json(state_path),
                     process=_read_json(process_path),
                     latest=_read_json(latest_json_path),
@@ -293,6 +346,7 @@ def _stream_physical_perception(
                         view_error = f"{type(exc).__name__}: {exc}"
                 line = _render_physical_perception_screen(
                     vehicle_id=vehicle_id,
+                    live=live,
                     base_url=base_url,
                     publication=publication,
                     fetch_error=fetch_error,
@@ -502,6 +556,7 @@ def _publish_physical_view(
 def _render_chase_perception_screen(
     *,
     vehicle_id: str,
+    live: dict[str, Any],
     state: dict[str, Any] | None,
     process: dict[str, Any] | None,
     latest: dict[str, Any] | None,
@@ -514,10 +569,7 @@ def _render_chase_perception_screen(
     process = process if isinstance(process, dict) else {}
     latest = latest if isinstance(latest, dict) else {}
     last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
-    pid = process.get("pid") if isinstance(process.get("pid"), int) else state.get("pid")
-    pid_state = "unknown"
-    if isinstance(pid, int):
-        pid_state = "alive" if _pid_alive(pid) else "not running"
+    pid = live.get("worker_pid")
 
     perception = latest.get("perception") if isinstance(latest.get("perception"), dict) else {}
     things = perception.get("things")
@@ -532,7 +584,8 @@ def _render_chase_perception_screen(
         "",
         f"vehicle: {vehicle_id}",
         f"source: chase-sim automation worker",
-        f"status: {state.get('status', 'unknown')}  pid: {pid or 'unknown'} ({pid_state})",
+        f"status: {live.get('status', 'unknown')}",
+        f"worker: {live.get('worker_status') or 'unknown'}  pid: {pid or 'unknown'}",
         f"control: {state.get('control_source', 'unknown')}  action: {state.get('action_policy', 'unknown')}",
         f"recording: {state.get('recording', 'unknown')}  frames_processed: {state.get('frames_processed', 0)}",
         _chase_cadence_line(state, last_frame, age_ms),
@@ -543,6 +596,8 @@ def _render_chase_perception_screen(
         "latest perception",
         "-----------------",
     ]
+    if live.get("error"):
+        header.insert(5, f"error: {live['error']}")
     body = latest_text.strip() if latest_text.strip() else "(no latest perception yet)"
     return "\n".join([*header, body])
 
@@ -550,6 +605,7 @@ def _render_chase_perception_screen(
 def _render_physical_perception_screen(
     *,
     vehicle_id: str,
+    live: dict[str, Any],
     base_url: str,
     publication: dict[str, Any] | None,
     fetch_error: str | None,
@@ -557,7 +613,7 @@ def _render_physical_perception_screen(
     view_error: str | None,
 ) -> str:
     if fetch_error is not None:
-        body = fetch_error
+        body = ""
         health = "unavailable"
         frame_id = "none"
         age_ms: Any = "unknown"
@@ -619,7 +675,8 @@ def _render_physical_perception_screen(
         "",
         f"vehicle: {vehicle_id}",
         f"source: physical onboard  endpoint: {base_url}",
-        f"status: {health}  drive_mode: {mode}  preset: {preset}",
+        f"status: {live.get('status', 'unknown')}",
+        f"publication: {health}  drive_mode: {mode}  preset: {preset}",
         f"control: {control_text}",
         (
             f"cadence: min_interval_s={min_interval}  processed={processed}  "
@@ -634,6 +691,8 @@ def _render_physical_perception_screen(
         "latest perception",
         "-----------------",
     ]
+    if live.get("error"):
+        header.insert(5, f"error: {live['error']}")
     return "\n".join([*header, body if body.strip() else "(no latest perception yet)"])
 
 
@@ -705,5 +764,3 @@ def _int_or_none(value: Any) -> int | None:
 
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
-
-

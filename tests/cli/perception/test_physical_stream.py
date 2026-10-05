@@ -145,7 +145,9 @@ class PhysicalStreamCommandTests(unittest.TestCase):
                     output=buffer,
                 )
             self.assertEqual(result.exit_code, 2)
-            self.assertIn("connection refused", result.message)
+            # The screen already carries the error; the result does not repeat it.
+            self.assertEqual(result.message, "")
+            self.assertIn("connection refused", buffer.getvalue())
             self.assertIn("status: unavailable", buffer.getvalue())
 
     def test_chase_stream_still_requires_automation_runtime(self) -> None:

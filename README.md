@@ -126,6 +126,14 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
+`stream perception` and `stream memory` take the same flags. `--json` prints
+one `vehicle_<step>_live_v0` probe per refresh and opens no local page.
+`--once` exits 2 unless the probe's `status` is `live`. Any other status
+(`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
+On Chase, both steps are live only while this vehicle's automation worker is
+running and its state is under 30s old
+(`AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS`).
+
 Use `help` at a command-group level and `--help` for final command options:
 
 ```sh

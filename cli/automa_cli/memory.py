@@ -25,10 +25,9 @@ from implementations.decision_cycle.memory.presets import (
 )
 
 from .automation import (
-    _automation_command_matches_vehicle,
+    CHASE_WORKER_PROBE_MAX_AGE_MS,
     _automation_dir,
-    _pid_alive,
-    _process_command,
+    assess_chase_worker_liveness,
 )
 from .bundles import (
     controller_bundle_paths,
@@ -47,7 +46,7 @@ from .physical_observation import (
 )
 from .runtime_view import RuntimeViewServer
 from .step_activations import refresh_release, stage_activation
-from .streaming import _publish_physical_view
+from .streaming import _publish_physical_view, once_stream_outcome
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
@@ -66,14 +65,6 @@ INSPECT_ROOT = Path(
     os.environ.get("AUTOMA_MEMORY_INSPECT_ROOT", ROOT / "runtime" / "memory-inspections")
 )
 MEMORY_INSPECT_SCHEMA = "memory_inspect_v0"
-# Chase memory probe treats workers older than this as stale.
-CHASE_MEMORY_PROBE_MAX_AGE_MS = int(
-    os.environ.get("AUTOMA_CHASE_MEMORY_PROBE_MAX_AGE_MS", "30000")
-)
-# Allow tiny forward clock skew before treating updated_at_ms as invalid.
-CHASE_MEMORY_PROBE_CLOCK_SKEW_MS = int(
-    os.environ.get("AUTOMA_CHASE_MEMORY_PROBE_CLOCK_SKEW_MS", "2000")
-)
 
 
 @dataclass(frozen=True)
@@ -690,38 +681,12 @@ def stream_vehicle_memory(
                     print("\033[2J\033[H", end="", file=stream)
                 print(line, file=stream, flush=True)
             if once:
-                return _once_memory_stream_result(
-                    live=live,
-                    line=line,
-                    stream=stream,
+                return CommandResult(
+                    *once_stream_outcome(step="memory", live=live, line=line, stream=stream)
                 )
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, "")
-
-
-def _once_memory_stream_result(
-    *,
-    live: dict[str, Any],
-    line: str,
-    stream: TextIO | None,
-) -> CommandResult:
-    """One-shot stream succeeds only when live memory is confirmed.
-
-    Non-live statuses (stopped, stale, absent, error, unavailable, …) keep their
-    structured diagnostic payload/line but return nonzero so automation cannot
-    treat retained or stopped state as success.
-    """
-
-    status = str(live.get("status") or "unknown")
-    if status == "live":
-        # Avoid double-print when the handler also emits result.message.
-        return CommandResult(0, "" if stream is not None else line)
-    diagnostic = str(
-        live.get("error")
-        or f"memory stream is not live (status={status})"
-    )
-    return CommandResult(2, "" if stream is not None else (line or diagnostic))
 
 
 def _stream_physical_memory_with_inspector(
@@ -811,10 +776,8 @@ def _stream_physical_memory_with_inspector(
                 print("\n".join(lines), file=stream, flush=True)
 
             if once:
-                return _once_memory_stream_result(
-                    live=live,
-                    line="",
-                    stream=stream,
+                return CommandResult(
+                    *once_stream_outcome(step="memory", live=live, line="", stream=stream)
                 )
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
@@ -982,10 +945,10 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
             "probed_at_ms": probed_at_ms,
         }
 
-    liveness = assess_chase_memory_worker_liveness(
+    liveness = assess_chase_worker_liveness(
         state=state,
         probed_at_ms=probed_at_ms,
-        max_age_ms=CHASE_MEMORY_PROBE_MAX_AGE_MS,
+        step="memory",
         vehicle_id=vehicle_id,
     )
     if not liveness["live"]:
@@ -999,7 +962,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
             "worker_status": state.get("status"),
             "worker_pid": liveness.get("pid"),
             "worker_updated_at_ms": liveness.get("updated_at_ms"),
-            "max_age_ms": CHASE_MEMORY_PROBE_MAX_AGE_MS,
+            "max_age_ms": CHASE_WORKER_PROBE_MAX_AGE_MS,
         }
 
     memory = state.get("memory") if isinstance(state.get("memory"), dict) else None
@@ -1048,151 +1011,6 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "run_id": state.get("run_id"),
         "worker_updated_at_ms": liveness.get("updated_at_ms"),
     }
-
-
-def assess_chase_memory_worker_liveness(
-    *,
-    state: dict[str, Any],
-    probed_at_ms: int,
-    max_age_ms: int = CHASE_MEMORY_PROBE_MAX_AGE_MS,
-    vehicle_id: str | None = None,
-    clock_skew_ms: int = CHASE_MEMORY_PROBE_CLOCK_SKEW_MS,
-) -> dict[str, Any]:
-    """Require a running automation process and a fresh state publication.
-
-    Stopped or stale workers must not be reported as live memory merely because
-    a previous state.json still contains a memory status block. A live PID must
-    also match the automation run identity for this vehicle; unavailable process
-    identity fails closed (unlike stop-path permissive matching).
-
-    ``updated_at_ms`` is the automation-wide state heartbeat refreshed by the
-    capture loop. It proves worker publication freshness, not that the memory
-    step itself just completed an update.
-    """
-
-    run_status = str(state.get("status") or "")
-    pid = state.get("pid")
-    if not isinstance(pid, int):
-        pid = None
-    pid_alive = _pid_alive(pid) if isinstance(pid, int) else False
-    updated_at_ms = state.get("updated_at_ms")
-    try:
-        updated_at = int(updated_at_ms) if updated_at_ms is not None else None
-    except (TypeError, ValueError):
-        updated_at = None
-    age_ms = (probed_at_ms - updated_at) if updated_at is not None else None
-
-    if run_status not in {"running", "starting"}:
-        return {
-            "live": False,
-            "status": "stopped",
-            "error": (
-                f"Automation worker is not running (status={run_status or 'unknown'}). "
-                "Start observe-only automation before probing live memory."
-            ),
-            "pid": pid,
-            "updated_at_ms": updated_at,
-            "age_ms": age_ms,
-        }
-    if not pid_alive:
-        return {
-            "live": False,
-            "status": "stale",
-            "error": (
-                f"Automation worker PID {pid} is not running "
-                f"(state status={run_status}). Restart automation before probing live memory."
-            ),
-            "pid": pid,
-            "updated_at_ms": updated_at,
-            "age_ms": age_ms,
-        }
-    # Live memory requires verified automation identity — fail closed if unknown.
-    if vehicle_id is None or not str(vehicle_id).strip():
-        return {
-            "live": False,
-            "status": "stale",
-            "error": (
-                "vehicle_id is required to verify the automation worker identity "
-                "before trusting live memory."
-            ),
-            "pid": pid,
-            "updated_at_ms": updated_at,
-            "age_ms": age_ms,
-        }
-    vehicle_key = str(vehicle_id).strip()
-    if isinstance(pid, int):
-        command = _process_command(pid)
-        if command is None:
-            return {
-                "live": False,
-                "status": "stale",
-                "error": (
-                    f"Could not read process command for PID {pid}; "
-                    "cannot verify automation worker identity. "
-                    "Treating live memory as unavailable."
-                ),
-                "pid": pid,
-                "updated_at_ms": updated_at,
-                "age_ms": age_ms,
-            }
-        if not _automation_command_matches_vehicle(command, vehicle_key):
-            return {
-                "live": False,
-                "status": "stale",
-                "error": (
-                    f"PID {pid} is alive but is not the automation worker for "
-                    f"{vehicle_key!r} (possible PID reuse). Restart automation."
-                ),
-                "pid": pid,
-                "updated_at_ms": updated_at,
-                "age_ms": age_ms,
-            }
-    if updated_at is None:
-        return {
-            "live": False,
-            "status": "stale",
-            "error": (
-                "Automation state is missing updated_at_ms; cannot confirm a live publication."
-            ),
-            "pid": pid,
-            "updated_at_ms": None,
-            "age_ms": None,
-        }
-    # Future timestamps (beyond small clock skew) are not trustworthy freshness.
-    if age_ms is not None and age_ms < -int(clock_skew_ms):
-        return {
-            "live": False,
-            "status": "stale",
-            "error": (
-                f"Automation state updated_at_ms is in the future "
-                f"(age_ms={age_ms}, skew_tolerance_ms={int(clock_skew_ms)}). "
-                "Rejecting as invalid publication time."
-            ),
-            "pid": pid,
-            "updated_at_ms": updated_at,
-            "age_ms": age_ms,
-        }
-    if age_ms is not None and age_ms > int(max_age_ms):
-        return {
-            "live": False,
-            "status": "stale",
-            "error": (
-                f"Automation state is stale (age_ms={age_ms}, max_age_ms={int(max_age_ms)}). "
-                "Worker may be hung; restart automation for a fresh memory publication."
-            ),
-            "pid": pid,
-            "updated_at_ms": updated_at,
-            "age_ms": age_ms,
-        }
-    return {
-        "live": True,
-        "status": "live",
-        "error": None,
-        "pid": pid,
-        "updated_at_ms": updated_at,
-        "age_ms": max(0, age_ms) if age_ms is not None else None,
-    }
-
 
 
 def _format_memory_info(payload: dict[str, Any]) -> str:

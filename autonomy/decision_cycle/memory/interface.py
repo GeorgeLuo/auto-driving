@@ -9,10 +9,8 @@ The framework does not require a plugin to publish them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
-
-
 
 MEMORY_REPORT_SCHEMA = "memory_report_v0"
 
@@ -35,17 +33,21 @@ class MemoryPluginReport:
 
     ``state`` is that plugin's own status summary. The framework passes
     through whatever ``status`` returned, including None when the plugin
-    offers none.
+    offers none. Serialization returns a detached copy of nested state.
+    Readers can edit the copy without changing the plugin, and later plugin
+    updates leave earlier reports intact.
     """
 
     plugin_id: str
     state: Any = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"plugin_id": self.plugin_id, "state": self.state}
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MemoryPluginReport":
+        """Read an object status summary; a non-object state is treated as absent."""
+
         state = data.get("state")
         return cls(
             plugin_id=str(data.get("plugin_id") or "unknown"),

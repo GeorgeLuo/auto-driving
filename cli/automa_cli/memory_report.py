@@ -2,9 +2,10 @@
 
 Both carry ``plugins``: one entry per applied plugin with its ``state``, the
 plugin's own ``status()`` summary. Diagnostics that follow one retained-evidence
-ledger read ``LEDGER_SUMMARY_KEYS`` from ``interface`` off the last plugin's
-state: plugins run in order, so the last one publishes the evidence decisions
-read.
+ledger read ``LEDGER_SUMMARY_KEYS`` from ``interface`` off the last applied
+plugin's state. That plugin need not publish evidence: the framework does not
+require every memory plugin to write ``EVIDENCE_KEY``. This projection neither
+merges summaries nor identifies the publisher of the evidence decisions read.
 """
 
 from __future__ import annotations

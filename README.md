@@ -235,11 +235,13 @@ uses its packaged configs.
 `automa_memory_activation_v0`, are incompatible with the shared
 `automa_step_activation_v0` documents. Status reports an invalid deployment and
 the affected step's `vehicles update <step>` command. Restage that step with
-your intended selection, then check status again. Startup and restart check
-existing staged documents before launching or stopping a worker. An invalid
-optional step blocks startup; an absent optional step keeps its built-in or
-empty behavior. Physical deployments also need compatible local activations
-before the next `vehicles update autonomy`.
+your intended selection, then check status again. Every command that reads
+staged documents checks them first and prints the same step, path, reason, and
+restage command: startup and restart before launching or stopping a worker,
+`vehicles update perception` and `vehicles update autonomy` before packaging or
+writing, and `vehicles info`, `vehicles stream decision`, and `vehicles
+perception inspect` before reporting. An invalid optional step blocks startup;
+an absent optional step keeps its built-in or empty behavior.
 
 See the
 [Chase simulator-to-perception CLI journey](docs/reference/cli-simulator-perception-journey.md)

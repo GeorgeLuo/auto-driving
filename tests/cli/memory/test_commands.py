@@ -69,13 +69,13 @@ class MemoryCommandTests(unittest.TestCase):
     def test_info_lists_staged_plugins_without_loading_unselected_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            run_automa("vehicles", "update", "memory", "--id", "test-car", runtime_root=runtime_root)
-            path = runtime_root / "test-car/bundle/runtime/memory/active.json"
+            run_automa("vehicles", "update", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
+            path = runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json"
             activation = json.loads(path.read_text())
             activation["plugin_specs"]["missing"] = "implementations.memory.not_installed:Plugin"
             path.write_text(json.dumps(activation))
             info = run_automa(
-                "vehicles", "info", "memory", "--id", "test-car", "--json",
+                "vehicles", "info", "memory", "--id", "chase-sim-chaser", "--json",
                 runtime_root=runtime_root,
             )
             expected = ["bounded_evidence", "missing"]
@@ -113,7 +113,7 @@ class MemoryCommandTests(unittest.TestCase):
             for preset in MEMORY_PRESETS:
                 with self.subTest(preset=preset):
                     dry = json.loads(run_automa(
-                        "vehicles", "update", "memory", "--id", "test-car",
+                        "vehicles", "update", "memory", "--id", "chase-sim-chaser",
                         "--preset", preset, "--dry-run", "--json",
                         runtime_root=runtime_root,
                     ).stdout)
@@ -123,11 +123,11 @@ class MemoryCommandTests(unittest.TestCase):
                     self.assertEqual(dry["manifest"], expected.to_payload())
 
                     run_automa(
-                        "vehicles", "update", "memory", "--id", "test-car",
+                        "vehicles", "update", "memory", "--id", "chase-sim-chaser",
                         "--preset", preset, "--json", runtime_root=runtime_root,
                     )
                     staged = json.loads(
-                        (runtime_root / "test-car/bundle/runtime/memory/active.json").read_text()
+                        (runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").read_text()
                     )
                     self.assertEqual(staged["plugins"], list(expected.plugins))
                     self.assertEqual(staged["metadata"]["preset"], preset)
@@ -136,7 +136,7 @@ class MemoryCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             payload = json.loads(run_automa(
-                "vehicles", "update", "memory", "--id", "test-car", "--dry-run", "--json",
+                "vehicles", "update", "memory", "--id", "chase-sim-chaser", "--dry-run", "--json",
                 runtime_root=runtime_root,
             ).stdout)
             self.assertEqual(payload["preset"], DEFAULT_MEMORY_PRESET)
@@ -153,7 +153,7 @@ class MemoryCommandTests(unittest.TestCase):
                 with self.subTest(plugins=plugins):
                     options = [option for plugin in plugins for option in ("--plugin", plugin)]
                     payload = json.loads(run_automa(
-                        "vehicles", "update", "memory", "--id", "test-car", *options,
+                        "vehicles", "update", "memory", "--id", "chase-sim-chaser", *options,
                         "--dry-run", "--json", runtime_root=runtime_root,
                     ).stdout)
                     self.assertEqual(payload["preset"], label)
@@ -163,21 +163,21 @@ class MemoryCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             both = run_automa(
-                "vehicles", "update", "memory", "--id", "test-car",
+                "vehicles", "update", "memory", "--id", "chase-sim-chaser",
                 "--preset", "recency_ledger", "--plugin", "bounded_evidence",
                 runtime_root=runtime_root, check=False,
             )
             self.assertEqual(both.returncode, 2)
             self.assertIn("not allowed with argument", both.stderr)
             unknown = run_automa(
-                "vehicles", "update", "memory", "--id", "test-car", "--preset", "nope",
+                "vehicles", "update", "memory", "--id", "chase-sim-chaser", "--preset", "nope",
                 runtime_root=runtime_root, check=False,
             )
             self.assertEqual(unknown.returncode, 2)
             self.assertIn("invalid choice: 'nope'", unknown.stderr)
             for preset in MEMORY_PRESETS:
                 self.assertIn(preset, unknown.stderr)
-            self.assertFalse((runtime_root / "test-car").exists())
+            self.assertFalse((runtime_root / "chase-sim-chaser").exists())
 
     def test_memory_info_missing_activation_is_actionable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

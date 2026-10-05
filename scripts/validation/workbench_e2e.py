@@ -228,7 +228,7 @@ def check_memory_selector() -> list[str]:
             for preset in MEMORY_PRESETS:
                 label = preset
                 completed = subprocess.run(
-                    automa("update", "memory", "--id", "workbench-e2e", "--preset", preset, "--dry-run", "--json"),
+                    automa("update", "memory", "--id", "chase-sim-chaser", "--preset", preset, "--dry-run", "--json"),
                     cwd=ROOT, capture_output=True, text=True, check=False,
                 )
                 if completed.returncode != 0:

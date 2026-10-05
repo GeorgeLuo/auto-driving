@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -33,7 +32,7 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .step_activations import ensure_builtin_activations
+from .step_activations import ensure_builtin_activations, staging_metadata, staging_vehicle, step_update_error
 from .step_hosting import load_staged_runner
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
@@ -50,7 +49,6 @@ from .vehicles import (
     READINESS_SCHEMA,
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles,
     get_vehicle_status,
 )
 
@@ -312,36 +310,12 @@ def update_vehicle_perception(
 
     stream = output if verbose else None
 
-    vehicle = _offline_sim_vehicle(vehicle_id) if not restart else None
-    if vehicle is None and not restart:
-        vehicle = _offline_staged_vehicle(vehicle_id)
-    if vehicle is not None:
-        _emit(
-            stream,
-            "Using local vehicle metadata; network liveness is not required for local perception staging.",
-        )
-    else:
-        _emit(stream, f"Discovering active vehicles for id {vehicle_id!r}...")
-        payload = discover_active_vehicles(
-            timeout_s=timeout_s,
-            include_picar=True,
-            include_chase_sim=True,
-            include_inactive=True,
-        )
-        vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-        if error:
-            return CommandResult(
-                2,
-                "\n\n".join(
-                    [
-                        error,
-                        "Discovery:",
-                        format_active_vehicles(payload, include_inactive=True),
-                    ]
-                ),
-            )
-        if vehicle is None:
-            return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+    # --restart drives the live simulator, so it never stages from offline metadata.
+    vehicle, unknown = staging_vehicle(
+        vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=timeout_s, offline=not restart, output=stream
+    )
+    if vehicle is None:
+        return CommandResult(*step_update_error(vehicle_id, "perception", "unknown_vehicle", unknown, json_output=json_output))
 
     provider = vehicle.get("provider")
     if restart and provider != "chase-sim":
@@ -585,53 +559,6 @@ def ensure_vehicle_perception_activation(
     return activation_path
 
 
-def _offline_sim_vehicle(vehicle_id: str) -> dict[str, Any] | None:
-    if vehicle_id != "chase-sim-chaser" and not vehicle_id.startswith("chase-sim-"):
-        return None
-    car = ChaseSimCar(vehicle_id=vehicle_id)
-    return {
-        "vehicle_id": vehicle_id,
-        "vehicle_kind": car.capabilities.vehicle_kind,
-        "provider": "chase-sim",
-        "connection": {
-            "ws_url": car.ws_url,
-            "source": "offline-default",
-        },
-        "capabilities": car.capabilities.to_dict(),
-        "status": {
-            "ok": None,
-            "note": "offline simulator metadata; WS/frontend liveness was not required for staging",
-        },
-    }
-
-
-def _offline_staged_vehicle(vehicle_id: str) -> dict[str, Any] | None:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    if not activation_path.is_file():
-        return None
-    try:
-        activation = _read_manifest(activation_path)["metadata"]
-    except (OSError, json.JSONDecodeError):
-        return None
-    provider = activation.get("provider")
-    vehicle_kind = activation.get("vehicle_kind")
-    if not isinstance(provider, str) or not provider:
-        return None
-    runtime = activation.get("runtime")
-    connection = runtime.get("connection") if isinstance(runtime, dict) else None
-    return {
-        "vehicle_id": vehicle_id,
-        "vehicle_kind": vehicle_kind or provider,
-        "provider": provider,
-        "connection": connection if isinstance(connection, dict) else {},
-        "status": {
-            "ok": None,
-            "note": "offline local staging metadata; vehicle liveness was not checked",
-        },
-    }
-
-
 def _perception_update_payload(
     *,
     vehicle_id: str,
@@ -685,30 +612,23 @@ def _activation_metadata_base(
     vehicle: dict[str, Any],
     bundle: dict[str, str],
 ) -> dict[str, Any]:
-    provider = vehicle.get("provider")
-    runtime_kind = "ws_cli_controller" if provider == "chase-sim" else "onboard_controller"
-    return {
-        "vehicle_id": vehicle.get("vehicle_id"),
-        "vehicle_kind": vehicle.get("vehicle_kind"),
-        "provider": vehicle.get("provider"),
-        "activated_at_ms": int(time.time() * 1000),
-        "runtime": {
-            "kind": runtime_kind,
-            "connection": vehicle.get("connection"),
-        },
-        "controller_bundle": {
-            "root_dir": bundle["root_dir"],
-            "autonomy_dir": bundle["autonomy_dir"],
-            "implementations_dir": bundle["implementations_dir"],
-            "perception_dir": bundle["perception_dir"],
-            "runtime_dir": bundle["runtime_dir"],
-            "perception_runtime_dir": bundle["perception_runtime_dir"],
-            "copied_from": {
-                "autonomy": str(AUTONOMY_DIR),
-                "implementations": str(IMPLEMENTATIONS_DIR),
+    return staging_metadata(
+        vehicle_id=vehicle.get("vehicle_id"), bundle=bundle, vehicle=vehicle,
+        extra={
+            "controller_bundle": {
+                "root_dir": bundle["root_dir"],
+                "autonomy_dir": bundle["autonomy_dir"],
+                "implementations_dir": bundle["implementations_dir"],
+                "perception_dir": bundle["perception_dir"],
+                "runtime_dir": bundle["runtime_dir"],
+                "perception_runtime_dir": bundle["perception_runtime_dir"],
+                "copied_from": {
+                    "autonomy": str(AUTONOMY_DIR),
+                    "implementations": str(IMPLEMENTATIONS_DIR),
+                },
             },
         },
-    }
+    )
 
 
 def _restart_and_sample_sim_controller(

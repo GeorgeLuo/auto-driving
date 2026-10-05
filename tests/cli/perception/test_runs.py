@@ -12,6 +12,7 @@ from PIL import Image
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli import perception as perception_module
+from cli.automa_cli.memory import inspect_memory
 from implementations.decision_cycle.catalog import preset_activation
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
@@ -347,6 +348,10 @@ class PerceptionRunTests(unittest.TestCase):
                 saved = json.loads(
                     (inspect_root / recorded["run_id"] / "report.json").read_text(encoding="utf-8")
                 )
+                # Memory inspect reads a live recording, as the README walks through.
+                remembered = json.loads(
+                    inspect_memory(str(inspect_root / recorded["run_id"]), json_output=True).message
+                )
 
         payload = json.loads(result.message)
         self.assertEqual(result.exit_code, 0)
@@ -358,6 +363,9 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(saved["schema"], "perception_inspect_v0")
         self.assertEqual(saved["perception"]["preset"], "lightweight_observer")
         self.assertEqual(fake_car.read_count, 3)
+        self.assertEqual(remembered["source"]["frame_count"], 1)
+        self.assertEqual(remembered["perception"]["preset"], "lightweight_observer")
+        self.assertEqual(remembered["perception"]["plugins"], saved["perception"]["plugins"])
 
 
 if __name__ == "__main__":

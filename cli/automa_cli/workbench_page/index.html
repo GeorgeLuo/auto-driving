@@ -53,8 +53,6 @@
               <p class="muted help">Packaged plugins will appear here.</p>
             </div>
             <div id="memoryPluginDigest" class="digest muted"></div>
-            <p class="muted help">Newly checked plugins run last; retained plugins keep their order. Changing a step's ordered selection uses default plugin configs, replacing its preset tuning. The other step keeps its selection and configs. Uncheck every plugin to disable its plugins.</p>
-            <p class="muted help">Changing either step's plugins in a running or paused replay replays from the first frame to the displayed one. Selecting the same ordered list keeps its configs and the current pass.</p>
           </div>
         </details>
       </div>
@@ -68,7 +66,7 @@
       </div>
       <section class="viewer-panel">
         <div class="viewer" id="viewerStage">
-          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
+          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.</div>
           <div id="viewerFrame" class="viewer-frame" hidden>
             <img id="frameImage" alt="Current replay frame">
             <canvas id="overlayCanvas" aria-hidden="true"></canvas>

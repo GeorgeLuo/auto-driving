@@ -545,24 +545,13 @@ class ImageReplayRunner:
                 ) from exc
 
             # The action lock serializes this boundary with frame processing.
-            # Managers built at start already hold the catalog. Selecting on
-            # them lets core retain unchanged instances. Cached frames from
-            # another selection are stale; the displayed frame runs again now.
-            # Memory is built up from the frames before it, so a new memory
-            # selection starts the pass over instead (see below).
-            reprocess = None
+            # Perception tracks and memory evidence are built up in the shared
+            # map from the frames before the displayed one, so either step's
+            # selection changes by starting the pass over (see below).
             catch_up: list[ReplayFrame] = []
-            if step == "memory":
-                if active_phase and normalized != self._active_memory_plugin_ids:
-                    catch_up = self._restart_with_memory_locked(normalized)
-                self._active_memory_plugin_ids = normalized
-            else:
-                changed = active_phase and normalized != self._active_plugin_ids
-                if changed:
-                    self._apply_manager_selection_locked(normalized)
-                self._active_plugin_ids = normalized
-                if changed:
-                    reprocess = self._rewind_to_displayed_frame_locked()
+            if active_phase and normalized != self._selected_ids(step):
+                catch_up = self._restart_with_selection_locked(step, normalized)
+            self._set_selected_ids(step, normalized)
             self._apply_plugin_configuration_locked()
             if active_phase:
                 pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
@@ -576,13 +565,10 @@ class ImageReplayRunner:
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
             self._condition.notify_all()
-            paused = self._state["phase"] == "paused"
             run_id = str(self._state["run_id"])
             generation = self._generation
-        # A running replay picks the frame up on its next tick; a paused one
-        # shows the new selection now.
-        if reprocess is not None and paused:
-            self._process_one(run_id, generation, reprocess, allow_paused=True)
+        # The replay worker waits on the action lock until the displayed frame
+        # is shown again, whether the replay is running or paused.
         for frame in catch_up:
             self._process_one(run_id, generation, frame, allow_paused=True)
             with self._lock:
@@ -590,23 +576,38 @@ class ImageReplayRunner:
                     break
         return self.state()
 
-    def _restart_with_memory_locked(self, normalized: tuple[str, ...]) -> list[ReplayFrame]:
-        """Start the pass over under a new memory selection.
+    def _selected_ids(self, step: str) -> tuple[str, ...]:
+        return self._active_memory_plugin_ids if step == "memory" else self._active_plugin_ids
 
-        Memory is built from every frame before the displayed one, so the
-        selection cannot be swapped under recorded frames. The pipelines are
-        rebuilt with it, the recorded frames dropped, and the frames up to the
-        displayed one returned to run again. A selection that cannot be built
-        leaves the replay as it was.
+    def _set_selected_ids(self, step: str, selected: tuple[str, ...]) -> None:
+        if step == "memory":
+            self._active_memory_plugin_ids = selected
+        else:
+            self._active_plugin_ids = selected
+
+    def _restart_with_selection_locked(
+        self, step: str, normalized: tuple[str, ...]
+    ) -> list[ReplayFrame]:
+        """Start the pass over under a new selection for ``step``.
+
+        Perception tracks and memory evidence are built from every frame
+        before the displayed one, so neither selection can be swapped under
+        recorded frames. The pipelines are rebuilt with it, the recorded
+        frames and shared map dropped, and the frames up to the displayed one
+        returned to run again. A selection that cannot be built leaves the
+        replay as it was.
         """
 
-        displayed = int(self._state["position"])
-        previous = self._active_memory_plugin_ids
-        self._active_memory_plugin_ids = normalized
+        # A loop resets the next position to zero while its last frame stays
+        # displayed. Catch up to that frame, rather than the next-pass counter.
+        current_frame = self._state.get("current_frame")
+        displayed = int(current_frame["position"]) + 1 if current_frame else 0
+        previous = self._selected_ids(step)
+        self._set_selected_ids(step, normalized)
         try:
             self._rebuild_pipelines_locked()
         except Exception as exc:  # noqa: BLE001 - selection boundary
-            self._active_memory_plugin_ids = previous
+            self._set_selected_ids(step, previous)
             message = str(exc)
             self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
             self._state["failure_boundary"] = "plugin_catalog"
@@ -618,28 +619,6 @@ class ImageReplayRunner:
             ) from exc
         self._set_steps_locked(_empty_steps())
         return list(self._image_source.frames[:displayed]) if self._image_source else []
-
-    def _rewind_to_displayed_frame_locked(self) -> ReplayFrame | None:
-        """Point the replay back at the displayed frame and return it."""
-
-        image_source = self._image_source
-        position = max(int(self._state["position"]) - 1, 0)
-        if image_source is None or position >= len(image_source.frames):
-            return None
-        self._set_position_locked(position)
-        return image_source.frames[position]
-
-    def _cached_frame_locked(self, frame: ReplayFrame) -> dict[str, Any] | None:
-        """Return the frame's recorded result if the current selection made it.
-
-        A frame recorded under another plugin selection runs again wherever
-        the replay lands on it.
-        """
-
-        detail = self._history.get(frame.frame_id)
-        if detail is None or detail.get("active_plugin_ids") != list(self._active_plugin_ids):
-            return None
-        return detail
 
     def _restart_capture_locked(self) -> None:
         """Start another pass over the capture with fresh pipelines.
@@ -678,47 +657,6 @@ class ImageReplayRunner:
         self._state["progress"]["percent"] = (
             round((position / total) * 100.0, 2) if total else 0.0
         )
-
-    def _apply_manager_selection_locked(self, normalized: tuple[str, ...]) -> None:
-        """Select on the running perception manager without rebuilding the replay.
-
-        The new selection is constructed and validated before the replaced
-        plugins are reset or published. Memory keeps its selection. Recorded
-        frames stay as they are; the next unseen frame executes the new
-        selection.
-        """
-
-        mapper = self._mapper
-        manager = getattr(mapper, "plugin_manager", None)
-        select = getattr(manager, "select", None)
-        if manager is None or not callable(select):
-            return
-        prepare = getattr(mapper, "prepare_selection", None)
-        commit = getattr(mapper, "commit_selection", None)
-        discard = getattr(mapper, "discard_selection", None)
-        previous = tuple(manager.selected_ids)
-        try:
-            select(normalized)
-            if callable(prepare) and callable(commit):
-                prepare()
-                commit(self._shared_memory)
-        except Exception as exc:  # noqa: BLE001 - selection boundary
-            # Reapplying the previous definitions would construct new
-            # instances; dropping the unpublished preparation keeps history.
-            try:
-                if callable(discard):
-                    discard()
-            finally:
-                select(previous)
-            message = str(exc)
-            self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
-            self._state["failure_boundary"] = "plugin_catalog"
-            raise ReplayActionError(
-                message,
-                status_code=422,
-                boundary="plugin_catalog",
-                state=self.state(),
-            ) from exc
 
     def _build_mapper_for_selection(
         self,
@@ -825,20 +763,15 @@ class ImageReplayRunner:
             run_id = str(self._state["run_id"])
             generation = self._generation
             frame = self._image_source.frames[position]
-            cached = self._cached_frame_locked(frame)
+            cached = self._history.get(frame.frame_id)
             if cached is not None:
                 self._apply_cached_frame_locked(frame, cached)
                 self._record_action_locked("seek", position=position)
                 return copy.deepcopy(self._state)
-            if frame.frame_id in self._history:
-                # Recorded under another selection: run only this frame again.
-                self._set_position_locked(position)
-                unseen = [frame]
-            else:
-                # A future seek must advance the live steps through every
-                # unseen source frame so their state matches the displayed result.
-                self._set_position_locked(len(self._history))
-                unseen = self._image_source.frames[len(self._history):position + 1]
+            # A future seek must advance the live steps through every
+            # unseen source frame so their state matches the displayed result.
+            self._set_position_locked(len(self._history))
+            unseen = self._image_source.frames[len(self._history):position + 1]
         for next_frame in unseen:
             self._process_one(run_id, generation, next_frame, allow_paused=True)
             with self._lock:
@@ -978,7 +911,7 @@ class ImageReplayRunner:
                     or frame.position != int(self._state["position"])
                 ):
                     return False
-                cached = self._cached_frame_locked(frame)
+                cached = self._history.get(frame.frame_id)
                 if cached is not None:
                     self._apply_cached_frame_locked(frame, cached)
                     self._condition.notify_all()
@@ -1047,7 +980,6 @@ class ImageReplayRunner:
                     pipeline["memory_plugin_report"] = copy.deepcopy(memory_plugin_report)
                     detail["summary"] = copy.deepcopy(self._state["summary"])
                     detail["steps"]["decision"] = copy.deepcopy(decision_payload)
-                    detail["active_plugin_ids"] = list(self._active_plugin_ids)
                     self._history[frame.frame_id] = detail
                     self._upsert_timeline_locked(detail)
                     self._state["position"] = frame.position + 1

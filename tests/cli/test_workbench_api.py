@@ -204,12 +204,13 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(
                 selected["state"]["run_active_plugin_ids"], ["floor_continuity"]
             )
-            # The running replay picks the displayed frame up without waiting
-            # out the cadence.
-            _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.state()
             post({"action": "reset", "run_id": run_id})
 
+        # The response already shows the displayed frame under the new
+        # selection, without waiting out the cadence.
+        reprocessed = selected["state"]
+        self.assertEqual(reprocessed["position"], 1)
+        self.assertEqual(reprocessed["current_frame"]["frame_id"], first_id)
         self.assertEqual(
             [run["plugin_id"] for run in reprocessed["steps"]["perception"]["plugin_runs"]],
             ["floor_continuity"],
@@ -236,10 +237,10 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(selected["phase"], "running")
             self.assertEqual(selected["run_active_plugin_ids"], [])
-            _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.state()
-            self.assertEqual(list(reprocessed["steps"]["perception"]["plugin_runs"] or ()), [])
-            self.assertEqual(reprocessed["steps"]["perception"]["status"], "empty")
+            self.assertEqual(selected["position"], 1)
+            self.assertEqual(selected["current_frame"]["frame_id"], first_id)
+            self.assertEqual(list(selected["steps"]["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(selected["steps"]["perception"]["status"], "empty")
             runner.dispatch("reset", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(

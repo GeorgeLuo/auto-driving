@@ -84,8 +84,8 @@ class PluginCatalog:
     def normalize_selection(self, active_ids: Sequence[str] | None) -> tuple[str, ...]:
         """Validate ids while preserving the given order.
 
-        An empty selection is raw-capture mode: replay still displays frames,
-        but no perception plugin runs.
+        An empty selection disables plugins for this step. Replay still
+        displays frames, and the other step keeps its selection.
         """
 
         raw_values = [] if active_ids is None else list(active_ids)

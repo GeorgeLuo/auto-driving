@@ -259,7 +259,12 @@ not save executable configs or an image inventory.
 
 The workbench reads the same recorded frame order and timing. Its plugin
 checkboxes select plugins from the current catalog with their default configs;
-they do not restore a recording's step configs.
+they do not restore a recording's step configs. Perception tracks and memory
+evidence carry state across frames, so changing either step's selection during
+a running or paused replay rebuilds both pipelines with a fresh shared map and
+runs from the first frame to the displayed frame before the action returns.
+This includes the last frame still displayed between loop passes. The other
+step keeps its selection; selecting the same plugins again leaves the pass as it is.
 
 For a physical vehicle, `vehicles perception inspect --id piracer` currently fetches
 Pi camera frames and runs perception on them on the development machine.

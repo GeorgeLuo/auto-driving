@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from autonomy.decision_cycle.activation import read_step_activation
+from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import preset_activation
 from implementations.decision_cycle.memory.presets import (
     DEFAULT_MEMORY_PRESET,
@@ -80,6 +82,47 @@ class MemoryCommandTests(unittest.TestCase):
             )
             expected = ["bounded_evidence", "missing"]
             self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
+
+    def test_info_names_the_staged_preset_as_perception_info_does(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            staged = {}
+            presets = {}
+            for step in ("perception", "memory"):
+                updated = run_automa(
+                    "vehicles",
+                    "update",
+                    step,
+                    "--id",
+                    "chase-sim-chaser",
+                    runtime_root=runtime_root,
+                    check=False,
+                )
+                self.assertIn(f"Updated {step}: chase-sim-chaser", updated.stdout)
+                info = ("vehicles", "info", step, "--id", "chase-sim-chaser")
+                payload = json.loads(
+                    run_automa(*info, "--json", runtime_root=runtime_root).stdout
+                )
+                text = run_automa(*info, runtime_root=runtime_root).stdout.splitlines()
+                activation = payload["activation"]
+                preset = activation["preset"]
+                self.assertEqual(
+                    text[0], f"{step.title()}: chase-sim-chaser -> {preset}"
+                )
+                self.assertEqual(
+                    text[1], f"Enabled plugins: {', '.join(activation['plugins'])}"
+                )
+                staged[step] = read_step_activation(activation["path"], step)
+                presets[step] = preset
+
+            self.assertEqual(presets["memory"], DEFAULT_MEMORY_PRESET)
+            runner = ImageReplayRunner(activations=staged)
+            try:
+                pipeline = runner.state()["machine_detail"]["pipeline"]
+                for step, preset in presets.items():
+                    self.assertEqual(pipeline[f"{step}_preset"], preset)
+            finally:
+                runner.close()
 
     def test_memory_update_dry_run_does_not_write_activation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -192,7 +235,7 @@ class MemoryCommandTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("No active memory implementation", result.stdout)
+        self.assertIn("No active memory preset found", result.stdout)
         self.assertIn("vehicles update memory", result.stdout)
 
 

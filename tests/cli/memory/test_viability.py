@@ -114,3 +114,4 @@ class MemoryViabilityTests(unittest.TestCase):
         self.assertEqual(results["chase-sim"][0].exit_code, 0)
         self.assertTrue(results["chase-sim"][1]["stub"])
         self.assertEqual(results["other"][0].exit_code, 2)
+        self.assertIn("memory viability measures picar vehicles", results["other"][0].message)

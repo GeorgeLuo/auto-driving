@@ -172,7 +172,7 @@ def get_vehicle_memory_info(
             2,
             "\n".join(
                 [
-                    f"No active memory implementation found for {vehicle_id!r}.",
+                    f"No active memory preset found for {vehicle_id!r}.",
                     f"Expected activation: {display_path(activation_path)}",
                     "Run: ./cli/automa vehicles update memory --id <vehicle_id>",
                 ]
@@ -194,6 +194,7 @@ def get_vehicle_memory_info(
         "vehicle_id": vehicle_id,
         "activation": {
             "path": display_path(activation_path),
+            "preset": activation.metadata.get("preset"),
             "plugins": list(manager.selected_ids),
             "available_plugins": sorted(item.plugin_id for item in available),
             "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
@@ -730,7 +731,7 @@ def _stream_physical_memory_with_inspector(
     timeout_s: float,
     output: TextIO | None,
 ) -> CommandResult:
-    """Poll status, feed the shared loopback publication, and open /memory inspector."""
+    """Poll status, feed the shared loopback publication, and serve the /memory inspector."""
 
     stream = output
     base_url = picar_base_url(vehicle)
@@ -1046,22 +1047,13 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
 
 def _format_memory_info(payload: dict[str, Any]) -> str:
     activation = payload["activation"]
-    bounds = activation.get("bounds") if isinstance(activation.get("bounds"), dict) else {}
-    plugins = ", ".join(activation.get("plugins", [])) or "none"
-    lines = [f"Memory: {payload['vehicle_id']} -> {plugins}"]
-    lines.extend(
-        [
-            f"Activation: {activation['path']}",
-            (
-                f"Bounds: max_records={bounds.get('max_records')} "
-                f"max_age_ms={bounds.get('max_age_ms')} "
-                f"eviction={bounds.get('eviction_policy')}"
-            ),
-            f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
-            f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
-            "Lifecycle: update / reset / status",
-        ]
-    )
+    lines = [
+        f"Memory: {payload['vehicle_id']} -> {activation.get('preset') or 'unknown'}",
+        f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
+        f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
+        f"Activation: {activation['path']}",
+        "Lifecycle: update / reset / status",
+    ]
     live = payload.get("live")
     if isinstance(live, dict):
         lines.append("")

@@ -19,7 +19,11 @@ class LiveStreamDiscoveryTests(unittest.TestCase):
                 self.assertIn(
                     "discovery failures emit an unavailable probe and exit 2", help_text
                 )
-                self.assertIn("no local page", help_text)
+                self.assertIn(
+                    f"one vehicle_{step}_live_v0 JSON probe per refresh in place of the "
+                    "terminal view and local view",
+                    help_text,
+                )
 
     def test_both_cli_json_streams_report_an_undiscoverable_vehicle_as_one_probe(
         self,

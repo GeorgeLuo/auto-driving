@@ -111,23 +111,25 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
-| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration; perception info also reports the live view URL. |
-| `vehicles decision inspect` | Opens a standalone inspector for saved decision inputs. Toggle obstruction side to inspect the proposal, plan, and action records; no live worker is needed. [Sample command and input](examples/decision-inspection/README.md). |
+| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info open with the staged preset; perception info also reports the live view URL, and memory info the live memory step. |
+| `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
-| `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched perception view (link to Memory map). |
-| `vehicles stream memory` | Inspects live memory as a key→value ledger (terminal + local `/memory` map page on PiCar). Keys are `record_id`s; click a key to see the retained value. |
+| `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
+| `vehicles stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts; on PiCar it also serves a local `/memory` map page whose URL the terminal shows. Keys are `record_id`s; click a key to see the retained value. |
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
-| `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. Writes nothing by default; `--record` saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
-| `vehicles memory viability` | Memory health check: 60s poll of the live memory step on a PiCar (update cadence, duration, failures, health, epoch stability); the simulator passes with a stub. Writes `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
-| `vehicles perception viability` | Perception health check: 60s onboard cadence/freshness measurement on a PiCar (RSS when the vehicle supplies an `ssh_target`); the simulator passes with a stub. |
+| `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
+| `vehicles memory viability` | Memory health check: 60s poll of the live memory step on a PiCar (update cadence, duration, failures, health, epoch stability); Chase returns a stub pass. PiCar measurements save `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
+| `vehicles perception viability` | Perception health check: 60s onboard cadence/freshness measurement on a PiCar (RSS when the vehicle supplies an `ssh_target`); Chase returns a stub pass. PiCar measurements save `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory step; if activation is present but the step is missing, update core (manage.py harness) then re-run autonomy. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
-`stream perception` and `stream memory` take the same flags. `--json` prints
-one `vehicle_<step>_live_v0` probe per refresh and opens no local page.
+`stream perception` and `stream memory` take the same flags. By default each
+refresh redraws the terminal view, and on PiCar updates the local view whose
+URL it shows. `--json` prints one `vehicle_<step>_live_v0` probe per refresh in
+place of both, for scripts.
 `--once` exits 2 unless the probe's `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
 Discovery failures also emit one `unavailable` JSON probe and exit 2, even
@@ -152,6 +154,14 @@ Worker probe overrides are `AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS` (default
 30000) and `AUTOMA_CHASE_WORKER_PROBE_CLOCK_SKEW_MS` (default 2000). These
 replace the former memory-only `AUTOMA_CHASE_MEMORY_PROBE_MAX_AGE_MS` and
 `AUTOMA_CHASE_MEMORY_PROBE_CLOCK_SKEW_MS` names.
+
+Both viability commands exit 0 for a passed measurement or Chase stub, 1 for
+failed measurement gates, and 2 for a preflight failure. Under `--json`, preflight
+failures return `vehicle_step_viability_error_v0` with `vehicle_id`, `step`,
+`error` (`unknown_vehicle`, `unsupported_provider`, or `missing_connection`), and
+the diagnostic in `message`. PiCar reports are also saved in JSON mode; use
+`--json --no-record` for a report printed only to stdout. Chase stubs produce
+terminal or JSON output only.
 
 Every `vehicles update <step>` stages only for a known vehicle. A `chase-sim-*`
 id, or a vehicle with matching identity metadata in any staged step, is known
@@ -265,7 +275,7 @@ Useful run options:
 - `--observe-only` preserves the current simulator session and applies no control.
 - `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps timestamped frame and perception artifacts.
-- `--log` persists worker output. No worker log is written by default.
+- `--log` persists worker output to `automation.log`.
 
 After changing perception or shared autonomy code, stage a fresh bundle before
 restarting the worker:
@@ -293,8 +303,8 @@ their default configs from `implementations/decision_cycle/perception/catalog.py
 `--preset` selects a named preset from
 `implementations/decision_cycle/perception/presets.py`.
 
-No captures or reports are retained by default. Add `--record` when overlays
-and per-frame JSON are wanted.
+Results print to the terminal; add `--record` to also save overlays and
+per-frame JSON under a timestamped run directory.
 
 Both inspection commands restore the perception selection and frame identity
 and timestamps from a recording. Memory inspection also restores a recorded

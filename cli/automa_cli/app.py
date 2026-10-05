@@ -56,7 +56,7 @@ from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_viability import (
     run_memory_viability_measurement,
-    run_physical_viability_measurement,
+    run_perception_viability_measurement,
 )
 from .streaming import stream_vehicle_perception
 from .vehicles import (
@@ -445,7 +445,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Show the latest perception output, replacing the terminal view as it updates. "
             "Chase uses the local automation worker; PiCar polls onboard "
-            "/autonomy/observation/latest and opens a local frame-matched view."
+            "/autonomy/observation/latest and serves a local frame-matched view whose "
+            "URL the terminal shows."
         ),
     )
     perception_stream.add_argument(
@@ -468,12 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream.add_argument(
         "--no-clear",
         action="store_true",
-        help="Do not clear the terminal before each render.",
+        help="Print each render below the previous one, keeping earlier renders in scrollback.",
     )
     perception_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live perception probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
+        help="Print one vehicle_perception_live_v0 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     perception_stream.set_defaults(handler=_handle_vehicles_stream_perception)
 
@@ -481,9 +482,10 @@ def build_parser() -> argparse.ArgumentParser:
         "memory",
         help="Inspect live memory as a key→value ledger (terminal + local map page).",
         description=(
-            "Inspect live memory as a key→value ledger. Terminal shows health and counts; "
-            "on PiCar a local loopback page lists record_id keys and the selected value. "
-            "Chase reads automation worker state. No history is written by default."
+            "Inspect live memory as a key→value ledger, replacing the terminal view as it updates. "
+            "Terminal shows health and counts. Chase reads automation worker state; PiCar "
+            "serves a local map page, whose URL the terminal shows, listing record_id keys "
+            "and the selected value."
         ),
     )
     memory_stream.add_argument(
@@ -506,12 +508,12 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--no-clear",
         action="store_true",
-        help="Do not clear the terminal before each render.",
+        help="Print each render below the previous one, keeping earlier renders in scrollback.",
     )
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print machine-readable live memory probes (one JSON object per refresh; discovery failures emit an unavailable probe and exit 2; no local page).",
+        help="Print one vehicle_memory_live_v0 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
@@ -522,7 +524,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Read automation/latest_decision.json for the staged proposal, plan, and "
             "action steps. "
             "Accepts only generation-matched frames from a running live worker within the "
-            "configured max age. No history is written. Use --once for a single accepted frame."
+            "configured max age, replacing the terminal view as each arrives. Use --once for "
+            "a single accepted frame."
         ),
     )
     decision_stream.add_argument(
@@ -545,7 +548,7 @@ def build_parser() -> argparse.ArgumentParser:
     decision_stream.add_argument(
         "--no-clear",
         action="store_true",
-        help="Do not clear the terminal before each render.",
+        help="Print each render below the previous one, keeping earlier renders in scrollback.",
     )
     decision_stream.add_argument(
         "--json",
@@ -569,15 +572,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     decision_help.set_defaults(handler=_handle_vehicles_decision_help)
     decision_inspect = decision_control_commands.add_parser(
-        "inspect", help="Open an offline decision inspector for a saved input sequence.",
-        description="Compute left/right proposal scenarios from one saved frame. No live worker or capture is needed.",
+        "inspect", help="Serve an offline decision inspector for a saved input sequence.",
+        description="Compute left/right proposal scenarios offline from one saved frame and serve them on a local inspector page.",
     )
     decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
     decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
     decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged hold-action configuration; otherwise use packaged defaults.")
     decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
     decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
-    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts and exit without starting a server.")
+    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts as JSON and exit, in place of the local inspector page.")
     decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
     decision_apply = decision_control_commands.add_parser(
         "apply",
@@ -585,8 +588,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Feed a recorded observation+memory sequence through the vehicle's staged "
             "hold-action activation. Requires --id. Reports a deterministic digest "
-            "(canonical_json_utf8 byte equality across two passes). Writes no files unless "
-            "--record is passed for exact-frame HTML under lab/runs/decision-apply/."
+            "(canonical_json_utf8 byte equality across two passes); --record also saves "
+            "exact-frame HTML under lab/runs/decision-apply/."
         ),
     )
     decision_apply.add_argument(
@@ -610,8 +613,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--record",
         action="store_true",
         help=(
-            "Opt-in: write a bounded exact-frame review directory with HTML, digest, and "
-            "manifest. Disabled by default."
+            "Also save a bounded exact-frame review directory with HTML, digest, and "
+            "manifest."
         ),
     )
     decision_apply.set_defaults(handler=_handle_vehicles_decision_apply)
@@ -668,7 +671,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Reset the activated memory step on the live host. Chase uses the "
             "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms an "
-            "empty epoch via live probe. Does not move the vehicle or write history."
+            "empty epoch via live probe. Does not move the vehicle."
         ),
     )
     memory_reset.add_argument(
@@ -746,14 +749,15 @@ def build_parser() -> argparse.ArgumentParser:
             "Health-check memory on a vehicle. A PiCar's live memory step is polled for a "
             "bounded interval (default 60s) to record update cadence, update duration, "
             "failures, health, and epoch stability. "
-            "The simulator has no probe yet and passes automatically."
+            "Chase returns a stub pass. PiCar measurements save report.json under "
+            "lab/runs/memory-viability/ unless --no-record."
         ),
     )
     memory_viability.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Physical vehicle id from `automa vehicles active` (picar only).",
+        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
     )
     memory_viability.add_argument(
         "--duration-s",
@@ -781,7 +785,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the machine-readable viability report.",
+        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
     )
     memory_viability.set_defaults(handler=_handle_vehicles_memory_viability)
 
@@ -947,8 +951,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_info = info_commands.add_parser(
         "memory",
-        help="Show the locally staged memory implementation and bounds.",
-        description="Show the locally staged memory implementation and bounds.",
+        help="Show the staged memory preset and plugins and the live memory step state.",
+        description="Show the staged memory preset and plugins and the live memory step state.",
     )
     memory_info.add_argument(
         "--id",
@@ -1052,14 +1056,15 @@ def build_parser() -> argparse.ArgumentParser:
             "Health-check perception on a vehicle. A PiCar is polled for a bounded "
             "interval (default 60s) to record cadence, result age, processing duration, "
             "and skip policy, plus host RSS/CPU when the vehicle supplies an ssh_target. "
-            "The simulator has no probe yet and passes automatically."
+            "Chase returns a stub pass. PiCar measurements save report.json and summary.md "
+            "under lab/runs/perception-viability/ unless --no-record."
         ),
     )
     perception_viability.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Physical vehicle id from `automa vehicles active` (picar only).",
+        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
     )
     perception_viability.add_argument(
         "--duration-s",
@@ -1087,7 +1092,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the machine-readable viability report.",
+        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
     )
     perception_viability.set_defaults(handler=_handle_vehicles_perception_viability)
 
@@ -2169,7 +2174,7 @@ def _handle_vehicles_perception_inspect(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
-    result = run_physical_viability_measurement(
+    result = run_perception_viability_measurement(
         vehicle_id=args.vehicle_id,
         duration_s=args.duration_s,
         sample_period_s=args.sample_period_s,

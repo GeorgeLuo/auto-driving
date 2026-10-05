@@ -14,7 +14,7 @@ Choose **Right obstruction** to see **steer left**, and **Left obstruction** to
 see **steer right** in the same black-box card. Open details stay open on toggle.
 The page's inputs and outputs come from the server's computed artifacts.
 
-To get the same artifacts without starting a server:
+To print the same artifacts as JSON instead of serving the page:
 
 ```sh
 ./cli/automa vehicles decision inspect --from-run examples/decision-inspection --json

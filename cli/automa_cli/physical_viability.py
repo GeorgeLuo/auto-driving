@@ -17,7 +17,7 @@ from .physical_observation import (
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 
-VIABILITY_OUTPUT_ROOT = Path(
+PERCEPTION_VIABILITY_OUTPUT_ROOT = Path(
     os.environ.get(
         "AUTOMA_PERCEPTION_VIABILITY_OUTPUT_ROOT",
         ROOT / "lab" / "runs" / "perception-viability",
@@ -37,7 +37,70 @@ class CommandResult:
     message: str
 
 
-def run_physical_viability_measurement(
+def _resolve_viability_vehicle(
+    *,
+    step: str,
+    vehicle_id: str,
+    timeout_s: float,
+    json_output: bool,
+) -> tuple[dict[str, Any] | None, CommandResult | None]:
+    """Resolve both steps before creating a report directory or sampling.
+
+    Preflight failures exit 2. JSON mode returns the shared error envelope;
+    measured gate failures remain step-specific reports with exit 1.
+    """
+
+    def failure(error: str, message: str) -> tuple[None, CommandResult]:
+        if json_output:
+            message = json.dumps(
+                {
+                    "schema": "vehicle_step_viability_error_v0",
+                    "vehicle_id": vehicle_id,
+                    "step": step,
+                    "error": error,
+                    "message": message,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        return None, CommandResult(2, message)
+
+    discovery = discover_active_vehicles(
+        timeout_s=timeout_s,
+        include_picar=True,
+        include_chase_sim=True,
+        include_inactive=True,
+    )
+    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
+    if error:
+        return failure(
+            "unknown_vehicle",
+            "\n\n".join(
+                [
+                    error,
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
+                ]
+            ),
+        )
+    if vehicle is None:
+        return failure("unknown_vehicle", f"Vehicle {vehicle_id!r} was not found.")
+    provider = vehicle.get("provider")
+    if provider not in ("chase-sim", "picar"):
+        return failure(
+            "unsupported_provider",
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
+            f"{step} viability measures picar vehicles and passes chase-sim with a stub.",
+        )
+    if provider == "picar" and not picar_base_url(vehicle):
+        return failure(
+            "missing_connection",
+            f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+        )
+    return vehicle, None
+
+
+def run_perception_viability_measurement(
     *,
     vehicle_id: str,
     duration_s: float = DEFAULT_DURATION_S,
@@ -51,41 +114,21 @@ def run_physical_viability_measurement(
 ) -> CommandResult:
     """Health-check perception on a vehicle, dispatching on its provider.
 
-    A PiCar is measured for onboard cadence/freshness. The simulator has no
-    probe yet and passes automatically; any other provider is refused.
+    A PiCar is measured for onboard cadence/freshness. The simulator passes
+    with a stub result; any other provider is refused.
     """
-    discovery = discover_active_vehicles(
+    vehicle, failure = _resolve_viability_vehicle(
+        step="perception",
+        vehicle_id=vehicle_id,
         timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
+        json_output=json_output,
     )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-    provider = vehicle.get("provider")
-    if provider == "chase-sim":
-        return _simulator_stub_result(vehicle_id, json_output=json_output)
-    if provider != "picar":
-        return CommandResult(
-            2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "no perception viability probe exists for it.",
-        )
+    if failure is not None:
+        return failure
+    assert vehicle is not None
+    if vehicle.get("provider") == "chase-sim":
+        return _perception_simulator_stub_result(vehicle_id, json_output=json_output)
     base_url = picar_base_url(vehicle)
-    if not base_url:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
 
     get_pub = fetch_publication or (
         lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
@@ -95,7 +138,7 @@ def run_physical_viability_measurement(
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
     run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
-    out_dir = VIABILITY_OUTPUT_ROOT / run_id if record else None
+    out_dir = PERCEPTION_VIABILITY_OUTPUT_ROOT / run_id if record else None
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -122,7 +165,7 @@ def run_physical_viability_measurement(
         wall_ms = int(time.time() * 1000)
         try:
             publication = get_pub(base_url)
-            sample = _extract_sample(publication, wall_ms=wall_ms, mono_s=now - started)
+            sample = _extract_perception_sample(publication, wall_ms=wall_ms, mono_s=now - started)
             frame_id = sample.get("frame_id")
             if frame_id is not None:
                 frame_id_s = str(frame_id)
@@ -162,13 +205,13 @@ def run_physical_viability_measurement(
         time.sleep(min(sample_period_s, remaining))
 
     elapsed_s = max(time.monotonic() - started, 1e-6)
-    metrics = _compute_metrics(
+    metrics = _compute_perception_metrics(
         samples=samples,
         host_samples=host_samples,
         elapsed_s=elapsed_s,
         fresh_transitions=fresh_transitions,
     )
-    gates = _evaluate_gates(metrics)
+    gates = _evaluate_perception_gates(metrics)
     report = {
         "schema": "automa_physical_perception_viability_v0",
         "run_id": run_id,
@@ -204,7 +247,7 @@ def run_physical_viability_measurement(
             json.dumps(report, indent=2, sort_keys=True, default=str),
             encoding="utf-8",
         )
-        (out_dir / "summary.md").write_text(_format_markdown(report), encoding="utf-8")
+        (out_dir / "summary.md").write_text(_format_perception_markdown(report), encoding="utf-8")
         report["out_dir"] = display_path(out_dir)
         report["report_json"] = display_path(out_dir / "report.json")
         report["summary_md"] = display_path(out_dir / "summary.md")
@@ -212,11 +255,11 @@ def run_physical_viability_measurement(
     exit_code = 0 if report["passed"] else 1
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
-    return CommandResult(exit_code, _format_report(report))
+    return CommandResult(exit_code, _format_perception_report(report))
 
 
-def _simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
-    # The simulator has no viability probe yet; it passes without measuring.
+def _perception_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
+    # The simulator gets a stub pass; measurement runs on PiCar.
     report = {
         "schema": "automa_physical_perception_viability_v0",
         "vehicle_id": vehicle_id,
@@ -224,7 +267,7 @@ def _simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResu
         "passed": True,
         "stub": True,
         "gates": [],
-        "note": "No simulator viability probe exists yet; passing without measurement.",
+        "note": "Simulator viability is a stub pass; measurement runs on PiCar.",
     }
     if json_output:
         return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
@@ -242,7 +285,7 @@ def _ssh_host_sampler(vehicle: dict[str, Any]) -> Callable[[], dict[str, Any]] |
     return lambda: _sample_pi_process_metrics(ssh_target=str(target))
 
 
-def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float) -> dict[str, Any]:
+def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float) -> dict[str, Any]:
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
     control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
     return {
@@ -263,7 +306,7 @@ def _extract_sample(publication: dict[str, Any], *, wall_ms: int, mono_s: float)
     }
 
 
-def _compute_metrics(
+def _compute_perception_metrics(
     *,
     samples: list[dict[str, Any]],
     host_samples: list[dict[str, Any]],
@@ -341,7 +384,7 @@ def _compute_metrics(
     }
 
 
-def _evaluate_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     fresh_hz = float(metrics.get("fresh_results_per_s") or 0.0)
     min_interval = metrics.get("configured_min_interval_s")
     configured_hz = (
@@ -454,7 +497,7 @@ def _first_number(values) -> float | None:
     return None
 
 
-def _format_report(report: dict[str, Any]) -> str:
+def _format_perception_report(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
         f"Perception viability: {'PASS' if report['passed'] else 'FAIL'}",
@@ -483,7 +526,7 @@ def _format_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_markdown(report: dict[str, Any]) -> str:
+def _format_perception_markdown(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
         "# Perception viability",
@@ -553,37 +596,19 @@ def run_memory_viability_measurement(
     """Health-check memory on a vehicle, dispatching on its provider.
 
     A PiCar's live memory step is polled for a bounded interval. The simulator
-    has no probe yet and passes automatically; any other provider is refused.
+    passes with a stub result; any other provider is refused.
     """
-    discovery = discover_active_vehicles(
+    vehicle, failure = _resolve_viability_vehicle(
+        step="memory",
+        vehicle_id=vehicle_id,
         timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
+        json_output=json_output,
     )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-    provider = vehicle.get("provider")
-    if provider == "chase-sim":
+    if failure is not None:
+        return failure
+    assert vehicle is not None
+    if vehicle.get("provider") == "chase-sim":
         return _memory_simulator_stub_result(vehicle_id, json_output=json_output)
-    if provider != "picar":
-        return CommandResult(
-            2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "no memory viability probe exists for it.",
-        )
 
     from .memory import probe_live_memory
 
@@ -672,7 +697,7 @@ def run_memory_viability_measurement(
 
 
 def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
-    # The simulator has no viability probe yet; it passes without measuring.
+    # The simulator gets a stub pass; measurement runs on PiCar.
     report = {
         "schema": "automa_physical_memory_viability_v0",
         "vehicle_id": vehicle_id,
@@ -680,7 +705,7 @@ def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> Comm
         "passed": True,
         "stub": True,
         "gates": [],
-        "note": "No simulator viability probe exists yet; passing without measurement.",
+        "note": "Simulator viability is a stub pass; measurement runs on PiCar.",
     }
     if json_output:
         return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))

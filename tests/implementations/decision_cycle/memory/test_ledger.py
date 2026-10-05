@@ -4,6 +4,11 @@ import json
 import unittest
 
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
+from autonomy.decision_cycle.memory.interface import (
+    LEDGER_HEALTH_EMPTY,
+    LEDGER_HEALTH_VALUES,
+    LEDGER_SUMMARY_KEYS,
+)
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     LEDGER_SCHEMA,
@@ -58,6 +63,8 @@ class EvidenceLedgerTests(unittest.TestCase):
         json.dumps(payload)
         self.assertEqual(payload["schema"], LEDGER_SCHEMA)
         self.assertEqual(payload["record_count"], 1)
+        self.assertTrue(set(LEDGER_SUMMARY_KEYS).issubset(payload))
+        self.assertIn(payload["health"], LEDGER_HEALTH_VALUES)
         payload["records"][0]["properties"]["width_fraction"] = 0.9
         payload["metadata"]["source"] = "mutated"
         self.assertEqual(ledger.records[0].properties["width_fraction"], 0.2)
@@ -83,7 +90,7 @@ class EvidenceLedgerTests(unittest.TestCase):
     def test_empty_ledger(self) -> None:
         empty = empty_ledger(memory_id="mem_empty", epoch_id="epoch_1", bounds=self.bounds(), created_at_ms=1)
 
-        self.assertEqual(empty.health, "empty")
+        self.assertEqual(empty.health, LEDGER_HEALTH_EMPTY)
         self.assertEqual(empty.record_count, 0)
 
 

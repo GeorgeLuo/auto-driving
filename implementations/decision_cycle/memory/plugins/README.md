@@ -18,5 +18,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   owns. Publish what later steps read at the keys named in
   `autonomy/decision_cycle/memory/publication.py`: `EVIDENCE_KEY` for
   retained evidence records.
+- A retained-evidence ledger's status summary uses the names in
+  `autonomy/decision_cycle/memory/interface.py`: `LEDGER_SUMMARY_KEYS`
+  (`epoch_id`, `health`, `bounds`, `record_count`). `health` is `empty` or
+  `healthy`. The framework does not require them. The CLI and viewers show
+  no value for a name the summary drops, and the reset check reads `health`
+  and `record_count` to tell that a reset emptied the memory.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's
   modules.

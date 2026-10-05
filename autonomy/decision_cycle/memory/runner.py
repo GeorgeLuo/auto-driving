@@ -2,8 +2,9 @@
 
 ``MemoryRunner`` applies the manager's selection and runs each selected
 plugin through ``MemoryPluginRuntime`` in selection order. Its return value is
-a report of each plugin's own state summary for diagnostics; decisions read
-plugin-published keys in the host map, not the report.
+the ``MemoryReport`` dict from ``interface``: each plugin's own state summary
+for diagnostics. Decisions read plugin-published keys in the host map, not
+the report.
 
 ``MemoryPluginRuntime`` times and reports one applied plugin. It sits here, in
 the runner's file, as perception keeps its per-plugin execution in its own.
@@ -21,6 +22,11 @@ from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import StepActivation
+from autonomy.decision_cycle.memory.interface import (
+    MEMORY_REPORT_SCHEMA,
+    MemoryPluginReport,
+    MemoryReport,
+)
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import (
@@ -37,8 +43,6 @@ from autonomy.plugins import (
     require_plugin_id,
 )
 from autonomy.shared_memory import SharedMemory
-
-MEMORY_REPORT_SCHEMA = "memory_report_v0"
 
 # Cap for status and worker-facing diagnostic strings.
 DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_024
@@ -277,16 +281,16 @@ class MemoryRunner:
             return self._report()
 
     def _report(self) -> dict[str, Any]:
-        return {
-            "schema": MEMORY_REPORT_SCHEMA,
-            "plugins": [
-                {
-                    "plugin_id": plugin.plugin_id,
-                    "state": plugin.plugin_status(),
-                }
+        return MemoryReport(
+            schema=MEMORY_REPORT_SCHEMA,
+            plugins=tuple(
+                MemoryPluginReport(
+                    plugin_id=plugin.plugin_id,
+                    state=plugin.plugin_status(),
+                )
                 for plugin in self.plugins
-            ],
-        }
+            ),
+        ).to_dict()
 
     def plugin_report(self) -> dict[str, Any]:
         """Report catalog, requested, and published plugins for applied instances."""

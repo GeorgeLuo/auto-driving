@@ -63,7 +63,11 @@ def run_workbench_replay(
 
     Perception and memory each start from a packaged preset or an ordered
     plugin list, as the inspect and update commands take them; with neither,
-    the step's default preset. A preset keeps its plugin configs.
+    the step's default preset. A preset keeps its plugin configs. Page checkboxes
+    retain selected plugins' order and append newly checked plugins. Changing a
+    step's ordered selection uses catalog default configs for that step; the
+    other step keeps its selection and configs. Submitting the same ordered list
+    keeps the current configs and pass.
     """
 
     try:

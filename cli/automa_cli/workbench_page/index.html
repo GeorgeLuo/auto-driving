@@ -40,18 +40,21 @@
           </summary>
           <div class="sidebar-group-body">
             <span class="kicker">perception</span>
-            <span id="perceptionPluginSelectionSummary" class="muted">no catalog</span>
+            <span id="perceptionPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+            <span id="perceptionPluginOrder" class="plugin-order muted help"></span>
             <div id="perceptionPluginCatalog" class="plugin-catalog">
               <p class="muted help">Packaged plugins will appear here.</p>
             </div>
             <div id="perceptionPluginDigest" class="digest muted"></div>
             <span class="kicker">memory</span>
-            <span id="memoryPluginSelectionSummary" class="muted">no catalog</span>
+            <span id="memoryPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+            <span id="memoryPluginOrder" class="plugin-order muted help"></span>
             <div id="memoryPluginCatalog" class="plugin-catalog">
               <p class="muted help">Packaged plugins will appear here.</p>
             </div>
             <div id="memoryPluginDigest" class="digest muted"></div>
-            <p class="muted help">Changing either step's plugins replays from the first frame to the displayed one.</p>
+            <p class="muted help">Newly checked plugins run last; retained plugins keep their order. Changing a step's ordered selection uses default plugin configs, replacing its preset tuning. The other step keeps its selection and configs. Uncheck every plugin to disable its plugins.</p>
+            <p class="muted help">Changing either step's plugins in a running or paused replay replays from the first frame to the displayed one. Selecting the same ordered list keeps its configs and the current pass.</p>
           </div>
         </details>
       </div>

@@ -37,6 +37,69 @@ class CommandResult:
     message: str
 
 
+def _resolve_viability_vehicle(
+    *,
+    step: str,
+    vehicle_id: str,
+    timeout_s: float,
+    json_output: bool,
+) -> tuple[dict[str, Any] | None, CommandResult | None]:
+    """Resolve both steps before creating a report directory or sampling.
+
+    Preflight failures exit 2. JSON mode returns the shared error envelope;
+    measured gate failures remain step-specific reports with exit 1.
+    """
+
+    def failure(error: str, message: str) -> tuple[None, CommandResult]:
+        if json_output:
+            message = json.dumps(
+                {
+                    "schema": "vehicle_step_viability_error_v0",
+                    "vehicle_id": vehicle_id,
+                    "step": step,
+                    "error": error,
+                    "message": message,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        return None, CommandResult(2, message)
+
+    discovery = discover_active_vehicles(
+        timeout_s=timeout_s,
+        include_picar=True,
+        include_chase_sim=True,
+        include_inactive=True,
+    )
+    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
+    if error:
+        return failure(
+            "unknown_vehicle",
+            "\n\n".join(
+                [
+                    error,
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
+                ]
+            ),
+        )
+    if vehicle is None:
+        return failure("unknown_vehicle", f"Vehicle {vehicle_id!r} was not found.")
+    provider = vehicle.get("provider")
+    if provider not in ("chase-sim", "picar"):
+        return failure(
+            "unsupported_provider",
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
+            f"{step} viability measures picar vehicles and passes chase-sim with a stub.",
+        )
+    if provider == "picar" and not picar_base_url(vehicle):
+        return failure(
+            "missing_connection",
+            f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+        )
+    return vehicle, None
+
+
 def run_perception_viability_measurement(
     *,
     vehicle_id: str,
@@ -54,38 +117,18 @@ def run_perception_viability_measurement(
     A PiCar is measured for onboard cadence/freshness. The simulator passes
     with a stub result; any other provider is refused.
     """
-    discovery = discover_active_vehicles(
+    vehicle, failure = _resolve_viability_vehicle(
+        step="perception",
+        vehicle_id=vehicle_id,
         timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
+        json_output=json_output,
     )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-    provider = vehicle.get("provider")
-    if provider == "chase-sim":
+    if failure is not None:
+        return failure
+    assert vehicle is not None
+    if vehicle.get("provider") == "chase-sim":
         return _perception_simulator_stub_result(vehicle_id, json_output=json_output)
-    if provider != "picar":
-        return CommandResult(
-            2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "perception viability measures picar vehicles and passes chase-sim with a stub.",
-        )
     base_url = picar_base_url(vehicle)
-    if not base_url:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
 
     get_pub = fetch_publication or (
         lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
@@ -555,35 +598,17 @@ def run_memory_viability_measurement(
     A PiCar's live memory step is polled for a bounded interval. The simulator
     passes with a stub result; any other provider is refused.
     """
-    discovery = discover_active_vehicles(
+    vehicle, failure = _resolve_viability_vehicle(
+        step="memory",
+        vehicle_id=vehicle_id,
         timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
+        json_output=json_output,
     )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-    provider = vehicle.get("provider")
-    if provider == "chase-sim":
+    if failure is not None:
+        return failure
+    assert vehicle is not None
+    if vehicle.get("provider") == "chase-sim":
         return _memory_simulator_stub_result(vehicle_id, json_output=json_output)
-    if provider != "picar":
-        return CommandResult(
-            2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "memory viability measures picar vehicles and passes chase-sim with a stub.",
-        )
 
     from .memory import probe_live_memory
 

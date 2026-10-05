@@ -572,7 +572,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     decision_help.set_defaults(handler=_handle_vehicles_decision_help)
     decision_inspect = decision_control_commands.add_parser(
-        "inspect", help="Open an offline decision inspector for a saved input sequence.",
+        "inspect", help="Serve an offline decision inspector for a saved input sequence.",
         description="Compute left/right proposal scenarios offline from one saved frame and serve them on a local inspector page.",
     )
     decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
@@ -749,14 +749,15 @@ def build_parser() -> argparse.ArgumentParser:
             "Health-check memory on a vehicle. A PiCar's live memory step is polled for a "
             "bounded interval (default 60s) to record update cadence, update duration, "
             "failures, health, and epoch stability. "
-            "The simulator has no probe yet and passes automatically."
+            "Chase returns a stub pass. PiCar measurements save report.json under "
+            "lab/runs/memory-viability/ unless --no-record."
         ),
     )
     memory_viability.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Physical vehicle id from `automa vehicles active` (picar only).",
+        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
     )
     memory_viability.add_argument(
         "--duration-s",
@@ -784,7 +785,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the machine-readable viability report.",
+        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
     )
     memory_viability.set_defaults(handler=_handle_vehicles_memory_viability)
 
@@ -1055,14 +1056,15 @@ def build_parser() -> argparse.ArgumentParser:
             "Health-check perception on a vehicle. A PiCar is polled for a bounded "
             "interval (default 60s) to record cadence, result age, processing duration, "
             "and skip policy, plus host RSS/CPU when the vehicle supplies an ssh_target. "
-            "The simulator has no probe yet and passes automatically."
+            "Chase returns a stub pass. PiCar measurements save report.json and summary.md "
+            "under lab/runs/perception-viability/ unless --no-record."
         ),
     )
     perception_viability.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Physical vehicle id from `automa vehicles active` (picar only).",
+        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
     )
     perception_viability.add_argument(
         "--duration-s",
@@ -1090,7 +1092,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the machine-readable viability report.",
+        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
     )
     perception_viability.set_defaults(handler=_handle_vehicles_perception_viability)
 

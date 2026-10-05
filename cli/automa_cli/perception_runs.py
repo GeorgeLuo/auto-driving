@@ -42,11 +42,11 @@ from .workbench_source import (
     read_image_manifest,
 )
 
-RUNNER_SPEC = "autonomy.decision_cycle.perception.runner:PerceptionRunner"
 DEFAULT_FRAME_COUNT = 5
 DEFAULT_INTERVAL_S = 0.25
 _PERCEPTION_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 INSPECT_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_INSPECT_ROOT", ROOT / "runtime" / "perception-inspections"))
+PERCEPTION_INSPECT_SCHEMA = "perception_inspect_v0"
 
 
 @dataclass(frozen=True)
@@ -144,25 +144,24 @@ def _inspect_vehicle(
         )
         manifest = prepared_runtime["manifest"]
         activation = step_activation_from_payload(manifest, step="perception")
-        mapper = load_staged_runner(activation)
-        mapper_record = {
-            **selection_record(activation),
-            "spec": RUNNER_SPEC,
+        runner = load_staged_runner(activation)
+        perception_record = {
+            **_perception_record(activation),
             "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
             "bundle_refreshed": prepared_runtime["refreshed"],
         }
-        record_root = Path(prepared_runtime["bundle"]["runtime_dir"]) / "perception-runs"
     except Exception as exc:
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
     frame_count = max(1, int(frames))
-    run_id = _run_id("perception", str(vehicle.get("vehicle_id") or "vehicle"))
-    record_dir = record_root / run_id if record else None
-    workspace = _workspace_context(record_dir, prefix="automa_perception_")
-    mapper_context: AbstractContextManager[Any] = nullcontext(mapper)
+    run_id = _run_id("inspect", str(vehicle.get("vehicle_id") or "vehicle"))
+    record_dir, error = _create_record_dir(run_id) if record else (None, None)
+    if error is not None:
+        return error
+    frame_id: str | None = None
 
     try:
-        with workspace as workspace_value, mapper_context as active_mapper:
+        with _workspace_context(record_dir) as workspace_value:
             working_dir = Path(workspace_value)
             frames_dir = working_dir / "frames"
             results_dir = working_dir / "results"
@@ -171,7 +170,7 @@ def _inspect_vehicle(
                 results_dir.mkdir(parents=True, exist_ok=True)
 
             shared_memory: dict[str, Any] = {}
-            active_mapper.reset()
+            runner.reset()
             frame_records: list[dict[str, Any]] = []
             for index in range(frame_count):
                 frame_id = f"frame_{index:06d}"
@@ -187,7 +186,7 @@ def _inspect_vehicle(
                 )
                 reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
                 record_item, _ = perceive_sensor_frame(
-                    active_mapper,
+                    runner,
                     sensor_frame,
                     frame_id=frame_id,
                     frame_index=index,
@@ -206,7 +205,7 @@ def _inspect_vehicle(
                 if index + 1 < frame_count and interval_s > 0:
                     time.sleep(max(0.0, float(interval_s)))
 
-            report = _experiment_report(
+            report = _inspect_report(
                 run_id=run_id,
                 source={
                     "kind": "vehicle",
@@ -214,20 +213,19 @@ def _inspect_vehicle(
                     "provider": vehicle.get("provider"),
                     "selection": selection,
                 },
-                mapper=mapper_record,
+                perception=perception_record,
                 frames=frame_records,
-                recording=record,
                 run_dir=record_dir,
             )
-            if record and record_dir is not None:
+            if record_dir is not None:
                 _write_report(record_dir, report)
-    except Exception as exc:
-        return CommandResult(2, f"Perception capture failed: {type(exc).__name__}: {exc}")
+    except Exception as exc:  # Plugins are third-party code; name the frame that broke.
+        return _inspect_failed(frame_id, exc)
 
     exit_code = 0 if report["summary"]["failed_frames"] == 0 else 1
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_report(report))
+    return CommandResult(exit_code, _format_inspect_report(report))
 
 
 def _inspect_images(
@@ -240,11 +238,11 @@ def _inspect_images(
 ) -> CommandResult:
     source = source.expanduser().resolve()
     if not source.exists():
-        return CommandResult(2, f"Apply source does not exist: {source}")
+        return _unreadable_source(f"source does not exist: {source}")
     recorded_frames = None
     if source.is_file():
         if source.suffix.lower() not in _PERCEPTION_IMAGE_EXTENSIONS:
-            return CommandResult(2, f"Apply source is not a supported image: {source}")
+            return _unreadable_source(f"source is not a supported image: {source}")
         source_dir = source.parent
         source_manifest: dict[str, Any] = {}
         image_paths = [source]
@@ -267,12 +265,12 @@ def _inspect_images(
             else:
                 image_paths = _source_image_paths(source_dir, source_manifest)
         except SourceValidationError as exc:
-            return CommandResult(2, f"Could not read perception inspect source: {exc}")
+            return _unreadable_source(str(exc))
         source_name = source_dir.name
     else:
-        return CommandResult(2, f"Apply source is not a file or directory: {source}")
+        return _unreadable_source(f"source is not a file or directory: {source}")
     if not image_paths:
-        return CommandResult(2, f"No applicable images found under {source}")
+        return _unreadable_source(f"no supported images found under {source}")
 
     try:
         if plugins is not None or preset is not None:
@@ -281,33 +279,26 @@ def _inspect_images(
             activation = (
                 recorded_selection("perception", source_manifest) or selection_activation("perception")
             )
-        mapper = PerceptionRunner.from_activation(activation)
-        report_mapper = {**selection_record(activation), "spec": RUNNER_SPEC}
-        record_root = INSPECT_ROOT
-    except Exception as exc:
-        return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
+        runner = PerceptionRunner.from_activation(activation)
+    except Exception as exc:  # Plugin construction is a CLI preflight boundary.
+        return CommandResult(
+            2, f"Could not load plugins for perception inspect: {type(exc).__name__}: {exc}"
+        )
 
     run_id = _run_id("inspect", source_name)
-    record_dir = record_root / run_id if record else None
-    if record_dir is not None:
-        try:
-            record_dir.mkdir(parents=True, exist_ok=False)
-        except FileExistsError:
-            return CommandResult(
-                2,
-                f"Apply record directory already exists (refusing overwrite): {record_dir}",
-            )
-    workspace = _workspace_context(record_dir, prefix="automa_apply_")
-    mapper_context: AbstractContextManager[Any] = nullcontext(mapper)
+    record_dir, error = _create_record_dir(run_id) if record else (None, None)
+    if error is not None:
+        return error
+    frame_id: str | None = None
 
     try:
-        with workspace as workspace_value, mapper_context as active_mapper:
+        with _workspace_context(record_dir) as workspace_value:
             working_dir = Path(workspace_value)
             results_dir = working_dir / "results"
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
             shared_memory: dict[str, Any] = {}
-            active_mapper.reset()
+            runner.reset()
             frame_records: list[dict[str, Any]] = []
             for index, image_path in enumerate(image_paths):
                 frame = recorded_frames[index] if recorded_frames is not None else None
@@ -332,7 +323,7 @@ def _inspect_images(
                     metadata={"source": "images", "source_path": str(source)},
                 )
                 item, _ = perceive_sensor_frame(
-                    active_mapper,
+                    runner,
                     sensor_frame,
                     frame_id=frame_id,
                     frame_index=frame_index,
@@ -343,24 +334,46 @@ def _inspect_images(
                 )
                 frame_records.append(item)
 
-            report = _experiment_report(
+            report = _inspect_report(
                 run_id=run_id,
                 source={"kind": "images", "path": str(source)},
-                mapper=report_mapper,
+                perception=_perception_record(activation),
                 frames=frame_records,
-                recording=record,
                 run_dir=record_dir,
             )
-            if record and record_dir is not None:
+            if record_dir is not None:
                 _write_report(record_dir, report)
-    except Exception as exc:
-        return CommandResult(2, f"Applying perception failed: {type(exc).__name__}: {exc}")
+    except Exception as exc:  # Plugins are third-party code; name the frame that broke.
+        return _inspect_failed(frame_id, exc)
 
     exit_code = 0 if report["summary"]["failed_frames"] == 0 else 1
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_report(report))
+    return CommandResult(exit_code, _format_inspect_report(report))
 
+
+def _perception_record(activation: Any) -> dict[str, Any]:
+    """The report's ``perception`` entry, the same shape memory inspect records."""
+
+    return {**selection_record(activation), "plugins": list(activation.plugins)}
+
+
+def _create_record_dir(run_id: str) -> tuple[Path | None, CommandResult | None]:
+    record_dir = INSPECT_ROOT / run_id
+    try:
+        record_dir.mkdir(parents=True, exist_ok=False)
+    except OSError as exc:
+        return None, CommandResult(2, f"Could not record perception inspect run {record_dir}: {exc}")
+    return record_dir, None
+
+
+def _unreadable_source(reason: str) -> CommandResult:
+    return CommandResult(2, f"Could not read perception inspect source: {reason}")
+
+
+def _inspect_failed(frame_id: str | None, exc: Exception) -> CommandResult:
+    where = f" at {frame_id}" if frame_id is not None else ""
+    return CommandResult(2, f"Perception inspect failed{where}: {type(exc).__name__}: {exc}")
 
 
 def _select_vehicle(
@@ -390,7 +403,7 @@ def _select_vehicle(
 
 
 def run_perception(
-    mapper: Any,
+    runner: Any,
     sensor_frame: SensorFrame,
     *,
     shared_memory: dict[str, Any],
@@ -399,7 +412,7 @@ def run_perception(
 ):
     """Run perception on one sensor frame; the step every consumer shares."""
 
-    return mapper.perceive(
+    return runner.perceive(
         build_perception_request(
             sensor_frame,
             shared_memory=shared_memory,
@@ -410,7 +423,7 @@ def run_perception(
 
 
 def perceive_sensor_frame(
-    mapper: Any,
+    runner: Any,
     sensor_frame: SensorFrame,
     *,
     frame_id: str,
@@ -432,7 +445,7 @@ def perceive_sensor_frame(
     if started is None:
         started = time.perf_counter()
     perception = run_perception(
-        mapper,
+        runner,
         sensor_frame,
         shared_memory=shared_memory,
         metadata=metadata,
@@ -484,13 +497,12 @@ def _frame_record(
     }
 
 
-def _experiment_report(
+def _inspect_report(
     *,
     run_id: str,
     source: dict[str, Any],
-    mapper: dict[str, Any],
+    perception: dict[str, Any],
     frames: list[dict[str, Any]],
-    recording: bool,
     run_dir: Path | None,
 ) -> dict[str, Any]:
     durations = [float(frame["duration_ms"]) for frame in frames]
@@ -539,12 +551,11 @@ def _experiment_report(
     }
     summary["representation_health"] = evaluate_perception_frames(frames)
     return {
-        "schema": "perception_experiment_v0",
+        "schema": PERCEPTION_INSPECT_SCHEMA,
         "run_id": run_id,
         "created_at_ms": int(time.time() * 1000),
         "source": source,
-        "mapper": mapper,
-        "recording": recording,
+        "perception": perception,
         "run_dir": display_path(run_dir) if run_dir is not None else None,
         "summary": summary,
         "frames": frames,
@@ -561,44 +572,45 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 def _write_report(run_dir: Path, report: dict[str, Any]) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "run.json").write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
-    (run_dir / "summary.txt").write_text(_format_report(report) + "\n", encoding="utf-8")
+    (run_dir / "report.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (run_dir / "summary.txt").write_text(_format_inspect_report(report) + "\n", encoding="utf-8")
 
 
-def _format_report(report: dict[str, Any]) -> str:
+def _format_inspect_report(report: dict[str, Any]) -> str:
     summary = report["summary"]
     source = report["source"]
+    perception = report["perception"]
     source_label = source.get("vehicle_id") or source.get("path") or source.get("kind")
-    lines = [
-        "Perception experiment",
-        "---------------------",
-    ]
-    if report.get("run_dir"):
-        lines.append(f"run: {report['run_dir']}")
-    lines.append(f"source: {source_label}")
+    detail = f"{summary['frames']} frames"
     if source.get("selection"):
-        lines.append(f"selection: {source['selection']}")
-    lines.extend(
-        [
-            f"preset: {report['mapper'].get('preset')}",
-            f"frames: {summary['frames']}",
-            f"failed frames: {summary['failed_frames']}",
-            f"statuses: {_format_counts(summary['status_counts'])}",
-            f"evidence: {_format_counts(summary['thing_kinds'])}",
-            f"latency: cold {summary['latency_ms']['cold_start']:.3f} ms; "
-            f"steady median {summary['latency_ms']['steady_median']:.3f} ms, "
-            f"p95 {summary['latency_ms']['steady_p95']:.3f} ms",
-            f"peak memory: {summary['memory_mb']['peak_rss']:.3f} MiB",
-            f"representation health: {summary['representation_health']['score']:.3f} (not semantic accuracy)",
-            f"recording: {'on' if report['recording'] else 'off'}",
-        ]
-    )
-    lines.append("plugins:")
+        detail += f"; {source['selection']}"
+    lines = [
+        "Perception inspect",
+        "------------------",
+        f"Source: {source_label} ({detail})",
+        f"Perception: {perception['preset']} ({', '.join(perception['plugins'])})",
+        "",
+        f"Failed frames: {summary['failed_frames']}",
+        f"Statuses: {_format_counts(summary['status_counts'])}",
+        f"Evidence: {_format_counts(summary['thing_kinds'])}",
+        f"Latency: cold {summary['latency_ms']['cold_start']:.3f} ms; "
+        f"steady median {summary['latency_ms']['steady_median']:.3f} ms, "
+        f"p95 {summary['latency_ms']['steady_p95']:.3f} ms",
+        f"Peak memory: {summary['memory_mb']['peak_rss']:.3f} MiB",
+        f"Representation health: {summary['representation_health']['score']:.3f} "
+        "(availability, geometry, count stability and frame-to-frame continuity)",
+        "",
+        "Plugins",
+    ]
     for plugin_id, plugin in summary["plugins"].items():
         lines.append(
-            f"- {plugin_id}: {_format_counts(plugin['status_counts'])}; "
+            f"  {plugin_id}: {_format_counts(plugin['status_counts'])}; "
             f"median {plugin['median_ms']:.3f} ms"
         )
+    if report["run_dir"]:
+        lines.extend(["", f"Recorded: {report['run_dir']}"])
     return "\n".join(lines)
 
 
@@ -648,10 +660,10 @@ def _source_image_paths(source_dir: Path, manifest: dict[str, Any]) -> list[Path
     )
 
 
-def _workspace_context(record_dir: Path | None, *, prefix: str) -> AbstractContextManager[str | Path]:
+def _workspace_context(record_dir: Path | None) -> AbstractContextManager[str | Path]:
     if record_dir is not None:
         return nullcontext(record_dir)
-    return tempfile.TemporaryDirectory(prefix=prefix)
+    return tempfile.TemporaryDirectory(prefix="automa_perception_inspect_")
 
 
 def _resolve_manifest_image(source_dir: Path, value: str) -> Path | None:

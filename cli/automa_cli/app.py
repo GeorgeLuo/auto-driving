@@ -1040,12 +1040,15 @@ def build_parser() -> argparse.ArgumentParser:
     perception_inspect.add_argument(
         "--record",
         action="store_true",
-        help="Persist source frames, plugin artifacts, and the comparison report.",
+        help=(
+            "Persist the selection, timing, per-frame plugin outputs and report for replay; "
+            "live reads also keep the captured frames."
+        ),
     )
     perception_inspect.add_argument(
         "--json",
         action="store_true",
-        help="Print the machine-readable experiment report.",
+        help="Print the machine-readable report.",
     )
     perception_inspect.set_defaults(handler=_handle_vehicles_perception_inspect)
 

@@ -30,7 +30,7 @@ WORKBENCH_UNSUPPORTED_IMAGE_EXTENSIONS = {
     ".avif",
 }
 
-_MANIFEST_NAMES = ("manifest.json", "run.json", "report.json")
+_MANIFEST_NAMES = ("manifest.json", "report.json")
 _SOURCE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
@@ -180,7 +180,7 @@ def normalize_image_directory(
     recorded_root = _recorded_root(manifest)
     recorded_source = (
         _recorded_source_mapping(manifest, source_path, recorded_root)
-        if manifest_path is not None and manifest_path.name == "run.json"
+        if manifest is not None and manifest.get("schema") == "perception_inspect_v0"
         else None
     )
     if (

@@ -83,14 +83,15 @@ class MemoryInspectTests(unittest.TestCase):
 
         selection = selection_activation("perception", preset="multi_obstruction")
         run = write_frames(self.tmp / "run")
-        (run / "run.json").write_text(
+        (run / "report.json").write_text(
             json.dumps(
                 {
+                    "schema": "perception_inspect_v0",
                     "frames": [
                         {"image_path": f"frame_{index}.png", "timestamp_ms": 5000 + 400 * index}
                         for index in range(3)
                     ],
-                    "mapper": {
+                    "perception": {
                         "preset": "multi_obstruction",
                         "config": {
                             "plugins": list(selection.plugins),

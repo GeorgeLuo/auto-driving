@@ -108,7 +108,7 @@ def check_parity() -> list[str]:
     report = inspect_report()
     expected = report["frames"]
     problems: list[str] = []
-    inspected = report["mapper"]
+    inspected = report["perception"]
     try:
         with serve() as workbench:
             started = workbench.wait_for(lambda s: s["position"] >= 1)

@@ -250,7 +250,7 @@ def inspect_memory(
         )
         if preset is None and plugins is None:
             activation = recorded_selection("memory", source_manifest) or activation
-        mapper = PerceptionRunner.from_activation(perception_activation)
+        perception_runner = PerceptionRunner.from_activation(perception_activation)
         memory_step = MemoryRunner.from_activation(activation)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
@@ -267,7 +267,7 @@ def inspect_memory(
         try:
             outcome = run_frame(
                 frame,
-                perception_step=mapper,
+                perception_step=perception_runner,
                 memory_step=memory,
                 steps=DecisionSteps(),
                 shared_memory=shared_memory,

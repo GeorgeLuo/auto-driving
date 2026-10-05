@@ -84,11 +84,12 @@ class PerceptionRunTests(unittest.TestCase):
             preset = inspect_perception(image, preset="visual_observer", json_output=True)
             custom = inspect_perception(image, plugins=["frame"], json_output=True)
 
-        self.assertEqual(json.loads(preset.message)["mapper"]["preset"], "visual_observer")
-        self.assertEqual(json.loads(custom.message)["mapper"]["preset"], "custom")
+        self.assertEqual(json.loads(preset.message)["perception"]["preset"], "visual_observer")
+        self.assertEqual(json.loads(custom.message)["perception"]["preset"], "custom")
+        self.assertEqual(json.loads(custom.message)["perception"]["plugins"], ["frame"])
 
     def test_perceive_sensor_frame_returns_the_record_and_saves_results_only_on_request(self) -> None:
-        mapper = PerceptionRunner.from_activation(preset_activation("perception", "lightweight_observer"))
+        runner = PerceptionRunner.from_activation(preset_activation("perception", "lightweight_observer"))
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "frame.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
@@ -114,7 +115,7 @@ class PerceptionRunTests(unittest.TestCase):
                 metadata={},
             )
 
-            record, perception = perceive_sensor_frame(mapper, sensor_frame, **common)
+            record, perception = perceive_sensor_frame(runner, sensor_frame, **common)
             self.assertEqual(record["perception"], perception.to_dict())
             self.assertEqual(record["status"], perception.status)
             self.assertEqual(record["captured_at_ms"], 7)
@@ -122,7 +123,7 @@ class PerceptionRunTests(unittest.TestCase):
 
             result_dir = Path(tmp) / "results" / "frame_000000"
             record, perception = perceive_sensor_frame(
-                mapper, sensor_frame, result_dir=result_dir, started=time.perf_counter() - 5.0, **common
+                runner, sensor_frame, result_dir=result_dir, started=time.perf_counter() - 5.0, **common
             )
             saved = json.loads((result_dir / "perception.json").read_text(encoding="utf-8"))
             self.assertEqual(saved, json.loads(json.dumps(record)))
@@ -294,7 +295,7 @@ class PerceptionRunTests(unittest.TestCase):
             "active_count": 2,
             "inactive": [],
         }
-        mapper = PerceptionRunner.from_selection(
+        runner = PerceptionRunner.from_selection(
             plugins=["frame"],
             plugin_specs={"frame": step_plugins("perception")["frame"]["spec"]},
         )
@@ -322,7 +323,7 @@ class PerceptionRunTests(unittest.TestCase):
                     return_value=runtime,
                 ),
                 patch(
-                    "cli.automa_cli.perception_runs.load_staged_runner", return_value=mapper
+                    "cli.automa_cli.perception_runs.load_staged_runner", return_value=runner
                 ),
                 patch(
                     "cli.automa_cli.perception_runs.create_vehicle_access",
@@ -336,14 +337,27 @@ class PerceptionRunTests(unittest.TestCase):
                 result = inspect_perception(
                     frames=2, interval_s=0, json_output=True
                 )
+                inspect_root = root / "inspections"
+                with patch("cli.automa_cli.perception_runs.INSPECT_ROOT", inspect_root):
+                    recorded = json.loads(
+                        inspect_perception(
+                            frames=1, interval_s=0, record=True, json_output=True
+                        ).message
+                    )
+                saved = json.loads(
+                    (inspect_root / recorded["run_id"] / "report.json").read_text(encoding="utf-8")
+                )
 
         payload = json.loads(result.message)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(payload["source"]["vehicle_id"], "chase-sim-chaser")
         self.assertIn("simulator preferred", payload["source"]["selection"])
         self.assertEqual(payload["summary"]["frames"], 2)
-        self.assertEqual(fake_car.read_count, 2)
-        self.assertFalse(payload["recording"])
+        self.assertIsNone(payload["run_dir"])
+        self.assertTrue(recorded["run_id"].startswith("inspect-chase-sim-chaser-"))
+        self.assertEqual(saved["schema"], "perception_inspect_v0")
+        self.assertEqual(saved["perception"]["preset"], "lightweight_observer")
+        self.assertEqual(fake_car.read_count, 3)
 
 
 if __name__ == "__main__":

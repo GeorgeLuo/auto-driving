@@ -45,10 +45,10 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["schema"], "perception_experiment_v0")
+            self.assertEqual(payload["schema"], "perception_inspect_v0")
             self.assertEqual(payload["source"]["kind"], "images")
             self.assertEqual(payload["summary"]["frames"], 2)
-            self.assertFalse(payload["recording"])
+            self.assertIsNone(payload["run_dir"])
             self.assertFalse(inspect_root.exists())
 
     def test_scenario_deployed_perception_schema_is_machine_readable(self) -> None:

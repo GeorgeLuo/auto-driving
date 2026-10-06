@@ -26,11 +26,9 @@ from .decision_inspector import run_decision_inspector
 from .decision_live import run_live_decision_monitor
 from .memory import (
     get_vehicle_memory_info,
-    inspect_memory,
-    reset_vehicle_memory,
-    stream_vehicle_memory,
     update_vehicle_memory,
 )
+from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
@@ -58,7 +56,7 @@ from .physical_viability import (
     run_memory_viability_measurement,
     run_perception_viability_measurement,
 )
-from .streaming import stream_vehicle_perception
+from .streaming import stream_vehicle_memory, stream_vehicle_perception
 from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
     discover_active_vehicles,

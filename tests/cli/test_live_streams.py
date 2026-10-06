@@ -5,12 +5,12 @@ import json
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli import memory, streaming
+from cli.automa_cli import streaming
 from tests.support.cli_runner import run_automa
 
 LIVE_SCHEMAS = {
     "perception": streaming.PERCEPTION_LIVE_SCHEMA,
-    "memory": memory.MEMORY_LIVE_SCHEMA,
+    "memory": streaming.MEMORY_LIVE_SCHEMA,
 }
 
 
@@ -59,7 +59,7 @@ class LiveStreamDiscoveryTests(unittest.TestCase):
     def test_json_discovery_failures_return_or_print_the_same_probe(self) -> None:
         for step, module, stream_vehicle in (
             ("perception", streaming, streaming.stream_vehicle_perception),
-            ("memory", memory, memory.stream_vehicle_memory),
+            ("memory", streaming, streaming.stream_vehicle_memory),
         ):
             for once in (False, True):
                 for output in (None, io.StringIO()):

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli import streaming
-from cli.automa_cli.memory import probe_live_memory
+from cli.automa_cli.streaming import probe_live_memory
 from cli.automa_cli.streaming import probe_live_perception, stream_vehicle_perception
 from tests.cli.perception.test_physical_stream import _publication
 from tests.support.cli_runner import run_automa
@@ -210,12 +210,10 @@ class PerceptionStreamJsonTests(unittest.TestCase):
             automation_dir = Path(tmp) / "automation"
             self._write_chase(automation_dir, state=stale, record=_chase_record())
             with patch.object(streaming, "_automation_dir", return_value=automation_dir), patch(
-                "cli.automa_cli.memory._automation_dir", return_value=automation_dir
-            ), patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+                "cli.automa_cli.automation._pid_alive", return_value=True
+            ), patch(
                 "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
-            ), patch("cli.automa_cli.streaming.time.time", return_value=NOW / 1000.0), patch(
-                "cli.automa_cli.memory.time.time", return_value=NOW / 1000.0
-            ):
+            ), patch("cli.automa_cli.streaming.time.time", return_value=NOW / 1000.0):
                 perception = probe_live_perception(vehicle_id="chase-sim-chaser", vehicle=CHASE)
                 memory = probe_live_memory(vehicle_id="chase-sim-chaser", vehicle=CHASE)
 

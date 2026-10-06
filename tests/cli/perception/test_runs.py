@@ -12,7 +12,7 @@ from PIL import Image
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli import perception as perception_module
-from cli.automa_cli.memory import inspect_memory
+from cli.automa_cli.memory_runs import inspect_memory
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
     inspect_perception,

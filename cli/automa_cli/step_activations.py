@@ -3,7 +3,8 @@
 Every cycle step is staged the same way: ``bundle/runtime/<step>/active.json``
 holds a ``StepActivation`` for a vehicle ``staging_vehicle`` knows. The CLI
 records who staged it (vehicle, bundle, release, time) in the activation's
-``metadata``; runners do not read it.
+``metadata``. CLI hosts use its bundle path to load staged plugin code;
+the core step runners do not read it.
 The decision steps (proposal, plan, action) together identify a decision
 generation by the content of their activations.
 """
@@ -215,15 +216,31 @@ def _emit(output: TextIO | None, message: str) -> None:
         print(message, file=output, flush=True)
 
 
+# Keys of ``metadata.controller_bundle`` on every staged step.
+CONTROLLER_BUNDLE_KEYS = (
+    "root_dir",
+    "autonomy_dir",
+    "implementations_dir",
+    "runtime_dir",
+    "release",
+)
+
+
 def staging_metadata(
     *,
     vehicle_id: str | None,
     bundle: dict[str, str],
     release: dict[str, Any] | None = None,
     vehicle: dict[str, Any] | None = None,
-    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Staging provenance, including a resolved vehicle's identity when supplied."""
+    """Provenance recorded on every step's staged activation.
+
+    ``controller_bundle`` has the same keys for every step
+    (``CONTROLLER_BUNDLE_KEYS``). A packaged ``release`` is summarized;
+    otherwise ``release`` is null until a caller records one. Vehicle
+    identity (``provider``, ``vehicle_kind``, ``runtime``) is recorded
+    when ``vehicle`` is supplied. Steps do not add their own keys.
+    """
 
     metadata: dict[str, Any] = {
         "vehicle_id": vehicle_id,
@@ -245,8 +262,33 @@ def staging_metadata(
                 "connection": deepcopy(vehicle.get("connection")),
             },
         })
-    metadata.update(deepcopy(extra or {}))
     return metadata
+
+
+def staged_activation(
+    bundle: dict[str, str],
+    activation: StepActivation,
+    *,
+    vehicle_id: str | None,
+    release: dict[str, Any] | None = None,
+    vehicle: dict[str, Any] | None = None,
+    release_summary: dict[str, Any] | None = None,
+) -> StepActivation:
+    """``activation`` plus staging provenance, not yet written.
+
+    ``release`` is a bundle just packaged by ``sync_controller_bundle``
+    and wins. ``release_summary`` is an already recorded summary kept
+    when the bundle is not repackaged.
+    """
+
+    metadata = {**dict(activation.metadata), **staging_metadata(
+        vehicle_id=vehicle_id, bundle=bundle, release=release, vehicle=vehicle,
+    )}
+    if release is None and release_summary is not None:
+        controller_bundle = dict(metadata.get("controller_bundle") or {})
+        controller_bundle["release"] = deepcopy(release_summary)
+        metadata["controller_bundle"] = controller_bundle
+    return replace_metadata(activation, metadata)
 
 
 def stage_activation(
@@ -256,15 +298,20 @@ def stage_activation(
     vehicle_id: str | None,
     release: dict[str, Any] | None = None,
     vehicle: dict[str, Any] | None = None,
-    extra_metadata: dict[str, Any] | None = None,
+    release_summary: dict[str, Any] | None = None,
 ) -> Path:
-    """Write ``activation`` with staging provenance and any resolved vehicle identity."""
+    """Write ``activation`` with the provenance ``staged_activation`` builds."""
 
-    metadata = {**dict(activation.metadata), **staging_metadata(
-        vehicle_id=vehicle_id, bundle=bundle, release=release, vehicle=vehicle, extra=extra_metadata
-    )}
     return write_step_activation(
-        bundle_activation_path(bundle, activation.step), replace_metadata(activation, metadata)
+        bundle_activation_path(bundle, activation.step),
+        staged_activation(
+            bundle,
+            activation,
+            vehicle_id=vehicle_id,
+            release=release,
+            vehicle=vehicle,
+            release_summary=release_summary,
+        ),
     )
 
 
@@ -476,10 +523,12 @@ __all__ = [
     "ensure_builtin_activations",
     "format_activation_problems",
     "proposal_plugin_ids",
+    "CONTROLLER_BUNDLE_KEYS",
     "read_bundle_activation",
     "refresh_release",
     "replace_metadata",
     "stage_activation",
+    "staged_activation",
     "staging_metadata",
     "staging_vehicle",
     "step_info",

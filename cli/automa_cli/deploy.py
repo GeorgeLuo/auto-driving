@@ -39,6 +39,7 @@ from .memory import ensure_vehicle_memory_activation
 from .paths import display_path, safe_path_part
 from .perception import ensure_vehicle_perception_activation
 from .step_activations import (
+    CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
     bundle_activation_problems,
     decision_generation_id,
@@ -614,14 +615,15 @@ def _write_remote_activation_files(
     remote_release["archive"] = f"{remote_artifact_dir}/{Path(release['archive']['path']).name}"
     remote_release["manifest"] = f"{remote_release_root}/bundle-manifest.json"
 
-    remote_bundle = {
+    # Same controller_bundle keys staging_metadata records locally, with the Pi's paths.
+    remote_values = {
         "root_dir": remote_app_root,
         "autonomy_dir": f"{remote_app_root}/autonomy",
         "implementations_dir": f"{remote_app_root}/implementations",
-        "perception_dir": f"{remote_app_root}/implementations/decision_cycle/perception",
         "runtime_dir": f"{remote_app_root}/runtime",
         "release": remote_release,
     }
+    remote_bundle = {key: remote_values[key] for key in CONTROLLER_BUNDLE_KEYS}
 
     written: dict[str, Path] = {}
     for step, path in activation_paths.items():
@@ -629,12 +631,13 @@ def _write_remote_activation_files(
         metadata = payload.setdefault("metadata", {})
         metadata["controller_bundle"] = copy.deepcopy(remote_bundle)
         if step == "perception":
+            # The Pi runs this activation onboard. Other steps keep the identity
+            # recorded when they were staged.
             metadata["provider"] = target.provider
             metadata["runtime"] = {
                 "kind": "onboard_controller",
                 "connection": target.vehicle.get("connection"),
             }
-            metadata["source_dir"] = remote_bundle["perception_dir"]
         written[step] = deploy_dir / f"{step}-active.json"
         written[step].write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     identity_path = deploy_dir / "identity.json"

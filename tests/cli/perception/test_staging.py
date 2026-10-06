@@ -8,11 +8,9 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
+from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, preset_activation
-from implementations.decision_cycle.perception.presets import (
-    CUSTOM_PERCEPTION_DESCRIPTION,
-    DEFAULT_PERCEPTION_PRESET,
-)
+from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.support.cli_runner import run_automa
 from tests.support.runtime_fixtures import write_json
 
@@ -31,8 +29,9 @@ def _activation(
         payload["plugins"] = plugins
     payload["metadata"] = {
         **payload["metadata"],
-        "controller_bundle": bundle,
-        "source_dir": bundle["perception_dir"],
+        "controller_bundle": {
+            key: bundle[key] for key in CONTROLLER_BUNDLE_KEYS if key in bundle
+        },
         **metadata,
     }
     return payload
@@ -109,6 +108,7 @@ class PerceptionCommandTests(unittest.TestCase):
             payload["controller_bundle"]["release"]["tree_sha256"],
             release_manifest["tree_sha256"],
         )
+        self.assertEqual(set(payload["controller_bundle"]), set(CONTROLLER_BUNDLE_KEYS))
         self.assertEqual(
             payload["activation"]["plugins"],
             ["frame", "floor_plane", "motion_tracks"],
@@ -223,10 +223,12 @@ class PerceptionCommandTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["preset"], CUSTOM_PRESET)
         self.assertEqual(payload["manifest"]["plugins"], ["frame", "classical_regions"])
-        self.assertEqual(
-            payload["manifest"]["metadata"]["preset_description"],
-            CUSTOM_PERCEPTION_DESCRIPTION,
-        )
+        metadata = payload["manifest"]["metadata"]
+        self.assertEqual(metadata["preset"], CUSTOM_PRESET)
+        self.assertNotIn("preset_description", metadata)
+        self.assertNotIn("source_dir", metadata)
+        self.assertNotIn("workspace_source_dir", metadata)
+        self.assertEqual(set(metadata["controller_bundle"]), set(CONTROLLER_BUNDLE_KEYS))
 
     def test_perception_update_rejects_a_preset_with_plugins_and_unknown_plugins(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -261,3 +263,57 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertNotEqual(both.returncode, 0)
         self.assertNotEqual(unknown.returncode, 0)
         self.assertIn("no_such_plugin", unknown.stdout + unknown.stderr)
+
+    def test_update_perception_and_memory_share_staging_provenance(self) -> None:
+        from unittest.mock import patch
+
+        from cli.automa_cli import memory as memory_module
+        from cli.automa_cli import perception as perception_module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            with (
+                patch.object(perception_module, "RUNTIME_ROOT", runtime_root),
+                patch.object(memory_module, "RUNTIME_ROOT", runtime_root),
+                patch.object(
+                    perception_module,
+                    "get_vehicle_status",
+                    return_value={
+                        "vehicle_id": "chase-sim-chaser",
+                        "layers": {},
+                        "readiness": {},
+                    },
+                ),
+            ):
+                perception_module.update_vehicle_perception(
+                    vehicle_id="chase-sim-chaser", timeout_s=0.2, json_output=True,
+                )
+                memory_module.update_vehicle_memory(
+                    vehicle_id="chase-sim-chaser", timeout_s=0.2, json_output=True,
+                )
+            perception = json.loads(
+                (runtime_root / "chase-sim-chaser/bundle/runtime/perception/active.json").read_text()
+            )
+            memory = json.loads(
+                (runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").read_text()
+            )
+
+        self.assertEqual(set(perception["metadata"]), set(memory["metadata"]))
+        perception_bundle = perception["metadata"]["controller_bundle"]
+        memory_bundle = memory["metadata"]["controller_bundle"]
+        self.assertEqual(set(perception_bundle), set(CONTROLLER_BUNDLE_KEYS))
+        self.assertEqual(set(memory_bundle), set(CONTROLLER_BUNDLE_KEYS))
+        for key in ("root_dir", "autonomy_dir", "implementations_dir", "runtime_dir"):
+            self.assertEqual(perception_bundle[key], memory_bundle[key])
+        self.assertEqual(
+            perception_bundle["release"]["tree_sha256"],
+            memory_bundle["release"]["tree_sha256"],
+        )
+        for key in ("vehicle_id", "provider", "vehicle_kind"):
+            self.assertEqual(perception["metadata"][key], memory["metadata"][key])
+        self.assertEqual(perception["metadata"]["runtime"], memory["metadata"]["runtime"])
+        for document in (perception, memory):
+            self.assertNotIn("source_dir", document["metadata"])
+            self.assertNotIn("workspace_source_dir", document["metadata"])
+            self.assertNotIn("preset_description", document["metadata"])
+            self.assertIn("preset", document["metadata"])

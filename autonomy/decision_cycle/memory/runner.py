@@ -171,8 +171,6 @@ class MemoryRunner:
         self._provided = dict(provided or {})
         self._selection_runtime = PluginSelectionRuntime(plugin_manager)
         self._runtime_lock = RLock()
-        self.plugin_ids: tuple[str, ...] = ()
-        self.plugins: tuple[MemoryPluginRuntime, ...] = ()
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
         self.update_count = 0
@@ -200,6 +198,19 @@ class MemoryRunner:
         )
         manager.select(tuple(plugins))
         return cls(manager, provided=plugins)
+
+    @property
+    def plugin_ids(self) -> tuple[str, ...]:
+        return tuple(definition.plugin_id for definition, _plugin in self._selection_runtime.applied)
+
+    @property
+    def plugins(self) -> dict[str, MemoryPluginRuntime]:
+        """Each selected plugin's ``MemoryPluginRuntime`` by plugin ID, in selection order.
+
+        The runtime's ``implementation`` is the plugin itself.
+        """
+
+        return {definition.plugin_id: plugin for definition, plugin in self._selection_runtime.applied}
 
     def _load_plugin(self, definition: PluginDefinition) -> MemoryPluginRuntime:
         if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
@@ -236,11 +247,9 @@ class MemoryRunner:
         self._selection_runtime.prepare(load=self._load_plugin)
 
     def _commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        applied = self._selection_runtime.commit(
+        self._selection_runtime.commit(
             reset=lambda plugin: plugin.reset(shared_memory),
         )
-        self.plugin_ids = tuple(definition.plugin_id for definition, _plugin in applied)
-        self.plugins = tuple(plugin for _definition, plugin in applied)
         if shared_memory is not None:
             self._shared_memory = shared_memory
         if self._publisher not in self.plugin_ids:
@@ -272,7 +281,7 @@ class MemoryRunner:
             started = time.perf_counter()
             self.last_error = None
             try:
-                for plugin in self.plugins:
+                for plugin in self.plugins.values():
                     before = _evidence(self._shared_memory)
                     try:
                         # A missing observation still reaches the plugin when
@@ -305,7 +314,7 @@ class MemoryRunner:
             if shared_memory is not None:
                 self._shared_memory = shared_memory
             before = dict(shared_memory) if shared_memory is not None else {}
-            for plugin in self.plugins:
+            for plugin in self.plugins.values():
                 failures = plugin.failure_count
                 evidence = _evidence(self._shared_memory)
                 plugin.reset(shared_memory)
@@ -401,7 +410,7 @@ class MemoryRunner:
                     plugin_id=plugin.plugin_id,
                     state=plugin.plugin_status(),
                 )
-                for plugin in self.plugins
+                for plugin in self.plugins.values()
             ),
             evidence_publisher=self.evidence_publisher,
         ).to_dict()
@@ -419,7 +428,7 @@ class MemoryRunner:
                 "duration_ms": plugin.last_duration_ms,
                 "error": plugin.last_error,
             }
-            for plugin in self.plugins
+            for plugin in self.plugins.values()
         ]
         return build_plugin_report(
             self.plugin_manager,
@@ -438,7 +447,7 @@ class MemoryRunner:
                 "available_plugins": sorted(self.plugin_manager.available_ids),
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),
-                "plugins": [plugin.status() for plugin in self.plugins],
+                "plugins": [plugin.status() for plugin in self.plugins.values()],
                 "evidence_publisher": self.evidence_publisher,
                 "plugin_report": self._plugin_report(),
                 "update_count": self.update_count,

@@ -20,7 +20,7 @@ class ObstructionObserverPresetTests(unittest.TestCase):
 
     def test_catalog_constructs_obstruction_observer(self) -> None:
         self.assertEqual(self.mapper.plugin_ids, tuple(PLUGIN_IDS))
-        self.assertEqual([plugin.plugin_id for plugin in self.mapper.plugins], PLUGIN_IDS)
+        self.assertEqual([plugin.plugin_id for plugin in self.mapper.plugins.values()], PLUGIN_IDS)
         self.assertEqual(
             self.mapper.plugin_configs["multi_obstruction_tracks"]["max_missed_frames"],
             2,

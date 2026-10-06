@@ -47,13 +47,13 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(ImageReplayRunner().state()["active_perception_plugin_ids"], ["frame", "floor_plane"])
         perception_step = catalog.build(catalog.activation(["frame"]))
         self.assertEqual(set(perception_step.plugin_manager.available_ids), packaged)
-        original = perception_step.plugins[0]
+        original = perception_step.plugins["frame"]
         perception_step.plugin_manager.add("floor_plane")
         perception_step.perceive(PerceptionRequest(SensorFrame(
             read_id="test", readings={}, started_at_ms=100, completed_at_ms=100,
         )))
         self.assertEqual(perception_step.plugin_ids, ("frame", "floor_plane"))
-        self.assertIs(perception_step.plugins[0], original)
+        self.assertIs(perception_step.plugins["frame"], original)
 
     def test_selection_keeps_order_and_rejects_unknown_or_repeated_ids(self) -> None:
         catalog = packaged_plugin_catalog("perception")
@@ -365,7 +365,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(before["phase"], "running")
             perception_step = runner._perception_step
             memory_step = runner._memory_step
-            retained = dict(zip(perception_step.plugin_ids, perception_step.plugins))["classical_regions"]
+            retained = perception_step.plugins["classical_regions"]
             runner._shared_memory["retention-marker"] = "kept"
 
             with mock.patch.object(perception_runner, "instantiate_plugin", failing_instantiate):
@@ -386,16 +386,14 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIs(runner._perception_step, perception_step)
             self.assertIs(runner._memory_step, memory_step)
             self.assertEqual(perception_step.plugin_manager.selected_ids, ("classical_regions",))
-            applied = dict(zip(perception_step.plugin_ids, perception_step.plugins))
-            self.assertEqual(list(applied), ["classical_regions"])
-            self.assertIs(applied["classical_regions"], retained)
+            self.assertEqual(perception_step.plugins, {"classical_regions": retained})
             self.assertEqual(runner._shared_memory["retention-marker"], "kept")
 
             runner.dispatch("pause", run_id=run_id)
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")
             self.assertEqual(_plugin_ids(stepped["steps"]["perception"]), ["classical_regions"])
-            self.assertIs(dict(zip(perception_step.plugin_ids, perception_step.plugins))["classical_regions"], retained)
+            self.assertIs(perception_step.plugins["classical_regions"], retained)
             runner.dispatch("reset", run_id=run_id)
 
 

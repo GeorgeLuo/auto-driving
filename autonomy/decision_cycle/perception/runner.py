@@ -92,8 +92,6 @@ class PerceptionRunner:
         self._provided = dict(provided or {})
         self._selection_runtime = PluginSelectionRuntime(plugin_manager)
         self._runtime_lock = RLock()
-        self.plugin_ids: tuple[str, ...] = ()
-        self.plugins: tuple[Any, ...] = ()
         self.last_output: PerceptionText | None = None
         self.last_duration_ms: float | None = None
         self.last_frame_index: int | None = None
@@ -191,6 +189,16 @@ class PerceptionRunner:
             }
 
     @property
+    def plugin_ids(self) -> tuple[str, ...]:
+        return tuple(definition.plugin_id for definition, _plugin in self._selection_runtime.applied)
+
+    @property
+    def plugins(self) -> dict[str, Any]:
+        """The applied plugins by selected plugin ID, in selection order."""
+
+        return {definition.plugin_id: plugin for definition, plugin in self._selection_runtime.applied}
+
+    @property
     def plugin_specs(self) -> dict[str, str]:
         return {item.plugin_id: item.entrypoint for item in self.plugin_manager.available}
 
@@ -207,7 +215,7 @@ class PerceptionRunner:
             self.last_output = None
             self.last_duration_ms = None
             self.last_frame_index = None
-            for plugin in self.plugins:
+            for _definition, plugin in self._selection_runtime.applied:
                 _reset_plugin(plugin, shared_memory)
 
     def describe_schema(self) -> dict[str, Any]:
@@ -459,15 +467,13 @@ class PerceptionRunner:
         providers = self._pending_providers
         self._pending_provider_specs = None
         self._pending_providers = None
-        applied = self._selection_runtime.commit(
+        self._selection_runtime.commit(
             reset=lambda plugin: _reset_plugin(plugin, shared_memory),
         )
         if specs is None or providers is None:
             return
 
-        # Publish only after prepared plugins and their providers have been validated.
-        self.plugin_ids = tuple(definition.plugin_id for definition, _plugin in applied)
-        self.plugins = tuple(plugin for _definition, plugin in applied)
+        # Publish providers only after the prepared plugins and providers validated.
         self._feed_provider_specs = specs
         self._feed_providers = providers
 

@@ -90,7 +90,7 @@ class WorkbenchTests(unittest.TestCase):
             runner.start()
             completed = runner.wait(5)
             self.assertEqual(completed["phase"], "completed")
-            reads = perception_step.plugins[0].reads
+            reads = perception_step.plugins["probe"].reads
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])

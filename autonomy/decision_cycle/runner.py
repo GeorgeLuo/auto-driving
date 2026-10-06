@@ -5,10 +5,15 @@ A runner is the callable a ``DecisionSteps`` slot holds. It owns one step's
 checks each instance against the step's plugin protocol, and runs the applied
 plugins when the cycle calls it. Every runner can be built from a
 ``StepActivation`` and exposes the same selection and report surface:
+``plugins``, the applied plugins by selected plugin ID in selection order, and
+their ``plugin_ids``;
 ``prepare_selection``/``commit_selection``/``discard_selection`` to change the
-selection between cycles (each call also picks up the manager's selection),
-``plugin_report`` and ``status`` for diagnostics, and ``reset`` to start a new
-epoch.
+selection between cycles (each call also picks up the manager's selection);
+``plugin_report`` and ``status`` for diagnostics; and
+``reset(shared_memory)`` to start a new epoch. ``reset`` resets every applied
+plugin with the host map, and a plugin whose reset raises follows the step's
+``FAILURE_POLICY.reset``. Memory's ``reset`` also returns the keys its plugins
+wrote, for a host that clears its map at a reset to restore.
 
 Each step declares what a plugin failure or a missing input does as one
 ``FailurePolicy``, ``FAILURE_POLICY`` in the step's ``interface``. The runner

@@ -216,7 +216,7 @@ class CycleHostMemoryTests(unittest.TestCase):
 
         def remember(context, observation):
             context.shared_memory["test.previous"] = context.frame_id
-            return {"schema": "memory_report_v0", "plugins": []}
+            return {"schema": "memory_report_v1", "plugins": []}
 
         host, proposal = _host(observation=observe, memory=remember)
         for index in range(2):

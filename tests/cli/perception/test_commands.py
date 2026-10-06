@@ -75,7 +75,7 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_perception_info_v0")
         self.assertEqual(payload["activation"]["preset"], "sim_debug")
         self.assertEqual(
-            payload["perception_schema"]["schema"], "perception_schema_v2"
+            payload["perception_schema"]["schema"], "perception_schema_v3"
         )
         self.assertEqual(
             payload["perception_schema"]["output"]["schema"], "perception_text_v2"

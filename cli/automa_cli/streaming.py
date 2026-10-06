@@ -13,9 +13,17 @@ from .automation import (
 )
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
+from autonomy.decision_cycle.memory.interface import (
+    BOUNDS,
+    EPOCH_ID,
+    HEALTH,
+    RECORD_COUNT,
+)
+from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .physical_observation import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
+    fetch_autonomy_status,
     fetch_observation_frame,
     fetch_observation_publication,
     perception_text_from_publication,
@@ -26,6 +34,9 @@ from .physical_observation import (
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 PERCEPTION_LIVE_SCHEMA = "vehicle_perception_live_v0"
+# Memory's live schema sits with perception's. Stream, probe, and the live
+# screen for memory are in this module.
+MEMORY_LIVE_SCHEMA = "vehicle_memory_live_v1"
 # Onboard publication health -> probe status; "healthy" is the only live one.
 _PHYSICAL_PERCEPTION_STATUS = {
     "warming": "absent",
@@ -70,6 +81,7 @@ def stream_vehicle_perception(
         return CommandResult(
             *unavailable_stream_outcome(
                 step="perception",
+                schema=PERCEPTION_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
                 message="\n\n".join(
                     [
@@ -86,6 +98,7 @@ def stream_vehicle_perception(
         return CommandResult(
             *unavailable_stream_outcome(
                 step="perception",
+                schema=PERCEPTION_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
                 message=f"Vehicle {vehicle_id!r} was not found.",
                 json_output=json_output,
@@ -117,6 +130,7 @@ def stream_vehicle_perception(
     return CommandResult(
         *unavailable_stream_outcome(
             step="perception",
+            schema=PERCEPTION_LIVE_SCHEMA,
             vehicle_id=vehicle_id,
             message=f"Vehicle {vehicle_id!r} is provider {provider!r}; perception stream supports chase-sim and picar.",
             json_output=json_output,
@@ -177,6 +191,7 @@ def probe_live_perception(
 def unavailable_stream_outcome(
     *,
     step: str,
+    schema: str,
     vehicle_id: str,
     message: str,
     json_output: bool,
@@ -185,14 +200,15 @@ def unavailable_stream_outcome(
     """Preserve JSON stream output when discovery or provider selection fails.
 
     Preflight failures terminate with exit 2 in either mode. JSON mode emits
-    one unavailable probe, including with ``--once`` omitted; terminal mode
-    returns the discovery diagnostic for the CLI handler to print.
+    one unavailable probe under the step's live probe ``schema``, including
+    with ``--once`` omitted; terminal mode returns the discovery diagnostic for
+    the CLI handler to print.
     """
 
     if not json_output:
         return 2, message
     live = {
-        "schema": f"vehicle_{step}_live_v0",
+        "schema": schema,
         "vehicle_id": vehicle_id,
         "status": "unavailable",
         "error": message,
@@ -765,3 +781,499 @@ def _int_or_none(value: Any) -> int | None:
 
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
+
+def stream_vehicle_memory(
+    *,
+    vehicle_id: str,
+    refresh_s: float = 0.5,
+    once: bool = False,
+    no_clear: bool = False,
+    timeout_s: float = 3.0,
+    json_output: bool = False,
+    output: TextIO | None = None,
+) -> CommandResult:
+    """Poll live memory lifecycle health for Chase or PiCar.
+
+    JSON mode emits probes even when discovery fails. ``live`` means the
+    retained step is available; update health stays in the plugin diagnostics.
+    Each probe lists every applied plugin's ledger and names the evidence
+    publisher; the terminal view prints the same.
+    """
+
+    discovery = discover_active_vehicles(
+        timeout_s=timeout_s,
+        include_picar=True,
+        include_chase_sim=True,
+        include_inactive=True,
+    )
+    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
+    if error:
+        return CommandResult(
+            *unavailable_stream_outcome(
+                step="memory",
+                schema=MEMORY_LIVE_SCHEMA,
+                vehicle_id=vehicle_id,
+                message="\n\n".join(
+                    [
+                        error,
+                        "Discovery:",
+                        format_active_vehicles(discovery, include_inactive=True),
+                    ]
+                ),
+                json_output=json_output,
+                stream=output,
+            )
+        )
+    if vehicle is None:
+        return CommandResult(
+            *unavailable_stream_outcome(
+                step="memory",
+                schema=MEMORY_LIVE_SCHEMA,
+                vehicle_id=vehicle_id,
+                message=f"Vehicle {vehicle_id!r} was not found.",
+                json_output=json_output,
+                stream=output,
+            )
+        )
+
+    if vehicle.get("provider") == "picar" and not json_output:
+        return _stream_physical_memory_with_inspector(
+            vehicle_id=vehicle_id,
+            vehicle=vehicle,
+            refresh_s=refresh_s,
+            once=once,
+            no_clear=no_clear,
+            timeout_s=timeout_s,
+            output=output,
+        )
+
+    stream = output
+    try:
+        while True:
+            live = probe_live_memory(
+                vehicle_id=vehicle_id,
+                vehicle=vehicle,
+                timeout_s=timeout_s,
+            )
+            if json_output:
+                line = json.dumps(live, sort_keys=True)
+            else:
+                line = _format_live_memory_screen(vehicle_id=vehicle_id, live=live)
+            if stream is not None:
+                if not no_clear and not json_output:
+                    print("\033[2J\033[H", end="", file=stream)
+                print(line, file=stream, flush=True)
+            if once:
+                return CommandResult(
+                    *once_stream_outcome(step="memory", live=live, line=line, stream=stream)
+                )
+            time.sleep(max(0.1, float(refresh_s)))
+    except KeyboardInterrupt:
+        return CommandResult(130, "")
+
+
+def _stream_physical_memory_with_inspector(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    refresh_s: float,
+    once: bool,
+    no_clear: bool,
+    timeout_s: float,
+    output: TextIO | None,
+) -> CommandResult:
+    """Poll status, feed the shared loopback publication, and serve the /memory inspector."""
+
+    stream = output
+    base_url = picar_base_url(vehicle)
+    if not base_url:
+        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+
+    runtime_dir = physical_observation_dir(vehicle_id)
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    frame_path = runtime_dir / "latest_frame.jpg"
+    view_server: RuntimeViewServer | None = None
+    view_error: str | None = None
+    try:
+        view_server = RuntimeViewServer(
+            vehicle_id=vehicle_id,
+            automation_dir=runtime_dir,
+        ).start()
+    except OSError as exc:
+        view_error = f"{type(exc).__name__}: {exc}"
+
+    try:
+        while True:
+            live = probe_live_memory(
+                vehicle_id=vehicle_id,
+                vehicle=vehicle,
+                timeout_s=timeout_s,
+            )
+            publication: dict[str, Any] | None = None
+            fetch_error: str | None = None
+            try:
+                publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
+            except ConnectionError as exc:
+                fetch_error = str(exc)
+
+            memory_view_url = None
+            if view_server is not None and view_server.url:
+                memory_view_url = view_server.url.rstrip("/") + "/memory"
+            if publication is not None and view_server is not None:
+                try:
+                    _publish_physical_view(
+                        view_server=view_server,
+                        base_url=base_url,
+                        publication=publication,
+                        frame_path=frame_path,
+                        timeout_s=timeout_s,
+                    )
+                    memory_view_url = view_server.url.rstrip("/") + "/memory"
+                    view_error = None
+                except (ConnectionError, OSError, TypeError, ValueError) as exc:
+                    view_error = f"{type(exc).__name__}: {exc}"
+
+            if stream is not None:
+                if not no_clear:
+                    print("\033[2J\033[H", end="", file=stream)
+                lines = [
+                    _format_live_memory_screen(vehicle_id=vehicle_id, live=live),
+                    "",
+                ]
+                if memory_view_url:
+                    lines.append(f"memory map: {memory_view_url}")
+                    lines.append("perception view: " + memory_view_url.rsplit("/", 1)[0] + "/perception")
+                elif view_error:
+                    lines.append(f"memory map: unavailable ({view_error})")
+                else:
+                    lines.append("memory map: unavailable")
+                if fetch_error:
+                    lines.append(f"publication: {fetch_error}")
+                # The published memory report: each plugin's ledger and the publisher.
+                elif isinstance(publication, dict) and isinstance(publication.get("memory"), dict):
+                    report = publication["memory"]
+                    lines.append(
+                        "publication memory: evidence publisher "
+                        f"{evidence_publisher(report) or 'none'}"
+                    )
+                    lines.extend(_format_plugin_ledgers(plugin_ledgers(report)))
+                print("\n".join(lines), file=stream, flush=True)
+
+            if once:
+                return CommandResult(
+                    *once_stream_outcome(step="memory", live=live, line="", stream=stream)
+                )
+            time.sleep(max(0.1, float(refresh_s)))
+    except KeyboardInterrupt:
+        return CommandResult(130, "")
+    finally:
+        if view_server is not None:
+            view_server.stop()
+
+
+def probe_live_memory(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any] | None = None,
+    timeout_s: float = 3.0,
+) -> dict[str, Any]:
+    """Return a normalized live-memory probe without requiring stream mode."""
+
+    if vehicle is None:
+        discovery = discover_active_vehicles(
+            timeout_s=timeout_s,
+            include_picar=True,
+            include_chase_sim=True,
+            include_inactive=True,
+        )
+        vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
+        if error or vehicle is None:
+            return {
+                "schema": MEMORY_LIVE_SCHEMA,
+                "vehicle_id": vehicle_id,
+                "status": "unavailable",
+                "error": error or f"Vehicle {vehicle_id!r} was not found.",
+                "probed_at_ms": int(time.time() * 1000),
+            }
+
+    provider = vehicle.get("provider")
+    if provider == "picar":
+        return _probe_physical_memory(vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
+    if provider == "chase-sim":
+        return _probe_chase_memory(vehicle_id=vehicle_id)
+    return {
+        "schema": MEMORY_LIVE_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "status": "unavailable",
+        "error": (
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
+            "live memory supports picar and chase-sim."
+        ),
+        "probed_at_ms": int(time.time() * 1000),
+    }
+
+
+def _probe_plugins(status: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each applied plugin's step status with its ledger summary beside it.
+
+    An entry keeps the step's per-plugin status (counters, ``last_error``,
+    ``state``) and adds ``epoch_id``, ``health``, ``bounds`` and
+    ``record_count`` from that plugin's state, None where the plugin reports
+    none.
+    """
+
+    plugins = status.get("plugins")
+    return [
+        {
+            **entry,
+            **ledger_summary(entry.get("state") if isinstance(entry.get("state"), dict) else None),
+        }
+        for entry in (plugins if isinstance(plugins, list) else [])
+        if isinstance(entry, dict) and isinstance(entry.get("plugin_id"), str)
+    ]
+
+
+def _live_plugins(live: dict[str, Any]) -> list[dict[str, Any]]:
+    """The plugin entries of a live probe; none unless it is live."""
+
+    plugins = live.get("plugins") if live.get("status") == "live" else None
+    return [
+        entry
+        for entry in (plugins if isinstance(plugins, list) else [])
+        if isinstance(entry, dict) and isinstance(entry.get("plugin_id"), str)
+    ]
+
+
+def _probe_physical_memory(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    timeout_s: float,
+) -> dict[str, Any]:
+    base_url = picar_base_url(vehicle)
+    probed_at_ms = int(time.time() * 1000)
+    if not base_url:
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "picar",
+            "status": "unavailable",
+            "error": f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+            "probed_at_ms": probed_at_ms,
+        }
+    try:
+        status = fetch_autonomy_status(base_url, timeout_s=timeout_s)
+    except ConnectionError as exc:
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "picar",
+            "status": "error",
+            "endpoint": f"{base_url}/autonomy/status",
+            "error": str(exc),
+            "probed_at_ms": probed_at_ms,
+        }
+
+    autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
+    steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
+    memory = steps.get("memory") if isinstance(steps.get("memory"), dict) else None
+    last_control = autonomy.get("last_control") if isinstance(autonomy.get("last_control"), dict) else {}
+    control_meta = (
+        last_control.get("metadata") if isinstance(last_control.get("metadata"), dict) else {}
+    )
+    if memory is None:
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "picar",
+            "status": "absent",
+            "endpoint": f"{base_url}/autonomy/status",
+            "drive_mode": status.get("drive_mode"),
+            "has_memory": bool(control_meta.get("has_memory")),
+            "error": (
+                "No live memory step in /autonomy/status. "
+                "If activation was deployed, update core then autonomy with --restart."
+            ),
+            "probed_at_ms": probed_at_ms,
+        }
+
+    return {
+        "schema": MEMORY_LIVE_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "provider": "picar",
+        "status": "live",
+        "endpoint": f"{base_url}/autonomy/status",
+        "drive_mode": status.get("drive_mode"),
+        "has_memory": bool(control_meta.get("has_memory")),
+        "activation": memory.get("activation"),
+        "plugin_ids": memory.get("plugin_ids", []),
+        "selected_plugin_ids": memory.get("selected_plugin_ids", []),
+        "plugins": _probe_plugins(memory),
+        "evidence_publisher": evidence_publisher(memory),
+        "plugin_report": memory.get("plugin_report"),
+        "last_duration_ms": memory.get("last_duration_ms"),
+        "last_error": memory.get("last_error"),
+        "update_count": memory.get("update_count"),
+        "reset_count": memory.get("reset_count"),
+        "failure_count": memory.get("failure_count"),
+        "probed_at_ms": probed_at_ms,
+    }
+
+
+def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
+    probed_at_ms = int(time.time() * 1000)
+    automation_dir = _automation_dir(vehicle_id)
+    state_path = automation_dir / "state.json"
+    if not state_path.exists():
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "chase-sim",
+            "status": "unavailable",
+            "error": (
+                f"No automation runtime state for {vehicle_id!r}. "
+                f"Run: ./cli/automa vehicles automation run --id {vehicle_id}"
+            ),
+            "probed_at_ms": probed_at_ms,
+        }
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "chase-sim",
+            "status": "error",
+            "error": f"Could not read automation state: {exc}",
+            "probed_at_ms": probed_at_ms,
+        }
+    if not isinstance(state, dict):
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "chase-sim",
+            "status": "error",
+            "error": "Automation state is not a JSON object.",
+            "probed_at_ms": probed_at_ms,
+        }
+
+    liveness = assess_chase_worker_liveness(
+        state=state,
+        probed_at_ms=probed_at_ms,
+        step="memory",
+        vehicle_id=vehicle_id,
+    )
+    if not liveness["live"]:
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "chase-sim",
+            "status": liveness["status"],
+            "error": liveness["error"],
+            "probed_at_ms": probed_at_ms,
+            "worker_status": state.get("status"),
+            "worker_pid": liveness.get("pid"),
+            "worker_updated_at_ms": liveness.get("updated_at_ms"),
+            "max_age_ms": CHASE_WORKER_PROBE_MAX_AGE_MS,
+        }
+
+    memory = state.get("memory") if isinstance(state.get("memory"), dict) else None
+    if memory is None or memory.get("status") == "absent":
+        return {
+            "schema": MEMORY_LIVE_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "chase-sim",
+            "status": "absent",
+            "error": (
+                "Automation worker has no live memory step. "
+                f"Stage memory then restart automation: "
+                f"./cli/automa vehicles update memory --id {vehicle_id}"
+            ),
+            "probed_at_ms": probed_at_ms,
+            "worker_memory": memory,
+            "worker_status": state.get("status"),
+            "worker_pid": liveness.get("pid"),
+        }
+
+    status_block = memory.get("status") if isinstance(memory.get("status"), dict) else memory
+    if not isinstance(status_block, dict):
+        status_block = {}
+    return {
+        "schema": MEMORY_LIVE_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "provider": "chase-sim",
+        "status": "live",
+        "activation": memory.get("activation") or status_block.get("activation"),
+        "plugin_ids": status_block.get("plugin_ids", []),
+        "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
+        "plugins": _probe_plugins(status_block),
+        "evidence_publisher": evidence_publisher(status_block),
+        "plugin_report": status_block.get("plugin_report"),
+        "last_duration_ms": status_block.get("last_duration_ms"),
+        "last_error": status_block.get("last_error"),
+        "update_count": status_block.get("update_count"),
+        "reset_count": status_block.get("reset_count"),
+        "failure_count": status_block.get("failure_count"),
+        "probed_at_ms": probed_at_ms,
+        "worker_status": state.get("status"),
+        "worker_pid": liveness.get("pid"),
+        "run_id": state.get("run_id"),
+        "worker_updated_at_ms": liveness.get("updated_at_ms"),
+    }
+
+
+def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
+    status = str(live.get("status") or "unknown")
+    lines = [
+        f"Live memory: {vehicle_id} [{status}]",
+    ]
+    if live.get("provider"):
+        lines.append(f"Provider: {live.get('provider')}")
+    if live.get("endpoint"):
+        lines.append(f"Endpoint: {live.get('endpoint')}")
+    if live.get("drive_mode") is not None:
+        lines.append(f"Drive mode: {live.get('drive_mode')}")
+    if status == "live":
+        lines.append(f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}")
+        lines.extend(_format_plugin_ledgers(_live_plugins(live)))
+        lines.extend(
+            [
+                f"Evidence publisher: {live.get('evidence_publisher') or 'none'}",
+                (
+                    f"Counters: updates={live.get('update_count')} "
+                    f"resets={live.get('reset_count')} "
+                    f"failures={live.get('failure_count')}"
+                ),
+            ]
+        )
+        if live.get("last_duration_ms") is not None:
+            lines.append(f"Last update duration: {live.get('last_duration_ms')} ms")
+        if live.get("last_error"):
+            lines.append(f"Last error: {live.get('last_error')}")
+        if live.get("has_memory") is not None:
+            lines.append(f"Engine saw memory: {live.get('has_memory')}")
+    else:
+        if live.get("error"):
+            lines.append(f"Detail: {live.get('error')}")
+    return "\n".join(lines)
+
+
+def _format_plugin_ledgers(ledgers: list[dict[str, Any]]) -> list[str]:
+    """One line per plugin: its ledger health, epoch, records and any bounds."""
+
+    lines = []
+    for ledger in ledgers:
+        line = (
+            f"  {ledger['plugin_id']}: health={ledger.get(HEALTH) or 'unknown'} "
+            f"epoch={ledger.get(EPOCH_ID) or '-'} records={ledger.get(RECORD_COUNT)}"
+        )
+        bounds = ledger.get(BOUNDS)
+        if isinstance(bounds, dict) and bounds:
+            line += (
+                f" max_records={bounds.get('max_records')} "
+                f"max_age_ms={bounds.get('max_age_ms')} "
+                f"eviction={bounds.get('eviction_policy')}"
+            )
+        lines.append(line)
+    return lines
+

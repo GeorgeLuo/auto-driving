@@ -16,8 +16,45 @@ from autonomy.shared_memory import SharedMemory
 
 
 PERCEPTION_TEXT_SCHEMA = "perception_text_v2"
+PERCEPTION_SCHEMA = "perception_schema_v3"
 PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
+
+# Same field names as memory's failure policy. The values differ: a perception
+# plugin error is isolated, an explicit reset error propagates, and a missing
+# feed skips that plugin. A stateful plugin is reset on a missing feed inside
+# frame execution; a failure there follows the update isolation policy.
+FAILURE_POLICY_FIELDS = ("update", "reset", "missing_input")
+UPDATE_FAILURE = "isolate_plugin"
+RESET_FAILURE = "propagate"
+MISSING_INPUT = "skip_plugin"
+
+
+def failure_policy() -> dict[str, str]:
+    """The values ``PerceptionRunner`` reads when a plugin fails or a feed is missing.
+
+    ``reset`` governs explicit reset and selection removal. A stateful plugin's
+    automatic reset on a missing feed happens inside frame execution, so its
+    exception follows ``update`` and becomes that plugin's error result.
+    """
+
+    return {
+        "update": UPDATE_FAILURE,
+        "reset": RESET_FAILURE,
+        "missing_input": MISSING_INPUT,
+    }
+
+
+def composition_declaration() -> dict[str, str]:
+    """How several perception plugins share one frame."""
+
+    return {
+        "order": "selection_order",
+        "partial_result": (
+            "partial when an error or unavailable plugin runs alongside an ok, "
+            "empty, or warming_up plugin"
+        ),
+    }
 
 
 @dataclass(frozen=True)

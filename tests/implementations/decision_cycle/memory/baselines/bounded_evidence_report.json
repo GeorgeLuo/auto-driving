@@ -2,6 +2,7 @@
  {
   "frame_id": "present_0",
   "report": {
+   "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
      "plugin_id": "bounded_evidence",
@@ -88,12 +89,13 @@
      }
     }
    ],
-   "schema": "memory_report_v0"
+   "schema": "memory_report_v1"
   }
  },
  {
   "frame_id": "present_1",
   "report": {
+   "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
      "plugin_id": "bounded_evidence",
@@ -207,12 +209,13 @@
      }
     }
    ],
-   "schema": "memory_report_v0"
+   "schema": "memory_report_v1"
   }
  },
  {
   "frame_id": "dropout_0",
   "report": {
+   "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
      "plugin_id": "bounded_evidence",
@@ -326,12 +329,13 @@
      }
     }
    ],
-   "schema": "memory_report_v0"
+   "schema": "memory_report_v1"
   }
  },
  {
   "frame_id": "dropout_1",
   "report": {
+   "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
      "plugin_id": "bounded_evidence",
@@ -445,12 +449,13 @@
      }
     }
    ],
-   "schema": "memory_report_v0"
+   "schema": "memory_report_v1"
   }
  },
  {
   "frame_id": "expiry_0",
   "report": {
+   "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
      "plugin_id": "bounded_evidence",
@@ -505,12 +510,13 @@
      }
     }
    ],
-   "schema": "memory_report_v0"
+   "schema": "memory_report_v1"
   }
  },
  {
   "frame_id": "reset",
   "report": {
+   "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
      "plugin_id": "bounded_evidence",
@@ -549,7 +555,7 @@
      }
     }
    ],
-   "schema": "memory_report_v0"
+   "schema": "memory_report_v1"
   }
  }
 ]

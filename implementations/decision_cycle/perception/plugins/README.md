@@ -15,6 +15,14 @@ plugin lives in `plugins/frame/`.
 - Emit only the perception evidence types from
   `autonomy/decision_cycle/perception/evidence/`: `PerceivedThing`,
   `PerceptionSignal` and `ViewLocation`, in a `PerceptionEvidenceBatch`.
+- How several plugins share one frame, and what a failure does, is declared in
+  `autonomy/decision_cycle/perception/interface.py`: `composition_declaration`
+  and `failure_policy`. `PerceptionRunner` reads those values. A plugin error
+  is isolated, a missing feed skips that plugin, and an explicit reset or
+  selection-removal reset error propagates. Missing feeds also reset stateful
+  plugins inside frame execution; an error in that reset is isolated as the
+  plugin's frame error. A `partial` frame can include an empty or warming-up
+  plugin alongside an error or unavailable plugin; it need not contain evidence.
 - Reuse goes through `../shared/`. Subclassing another plugin's public class
   is allowed. Importing another plugin's private names is not.
 - Variants of a plugin, such as `floor_continuity_temporal`, get their own

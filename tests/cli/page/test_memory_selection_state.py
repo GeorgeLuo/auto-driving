@@ -10,7 +10,10 @@ ROOT = Path(__file__).resolve().parents[3]
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
 class MemorySelectionStateTests(unittest.TestCase):
-    def test_disabled_memory_is_distinct_from_no_frame_and_failure(self) -> None:
+    def test_memory_panel_states_and_every_plugin_with_the_publisher(self) -> None:
+        # Disabled, no frame and failure stay distinct. With two plugins the
+        # panel lists both, shows the evidence publisher's ledger, and never
+        # picks a plugin by position when there is no publisher.
         result = subprocess.run(
             ["node", str(Path(__file__).with_name("memory_selection_state.js"))],
             cwd=ROOT,

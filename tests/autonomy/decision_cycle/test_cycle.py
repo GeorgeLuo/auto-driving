@@ -172,7 +172,7 @@ class DecisionCycleTests(unittest.TestCase):
 
 
     def test_memory_step_report_is_recorded_and_keeps_idle(self) -> None:
-        report = {"schema": "memory_report_v0", "plugins": [{"state": {"record_count": 0}}]}
+        report = {"schema": "memory_report_v1", "plugins": [{"state": {"record_count": 0}}]}
 
         result = DecisionCycle(
             DecisionSteps(memory=lambda context, observation: report)

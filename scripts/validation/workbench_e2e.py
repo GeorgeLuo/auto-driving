@@ -147,7 +147,8 @@ def check_parity() -> list[str]:
                     problems.append(f"{label}: plugin runs {got_runs}, inspect {want_runs}")
                 if not (entry.get("decision") or {}).get("status"):
                     problems.append(f"{label}: no decision status")
-                if entry.get("memory_record_count") is None:
+                plugins = entry.get("memory_plugins") or []
+                if not plugins or any(item.get("record_count") is None for item in plugins):
                     problems.append(f"{label}: no memory record count")
                 if len(problems) > 20:
                     break
@@ -248,8 +249,12 @@ def check_memory_selector() -> list[str]:
                     problems.append(f"{label}: displayed frame moved to {selected['current_frame']['frame_id']}")
                 if len(selected["timeline"]) != position:
                     problems.append(f"{label}: timeline holds {len(selected['timeline'])} of {position} frames")
-                if (selected["steps"]["memory"] or {}).get("plugin_id") != expected[-1]:
-                    problems.append(f"{label}: memory step shows {(selected['steps']['memory'] or {}).get('plugin_id')}")
+                shown = [
+                    entry["plugin_id"]
+                    for entry in (selected["steps"]["memory"] or {}).get("plugins", [])
+                ]
+                if shown != expected:
+                    problems.append(f"{label}: memory step shows {shown}, expected {expected}")
     except (TimeoutError, OSError, KeyError) as exc:
         problems.append(f"memory selector check failed: {type(exc).__name__}: {exc}")
     return problems

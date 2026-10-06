@@ -76,7 +76,7 @@ class CycleVocabularyTests(unittest.TestCase):
 
     def test_records_keep_serialized_names_and_leave_the_host_map_out(self) -> None:
         self.assertEqual(OBSERVATION_SCHEMA, "decision_observation_v1")
-        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v0")
+        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v1")
         self.assertEqual(ACTION_PROPOSAL_SCHEMA, "action_proposal_v0")
         self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v1")
         self.assertEqual(DEFAULT_PERCEPTION_PRESET, "lightweight_observer")

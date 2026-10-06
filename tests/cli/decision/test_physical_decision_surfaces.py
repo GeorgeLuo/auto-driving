@@ -14,6 +14,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from cli.automa_cli.decision_live import PhysicalDecisionViewAdapter, _provider_identity
 from cli.automa_cli.decision_records import activations_from_payloads
+from cli.automa_cli.memory_report import plugin_states
 from cli.automa_cli.decision import (
     accept_physical_decision_publication,
     physical_decision_view_frame,
@@ -182,7 +183,11 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         with urlopen(f"{server.url.rstrip('/')}/api/latest", timeout=1.0) as response:
             perception_payload = json.loads(response.read().decode("utf-8"))
         self.assertEqual(perception_payload["frame"]["frame_id"], "frame_001")
-        self.assertEqual(perception_payload["memory"]["record_count"], 1)
+        self.assertEqual(perception_payload["memory"]["evidence_publisher"], "decision_evidence")
+        self.assertEqual(
+            dict(plugin_states(perception_payload["memory"]))["decision_evidence"]["record_count"],
+            1,
+        )
         self.assertIsNotNone(perception_payload["perception"])
 
         with urlopen(f"{server.url.rstrip('/')}/perception", timeout=1.0) as response:

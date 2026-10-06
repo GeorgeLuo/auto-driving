@@ -159,6 +159,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         "observation": observation_value,
         # The publication carries the evidence the decision read, not the memory
         # step's report; present it as one labeled entry for the memory panel.
+        # That entry holds the evidence value, so it is named the publisher.
         "memory": (
             MemoryReport(
                 schema=MEMORY_REPORT_SCHEMA,
@@ -171,6 +172,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
                         },
                     ),
                 ),
+                evidence_publisher="decision_evidence",
             ).to_dict()
             if evidence_value is not None
             else None

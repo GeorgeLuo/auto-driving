@@ -181,7 +181,11 @@ class ViabilityCommandTests(unittest.TestCase):
                     report = json.loads(result.message)
                     self.assertIn(result.exit_code, (0, 1))
                     self.assertEqual(
-                        report["schema"], f"automa_physical_{step}_viability_v0"
+                        report["schema"],
+                        {
+                            "perception": "automa_physical_perception_viability_v0",
+                            "memory": "automa_physical_memory_viability_v1",
+                        }[step],
                     )
                     if record:
                         saved = json.loads(Path(report["report_json"]).read_text())

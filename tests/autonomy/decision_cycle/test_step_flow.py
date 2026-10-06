@@ -73,7 +73,7 @@ class DecisionStageFlowTests(unittest.TestCase):
                 ),
         )
         memory = {
-            "schema": "memory_report_v0",
+            "schema": "memory_report_v1",
             "plugins": [
                 {
                     "plugin_id": "test_memory",

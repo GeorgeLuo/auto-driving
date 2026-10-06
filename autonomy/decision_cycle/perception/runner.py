@@ -40,10 +40,16 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
 )
 from autonomy.decision_cycle.perception.interface import (
+    MISSING_INPUT,
+    PERCEPTION_SCHEMA,
     PERCEPTION_TEXT_SCHEMA,
+    RESET_FAILURE,
+    UPDATE_FAILURE,
     PerceptionPluginRun,
     PerceptionText,
     PluginResultStatus,
+    composition_declaration,
+    failure_policy,
 )
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
@@ -265,7 +271,7 @@ class PerceptionRunner:
                 }
             )
         return {
-            "schema": "perception_schema_v2",
+            "schema": PERCEPTION_SCHEMA,
             "plugin_id": self.plugin_id,
             "runner": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "configuration": {
@@ -285,7 +291,11 @@ class PerceptionRunner:
                     "required": True,
                     "required_by": plugin_ids,
                     "source": "resolved once by the framework and injected by plugin-local name",
-                    "missing_behavior": "framework marks the plugin unavailable without invoking it",
+                    "missing_behavior": (
+                        "framework skips perceive and resets stateful plugins; "
+                        "the plugin is unavailable unless its reset fails, "
+                        "which is isolated as that plugin's frame error"
+                    ),
                 }
                 for feed_id, plugin_ids in sorted(feed_consumers.items())
             ],
@@ -313,6 +323,8 @@ class PerceptionRunner:
                     "no calibrated metric geometry unless a plugin states otherwise",
                 ],
             },
+            "composition": composition_declaration(),
+            "failure_policy": failure_policy(),
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
@@ -509,7 +521,7 @@ class PerceptionRunner:
 
         try:
             feeds, missing = self._resolve_inputs(plugin.contract, request)
-            if missing:
+            if missing and MISSING_INPUT == "skip_plugin":
                 if plugin.contract.state_mode != "stateless":
                     _reset_plugin(plugin, request.shared_memory)
                 details = "; ".join(
@@ -553,6 +565,8 @@ class PerceptionRunner:
                 error=exc.reason,
             )
         except Exception as exc:
+            if UPDATE_FAILURE != "isolate_plugin":
+                raise
             return _execution(
                 started,
                 status="error",
@@ -644,11 +658,16 @@ def _validate_plugin(plugin: Any, definition: PluginDefinition) -> None:
 
 def _reset_plugin(plugin: Any, shared_memory=None) -> None:
     reset = getattr(plugin, "reset", None)
-    if callable(reset):
+    if not callable(reset):
+        return
+    try:
         if plugin.contract.memory_required:
             reset(shared_memory)
         else:
             reset()
+    except Exception:
+        if RESET_FAILURE == "propagate":
+            raise
 
 
 def _line_value(value: str) -> str:

@@ -119,7 +119,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
-| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info open with the staged preset and its enabled and available plugins; perception info also reports the live view URL, and memory info the live memory step. |
+| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info show the staged preset, enabled and available plugins, and runner schema (inputs, output, composition and failure policy); perception info also reports the live view URL, and memory info the live memory step. |
 | `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
@@ -136,8 +136,9 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 `stream perception` and `stream memory` take the same flags. By default each
 refresh redraws the terminal view, and on PiCar updates the local view whose
-URL it shows. `--json` prints one `vehicle_<step>_live_v0` probe per refresh in
-place of both, for scripts.
+URL it shows. `--json` prints one probe per refresh in place of both, for
+scripts: `vehicle_perception_live_v0` for perception and
+`vehicle_memory_live_v1` for memory.
 `--once` exits 2 unless the probe's `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
 Discovery failures also emit one `unavailable` JSON probe and exit 2, even
@@ -154,7 +155,10 @@ result from the current automation run and reports its frame identity and
 On PiCar, perception reads `/autonomy/observation/latest`: a healthy publication
 with a perception payload is live, and `age_ms` comes from the Pi's clock.
 Memory reads the retained step in `/autonomy/status`: the step's presence is
-live, while `last_health`, `last_error`, and counters report its update health.
+live. Its `plugins[]` entries retain each applied plugin's `state` and expose
+that plugin's `health`, `epoch_id`, `record_count`, and `bounds` alongside it;
+`evidence_publisher` names the plugin whose evidence is published.
+`last_error` and counters report the step's update health.
 Use the nested perception result and plugin reports to inspect plugin outcomes;
 `live` describes availability rather than promising that every plugin succeeded.
 
@@ -333,7 +337,9 @@ their default configs from `implementations/decision_cycle/perception/catalog.py
 and a plugin list is recorded as the preset it equals, else `custom`.
 
 `vehicles info perception` reports the staged preset, its enabled plugins and
-the available ones. Staging replaces the selection. A running worker applies a
+the available ones, and the staged runner's `perception_schema_v3` contract.
+`--json` returns `vehicle_perception_info_v0` with that contract under
+`perception_schema`. Staging replaces the selection. A running worker applies a
 changed plugin list at its next frame and changed plugin configs when it
 restarts; a stopped one uses the selection the next time it starts:
 
@@ -416,7 +422,12 @@ default configs from `implementations/decision_cycle/memory/catalog.py`.
 and a plugin list is recorded as the preset it equals, else `custom`.
 
 `vehicles info memory` reports the staged preset, its enabled plugins and the
-available ones. Staging replaces the selection. A running worker applies a
+available ones, and the staged runner's `memory_schema_v1` contract.
+`--json` returns `vehicle_memory_info_v1` with that contract under `memory_schema`.
+Both steps describe inputs, plugins, output, composition and failure policy;
+memory's contract also names the ledger fields the CLI and viewers project from
+each plugin's status. The report itself preserves that status, including absent
+ledger keys. Staging replaces the selection. A running worker applies a
 changed plugin list at its next frame and changed plugin configs when it
 restarts; a stopped one uses the selection the next time it starts:
 
@@ -450,7 +461,8 @@ same frames:
 ```
 
 The report prints to the terminal: the source, both step selections, and each
-memory plugin's health, record count and epoch after every frame. `--record`
+memory plugin's health, record count and epoch after every frame, together with
+the evidence publisher. `--record`
 also saves the source frames, timing, both step selections and the report as
 `report.json` under `runtime/memory-inspections/<run>/`, and prints that
 directory after `Recorded:`. Memory recordings copy their images with relative
@@ -500,11 +512,15 @@ frame before the action returns. This includes the last frame still displayed
 between loop passes.
 
 For workbench API integrations, `GET /api/state` reports schema
-`workbench_image_replay_state_v2`. Read `<step>_plugin_catalog` for availability
+`workbench_image_replay_state_v3`. Read `<step>_plugin_catalog` for availability
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
 `custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
-plugins that were applied. Replace v1's generic perception `plugin_catalog` and
+plugins that were applied. Each frame's `memory_plugins` lists every applied
+memory plugin's health, record count, and epoch, and
+`memory_evidence_publisher` names the plugin whose evidence the step published.
+`steps.memory` is the complete memory step report, with its `plugins[]` and
+`evidence_publisher`. Replace v1's generic perception `plugin_catalog` and
 `active_plugin_ids` with the step-named fields; use the catalog's `digest` in
 place of `catalog_digest` / `run_catalog_digest`, and the selected or applied ids
 in place of `plugin_order` / `run_plugin_order` / `run_active_plugin_ids`.

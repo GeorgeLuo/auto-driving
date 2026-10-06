@@ -104,7 +104,7 @@ class ObservationPublicationTests(unittest.TestCase):
                         ),
             )
             return {
-                "schema": "memory_report_v0",
+                "schema": "memory_report_v1",
                 "plugins": [
                     {
                         "plugin_id": "bounded_evidence",
@@ -115,6 +115,7 @@ class ObservationPublicationTests(unittest.TestCase):
                         },
                     }
                 ],
+                "evidence_publisher": "bounded_evidence",
             }
 
         host = AutonomyCycleHost(steps=DecisionSteps(memory=remember))
@@ -127,6 +128,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(state["health"], "healthy")
         self.assertEqual(state["record_count"], 1)
         self.assertEqual(state["records"][0]["kind"], "floor_boundary")
+        self.assertEqual(payload["memory"]["evidence_publisher"], "bounded_evidence")
 
         jpeg, frame_meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)
@@ -134,6 +136,61 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(frame_meta["frame"]["frame_id"], payload["frame"]["frame_id"])
         self.assertEqual(frame_meta["health"], "healthy")
         self.assertTrue(jpeg.startswith(b"\xff\xd8"))
+
+    def test_publication_lists_each_memory_plugin_and_the_evidence_publisher(self) -> None:
+        from autonomy.decision_cycle.cycle import DecisionSteps
+        from autonomy.decision_cycle.memory.runner import MemoryRunner
+        from autonomy.decision_cycle.observation.values import Observation
+        from implementations.decision_cycle.catalog import step_plugins
+        from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
+            BoundedEvidenceLedger,
+        )
+        from tests.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+
+        def observe(context, perception):
+            return Observation(
+                observation_id=context.frame_id,
+                created_at_ms=context.timestamp_ms,
+                sensor_frame={},
+                things=({
+                    "thing_id": "a",
+                    "kind": "floor_boundary",
+                    "label": "boundary",
+                    "confidence": 0.9,
+                    "location": {"frame": "image", "zone": "center"},
+                },),
+            )
+
+        config = step_plugins("memory")["bounded_evidence"]["default_config"]
+        memory = MemoryRunner.from_plugins({
+            "recording_test": _RecordingMemory(),
+            "bounded_evidence": BoundedEvidenceLedger(**config),
+        })
+        part = AutonomyPilotPart(
+            host=AutonomyCycleHost(steps=DecisionSteps(observation=observe, memory=memory)),
+            min_interval_s=0.0,
+        )
+        part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+
+        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["memory"]
+
+        states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
+        self.assertEqual(list(states), ["recording_test", "bounded_evidence"])
+        self.assertEqual(states["recording_test"]["record_count"], 1)
+        self.assertEqual(states["bounded_evidence"]["record_count"], 1)
+        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
+        self.assertEqual(
+            part.host.status()["steps"]["memory"]["evidence_publisher"], "bounded_evidence",
+        )
+
+        part.reset_memory()
+        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["memory"]
+
+        states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
+        self.assertEqual(states["recording_test"]["record_count"], 0)
+        self.assertEqual(states["bounded_evidence"]["record_count"], 0)
+        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
     def test_stale_and_error_health_states(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.5)

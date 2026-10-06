@@ -101,7 +101,7 @@ class MemoryInterfaceTests(unittest.TestCase):
             LEDGER_HEALTH_VALUES,
             frozenset({LEDGER_HEALTH_EMPTY, LEDGER_HEALTH_HEALTHY}),
         )
-        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v0")
+        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v1")
 
     def test_report_round_trips_and_drops_a_non_dict_state(self) -> None:
         report = MemoryReport(
@@ -113,15 +113,18 @@ class MemoryInterfaceTests(unittest.TestCase):
                 ),
                 MemoryPluginReport(plugin_id="other", state=None),
             ),
+            evidence_publisher="bounded_evidence",
         )
 
         self.assertEqual(MemoryReport.from_dict(report.to_dict()), report)
+        self.assertEqual(report.to_dict()["evidence_publisher"], "bounded_evidence")
         parsed = MemoryPluginReport.from_dict({"plugin_id": "other", "state": ["nope"]})
         self.assertIsNone(parsed.state)
         self.assertEqual(
             MemoryReport.from_dict({}).to_dict(),
-            {"schema": MEMORY_REPORT_SCHEMA, "plugins": []},
+            {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None},
         )
+        self.assertIsNone(MemoryReport.from_dict({"evidence_publisher": 3}).evidence_publisher)
 
     def test_runner_report_is_the_interface_dict(self) -> None:
         runner = MemoryRunner.from_plugins({"summary_memory": _SummaryMemory()})

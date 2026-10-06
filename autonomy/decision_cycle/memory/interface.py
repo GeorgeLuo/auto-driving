@@ -1,10 +1,12 @@
 """The memory step's report and the ledger summary tooling reads.
 
 ``MemoryReport`` is the diagnostics record for one run, with one
-``MemoryPluginReport`` per applied plugin. Decisions read plugin-published
-keys in the host map, not this report. ``LEDGER_SUMMARY_KEYS`` are the four
-fields the CLI and viewers read from a retained-evidence ledger summary.
-The framework does not require a plugin to publish them.
+``MemoryPluginReport`` per applied plugin in selection order, and
+``evidence_publisher``: the id of the plugin whose value ``EVIDENCE_KEY``
+holds. Decisions read plugin-published keys in the host map, not this report.
+``LEDGER_SUMMARY_KEYS`` are the four fields the CLI and viewers read from each
+plugin's retained-evidence ledger summary. The framework does not require a
+plugin to publish them.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-MEMORY_REPORT_SCHEMA = "memory_report_v0"
+MEMORY_REPORT_SCHEMA = "memory_report_v1"
 
 EPOCH_ID = "epoch_id"
 HEALTH = "health"
@@ -57,19 +59,29 @@ class MemoryPluginReport:
 
 @dataclass(frozen=True)
 class MemoryReport:
-    """Diagnostics for one memory step run, one entry per applied plugin."""
+    """Diagnostics for one memory step run.
+
+    ``plugins`` has one entry per applied plugin, in selection order; readers
+    find a plugin by its ``plugin_id``. ``evidence_publisher`` is the id of the
+    applied plugin whose value ``EVIDENCE_KEY`` holds, or None when the key is
+    absent or holds no applied plugin's value. The runner sets it (see
+    ``MemoryRunner``).
+    """
 
     schema: str
     plugins: tuple[MemoryPluginReport, ...] = ()
+    evidence_publisher: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "plugins": [plugin.to_dict() for plugin in self.plugins],
+            "evidence_publisher": self.evidence_publisher,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MemoryReport":
+        publisher = data.get("evidence_publisher")
         return cls(
             schema=str(data.get("schema") or MEMORY_REPORT_SCHEMA),
             plugins=tuple(
@@ -77,4 +89,5 @@ class MemoryReport:
                 for item in data.get("plugins") or ()
                 if isinstance(item, dict)
             ),
+            evidence_publisher=publisher if isinstance(publisher, str) and publisher else None,
         )

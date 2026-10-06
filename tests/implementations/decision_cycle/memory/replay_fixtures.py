@@ -1,7 +1,7 @@
 """Scripted replays of the packaged memory plugins, and their pinned reports.
 
 Each replay drives a ``MemoryRunner`` over fixed inputs and returns the
-``memory_report_v0`` after every frame. The reports are pinned in ``baselines/``
+``memory_report_v1`` after every frame. The reports are pinned in ``baselines/``
 so a change that should not alter what memory publishes (a move, a rename)
 shows as an unchanged report; a change that does alter it edits the baseline in
 the same commit. Floats are rounded to four decimals.

@@ -14,6 +14,7 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
 from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
@@ -25,6 +26,7 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.reduction impo
     namespaced_record_id,
     reduce_evidence,
 )
+from tests.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
 
 
 def _observation(
@@ -269,6 +271,38 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             self.assertEqual(step.status()["plugin_ids"], ["bounded_evidence"])
             self.assertEqual(shared_memory[LEDGER_KEY].to_dict(), state)
             self.assertEqual(shared_memory[EVIDENCE_KEY], shared_memory[LEDGER_KEY].records)
+            self.assertEqual(result.memory["evidence_publisher"], "bounded_evidence")
+            self.assertEqual(step.status()["evidence_publisher"], "bounded_evidence")
+
+    def test_names_the_publisher_beside_a_plugin_that_keeps_private_state(self) -> None:
+        config = step_plugins("memory")["bounded_evidence"]["default_config"]
+        observation = _observation("obs_1", created_at_ms=90, things=(_thing("a"),))
+        for order in (("recording_test", "bounded_evidence"), ("bounded_evidence", "recording_test")):
+            with self.subTest(order=order):
+                plugins = {
+                    "recording_test": _RecordingMemory(),
+                    "bounded_evidence": BoundedEvidenceLedger(**config),
+                }
+                step = MemoryRunner.from_plugins({plugin_id: plugins[plugin_id] for plugin_id in order})
+                host = AutonomyCycleHost(steps=DecisionSteps(memory=step))
+
+                report = step.update(
+                    DecisionFrameContext("f1", 1, 100, shared_memory=host.shared_memory),
+                    observation,
+                )
+
+                states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
+                self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], list(order))
+                self.assertEqual(states["bounded_evidence"]["record_count"], 1)
+                self.assertEqual(states["recording_test"]["record_count"], 1)
+                self.assertEqual(report["evidence_publisher"], "bounded_evidence")
+
+                report = host.reset_memory()
+
+                states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
+                self.assertEqual(states["bounded_evidence"]["health"], "empty")
+                self.assertEqual(states["recording_test"]["record_count"], 0)
+                self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
     def test_skips_false_signals_and_low_confidence(self) -> None:
         ledger = BoundedEvidenceReducer(

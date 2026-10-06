@@ -197,7 +197,7 @@ class ModeActionTests(unittest.TestCase):
             context.shared_memory[EVIDENCE_KEY] = _records(
                 "left", frame_id=context.frame_id, updated_at_ms=context.timestamp_ms
             )
-            return {"schema": "memory_report_v0", "plugins": []}
+            return {"schema": "memory_report_v1", "plugins": []}
 
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(steps=replace(_steps("mode"), memory=remember)),

@@ -3,8 +3,9 @@
 ``MemoryRunner`` applies the manager's selection and runs each selected
 plugin through ``MemoryPluginRuntime`` in selection order. Its return value is
 the ``MemoryReport`` dict from ``interface``: each plugin's own state summary
-for diagnostics. Decisions read plugin-published keys in the host map, not
-the report.
+for diagnostics, and the evidence publisher, the plugin whose value
+``EVIDENCE_KEY`` holds. Decisions read plugin-published keys in the host map,
+not the report.
 
 ``MemoryPluginRuntime`` times and reports one applied plugin. It sits here, in
 the runner's file, as perception keeps its per-plugin execution in its own.
@@ -28,6 +29,7 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryReport,
 )
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import (
     PROVIDED_ENTRYPOINT,
@@ -46,6 +48,9 @@ from autonomy.shared_memory import SharedMemory
 
 # Cap for status and worker-facing diagnostic strings.
 DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_024
+
+# Stands for an absent ``EVIDENCE_KEY``, so a stored None still counts as a value.
+_ABSENT = object()
 
 
 class MemoryPluginRuntime:
@@ -131,6 +136,15 @@ class MemoryRunner:
     Plugins run in selection order on the same host map. Each plugin writes its
     own keys; where two plugins publish to the same key, the later one wins.
     The framework does not merge retention policies.
+
+    ``evidence_publisher`` names the applied plugin whose value
+    ``EVIDENCE_KEY`` holds. The runner compares the key's value before and
+    after each plugin's update or reset: a plugin that leaves a different
+    object there becomes the publisher, and one that removes the key clears
+    it. Storing the object already there, or changing it in place, is not a
+    new value. The publisher is None while the key is absent or holds a value
+    no applied plugin left there, for example after a host clears its map at a
+    reset, and once the publisher leaves the selection.
     """
 
     step = "memory"
@@ -153,6 +167,11 @@ class MemoryRunner:
         self.update_count = 0
         self.reset_count = 0
         self.failure_count = 0
+        # The map the plugins last worked in, and the plugin whose value
+        # EVIDENCE_KEY held after the last change the runner saw.
+        self._shared_memory: SharedMemory | None = None
+        self._publisher: str | None = None
+        self._published_evidence: object = _ABSENT
         self._apply_selection()
 
     @classmethod
@@ -211,6 +230,11 @@ class MemoryRunner:
         )
         self.plugin_ids = tuple(definition.plugin_id for definition, _plugin in applied)
         self.plugins = tuple(plugin for _definition, plugin in applied)
+        if shared_memory is not None:
+            self._shared_memory = shared_memory
+        if self._publisher not in self.plugin_ids:
+            self._publisher = None
+            self._published_evidence = _ABSENT
 
     def _discard_selection(self) -> None:
         self._selection_runtime.discard()
@@ -238,7 +262,11 @@ class MemoryRunner:
             self.last_error = None
             try:
                 for plugin in self.plugins:
-                    plugin.update(memory_context, observation)
+                    before = _evidence(self._shared_memory)
+                    try:
+                        plugin.update(memory_context, observation)
+                    finally:
+                        self._note_evidence(plugin.plugin_id, before)
             except Exception as exc:
                 self.failure_count += 1
                 self.last_error = _diagnostic(exc)
@@ -252,16 +280,22 @@ class MemoryRunner:
         """Reset each plugin and return the keys the plugins wrote while resetting.
 
         A host that clears its map at a reset restores these so plugins keep the
-        fresh state (for example a new epoch) they started.
+        fresh state (for example a new epoch) they started. A plugin whose
+        reset leaves a new value at ``EVIDENCE_KEY`` becomes the evidence
+        publisher, as in an update; a key the host drops leaves none.
         """
 
         with self._runtime_lock:
             started = time.perf_counter()
             self.last_error = None
+            if shared_memory is not None:
+                self._shared_memory = shared_memory
             before = dict(shared_memory) if shared_memory is not None else {}
             for plugin in self.plugins:
                 failures = plugin.failure_count
+                evidence = _evidence(self._shared_memory)
                 plugin.reset(shared_memory)
+                self._note_evidence(plugin.plugin_id, evidence)
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error or self.last_error
             self.reset_count += 1
@@ -273,6 +307,21 @@ class MemoryRunner:
                 for key, value in shared_memory.items()
                 if key not in before or before[key] is not value
             }
+
+    def _note_evidence(self, plugin_id: str, before: object) -> None:
+        after = _evidence(self._shared_memory)
+        if after is not before:
+            self._publisher = plugin_id if after is not _ABSENT else None
+            self._published_evidence = after
+
+    @property
+    def evidence_publisher(self) -> str | None:
+        """The applied plugin whose value ``EVIDENCE_KEY`` holds, or None."""
+
+        with self._runtime_lock:
+            if _evidence(self._shared_memory) is not self._published_evidence:
+                return None
+            return self._publisher
 
     def report(self) -> dict[str, Any]:
         """Each applied plugin's own state summary, as the cycle records it."""
@@ -290,6 +339,7 @@ class MemoryRunner:
                 )
                 for plugin in self.plugins
             ),
+            evidence_publisher=self.evidence_publisher,
         ).to_dict()
 
     def plugin_report(self) -> dict[str, Any]:
@@ -325,6 +375,7 @@ class MemoryRunner:
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),
                 "plugins": [plugin.status() for plugin in self.plugins],
+                "evidence_publisher": self.evidence_publisher,
                 "plugin_report": self._plugin_report(),
                 "update_count": self.update_count,
                 "reset_count": self.reset_count,
@@ -332,6 +383,14 @@ class MemoryRunner:
                 "last_duration_ms": self.last_duration_ms,
                 "last_error": self.last_error,
             }
+
+
+def _evidence(shared_memory: SharedMemory | None) -> object:
+    """The value at ``EVIDENCE_KEY``, or ``_ABSENT``."""
+
+    if shared_memory is None:
+        return _ABSENT
+    return shared_memory.get(EVIDENCE_KEY, _ABSENT)
 
 
 def _validate_plugin(plugin: Any, definition: PluginDefinition) -> None:

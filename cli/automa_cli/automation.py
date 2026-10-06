@@ -533,9 +533,10 @@ def run_vehicle_automation(
     def adopt_staged_decision() -> None:
         """Publish under the staged decision generation once this worker runs it.
 
-        A changed proposal plugin list is applied at the frame's start, as for
-        perception and memory, so the staged generation is then this worker's;
-        restaged proposal configs, plan, or action wait for a restart.
+        The proposal runner applies a changed plugin list during the cycle.
+        Adopt only after its applied IDs match the staged generation: a load
+        or reset failure can leave the requested selection unapplied.
+        Restaged proposal configs, plan, or action wait for a restart.
         """
 
         nonlocal identity
@@ -543,12 +544,12 @@ def run_vehicle_automation(
             staged = decision_identity(bundle)
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return
-        manager = getattr(proposal_step, "plugin_manager", None)
-        if staged == identity or manager is None:
+        applied_ids = getattr(proposal_step, "plugin_ids", None)
+        if staged == identity or applied_ids is None:
             return
         running = {
             **identity["steps"],
-            "proposal": {**identity["steps"]["proposal"], "plugins": list(manager.selected_ids)},
+            "proposal": {**identity["steps"]["proposal"], "plugins": list(applied_ids)},
         }
         if decision_generation_id(running) != staged["generation_id"]:
             return
@@ -574,8 +575,9 @@ def run_vehicle_automation(
             sync_live_selection(memory_step, memory_activation_path, memory_activation)
         if proposal_step is not None and proposal_activation is not None:
             sync_live_selection(proposal_step, proposal_activation_path, proposal_activation)
-            adopt_staged_decision()
         cycle_result = cycle_host.run(context)
+        if proposal_step is not None:
+            adopt_staged_decision()
         # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False

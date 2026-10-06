@@ -9,8 +9,8 @@ from urllib.request import urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
 from cli.automa_cli.automation import _read_latest_decision_frame_for_view
+from cli.automa_cli.proposal import get_vehicle_proposal_info
 from cli.automa_cli.decision import (
-    get_vehicle_proposal_info,
     publish_decision_frame,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,

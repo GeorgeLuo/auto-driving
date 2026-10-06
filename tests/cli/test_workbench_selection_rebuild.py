@@ -29,9 +29,9 @@ class SelectionRebuildTests(unittest.TestCase):
         self.assertIn("other steps keep their selections and configs", help_text)
         self.assertIn("same ordered selection keeps the current configs and pass", help_text)
 
-    def test_either_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
+    def test_each_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
         for phase in ("running", "paused"):
-            for step in ("perception", "memory"):
+            for step in ("perception", "memory", "proposal"):
                 with self.subTest(phase=phase, step=step), image_source(1) as root:
                     runner = ImageReplayRunner(
                         root,
@@ -67,11 +67,11 @@ class SelectionRebuildTests(unittest.TestCase):
                     self.assertEqual(shown["position"], 0)
                     self.assertEqual(shown["timeline"], [])
                     frame_id = shown["current_frame"]["frame_id"]
-                    selected_ids = (
-                        ["frame", "floor_plane"]
-                        if step == "perception"
-                        else ["bounded_evidence"]
-                    )
+                    selected_ids = {
+                        "perception": ["frame", "floor_plane"],
+                        "memory": ["bounded_evidence"],
+                        "proposal": [],
+                    }[step]
                     selected = post_action(
                         base,
                         {
@@ -97,11 +97,21 @@ class SelectionRebuildTests(unittest.TestCase):
                         if step == "perception"
                         else shown["active_perception_plugin_ids"],
                     )
-                    other = "memory" if step == "perception" else "perception"
+                    for other in {"perception", "memory", "proposal"} - {step}:
+                        self.assertEqual(
+                            selected[f"active_{other}_plugin_ids"],
+                            shown[f"active_{other}_plugin_ids"],
+                        )
                     self.assertEqual(
-                        selected[f"active_{other}_plugin_ids"],
-                        shown[f"active_{other}_plugin_ids"],
+                        [
+                            item["plugin_id"]
+                            for item in selected["steps"]["decision"]["proposal"]["candidates"]
+                        ],
+                        selected_ids if step == "proposal" else shown["active_proposal_plugin_ids"],
                     )
+                    report = selected["machine_detail"]["pipeline"][f"{step}_plugin_report"]
+                    self.assertEqual(report["selected_plugin_ids"], selected_ids)
+                    self.assertEqual(report["applied_plugin_ids"], selected_ids)
                     self.assertEqual(
                         selected["steps"]["memory"]["plugins"][0]["plugin_id"],
                         "bounded_evidence",
@@ -124,11 +134,11 @@ class SelectionRebuildTests(unittest.TestCase):
                         self.assertEqual(unchanged["position"], 1)
                     post_action(base, {"action": "reset", "run_id": run_id})
 
-    def test_either_step_discards_future_tracking_and_retention_after_a_backward_seek(
+    def test_each_step_discards_future_tracking_and_retention_after_a_backward_seek(
         self,
     ) -> None:
         tracked = ["frame", "floor_plane", "multi_obstruction_tracks"]
-        for step in ("perception", "memory"):
+        for step in ("perception", "memory", "proposal"):
             with self.subTest(step=step), image_source(0) as root:
                 write_frames(root, count=6)
                 write_manifest(
@@ -148,17 +158,17 @@ class SelectionRebuildTests(unittest.TestCase):
                 runner = ImageReplayRunner(
                     root,
                     activations=perception_activations(
-                        *(tracked if step == "memory" else ["frame", "floor_plane"])
+                        *(tracked if step != "perception" else ["frame", "floor_plane"])
                     ),
                     cadence_ms=30000,
                 )
                 base = serve_workbench(self, runner)
-                if step == "memory":
+                if step != "perception":
                     post_action(
                         base,
                         {
                             "action": "select_plugins",
-                            "step": "memory",
+                            "step": step,
                             "active_plugin_ids": [],
                         },
                     )
@@ -182,9 +192,11 @@ class SelectionRebuildTests(unittest.TestCase):
                         "action": "select_plugins",
                         "run_id": run_id,
                         "step": step,
-                        "active_plugin_ids": tracked
-                        if step == "perception"
-                        else ["bounded_evidence"],
+                        "active_plugin_ids": {
+                            "perception": tracked,
+                            "memory": ["bounded_evidence"],
+                            "proposal": ["avoid_recent_obstruction"],
+                        }[step],
                     },
                 )["state"]
                 self.assertEqual(selected["phase"], "paused")

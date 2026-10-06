@@ -9,6 +9,7 @@ from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
 from cli.automa_cli import decision as decision_module
+from cli.automa_cli import proposal as proposal_module
 from cli.automa_cli.decision import (
     build_decision_stream_frame,
     strict_decode_apply_evidence,
@@ -40,6 +41,9 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(
             setattr, decision_module, "RUNTIME_ROOT", self._old_runtime_root
         )
+        proposal_root = proposal_module.RUNTIME_ROOT
+        proposal_module.RUNTIME_ROOT = self.runtime_root
+        self.addCleanup(setattr, proposal_module, "RUNTIME_ROOT", proposal_root)
         for step in ("proposal", "action"):
             code, message = update_vehicle_step(
                 vehicle_id="chase-sim-chaser",

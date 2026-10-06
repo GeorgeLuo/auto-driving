@@ -71,12 +71,16 @@ class DecisionSurfaceFixture:
         self._env_patch.start()
         # decision module reads RUNTIME_ROOT at import time; rebind for tests.
         import cli.automa_cli.decision as decision_mod
+        import cli.automa_cli.proposal as proposal_mod
 
         self._decision_mod = decision_mod
         self._old_runtime = decision_mod.RUNTIME_ROOT
         decision_mod.RUNTIME_ROOT = self.runtime_root
+        self._proposal_root_patch = patch.object(proposal_mod, "RUNTIME_ROOT", self.runtime_root)
+        self._proposal_root_patch.start()
 
     def tearDown(self) -> None:
+        self._proposal_root_patch.stop()
         self._decision_mod.RUNTIME_ROOT = self._old_runtime
         self._env_patch.stop()
         self._tmp.cleanup()

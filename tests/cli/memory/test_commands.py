@@ -61,7 +61,13 @@ class MemoryCommandTests(unittest.TestCase):
             self.assertTrue(activation_path.is_file())
 
             info_payload = json.loads(info.stdout)
-            self.assertEqual(info_payload["schema"], "vehicle_memory_info_v0")
+            self.assertEqual(info_payload["schema"], "vehicle_memory_info_v1")
+            self.assertNotIn("lifecycle", info_payload)
+            self.assertEqual(info_payload["memory_schema"]["schema"], "memory_schema_v1")
+            self.assertEqual(
+                set(info_payload["memory_schema"]["failure_policy"]),
+                {"update", "reset", "missing_input"},
+            )
             self.assertEqual(info_payload["activation"]["plugins"], ["bounded_evidence"])
             # A step holds a list of plugins; none of them stands for the step.
             self.assertNotIn("plugin_id", info_payload["activation"])
@@ -118,6 +124,15 @@ class MemoryCommandTests(unittest.TestCase):
                 self.assertEqual(
                     text[2], f"Available plugins: {', '.join(activation['available_plugins'])}"
                 )
+                # Same section titles and failure-policy field names wherever
+                # both steps have the concept. Fold into a broader info
+                # integration check later if the two commands grow a shared test.
+                schema = payload[f"{step}_schema"]
+                self.assertEqual(set(schema["failure_policy"]), {"update", "reset", "missing_input"})
+                self.assertIn("order", schema["composition"])
+                self.assertIn("Composition:", text)
+                self.assertIn("Failure policy:", text)
+                self.assertTrue(any(line.startswith("Schema source:") for line in text))
                 staged[step] = read_step_activation(activation["path"], step)
                 presets[step] = preset
 

@@ -613,7 +613,7 @@ def run_memory_viability_measurement(
     if vehicle.get("provider") == "chase-sim":
         return _memory_simulator_stub_result(vehicle_id, json_output=json_output)
 
-    from .memory import probe_live_memory
+    from .streaming import probe_live_memory
 
     get_probe = probe or (
         lambda target: probe_live_memory(

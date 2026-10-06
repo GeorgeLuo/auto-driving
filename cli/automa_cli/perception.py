@@ -920,6 +920,16 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
         lines.append("- limits:")
         for limit in limits:
             lines.append(f"  - {limit}")
+    composition = schema.get("composition") if isinstance(schema.get("composition"), dict) else {}
+    if composition:
+        lines.extend(["", "Composition:"])
+        for key, value in composition.items():
+            lines.append(f"- {key}: {value}")
+    failure = schema.get("failure_policy") if isinstance(schema.get("failure_policy"), dict) else {}
+    if failure:
+        lines.extend(["", "Failure policy:"])
+        for key, value in failure.items():
+            lines.append(f"- {key}: {value}")
     return "\n".join(lines)
 
 

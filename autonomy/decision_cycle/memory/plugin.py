@@ -13,31 +13,16 @@ the feed. The context it receives has no ``sensor_frame``. Anything memory needs
 from the feed reaches it through the observation or the map, written by a
 perception plugin.
 
-The CLI and the viewers it serves read four fields from each plugin's
-retained-evidence ledger summary. Their names are ``LEDGER_SUMMARY_KEYS`` in
-``interface``: ``epoch_id``, ``health`` (``empty`` or ``healthy``,
-``LEDGER_HEALTH_VALUES``), ``bounds`` and ``record_count``. The framework does
-not check for them. Live CLI probes return None for missing fields. Inspect
-frame rows default a missing ``record_count`` to 0, preserve an explicit None,
-and omit ``bounds``. The CLI's reset check reads ``health`` and
-``record_count`` from every plugin's summary: a reset emptied the memory when
-each plugin reports ``empty`` health or no records.
+The CLI and the viewers it serves read ``LEDGER_SUMMARY_KEYS`` from each
+plugin's status. The report preserves that status without adding missing keys;
+the framework does not reject the plugin. Live CLI ledger projections return
+null for missing keys. Inspect and workbench frame rows default a missing
+``record_count`` to 0, preserve an explicit null, and omit ``bounds``.
 
-The report keeps every applied plugin's status, keyed by ``plugin_id``, and
-names the evidence publisher: the plugin whose value ``EVIDENCE_KEY`` holds
-(see ``MemoryRunner``). Every reader, from inspect and the live probes to the
-workbench, shows each plugin and the publisher.
-
-Several memory plugins may be selected together. They run in selection order on
-one host map, and each receives the same ``observation``. The framework does not merge or arbitrate between
-them; resolving what a later plugin overwrites is the implementer's job. These
-cause unexpected behavior:
-
-- A key two plugins write holds the later plugin's value. That includes a
-  private key that lacks the plugin's ``plugin_id`` prefix.
-- ``EVIDENCE_KEY`` (see ``publication``) holds one value. A later plugin that
-  writes it replaces the earlier plugin's value.
-- A plugin that raises stops the plugins after it and the cycle.
+How several plugins share one map, including the one ``EVIDENCE_KEY`` and
+last-write-wins, is ``composition_declaration`` in ``interface``. What a
+failure does is ``failure_policy`` there: an update failure stops the cycle,
+and a reset failure is recorded. ``MemoryRunner`` reads those values.
 """
 
 from __future__ import annotations
@@ -51,7 +36,11 @@ from autonomy.shared_memory import SharedMemory
 
 @runtime_checkable
 class MemoryPlugin(Protocol):
-    """Loadable memory plugin."""
+    """Loadable memory plugin.
+
+    The runner that applies a selection of these is a ``MemoryBackend``
+    (``interface``). A plugin does not describe the step's schema.
+    """
 
     plugin_id: str
 

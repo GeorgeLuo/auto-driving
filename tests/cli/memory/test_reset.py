@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli.memory import _reset_chase_memory, reset_vehicle_memory
+from cli.automa_cli.memory_runs import _reset_chase_memory, reset_vehicle_memory
 from tests.support.cli_runner import run_automa
 from tests.support.memory_fixtures import TWO_PLUGIN_IDS, two_plugin_runner
 
@@ -77,16 +77,16 @@ class MemoryResetCommandTests(unittest.TestCase):
         )
         discovery = {"vehicles": [vehicle]}
         with mock.patch(
-            "cli.automa_cli.memory.discover_active_vehicles",
+            "cli.automa_cli.memory_runs.discover_active_vehicles",
             return_value=discovery,
         ), mock.patch(
-            "cli.automa_cli.memory.find_vehicle_by_id",
+            "cli.automa_cli.memory_runs.find_vehicle_by_id",
             return_value=(vehicle, None),
         ), mock.patch(
-            "cli.automa_cli.memory.probe_live_memory",
+            "cli.automa_cli.memory_runs.probe_live_memory",
             side_effect=[before, after],
         ), mock.patch(
-            "cli.automa_cli.memory.post_memory_reset",
+            "cli.automa_cli.memory_runs.post_memory_reset",
             return_value={
                 "ok": True,
                 "status": "reset",
@@ -148,16 +148,16 @@ class MemoryResetCommandTests(unittest.TestCase):
             worker = threading.Thread(target=fake_worker, daemon=True)
             worker.start()
             with mock.patch(
-                "cli.automa_cli.memory.discover_active_vehicles",
+                "cli.automa_cli.memory_runs.discover_active_vehicles",
                 return_value={"vehicles": [vehicle]},
             ), mock.patch(
-                "cli.automa_cli.memory.find_vehicle_by_id",
+                "cli.automa_cli.memory_runs.find_vehicle_by_id",
                 return_value=(vehicle, None),
             ), mock.patch(
-                "cli.automa_cli.memory.probe_live_memory",
+                "cli.automa_cli.memory_runs.probe_live_memory",
                 side_effect=[before, after, after],
             ), mock.patch(
-                "cli.automa_cli.memory._automation_dir",
+                "cli.automa_cli.memory_runs._automation_dir",
                 return_value=automation_dir,
             ):
                 result = reset_vehicle_memory(
@@ -227,19 +227,23 @@ class MemoryResetCommandTests(unittest.TestCase):
             worker = threading.Thread(target=fake_worker, daemon=True)
             worker.start()
             with mock.patch(
-                "cli.automa_cli.memory.discover_active_vehicles",
+                "cli.automa_cli.memory_runs.discover_active_vehicles",
                 return_value={"vehicles": [vehicle]},
             ), mock.patch(
-                "cli.automa_cli.memory.find_vehicle_by_id",
+                "cli.automa_cli.memory_runs.find_vehicle_by_id",
                 return_value=(vehicle, None),
             ), mock.patch(
-                "cli.automa_cli.memory._automation_dir", return_value=automation_dir
+                "cli.automa_cli.memory_runs._automation_dir", return_value=automation_dir
+            ), mock.patch(
+                "cli.automa_cli.streaming._automation_dir", return_value=automation_dir
             ), mock.patch(
                 "cli.automa_cli.automation._pid_alive", return_value=True
             ), mock.patch(
                 "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
             ), mock.patch(
-                "cli.automa_cli.memory.time.time", return_value=now / 1000.0
+                "cli.automa_cli.memory_runs.time.time", return_value=now / 1000.0
+            ), mock.patch(
+                "cli.automa_cli.streaming.time.time", return_value=now / 1000.0
             ):
                 result = reset_vehicle_memory(vehicle_id="chase-sim-chaser", wait_s=2.0)
             worker.join(timeout=2.0)
@@ -276,16 +280,16 @@ class MemoryResetCommandTests(unittest.TestCase):
         self.assertEqual(TWO_PLUGIN_IDS, ("bounded_evidence", "recording_test"))
         for json_output in (True, False):
             with self.subTest(json_output=json_output), mock.patch(
-                "cli.automa_cli.memory.discover_active_vehicles",
+                "cli.automa_cli.memory_runs.discover_active_vehicles",
                 return_value={"vehicles": [vehicle]},
             ), mock.patch(
-                "cli.automa_cli.memory.find_vehicle_by_id",
+                "cli.automa_cli.memory_runs.find_vehicle_by_id",
                 return_value=(vehicle, None),
             ), mock.patch(
-                "cli.automa_cli.memory.probe_live_memory",
+                "cli.automa_cli.memory_runs.probe_live_memory",
                 side_effect=[before, after],
             ), mock.patch(
-                "cli.automa_cli.memory._reset_chase_memory",
+                "cli.automa_cli.memory_runs._reset_chase_memory",
                 return_value={"ok": True, "status": "reset"},
             ):
                 result = reset_vehicle_memory(
@@ -335,13 +339,13 @@ class MemoryResetCommandTests(unittest.TestCase):
             worker = threading.Thread(target=fake_worker, daemon=True)
             worker.start()
             with mock.patch(
-                "cli.automa_cli.memory._automation_dir",
+                "cli.automa_cli.memory_runs._automation_dir",
                 return_value=automation_dir,
             ), mock.patch(
-                "cli.automa_cli.memory._probe_chase_memory",
+                "cli.automa_cli.memory_runs._probe_chase_memory",
                 return_value=unchanged,
             ), mock.patch(
-                "cli.automa_cli.memory.probe_live_memory",
+                "cli.automa_cli.memory_runs.probe_live_memory",
                 side_effect=AssertionError("general discovery must not run inside Chase reset wait"),
             ):
                 result = _reset_chase_memory(
@@ -375,9 +379,9 @@ class MemoryResetCommandTests(unittest.TestCase):
             automation_dir = Path(tmp) / "automation"
             automation_dir.mkdir(parents=True)
             with mock.patch(
-                "cli.automa_cli.memory._automation_dir", return_value=automation_dir
+                "cli.automa_cli.memory_runs._automation_dir", return_value=automation_dir
             ), mock.patch(
-                "cli.automa_cli.memory._probe_chase_memory",
+                "cli.automa_cli.memory_runs._probe_chase_memory",
                 side_effect=[partly_reset, reset],
             ):
                 result = _reset_chase_memory(
@@ -403,13 +407,13 @@ class MemoryResetCommandTests(unittest.TestCase):
             "error": "No live memory component",
         }
         with mock.patch(
-            "cli.automa_cli.memory.discover_active_vehicles",
+            "cli.automa_cli.memory_runs.discover_active_vehicles",
             return_value={"vehicles": [vehicle]},
         ), mock.patch(
-            "cli.automa_cli.memory.find_vehicle_by_id",
+            "cli.automa_cli.memory_runs.find_vehicle_by_id",
             return_value=(vehicle, None),
         ), mock.patch(
-            "cli.automa_cli.memory.probe_live_memory",
+            "cli.automa_cli.memory_runs.probe_live_memory",
             return_value=absent,
         ):
             result = reset_vehicle_memory(vehicle_id="piracer")

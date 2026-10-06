@@ -9,13 +9,13 @@ not the report.
 
 ``MemoryPluginRuntime`` times and reports one applied plugin. It sits here, in
 the runner's file, as perception keeps its per-plugin execution in its own.
-Update failures propagate so the cycle stops; reset failures are recorded and
-leave the host to clear the map.
+Update and reset failures follow ``failure_policy`` in ``interface``.
 """
 
 from __future__ import annotations
 
 import time
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from threading import RLock
@@ -24,9 +24,16 @@ from typing import Any
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.memory.interface import (
+    LEDGER_SUMMARY_KEYS,
     MEMORY_REPORT_SCHEMA,
+    MEMORY_SCHEMA,
+    MISSING_INPUT,
+    RESET_FAILURE,
+    UPDATE_FAILURE,
     MemoryPluginReport,
     MemoryReport,
+    composition_declaration,
+    failure_policy,
 )
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
@@ -88,7 +95,8 @@ class MemoryPluginRuntime:
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
             self.last_error = _diagnostic(exc)
-            raise
+            if UPDATE_FAILURE == "stop_cycle":
+                raise
         finally:
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
             self.update_count += 1
@@ -105,6 +113,8 @@ class MemoryPluginRuntime:
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
             self.last_error = _diagnostic(exc)
+            if RESET_FAILURE == "propagate":
+                raise
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
 
@@ -133,6 +143,8 @@ class MemoryPluginRuntime:
 class MemoryRunner:
     """Run the manager's selected memory plugins once per decision cycle.
 
+    This runner is the step's ``MemoryBackend``.
+
     Plugins run in selection order on the same host map. Each plugin writes its
     own keys; where two plugins publish to the same key, the later one wins.
     The framework does not merge retention policies.
@@ -148,6 +160,7 @@ class MemoryRunner:
     """
 
     step = "memory"
+    plugin_id = "autonomy.memory.plugin-runner-v0"
 
     def __init__(
         self,
@@ -264,7 +277,10 @@ class MemoryRunner:
                 for plugin in self.plugins:
                     before = _evidence(self._shared_memory)
                     try:
-                        plugin.update(memory_context, observation)
+                        # A missing observation still reaches the plugin when
+                        # the declared policy is ``invoke``.
+                        if observation is not None or MISSING_INPUT == "invoke":
+                            plugin.update(memory_context, observation)
                     finally:
                         self._note_evidence(plugin.plugin_id, before)
             except Exception as exc:
@@ -322,6 +338,73 @@ class MemoryRunner:
             if _evidence(self._shared_memory) is not self._published_evidence:
                 return None
             return self._publisher
+
+    def describe_schema(self) -> dict[str, Any]:
+        """The step's contract: configuration, inputs, plugins, output, composition, failure."""
+
+        with self._runtime_lock:
+            return self._describe_schema()
+
+    def _describe_schema(self) -> dict[str, Any]:
+        catalog = self._plugin_report()
+        available = self.plugin_manager.available
+        return {
+            "schema": MEMORY_SCHEMA,
+            "plugin_id": self.plugin_id,
+            "runner": f"{type(self).__module__}:{type(self).__name__}",
+            "configuration": {
+                "plugins": list(self.plugin_ids),
+                "available_plugins": sorted(item.plugin_id for item in available),
+                "selected_plugin_ids": list(catalog["selected_plugin_ids"]),
+                "applied_plugin_ids": list(catalog["applied_plugin_ids"]),
+                "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
+                "plugin_configs": {
+                    item.plugin_id: deepcopy(dict(item.config)) for item in available
+                },
+            },
+            "inputs": [
+                {
+                    "name": "observation",
+                    "required": False,
+                    "source": "the cycle's observation, written by perception",
+                    "missing_behavior": (
+                        "the plugin is still called with observation None"
+                        if MISSING_INPUT == "invoke"
+                        else "the plugin is not called when observation is None"
+                    ),
+                },
+                {
+                    "name": "shared_memory",
+                    "required": True,
+                    "source": "the host map on the frame context",
+                    "missing_behavior": (
+                        "update calls the plugin with the map as given; "
+                        "reset records a failure when the plugin has no map"
+                    ),
+                },
+            ],
+            "plugins": [
+                {
+                    "plugin_id": definition.plugin_id,
+                    "spec": definition.entrypoint,
+                    "config": deepcopy(dict(definition.config)),
+                }
+                for definition, _plugin in self._selection_runtime.applied
+            ],
+            "output": {
+                "schema": MEMORY_REPORT_SCHEMA,
+                "ledger_summary_keys": list(LEDGER_SUMMARY_KEYS),
+                "missing_field_behavior": (
+                    "the report preserves plugin status without adding missing keys; "
+                    "the framework does not reject the plugin; live CLI ledger "
+                    "projections return null for missing keys; inspect and workbench "
+                    "frame rows default a missing record_count to 0, preserve an "
+                    "explicit null, and omit bounds"
+                ),
+            },
+            "composition": composition_declaration(),
+            "failure_policy": failure_policy(),
+        }
 
     def report(self) -> dict[str, Any]:
         """Each applied plugin's own state summary, as the cycle records it."""

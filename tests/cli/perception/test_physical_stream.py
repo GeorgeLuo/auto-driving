@@ -24,7 +24,7 @@ def _publication(**overrides):
         "min_interval_s": 0.5,
         "processed_count": 12,
         "skipped_count": 40,
-        "algorithm": "lightweight_observer",
+        "preset": "lightweight_observer",
         "mode": "user",
         "drive_mode": "user",
         "control": {
@@ -72,7 +72,7 @@ class PhysicalObservationAdapterTests(unittest.TestCase):
 
 
 class PhysicalStreamCommandTests(unittest.TestCase):
-    def test_stream_once_renders_physical_onboard_snapshot(self) -> None:
+    def test_stream_once_renders_physical_onboard_state(self) -> None:
         vehicle = {
             "vehicle_id": "piracer",
             "provider": "picar",
@@ -112,7 +112,8 @@ class PhysicalStreamCommandTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             text = buffer.getvalue()
             self.assertIn("source: physical onboard", text)
-            self.assertIn("status: healthy", text)
+            self.assertIn("status: live", text)
+            self.assertIn("publication: healthy", text)
             self.assertIn("donkey_frame_000011", text)
             self.assertIn("steering=0.0", text)
             self.assertIn("floor visible", text)
@@ -145,8 +146,11 @@ class PhysicalStreamCommandTests(unittest.TestCase):
                     output=buffer,
                 )
             self.assertEqual(result.exit_code, 2)
-            self.assertIn("connection refused", result.message)
-            self.assertIn("status: unavailable", buffer.getvalue())
+            # The screen already carries the error; the result does not repeat it.
+            self.assertEqual(result.message, "")
+            self.assertIn("connection refused", buffer.getvalue())
+            self.assertIn("status: error", buffer.getvalue())
+            self.assertIn("publication: unavailable", buffer.getvalue())
 
     def test_chase_stream_still_requires_automation_runtime(self) -> None:
         vehicle = {

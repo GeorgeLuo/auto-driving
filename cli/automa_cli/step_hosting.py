@@ -5,11 +5,13 @@ into a controller bundle, the runner's plugins are imported from that bundle
 and every runner call runs inside the bundle's import context, so the worker
 runs the staged code rather than the workspace. ``sync_live_selection`` applies
 a selection edited with the CLI to a running runner between frames; changed
-specs or configs need a worker restart.
+specs or configs need a worker restart. ``plugin_report`` copies a hosted
+runner's plugin report for the worker's and the workbench's publications.
 """
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +20,9 @@ from autonomy.decision_cycle.steps import step_runner
 
 from .staged_bundle import StagedBundleImport
 
-# Implementations and lab plugins come from the staged bundle. autonomy stays
-# on the host so plugins and the cycle share the host's value classes.
-BUNDLE_PREFIXES = ("implementations", "lab")
+# Plugins come from the staged bundle's implementations. autonomy stays on the
+# host so plugins and the cycle share the host's value classes.
+BUNDLE_PREFIXES = ("implementations",)
 
 
 class StagedStep:
@@ -83,3 +85,15 @@ def sync_live_selection(runner: Any, activation_path: Path, loaded: StepActivati
         manager.select(live.plugins)
     except Exception:  # noqa: BLE001 - a bad selection keeps the applied plugins
         return
+
+
+def plugin_report(runner: Any) -> dict[str, Any] | None:
+    """A copy of the runner's plugin report, or ``None`` when it publishes none."""
+
+    report_for = getattr(runner, "plugin_report", None)
+    if not callable(report_for):
+        return None
+    report = report_for()
+    if not isinstance(report, dict):
+        return None
+    return copy.deepcopy(report)

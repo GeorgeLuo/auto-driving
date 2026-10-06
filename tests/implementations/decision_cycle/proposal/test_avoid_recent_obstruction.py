@@ -5,11 +5,10 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
-from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
-    PLUGIN_ID,
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin import (
     AvoidRecentObstruction,
     propose as _propose,
 )
@@ -45,9 +44,9 @@ def _record(
         kind=kind,
         label=kind,
         confidence=confidence,
-        provenance=MemoryProvenance(
+        origin=MemoryOrigin(
             observation_id="obs",
-            evidence_id="ev",
+            observed_id="ev",
             coordinate_frame=location_frame,
             observed_at_ms=updated_at_ms,
             updated_at_ms=updated_at_ms,
@@ -353,9 +352,9 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             kind="obstacle",
             label="obstacle",
             confidence=0.8,
-            provenance=MemoryProvenance(
+            origin=MemoryOrigin(
                 observation_id="obs",
-                evidence_id="ev",
+                observed_id="ev",
                 coordinate_frame="image",
                 observed_at_ms=1000,
                 updated_at_ms=1000,
@@ -385,7 +384,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
 
     def test_loaded_plugin_matches_propose(self) -> None:
         plugin = AvoidRecentObstruction(steer_magnitude=0.5)
-        self.assertEqual(plugin.plugin_id, PLUGIN_ID)
+        self.assertEqual(plugin.plugin_id, "avoid_recent_obstruction")
         inputs = _source((_record(zone="left"),))
         self.assertEqual(
             plugin.propose(*inputs).to_dict(),

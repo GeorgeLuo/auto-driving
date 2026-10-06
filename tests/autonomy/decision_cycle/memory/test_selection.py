@@ -33,6 +33,13 @@ class _OrderedMemory(_RecordingMemory):
         super().update(context, observation)
 
 
+class _NotMemory:
+    """Constructs, but offers no ``update`` or ``reset``."""
+
+    def __init__(self, **config):
+        self.plugin_id = config["plugin_id"]
+
+
 SPEC = "tests.autonomy.decision_cycle.memory.test_selection:_OrderedMemory"
 
 
@@ -77,15 +84,15 @@ class MemorySelectionTests(unittest.TestCase):
         manager = _manager()
         step = MemoryRunner(plugin_manager=manager)
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
-        self.assertEqual(step.plugins, ())
+        self.assertEqual(step.plugins, {})
         manager.add("second")
         report = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
-        self.assertEqual(report["plugins"][0]["implementation_id"], "second")
+        self.assertEqual(report["plugins"][0]["plugin_id"], "second")
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         manager.remove("second")
         step.update(DecisionFrameContext("frame-2", 2, 200, shared_memory={}), None)
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
-        self.assertEqual(step.plugins, ())
+        self.assertEqual(step.plugins, {})
 
     def test_manager_selection_runs_in_order_and_later_plugins_see_earlier_writes(self):
         manager = _manager()
@@ -100,7 +107,7 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(shared["previous_outputs"], [None, "first"])
         self.assertEqual(shared["last_writer"], "second")
         self.assertEqual(
-            [item["implementation_id"] for item in report["plugins"]], ["first", "second"]
+            [item["plugin_id"] for item in report["plugins"]], ["first", "second"]
         )
         self.assertEqual([item["update_count"] for item in step.status()["plugins"]], [1, 1])
 
@@ -118,23 +125,23 @@ class MemorySelectionTests(unittest.TestCase):
         manager = _manager()
         manager.select(["first", "second"])
         step = MemoryRunner(plugin_manager=manager)
-        first, second = step.plugins
+        first, second = step.plugins.values()
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
         step.update(context, None)
         manager.select(["second", "first"])
         step.update(context, None)
-        self.assertIs(step.plugins[0], second)
-        self.assertIs(step.plugins[1], first)
+        self.assertEqual(step.plugins, {"second": second, "first": first})
+        self.assertEqual(list(step.plugins), ["second", "first"])
         manager.remove("first")
         step.update(context, None)
         self.assertEqual(first.reset_count, 1)
-        self.assertIs(step.plugins[0], second)
+        self.assertEqual(step.plugins, {"second": second})
         self.assertEqual(second.reset_count, 0)
         manager.add("first")
         step.update(context, None)
-        self.assertIsNot(step.plugins[1], first)
-        self.assertIs(step.plugins[0], second)
-        self.assertEqual(step.plugins[1].update_count, 1)
+        self.assertIsNot(step.plugins["first"], first)
+        self.assertIs(step.plugins["second"], second)
+        self.assertEqual(step.plugins["first"].update_count, 1)
 
     def test_empty_selection_can_be_enabled_then_disabled_between_cycles(self):
         manager = _manager()
@@ -143,23 +150,10 @@ class MemorySelectionTests(unittest.TestCase):
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
         self.assertEqual(step.update(context, None)["plugins"], [])
         manager.add("first")
-        self.assertEqual(step.update(context, None)["plugins"][0]["implementation_id"], "first")
-        shared["decision.observation"] = "published by the removed plugin"
+        self.assertEqual(step.update(context, None)["plugins"][0]["plugin_id"], "first")
         manager.remove("first")
         self.assertEqual(step.update(context, None)["plugins"], [])
-        self.assertNotIn("decision.observation", shared)
         self.assertEqual(step.status()["plugin_ids"], [])
-
-    def test_selection_id_stays_distinct_from_declared_plugin_id(self):
-        manager = PluginManager.from_specs("memory", {"ledger": SPEC}, {"ledger": {}})
-        manager.select(["ledger"])
-        step = MemoryRunner(plugin_manager=manager)
-        self.assertEqual(step.plugin_ids, ("ledger",))
-        self.assertEqual(step.plugins[0].implementation.plugin_id, "recording_test")
-        plugin_status = step.status()["plugins"][0]
-        self.assertEqual(plugin_status["plugin_id"], "ledger")
-        self.assertEqual(plugin_status["implementation_id"], "recording_test")
-        self.assertEqual(step.report()["plugins"][0]["implementation_id"], "recording_test")
 
     def test_prepare_selection_constructs_a_replacement_once(self):
         _OnceMemory.constructions = 0
@@ -173,18 +167,49 @@ class MemorySelectionTests(unittest.TestCase):
         )
         manager.select(["first"])
         step = MemoryRunner(plugin_manager=manager)
-        original = step.plugins[0]
+        original = step.plugins["first"]
         manager.select(["second"])
 
         step.prepare_selection()
 
         self.assertEqual(_OnceMemory.constructions, 1)
-        self.assertIs(step.plugins[0], original)
+        self.assertEqual(step.plugins, {"first": original})
         self.assertEqual(original.reset_count, 0)
         step.commit_selection()
         self.assertEqual(_OnceMemory.constructions, 1)
         self.assertEqual(step.plugin_ids, ("second",))
-        self.assertEqual(step.plugins[0].implementation.plugin_id, "second")
+        self.assertEqual(step.plugins["second"].implementation.plugin_id, "second")
         self.assertEqual(original.reset_count, 1)
+
+    def test_a_selection_that_cannot_load_raises_and_the_next_good_edit_recovers(self):
+        manager = PluginManager.from_specs(
+            "memory",
+            {
+                "first": SPEC,
+                "missing": "tests.autonomy.decision_cycle.memory.no_such_module:Nope",
+                "not_memory": f"{__name__}:_NotMemory",
+            },
+            {name: {"plugin_id": name} for name in ("first", "missing", "not_memory")},
+        )
+        manager.select(["first"])
+        step = MemoryRunner(plugin_manager=manager)
+        first = step.plugins["first"]
+        context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
+        step.update(context, None)
+
+        # A selection that cannot load stops the step with the loader's own error.
+        manager.select(["missing"])
+        with self.assertRaisesRegex(ModuleNotFoundError, "no_such_module"):
+            step.update(context, None)
+        manager.select(["not_memory"])
+        with self.assertRaisesRegex(TypeError, "does not satisfy MemoryPlugin"):
+            step.update(context, None)
+        # Nothing was published: the plugin that was applied is still the one that runs.
+        self.assertEqual(step.plugins, {"first": first})
+
+        manager.select(["first"])
+        step.update(context, None)
+        self.assertIs(step.plugins["first"], first)
+        self.assertEqual(first.update_count, 2)
 
 

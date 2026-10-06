@@ -8,14 +8,14 @@ from dataclasses import replace
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionCycleResult
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, PLUGIN_ID as MODE_ID
-from implementations.decision_cycle.catalog import STEP_PLUGINS, packaged_activation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from implementations.decision_cycle.action.mode.plugin import LIVE_MODES
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 
@@ -33,13 +33,13 @@ def _records(
             kind="floor_boundary",
             label="floor boundary",
             confidence=0.8,
-            provenance=MemoryProvenance(
+            origin=MemoryOrigin(
                 observation_id="obs-1",
-                evidence_id="boundary",
+                observed_id="boundary",
                 coordinate_frame="image",
                 observed_at_ms=updated_at_ms,
                 updated_at_ms=updated_at_ms,
-                source_plugin_id="floor-plane-v0",
+                source_plugin_id="floor_plane",
                 frame_id=frame_id,
             ),
             location=ViewLocation(
@@ -56,7 +56,7 @@ def _observation(**overrides) -> Observation:
     values = {
         "observation_id": "obs-1",
         "created_at_ms": 1000,
-        "sensor_snapshot": {},
+        "sensor_frame": {},
         "summary": ("test",),
     }
     values.update(overrides)
@@ -100,7 +100,7 @@ def _run(
 
 class PackagedCatalogTests(unittest.TestCase):
     def test_action_catalog_offers_hold_and_mode(self) -> None:
-        self.assertEqual(sorted(STEP_PLUGINS["action"]), ["hold", "mode"])
+        self.assertEqual(sorted(step_plugins("action")), ["hold", "mode"])
         self.assertEqual(packaged_activation("action").plugins, ("hold",))
         self.assertEqual(packaged_activation("proposal").plugins, ("avoid_recent_obstruction",))
 
@@ -125,7 +125,7 @@ class HoldActionTests(unittest.TestCase):
     def test_evaluator_metadata_is_stripped_from_a_live_capture(self) -> None:
         observation = _observation(
             observation_id="obs_live",
-            sensor_snapshot={
+            sensor_frame={
                 "readings": {
                     "front_camera": {
                         "metadata": {
@@ -164,7 +164,7 @@ class ModeActionTests(unittest.TestCase):
         self.assertGreater(action.control.steering, 0.0)
         self.assertAlmostEqual(action.control.throttle, 0.60)
         self.assertEqual(action.control.reason, "steer_away_left_obstruction")
-        self.assertEqual(action.authority.gate_id, MODE_ID)
+        self.assertEqual(action.authority.gate_id, "mode")
         self.assertTrue(action.authority.proposed_applied)
         self.assertTrue(action.authority.proposed_equals_authorized)
 
@@ -197,7 +197,7 @@ class ModeActionTests(unittest.TestCase):
             context.shared_memory[EVIDENCE_KEY] = _records(
                 "left", frame_id=context.frame_id, updated_at_ms=context.timestamp_ms
             )
-            return {"schema": "memory_report_v0", "plugins": []}
+            return {"schema": "memory_report_v1", "plugins": []}
 
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(steps=replace(_steps("mode"), memory=remember)),
@@ -211,7 +211,7 @@ class ModeActionTests(unittest.TestCase):
         self.assertAlmostEqual(throttle, 0.60)
         self.assertEqual(control["reason"], "steer_away_left_obstruction")
         self.assertTrue(cycle["action"]["authority"]["proposed_applied"])
-        self.assertEqual(cycle["action"]["authority"]["gate_id"], MODE_ID)
+        self.assertEqual(cycle["action"]["authority"]["gate_id"], "mode")
 
 
 if __name__ == "__main__":

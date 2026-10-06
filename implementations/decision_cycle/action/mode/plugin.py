@@ -11,15 +11,13 @@ from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.runtime.control import AutonomyControl
 
-PLUGIN_ID = "mode"
-PLUGIN_SPEC = "implementations.decision_cycle.action.mode.plugin:ModeAction"
 LIVE_MODES = frozenset({"autonomy", "local"})
 
 
 class ModeAction:
     """Apply the selected command in a live drive mode; otherwise hold idle."""
 
-    plugin_id = PLUGIN_ID
+    plugin_id = "mode"
 
     def decide(
         self,
@@ -33,7 +31,7 @@ class ModeAction:
                 AutonomyControl(
                     confidence=1.0,
                     reason="mode-action-error",
-                    metadata={"error_reason": error_reason, "plugin_id": PLUGIN_ID},
+                    metadata={"error_reason": error_reason, "plugin_id": self.plugin_id},
                 )
             )
         if mode not in LIVE_MODES:
@@ -41,7 +39,7 @@ class ModeAction:
                 AutonomyControl(
                     confidence=1.0,
                     reason="autonomy-mode-required",
-                    metadata={"mode": mode, "plugin_id": PLUGIN_ID},
+                    metadata={"mode": mode, "plugin_id": self.plugin_id},
                 )
             )
         selected = plan.selected_candidate()
@@ -50,7 +48,7 @@ class ModeAction:
                 AutonomyControl(
                     confidence=1.0,
                     reason="no_selected_command",
-                    metadata={"plugin_id": PLUGIN_ID},
+                    metadata={"plugin_id": self.plugin_id},
                 )
             )
         command = selected.command
@@ -61,7 +59,7 @@ class ModeAction:
                 confidence=selected.confidence,
                 reason=selected.reason,
                 metadata={
-                    "plugin_id": PLUGIN_ID,
+                    "plugin_id": self.plugin_id,
                     "proposal_id": selected.proposal_id,
                     "proposal_lifecycle": selected.lifecycle,
                     "proposal_freshness": selected.freshness,

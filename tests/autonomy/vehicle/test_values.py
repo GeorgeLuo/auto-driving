@@ -8,7 +8,7 @@ from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     SensorReadRequest,
     SensorReading,
-    SensorSnapshot,
+    SensorFrame,
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
@@ -91,7 +91,7 @@ class SensorValueTests(unittest.TestCase):
         serialized["requested_sensors"].append("imu")
         self.assertFalse(request.sensor_requested("imu"))
 
-    def test_snapshot_serialization_omits_values_and_detaches_nested_data(self) -> None:
+    def test_sensor_frame_serialization_omits_values_and_detaches_nested_data(self) -> None:
         reading = SensorReading(
             sensor_id=FRONT_CAMERA_SENSOR_ID,
             sensor_kind="camera",
@@ -100,7 +100,7 @@ class SensorValueTests(unittest.TestCase):
             value=object(),
             metadata={"capture": {"exposure": 7}},
         )
-        snapshot = SensorSnapshot(
+        sensor_frame = SensorFrame(
             read_id="frame_007",
             readings={FRONT_CAMERA_SENSOR_ID: reading},
             started_at_ms=90,
@@ -109,7 +109,7 @@ class SensorValueTests(unittest.TestCase):
             metadata={"vehicle": {"id": "test-car"}},
         )
 
-        serialized = snapshot.to_dict()
+        serialized = sensor_frame.to_dict()
         serialized_reading = serialized["readings"][FRONT_CAMERA_SENSOR_ID]
 
         self.assertNotIn("value", serialized_reading)
@@ -121,8 +121,8 @@ class SensorValueTests(unittest.TestCase):
         serialized["metadata"]["vehicle"]["id"] = "changed-car"
 
         self.assertEqual(reading.metadata["capture"]["exposure"], 7)
-        self.assertEqual(snapshot.request["options"]["endpoint"], "/frame.jpg")
-        self.assertEqual(snapshot.metadata["vehicle"]["id"], "test-car")
+        self.assertEqual(sensor_frame.request["options"]["endpoint"], "/frame.jpg")
+        self.assertEqual(sensor_frame.metadata["vehicle"]["id"], "test-car")
 
     def test_capability_serialization_detaches_nested_sensor_metadata(self) -> None:
         capabilities = VehicleCapabilities(

@@ -5,20 +5,33 @@ A runner is the callable a ``DecisionSteps`` slot holds. It owns one step's
 checks each instance against the step's plugin protocol, and runs the applied
 plugins when the cycle calls it. Every runner can be built from a
 ``StepActivation`` and exposes the same selection and report surface:
+``plugins``, the applied plugins by selected plugin ID in selection order, and
+their ``plugin_ids``;
 ``prepare_selection``/``commit_selection``/``discard_selection`` to change the
-selection between cycles (each call also picks up the manager's selection),
-``plugin_report`` and ``status`` for diagnostics, and ``reset`` to start a new
-epoch.
+selection between cycles (each call also picks up the manager's selection);
+``plugin_report`` and ``status`` for diagnostics; and
+``reset(shared_memory)`` to start a new epoch. ``reset`` resets every applied
+plugin with the host map, and a plugin whose reset raises follows the step's
+``FAILURE_POLICY.reset``. Memory's ``reset`` also returns the keys its plugins
+wrote, for a host that clears its map at a reset to restore.
 
-``StepRunner`` implements that surface for steps whose plugins need no more
-than load, validate, and reset. The perception and memory runners implement the
-same surface with their own component and host-map handling.
+Perception, memory, and proposal declare what a plugin failure or a missing
+input does as one ``FailurePolicy``, ``FAILURE_POLICY`` in the step's
+``interface``. Their ``describe_schema`` methods report it under
+``failure_policy``. A step that describes its contract builds the
+``configuration`` and ``plugins``
+entries of that schema with ``describe_configuration`` and ``describe_plugin``.
+
+Every step's runner is a ``StepRunner``. A step adds what its plugins need
+through the hooks ``StepRunner`` names, not by reimplementing the surface.
 """
 
 from __future__ import annotations
 
 import inspect
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from copy import deepcopy
+from dataclasses import dataclass
 from threading import RLock
 from typing import Any, ClassVar, Generic, TypeVar
 
@@ -36,6 +49,42 @@ from autonomy.shared_memory import SharedMemory
 PluginT = TypeVar("PluginT")
 # Entrypoint module name for instances handed to ``StepRunner.from_plugins``.
 PROVIDED_ENTRYPOINT = "provided"
+
+FAILURE_POLICY_FIELDS = ("update", "reset", "missing_input")
+# The values a step may declare for each field:
+# - update: a plugin that raises while it runs. ``isolate_plugin`` records the
+#   error as that plugin's result and the other plugins still run;
+#   ``stop_cycle`` re-raises, which ends the step and the cycle.
+# - reset: a plugin whose reset raises. ``propagate`` re-raises to the caller;
+#   ``record`` records the error on the plugin and the other plugins still
+#   reset.
+# - missing_input: an input the plugin reads is absent this cycle.
+#   ``skip_plugin`` does not call the plugin; ``invoke`` calls it with the
+#   input missing.
+FAILURE_POLICY_VALUES: Mapping[str, frozenset[str]] = {
+    "update": frozenset({"isolate_plugin", "stop_cycle"}),
+    "reset": frozenset({"propagate", "record"}),
+    "missing_input": frozenset({"skip_plugin", "invoke"}),
+}
+
+
+@dataclass(frozen=True)
+class FailurePolicy:
+    """What one step does when a plugin fails or an input is missing."""
+
+    update: str
+    reset: str
+    missing_input: str
+
+    def __post_init__(self) -> None:
+        for name in FAILURE_POLICY_FIELDS:
+            value = getattr(self, name)
+            if value not in FAILURE_POLICY_VALUES[name]:
+                allowed = ", ".join(sorted(FAILURE_POLICY_VALUES[name]))
+                raise ValueError(f"failure policy {name} must be one of {allowed}; got {value!r}")
+
+    def to_dict(self) -> dict[str, str]:
+        return {name: getattr(self, name) for name in FAILURE_POLICY_FIELDS}
 
 
 def require_step_manager(plugin_manager: object, step: str) -> PluginManager:
@@ -59,6 +108,20 @@ class StepRunner(Generic[PluginT]):
 
     ``single_plugin`` steps run exactly one selected plugin; the others run
     every selected plugin, in selection order, with no count limit.
+
+    A step customizes these hooks:
+
+    - ``load_plugin`` and ``validate_plugin``: what one selected plugin loads as.
+    - ``validate_selection``: whether the loaded selection can run together.
+    - ``_prepare_selection``, ``_commit_selection`` and ``_discard_selection``:
+      state the step publishes with its plugins. They run under the lock the
+      public selection methods take.
+    - ``_reset_plugin``: how one plugin resets.
+    - ``_plugin_records``: each plugin's timing and error in ``plugin_report``.
+    - ``status``: extend ``super().status()`` with the step's own fields.
+
+    A subclass sets the state its hooks read before calling
+    ``super().__init__``, which applies the manager's selection.
     """
 
     step: ClassVar[str]
@@ -133,7 +196,9 @@ class StepRunner(Generic[PluginT]):
     def validate_plugin(self, plugin: PluginT, definition: PluginDefinition) -> None:
         """Raise ``TypeError`` when ``plugin`` does not satisfy the step protocol."""
 
-    def _validate_selection(self, plugins: tuple[PluginT, ...]) -> None:
+    def validate_selection(self, plugins: tuple[PluginT, ...]) -> None:
+        """Raise when a changed selection's loaded plugins cannot run together."""
+
         if self.single_plugin and len(plugins) != 1:
             raise ValueError(
                 f"the {self.step} step runs exactly one plugin; {len(plugins)} selected"
@@ -143,35 +208,45 @@ class StepRunner(Generic[PluginT]):
         """Load and validate the manager's selection without publishing it."""
 
         with self._runtime_lock:
-            self._selection_runtime.prepare(
-                load=self.load_plugin, validate=self._validate_selection
-            )
+            self._prepare_selection()
 
     def commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
         """Reset removed plugins and publish the prepared selection."""
 
         with self._runtime_lock:
-            self._selection_runtime.commit(
-                reset=lambda plugin: reset_plugin(plugin, shared_memory)
-            )
+            self._commit_selection(shared_memory)
 
     def discard_selection(self) -> None:
+        """Drop a prepared selection without resetting published plugins."""
+
         with self._runtime_lock:
-            self._selection_runtime.discard()
+            self._discard_selection()
 
     def apply_selection(self, shared_memory: SharedMemory | None = None) -> None:
+        """Prepare and commit the manager's selection; a failure raises."""
+
         with self._runtime_lock:
-            self._selection_runtime.apply(
-                load=self.load_plugin,
-                validate=self._validate_selection,
-                reset=lambda plugin: reset_plugin(plugin, shared_memory),
-            )
+            self._prepare_selection()
+            self._commit_selection(shared_memory)
+
+    def _prepare_selection(self) -> None:
+        self._selection_runtime.prepare(load=self.load_plugin, validate=self.validate_selection)
+
+    def _commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
+        self._selection_runtime.commit(
+            reset=lambda plugin: self._reset_plugin(plugin, shared_memory)
+        )
+
+    def _discard_selection(self) -> None:
+        self._selection_runtime.discard()
 
     def refresh_selection(self, shared_memory: SharedMemory | None = None) -> None:
         """Apply the manager's current selection before a call.
 
         A selection that fails to load or validate keeps the applied plugins
         and is recorded as ``last_error``, so a bad edit cannot stop the cycle.
+        Perception and memory call ``apply_selection`` instead: a selection
+        they cannot load stops the step, with the applied plugins kept.
         """
 
         try:
@@ -182,23 +257,27 @@ class StepRunner(Generic[PluginT]):
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         with self._runtime_lock:
             for _definition, plugin in self.applied:
-                reset_plugin(plugin, shared_memory)
+                self._reset_plugin(plugin, shared_memory)
             self.last_error = None
+
+    def _reset_plugin(self, plugin: PluginT, shared_memory: SharedMemory | None) -> None:
+        reset_plugin(plugin, shared_memory)
 
     # Reports ---------------------------------------------------------------
 
     def plugin_report(self) -> dict[str, Any]:
+        """Report catalog, requested selection, and each applied plugin's record."""
+
         with self._runtime_lock:
-            records = [
-                {
-                    "plugin_id": definition.plugin_id,
-                    "implementation_id": getattr(plugin, "plugin_id", None),
-                    "duration_ms": None,
-                    "error": self.last_error,
-                }
-                for definition, plugin in self.applied
-            ]
-            return build_plugin_report(self.plugin_manager, self.applied, records)
+            return build_plugin_report(self.plugin_manager, self.applied, self._plugin_records())
+
+    def _plugin_records(self) -> list[dict[str, Any]]:
+        """Each applied plugin's ``plugin_id``, ``duration_ms`` and ``error``."""
+
+        return [
+            {"plugin_id": definition.plugin_id, "duration_ms": None, "error": self.last_error}
+            for definition, _plugin in self.applied
+        ]
 
     def status(self) -> dict[str, Any]:
         with self._runtime_lock:
@@ -248,6 +327,34 @@ def _accepts_argument(function: Any) -> bool:
         )
         for parameter in parameters
     )
+
+
+def describe_configuration(
+    plugin_manager: PluginManager,
+    applied: Iterable[tuple[PluginDefinition, Any]],
+) -> dict[str, Any]:
+    """The ``configuration`` entry of a step schema: catalog, selection, and applied plugins."""
+
+    report = build_plugin_report(plugin_manager, applied)
+    available = plugin_manager.available
+    return {
+        "plugins": list(report["applied_plugin_ids"]),
+        "available_plugins": sorted(item.plugin_id for item in available),
+        "selected_plugin_ids": list(report["selected_plugin_ids"]),
+        "applied_plugin_ids": list(report["applied_plugin_ids"]),
+        "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
+        "plugin_configs": {item.plugin_id: deepcopy(dict(item.config)) for item in available},
+    }
+
+
+def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
+    """One applied plugin in a step schema's ``plugins`` list; a step adds its own fields."""
+
+    return {
+        "plugin_id": definition.plugin_id,
+        "spec": definition.entrypoint,
+        "config": deepcopy(dict(definition.config)),
+    }
 
 
 def describe_exception(exc: BaseException) -> str:

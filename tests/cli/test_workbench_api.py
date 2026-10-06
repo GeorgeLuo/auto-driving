@@ -7,7 +7,6 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from cli.automa_cli.workbench import WorkbenchServer
 from tests.cli.workbench_fixtures import (
-    PluginCatalogFixture,
     FixtureMapper,
     ImageReplayRunner,
     _wait_until,
@@ -18,7 +17,7 @@ from tests.cli.workbench_fixtures import (
 )
 
 
-class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
+class WorkbenchTests(unittest.TestCase):
     def test_loopback_api_accepts_realtime_pace_selection(self) -> None:
         with image_source(2) as root:
             write_manifest(root, {
@@ -38,7 +37,7 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             })
             runner = ImageReplayRunner(
                 cadence_ms=5000,
-                mapper_factory=FixtureMapper,
+                step_factories={"perception": FixtureMapper},
             )
             base = serve_workbench(self, runner)
 
@@ -60,80 +59,135 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             runner = ImageReplayRunner(cadence_ms=0)
             base = serve_workbench(self, runner)
 
-            plugin_root = str(self.plugin_root.resolve())
-
             post = partial(post_action, base, timeout=2)
 
-            inspected = post({"action": "refresh_plugins", "plugin_dir": plugin_root})
-            catalog = inspected["state"]["plugin_catalog"]
-            self.assertEqual(
-                [item["id"] for item in catalog["plugins"]],
-                [
-                    "classical_regions",
-                    "fastsam",
-                    "floor_continuity",
-                    "floor_continuity_capture",
-                ],
+            catalog = runner.state()["perception_plugin_catalog"]
+            self.assertIn("classical_regions", [item["id"] for item in catalog["plugins"]])
+            raw_selected = post(
+                {"action": "select_plugins", "step": "perception", "active_plugin_ids": []}
             )
-            raw_selected = post({"action": "select_plugins", "active_plugin_ids": []})
-            self.assertEqual(raw_selected["state"]["active_plugin_ids"], [])
+            self.assertEqual(raw_selected["state"]["active_perception_plugin_ids"], [])
             raw_started = post(
                 {
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "plugin_dir": plugin_root,
-                    "active_plugin_ids": [],
                 }
             )
             raw_state = runner.wait(5)
-            self.assertEqual(raw_started["state"]["run_active_plugin_ids"], [])
+            self.assertEqual(raw_started["state"]["active_perception_plugin_ids"], [])
             self.assertEqual(raw_state["phase"], "completed")
-            self.assertEqual(raw_state["perception"]["status"], "empty")
-            self.assertEqual(raw_state["perception"]["plugin_runs"], ())
-            self.assertEqual(raw_state["perception"]["things"], ())
+            self.assertEqual(raw_state["steps"]["perception"]["status"], "empty")
+            self.assertEqual(raw_state["steps"]["perception"]["plugin_runs"], ())
+            self.assertEqual(raw_state["steps"]["perception"]["things"], ())
             selected = post(
                 {
                     "action": "select_plugins",
+                    "step": "perception",
                     "run_id": raw_started["state"]["run_id"],
                     "active_plugin_ids": ["classical_regions"],
                 }
             )
             self.assertEqual(
-                selected["state"]["active_plugin_ids"], ["classical_regions"]
+                selected["state"]["active_perception_plugin_ids"], ["classical_regions"]
             )
             started = post(
                 {
                     "action": "start",
                     "source_dir": str(root),
                     "cadence_ms": 0,
-                    "plugin_dir": plugin_root,
-                    "active_plugin_ids": ["classical_regions"],
                 }
             )
             state = runner.wait(5)
 
         self.assertEqual(
-            started["state"]["run_active_plugin_ids"], ["classical_regions"]
+            started["state"]["active_perception_plugin_ids"], ["classical_regions"]
         )
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(
-            [item["plugin_id"] for item in state["perception"]["plugin_runs"]],
+            [item["plugin_id"] for item in state["steps"]["perception"]["plugin_runs"]],
             ["classical_regions"],
         )
+
+    def test_loopback_api_selects_plugins_only_by_named_step(self) -> None:
+        runner = ImageReplayRunner(cadence_ms=0)
+        base = serve_workbench(self, runner)
+        post = partial(post_action, base, timeout=2)
+
+        catalog = runner.state()["memory_plugin_catalog"]
+        self.assertEqual([item["id"] for item in catalog["plugins"]], ["bounded_evidence"])
+        selected = post({
+            "action": "select_plugins",
+            "step": "memory",
+            "active_plugin_ids": [],
+        })["state"]
+        self.assertEqual(selected["active_memory_plugin_ids"], [])
+        self.assertEqual(selected["active_perception_plugin_ids"], ["frame", "floor_plane"])
+
+        for body, code in (
+            ({"action": "select_plugins", "active_plugin_ids": []}, 400),
+            ({"action": "select_plugins", "step": 3, "active_plugin_ids": []}, 400),
+            ({"action": "select_plugins", "step": "decision", "active_plugin_ids": []}, 400),
+            ({"action": "validate", "step": "memory"}, 400),
+            ({"action": "select_plugins", "step": "memory", "active_plugin_ids": ["missing"]}, 422),
+        ):
+            with self.assertRaises(HTTPError, msg=str(body)) as caught:
+                post(body)
+            self.assertEqual(caught.exception.code, code, str(body))
+        state = runner.state()
+        self.assertEqual(state["active_memory_plugin_ids"], [])
+        self.assertEqual(state["active_perception_plugin_ids"], ["frame", "floor_plane"])
+
+    def test_removed_actions_and_plugin_lists_on_other_actions_are_rejected(self) -> None:
+        with image_source(1) as root:
+            runner = ImageReplayRunner(cadence_ms=0)
+            base = serve_workbench(self, runner)
+            post = partial(post_action, base, timeout=2)
+
+            for body in (
+                {"action": "set_plugins", "active_plugin_ids": []},
+                {"action": "cancel"},
+                {"action": "start", "source_dir": str(root), "active_plugin_ids": []},
+                {"action": "validate", "source_dir": str(root), "active_plugin_ids": []},
+            ):
+                with self.assertRaises(HTTPError, msg=str(body)) as caught:
+                    post(body)
+                self.assertEqual(caught.exception.code, 400)
+
+    def test_page_files_are_served_and_nothing_else(self) -> None:
+        import re
+
+        server = WorkbenchServer(ImageReplayRunner(cadence_ms=0)).start()
+        self.addCleanup(server.stop)
+        base = server.url
+        page = urlopen(base, timeout=2).read().decode("utf-8")
+        paths = re.findall(r'(?:src|href)="/static/([^"]+)"', page)
+        self.assertIn("workbench.css", paths)
+        self.assertEqual(
+            sorted(path for path in paths if path.endswith(".js")),
+            sorted(f"js/{name}.js" for name in (
+                "core", "decision", "frame", "main", "memory", "perception", "plugins", "transport",
+            )),
+        )
+        for path in paths:
+            served = urlopen(base + "static/" + path, timeout=2)
+            self.assertEqual(served.status, 200)
+            self.assertIn("javascript" if path.endswith(".js") else "css", served.headers["Content-Type"])
+        for blocked in ("static/../workbench_server.py", "static/js/../index.html", "static/index.html", "static/js/missing.js"):
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(base + blocked, timeout=2)
+            self.assertEqual(caught.exception.code, 404)
 
     def test_loopback_api_selection_reprocesses_the_displayed_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(cadence_ms=30000)
             base = serve_workbench(self, runner)
-            plugin_root = str(self.plugin_root.resolve())
-
             post = partial(post_action, base, timeout=10)
 
-            post({"action": "refresh_plugins", "plugin_dir": plugin_root})
             post(
                 {
                     "action": "select_plugins",
+                    "step": "perception",
                     "active_plugin_ids": ["classical_regions"],
                 }
             )
@@ -141,8 +195,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
                 {
                     "action": "start",
                     "source_dir": str(root),
-                    "plugin_dir": plugin_root,
-                    "active_plugin_ids": ["classical_regions"],
                     "cadence_ms": 30000,
                 }
             )
@@ -152,21 +204,23 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             selected = post(
                 {
                     "action": "select_plugins",
+                    "step": "perception",
                     "run_id": run_id,
                     "active_plugin_ids": ["floor_continuity"],
                 }
             )
             self.assertEqual(
-                selected["state"]["run_active_plugin_ids"], ["floor_continuity"]
+                selected["state"]["active_perception_plugin_ids"], ["floor_continuity"]
             )
-            # The running replay picks the displayed frame up without waiting
-            # out the cadence.
-            _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.frame_detail(first_id, run_id=run_id)
-            post({"action": "cancel", "run_id": run_id})
+            post({"action": "reset", "run_id": run_id})
 
+        # The response already shows the displayed frame under the new
+        # selection, without waiting out the cadence.
+        reprocessed = selected["state"]
+        self.assertEqual(reprocessed["position"], 1)
+        self.assertEqual(reprocessed["current_frame"]["frame_id"], first_id)
         self.assertEqual(
-            [run["plugin_id"] for run in reprocessed["perception"]["plugin_runs"]],
+            [run["plugin_id"] for run in reprocessed["steps"]["perception"]["plugin_runs"]],
             ["floor_continuity"],
         )
 
@@ -174,11 +228,11 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
         with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
-                plugin_dir=self.plugin_root,
                 cadence_ms=30000,
             )
             runner.dispatch(
                 "select_plugins",
+                step="perception",
                 active_plugin_ids=["classical_regions"],
             )
             started = runner.start()
@@ -187,16 +241,17 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             first_id = runner.state()["timeline"][0]["frame"]["frame_id"]
             selected = runner.dispatch(
                 "select_plugins",
+                step="perception",
                 run_id=run_id,
                 active_plugin_ids=[],
             )
             self.assertEqual(selected["phase"], "running")
-            self.assertEqual(selected["run_active_plugin_ids"], [])
-            _wait_until(lambda: runner.state()["position"] == 1 and runner.state()["timeline"])
-            reprocessed = runner.frame_detail(first_id, run_id=run_id)
-            self.assertEqual(list(reprocessed["perception"]["plugin_runs"] or ()), [])
-            self.assertEqual(reprocessed["perception"]["status"], "empty")
-            runner.dispatch("cancel", run_id=run_id)
+            self.assertEqual(selected["active_perception_plugin_ids"], [])
+            self.assertEqual(selected["position"], 1)
+            self.assertEqual(selected["current_frame"]["frame_id"], first_id)
+            self.assertEqual(list(selected["steps"]["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(selected["steps"]["perception"]["status"], "empty")
+            runner.dispatch("reset", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(
         self,
@@ -236,12 +291,6 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             self.assertEqual(latest["phase"], "completed")
             frame_id = state["timeline"][0]["frame"]["frame_id"]
             query = urlencode({"run_id": run_id, "frame_id": frame_id})
-            detail = json.loads(
-                urlopen(base + "api/frame-detail?" + query, timeout=2).read()
-            )
-            self.assertEqual(detail["frame"]["frame_id"], frame_id)
-            self.assertEqual(detail["perception"]["status"], "ok")
-            self.assertEqual(detail["memory"]["health"], "healthy")
             frame = urlopen(
                 base + "api/frame?" + query,
                 timeout=2,
@@ -265,9 +314,9 @@ class WorkbenchTests(PluginCatalogFixture, unittest.TestCase):
             )
             self.assertNotEqual(second_start["state"]["run_id"], run_id)
             self.assertEqual(runner.wait(5)["phase"], "completed")
-            with self.assertRaises(HTTPError) as stale_detail:
-                urlopen(base + "api/frame-detail?" + query, timeout=2)
-            self.assertEqual(stale_detail.exception.code, 409)
+            with self.assertRaises(HTTPError) as stale_frame:
+                urlopen(base + "api/frame?" + query, timeout=2)
+            self.assertEqual(stale_frame.exception.code, 409)
 
             bad_body = json.dumps({"action": "start", "argv": ["--unsafe"]}).encode(
                 "utf-8"

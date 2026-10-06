@@ -379,10 +379,10 @@
 
     <section class="diagram-shell" aria-labelledby="main-flow-title">
       <h2 id="main-flow-title">Main Runtime Loop</h2>
-      <div class="runtime-grid" role="img" aria-label="A sensor snapshot flows through the perception, observation, and memory steps, then the proposal, plan, and action steps, then an environment-specific control gate.">
+      <div class="runtime-grid" role="img" aria-label="A sensor frame flows through the perception, observation, and memory steps, then the proposal, plan, and action steps, then an environment-specific control gate.">
         <div class="node vehicle">
           <h3>Sensor Input</h3>
-          <p>Each tick starts with a generic <code>SensorSnapshot</code>.</p>
+          <p>Each tick starts with a generic <code>SensorFrame</code>.</p>
           <ul>
             <li>The current shared sensor is <code>front_camera</code>.</li>
             <li>Chase captures it through the WS/CLI adapter.</li>
@@ -397,7 +397,7 @@
           <p>The perception step's selected plugins turn sensor readings into <code>PerceptionText</code> evidence.</p>
           <ul>
             <li>The stable step is agnostic of sensor and evidence kinds.</li>
-            <li>Plugins declare and resolve their own input components.</li>
+            <li>Plugins declare and resolve their own input feeds.</li>
             <li>Plugins emit signals, things, artifacts, and limits.</li>
           </ul>
         </div>
@@ -442,7 +442,7 @@
       <div class="feedback">
         <div class="node vehicle">
           <h3>On PiRacer</h3>
-          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest frame/result snapshot and publishes it on <code>/autonomy/observation/latest</code> (plus matching <code>frame.jpg</code>). Each step's activation selects its plugins; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
+          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest state (frame and result) and publishes it on <code>/autonomy/observation/latest</code> (plus matching <code>frame.jpg</code>). Each step's activation selects its plugins; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
         </div>
         <div class="node perception">
           <h3>In Simulation</h3>
@@ -469,13 +469,13 @@
         <div class="step">
           <div>
             <h3>Capture</h3>
-            <p>The runtime creates a <code>DecisionFrameContext</code> containing the current <code>SensorSnapshot</code> and frame metadata.</p>
+            <p>The runtime creates a <code>DecisionFrameContext</code> containing the current <code>SensorFrame</code> and frame metadata.</p>
           </div>
         </div>
         <div class="step">
           <div>
             <h3>Perceive</h3>
-            <p>The activated generic plugin-chain step passes a component context over the sensor snapshot. Each configured implementation resolves only the components it needs. The same step shape runs locally for Chase and on the Donkey host.</p>
+            <p>The activated generic plugin-chain step passes a feed context over the sensor frame. Each configured implementation resolves only the feeds it needs. The same step shape runs locally for Chase and on the Donkey host.</p>
           </div>
         </div>
         <div class="step">
@@ -498,8 +498,8 @@
         </div>
         <div class="step">
           <div>
-            <h3>Publish Latest Snapshot</h3>
-            <p>On DonkeyCar, the part detaches the exact processed frame and findings into one in-memory latest snapshot. Read-only HTTP endpoints expose JSON and JPEG with matching frame identity and read-time health. Default operation writes no perception history.</p>
+            <h3>Publish Latest State</h3>
+            <p>On DonkeyCar, the part detaches the exact processed frame and findings into one in-memory latest state. Read-only HTTP endpoints expose JSON and JPEG with matching frame identity and read-time health. Default operation writes no perception history.</p>
           </div>
         </div>
         <div class="step">
@@ -534,18 +534,18 @@
           <tr>
             <td>Vehicle</td>
             <td>Read request or bounded operation command.</td>
-            <td><code>SensorSnapshot</code>, pulse result, and stop.</td>
+            <td><code>SensorFrame</code>, pulse result, and stop.</td>
             <td><code>autonomy/vehicle/vehicle.py</code></td>
           </tr>
           <tr>
             <td>Perception</td>
-            <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query components from its snapshot.</td>
+            <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query feeds from its sensor frame.</td>
             <td><code>PerceptionText</code> containing evidence and limits.</td>
             <td><code>autonomy/decision_cycle/perception/</code>, <code>implementations/decision_cycle/perception/</code></td>
           </tr>
           <tr>
             <td>Observation</td>
-            <td>Current snapshot and optional perception.</td>
+            <td>Current sensor frame and optional perception.</td>
             <td>Stable decision-facing evidence record.</td>
             <td><code>autonomy/decision_cycle/observation/</code></td>
           </tr>
@@ -590,7 +590,7 @@
           <h3>Live Controller</h3>
           <p>Inspect staged contracts and the latest local worker result.</p>
           <p><code>./cli/automa vehicles info perception --id chase-sim-chaser</code></p>
-          <p><code>./cli/automa vehicles info decision --id chase-sim-chaser</code></p>
+          <p><code>./cli/automa vehicles info proposal --id chase-sim-chaser</code></p>
           <p><code>./cli/automa vehicles stream perception --id chase-sim-chaser</code></p>
         </div>
         <div>

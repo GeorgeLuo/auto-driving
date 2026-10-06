@@ -4,7 +4,9 @@ The decision tools (stream, apply, inspect, view) read the three decision
 steps' records together. ``DecisionRecords`` holds them and answers the
 questions the tools ask of a frame (its status, source, plan, and authority).
 ``DecisionRunners`` builds the three steps' runners from activation payloads
-and runs them for one frame, as the cycle would after memory.
+and runs them for one frame, as the cycle would after memory. It uses the
+same staged-bundle loader as step info and the automation worker; recorded
+bundle metadata selects staged plugin code rather than workspace code.
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.steps import builtin_activation
 from autonomy.runtime.control import AutonomyControl
+
+from .step_hosting import load_staged_runner
 
 
 @dataclass(frozen=True)
@@ -112,12 +116,14 @@ class DecisionRunners:
             activation = activations.get(step) or builtin_activation(step)
             if activation is None:
                 raise ValueError(f"no {step} activation is staged")
+            if activation.step != step:
+                raise ValueError(f"activation is for step {activation.step!r}, not {step!r}")
             return activation
 
         return cls(
-            ProposalRunner.from_activation(activation_for("proposal")),
-            PlanRunner.from_activation(activation_for("plan")),
-            ActionRunner.from_activation(activation_for("action")),
+            load_staged_runner(activation_for("proposal")),
+            load_staged_runner(activation_for("plan")),
+            load_staged_runner(activation_for("action")),
         )
 
     @classmethod

@@ -4,7 +4,7 @@ import json
 import unittest
 
 from autonomy.decision_cycle.memory.evidence import (
-    MemoryProvenance,
+    MemoryOrigin,
     RetainedEvidence,
     detach_evidence,
 )
@@ -12,14 +12,14 @@ from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
 class RetainedEvidenceTests(unittest.TestCase):
-    def provenance(self) -> MemoryProvenance:
-        return MemoryProvenance(
+    def origin(self) -> MemoryOrigin:
+        return MemoryOrigin(
             observation_id="obs_1",
-            evidence_id="floor_boundary_000",
+            observed_id="floor_boundary_000",
             coordinate_frame="image",
             observed_at_ms=100,
             updated_at_ms=150,
-            source_plugin_id="floor-plane-v0",
+            source_plugin_id="floor_plane",
             frame_id="donkey_frame_000100",
         )
 
@@ -29,7 +29,7 @@ class RetainedEvidenceTests(unittest.TestCase):
             kind="floor_boundary",
             label="first-hit boundary",
             confidence=0.8,
-            provenance=self.provenance(),
+            origin=self.origin(),
             location=ViewLocation(
                 frame="image",
                 zone="center",
@@ -43,14 +43,14 @@ class RetainedEvidenceTests(unittest.TestCase):
 
         payload = record.to_dict()
         json.dumps(payload)
-        self.assertEqual(payload["provenance"]["frame_id"], "donkey_frame_000100")
+        self.assertEqual(payload["origin"]["frame_id"], "donkey_frame_000100")
         payload["properties"]["width_fraction"] = 0.9
         self.assertEqual(record.properties["width_fraction"], 0.2)
 
         restored = RetainedEvidence.from_dict(record.to_dict())
         self.assertEqual(restored.record_id, "rec_1")
         self.assertEqual(restored.location.zone, "center")
-        self.assertEqual(restored.provenance, record.provenance)
+        self.assertEqual(restored.origin, record.origin)
 
     def test_detach_evidence_isolates_nested_mutation(self) -> None:
         original = (self.retained("a"), self.retained("b"))

@@ -4,7 +4,8 @@ import unittest
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.runner import MEMORY_REPORT_SCHEMA, MemoryRunner
+from autonomy.decision_cycle.memory.interface import MEMORY_REPORT_SCHEMA
+from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.activation import read_step_activation
 from tests.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
@@ -32,7 +33,7 @@ class MemoryActivationTests(unittest.TestCase):
             observation = Observation(
                 observation_id="obs_1",
                 created_at_ms=90,
-                sensor_snapshot={},
+                sensor_frame={},
                 summary=("hello",),
             )
             result = DecisionCycle(
@@ -45,12 +46,15 @@ class MemoryActivationTests(unittest.TestCase):
             remembered = _state(step(context, observation))
             self.assertEqual(remembered["record_count"], 1)
             self.assertEqual(
-                remembered["records"][0]["provenance"]["observation_id"],
+                remembered["records"][0]["origin"]["observation_id"],
                 "obs_1",
             )
             self.assertEqual(shared["recording_test.state"]["records"][0].record_id, "rec-obs_1")
             status = step.status()
-            self.assertEqual(status["implementation_id"], "recording_test")
+            self.assertEqual(status["plugin_ids"], ["recording_test"])
+            # A step holds a list of plugins; none of them stands for the step.
+            self.assertNotIn("plugin_id", status)
+            self.assertNotIn("plugin_spec", status)
             self.assertEqual(status["update_count"], 2)
             self.assertEqual(status["failure_count"], 0)
             self.assertIsNotNone(status["last_duration_ms"])

@@ -148,6 +148,7 @@
     }
     .key-id { font-family: var(--mono); font-size: 12px; word-break: break-all; font-weight: 600; }
     .key-meta { color: var(--muted); font-size: 12px; }
+    .plugin-list { display: grid; gap: 4px; margin-bottom: 14px; }
     .empty { color: var(--muted); padding: 16px 0; }
     .value-header {
       display: flex;
@@ -226,9 +227,12 @@
   <main>
     <section class="keys-panel" aria-label="Memory keys">
       <p class="map-legend">
-        Evidence memory is a <strong>key → value</strong> map:
-        <code>record_id</code> keys on the left, click one to inspect the mapped retained-evidence value on the right.
+        Each memory plugin keeps a <strong>key → value</strong> map:
+        pick a plugin, then click a <code>record_id</code> key on the left to inspect the mapped retained-evidence value on the right.
+        The evidence publisher is the plugin whose records the decision reads.
       </p>
+      <h2>Plugins</h2>
+      <div class="plugin-list" id="pluginList"></div>
       <h2>Ledger</h2>
       <dl class="metrics" id="ledgerMetrics"></dl>
       <h2>Filter by kind</h2>
@@ -258,6 +262,7 @@
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
     const pauseButton = document.getElementById("pauseButton");
+    const pluginList = document.getElementById("pluginList");
     const ledgerMetrics = document.getElementById("ledgerMetrics");
     const kindMap = document.getElementById("kindMap");
     const keyList = document.getElementById("keyList");
@@ -269,10 +274,12 @@
     const valueJson = document.getElementById("valueJson");
 
     let latest = null;
+    let selectedPluginId = null;
     let selectedKey = null;
     let kindFilter = null;
     let paused = false;
     let refreshing = false;
+    let lastPluginsFingerprint = "";
     let lastKeysFingerprint = "";
     let lastKindsFingerprint = "";
     let lastMetricsFingerprint = "";
@@ -291,8 +298,37 @@
       container.append(term, detail);
     }
 
+    // The memory report lists every applied plugin by plugin_id and names the
+    // evidence publisher. The page shows one plugin's ledger at a time: the
+    // plugin the viewer picked, else the evidence publisher, else none.
+    function memoryPlugins() {
+      const list = latest?.memory?.plugins;
+      return Array.isArray(list)
+        ? list.filter((entry) => entry && typeof entry.plugin_id === "string")
+        : [];
+    }
+
+    function evidencePublisher() {
+      const publisher = latest?.memory?.evidence_publisher;
+      return typeof publisher === "string" && publisher ? publisher : null;
+    }
+
+    function shownPlugin() {
+      const wanted = selectedPluginId ?? evidencePublisher();
+      return memoryPlugins().find((entry) => entry.plugin_id === wanted) || null;
+    }
+
+    function shownState() {
+      const state = shownPlugin()?.state;
+      return state && typeof state === "object" ? state : null;
+    }
+
+    function stateKeyCount(state) {
+      return state?.record_count ?? (Array.isArray(state?.records) ? state.records.length : "?");
+    }
+
     function records() {
-      const list = latest?.memory?.records;
+      const list = shownState()?.records;
       return Array.isArray(list) ? list : [];
     }
 
@@ -337,7 +373,77 @@
       return rows.map((record) => {
         const zone = record.location?.zone || "";
         return `${record.record_id}\0${record.kind || ""}\0${zone}`;
-      }).join("\n") + `\nfilter:${kindFilter || ""}`;
+      }).join("\n") + `\nfilter:${kindFilter || ""}\nplugin:${shownPlugin()?.plugin_id || ""}`;
+    }
+
+    function pluginMetaText(entry) {
+      const state = entry.state && typeof entry.state === "object" ? entry.state : null;
+      return [
+        state?.health || "no health",
+        `epoch ${state?.epoch_id || "—"}`,
+        `${stateKeyCount(state)} keys`,
+      ].join(" · ");
+    }
+
+    function selectPlugin(pluginId) {
+      if (!pluginId || pluginId === shownPlugin()?.plugin_id) return;
+      selectedPluginId = pluginId;
+      selectedKey = null;
+      kindFilter = null;
+      lastPluginsFingerprint = "";
+      lastKeysFingerprint = "";
+      lastKindsFingerprint = "";
+      lastMetricsFingerprint = "";
+      lastValueFingerprint = "";
+      renderLedger();
+      renderStatus();
+    }
+
+    function renderPlugins() {
+      const plugins = memoryPlugins();
+      const publisher = evidencePublisher();
+      const shown = shownPlugin()?.plugin_id || "";
+      // Rebuild only when the plugin list, publisher or shown plugin changes;
+      // otherwise patch the meta line so live counts do not replace buttons.
+      const fingerprint = [publisher || "", shown, ...plugins.map((entry) => entry.plugin_id)].join("\0");
+      if (fingerprint !== lastPluginsFingerprint) {
+        lastPluginsFingerprint = fingerprint;
+        const focusedPlugin = pluginList.contains(document.activeElement)
+          ? document.activeElement.dataset.plugin : null;
+        pluginList.replaceChildren();
+        if (!plugins.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = latest?.memory ? "No memory plugins ran." : "No memory report in publication yet.";
+          pluginList.append(empty);
+          return;
+        }
+        for (const entry of plugins) {
+          const selected = entry.plugin_id === shown;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `key-row plugin-row${selected ? " selected" : ""}`;
+          button.dataset.plugin = entry.plugin_id;
+          button.setAttribute("aria-pressed", selected ? "true" : "false");
+          const label = document.createElement("div");
+          label.className = "key-label";
+          label.textContent = entry.plugin_id === publisher ? "plugin · evidence publisher" : "plugin";
+          const id = document.createElement("div");
+          id.className = "key-id";
+          id.textContent = entry.plugin_id;
+          const meta = document.createElement("div");
+          meta.className = "key-meta";
+          button.append(label, id, meta);
+          pluginList.append(button);
+          if (entry.plugin_id === focusedPlugin) button.focus();
+        }
+      }
+      const byId = new Map(plugins.map((entry) => [entry.plugin_id, entry]));
+      for (const button of pluginList.querySelectorAll(".plugin-row")) {
+        const entry = byId.get(button.dataset.plugin || "");
+        const meta = button.querySelector(".key-meta");
+        if (entry && meta) meta.textContent = pluginMetaText(entry);
+      }
     }
 
     function selectKey(key) {
@@ -403,37 +509,45 @@
     }
 
     function renderMetrics() {
-      const memory = latest?.memory || null;
+      const plugin = shownPlugin();
+      const state = shownState();
+      const publisher = evidencePublisher();
       const fingerprint = [
         latest?.vehicle_id || "",
-        memory?.health || "absent",
-        memory?.epoch_id || "",
-        memory?.record_count ?? records().length,
-        memory?.bounds?.max_records ?? "",
-        memory?.bounds?.max_age_ms ?? "",
-        memory?.implementation_id || "",
-        memory?.metadata?.claims_identity ?? false,
+        latest?.memory ? "report" : "absent",
+        plugin?.plugin_id || "",
+        publisher || "",
+        state?.health || "",
+        state?.epoch_id || "",
+        stateKeyCount(state),
+        state?.bounds?.max_records ?? "",
+        state?.bounds?.max_age_ms ?? "",
       ].join("\0");
       if (fingerprint === lastMetricsFingerprint) return;
       lastMetricsFingerprint = fingerprint;
 
       vehicleEl.textContent = latest?.vehicle_id || "unknown vehicle";
       ledgerMetrics.replaceChildren();
-      appendMetric(ledgerMetrics, "Health", memory?.health || "absent");
-      appendMetric(ledgerMetrics, "Epoch", memory?.epoch_id || "—");
+      appendMetric(ledgerMetrics, "Plugin", plugin?.plugin_id || (latest?.memory ? "pick a plugin" : "—"));
+      appendMetric(ledgerMetrics, "Health", state?.health || (plugin ? "no health" : "absent"));
+      appendMetric(ledgerMetrics, "Epoch", state?.epoch_id || "—");
       appendMetric(
         ledgerMetrics,
         "Keys",
-        memory
-          ? `${memory.record_count ?? records().length}/${memory.bounds?.max_records ?? "?"} filled`
-          : "—"
+        plugin ? `${stateKeyCount(state)}/${state?.bounds?.max_records ?? "?"} filled` : "—"
       );
-      appendMetric(ledgerMetrics, "Max age", memory?.bounds?.max_age_ms != null ? `${memory.bounds.max_age_ms} ms` : "—");
-      appendMetric(ledgerMetrics, "Implementation", memory?.implementation_id || "—");
-      appendMetric(ledgerMetrics, "Claims identity", String(memory?.metadata?.claims_identity ?? false));
+      appendMetric(ledgerMetrics, "Max age", state?.bounds?.max_age_ms != null ? `${state.bounds.max_age_ms} ms` : "—");
+      appendMetric(ledgerMetrics, "Evidence publisher", publisher || (latest?.memory ? "none" : "—"));
     }
 
     function renderLedger() {
+      // Keep the picked plugin across live updates; drop it only when a report
+      // lists plugins and it is not among them.
+      const plugins = memoryPlugins();
+      if (selectedPluginId && plugins.length && !plugins.some((entry) => entry.plugin_id === selectedPluginId)) {
+        selectedPluginId = null;
+      }
+      renderPlugins();
       const map = recordMap();
       // Keep selection across live updates; only drop it when the key truly left.
       if (selectedKey && map.size > 0 && !map.has(selectedKey)) {
@@ -460,7 +574,11 @@
       if (!rows.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = latest?.memory ? "No keys in this filter." : "No memory report in publication yet.";
+        empty.textContent = !latest?.memory
+          ? "No memory report in publication yet."
+          : shownPlugin()
+            ? "No keys in this filter."
+            : "No evidence publisher. Pick a plugin above to see its keys.";
         keyList.append(empty);
         return;
       }
@@ -521,16 +639,44 @@
           value.location.bbox_xyxy_norm.map((n) => Number(n).toFixed(3)).join(", ")
         );
       }
-      appendMetric(valueSummary, "provenance.frame_id", value.provenance?.frame_id || "—");
-      appendMetric(valueSummary, "provenance.observation_id", value.provenance?.observation_id || "—");
-      appendMetric(valueSummary, "provenance.evidence_id", value.provenance?.evidence_id || "—");
-      appendMetric(valueSummary, "provenance.updated_at_ms", value.provenance?.updated_at_ms ?? "—");
-      appendMetric(valueSummary, "source_plugin", value.provenance?.source_plugin_id || "—");
+      appendMetric(valueSummary, "origin.frame_id", value.origin?.frame_id || "—");
+      appendMetric(valueSummary, "origin.observation_id", value.origin?.observation_id || "—");
+      appendMetric(valueSummary, "origin.observed_id", value.origin?.observed_id || "—");
+      appendMetric(valueSummary, "origin.updated_at_ms", value.origin?.updated_at_ms ?? "—");
+      appendMetric(valueSummary, "source_plugin", value.origin?.source_plugin_id || "—");
       valueJson.textContent = JSON.stringify(value, null, 2);
+    }
+
+    function renderStatus() {
+      if (!latest?.memory) {
+        setStatus("Live | memory absent", "stale");
+        return;
+      }
+      const plugin = shownPlugin();
+      if (!plugin) {
+        setStatus(`Live | ${memoryPlugins().length} plugins, no evidence publisher`, "stale");
+        return;
+      }
+      const health = shownState()?.health;
+      const name = plugin.plugin_id;
+      if (health === "healthy") setStatus(`Live | ${name}: ${stateKeyCount(shownState())} keys`, "live");
+      else if (health === "empty") setStatus(`Live | ${name}: empty map`, "stale");
+      else setStatus(`Live | ${name}: ${health || "unknown"}`, health === "error" ? "error" : "stale");
     }
 
     // Stable parent handlers so selection survives DOM rebuild races.
     // pointerdown fires before refresh can replace the button under a click.
+    function pickPlugin(event) {
+      const button = event.target.closest(".plugin-row");
+      if (!button || !pluginList.contains(button)) return;
+      event.preventDefault();
+      selectPlugin(button.dataset.plugin);
+    }
+    pluginList.addEventListener("pointerdown", pickPlugin);
+    pluginList.addEventListener("click", (event) => {
+      if (event.detail === 0) pickPlugin(event);
+    });
+
     keyList.addEventListener("pointerdown", (event) => {
       const button = event.target.closest(".key-row");
       if (!button || !keyList.contains(button)) return;
@@ -561,12 +707,7 @@
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         latest = await response.json();
         renderLedger();
-        const health = latest?.memory?.health;
-        const keyCount = latest?.memory?.record_count ?? records().length;
-        if (!latest?.memory) setStatus("Live | memory absent", "stale");
-        else if (health === "healthy") setStatus(`Live | ${keyCount} keys`, "live");
-        else if (health === "empty") setStatus("Live | empty map", "stale");
-        else setStatus(`Live | memory ${health || "unknown"}`, health === "error" ? "error" : "stale");
+        renderStatus();
       } catch (error) {
         setStatus(`Waiting: ${error.message}`, "error");
       } finally {

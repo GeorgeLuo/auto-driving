@@ -514,8 +514,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     activation.to_payload() if activation is not None else None
                 )
             perception = activations.get("perception")
-            perception_algorithm = (
-                perception.metadata.get("algorithm") if perception is not None else None
+            perception_preset = (
+                perception.metadata.get("preset") if perception is not None else None
             )
 
             telemetry_store = None
@@ -566,7 +566,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             autonomy_part = AutonomyPilotPart(
                 host=host,
                 min_interval_s=observation_interval_s,
-                algorithm=perception_algorithm,
+                preset=perception_preset,
                 vehicle_id=vehicle_id,
                 source_id=source_id if telemetry_store is not None else None,
                 decision_activations=decision_activations,

@@ -31,8 +31,8 @@ from implementations.vehicle.chase_sim import (
 )
 from implementations.vehicle.chase_sim.frame_identity import (
     format_chase_frame_id,
-    simulator_epoch_from_snapshot,
-    simulator_frame_index_from_snapshot,
+    simulator_epoch_from_sensor_frame,
+    simulator_frame_index_from_sensor_frame,
 )
 from implementations.vehicle.chase_sim.metrics_ws import (
     MetricsUiWebSocketError,
@@ -46,9 +46,15 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .perception import _close_runner
-from .step_activations import bundle_activation_path, decision_identity, read_bundle_activation
-from .step_hosting import load_staged_runner, sync_live_selection
+from .step_activations import (
+    bundle_activation_path,
+    bundle_activation_problems,
+    decision_generation_id,
+    decision_identity,
+    format_activation_problems,
+    read_bundle_activation,
+)
+from .step_hosting import load_staged_runner, plugin_report, sync_live_selection
 from .runtime_view import RuntimeViewServer
 from .perception_view import (
     get_perception_view_status,
@@ -58,7 +64,7 @@ from .vehicles import (
     DEFAULT_CHASE_READINESS_TIMEOUT_S,
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
 )
 
 
@@ -67,6 +73,14 @@ RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "ve
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
 MAX_DECISION_FILE_BYTES = 8 * 1024 * 1024
+# A step stream treats a Chase worker whose state is older than this as stale.
+CHASE_WORKER_PROBE_MAX_AGE_MS = int(
+    os.environ.get("AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS", "30000")
+)
+# Allow tiny forward clock skew before treating updated_at_ms as invalid.
+CHASE_WORKER_PROBE_CLOCK_SKEW_MS = int(
+    os.environ.get("AUTOMA_CHASE_WORKER_PROBE_CLOCK_SKEW_MS", "2000")
+)
 # Observe-only continuous runs allow playback/input to evolve; identity and
 # control authority must stay fixed until stop.
 PASSIVE_RUN_STABLE_FIELDS = (
@@ -97,18 +111,6 @@ def _step_status(cycle_host: AutonomyCycleHost) -> dict[str, Any]:
         )
         for step, item in steps.items()
     } | {"cycle_count": status.get("cycle_count"), "error_count": status.get("error_count")}
-
-
-def _execution_plugin_report(owner: Any) -> dict[str, Any] | None:
-    """Copy a step's common plugin envelope, when that step publishes one."""
-
-    report_for = getattr(owner, "plugin_report", None)
-    if not callable(report_for):
-        return None
-    report = report_for()
-    if not isinstance(report, dict):
-        return None
-    return copy.deepcopy(report)
 
 
 @dataclass(frozen=True)
@@ -149,8 +151,8 @@ def run_vehicle_automation(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(payload, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(payload, include_inactive=True),
                 ]
             ),
         )
@@ -211,24 +213,28 @@ def run_vehicle_automation(
             2,
             "\n".join(
                 [
-                    f"No active perception algorithm found for {vehicle_id!r}.",
+                    f"No active perception preset found for {vehicle_id!r}.",
                     f"Expected activation: {display_path(manifest_path)}",
                     f"Run: ./cli/automa vehicles update perception --id {vehicle_id}",
                 ]
             ),
         )
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
     try:
         perception_activation = read_step_activation(manifest_path, "perception")
         memory_activation = read_bundle_activation(bundle, "memory")
+        proposal_activation = read_bundle_activation(bundle, "proposal")
         identity = decision_identity(bundle)
         activations = {
             step: read_bundle_activation(bundle, step)
-            for step in ("observation", "proposal", "plan", "action")
+            for step in ("observation", "plan", "action")
         }
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
     perception_plugins = ", ".join(perception_activation.plugins) or "(none)"
-    perception_algorithm = perception_activation.metadata.get("algorithm") or perception_plugins
+    perception_preset = perception_activation.metadata.get("preset") or perception_plugins
     # A decision frame is published only when proposals are staged.
     decision_published = identity["steps"]["proposal"] is not None
 
@@ -265,17 +271,34 @@ def run_vehicle_automation(
                     ]
                 ),
             )
+    # Proposals load from the bundle, as memory does; without a staged
+    # activation the vehicle proposes nothing and holds.
+    proposal_activation_path = bundle_activation_path(bundle, "proposal")
+    proposal_step = None
+    if proposal_activation is not None:
+        try:
+            proposal_step = load_staged_runner(proposal_activation)
+        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Could not load proposal activation for {vehicle_id}.",
+                        f"Activation: {display_path(proposal_activation_path)}",
+                        f"Reason: {type(exc).__name__}: {exc}",
+                    ]
+                ),
+            )
     try:
         steps = decision_steps(
-            {
-                **{step: activation for step, activation in activations.items() if activation},
-                "proposal": activations["proposal"],
-            }
+            {step: activation for step, activation in activations.items() if activation}
         )
     except Exception as exc:
         return CommandResult(2, f"Could not load decision steps for {vehicle_id}: {type(exc).__name__}: {exc}")
     cycle_host = AutonomyCycleHost(
-        steps=replace(steps, perception=perception_step, memory=memory_step),
+        steps=replace(
+            steps, perception=perception_step, memory=memory_step, proposal=proposal_step
+        ),
     )
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
@@ -338,9 +361,9 @@ def run_vehicle_automation(
         "recording": bool(record),
         "perception": {
             "activation": display_path(manifest_path),
-            "algorithm": perception_activation.metadata.get("algorithm"),
+            "preset": perception_activation.metadata.get("preset"),
             "plugins": list(perception_activation.plugins),
-            "plugin_report": _execution_plugin_report(perception_step),
+            "plugin_report": plugin_report(perception_step),
         },
         "decision": {
             "generation_id": identity["generation_id"],
@@ -352,13 +375,22 @@ def run_vehicle_automation(
         "memory": (
             {
                 "activation": display_path(memory_activation_path),
-                "implementation_id": memory_step.status()["implementation_id"],
-                "implementation_spec": memory_step.status()["implementation_spec"],
                 "status": memory_step.status(),
             }
             if memory_step is not None
             else {
                 "activation": display_path(memory_activation_path),
+                "status": "absent",
+            }
+        ),
+        "proposal": (
+            {
+                "activation": display_path(proposal_activation_path),
+                "status": proposal_step.status(),
+            }
+            if proposal_step is not None
+            else {
+                "activation": display_path(proposal_activation_path),
                 "status": "absent",
             }
         ),
@@ -385,7 +417,7 @@ def run_vehicle_automation(
     _write_json(state_path, state)
 
     _emit(output, f"Automation running: {vehicle_id}")
-    _emit(output, f"Perception: {perception_algorithm}")
+    _emit(output, f"Perception: {perception_preset}")
     if run_dir is not None:
         _emit(output, f"Recording: {display_path(run_dir)}")
     else:
@@ -489,8 +521,6 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_step.status()["implementation_id"],
-                    "implementation_spec": memory_step.status()["implementation_spec"],
                     "status": memory_step.status(),
                 }
             state["updated_at_ms"] = _timestamp_ms()
@@ -500,18 +530,54 @@ def run_vehicle_automation(
         except OSError:
             pass
 
+    def adopt_staged_decision() -> None:
+        """Publish under the staged decision generation once this worker runs it.
+
+        The proposal runner applies a changed plugin list during the cycle.
+        Adopt only after its applied IDs match the staged generation: a load
+        or reset failure can leave the requested selection unapplied.
+        Restaged proposal configs, plan, or action wait for a restart.
+        """
+
+        nonlocal identity
+        try:
+            staged = decision_identity(bundle)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return
+        applied_ids = getattr(proposal_step, "plugin_ids", None)
+        if staged == identity or applied_ids is None:
+            return
+        running = {
+            **identity["steps"],
+            "proposal": {**identity["steps"]["proposal"], "plugins": list(applied_ids)},
+        }
+        if decision_generation_id(running) != staged["generation_id"]:
+            return
+        identity = staged
+        with state_lock:
+            state["decision"].update(
+                generation_id=staged["generation_id"], steps=staged["steps"]
+            )
+        if view_server is not None:
+            view_server.decision.adopt(staged)
+        _emit(output, f"Decision generation: {staged['generation_id']} (restaged)")
+
     def process_frame(pending: _PendingAutomationFrame) -> None:
         apply_memory_reset_if_requested()
         context = pending.context
-        snapshot = context.sensor_snapshot
-        if snapshot is None:
-            raise ValueError(f"{context.frame_id} has no sensor snapshot")
+        sensor_frame = context.sensor_frame
+        if sensor_frame is None:
+            raise ValueError(f"{context.frame_id} has no sensor frame")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
         sync_live_selection(perception_step, manifest_path, perception_activation)
         if memory_step is not None and memory_activation is not None:
             sync_live_selection(memory_step, memory_activation_path, memory_activation)
+        if proposal_step is not None and proposal_activation is not None:
+            sync_live_selection(proposal_step, proposal_activation_path, proposal_activation)
         cycle_result = cycle_host.run(context)
+        if proposal_step is not None:
+            adopt_staged_decision()
         # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False
@@ -528,7 +594,7 @@ def run_vehicle_automation(
             )
             if not published and decision_published:
                 # Count for workers that staged proposals at start (including
-                # after restage invalidation where the live generation no longer matches).
+                # after a restage this worker cannot run until it restarts).
                 reason = (
                     "gate_rejected"
                     if last_cycle is None
@@ -569,10 +635,9 @@ def run_vehicle_automation(
         else:
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
-        perception_plugin_report = _execution_plugin_report(perception_step)
-        memory_plugin_report = (
-            _execution_plugin_report(memory_step) if memory_step is not None else None
-        )
+        perception_plugin_report = plugin_report(perception_step)
+        memory_plugin_report = plugin_report(memory_step)
+        proposal_plugin_report = plugin_report(proposal_step)
 
         control_record = {
             **cycle_result.control.to_dict(),
@@ -580,8 +645,8 @@ def run_vehicle_automation(
             # In observe-only mode it also performs no control handoff or stop command.
             "applied": False,
         }
-        simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
-        simulation_epoch = simulator_epoch_from_snapshot(snapshot)
+        simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
+        simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
         if simulator_frame_index is None or simulation_epoch is None:
             raise ValueError(
                 "Chase decision frame is missing atomic simulation-run identity"
@@ -594,18 +659,19 @@ def run_vehicle_automation(
             # Immutable automation generation: pairs frame publications with probe.
             "run_id": state.get("run_id"),
             "worker_pid": state.get("pid"),
-            "captured_at_ms": snapshot.completed_at_ms,
+            "captured_at_ms": sensor_frame.completed_at_ms,
             "cycle_started_at_ms": cycle_started_at_ms,
             "cycle_completed_at_ms": perception_completed_at_ms,
             "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
             "perception_started_at_ms": perception_started_at_ms,
             "perception_completed_at_ms": perception_completed_at_ms,
             "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
-            "capture_to_perception_ms": perception_completed_at_ms - snapshot.completed_at_ms,
-            "sensor_snapshot": snapshot.to_dict(),
+            "capture_to_perception_ms": perception_completed_at_ms - sensor_frame.completed_at_ms,
+            "sensor_frame": sensor_frame.to_dict(),
             "perception": perception_dict,
             "perception_plugin_report": perception_plugin_report,
             "memory_plugin_report": memory_plugin_report,
+            "proposal_plugin_report": proposal_plugin_report,
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
@@ -683,10 +749,10 @@ def run_vehicle_automation(
                 "frame_index": context.frame_index,
                 "simulator_frame_index": simulator_frame_index,
                 "simulation_epoch": simulation_epoch,
-                "captured_at_ms": snapshot.completed_at_ms,
+                "captured_at_ms": sensor_frame.completed_at_ms,
                 "perception_completed_at_ms": perception_completed_at_ms,
                 "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
-                "capture_to_perception_ms": perception_completed_at_ms - snapshot.completed_at_ms,
+                "capture_to_perception_ms": perception_completed_at_ms - sensor_frame.completed_at_ms,
                 "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
                 "perception_json": display_path(frame_json_path)
                 if frame_json_path is not None
@@ -729,9 +795,12 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "implementation_id": memory_step.status()["implementation_id"],
-                    "implementation_spec": memory_step.status()["implementation_spec"],
                     "status": memory_step.status(),
+                }
+            if proposal_step is not None:
+                state["proposal"] = {
+                    "activation": display_path(proposal_activation_path),
+                    "status": proposal_step.status(),
                 }
             perception_state = state.get("perception")
             if isinstance(perception_state, dict):
@@ -836,7 +905,7 @@ def run_vehicle_automation(
             # frame identity once the capture returns.
             provisional_id = f"capture_{capture_sequence:06d}"
             perception_output_dir = None
-            snapshot = car.read_sensors(
+            sensor_frame = car.read_sensors(
                 SensorReadRequest(
                     output_dir=frames_dir,
                     read_id=provisional_id,
@@ -907,7 +976,7 @@ def run_vehicle_automation(
                                 "mutation_attempted": False,
                             },
                         )
-            simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
+            simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
             if simulator_frame_index is None and hasattr(car, "last_simulator_frame_index"):
                 simulator_frame_index = getattr(car, "last_simulator_frame_index", None)
             if simulator_frame_index is not None:
@@ -919,22 +988,22 @@ def run_vehicle_automation(
                     "Chase sensor capture missing simulator frameIndex; "
                     "cannot assign camera-derived frame identity for reference alignment"
                 )
-            simulation_epoch = simulator_epoch_from_snapshot(snapshot)
+            simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
             if simulation_epoch is None:
                 raise ValueError(
                     "Chase sensor capture missing simulationEpoch; "
                     "cannot establish atomic run identity for reference alignment"
                 )
-            # Align SensorSnapshot.read_id with simulator identity (capture used a provisional id).
-            if snapshot.read_id != frame_id:
-                snapshot = replace(snapshot, read_id=frame_id)
+            # Align SensorFrame.read_id with simulator identity (capture used a provisional id).
+            if sensor_frame.read_id != frame_id:
+                sensor_frame = replace(sensor_frame, read_id=frame_id)
             if record:
                 perception_output_dir = perception_dir / frame_id
             chaser_reference = None
             if hasattr(car, "last_capture_chaser_reference"):
                 chaser_reference = getattr(car, "last_capture_chaser_reference", None)
 
-            front_reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
+            front_reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
             front_path = (
                 Path(front_reading.path)
                 if front_reading is not None and isinstance(front_reading.path, str)
@@ -952,9 +1021,9 @@ def run_vehicle_automation(
                         front_path = target_path
                         if front_reading is not None:
                             updated = replace(front_reading, path=str(front_path))
-                            snapshot = replace(
-                                snapshot,
-                                readings={**snapshot.readings, FRONT_CAMERA_SENSOR_ID: updated},
+                            sensor_frame = replace(
+                                sensor_frame,
+                                readings={**sensor_frame.readings, FRONT_CAMERA_SENSOR_ID: updated},
                             )
                 except OSError:
                     pass
@@ -967,10 +1036,10 @@ def run_vehicle_automation(
                 "simulator_frame_index": frame_index,
                 "simulation_epoch": simulation_epoch,
                 "capture_sequence": capture_sequence,
-                "captured_at_ms": snapshot.completed_at_ms,
+                "captured_at_ms": sensor_frame.completed_at_ms,
                 "capture_started_at_ms": captured_started_at_ms,
-                "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
-                "sensor_snapshot": snapshot.to_dict(),
+                "capture_duration_ms": sensor_frame.completed_at_ms - captured_started_at_ms,
+                "sensor_frame": sensor_frame.to_dict(),
             }
             # Evaluator-only: never placed on DecisionFrameContext / observation.
             if isinstance(chaser_reference, dict):
@@ -991,7 +1060,7 @@ def run_vehicle_automation(
                 frame_id=frame_id,
                 frame_index=frame_index,
                 timestamp_ms=captured_started_at_ms,
-                sensor_snapshot=snapshot,
+                sensor_frame=sensor_frame,
                 mode="autonomy" if take_control else "observe_only",
                 metadata={
                     "vehicle_id": vehicle_id,
@@ -1025,8 +1094,8 @@ def run_vehicle_automation(
                     "simulator_frame_index": frame_index,
                     "simulation_epoch": simulation_epoch,
                     "capture_sequence": capture_sequence,
-                    "captured_at_ms": snapshot.completed_at_ms,
-                    "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
+                    "captured_at_ms": sensor_frame.completed_at_ms,
+                    "capture_duration_ms": sensor_frame.completed_at_ms - captured_started_at_ms,
                     "front_camera": display_path(latest_front_camera_path if not record else front_path),
                     "reference_aligned": isinstance(chaser_reference, dict)
                     and chaser_reference.get("simulator_frame_index") == frame_index
@@ -1044,7 +1113,6 @@ def run_vehicle_automation(
     except KeyboardInterrupt:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_runner(perception_step)
         state["status"] = "stopped"
         state["stop_reason"] = "keyboard_interrupt"
         state["completed_at_ms"] = _timestamp_ms()
@@ -1065,7 +1133,6 @@ def run_vehicle_automation(
     except (MetricsUiWebSocketError, ChaseCaptureValidationError, ChasePassiveCaptureError) as exc:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_runner(perception_step)
         state["status"] = "error"
         state["error"] = str(exc)
         state["error_code"] = getattr(exc, "code", "simulator_transport_error")
@@ -1102,7 +1169,6 @@ def run_vehicle_automation(
     except Exception as exc:
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
-        _close_runner(perception_step)
         state["status"] = "error"
         state["error"] = f"{type(exc).__name__}: {exc}"
         state["readiness"] = {
@@ -1129,7 +1195,6 @@ def run_vehicle_automation(
             ),
         )
 
-    _close_runner(perception_step)
     state["status"] = "completed"
     state["completed_at_ms"] = _timestamp_ms()
     state["updated_at_ms"] = state["completed_at_ms"]
@@ -1172,6 +1237,11 @@ def start_vehicle_automation_background(
     automation_dir.mkdir(parents=True, exist_ok=True)
     process_path = automation_dir / "process.json"
     log_path = automation_dir / "automation.log"
+
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
 
     existing = _read_json(process_path)
     existing_pid = existing.get("pid") if isinstance(existing, dict) else None
@@ -1935,8 +2005,13 @@ def restart_vehicle_automation(
     record: bool = False,
     verbose: bool = False,
     log_to_disk: bool = False,
+    open_view: bool = False,
     wait_s: float = 3.0,
 ) -> CommandResult:
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
     stop_result = stop_vehicle_automation(vehicle_id=vehicle_id, wait_s=wait_s)
     if stop_result.exit_code != 0:
         return stop_result
@@ -1950,6 +2025,7 @@ def restart_vehicle_automation(
         record=record,
         verbose=verbose,
         log_to_disk=log_to_disk,
+        open_view=open_view,
     )
     message = "\n\n".join(part for part in (stop_result.message, start_result.message) if part)
     return CommandResult(start_result.exit_code, message)
@@ -2073,7 +2149,8 @@ def _collect_automation_status(
                     )
                     if published_view.get("available"):
                         break
-        worker_recovery = (
+        activation_problems = bundle_activation_problems(bundle, vehicle_name)
+        worker_recovery = activation_problems[0]["command"] if activation_problems else (
             f"./cli/automa vehicles automation restart --id {vehicle_name}"
             if worker_status in {"error", "stale"}
             else None
@@ -2086,7 +2163,7 @@ def _collect_automation_status(
         if isinstance(perception_manifest, dict):
             metadata = perception_manifest.get("metadata")
             perception = {
-                "algorithm": metadata.get("algorithm") if isinstance(metadata, dict) else None,
+                "preset": metadata.get("preset") if isinstance(metadata, dict) else None,
                 "plugins": perception_manifest.get("plugins")
                 if isinstance(perception_manifest.get("plugins"), list)
                 else [],
@@ -2108,9 +2185,11 @@ def _collect_automation_status(
         statuses.append(
             {
                 "vehicle_id": vehicle_name,
+                "activation_problems": activation_problems,
                 "deployed": bundle_root.exists()
                 and perception_manifest_path.exists()
-                and decision["deployed"],
+                and decision["deployed"]
+                and not activation_problems,
                 "bundle_root": display_path(bundle_root),
                 "automation_runtime_exists": automation_dir.exists(),
                 "automation_dir": display_path(automation_dir),
@@ -2235,6 +2314,9 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
                 f"  log: {_status_log_label(process)}",
             ]
         )
+        problems = item.get("activation_problems")
+        if isinstance(problems, list) and problems:
+            lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
         reason = process.get("reason")
         if isinstance(reason, str) and reason:
             lines.append(f"  problem: {reason}")
@@ -2247,9 +2329,9 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
 def _perception_label(perception: dict[str, Any]) -> str:
     if not perception.get("deployed"):
         return f"not deployed; expected {perception.get('activation', 'unknown')}"
-    algorithm = perception.get("algorithm") or "unknown"
+    preset = perception.get("preset") or "unknown"
     plugins = ", ".join(perception.get("plugins") or []) or "no plugins"
-    return f"{algorithm} ({plugins})"
+    return f"{preset} ({plugins})"
 
 
 def _decision_label(decision: dict[str, Any]) -> str:
@@ -2626,6 +2708,152 @@ def _process_command(pid: int) -> str | None:
         return None
     command = result.stdout.strip()
     return command or None
+
+
+def assess_chase_worker_liveness(
+    *,
+    state: dict[str, Any],
+    probed_at_ms: int,
+    step: str,
+    max_age_ms: int = CHASE_WORKER_PROBE_MAX_AGE_MS,
+    vehicle_id: str | None = None,
+    clock_skew_ms: int = CHASE_WORKER_PROBE_CLOCK_SKEW_MS,
+) -> dict[str, Any]:
+    """Whether the Chase automation worker is live enough to report ``step``.
+
+    Requires a running automation process and a fresh state publication.
+    Stopped or stale workers must not be reported as live merely because a
+    previous state.json still holds the step's last output. A live PID must
+    also match the automation run identity for this vehicle; unavailable process
+    identity fails closed (unlike stop-path permissive matching).
+
+    ``updated_at_ms`` is the automation-wide state heartbeat refreshed by the
+    capture loop. It proves worker publication freshness, not that ``step``
+    itself just completed an update.
+    """
+
+    run_status = str(state.get("status") or "")
+    pid = state.get("pid")
+    if not isinstance(pid, int):
+        pid = None
+    pid_alive = _pid_alive(pid) if isinstance(pid, int) else False
+    updated_at_ms = state.get("updated_at_ms")
+    try:
+        updated_at = int(updated_at_ms) if updated_at_ms is not None else None
+    except (TypeError, ValueError):
+        updated_at = None
+    age_ms = (probed_at_ms - updated_at) if updated_at is not None else None
+
+    if run_status not in {"running", "starting"}:
+        return {
+            "live": False,
+            "status": "stopped",
+            "error": (
+                f"Automation worker is not running (status={run_status or 'unknown'}). "
+                f"Start observe-only automation before probing live {step}."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    if not pid_alive:
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                f"Automation worker PID {pid} is not running "
+                f"(state status={run_status}). Restart automation before probing live {step}."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    # A live step requires verified automation identity — fail closed if unknown.
+    if vehicle_id is None or not str(vehicle_id).strip():
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                "vehicle_id is required to verify the automation worker identity "
+                f"before trusting live {step}."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    vehicle_key = str(vehicle_id).strip()
+    if isinstance(pid, int):
+        command = _process_command(pid)
+        if command is None:
+            return {
+                "live": False,
+                "status": "stale",
+                "error": (
+                    f"Could not read process command for PID {pid}; "
+                    "cannot verify automation worker identity. "
+                    f"Treating live {step} as unavailable."
+                ),
+                "pid": pid,
+                "updated_at_ms": updated_at,
+                "age_ms": age_ms,
+            }
+        if not _automation_command_matches_vehicle(command, vehicle_key):
+            return {
+                "live": False,
+                "status": "stale",
+                "error": (
+                    f"PID {pid} is alive but is not the automation worker for "
+                    f"{vehicle_key!r} (possible PID reuse). Restart automation."
+                ),
+                "pid": pid,
+                "updated_at_ms": updated_at,
+                "age_ms": age_ms,
+            }
+    if updated_at is None:
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                "Automation state is missing updated_at_ms; cannot confirm a live publication."
+            ),
+            "pid": pid,
+            "updated_at_ms": None,
+            "age_ms": None,
+        }
+    # Future timestamps (beyond small clock skew) are not trustworthy freshness.
+    if age_ms is not None and age_ms < -int(clock_skew_ms):
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                f"Automation state updated_at_ms is in the future "
+                f"(age_ms={age_ms}, skew_tolerance_ms={int(clock_skew_ms)}). "
+                "Rejecting as invalid publication time."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    if age_ms is not None and age_ms > int(max_age_ms):
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                f"Automation state is stale (age_ms={age_ms}, max_age_ms={int(max_age_ms)}). "
+                f"Worker may be hung; restart automation for a fresh {step} publication."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    return {
+        "live": True,
+        "status": "live",
+        "error": None,
+        "pid": pid,
+        "updated_at_ms": updated_at,
+        "age_ms": max(0, age_ms) if age_ms is not None else None,
+    }
 
 
 def _terminate_pid(

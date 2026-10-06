@@ -12,7 +12,7 @@ from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     SensorReadRequest,
     SensorReading,
-    SensorSnapshot,
+    SensorFrame,
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
@@ -55,7 +55,7 @@ class FakeImageCar:
             self.scene = 255 - self.scene
         return {"label": pulse.label, "pulse": pulse.to_dict()}
 
-    def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:
+    def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         image = np.full((48, 64, 3), self.scene, dtype=np.uint8)
@@ -67,7 +67,7 @@ class FakeImageCar:
             captured_at_ms=1,
             metadata={"fake": True, "path": str(path)},
         )
-        return SensorSnapshot(
+        return SensorFrame(
             read_id=request.read_id,
             readings={FRONT_CAMERA_SENSOR_ID: reading},
             started_at_ms=1,

@@ -8,8 +8,7 @@ runs the plugins selected for the step:
 - ``perception(context)`` returns current evidence.
 - ``observation(context, perception)`` returns the current-frame record.
 - ``memory(context, observation)`` lets memory plugins update the host map
-  and returns their report. A memory plugin may replace the observation for
-  the later steps through ``shared_memory["decision.observation"]``.
+  and returns their report.
 - ``proposal(context, observation)`` returns the candidates.
 - ``plan(context, proposal)`` returns the plan over those candidates.
 - ``action(context, proposal, plan)`` returns the authorized control.
@@ -27,7 +26,6 @@ from typing import Any, Callable
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
-from autonomy.decision_cycle.memory.publication import observation_after_memory
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.plan.values import ActionPlan
@@ -144,7 +142,6 @@ class DecisionCycle:
             except Exception:
                 detail = "unprintable error"
             raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
-        observation = observation_after_memory(context.shared_memory, observation)
         proposal = _checked(
             "proposal",
             steps.proposal(context, observation) if steps.proposal else None,

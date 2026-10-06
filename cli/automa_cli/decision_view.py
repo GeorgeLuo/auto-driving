@@ -101,7 +101,7 @@ def _evidence_projection(
 
     The accepted cycle remains available unchanged under ``provenance``. This
     projection is the machine-visible rendering gate: an unavailable record
-    carries its raw provenance but never carries renderable geometry.
+    carries its raw origin but never carries renderable geometry.
     """
 
     observation_value = (
@@ -135,27 +135,27 @@ def _evidence_projection(
     projected: list[dict[str, Any]] = []
     for record in raw_records:
         record_id = record.get("record_id") if isinstance(record, dict) else None
-        provenance = record.get("provenance") if isinstance(record, dict) else None
+        origin = record.get("origin") if isinstance(record, dict) else None
         reason = ""
         matched_thing: dict[str, Any] | None = None
         if not isinstance(record, dict) or type(record_id) is not str or not record_id:
             reason = "invalid_record"
-        elif not isinstance(provenance, dict):
+        elif not isinstance(origin, dict):
             reason = "provenance_unavailable"
-        elif provenance.get("frame_id") != frame_id:
+        elif origin.get("frame_id") != frame_id:
             reason = "source_image_unavailable"
         elif type(observation_id) is not str or not observation_id:
             reason = "observation_unavailable"
-        elif provenance.get("observation_id") != observation_id:
+        elif origin.get("observation_id") != observation_id:
             reason = "observation_mismatch"
-        elif type(provenance.get("evidence_id")) is not str or not provenance.get("evidence_id"):
+        elif type(origin.get("observed_id")) is not str or not origin.get("observed_id"):
             reason = "provenance_unavailable"
         else:
             matches = [
                 thing
                 for thing in things
                 if isinstance(thing, dict)
-                and thing.get("thing_id") == provenance["evidence_id"]
+                and thing.get("thing_id") == origin["observed_id"]
             ]
             if not matches:
                 reason = "evidence_missing"
@@ -169,8 +169,8 @@ def _evidence_projection(
             if source_plugin_id is None:
                 source_plugin_id = observation_plugin_id
             if (
-                provenance.get("coordinate_frame") != "image"
-                or provenance.get("source_plugin_id") != source_plugin_id
+                origin.get("coordinate_frame") != "image"
+                or origin.get("source_plugin_id") != source_plugin_id
             ):
                 reason = "provenance_mismatch"
             elif not _supported_image_bbox(record.get("location")):
@@ -189,7 +189,7 @@ def _evidence_projection(
                 "record_id": record_id if type(record_id) is str else None,
                 "status": "available" if available else "unavailable",
                 "reason": reason,
-                "provenance": _json_copy(provenance) if isinstance(provenance, dict) else None,
+                "origin": _json_copy(origin) if isinstance(origin, dict) else None,
                 "record": _json_copy(record) if available else None,
             }
         )
@@ -350,7 +350,7 @@ class DecisionView:
         provider_identity: dict[str, Any] | None = None,
     ) -> None:
         self._activation_path = Path(activation_path)
-        self._startup_activation = _json_copy(activation) if isinstance(activation, dict) else None
+        self._activation = _json_copy(activation) if isinstance(activation, dict) else None
         self.identity: dict[str, Any] | None = None
         self.generation_id: str | None = None
         self._provider_identity = (
@@ -359,12 +359,12 @@ class DecisionView:
         if self._provider_identity is not None:
             self.identity = provider_decision_view_identity(**self._provider_identity)
             self.generation_id = generation_id(self.identity)
-        elif self._startup_activation is not None and run_id is not None and worker_pid is not None:
+        elif self._activation is not None and run_id is not None and worker_pid is not None:
             self.identity = decision_view_identity(
                 vehicle_id=vehicle_id,
                 run_id=run_id,
                 worker_pid=worker_pid,
-                activation=self._startup_activation,
+                activation=self._activation,
             )
             self.generation_id = generation_id(self.identity)
         self._lock = threading.Lock()
@@ -395,6 +395,29 @@ class DecisionView:
             return None
         return f"/decision?{urlencode({'generation': self.generation_id})}"
 
+    def adopt(self, activation: dict[str, Any]) -> None:
+        """Publish under ``activation``, a restage the worker now runs.
+
+        The view takes that generation and drops the previous one's
+        transactions; a page pinned to the old generation gets a 409 naming
+        the new one, which it follows while the run and worker are the same.
+        """
+
+        if self.identity is None or self._provider_identity is not None:
+            return
+        identity = decision_view_identity(
+            vehicle_id=self.identity["vehicle_id"],
+            run_id=self.identity["run_id"],
+            worker_pid=self.identity["worker_pid"],
+            activation=activation,
+        )
+        with self._lock:
+            self._activation = _json_copy(activation)
+            self.identity = identity
+            self.generation_id = generation_id(identity)
+            self._transactions.clear()
+            self._latest_transaction_id = None
+
     def require_generation(self, generation: str) -> None:
         if self.generation_id is None or self.identity is None:
             raise DecisionViewError(503, "decision_unavailable", "decision view is not configured")
@@ -418,13 +441,13 @@ class DecisionView:
     ) -> bool:
         """Store one exact transaction only after all local identities agree."""
 
-        if self.identity is None or self._startup_activation is None or image is None:
+        if self.identity is None or self._activation is None or image is None:
             self.invalidate_latest()
             return False
         try:
             accept_decision_stream_frame(
                 stream_frame,
-                activation=self._startup_activation,
+                activation=self._activation,
                 automation_state={
                     "run_id": self.identity["run_id"],
                     "status": "running",
@@ -640,7 +663,7 @@ class DecisionView:
                 "url": image_url,
             },
             "provenance": {
-                "sensor_snapshot": _json_copy(transaction.frame_record.get("sensor_snapshot")),
+                "sensor_frame": _json_copy(transaction.frame_record.get("sensor_frame")),
                 "observation": _json_copy(observation),
                 "evidence": _json_copy(evidence_input),
             },
@@ -670,12 +693,12 @@ class DecisionView:
     def _activation_matches(self) -> bool:
         if self._provider_identity is not None:
             return True
-        if self._startup_activation is None:
+        if self._activation is None:
             return False
         try:
             # The staged decision steps under the vehicle's runtime directory.
             staged = decision_identity({"runtime_dir": str(self._activation_path)})
-            return _activation_identity(staged) == _activation_identity(self._startup_activation)
+            return _activation_identity(staged) == _activation_identity(self._activation)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             return False
 

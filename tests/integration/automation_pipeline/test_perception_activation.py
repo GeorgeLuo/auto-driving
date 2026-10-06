@@ -16,8 +16,8 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from implementations.decision_cycle.catalog import step_plugins
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 
@@ -27,12 +27,12 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
             activation_path = Path(tmp) / "active.json"
             write_step_activation(
                 activation_path,
-                step_activation("perception", ["frame"], {"frame": PERCEPTION_PLUGIN_SPECS["frame"]}),
+                step_activation("perception", ["frame"], {"frame": step_plugins("perception")["frame"]["spec"]}),
             )
             runner = PerceptionRunner.from_activation(
                 read_step_activation(activation_path, "perception")
             )
-            snapshot = SensorSnapshot(
+            sensor_frame = SensorFrame(
                 read_id="onboard-frame",
                 readings={
                     FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -51,7 +51,7 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
                     frame_id="onboard-frame",
                     frame_index=0,
                     timestamp_ms=10,
-                    sensor_snapshot=snapshot,
+                    sensor_frame=sensor_frame,
                 )
             )
 

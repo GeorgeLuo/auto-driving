@@ -62,14 +62,14 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         with self.assertRaises(DecisionSurfaceError):
             strict_decode_apply_evidence(bad_location)
 
-        missing_provenance_key = [dict(good_evidence[0])]
-        missing_provenance_key[0]["provenance"] = {
+        missing_origin_key = [dict(good_evidence[0])]
+        missing_origin_key[0]["origin"] = {
             key: value
-            for key, value in good_evidence[0]["provenance"].items()
+            for key, value in good_evidence[0]["origin"].items()
             if key != "updated_at_ms"
         }
         with self.assertRaises(DecisionSurfaceError):
-            strict_decode_apply_evidence(missing_provenance_key)
+            strict_decode_apply_evidence(missing_origin_key)
 
         # complete export accepted
         strict_decode_apply_observation(good_obs)

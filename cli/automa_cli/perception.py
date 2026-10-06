@@ -3,27 +3,24 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import (
-    STEP_ACTIVATION_SCHEMA,
+    StepActivation,
+    load_activation_json,
     step_activation_from_payload,
-    write_step_activation,
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.plugins import PluginManagementError
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
-from implementations.decision_cycle.catalog import perception_algorithm_activation
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
-    PERCEPTION_ALGORITHMS,
-    available_perception_algorithm_ids,
+from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
+from implementations.decision_cycle.perception.presets import (
+    PERCEPTION_PRESETS,
+    available_perception_preset_ids,
 )
 
 from .bundles import (
@@ -34,14 +31,20 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .lab_plugins import (
-    LAB_CANDIDATE_PLUGIN_SPEC,
-    PerceptionCandidate,
-    candidate_status,
-    get_candidate,
+from .step_activations import (
+    BUILTIN_STEPS,
+    bundle_activation_problems,
+    ensure_builtin_activations,
+    format_activation_problems,
+    read_bundle_activation,
+    refresh_release,
+    stage_activation,
+    staged_activation,
+    staging_vehicle,
+    step_update_error,
 )
-from .step_activations import ensure_builtin_activations
 from .step_hosting import load_staged_runner
+from .step_schema import format_staged_step, staged_step_info
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
 from .physical_observation import (
@@ -57,15 +60,12 @@ from .vehicles import (
     READINESS_SCHEMA,
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles_snapshot,
     get_vehicle_status,
 )
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "decision_cycle" / "perception"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
-CANDIDATE_PLUGIN_PREFIX = "candidate:"
 
 
 @dataclass(frozen=True)
@@ -77,54 +77,68 @@ class CommandResult:
 def ensure_local_perception_runtime(
     *,
     vehicle: dict[str, Any],
-    algorithm: str | None = None,
+    preset: str | None = None,
+    plugins: list[str] | None = None,
     output: TextIO | None = None,
 ) -> dict[str, Any]:
-    """Ensure a vehicle's local bundle reflects current perception source."""
+    """Ensure a vehicle's local bundle reflects the current controller source.
+
+    A named preset is rebuilt from the catalog through ``stage_activation``,
+    so its plugin list tracks the preset. A custom selection is kept, and
+    ``refresh_release`` records a repackaged bundle on it. With nothing
+    staged, the default preset is staged. ``preset`` or ``plugins`` select
+    what the returned manifest runs without restaging; ``update perception``
+    stages a selection.
+    """
 
     vehicle_id = str(vehicle.get("vehicle_id") or "vehicle")
-    if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
-        raise ValueError(f"unknown perception algorithm: {algorithm}")
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    existing: dict[str, Any] | None = None
-    if manifest_path.exists():
-        existing = _read_manifest(manifest_path)
-
-    selected_algorithm = algorithm
-    existing_algorithm = _manifest_algorithm(existing) if existing is not None else None
-    if selected_algorithm is None:
-        if isinstance(existing_algorithm, str) and existing_algorithm in PERCEPTION_ALGORITHMS:
-            selected_algorithm = existing_algorithm
-    selected_algorithm = selected_algorithm or DEFAULT_PERCEPTION_ALGORITHM
-
-    preserve_existing = existing_algorithm == "custom" or (
-        isinstance(existing_algorithm, str) and existing_algorithm.startswith(CANDIDATE_PLUGIN_PREFIX)
-    )
-    if existing is not None and algorithm is None and preserve_existing:
-        manifest = existing
-    else:
-        manifest = _activation_manifest(vehicle, selected_algorithm, bundle)
-        if existing is not None:
-            existing_release = _manifest_bundle(existing).get("release")
-            if isinstance(existing_release, dict):
-                _manifest_bundle(manifest)["release"] = existing_release
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
+    if problems:
+        raise ValueError(format_activation_problems(problems))
+    existing = read_bundle_activation(bundle, "perception")
+    existing_preset = _activation_preset(existing)
+    release_summary = _activation_release(existing)
 
     source = controller_bundle_source_summary()
-    release_summary = _manifest_bundle(manifest).get("release")
-    staged_tree = release_summary.get("tree_sha256") if isinstance(release_summary, dict) else None
+    staged_tree = release_summary.get("tree_sha256") if release_summary is not None else None
     bundle_present = Path(bundle["autonomy_dir"]).is_dir() and Path(bundle["implementations_dir"]).is_dir()
     refreshed = not bundle_present or staged_tree != source["tree_sha256"]
+    release = sync_controller_bundle(bundle, output=output) if refreshed else None
 
-    if refreshed:
-        release = sync_controller_bundle(bundle, output=output)
-        _manifest_bundle(manifest)["release"] = release_activation_summary(release)
-    _write_manifest(manifest_path, manifest)
+    if existing is not None and existing_preset == CUSTOM_PRESET:
+        if release is not None:
+            refresh_release(bundle, "perception", release)
+    else:
+        staged_preset = existing_preset if existing_preset in PERCEPTION_PRESETS else None
+        stage_activation(
+            bundle,
+            selection_activation("perception", preset=staged_preset),
+            vehicle_id=_vehicle_id(vehicle),
+            release=release,
+            vehicle=vehicle,
+            release_summary=None if release is not None else release_summary,
+        )
+
+    staged = read_bundle_activation(bundle, "perception")
+    if staged is None:
+        raise ValueError(f"perception activation was not staged: {display_path(manifest_path)}")
+    staged_payload = staged.to_payload()
+    manifest = staged_payload
+    if preset is not None or plugins:
+        manifest = staged_activation(
+            bundle,
+            selection_activation("perception", preset=preset, plugins=plugins),
+            vehicle_id=_vehicle_id(vehicle),
+            vehicle=vehicle,
+            release_summary=_activation_release(staged),
+        ).to_payload()
 
     return {
         "vehicle_id": vehicle_id,
-        "algorithm": _manifest_algorithm(manifest),
+        "preset": _manifest_preset(manifest),
         "bundle": bundle,
         "manifest": manifest,
         "manifest_path": manifest_path,
@@ -153,103 +167,23 @@ def get_vehicle_perception_info(
     )
     live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
 
-    if not has_local_activation and live_provider != "picar":
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No active perception algorithm found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(manifest_path)}",
-                    "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
-                ]
-            ),
-        )
-
     payload: dict[str, Any] = {
         "schema": "vehicle_perception_info_v0",
         "vehicle_id": vehicle_id,
     }
 
-    if has_local_activation:
-        try:
-            manifest = _read_manifest(manifest_path)
-        except ValueError as exc:
-            return CommandResult(2, str(exc))
-
-        bundle_root_text = _manifest_bundle(manifest).get("root_dir")
-        if not isinstance(bundle_root_text, str) or not bundle_root_text:
-            return CommandResult(
-                2,
-                f"Activation {display_path(manifest_path)} does not record its controller bundle.",
-            )
-        bundle_root = Path(bundle_root_text)
-        if not bundle_root.exists():
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Controller bundle is missing for {vehicle_id!r}: {display_path(bundle_root)}",
-                        "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
-                    ]
-                ),
-            )
-
-        plugins_text = ", ".join(manifest["plugins"]) or "(none)"
-        try:
-            runner = load_staged_runner(_manifest_activation(manifest, manifest_path))
-        except Exception as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not load active perception for {vehicle_id!r}.",
-                        f"Plugins: {plugins_text}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-        try:
-            schema = runner.describe_schema()
-        except Exception as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not inspect active perception for {vehicle_id!r}.",
-                        f"Plugins: {plugins_text}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-        finally:
-            _close_runner(runner)
-
+    # A PiRacer reached live can be reported without a local staged activation.
+    if has_local_activation or live_provider != "picar":
+        staged, error = staged_step_info(bundle, vehicle_id, "perception")
+        if error is not None:
+            return CommandResult(2, error)
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
         published_view, automation_status = _perception_view_with_automation_status(
             automation_dir
         )
         payload.update(
             {
-                "activation": {
-                    "path": display_path(manifest_path),
-                    "algorithm": _manifest_algorithm(manifest),
-                    "plugins": list(manifest["plugins"]),
-                    "plugin_specs": dict(manifest["plugin_specs"]),
-                    "plugin_configs": dict(manifest["plugin_configs"]),
-                },
-                "controller_bundle": {
-                    "root_dir": display_path(bundle_root),
-                    "perception_source_dir": display_path(
-                        Path(_manifest_get_str(manifest, "metadata", "source_dir") or "")
-                    ),
-                    "release": _manifest_get_dict(manifest["metadata"], "controller_bundle", "release"),
-                },
-                "algorithm_schema_source": {
-                    "kind": "runner_method",
-                    "method": "describe_schema",
-                    "runner": "autonomy.decision_cycle.perception.runner:PerceptionRunner",
-                },
-                "algorithm_schema": schema,
+                **staged,
                 "published_view": published_view,
                 "automation": automation_status,
             }
@@ -259,8 +193,8 @@ def get_vehicle_perception_info(
             {
                 "activation": None,
                 "controller_bundle": None,
-                "algorithm_schema_source": None,
-                "algorithm_schema": None,
+                "perception_schema_source": None,
+                "perception_schema": None,
                 "published_view": {
                     "available": False,
                     "status": "unavailable",
@@ -291,119 +225,11 @@ def get_vehicle_perception_info(
     return CommandResult(0, _format_perception_info(payload))
 
 
-def set_vehicle_perception_plugin(
-    *,
-    vehicle_id: str,
-    plugin_id: str,
-    enabled: bool,
-    json_output: bool = False,
-) -> CommandResult:
-    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
-    bundle = controller_bundle_paths(vehicle_runtime_dir)
-    manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    if not manifest_path.exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No active perception algorithm found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(manifest_path)}",
-                    "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
-                ]
-            ),
-        )
-
-    try:
-        manifest = _read_manifest(manifest_path)
-    except ValueError as exc:
-        return CommandResult(2, str(exc))
-
-    bundle_root_text = _manifest_bundle(manifest).get("root_dir")
-    if not isinstance(bundle_root_text, str) or not bundle_root_text:
-        return CommandResult(2, f"Activation {display_path(manifest_path)} does not record its controller bundle.")
-    bundle_root = Path(bundle_root_text)
-    if not bundle_root.exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Controller bundle is missing for {vehicle_id!r}: {display_path(bundle_root)}",
-                    "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
-                ]
-            ),
-        )
-
-    before = list(manifest["plugins"])
-    try:
-        manager = _manifest_activation(manifest).plugin_manager()
-        available = sorted(manager.available_ids)
-    except PluginManagementError as exc:
-        return CommandResult(2, f"Could not inspect deployed plugin catalog: {exc}")
-    if plugin_id not in available:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Plugin {plugin_id!r} is not available in the deployed bundle for {vehicle_id!r}.",
-                    f"Available plugins: {', '.join(available) or 'none'}",
-                    "Run `./cli/automa vehicles update perception --id <vehicle_id>` if local plugin code has changed.",
-                ]
-            ),
-        )
-
-    try:
-        manager.select(before)
-        if enabled:
-            manager.add(plugin_id)
-        else:
-            manager.remove(plugin_id)
-        after = list(manager.selected_ids)
-    except PluginManagementError as exc:
-        return CommandResult(2, str(exc))
-    changed = after != before
-
-    if changed:
-        manifest["plugins"] = after
-        try:
-            runner = load_staged_runner(_manifest_activation(manifest))
-            _close_runner(runner)
-        except Exception as exc:
-            return CommandResult(2, f"Plugin change would make perception fail to load: {exc}")
-
-        metadata = manifest["metadata"]
-        previous_algorithm = metadata.get("algorithm")
-        if previous_algorithm != "custom":
-            metadata["base_algorithm"] = previous_algorithm
-        metadata["algorithm"] = "custom"
-        metadata["algorithm_description"] = "Manual perception plugin selection."
-        metadata["last_plugin_change"] = {
-            "plugin": plugin_id,
-            "enabled": enabled,
-            "changed_at_ms": int(time.time() * 1000),
-        }
-        _write_manifest(manifest_path, manifest)
-
-    payload = {
-        "schema": "vehicle_perception_plugin_update_v0",
-        "vehicle_id": vehicle_id,
-        "activation": display_path(manifest_path),
-        "plugin": plugin_id,
-        "enabled": enabled,
-        "changed": changed,
-        "plugins_before": before,
-        "plugins_after": after,
-        "available_plugins": available,
-    }
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, _format_plugin_update(payload))
-
-
 def update_vehicle_perception(
     *,
     vehicle_id: str,
-    algorithm: str | None = None,
-    candidate_id: str | None = None,
+    preset: str | None = None,
+    plugins: list[str] | None = None,
     timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
     restart: bool = False,
     dry_run: bool = False,
@@ -411,74 +237,30 @@ def update_vehicle_perception(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    if algorithm is not None and candidate_id is not None:
-        return CommandResult(2, "Choose either --algorithm or --candidate, not both.")
-
-    candidate = None
-    candidate_info: dict[str, Any] | None = None
-    selected_algorithm = algorithm or DEFAULT_PERCEPTION_ALGORITHM
-    if candidate_id is not None:
-        try:
-            candidate = get_candidate(candidate_id)
-        except ValueError as exc:
-            return CommandResult(2, str(exc))
-        candidate_info = candidate_status(candidate)
-        if not candidate_info.get("ready"):
-            return CommandResult(
-                2,
-                f"Perception candidate {candidate_id!r} is not ready. "
-                f"Run: {candidate_info['setup_command']}",
-            )
-        activation_name = f"candidate:{candidate_id}"
-    elif selected_algorithm not in PERCEPTION_ALGORITHMS:
-        available = ", ".join(available_perception_algorithm_ids())
+    if preset is not None and plugins:
+        return CommandResult(2, "Choose either --preset or --plugin, not both.")
+    if preset is not None and preset not in PERCEPTION_PRESETS:
+        available = ", ".join(available_perception_preset_ids())
         return CommandResult(
             2,
-            f"Unknown perception algorithm {selected_algorithm!r}. Available algorithms: {available}.",
+            f"Unknown perception preset {preset!r}. Available presets: {available}.",
         )
-    else:
-        activation_name = selected_algorithm
+    try:
+        activation = selection_activation("perception", preset=preset, plugins=plugins)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
+    activation_name = activation.metadata["preset"]
 
     stream = output if verbose else None
 
-    vehicle = _offline_sim_vehicle(vehicle_id) if not restart else None
-    if vehicle is None and not restart:
-        vehicle = _offline_staged_vehicle(vehicle_id)
-    if vehicle is not None:
-        _emit(
-            stream,
-            "Using local vehicle metadata; network liveness is not required for local perception staging.",
-        )
-    else:
-        _emit(stream, f"Discovering active vehicles for id {vehicle_id!r}...")
-        payload = discover_active_vehicles(
-            timeout_s=timeout_s,
-            include_picar=True,
-            include_chase_sim=True,
-            include_inactive=True,
-        )
-        vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-        if error:
-            return CommandResult(
-                2,
-                "\n\n".join(
-                    [
-                        error,
-                        "Discovery snapshot:",
-                        format_active_vehicles_snapshot(payload, include_inactive=True),
-                    ]
-                ),
-            )
-        if vehicle is None:
-            return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+    # --restart drives the live simulator, so it never stages from offline metadata.
+    vehicle, unknown = staging_vehicle(
+        vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=timeout_s, offline=not restart, output=stream
+    )
+    if vehicle is None:
+        return CommandResult(*step_update_error(vehicle_id, "perception", "unknown_vehicle", unknown, json_output=json_output))
 
     provider = vehicle.get("provider")
-    if candidate is not None and provider != "chase-sim":
-        return CommandResult(
-            2,
-            f"Perception candidate {candidate_id!r} uses a local isolated runtime and can only "
-            "be activated for a Chase simulator vehicle.",
-        )
     if restart and provider != "chase-sim":
         return CommandResult(
             2,
@@ -490,29 +272,21 @@ def update_vehicle_perception(
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     perception_runtime_dir = Path(bundle["perception_runtime_dir"])
     manifest_path = perception_runtime_dir / "active.json"
-    manifest = (
-        _candidate_activation_manifest(
-            vehicle,
-            candidate,
-            candidate_info or {},
-            bundle,
-        )
-        if candidate is not None
-        else _activation_manifest(vehicle, selected_algorithm, bundle)
-    )
+    manifest = staged_activation(
+        bundle, activation, vehicle_id=vehicle_id, vehicle=vehicle,
+    ).to_payload()
 
     _emit(stream, f"Selected {vehicle_id} ({provider}).")
     _emit(stream, "Scope: local perception controller bundle.")
     _emit(stream, "Vehicle and simulator source code will not be modified.")
-    _emit(stream, f"Perception algorithm: {activation_name} ({', '.join(manifest['plugins'])})")
-    _emit(stream, f"Perception source: {manifest['metadata']['workspace_source_dir']}")
+    _emit(stream, f"Perception preset: {activation_name} ({', '.join(manifest['plugins'])})")
     _emit(stream, f"Controller bundle: {bundle['root_dir']}")
     _emit(stream, f"Activation manifest: {manifest_path}")
 
     if dry_run:
         payload = _perception_update_payload(
             vehicle_id=vehicle_id,
-            algorithm=activation_name,
+            preset=activation_name,
             dry_run=True,
             manifest=manifest,
             bundle=bundle,
@@ -531,16 +305,28 @@ def update_vehicle_perception(
             f"would write {manifest_path}",
             json.dumps(manifest, indent=2, sort_keys=True),
         ]
-        if candidate is not None:
-            lines.insert(3, f"would reference isolated candidate -> {candidate.directory}")
         if restart:
             lines.append("would restart WS controller handoff and capture a sample perception")
         return CommandResult(0, "\n".join(lines))
 
-    perception_runtime_dir.mkdir(parents=True, exist_ok=True)
+    # Built-in staging also refreshes an existing proposal's release metadata.
+    # Validate the documents it reads before packaging or writing.
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=(*BUILTIN_STEPS, "proposal"))
+    if problems:
+        return CommandResult(*step_update_error(
+            vehicle_id, "perception", "invalid_activation", format_activation_problems(problems),
+            json_output=json_output, activation_problems=problems,
+        ))
+
     release = sync_controller_bundle(bundle, output=stream)
-    _manifest_bundle(manifest)["release"] = release_activation_summary(release)
-    _write_manifest(manifest_path, manifest)
+    manifest_path = stage_activation(
+        bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle,
+    )
+    manifest = step_activation_from_payload(
+        load_activation_json(manifest_path.read_text(encoding="utf-8")),
+        step="perception",
+        source_path=manifest_path,
+    ).to_payload()
     ensure_builtin_activations(
         vehicle_id=vehicle_id,
         bundle=bundle,
@@ -564,7 +350,7 @@ def update_vehicle_perception(
                 2,
                 "\n".join(
                     [
-                        f"Perception algorithm {activation_name!r} was activated for {vehicle_id}, "
+                        f"Perception preset {activation_name!r} was activated for {vehicle_id}, "
                         "but restart/sample failed.",
                         f"Reason: {exc}",
                         f"Activation: {display_path(manifest_path)}",
@@ -579,7 +365,7 @@ def update_vehicle_perception(
 
     payload = _perception_update_payload(
         vehicle_id=vehicle_id,
-        algorithm=activation_name,
+        preset=activation_name,
         dry_run=False,
         manifest=manifest,
         bundle=bundle,
@@ -591,7 +377,7 @@ def update_vehicle_perception(
     readiness = None
     next_action = None
     readiness_exit_code = 0
-    if provider == "chase-sim" and not restart and candidate_id is None:
+    if provider == "chase-sim" and not restart:
         connection = (
             vehicle.get("connection")
             if isinstance(vehicle.get("connection"), dict)
@@ -619,7 +405,7 @@ def update_vehicle_perception(
         )
     message = _success_message(
         vehicle_id=vehicle_id,
-        algorithm=activation_name,
+        preset=activation_name,
         bundle_root=Path(bundle["root_dir"]),
         manifest_path=manifest_path,
         sample_paths=sample_paths,
@@ -708,80 +494,43 @@ def _automation_run_readiness(
 def ensure_vehicle_perception_activation(
     *,
     vehicle: dict[str, Any],
-    algorithm: str,
+    preset: str,
     bundle: dict[str, str],
     release: dict[str, Any],
 ) -> Path:
-    if algorithm not in PERCEPTION_ALGORITHMS:
-        raise ValueError(f"unknown perception algorithm: {algorithm}")
+    """Stage perception for deploy through the shared activation writers.
 
-    activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    if activation_path.exists():
-        manifest = _read_manifest(activation_path)
-        existing_algorithm = _manifest_algorithm(manifest)
-        if existing_algorithm in PERCEPTION_ALGORITHMS:
-            manifest = _activation_manifest(vehicle, existing_algorithm, bundle)
-        elif existing_algorithm != "custom":
-            manifest = _activation_manifest(vehicle, algorithm, bundle)
-    else:
-        manifest = _activation_manifest(vehicle, algorithm, bundle)
+    A named preset is rebuilt from the catalog with ``stage_activation``,
+    so a deployed preset picks up the catalog's plugin list. A custom
+    selection keeps its plugins and ``refresh_release`` records ``release``.
+    With nothing staged, or a preset name this catalog does not know,
+    ``preset`` is staged.
+    """
 
-    _manifest_bundle(manifest)["release"] = release_activation_summary(release)
-    _write_manifest(activation_path, manifest)
-    return activation_path
+    if preset not in PERCEPTION_PRESETS:
+        raise ValueError(f"unknown perception preset: {preset}")
 
-
-def _offline_sim_vehicle(vehicle_id: str) -> dict[str, Any] | None:
-    if vehicle_id != "chase-sim-chaser" and not vehicle_id.startswith("chase-sim-"):
-        return None
-    car = ChaseSimCar(vehicle_id=vehicle_id)
-    return {
-        "vehicle_id": vehicle_id,
-        "vehicle_kind": car.capabilities.vehicle_kind,
-        "provider": "chase-sim",
-        "connection": {
-            "ws_url": car.ws_url,
-            "source": "offline-default",
-        },
-        "capabilities": car.capabilities.to_dict(),
-        "status": {
-            "ok": None,
-            "note": "offline simulator metadata; WS/frontend liveness was not required for staging",
-        },
-    }
-
-
-def _offline_staged_vehicle(vehicle_id: str) -> dict[str, Any] | None:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    if not activation_path.is_file():
-        return None
-    try:
-        activation = _read_manifest(activation_path)["metadata"]
-    except (OSError, json.JSONDecodeError):
-        return None
-    provider = activation.get("provider")
-    vehicle_kind = activation.get("vehicle_kind")
-    if not isinstance(provider, str) or not provider:
-        return None
-    runtime = activation.get("runtime")
-    connection = runtime.get("connection") if isinstance(runtime, dict) else None
-    return {
-        "vehicle_id": vehicle_id,
-        "vehicle_kind": vehicle_kind or provider,
-        "provider": provider,
-        "connection": connection if isinstance(connection, dict) else {},
-        "status": {
-            "ok": None,
-            "note": "offline local staging metadata; vehicle liveness was not checked",
-        },
-    }
+    existing = read_bundle_activation(bundle, "perception")
+    existing_preset = _activation_preset(existing)
+    if existing is not None and existing_preset == CUSTOM_PRESET:
+        path = refresh_release(bundle, "perception", release)
+        if path is None:
+            raise ValueError("custom perception activation disappeared before its release was recorded")
+        return path
+    selected = existing_preset if existing_preset in PERCEPTION_PRESETS else preset
+    return stage_activation(
+        bundle,
+        selection_activation("perception", preset=selected),
+        vehicle_id=_vehicle_id(vehicle),
+        release=release,
+        vehicle=vehicle,
+    )
 
 
 def _perception_update_payload(
     *,
     vehicle_id: str,
-    algorithm: str,
+    preset: str,
     dry_run: bool,
     manifest: dict[str, Any],
     bundle: dict[str, str],
@@ -793,7 +542,7 @@ def _perception_update_payload(
     return {
         "schema": "vehicle_perception_update_v0",
         "vehicle_id": vehicle_id,
-        "algorithm": algorithm,
+        "preset": preset,
         "dry_run": dry_run,
         "restart_requested": restart,
         "would_write": {
@@ -806,87 +555,26 @@ def _perception_update_payload(
     }
 
 
-def _activation_manifest(
-    vehicle: dict[str, Any],
-    algorithm: str,
-    bundle: dict[str, str],
-) -> dict[str, Any]:
-    algorithm_config = PERCEPTION_ALGORITHMS[algorithm]
-    manifest = perception_algorithm_activation(algorithm).to_payload()
-    manifest["metadata"] = {
-        **_activation_metadata_base(vehicle, bundle),
-        "algorithm": algorithm,
-        "algorithm_description": algorithm_config["description"],
-        "source_dir": bundle["perception_dir"],
-        "workspace_source_dir": str(PERCEPTION_IMPLEMENTATIONS_DIR),
-        "output_contract": dict(algorithm_config["output_contract"]),
-    }
-    return manifest
+def _vehicle_id(vehicle: dict[str, Any]) -> str | None:
+    vehicle_id = vehicle.get("vehicle_id")
+    return vehicle_id if isinstance(vehicle_id, str) else None
 
 
-def _candidate_activation_manifest(
-    vehicle: dict[str, Any],
-    candidate: PerceptionCandidate,
-    candidate_info: dict[str, Any],
-    bundle: dict[str, str],
-) -> dict[str, Any]:
-    plugin_id = f"{CANDIDATE_PLUGIN_PREFIX}{candidate.candidate_id}"
-    return {
-        "schema": STEP_ACTIVATION_SCHEMA,
-        "step": "perception",
-        "plugins": [plugin_id],
-        "plugin_specs": {plugin_id: LAB_CANDIDATE_PLUGIN_SPEC},
-        "plugin_configs": {
-            plugin_id: {"candidate_id": candidate.candidate_id, "timeout_s": 180.0}
-        },
-        "metadata": {
-            **_activation_metadata_base(vehicle, bundle),
-            "algorithm": plugin_id,
-            "algorithm_description": str(
-                candidate.manifest.get("description") or candidate.candidate_id
-            ),
-            "source_dir": str(candidate.directory),
-            "workspace_source_dir": str(candidate.directory),
-            "output_contract": dict(candidate.manifest.get("output") or {}),
-            "candidate": {
-                "id": candidate.candidate_id,
-                "manifest_path": str(candidate.manifest_path),
-                "source_tree_sha256": candidate_info.get("source_tree_sha256"),
-                "runtime": dict(candidate_info.get("runtime") or {}),
-                "model": dict(candidate_info.get("model") or {}),
-            },
-        },
-    }
+def _activation_preset(activation: StepActivation | None) -> str | None:
+    if activation is None:
+        return None
+    preset = activation.metadata.get("preset")
+    return preset if isinstance(preset, str) else None
 
 
-def _activation_metadata_base(
-    vehicle: dict[str, Any],
-    bundle: dict[str, str],
-) -> dict[str, Any]:
-    provider = vehicle.get("provider")
-    runtime_kind = "ws_cli_controller" if provider == "chase-sim" else "onboard_controller"
-    return {
-        "vehicle_id": vehicle.get("vehicle_id"),
-        "vehicle_kind": vehicle.get("vehicle_kind"),
-        "provider": vehicle.get("provider"),
-        "activated_at_ms": int(time.time() * 1000),
-        "runtime": {
-            "kind": runtime_kind,
-            "connection": vehicle.get("connection"),
-        },
-        "controller_bundle": {
-            "root_dir": bundle["root_dir"],
-            "autonomy_dir": bundle["autonomy_dir"],
-            "implementations_dir": bundle["implementations_dir"],
-            "perception_dir": bundle["perception_dir"],
-            "runtime_dir": bundle["runtime_dir"],
-            "perception_runtime_dir": bundle["perception_runtime_dir"],
-            "copied_from": {
-                "autonomy": str(AUTONOMY_DIR),
-                "implementations": str(IMPLEMENTATIONS_DIR),
-            },
-        },
-    }
+def _activation_release(activation: StepActivation | None) -> dict[str, Any] | None:
+    if activation is None:
+        return None
+    bundle = activation.metadata.get("controller_bundle")
+    if not isinstance(bundle, dict):
+        return None
+    release = bundle.get("release")
+    return dict(release) if isinstance(release, dict) else None
 
 
 def _restart_and_sample_sim_controller(
@@ -926,7 +614,7 @@ def _restart_and_sample_sim_controller(
         _emit(output, json.dumps(preparation, indent=2, sort_keys=True))
 
     _emit(output, "==> Capture simulator front-view sample")
-    snapshot = car.read_sensors(
+    sensor_frame = car.read_sensors(
         SensorReadRequest(
             output_dir=perception_runtime_dir / "sample" / "sensors",
             read_id="current",
@@ -937,20 +625,17 @@ def _restart_and_sample_sim_controller(
 
     _emit(output, "==> Run active perception")
     runner = load_staged_runner(_manifest_activation(manifest))
-    try:
-        perception = runner.perceive(
-            build_perception_request(
-                snapshot,
-                shared_memory={},
-                output_dir=sample_dir / "perception",
-                metadata={
-                    "activation": str(perception_runtime_dir / "active.json"),
-                    "vehicle_id": vehicle.get("vehicle_id"),
-                },
-            ),
-        )
-    finally:
-        _close_runner(runner)
+    perception = runner.perceive(
+        build_perception_request(
+            sensor_frame,
+            shared_memory={},
+            output_dir=sample_dir / "perception",
+            metadata={
+                "activation": str(perception_runtime_dir / "active.json"),
+                "vehicle_id": vehicle.get("vehicle_id"),
+            },
+        ),
+    )
 
     json_path = sample_dir / "perception.json"
     text_path = sample_dir / "perception.txt"
@@ -973,13 +658,13 @@ def _emit(output: TextIO | None, message: str) -> None:
 def _success_message(
     *,
     vehicle_id: str,
-    algorithm: str,
+    preset: str,
     bundle_root: Path,
     manifest_path: Path,
     sample_paths: dict[str, str] | None,
 ) -> str:
     lines = [
-        f"Updated perception: {vehicle_id} -> {algorithm}",
+        f"Updated perception: {vehicle_id} -> {preset}",
         f"Bundle: {display_path(bundle_root)}",
         f"Activation: {display_path(manifest_path)}",
     ]
@@ -988,118 +673,26 @@ def _success_message(
     return "\n".join(lines)
 
 
-def _read_manifest(path: Path) -> dict[str, Any]:
-    """The staged perception activation payload; raises ValueError when invalid."""
-
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Could not parse perception activation {display_path(path)}: {exc}") from exc
-    return step_activation_from_payload(payload, step="perception", source_path=path).to_payload()
-
-
-def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
-    write_step_activation(path, step_activation_from_payload(manifest, step="perception"))
-
-
 def _manifest_activation(manifest: dict[str, Any], path: Path | None = None):
     return step_activation_from_payload(manifest, step="perception", source_path=path)
 
 
-def _manifest_algorithm(manifest: dict[str, Any]) -> str | None:
-    algorithm = (manifest.get("metadata") or {}).get("algorithm")
-    return algorithm if isinstance(algorithm, str) else None
-
-
-def _manifest_bundle(manifest: dict[str, Any]) -> dict[str, Any]:
-    metadata = manifest.setdefault("metadata", {})
-    bundle = metadata.get("controller_bundle")
-    if not isinstance(bundle, dict):
-        bundle = {}
-        metadata["controller_bundle"] = bundle
-    return bundle
-
-
-def _close_runner(runner: Any) -> None:
-    """Close plugins that hold processes (lab candidates)."""
-
-    for plugin in getattr(runner, "plugins", ()) or ():
-        close = getattr(plugin, "close", None)
-        if callable(close):
-            close()
-
-
-def _manifest_get_str(manifest: dict[str, Any], section: str, key: str) -> str | None:
-    value = manifest.get(section)
-    if not isinstance(value, dict):
-        return None
-    found = value.get(key)
-    return found if isinstance(found, str) else None
-
-
-def _manifest_get_dict(manifest: dict[str, Any], section: str, key: str) -> dict[str, Any]:
-    value = manifest.get(section)
-    if not isinstance(value, dict):
-        return {}
-    found = value.get(key)
-    return dict(found) if isinstance(found, dict) else {}
+def _manifest_preset(manifest: dict[str, Any]) -> str | None:
+    preset = (manifest.get("metadata") or {}).get("preset")
+    return preset if isinstance(preset, str) else None
 
 
 def _format_perception_info(payload: dict[str, Any]) -> str:
-    activation = payload.get("activation") if isinstance(payload.get("activation"), dict) else None
-    bundle = (
-        payload.get("controller_bundle")
-        if isinstance(payload.get("controller_bundle"), dict)
-        else None
-    )
-    schema = (
-        payload.get("algorithm_schema")
-        if isinstance(payload.get("algorithm_schema"), dict)
-        else None
-    )
     live = (
         payload.get("live_observation")
         if isinstance(payload.get("live_observation"), dict)
         else None
     )
 
-    if activation is not None:
-        release = bundle.get("release") if isinstance((bundle or {}).get("release"), dict) else {}
-        algorithm = activation.get("algorithm") or "unknown"
-        lines = [
-            f"Perception: {payload['vehicle_id']} -> {algorithm}",
-        ]
-        if isinstance(algorithm, str) and algorithm.startswith(CANDIDATE_PLUGIN_PREFIX):
-            lines.append(
-                f"Candidate: {algorithm.removeprefix('candidate:')} (isolated local runtime)"
-            )
-        else:
-            lines.append(
-                f"Enabled plugins: {', '.join(_configured_plugins(activation)) or 'none'}"
-            )
-        lines.extend(
-            [
-                _format_published_view(payload.get("published_view")),
-                f"Bundle: {(bundle or {}).get('root_dir', 'unknown')}",
-                f"Activation: {activation['path']}",
-            ]
+    if isinstance(payload.get("activation"), dict):
+        lines = format_staged_step(
+            "perception", payload, view=_format_published_view(payload.get("published_view"))
         )
-        if release:
-            archive = release.get("archive")
-            manifest = release.get("manifest")
-            lines.append(f"Release: {release.get('tree_sha256', 'unknown')}")
-            if archive:
-                lines.append(f"Archive: {archive}")
-            if manifest:
-                lines.append(f"Release manifest: {manifest}")
-        else:
-            lines.append(
-                "Release: not recorded; run `vehicles update perception` to package and attach release metadata"
-            )
-        if schema is not None:
-            lines.append(
-                f"Schema source: {payload['algorithm_schema_source']['runner']}.describe_schema()"
-            )
     else:
         lines = [
             f"Perception: {payload['vehicle_id']} (no local staged activation)",
@@ -1108,95 +701,6 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
 
     if live is not None:
         lines.extend(["", _format_live_observation(live)])
-
-    if schema is None:
-        return "\n".join(lines)
-
-    lines.extend(
-        [
-            "",
-            "Inputs:",
-        ]
-    )
-
-    for item in schema.get("inputs", []):
-        if not isinstance(item, dict):
-            continue
-        required = "required" if item.get("required") else "optional"
-        lines.append(f"- {item.get('component_id', 'unknown')} ({required})")
-        required_by = item.get("required_by")
-        if isinstance(required_by, list) and required_by:
-            lines.append(f"  requested by: {', '.join(map(str, required_by))}")
-        source = item.get("source")
-        if source:
-            lines.append(f"  source: {source}")
-        missing = item.get("missing_behavior")
-        if missing:
-            lines.append(f"  missing: {missing}")
-        translations = item.get("translations")
-        if isinstance(translations, list) and translations:
-            lines.append("  translations:")
-            for translation in translations:
-                if not isinstance(translation, dict):
-                    continue
-                emits = translation.get("emits")
-                emit_text = f" -> {', '.join(map(str, emits))}" if isinstance(emits, list) and emits else ""
-                lines.append(
-                    f"  - {translation.get('name', 'unnamed')} "
-                    f"[{translation.get('implementation', 'unknown')}]{emit_text}"
-                )
-
-    plugins = schema.get("plugins")
-    if isinstance(plugins, list) and plugins:
-        lines.extend(["", "Plugins:"])
-        for plugin in plugins:
-            if not isinstance(plugin, dict):
-                continue
-            contract = plugin.get("contract") if isinstance(plugin.get("contract"), dict) else {}
-            inputs = contract.get("inputs")
-            component_text = (
-                ", ".join(
-                    str(item.get("component_id", "unknown"))
-                    for item in inputs
-                    if isinstance(item, dict)
-                )
-                if isinstance(inputs, list) and inputs
-                else "none"
-            )
-            catalog_id = plugin.get("plugin_id", "unknown")
-            implementation_id = plugin.get("implementation_id")
-            implementation_text = (
-                f" implementation={implementation_id}"
-                if implementation_id and implementation_id != catalog_id
-                else ""
-            )
-            lines.append(
-                f"- {catalog_id} "
-                f"[{contract.get('state_mode', 'unknown')}] "
-                f"components={component_text}{implementation_text}"
-            )
-
-    output_schema = schema.get("output") if isinstance(schema.get("output"), dict) else {}
-    lines.extend(
-        [
-            "",
-            "Output:",
-            f"- schema: {output_schema.get('schema', 'unknown')}",
-            f"- format: {output_schema.get('format', 'unknown')}",
-        ]
-    )
-    records = output_schema.get("records")
-    if isinstance(records, list) and records:
-        lines.append("- records:")
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            lines.append(f"  - {_format_output_record(record)}")
-    limits = output_schema.get("limits")
-    if isinstance(limits, list) and limits:
-        lines.append("- limits:")
-        for limit in limits:
-            lines.append(f"  - {limit}")
     return "\n".join(lines)
 
 
@@ -1229,7 +733,7 @@ def _format_live_observation(live: dict[str, Any]) -> str:
     lines = [
         "Live onboard observation:",
         f"- health: {live.get('health', 'unknown')}  age_ms={live.get('result_age_ms', 'unknown')}",
-        f"- algorithm: {live.get('algorithm', 'unknown')}  mode: {live.get('mode', 'unknown')}",
+        f"- preset: {live.get('preset', 'unknown')}  mode: {live.get('mode', 'unknown')}",
         f"- frame: {frame.get('frame_id', 'none')}  duration_ms={live.get('duration_ms', 'unknown')}",
         (
             f"- control: steering={control.get('steering', 'unknown')} "
@@ -1279,7 +783,7 @@ def _unavailable_live_observation(
 
 def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
     try:
-        snapshot = discover_active_vehicles(
+        discovery = discover_active_vehicles(
             timeout_s=timeout_s,
             include_picar=True,
             include_chase_sim=True,
@@ -1287,7 +791,7 @@ def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any
         )
     except Exception as exc:
         return {"vehicle": None, "error": f"{type(exc).__name__}: {exc}"}
-    vehicle, error = find_vehicle_by_id(snapshot, vehicle_id)
+    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
     if error:
         return {"vehicle": None, "error": error}
     return {"vehicle": vehicle, "error": None}
@@ -1342,7 +846,7 @@ def _live_physical_observation_info(
         "ok": publication.get("ok"),
         "result_age_ms": publication.get("result_age_ms"),
         "duration_ms": publication.get("duration_ms"),
-        "algorithm": publication.get("algorithm"),
+        "preset": publication.get("preset"),
         "mode": publication.get("mode") or publication.get("drive_mode"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),
@@ -1426,46 +930,3 @@ def _process_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
-
-
-def _format_output_record(record: dict[str, Any]) -> str:
-    if isinstance(record.get("record"), str):
-        described_parts = [record["record"]]
-        if isinstance(record.get("meaning"), str):
-            described_parts.append(f"- {record['meaning']}")
-        return " ".join(described_parts)
-
-    parts: list[str] = []
-    if isinstance(record.get("thing_id"), str):
-        parts.append(record["thing_id"])
-    if isinstance(record.get("thing_kind"), str):
-        parts.append(f"kind={record['thing_kind']}")
-    if isinstance(record.get("frame"), str):
-        parts.append(f"frame={record['frame']}")
-    if isinstance(record.get("zone"), str):
-        parts.append(f"zone={record['zone']}")
-    if isinstance(record.get("when"), str):
-        parts.append(f"when={record['when']}")
-    if isinstance(record.get("meaning"), str):
-        parts.append(f"- {record['meaning']}")
-    return " ".join(parts) if parts else json.dumps(record, sort_keys=True)
-
-
-def _configured_plugins(activation: dict[str, Any]) -> list[str]:
-    plugins = activation.get("plugins")
-    if not isinstance(plugins, list):
-        return []
-    return [str(plugin) for plugin in plugins]
-
-
-def _format_plugin_update(payload: dict[str, Any]) -> str:
-    action = "enabled" if payload["enabled"] else "disabled"
-    status = "Updated" if payload["changed"] else "No change"
-    return "\n".join(
-        [
-            f"{status}: {payload['plugin']} {action} for {payload['vehicle_id']}",
-            f"Activation: {payload['activation']}",
-            f"Enabled plugins: {', '.join(payload['plugins_after']) or 'none'}",
-            "A running automation applies this change on its next perception frame.",
-        ]
-    )

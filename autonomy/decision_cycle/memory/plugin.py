@@ -7,6 +7,22 @@ anything other plugins read. ``update`` runs once per cycle; ``reset`` starts a
 new epoch and writes the plugin's fresh state to the map. ``status`` is an
 optional JSON summary of that state for diagnostics. Framework code owns
 selection, timing, and failure isolation.
+
+A memory plugin reads the host map and the ``observation``; it does not read
+the feed. The context it receives has no ``sensor_frame``. Anything memory needs
+from the feed reaches it through the observation or the map, written by a
+perception plugin.
+
+The CLI and the viewers it serves read ``LEDGER_SUMMARY_KEYS`` from each
+plugin's status. The report preserves that status without adding missing keys;
+the framework does not reject the plugin. Live CLI ledger projections return
+null for missing keys. Inspect and workbench frame rows default a missing
+``record_count`` to 0, preserve an explicit null, and omit ``bounds``.
+
+How several plugins share one map, including the one ``EVIDENCE_KEY`` and
+last-write-wins, is ``composition_declaration`` in ``interface``. What a
+failure does is ``FAILURE_POLICY`` there: an update failure stops the cycle,
+and a reset failure is recorded. ``MemoryRunner`` reads those values.
 """
 
 from __future__ import annotations
@@ -20,7 +36,11 @@ from autonomy.shared_memory import SharedMemory
 
 @runtime_checkable
 class MemoryPlugin(Protocol):
-    """Loadable memory plugin."""
+    """Loadable memory plugin.
+
+    The runner that applies a selection of these is a ``MemoryBackend``
+    (``interface``). A plugin does not describe the step's schema.
+    """
 
     plugin_id: str
 

@@ -16,7 +16,7 @@ from .vehicle_access import create_vehicle_access
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
 )
 
 
@@ -54,8 +54,8 @@ def run_vehicle_startup_check(
             "\n\n".join(
                 [
                     error,
-                    "Discovery snapshot:",
-                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                    "Discovery:",
+                    format_active_vehicles(discovery, include_inactive=True),
                 ]
             ),
         )

@@ -8,28 +8,33 @@ import numpy as np
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.decision_cycle.perception.catalog import PERCEPTION_PLUGIN_SPECS
-from implementations.decision_cycle.perception.components.camera import (
-    camera_component_id,
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from implementations.decision_cycle.catalog import step_plugins
+from implementations.decision_cycle.perception.feeds.camera import (
+    camera_feed_id,
 )
-from implementations.decision_cycle.perception.motion_tracks.plugin import (
+from implementations.decision_cycle.perception.plugins.motion_tracks.plugin import (
     MotionTracksPlugin,
 )
 
 
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
+_PERCEPTION_SPECS = {
+    plugin_id: entry["spec"] for plugin_id, entry in step_plugins("perception").items()
+}
+
+
+FRONT_CAMERA_FEED = camera_feed_id(FRONT_CAMERA_SENSOR_ID)
 
 
 def _mapper(plugin_id: str) -> PerceptionRunner:
     return PerceptionRunner.from_selection(
         plugins=[plugin_id],
-        plugin_specs=PERCEPTION_PLUGIN_SPECS,
+        plugin_specs=_PERCEPTION_SPECS,
     )
 
 
-def _snapshot(reading: SensorReading, read_id: str = "test-frame") -> SensorSnapshot:
-    return SensorSnapshot(
+def _sensor_frame(reading: SensorReading, read_id: str = "test-frame") -> SensorFrame:
+    return SensorFrame(
         read_id=read_id,
         readings={reading.sensor_id: reading},
         started_at_ms=reading.captured_at_ms,
@@ -51,18 +56,18 @@ def _array_reading(
 
 
 class PerceptionPluginTests(unittest.TestCase):
-    def test_current_plugins_share_camera_component_without_writing_diagnostics(self) -> None:
+    def test_current_plugins_share_camera_feed_without_writing_diagnostics(self) -> None:
         rgb = np.random.default_rng(3).integers(0, 256, (72, 96, 3), dtype=np.uint8)
-        request = build_perception_request(_snapshot(_array_reading(rgb)))
+        request = build_perception_request(_sensor_frame(_array_reading(rgb)))
         mapper = PerceptionRunner.from_selection(
             plugins=["frame", "floor_plane"],
-            plugin_specs=PERCEPTION_PLUGIN_SPECS,
+            plugin_specs=_PERCEPTION_SPECS,
         )
 
         perception = mapper.perceive(request)
 
         self.assertEqual(perception.status, "ok")
-        self.assertEqual(request.component_summary()["available"], {FRONT_CAMERA_COMPONENT: "CameraFrame"})
+        self.assertEqual(request.feed_summary()["available"], {FRONT_CAMERA_FEED: "CameraFrame"})
         self.assertEqual(perception.artifacts, {})
         frame = next(thing for thing in perception.things if thing.kind == "sensor_frame")
         self.assertEqual(frame.properties["width_px"], 96)
@@ -73,7 +78,7 @@ class PerceptionPluginTests(unittest.TestCase):
         rgb[70:] = (145, 118, 92)
 
         result = _mapper("floor_plane").perceive(
-            build_perception_request(_snapshot(_array_reading(rgb)))
+            build_perception_request(_sensor_frame(_array_reading(rgb)))
         )
 
         boundaries = [thing for thing in result.things if thing.kind == "floor_boundary"]
@@ -89,7 +94,7 @@ class PerceptionPluginTests(unittest.TestCase):
         shifted = np.roll(rgb, 2, axis=1)
         mapper = PerceptionRunner.from_selection(
             plugins=["motion_tracks"],
-            plugin_specs=PERCEPTION_PLUGIN_SPECS,
+            plugin_specs=_PERCEPTION_SPECS,
             plugin_configs={
                 "motion_tracks": {
                     "max_features": 50,
@@ -100,10 +105,10 @@ class PerceptionPluginTests(unittest.TestCase):
         )
 
         memory = {}
-        first = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "first"), shared_memory=memory))
-        second = mapper.perceive(build_perception_request(_snapshot(_array_reading(shifted), "second"), shared_memory=memory))
+        first = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(rgb), "first"), shared_memory=memory))
+        second = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(shifted), "second"), shared_memory=memory))
         mapper.reset(memory)
-        after_reset = mapper.perceive(build_perception_request(_snapshot(_array_reading(rgb), "third"), shared_memory=memory))
+        after_reset = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(rgb), "third"), shared_memory=memory))
 
         self.assertEqual(first.status, "warming_up")
         self.assertIn(second.status, {"ok", "empty"})
@@ -138,18 +143,18 @@ class PerceptionPluginTests(unittest.TestCase):
         shifted = np.roll(rgb, 2, axis=1)
         mapper = PerceptionRunner.from_selection(
             plugins=["motion_tracks"],
-            plugin_specs=PERCEPTION_PLUGIN_SPECS,
+            plugin_specs=_PERCEPTION_SPECS,
             plugin_configs={"motion_tracks": {"max_features": 50, "search_radius": 8}},
         )
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
             memory = {}
             mapper.perceive(
-                build_perception_request(_snapshot(_array_reading(rgb), "first"), output_dir=output_dir, shared_memory=memory)
+                build_perception_request(_sensor_frame(_array_reading(rgb), "first"), output_dir=output_dir, shared_memory=memory)
             )
             result = mapper.perceive(
                 build_perception_request(
-                    _snapshot(_array_reading(shifted), "second"),
+                    _sensor_frame(_array_reading(shifted), "second"),
                     output_dir=output_dir,
                     shared_memory=memory,
                 )

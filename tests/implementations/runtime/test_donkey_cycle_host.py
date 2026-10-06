@@ -10,11 +10,11 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from tests.support.action_fixtures import fixed_control_steps
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.runtime.donkeycar import (
     DEFAULT_OBSERVATION_INTERVAL_S,
     AutonomyPilotPart,
-    ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA,
+    ONBOARD_OBSERVATION_STATE_SCHEMA,
 )
 
 
@@ -52,7 +52,7 @@ class _ExplodingHost:
 class RuntimeCycleHostTests(unittest.TestCase):
     def test_host_runs_the_cycle_with_in_memory_front_camera_value(self) -> None:
         image_value = object()
-        sensor_snapshot = SensorSnapshot(
+        sensor_frame = SensorFrame(
             read_id="frame_000",
             readings={
                 FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -72,7 +72,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
                 frame_id="frame_000",
                 frame_index=0,
                 timestamp_ms=100,
-                sensor_snapshot=sensor_snapshot,
+                sensor_frame=sensor_frame,
             )
         )
 
@@ -80,7 +80,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(result.action.authority.gate_id, "hold")
         self.assertEqual(host.cycle_count, 1)
         self.assertTrue(
-            result.to_dict()["context"]["sensor_snapshot"]["readings"][FRONT_CAMERA_SENSOR_ID][
+            result.to_dict()["context"]["sensor_frame"]["readings"][FRONT_CAMERA_SENSOR_ID][
                 "has_value"
             ]
         )
@@ -117,11 +117,11 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(control["steering"], 0.7)
         self.assertIsNotNone(cycle)
         self.assertEqual(cycle["context"]["mode"], "user")
-        self.assertIsNotNone(part.latest_snapshot)
-        self.assertEqual(part.latest_snapshot.status, "ok")
-        self.assertEqual(part.latest_snapshot.mode, "user")
-        self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000000")
-        self.assertIsNotNone(part.latest_snapshot.image)
+        self.assertIsNotNone(part.latest_state)
+        self.assertEqual(part.latest_state.status, "ok")
+        self.assertEqual(part.latest_state.mode, "user")
+        self.assertEqual(part.latest_state.frame_id, "donkey_frame_000000")
+        self.assertIsNotNone(part.latest_state.image)
 
     def test_local_mode_preserves_action_pilot_outputs(self) -> None:
         part = AutonomyPilotPart(host=_pushy_host(), min_interval_s=0.0)
@@ -150,14 +150,14 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.wait_for_cycle()
         self.assertEqual(part.processed_count, 1)
         self.assertEqual(part.skipped_count, 0)
-        self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 1)
+        self.assertEqual(int(part.latest_state.image[0, 0, 0]), 1)
         self.assertEqual(part.camera_frame_count, 1)
 
         clock.advance(0.2)
         part.run(image_array=second, mode="user")
         self.assertEqual(part.processed_count, 1)
         self.assertEqual(part.skipped_count, 1)
-        self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 1)
+        self.assertEqual(int(part.latest_state.image[0, 0, 0]), 1)
         self.assertEqual(part.camera_frame_count, 2)
         self.assertEqual(part.latest_camera_frame.frame_id, "donkey_frame_000001")
         self.assertEqual(int(part.latest_camera_frame.image[0, 0, 0]), 2)
@@ -174,9 +174,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.wait_for_cycle()
         self.assertEqual(part.processed_count, 2)
         self.assertEqual(part.skipped_count, 1)
-        self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 3)
-        self.assertEqual(part.latest_snapshot.skipped_since_previous, 1)
-        self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000002")
+        self.assertEqual(int(part.latest_state.image[0, 0, 0]), 3)
+        self.assertEqual(part.latest_state.skipped_since_previous, 1)
+        self.assertEqual(part.latest_state.frame_id, "donkey_frame_000002")
         self.assertEqual(part.camera_frame_count, 3)
         self.assertEqual(host.cycle_count, 2)
 
@@ -187,9 +187,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
         image[:] = 9
         self.assertEqual(int(part.latest_camera_frame.image[0, 0, 0]), 0)
         part.wait_for_cycle()
-        self.assertEqual(int(part.latest_snapshot.image[0, 0, 0]), 0)
+        self.assertEqual(int(part.latest_state.image[0, 0, 0]), 0)
 
-    def test_cycle_failure_keeps_zero_controls_and_records_error_snapshot(self) -> None:
+    def test_cycle_failure_keeps_zero_controls_and_records_error_state(self) -> None:
         part = AutonomyPilotPart(host=_ExplodingHost(), min_interval_s=0.0)  # type: ignore[arg-type]
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
@@ -201,13 +201,13 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(control["reason"], "observation-cycle-error")
         self.assertIsNone(cycle)
         self.assertIsNone(generation)
-        self.assertEqual(part.latest_snapshot.status, "error")
-        self.assertIn("RuntimeError", part.latest_snapshot.error or "")
+        self.assertEqual(part.latest_state.status, "error")
+        self.assertIn("RuntimeError", part.latest_state.error or "")
         status = part.observation_status()
         self.assertEqual(status["processed_count"], 1)
         self.assertEqual(
             status["latest"]["schema"],
-            ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA,
+            ONBOARD_OBSERVATION_STATE_SCHEMA,
         )
 
     def test_memory_update_failure_stops_future_pilot_cycles(self) -> None:
@@ -230,7 +230,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.run(image_array=image, mode="local")
         part.wait_for_cycle()
         self.assertEqual(part.completed_outputs("local")[:2], (0.0, 0.0))
-        self.assertEqual(part.latest_snapshot.status, "error")
+        self.assertEqual(part.latest_state.status, "error")
         self.assertTrue(part.observation_status()["memory_update_halted"])
 
         part.run(image_array=image, mode="local")
@@ -296,11 +296,11 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(part.latest_camera_frame.frame_id, "donkey_frame_000001")
         self.assertEqual(int(part.latest_camera_frame.image[0, 0, 0]), 5)
         self.assertEqual(part.publish_latest_camera()["perception_state"], "pending")
-        self.assertIsNone(part.latest_snapshot)
+        self.assertIsNone(part.latest_state)
         release.set()
         part.wait_for_cycle()
         self.assertEqual(part.processed_count, 1)
-        self.assertEqual(part.latest_snapshot.frame_id, "donkey_frame_000000")
+        self.assertEqual(part.latest_state.frame_id, "donkey_frame_000000")
         self.assertEqual(part.publish_latest_camera()["perception_state"], "behind")
         self.assertEqual(part.publish_latest_camera()["perception_frame_id"], "donkey_frame_000000")
 

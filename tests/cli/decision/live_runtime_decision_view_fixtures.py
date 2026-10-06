@@ -2,13 +2,14 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
 from cli.automa_cli import decision as decision_module
+from cli.automa_cli import proposal as proposal_module
 from cli.automa_cli.decision import (
     build_decision_stream_frame,
     strict_decode_apply_evidence,
@@ -40,6 +41,9 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(
             setattr, decision_module, "RUNTIME_ROOT", self._old_runtime_root
         )
+        proposal_root = proposal_module.RUNTIME_ROOT
+        proposal_module.RUNTIME_ROOT = self.runtime_root
+        self.addCleanup(setattr, proposal_module, "RUNTIME_ROOT", proposal_root)
         for step in ("proposal", "action"):
             code, message = update_vehicle_step(
                 vehicle_id="chase-sim-chaser",
@@ -98,15 +102,15 @@ class LiveRuntimeDecisionViewFixture:
             ][0]
         )
         record = raw["evidence"][0]
-        provenance = record["provenance"]
+        origin = record["origin"]
         thing = {
-            "thing_id": provenance["evidence_id"],
+            "thing_id": origin["observed_id"],
             "kind": record["kind"],
             "label": record["label"],
             "location": deepcopy(record["location"]),
             "confidence": record["confidence"],
             "properties": deepcopy(record["properties"]),
-            "source_plugin_id": provenance["source_plugin_id"],
+            "source_plugin_id": origin["source_plugin_id"],
         }
         raw["observation"]["things"] = [thing]
         if mutate is not None:
@@ -132,7 +136,7 @@ class LiveRuntimeDecisionViewFixture:
             "captured_at_ms": stream_frame["timestamp_ms"],
             "run_id": run_id,
             "worker_pid": os.getpid(),
-            "sensor_snapshot": {
+            "sensor_frame": {
                 "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
             },
         }

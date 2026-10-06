@@ -14,8 +14,8 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
 )
 from autonomy.decision_cycle.activation import STEPS
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
@@ -39,9 +39,12 @@ from .memory import ensure_vehicle_memory_activation
 from .paths import display_path, safe_path_part
 from .perception import ensure_vehicle_perception_activation
 from .step_activations import (
+    CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
+    bundle_activation_problems,
     decision_generation_id,
     ensure_builtin_activations,
+    format_activation_problems,
     read_bundle_activation,
 )
 from .vehicles import discover_active_vehicles, find_vehicle_by_id
@@ -382,7 +385,7 @@ def update_vehicle_autonomy(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
-            perception_algorithm=DEFAULT_PERCEPTION_ALGORITHM,
+            perception_preset=DEFAULT_PERCEPTION_PRESET,
             steps={step: list(DEFAULT_STEP_PLUGINS[step]) for step in STEPS if step != "proposal"},
             generation_id=None,
             runtime_verification=None,
@@ -391,10 +394,16 @@ def update_vehicle_autonomy(
             return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(0, _format_autonomy_dry_run(payload))
 
+    # The deployment refreshes and ships every staged step. Validate the
+    # documents it reads before packaging or writing.
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
+
     release = sync_controller_bundle(bundle, output=output)
     perception_activation_path = ensure_vehicle_perception_activation(
         vehicle=dict(target.vehicle),
-        algorithm=DEFAULT_PERCEPTION_ALGORITHM,
+        preset=DEFAULT_PERCEPTION_PRESET,
         bundle=bundle,
         release=release,
     )
@@ -441,8 +450,8 @@ def update_vehicle_autonomy(
         if code != 0:
             return CommandResult(code, f"Restart failed with exit code {code}.")
 
-    perception_algorithm = str(
-        activations["perception"].metadata.get("algorithm")
+    perception_preset = str(
+        activations["perception"].metadata.get("preset")
         if "perception" in activations
         else perception_activation_path.name
     )
@@ -476,7 +485,7 @@ def update_vehicle_autonomy(
         commands=commands,
         restart=restart,
         drive_args=drive_args,
-        perception_algorithm=perception_algorithm,
+        perception_preset=perception_preset,
         steps=deployed_steps,
         generation_id=generation_id,
         runtime_verification=runtime_verification,
@@ -496,7 +505,7 @@ def update_vehicle_autonomy(
                 f"Autonomy updated: {vehicle_id} -> {target.ssh_target}",
                 f"Release: {release_id}",
                 f"Tree SHA-256: {release['tree_sha256']}",
-                f"Perception: {payload['activation']['perception_algorithm']}",
+                f"Perception: {payload['activation']['perception_preset']}",
                 *_step_lines(payload["activation"]["steps"]),
                 f"Decision generation: {payload['activation']['generation_id']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
@@ -606,14 +615,15 @@ def _write_remote_activation_files(
     remote_release["archive"] = f"{remote_artifact_dir}/{Path(release['archive']['path']).name}"
     remote_release["manifest"] = f"{remote_release_root}/bundle-manifest.json"
 
-    remote_bundle = {
+    # Same controller_bundle keys staging_metadata records locally, with the Pi's paths.
+    remote_values = {
         "root_dir": remote_app_root,
         "autonomy_dir": f"{remote_app_root}/autonomy",
         "implementations_dir": f"{remote_app_root}/implementations",
-        "perception_dir": f"{remote_app_root}/implementations/decision_cycle/perception",
         "runtime_dir": f"{remote_app_root}/runtime",
         "release": remote_release,
     }
+    remote_bundle = {key: remote_values[key] for key in CONTROLLER_BUNDLE_KEYS}
 
     written: dict[str, Path] = {}
     for step, path in activation_paths.items():
@@ -621,12 +631,13 @@ def _write_remote_activation_files(
         metadata = payload.setdefault("metadata", {})
         metadata["controller_bundle"] = copy.deepcopy(remote_bundle)
         if step == "perception":
+            # The Pi runs this activation onboard. Other steps keep the identity
+            # recorded when they were staged.
             metadata["provider"] = target.provider
             metadata["runtime"] = {
                 "kind": "onboard_controller",
                 "connection": target.vehicle.get("connection"),
             }
-            metadata["source_dir"] = remote_bundle["perception_dir"]
         written[step] = deploy_dir / f"{step}-active.json"
         written[step].write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     identity_path = deploy_dir / "identity.json"
@@ -728,7 +739,7 @@ def _autonomy_update_payload(
     commands: list[tuple[str, list[str]]],
     restart: bool,
     drive_args: str | None,
-    perception_algorithm: str,
+    perception_preset: str,
     steps: dict[str, list[str]],
     generation_id: str | None,
     runtime_verification: dict[str, Any] | None,
@@ -767,7 +778,7 @@ def _autonomy_update_payload(
         "release_id": release_id,
         "release": release_activation_summary(release) if release is not None else None,
         "activation": {
-            "perception_algorithm": perception_algorithm,
+            "perception_preset": perception_preset,
             "steps": steps,
             "generation_id": generation_id,
         },
@@ -897,7 +908,7 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
             f"source tree SHA-256: {payload['source']['tree_sha256']}",
             f"source files: {payload['source']['file_count']}",
             (
-                f"activation defaults: perception={payload['activation']['perception_algorithm']} "
+                f"activation defaults: perception={payload['activation']['perception_preset']} "
                 + " ".join(
                     f"{step}={','.join(plugins) or '-'}"
                     for step, plugins in payload["activation"]["steps"].items()
@@ -1043,12 +1054,9 @@ def inspect_physical_autonomy_runtime(
     if steps["action"] is None:
         raise RuntimeError(f"{status_url} did not report a loaded action step")
 
-    memory = reported.get("memory")
-    memory_id = memory.get("implementation_id") if isinstance(memory, dict) else None
     return {
         "status_url": status_url,
         "steps": steps,
-        "memory_implementation": memory_id if isinstance(memory_id, str) and memory_id else None,
         "drive_mode": payload.get("drive_mode"),
         "ok": True,
     }

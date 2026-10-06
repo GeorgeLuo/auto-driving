@@ -11,7 +11,7 @@ from autonomy.decision_cycle.cycle import (
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -41,7 +41,7 @@ class DecisionStageFlowTests(unittest.TestCase):
         observation = Observation(
             observation_id=context.frame_id,
             created_at_ms=701,
-            sensor_snapshot={},
+            sensor_frame={},
             perception_schema=perception.schema,
             perception_plugin_id=perception.plugin_id,
             summary=perception.lines,
@@ -60,9 +60,9 @@ class DecisionStageFlowTests(unittest.TestCase):
                     kind="signal",
                     label="path clear evidence",
                     confidence=0.9,
-                    provenance=MemoryProvenance(
+                    origin=MemoryOrigin(
                         observation_id=observation.observation_id,
-                        evidence_id="path_clear",
+                        observed_id="path_clear",
                         coordinate_frame="image",
                         observed_at_ms=701,
                         updated_at_ms=702,
@@ -73,11 +73,10 @@ class DecisionStageFlowTests(unittest.TestCase):
                 ),
         )
         memory = {
-            "schema": "memory_report_v0",
+            "schema": "memory_report_v1",
             "plugins": [
                 {
                     "plugin_id": "test_memory",
-                    "implementation_id": "test_memory",
                     "state": {"records": [record.to_dict() for record in records]},
                 }
             ],

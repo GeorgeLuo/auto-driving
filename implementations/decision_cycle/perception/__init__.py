@@ -1,1 +1,1 @@
-"""Concrete perception plugins, their components, and shared algorithms."""
+"""Concrete perception plugins, their feeds, and shared code."""

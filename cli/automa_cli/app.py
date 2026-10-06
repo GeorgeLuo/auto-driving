@@ -1571,10 +1571,10 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (inspect, viability, reset)",
-                "- decision     offline decision apply/replay (stage via update decision)",
+                "- decision     offline decision apply/replay (stage via update proposal)",
                 (
-                    "- workbench    replay images through perception, memory, and "
-                    "decisions"
+                    "- workbench    replay images through perception, memory, proposals, "
+                    "and decisions"
                 ),
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
@@ -1696,6 +1696,7 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show latest local automation perception output",
                 "- memory      show live memory lifecycle health",
+                "- decision    show the latest decision frame",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1984,6 +1985,7 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "Stage proposals (held idle):  ./cli/automa vehicles update proposal --id <vehicle>",
                 "Apply them in live modes:     ./cli/automa vehicles update action --id <vehicle> --plugin mode",
                 "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
+                "Proposal schema:       ./cli/automa vehicles info proposal --id <vehicle>",
                 "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
                 "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
                 "",
@@ -2102,7 +2104,7 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
                 "",
                 (
                     "- replay  replay an ordered image directory through perception, "
-                    "memory, and decisions"
+                    "memory, proposals, and decisions"
                 ),
                 "- help    show this summary",
                 "",

@@ -500,7 +500,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inspect live memory as a key→value ledger (terminal + local map page).",
         description=(
             "Inspect live memory as a key→value ledger, replacing the terminal view as it updates. "
-            "Terminal shows health and counts. Chase reads automation worker state; PiCar "
+            "Terminal shows each applied plugin's health, epoch and record count, the evidence "
+            "publisher, and the step's counters. Chase reads automation worker state; PiCar "
             "serves a local map page, whose URL the terminal shows, listing record_id keys "
             "and the selected value."
         ),
@@ -530,7 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print one vehicle_memory_live_v0 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
+        help="Print one vehicle_memory_live_v1 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
@@ -687,8 +688,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reset live memory to a new empty epoch on Chase or PiCar.",
         description=(
             "Reset the activated memory step on the live host. Chase uses the "
-            "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms an "
-            "empty epoch via live probe. Does not move the vehicle."
+            "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms via "
+            "live probe that every applied plugin's ledger is empty. Does not move the vehicle."
         ),
     )
     memory_reset.add_argument(
@@ -724,8 +725,9 @@ def build_parser() -> argparse.ArgumentParser:
             "then the selected memory plugins, frame by frame. A recorded run restores its "
             "perception and memory selections, including their configs; --preset or --plugin "
             "overrides memory. Otherwise each step uses its default. Reports each plugin's health, "
-            "record count and epoch after every frame. It reads the source only; record live "
-            "frames with `perception inspect --record` and inspect that run. Absent frames "
+            "record count and epoch, and the evidence publisher, after every frame. It reads "
+            "the source only; record live frames with `perception inspect --record` and "
+            "inspect that run. Absent frames "
             "update memory with an empty observation. Unmanifested images use filename order "
             "and times 0, 1000, 2000, ... ms, as perception inspect and workbench replay do."
         ),
@@ -767,7 +769,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Health-check memory on a vehicle. A PiCar's live memory step is polled for a "
             "bounded interval (default 60s) to record update cadence, update duration, "
-            "failures, health, and epoch stability. "
+            "failures, and each applied plugin's health and epoch stability. "
             "Chase returns a stub pass. PiCar measurements save report.json under "
             "lab/runs/memory-viability/ unless --no-record."
         ),

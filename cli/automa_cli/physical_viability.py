@@ -595,8 +595,11 @@ def run_memory_viability_measurement(
 ) -> CommandResult:
     """Health-check memory on a vehicle, dispatching on its provider.
 
-    A PiCar's live memory step is polled for a bounded interval. The simulator
-    passes with a stub result; any other provider is refused.
+    A PiCar's live memory step is polled for a bounded interval. Each sample
+    keeps every applied plugin's ledger and the evidence publisher. Each
+    plugin must keep one epoch, and the health values the plugins report must
+    be known. The simulator passes with a stub result; any other provider is
+    refused.
     """
     vehicle, failure = _resolve_viability_vehicle(
         step="memory",
@@ -659,7 +662,7 @@ def run_memory_viability_measurement(
     metrics = _compute_memory_metrics(samples, elapsed_s=elapsed_s)
     gates = _evaluate_memory_gates(metrics)
     report = {
-        "schema": "automa_physical_memory_viability_v0",
+        "schema": "automa_physical_memory_viability_v1",
         "run_id": run_id,
         "vehicle_id": vehicle_id,
         "duration_s_requested": duration_s,
@@ -679,6 +682,8 @@ def run_memory_viability_measurement(
         "limits": [
             "Polls the live memory step's status; does not instrument the Donkey loop.",
             "Update duration is the step's own last_duration_ms, not the cycle's wall time.",
+            "Health and epoch come from each plugin's ledger summary; a plugin that keeps "
+            "no ledger reports none and adds nothing to health_is_known.",
         ],
     }
 
@@ -699,7 +704,7 @@ def run_memory_viability_measurement(
 def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
     # The simulator gets a stub pass; measurement runs on PiCar.
     report = {
-        "schema": "automa_physical_memory_viability_v0",
+        "schema": "automa_physical_memory_viability_v1",
         "vehicle_id": vehicle_id,
         "provider": "chase-sim",
         "passed": True,
@@ -718,13 +723,23 @@ def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> Comm
 def _extract_memory_sample(
     probe: dict[str, Any], *, wall_ms: int, mono_s: float
 ) -> dict[str, Any]:
+    plugins = probe.get("plugins") if isinstance(probe.get("plugins"), list) else []
     return {
         "t_s": round(mono_s, 3),
         "wall_ms": wall_ms,
         "status": probe.get("status"),
-        "health": probe.get("last_health"),
-        "epoch_id": probe.get("last_epoch_id"),
-        "record_count": probe.get("last_record_count"),
+        # Each applied plugin's ledger, as the live probe lists it.
+        "plugins": [
+            {
+                "plugin_id": entry["plugin_id"],
+                "health": entry.get("health"),
+                "epoch_id": entry.get("epoch_id"),
+                "record_count": entry.get("record_count"),
+            }
+            for entry in plugins
+            if isinstance(entry, dict) and isinstance(entry.get("plugin_id"), str)
+        ],
+        "evidence_publisher": probe.get("evidence_publisher"),
         "update_count": probe.get("update_count"),
         "reset_count": probe.get("reset_count"),
         "failure_count": probe.get("failure_count"),
@@ -751,15 +766,43 @@ def _compute_memory_metrics(samples: list[dict[str, Any]], *, elapsed_s: float) 
         "updates_per_s": round(updates / elapsed_s, 4) if updates is not None else None,
         "failure_count_delta": _counter_delta(live, "failure_count"),
         "reset_count_delta": _counter_delta(live, "reset_count"),
-        "epochs_seen": sorted({str(s["epoch_id"]) for s in live if s.get("epoch_id")}),
-        "health_seen": sorted({str(s["health"]) for s in live if s.get("health")}),
+        "plugins": _memory_plugin_metrics(live),
+        "evidence_publishers_seen": sorted(
+            {str(s["evidence_publisher"]) for s in live if s.get("evidence_publisher")}
+        ),
         "errors_seen": sorted({str(s["last_error"]) for s in live if s.get("last_error")})[:5],
         "update_duration_ms": _distribution(durations),
-        "last_record_count": next(
-            (s["record_count"] for s in reversed(live) if s.get("record_count") is not None),
-            None,
-        ),
     }
+
+
+def _memory_plugin_metrics(live: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per plugin, in the order first seen: epochs and health seen, and the last record count."""
+
+    seen: dict[str, dict[str, Any]] = {}
+    for sample in live:
+        for entry in sample.get("plugins") or []:
+            plugin = seen.setdefault(
+                entry["plugin_id"], {"epochs": set(), "health": set(), "record_count": None}
+            )
+            if entry.get("epoch_id"):
+                plugin["epochs"].add(str(entry["epoch_id"]))
+            if entry.get("health"):
+                plugin["health"].add(str(entry["health"]))
+            if entry.get("record_count") is not None:
+                plugin["record_count"] = entry["record_count"]
+    return [
+        {
+            "plugin_id": plugin_id,
+            "epochs_seen": sorted(plugin["epochs"]),
+            "health_seen": sorted(plugin["health"]),
+            "record_count": plugin["record_count"],
+        }
+        for plugin_id, plugin in seen.items()
+    ]
+
+
+def _per_plugin(plugins: list[dict[str, Any]], key: str) -> str:
+    return " ".join(f"{plugin['plugin_id']}:{plugin[key]}" for plugin in plugins) or "none"
 
 
 def _evaluate_memory_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
@@ -767,7 +810,9 @@ def _evaluate_memory_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     failures = metrics.get("failure_count_delta")
     duration = metrics.get("update_duration_ms") or {}
     p95 = duration.get("p95")
-    health = set(metrics.get("health_seen") or [])
+    plugins = metrics.get("plugins") or []
+    # Health across plugins: a plugin that keeps no ledger reports none.
+    health = {value for plugin in plugins for value in plugin["health_seen"]}
     return [
         {
             "id": "live_samples_present",
@@ -789,16 +834,16 @@ def _evaluate_memory_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
         {
             "id": "epoch_stable",
             "passed": metrics.get("reset_count_delta") in (None, 0)
-            and len(metrics.get("epochs_seen") or []) <= 1,
+            and all(len(plugin["epochs_seen"]) <= 1 for plugin in plugins),
             "detail": (
                 f"reset_count_delta={metrics.get('reset_count_delta')} "
-                f"epochs_seen={metrics.get('epochs_seen')}"
+                f"epochs_seen={_per_plugin(plugins, 'epochs_seen')}"
             ),
         },
         {
             "id": "health_is_known",
             "passed": bool(health) and health <= MEMORY_HEALTH_VALUES,
-            "detail": f"health_seen={sorted(health)}",
+            "detail": f"health_seen={_per_plugin(plugins, 'health_seen')}",
         },
         {
             "id": "p95_update_duration_at_most_100ms",
@@ -816,12 +861,15 @@ def _format_memory_report(report: dict[str, Any]) -> str:
         f"elapsed_s: {metrics.get('elapsed_s')}",
         f"updates_per_s: {metrics.get('updates_per_s')}",
         f"update_duration_ms p50/p95: {_dist_pair(metrics.get('update_duration_ms'))}",
-        f"epochs_seen: {metrics.get('epochs_seen')}",
-        f"health_seen: {metrics.get('health_seen')}",
-        f"records: {metrics.get('last_record_count')}",
-        "",
-        "gates:",
+        f"evidence_publishers_seen: {metrics.get('evidence_publishers_seen')}",
+        "plugins:",
     ]
+    for plugin in metrics.get("plugins") or []:
+        lines.append(
+            f"- {plugin['plugin_id']}: epochs_seen={plugin['epochs_seen']} "
+            f"health_seen={plugin['health_seen']} records={plugin['record_count']}"
+        )
+    lines.extend(["", "gates:"])
     for gate in report["gates"]:
         lines.append(
             f"- {'PASS' if gate['passed'] else 'FAIL'} {gate['id']}: {gate['detail']}"

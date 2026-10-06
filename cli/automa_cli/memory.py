@@ -18,7 +18,6 @@ from autonomy.decision_cycle.memory.interface import (
     BOUNDS,
     EPOCH_ID,
     HEALTH,
-    LEDGER_HEALTH_EMPTY,
     RECORD_COUNT,
 )
 from autonomy.decision_cycle.memory.runner import MemoryRunner
@@ -42,7 +41,13 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .inspection_runs import recorded_selection, selection_record
-from .memory_report import last_plugin_state, ledger_summary, memory_summary
+from .memory_report import (
+    evidence_publisher,
+    ledger_is_empty,
+    ledger_summary,
+    plugin_ledgers,
+    plugin_summaries,
+)
 from .paths import ROOT, display_path, safe_path_part
 from .physical_observation import (
     fetch_autonomy_status,
@@ -84,7 +89,9 @@ RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "ve
 INSPECT_ROOT = Path(
     os.environ.get("AUTOMA_MEMORY_INSPECT_ROOT", ROOT / "runtime" / "memory-inspections")
 )
-MEMORY_INSPECT_SCHEMA = "memory_inspect_v0"
+MEMORY_INSPECT_SCHEMA = "memory_inspect_v1"
+MEMORY_LIVE_SCHEMA = "vehicle_memory_live_v1"
+MEMORY_RESET_SCHEMA = "vehicle_memory_reset_v1"
 
 
 @dataclass(frozen=True)
@@ -306,10 +313,8 @@ def inspect_memory(
                 "timestamp_ms": frame.timestamp_ms,
                 "image_path": str(frame.image_path) if frame.image_path is not None else None,
                 "absence_reason": frame.absence_reason,
-                "plugins": [
-                    {"plugin_id": item.get("plugin_id"), **memory_summary(item.get("state"))}
-                    for item in (result.memory or {}).get("plugins") or []
-                ],
+                "plugins": plugin_summaries(result.memory),
+                "evidence_publisher": evidence_publisher(result.memory),
                 "observation": _observation_counts(seen.get("observation")),
             }
         )
@@ -400,24 +405,25 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
         f"Perception: {report['perception']['preset']} ({', '.join(report['perception']['plugins'])})",
         f"Memory: {report['memory']['preset']} ({', '.join(report['memory']['plugins'])})",
         "",
-        "Frame  Plugin  Health  Records  Epoch  Observation",
+        "Frame  Plugin  Health  Records  Epoch  Publisher  Observation",
     ]
     for frame in report["frames"]:
         observation = frame["observation"]
         seen = f"{observation['things']}t/{observation['signals']}s" if observation else "-"
+        publisher = frame["evidence_publisher"] or "-"
         for item in frame["plugins"]:
             lines.append(
                 f"{frame['frame_index']}  {item['plugin_id']}  {item['health']}  "
-                f"{item['record_count']}  {item['epoch_id']}  {seen}"
+                f"{item['record_count']}  {item['epoch_id']}  {publisher}  {seen}"
             )
     lines.append("")
     lines.append("Final")
-    for item in (report["final"] or {}).get("plugins") or []:
-        summary = memory_summary(item.get("state"))
+    for item in plugin_summaries(report["final"]):
         lines.append(
-            f"  {item.get('plugin_id')}: {summary['health']}, "
-            f"{summary['record_count']} records, epoch {summary['epoch_id']}"
+            f"  {item['plugin_id']}: {item['health']}, "
+            f"{item['record_count']} records, epoch {item['epoch_id']}"
         )
+    lines.append(f"  Evidence publisher: {evidence_publisher(report['final']) or 'none'}")
     if report["run_dir"]:
         lines.extend(["", f"Recorded: {display_path(Path(report['run_dir']))}"])
     return "\n".join(lines)
@@ -432,8 +438,10 @@ def reset_vehicle_memory(
 ) -> CommandResult:
     """Reset live memory on Chase automation or PiCar Donkey runtime.
 
-    After a successful reset the new epoch is empty (zero keys). Operators can
-    confirm with ``info memory``, ``stream memory``, or the Memory map.
+    The reset is confirmed when the live probe afterwards shows every applied
+    plugin's ledger empty (``ledger_is_empty``); ``nonempty_plugin_ids`` names
+    any that still hold records. Operators can check with ``info memory``,
+    ``stream memory``, or the Memory map.
     """
 
     discovery = discover_active_vehicles(
@@ -511,7 +519,7 @@ def reset_vehicle_memory(
         timeout_s=timeout_s,
     )
     payload = {
-        "schema": "vehicle_memory_reset_v0",
+        "schema": MEMORY_RESET_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": provider,
         "ok": bool(reset_payload.get("ok")),
@@ -532,25 +540,38 @@ def reset_vehicle_memory(
             ),
         )
 
-    # Operator-facing confirmation: empty epoch with non-decreasing reset count.
-    after_count = after.get("last_record_count")
-    after_health = after.get("last_health")
-    confirmed = after.get("status") == "live" and (
-        after_count in {0, None} or after_health in {LEDGER_HEALTH_EMPTY, "unavailable"}
-    )
-    payload["confirmed_empty"] = bool(confirmed)
+    # Operator-facing confirmation: every applied plugin's ledger is empty.
+    nonempty = [entry["plugin_id"] for entry in _live_plugins(after) if not ledger_is_empty(entry)]
+    confirmed = after.get("status") == "live" and not nonempty
+    payload["confirmed_empty"] = confirmed
+    payload["nonempty_plugin_ids"] = nonempty
     if json_output:
         return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
+    before_plugins = {entry["plugin_id"]: entry for entry in _live_plugins(before)}
+    after_plugins = {entry["plugin_id"]: entry for entry in _live_plugins(after)}
     lines = [
         f"Reset memory: {vehicle_id}",
         f"Plugins: {', '.join(after.get('plugin_ids') or before.get('plugin_ids') or []) or '—'}",
-        f"Epoch: {before.get('last_epoch_id') or '—'} -> {after.get('last_epoch_id') or '—'}",
-        f"Keys: {before.get('last_record_count')} -> {after.get('last_record_count')}",
-        f"Health: {before.get('last_health')} -> {after.get('last_health')}",
-        f"Resets: {before.get('reset_count')} -> {after.get('reset_count')}",
     ]
+    for plugin_id in [*after_plugins, *(key for key in before_plugins if key not in after_plugins)]:
+        was = before_plugins.get(plugin_id, {})
+        now = after_plugins.get(plugin_id, {})
+        lines.append(
+            f"  {plugin_id}: "
+            f"epoch {was.get(EPOCH_ID) or '—'} -> {now.get(EPOCH_ID) or '—'}, "
+            f"records {was.get(RECORD_COUNT)} -> {now.get(RECORD_COUNT)}, "
+            f"health {was.get(HEALTH)} -> {now.get(HEALTH)}"
+        )
+    lines.extend(
+        [
+            f"Evidence publisher: {before.get('evidence_publisher') or 'none'} -> "
+            f"{after.get('evidence_publisher') or 'none'}",
+            f"Resets: {before.get('reset_count')} -> {after.get('reset_count')}",
+        ]
+    )
     if not confirmed:
-        lines.append("Warning: live probe did not confirm an empty epoch after reset.")
+        detail = f" Still holding records: {', '.join(nonempty)}." if nonempty else ""
+        lines.append(f"Warning: live probe did not confirm an empty memory after reset.{detail}")
         return CommandResult(2, "\n".join(lines))
     return CommandResult(0, "\n".join(lines))
 
@@ -624,14 +645,7 @@ def _reset_chase_memory(
         # discovery here: it can outlast the acknowledgement deadline and
         # hide a result the worker has already written.
         live = _probe_chase_memory(vehicle_id=vehicle_id)
-        if (
-            live.get("status") == "live"
-            and live.get("last_epoch_id") not in {None, before.get("last_epoch_id")}
-            and (
-                live.get("last_record_count") in {0, None}
-                or live.get("last_health") == LEDGER_HEALTH_EMPTY
-            )
-        ):
+        if _probe_shows_reset(before, live):
             try:
                 request_path.unlink(missing_ok=True)
             except OSError:
@@ -642,9 +656,9 @@ def _reset_chase_memory(
                 "token": token,
                 "detected_via": "live_probe",
                 "memory": {
-                    "last_epoch_id": live.get("last_epoch_id"),
-                    "last_record_count": live.get("last_record_count"),
-                    "last_health": live.get("last_health"),
+                    "plugin_ids": live.get("plugin_ids"),
+                    "plugins": live.get("plugins"),
+                    "evidence_publisher": live.get("evidence_publisher"),
                     "reset_count": live.get("reset_count"),
                 },
             }
@@ -658,6 +672,24 @@ def _reset_chase_memory(
         f"Automation worker did not acknowledge memory reset within {wait_s}s. "
         "Is the worker running?"
     )
+
+
+def _probe_shows_reset(before: dict[str, Any], live: dict[str, Any]) -> bool:
+    """Whether a live probe shows a reset since ``before``.
+
+    A reset shows when some plugin reports an epoch other than the one it
+    reported before, and every plugin's ledger is empty.
+    """
+
+    if live.get("status") != "live":
+        return False
+    plugins = _live_plugins(live)
+    before_epochs = {entry["plugin_id"]: entry.get(EPOCH_ID) for entry in _live_plugins(before)}
+    epoch_changed = any(
+        entry.get(EPOCH_ID) not in {None, before_epochs.get(entry["plugin_id"])}
+        for entry in plugins
+    )
+    return epoch_changed and all(ledger_is_empty(entry) for entry in plugins)
 
 
 def stream_vehicle_memory(
@@ -674,6 +706,8 @@ def stream_vehicle_memory(
 
     JSON mode emits probes even when discovery fails. ``live`` means the
     retained step is available; update health stays in the plugin diagnostics.
+    Each probe lists every applied plugin's ledger and names the evidence
+    publisher; the terminal view prints the same.
     """
 
     discovery = discover_active_vehicles(
@@ -687,6 +721,7 @@ def stream_vehicle_memory(
         return CommandResult(
             *unavailable_stream_outcome(
                 step="memory",
+                schema=MEMORY_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
                 message="\n\n".join(
                     [
@@ -703,6 +738,7 @@ def stream_vehicle_memory(
         return CommandResult(
             *unavailable_stream_outcome(
                 step="memory",
+                schema=MEMORY_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
                 message=f"Vehicle {vehicle_id!r} was not found.",
                 json_output=json_output,
@@ -823,13 +859,14 @@ def _stream_physical_memory_with_inspector(
                     lines.append("memory map: unavailable")
                 if fetch_error:
                     lines.append(f"publication: {fetch_error}")
-                # The published memory report's last plugin state.
-                elif isinstance(publication, dict) and last_plugin_state(publication.get("memory")):
-                    mem = last_plugin_state(publication.get("memory")) or {}
+                # The published memory report: each plugin's ledger and the publisher.
+                elif isinstance(publication, dict) and isinstance(publication.get("memory"), dict):
+                    report = publication["memory"]
                     lines.append(
-                        f"publication memory: health={mem.get(HEALTH)} "
-                        f"keys={mem.get(RECORD_COUNT)}"
+                        "publication memory: evidence publisher "
+                        f"{evidence_publisher(report) or 'none'}"
                     )
+                    lines.extend(_format_plugin_ledgers(plugin_ledgers(report)))
                 print("\n".join(lines), file=stream, flush=True)
 
             if once:
@@ -862,7 +899,7 @@ def probe_live_memory(
         vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
         if error or vehicle is None:
             return {
-                "schema": "vehicle_memory_live_v0",
+                "schema": MEMORY_LIVE_SCHEMA,
                 "vehicle_id": vehicle_id,
                 "status": "unavailable",
                 "error": error or f"Vehicle {vehicle_id!r} was not found.",
@@ -875,7 +912,7 @@ def probe_live_memory(
     if provider == "chase-sim":
         return _probe_chase_memory(vehicle_id=vehicle_id)
     return {
-        "schema": "vehicle_memory_live_v0",
+        "schema": MEMORY_LIVE_SCHEMA,
         "vehicle_id": vehicle_id,
         "status": "unavailable",
         "error": (
@@ -886,16 +923,35 @@ def probe_live_memory(
     }
 
 
-def _ledger_probe_fields(report: object) -> dict[str, Any]:
-    """Live-probe fields taken from the last plugin's ledger summary."""
+def _probe_plugins(status: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each applied plugin's step status with its ledger summary beside it.
 
-    summary = ledger_summary(last_plugin_state(report))
-    return {
-        BOUNDS: summary[BOUNDS],
-        "last_health": summary[HEALTH],
-        "last_epoch_id": summary[EPOCH_ID],
-        "last_record_count": summary[RECORD_COUNT],
-    }
+    An entry keeps the step's per-plugin status (counters, ``last_error``,
+    ``state``) and adds ``epoch_id``, ``health``, ``bounds`` and
+    ``record_count`` from that plugin's state, None where the plugin reports
+    none.
+    """
+
+    plugins = status.get("plugins")
+    return [
+        {
+            **entry,
+            **ledger_summary(entry.get("state") if isinstance(entry.get("state"), dict) else None),
+        }
+        for entry in (plugins if isinstance(plugins, list) else [])
+        if isinstance(entry, dict) and isinstance(entry.get("plugin_id"), str)
+    ]
+
+
+def _live_plugins(live: dict[str, Any]) -> list[dict[str, Any]]:
+    """The plugin entries of a live probe; none unless it is live."""
+
+    plugins = live.get("plugins") if live.get("status") == "live" else None
+    return [
+        entry
+        for entry in (plugins if isinstance(plugins, list) else [])
+        if isinstance(entry, dict) and isinstance(entry.get("plugin_id"), str)
+    ]
 
 
 def _probe_physical_memory(
@@ -908,7 +964,7 @@ def _probe_physical_memory(
     probed_at_ms = int(time.time() * 1000)
     if not base_url:
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "picar",
             "status": "unavailable",
@@ -919,7 +975,7 @@ def _probe_physical_memory(
         status = fetch_autonomy_status(base_url, timeout_s=timeout_s)
     except ConnectionError as exc:
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "picar",
             "status": "error",
@@ -937,7 +993,7 @@ def _probe_physical_memory(
     )
     if memory is None:
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "picar",
             "status": "absent",
@@ -952,7 +1008,7 @@ def _probe_physical_memory(
         }
 
     return {
-        "schema": "vehicle_memory_live_v0",
+        "schema": MEMORY_LIVE_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": "picar",
         "status": "live",
@@ -962,9 +1018,9 @@ def _probe_physical_memory(
         "activation": memory.get("activation"),
         "plugin_ids": memory.get("plugin_ids", []),
         "selected_plugin_ids": memory.get("selected_plugin_ids", []),
-        "plugins": memory.get("plugins", []),
+        "plugins": _probe_plugins(memory),
+        "evidence_publisher": evidence_publisher(memory),
         "plugin_report": memory.get("plugin_report"),
-        **_ledger_probe_fields(memory),
         "last_duration_ms": memory.get("last_duration_ms"),
         "last_error": memory.get("last_error"),
         "update_count": memory.get("update_count"),
@@ -980,7 +1036,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
     state_path = automation_dir / "state.json"
     if not state_path.exists():
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "unavailable",
@@ -994,7 +1050,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         state = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "error",
@@ -1003,7 +1059,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         }
     if not isinstance(state, dict):
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "error",
@@ -1019,7 +1075,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
     )
     if not liveness["live"]:
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": liveness["status"],
@@ -1034,7 +1090,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
     memory = state.get("memory") if isinstance(state.get("memory"), dict) else None
     if memory is None or memory.get("status") == "absent":
         return {
-            "schema": "vehicle_memory_live_v0",
+            "schema": MEMORY_LIVE_SCHEMA,
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "absent",
@@ -1053,16 +1109,16 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
     if not isinstance(status_block, dict):
         status_block = {}
     return {
-        "schema": "vehicle_memory_live_v0",
+        "schema": MEMORY_LIVE_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": "chase-sim",
         "status": "live",
         "activation": memory.get("activation") or status_block.get("activation"),
         "plugin_ids": status_block.get("plugin_ids", []),
         "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
-        "plugins": status_block.get("plugins", []),
+        "plugins": _probe_plugins(status_block),
+        "evidence_publisher": evidence_publisher(status_block),
         "plugin_report": status_block.get("plugin_report"),
-        **_ledger_probe_fields(status_block),
         "last_duration_ms": status_block.get("last_duration_ms"),
         "last_error": status_block.get("last_error"),
         "update_count": status_block.get("update_count"),
@@ -1104,14 +1160,11 @@ def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
     if live.get("drive_mode") is not None:
         lines.append(f"Drive mode: {live.get('drive_mode')}")
     if status == "live":
+        lines.append(f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}")
+        lines.extend(_format_plugin_ledgers(_live_plugins(live)))
         lines.extend(
             [
-                f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}",
-                (
-                    f"Health: {live.get('last_health') or 'unknown'} "
-                    f"epoch={live.get('last_epoch_id') or '-'} "
-                    f"records={live.get('last_record_count')}"
-                ),
+                f"Evidence publisher: {live.get('evidence_publisher') or 'none'}",
                 (
                     f"Counters: updates={live.get('update_count')} "
                     f"resets={live.get('reset_count')} "
@@ -1119,13 +1172,6 @@ def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
                 ),
             ]
         )
-        bounds = live.get("bounds") if isinstance(live.get("bounds"), dict) else {}
-        if bounds:
-            lines.append(
-                f"Bounds: max_records={bounds.get('max_records')} "
-                f"max_age_ms={bounds.get('max_age_ms')} "
-                f"eviction={bounds.get('eviction_policy')}"
-            )
         if live.get("last_duration_ms") is not None:
             lines.append(f"Last update duration: {live.get('last_duration_ms')} ms")
         if live.get("last_error"):
@@ -1136,3 +1182,23 @@ def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
         if live.get("error"):
             lines.append(f"Detail: {live.get('error')}")
     return "\n".join(lines)
+
+
+def _format_plugin_ledgers(ledgers: list[dict[str, Any]]) -> list[str]:
+    """One line per plugin: its ledger health, epoch, records and any bounds."""
+
+    lines = []
+    for ledger in ledgers:
+        line = (
+            f"  {ledger['plugin_id']}: health={ledger.get(HEALTH) or 'unknown'} "
+            f"epoch={ledger.get(EPOCH_ID) or '-'} records={ledger.get(RECORD_COUNT)}"
+        )
+        bounds = ledger.get(BOUNDS)
+        if isinstance(bounds, dict) and bounds:
+            line += (
+                f" max_records={bounds.get('max_records')} "
+                f"max_age_ms={bounds.get('max_age_ms')} "
+                f"eviction={bounds.get('eviction_policy')}"
+            )
+        lines.append(line)
+    return lines

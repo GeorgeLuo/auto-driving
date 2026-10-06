@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from cli.automa_cli.automation import (
 from cli.automa_cli.memory import probe_live_memory, stream_vehicle_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.support.cli_runner import run_automa
+from tests.support.memory_fixtures import TWO_PLUGIN_IDS, two_plugin_runner
 
 # Mirrors start_automation launcher argv: ... automation run --id <vehicle_id> ...
 AUTOMATION_COMMAND = (
@@ -24,6 +26,14 @@ AUTOMATION_COMMAND = (
     "--id chase-sim-chaser --timeout-s 0 --interval-s 0.1 --frames 0 --foreground "
     "--observe-only"
 )
+
+# A memory step status as the chase worker writes it; liveness reads none of it.
+WORKER_MEMORY_STATUS = {
+    "plugins": [
+        {"plugin_id": "bounded_evidence", "state": {"health": "healthy", "record_count": 1}}
+    ],
+    "evidence_publisher": "bounded_evidence",
+}
 
 
 class MemoryStreamTests(unittest.TestCase):
@@ -58,6 +68,7 @@ class MemoryStreamTests(unittest.TestCase):
                                 },
                             }
                         ],
+                        "evidence_publisher": "bounded_evidence",
                         "update_count": 12,
                         "reset_count": 1,
                         "failure_count": 0,
@@ -86,7 +97,14 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(live["status"], "live")
         self.assertEqual(live["plugin_ids"], ["bounded_evidence"])
         self.assertNotIn("plugin_id", live)
-        self.assertEqual(live["last_record_count"], 7)
+        (ledger,) = live["plugins"]
+        self.assertEqual(ledger["plugin_id"], "bounded_evidence")
+        self.assertEqual(
+            {key: ledger[key] for key in ("health", "epoch_id", "record_count")},
+            {"health": "healthy", "epoch_id": "epoch-2", "record_count": 7},
+        )
+        self.assertEqual(ledger["bounds"]["max_records"], 32)
+        self.assertEqual(live["evidence_publisher"], "bounded_evidence")
         self.assertTrue(live["has_memory"])
         self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
         self.assertEqual(live["plugin_report"]["applied_plugin_ids"], ["bounded_evidence"])
@@ -185,11 +203,15 @@ class MemoryStreamTests(unittest.TestCase):
             )
         self.assertEqual(result.exit_code, 0, result.message)
         payload = json.loads(result.message)
-        self.assertEqual(payload["schema"], "vehicle_memory_live_v0")
+        self.assertEqual(payload["schema"], "vehicle_memory_live_v1")
         self.assertEqual(payload["status"], "live")
         self.assertEqual(payload["vehicle_id"], "piracer")
         self.assertEqual(payload["plugin_ids"], ["bounded_evidence"])
-        self.assertEqual(payload["last_record_count"], 3)
+        self.assertEqual(
+            [(entry["plugin_id"], entry["record_count"]) for entry in payload["plugins"]],
+            [("bounded_evidence", 3)],
+        )
+        self.assertIsNone(payload["evidence_publisher"])
 
     def test_chase_stream_once_live_exits_zero(self) -> None:
         now = 1_700_000_000_000
@@ -201,11 +223,12 @@ class MemoryStreamTests(unittest.TestCase):
             "active_count": 1,
         }
         live_payload = {
-            "schema": "vehicle_memory_live_v0",
+            "schema": "vehicle_memory_live_v1",
             "vehicle_id": "chase-sim-chaser",
             "provider": "chase-sim",
             "status": "live",
-            "last_record_count": 5,
+            "plugins": [{"plugin_id": "bounded_evidence", "record_count": 5}],
+            "evidence_publisher": "bounded_evidence",
             "worker_status": "running",
             "probed_at_ms": now,
         }
@@ -223,7 +246,7 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.message)
         payload = json.loads(result.message)
         self.assertEqual(payload["status"], "live")
-        self.assertEqual(payload["last_record_count"], 5)
+        self.assertEqual(payload["plugins"][0]["record_count"], 5)
 
     def test_chase_stream_once_stale_exits_nonzero(self) -> None:
         vehicle = {"vehicle_id": "chase-sim-chaser", "provider": "chase-sim", "active": True}
@@ -234,7 +257,7 @@ class MemoryStreamTests(unittest.TestCase):
             "active_count": 1,
         }
         stale_payload = {
-            "schema": "vehicle_memory_live_v0",
+            "schema": "vehicle_memory_live_v1",
             "vehicle_id": "chase-sim-chaser",
             "provider": "chase-sim",
             "status": "stale",
@@ -266,7 +289,7 @@ class MemoryStreamTests(unittest.TestCase):
             "active_count": 1,
         }
         stopped_payload = {
-            "schema": "vehicle_memory_live_v0",
+            "schema": "vehicle_memory_live_v1",
             "vehicle_id": "chase-sim-chaser",
             "provider": "chase-sim",
             "status": "stopped",
@@ -344,13 +367,7 @@ class MemoryStreamTests(unittest.TestCase):
             "status": "running",
             "pid": 424242,
             "updated_at_ms": now,
-            "memory": {
-                "status": {
-                    "last_health": "healthy",
-                    "last_record_count": 2,
-                    "update_count": 4,
-                },
-            },
+            "memory": {"status": {**WORKER_MEMORY_STATUS, "update_count": 4}},
         }
         with patch("cli.automa_cli.automation._pid_alive", return_value=False):
             verdict = assess_chase_worker_liveness(
@@ -371,7 +388,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 60_000,
             "memory": {
-                "status": {"last_health": "healthy", "last_record_count": 1},
+                "status": WORKER_MEMORY_STATUS,
             },
         }
         with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
@@ -395,7 +412,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "status": {"last_health": "healthy", "last_record_count": 1},
+                "status": WORKER_MEMORY_STATUS,
             },
         }
         with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
@@ -427,7 +444,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "status": {"last_health": "healthy", "last_record_count": 1},
+                "status": WORKER_MEMORY_STATUS,
             },
         }
         self.assertTrue(
@@ -481,7 +498,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "status": {"last_health": "healthy", "last_record_count": 1},
+                "status": WORKER_MEMORY_STATUS,
             },
         }
         with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
@@ -505,7 +522,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now - 500,
             "memory": {
-                "status": {"last_health": "healthy", "last_record_count": 1},
+                "status": WORKER_MEMORY_STATUS,
             },
         }
         with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
@@ -529,7 +546,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now + 86_400_000,
             "memory": {
-                "status": {"last_health": "healthy", "last_record_count": 1},
+                "status": WORKER_MEMORY_STATUS,
             },
         }
         with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
@@ -555,7 +572,7 @@ class MemoryStreamTests(unittest.TestCase):
             "pid": 424242,
             "updated_at_ms": now + 500,
             "memory": {
-                "status": {"last_health": "healthy", "last_record_count": 1},
+                "status": WORKER_MEMORY_STATUS,
             },
         }
         with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
@@ -629,10 +646,89 @@ class MemoryStreamTests(unittest.TestCase):
                     vehicle={"vehicle_id": "chase-sim-chaser", "provider": "chase-sim"},
                 )
         self.assertEqual(live["status"], "live")
-        self.assertEqual(live["last_record_count"], 5)
+        self.assertEqual(live["plugins"][0]["plugin_id"], "bounded_evidence")
+        self.assertEqual(live["plugins"][0]["record_count"], 5)
+        self.assertEqual(live["plugins"][0]["epoch_id"], "epoch-3")
         self.assertEqual(live["worker_status"], "running")
         self.assertEqual(live["plugin_report"]["selected_plugin_ids"], ["other"])
         self.assertEqual(live["plugin_report"]["applied_plugin_ids"], ["bounded_evidence"])
+
+    def test_two_plugins_each_show_their_ledger_and_the_publisher(self) -> None:
+        runner, _shared = two_plugin_runner()
+        status = json.loads(json.dumps(runner.status()))
+        now = 1_700_000_000_000
+        chase = {"vehicle_id": "chase-sim-chaser", "provider": "chase-sim", "active": True}
+        picar = {
+            "vehicle_id": "piracer",
+            "provider": "picar",
+            "connection": {"base_url": "http://piracer.local:8887"},
+            "active": True,
+        }
+        discovery = {
+            "schema": "automa_vehicle_discovery_v0",
+            "vehicles": [chase, picar],
+            "inactive": [],
+            "active_count": 2,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "status": "running",
+                        "pid": 424242,
+                        "updated_at_ms": now - 500,
+                        "memory": {"activation": None, "status": status},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            probes = {}
+            screens = {}
+            with patch(
+                "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+            ), patch(
+                "cli.automa_cli.memory._automation_dir", return_value=state_path.parent
+            ), patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
+                "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+            ), patch(
+                "cli.automa_cli.memory.time.time", return_value=now / 1000.0
+            ), patch(
+                "cli.automa_cli.memory.fetch_autonomy_status",
+                return_value={"ok": True, "autonomy": {"steps": {"memory": status}}},
+            ):
+                for vehicle_id in ("chase-sim-chaser", "piracer"):
+                    result = stream_vehicle_memory(
+                        vehicle_id=vehicle_id, once=True, json_output=True, output=None
+                    )
+                    self.assertEqual(result.exit_code, 0, result.message)
+                    probes[vehicle_id] = json.loads(result.message)
+                screen = io.StringIO()
+                result = stream_vehicle_memory(
+                    vehicle_id="chase-sim-chaser", once=True, no_clear=True, output=screen
+                )
+                self.assertEqual(result.exit_code, 0, result.message)
+                screens["chase-sim-chaser"] = screen.getvalue()
+
+        for vehicle_id, probe in probes.items():
+            with self.subTest(vehicle_id=vehicle_id):
+                self.assertEqual(probe["schema"], "vehicle_memory_live_v1")
+                ledgers = {entry["plugin_id"]: entry for entry in probe["plugins"]}
+                self.assertEqual(list(ledgers), list(TWO_PLUGIN_IDS))
+                self.assertEqual(ledgers["bounded_evidence"]["health"], "healthy")
+                self.assertEqual(ledgers["bounded_evidence"]["record_count"], 1)
+                self.assertEqual(ledgers["bounded_evidence"]["bounds"]["max_records"], 32)
+                self.assertIsNone(ledgers["recording_test"]["health"])
+                self.assertEqual(ledgers["recording_test"]["record_count"], 1)
+                self.assertEqual(ledgers["recording_test"]["epoch_id"], "epoch-1")
+                self.assertEqual(ledgers["recording_test"]["update_count"], 1)
+                self.assertEqual(probe["evidence_publisher"], "bounded_evidence")
+
+        text = screens["chase-sim-chaser"]
+        self.assertIn("Applied plugins: bounded_evidence, recording_test", text)
+        self.assertRegex(text, r"  bounded_evidence: health=healthy epoch=\S+ records=1 max_records=32")
+        self.assertIn("  recording_test: health=unknown epoch=epoch-1 records=1", text)
+        self.assertIn("Evidence publisher: bounded_evidence", text)
 
     def test_cli_stream_memory_once_help_wired(self) -> None:
         result = run_automa("vehicles", "stream", "help", check=False)

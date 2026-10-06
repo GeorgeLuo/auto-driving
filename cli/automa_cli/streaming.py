@@ -70,6 +70,7 @@ def stream_vehicle_perception(
         return CommandResult(
             *unavailable_stream_outcome(
                 step="perception",
+                schema=PERCEPTION_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
                 message="\n\n".join(
                     [
@@ -86,6 +87,7 @@ def stream_vehicle_perception(
         return CommandResult(
             *unavailable_stream_outcome(
                 step="perception",
+                schema=PERCEPTION_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
                 message=f"Vehicle {vehicle_id!r} was not found.",
                 json_output=json_output,
@@ -117,6 +119,7 @@ def stream_vehicle_perception(
     return CommandResult(
         *unavailable_stream_outcome(
             step="perception",
+            schema=PERCEPTION_LIVE_SCHEMA,
             vehicle_id=vehicle_id,
             message=f"Vehicle {vehicle_id!r} is provider {provider!r}; perception stream supports chase-sim and picar.",
             json_output=json_output,
@@ -177,6 +180,7 @@ def probe_live_perception(
 def unavailable_stream_outcome(
     *,
     step: str,
+    schema: str,
     vehicle_id: str,
     message: str,
     json_output: bool,
@@ -185,14 +189,15 @@ def unavailable_stream_outcome(
     """Preserve JSON stream output when discovery or provider selection fails.
 
     Preflight failures terminate with exit 2 in either mode. JSON mode emits
-    one unavailable probe, including with ``--once`` omitted; terminal mode
-    returns the discovery diagnostic for the CLI handler to print.
+    one unavailable probe under the step's live probe ``schema``, including
+    with ``--once`` omitted; terminal mode returns the discovery diagnostic for
+    the CLI handler to print.
     """
 
     if not json_output:
         return 2, message
     live = {
-        "schema": f"vehicle_{step}_live_v0",
+        "schema": schema,
         "vehicle_id": vehicle_id,
         "status": "unavailable",
         "error": message,

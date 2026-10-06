@@ -13,6 +13,7 @@ from cli.automa_cli import memory
 from cli.automa_cli.memory import inspect_memory
 from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
+from tests.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from tests.support.cli_runner import run_automa
 
 SUMMARY_KEYS = {"plugin_id", "health", "record_count", "epoch_id"}
@@ -57,17 +58,61 @@ class MemoryInspectTests(unittest.TestCase):
 
     def test_reports_each_frames_summary_in_source_order(self) -> None:
         report = self.inspect()
-        self.assertEqual(report["schema"], "memory_inspect_v0")
+        self.assertEqual(report["schema"], "memory_inspect_v1")
         self.assertEqual(report["source"]["frame_count"], 3)
         self.assertEqual([item["frame_index"] for item in report["frames"]], [0, 1, 2])
         for item in report["frames"]:
             self.assertEqual({key for plugin in item["plugins"] for key in plugin}, SUMMARY_KEYS)
-        last = report["frames"][-1]["plugins"][-1]
-        final = report["final"]["plugins"][-1]["state"]
+            self.assertEqual(item["evidence_publisher"], "bounded_evidence")
+        last = {plugin["plugin_id"]: plugin for plugin in report["frames"][-1]["plugins"]}
+        final = {plugin["plugin_id"]: plugin["state"] for plugin in report["final"]["plugins"]}
         self.assertEqual(
-            (last["health"], last["record_count"], last["epoch_id"]),
-            (final["health"], final["record_count"], final["epoch_id"]),
+            {key: last["bounded_evidence"][key] for key in ("health", "record_count", "epoch_id")},
+            {key: final["bounded_evidence"][key] for key in ("health", "record_count", "epoch_id")},
         )
+        self.assertEqual(report["final"]["evidence_publisher"], "bounded_evidence")
+
+    def test_two_recorded_plugins_each_report_and_the_publisher_is_named(self) -> None:
+        # The recording plugin runs after bounded_evidence and keeps its own state.
+        bounded = selection_activation("memory", plugins=["bounded_evidence"])
+        run = write_frames(self.tmp / "run")
+        (run / "report.json").write_text(
+            json.dumps(
+                {
+                    "schema": "memory_inspect_v1",
+                    "memory": {
+                        "preset": None,
+                        "config": {
+                            "plugins": ["bounded_evidence", "recording_test"],
+                            "plugin_specs": {
+                                **dict(bounded.plugin_specs),
+                                "recording_test": RECORDING_SPEC,
+                            },
+                            "plugin_configs": {
+                                **dict(bounded.plugin_configs),
+                                "recording_test": {},
+                            },
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        report = self.inspect(run)
+        self.assertEqual(report["memory"]["plugins"], ["bounded_evidence", "recording_test"])
+        for item in report["frames"]:
+            rows = {plugin["plugin_id"]: plugin for plugin in item["plugins"]}
+            self.assertEqual(list(rows), ["bounded_evidence", "recording_test"])
+            self.assertIsNone(rows["recording_test"]["health"])
+            self.assertEqual(rows["recording_test"]["record_count"], 1)
+            self.assertEqual(item["evidence_publisher"], "bounded_evidence")
+
+        text = inspect_memory(str(run)).message
+        self.assertIn("Frame  Plugin  Health  Records  Epoch  Publisher  Observation", text)
+        self.assertRegex(text, r"\n2  bounded_evidence  healthy  \d+  \S+  bounded_evidence  ")
+        self.assertRegex(text, r"\n2  recording_test  None  1  epoch-1  bounded_evidence  ")
+        self.assertIn("  recording_test: None, 1 records, epoch epoch-1", text)
+        self.assertIn("  Evidence publisher: bounded_evidence", text)
 
     def test_shows_the_selected_plugins_summary(self) -> None:
         report = self.inspect(plugins=["bounded_evidence"])

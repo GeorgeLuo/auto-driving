@@ -8,6 +8,11 @@ from unittest.mock import patch
 from cli.automa_cli import memory, streaming
 from tests.support.cli_runner import run_automa
 
+LIVE_SCHEMAS = {
+    "perception": streaming.PERCEPTION_LIVE_SCHEMA,
+    "memory": memory.MEMORY_LIVE_SCHEMA,
+}
+
 
 class LiveStreamDiscoveryTests(unittest.TestCase):
     def test_both_cli_help_pages_describe_the_json_failure_contract(self) -> None:
@@ -20,7 +25,7 @@ class LiveStreamDiscoveryTests(unittest.TestCase):
                     "discovery failures emit an unavailable probe and exit 2", help_text
                 )
                 self.assertIn(
-                    f"one vehicle_{step}_live_v0 JSON probe per refresh in place of the "
+                    f"one {LIVE_SCHEMAS[step]} JSON probe per refresh in place of the "
                     "terminal view and local view",
                     help_text,
                 )
@@ -44,7 +49,7 @@ class LiveStreamDiscoveryTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 2)
                     probe = json.loads(result.stdout)
                     self.assertEqual(len(result.stdout.splitlines()), 1)
-                    self.assertEqual(probe["schema"], f"vehicle_{step}_live_v0")
+                    self.assertEqual(probe["schema"], LIVE_SCHEMAS[step])
                     self.assertEqual(probe["vehicle_id"], "unknown-live-stream")
                     self.assertEqual(probe["status"], "unavailable")
                     self.assertIn("was not found", probe["error"])

@@ -9,8 +9,8 @@ from urllib.request import urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
 from cli.automa_cli.automation import _read_latest_decision_frame_for_view
+from cli.automa_cli.proposal import get_vehicle_proposal_info
 from cli.automa_cli.decision import (
-    get_vehicle_decision_info,
     publish_decision_frame,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,
@@ -53,11 +53,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get_content_type(), "text/html")
 
-        info = get_vehicle_decision_info(
+        info = get_vehicle_proposal_info(
             vehicle_id="chase-sim-chaser", json_output=True
         )
         self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["combined_view"]
+        combined = json.loads(info.message)["published_view"]
         self.assertTrue(combined["available"])
         self.assertEqual(combined["status"], "current")
         self.assertEqual(

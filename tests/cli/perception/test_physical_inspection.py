@@ -284,7 +284,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("No active perception preset found", result.message)
+        self.assertIn("No active perception activation found", result.message)
 
     def test_no_local_staging_rejects_reachable_non_piracer(self) -> None:
         vehicle = {
@@ -304,7 +304,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("No active perception preset found", result.message)
+        self.assertIn("No active perception activation found", result.message)
 
     def test_local_activation_error_is_not_hidden_by_reachable_picar(self) -> None:
         vehicle = {

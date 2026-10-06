@@ -1,4 +1,4 @@
-"""Authoritative replay runner for the perception-memory workbench."""
+"""Authoritative replay runner for the decision playback workbench."""
 
 from __future__ import annotations
 
@@ -7,18 +7,17 @@ import os
 import threading
 import time
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, StepActivation
-from autonomy.decision_cycle.perception.interface import (
-    PerceptionBackend,
-    PerceptionText,
-)
-from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
+from autonomy.decision_cycle.perception.interface import PerceptionText
+from implementations.decision_cycle.catalog import CUSTOM_PRESET, STEP_PRESETS
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
+from .step_hosting import plugin_report
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -29,16 +28,13 @@ from .workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
-from .workbench_frames import (
-    plugin_report,
-    run_frame,
-    workbench_decision_steps,
-)
+from .workbench_frames import run_frame, workbench_decision_steps
 from .workbench_plugins import (
     SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
+    step_selection,
 )
 from .workbench_source import (
     ImageSource,
@@ -118,8 +114,7 @@ class ImageReplayRunner:
         loop: bool = WORKBENCH_DEFAULT_LOOP,
         max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
         max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
-        perception_step_factory: Callable[[], PerceptionBackend] | None = None,
-        memory_step_factory: Callable[[], Any] | None = None,
+        step_factories: Mapping[str, Callable[[], Any]] | None = None,
     ) -> None:
         self.source_root = (
             Path(source_root).expanduser().resolve() if source_root else None
@@ -127,17 +122,16 @@ class ImageReplayRunner:
         self.source_dir = os.fspath(source_dir) if source_dir is not None else None
         self.max_frames = int(max_frames)
         self.max_image_bytes = int(max_image_bytes)
-        self.perception_step_factory = perception_step_factory
-        self.memory_step_factory = memory_step_factory
+        # Test hooks: a selectable step's runner, in place of its catalog build.
+        self.step_factories = dict(step_factories or {})
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
         self._action_lock = threading.RLock()
         self._worker: threading.Thread | None = None
         self._image_source: ImageSource | None = None
-        self._perception_step: Any = None
-        self._memory_step: Any = None
+        # The replay's step runners by step; empty until a replay starts.
+        self._steps: dict[str, Any] = {}
         self._shared_memory: dict[str, Any] = {}
-        self._decision_steps: Any = None
         self._history: dict[str, dict[str, Any]] = {}
         self._generation = 0
         self._cadence_ms = self._validate_cadence(cadence_ms)
@@ -158,53 +152,67 @@ class ImageReplayRunner:
         with self._lock:
             return copy.deepcopy(self._state)
 
-    @property
-    def perception_plugin_catalog(self) -> PluginCatalog:
-        return self._catalogs["perception"]
-
-    @property
-    def memory_plugin_catalog(self) -> PluginCatalog:
-        return self._catalogs["memory"]
-
     @staticmethod
     def _initial_activations(
         activations: dict[str, StepActivation] | None,
     ) -> dict[str, StepActivation]:
-        """Each selectable step's activation; an unlisted step uses its default preset."""
+        """Each selectable step's activation; an unlisted step uses its default selection."""
 
         given = dict(activations or {})
         selected: dict[str, StepActivation] = {}
         for step in SELECTABLE_STEPS:
-            activation = given[step] if step in given else selection_activation(step)
+            activation = given[step] if step in given else step_selection(step)
             if activation.step != step:
                 raise ValueError(f"activation for {activation.step!r} given as {step!r}")
             selected[step] = activation
         return selected
 
-    def _selection_preset(self, step: str) -> str:
-        """The preset the step's selection came from or equals, else ``custom``."""
+    def _selection_preset(self, step: str) -> str | None:
+        """The preset the step's selection came from or equals, else ``custom``.
 
+        ``None`` for a step without presets.
+        """
+
+        if step not in STEP_PRESETS:
+            return None
         return str(self._activations[step].metadata.get("preset", CUSTOM_PRESET))
 
     def _plugin_configuration(self) -> dict[str, Any]:
         """Each selectable step's catalog and active plugins, as the page shows them."""
 
-        perception = self._activations["perception"].plugins
-        memory = self._activations["memory"].plugins
+        configuration: dict[str, Any] = {}
+        for step in SELECTABLE_STEPS:
+            active = self._activations[step].plugins
+            configuration[f"{step}_plugin_catalog"] = self._catalogs[step].to_dict(
+                active_ids=active
+            )
+            configuration[f"active_{step}_plugin_ids"] = list(active)
+        return configuration
+
+    def _selection_presets(self) -> dict[str, Any]:
+        """Each selectable step's preset, under ``<step>_preset``."""
+
+        return {f"{step}_preset": self._selection_preset(step) for step in SELECTABLE_STEPS}
+
+    def _step_reports(self) -> dict[str, Any]:
+        """What the built steps report.
+
+        Each selectable step's plugin report, under ``<step>_plugin_report``,
+        and the plugins each decision step runs.
+        """
+
         return {
-            "perception_plugin_catalog": self._catalogs["perception"].to_dict(
-                active_ids=perception
-            ),
-            "active_perception_plugin_ids": list(perception),
-            "memory_plugin_catalog": self._catalogs["memory"].to_dict(active_ids=memory),
-            "active_memory_plugin_ids": list(memory),
+            **{
+                f"{step}_plugin_report": plugin_report(self._steps.get(step))
+                for step in SELECTABLE_STEPS
+            },
+            "decision_steps": self._decision_step_plugins(),
+            "decision_config": self._decision_configuration(),
         }
 
     def _apply_plugin_configuration_locked(self) -> None:
         self._state.update(self._plugin_configuration())
-        pipeline = self._state["machine_detail"]["pipeline"]
-        pipeline["perception_preset"] = self._selection_preset("perception")
-        pipeline["memory_preset"] = self._selection_preset("memory")
+        self._state["machine_detail"]["pipeline"].update(self._selection_presets())
 
     def frame_bytes(
         self,
@@ -320,12 +328,9 @@ class ImageReplayRunner:
                 run_id = f"run-{uuid.uuid4().hex}"
                 self._generation += 1
                 generation = self._generation
-                if self._perception_step is not None or self._memory_step is not None:
+                if self._steps:
                     self._cleanup_locked()
                 self._image_source = None
-                self._perception_step = None
-                self._memory_step = None
-                self._decision_steps = None
                 self._history.clear()
                 self._shared_memory = {}
                 self._state = self._fresh_run_state(run_id)
@@ -338,9 +343,7 @@ class ImageReplayRunner:
                         max_frames=self.max_frames,
                         max_image_bytes=self.max_image_bytes,
                     )
-                    perception_step = self._build_step("perception")
-                    memory_step = self._build_step("memory")
-                    decision_steps_ = workbench_decision_steps()
+                    steps = self._build_steps()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "startup"),
@@ -351,9 +354,7 @@ class ImageReplayRunner:
                     return copy.deepcopy(self._state)
                 self._image_source = image_source
                 self.source_dir = str(image_source.source_path)
-                self._perception_step = perception_step
-                self._memory_step = memory_step
-                self._decision_steps = decision_steps_
+                self._steps = steps
                 self._state["source"] = image_source.to_dict()
                 self._state["source_identity"] = image_source.source_id
                 self._state["adapter"] = image_source.adapter
@@ -549,9 +550,10 @@ class ImageReplayRunner:
 
             # The action lock serializes this boundary with frame processing.
             # Perception tracks and memory evidence are built up in the shared
-            # map from the frames before the displayed one, so either step's
-            # selection changes by starting the pass over (see below). The
-            # same plugins again keep the step's activation, configs included.
+            # map from the frames before the displayed one, and proposals read
+            # them, so any step's selection changes by starting the pass over
+            # (see below). The same plugins again keep the step's activation,
+            # configs included.
             catch_up: list[ReplayFrame] = []
             if normalized != self._activations[step].plugins:
                 activation = catalog.activation(normalized)
@@ -562,8 +564,7 @@ class ImageReplayRunner:
             self._apply_plugin_configuration_locked()
             if active_phase:
                 pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                pipeline["perception_plugin_report"] = plugin_report(self._perception_step)
-                pipeline["memory_plugin_report"] = plugin_report(self._memory_step)
+                pipeline.update(self._step_reports())
             self._state["failure"] = None
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
@@ -585,10 +586,10 @@ class ImageReplayRunner:
         """Start the pass over under a new selection for ``step``.
 
         Perception tracks and memory evidence are built from every frame
-        before the displayed one, so neither selection can be swapped under
-        recorded frames. The pipelines are rebuilt with it, the recorded
-        frames and shared map dropped, and the frames up to the displayed one
-        returned to run again. A selection that cannot be built leaves the
+        before the displayed one, and proposals read them, so no selection
+        can be swapped under recorded frames. The pipelines are rebuilt with
+        it, the recorded frames and shared map dropped, and the frames up to
+        the displayed one returned to run again. A selection that cannot be built leaves the
         replay as it was.
         """
 
@@ -631,13 +632,9 @@ class ImageReplayRunner:
         selection that fails to build leaves the replay as it was.
         """
 
-        perception_step = self._build_step("perception")
-        memory_step = self._build_step("memory")
-        decision_steps_ = workbench_decision_steps()
+        steps = self._build_steps()
         self._cleanup_locked()
-        self._perception_step = perception_step
-        self._memory_step = memory_step
-        self._decision_steps = decision_steps_
+        self._steps = steps
         self._shared_memory = {}
         self._history.clear()
         self._state["timeline"] = []
@@ -651,12 +648,17 @@ class ImageReplayRunner:
             round((position / total) * 100.0, 2) if total else 0.0
         )
 
+    def _build_steps(self) -> dict[str, Any]:
+        """Every step's runner: selectable steps from their selections, the rest built in."""
+
+        steps = workbench_decision_steps()
+        steps.update({step: self._build_step(step) for step in SELECTABLE_STEPS})
+        return steps
+
     def _build_step(self, step: str) -> Any:
         """The step's runner for its current activation, unless a test injected one."""
 
-        factory = (
-            self.perception_step_factory if step == "perception" else self.memory_step_factory
-        )
+        factory = self.step_factories.get(step)
         if factory is not None:
             return factory()
         return self._catalogs[step].build(self._activations[step])
@@ -908,21 +910,15 @@ class ImageReplayRunner:
                     return True
                 if frame.position > len(self._history):
                     raise RuntimeError("replay frame would skip uncached source frames")
-                perception_step = self._perception_step
-                memory_step = self._memory_step
-                decision_steps_ = self._decision_steps
+                steps = self._steps
             try:
-                outcome = run_frame(
-                    frame,
-                    perception_step=perception_step,
-                    memory_step=memory_step,
-                    steps=decision_steps_,
-                    shared_memory=self._shared_memory,
-                )
+                outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
                 decision_payload = outcome.decision
-                perception_plugin_report = outcome.perception_plugin_report
-                memory_plugin_report = outcome.memory_plugin_report
+                plugin_reports = {
+                    f"{step}_plugin_report": outcome.plugin_reports.get(step)
+                    for step in SELECTABLE_STEPS
+                }
                 perception_payload = (
                     result.perception.to_dict() if result.perception else None
                 )
@@ -963,13 +959,9 @@ class ImageReplayRunner:
                         result=result,
                         previous_memory=previous_memory,
                     )
-                    detail["perception_plugin_report"] = perception_plugin_report
-                    detail["memory_plugin_report"] = memory_plugin_report
+                    detail.update(plugin_reports)
                     pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                    pipeline["perception_plugin_report"] = copy.deepcopy(
-                        perception_plugin_report
-                    )
-                    pipeline["memory_plugin_report"] = copy.deepcopy(memory_plugin_report)
+                    pipeline.update(copy.deepcopy(plugin_reports))
                     detail["summary"] = copy.deepcopy(self._state["summary"])
                     detail["steps"]["decision"] = copy.deepcopy(decision_payload)
                     self._history[frame.frame_id] = detail
@@ -1029,24 +1021,18 @@ class ImageReplayRunner:
         self._state["controls"] = self._controls()
 
     def _cleanup_locked(self) -> dict[str, Any]:
-        perception_status = "not_created"
-        memory_status = "not_created"
-        if self._perception_step is not None:
-            try:
-                self._perception_step.reset()
-                perception_status = "reset"
-            except Exception as exc:  # noqa: BLE001 - cleanup boundary
-                perception_status = f"error: {type(exc).__name__}: {exc}"
-        if self._memory_step is not None:
-            try:
-                self._memory_step.reset(self._shared_memory)
-                memory_status = "reset"
-            except Exception as exc:  # noqa: BLE001 - cleanup boundary
-                memory_status = f"error: {type(exc).__name__}: {exc}"
+        """Reset each selectable step's runner and drop every runner.
+
+        The cleanup record names each selectable step's outcome: ``reset``,
+        ``not_created``, or the reset error.
+        """
+
         cleanup = {
             "completed_at_ms": _now_ms(),
-            "perception": perception_status,
-            "memory": memory_status,
+            **{
+                step: _reset_status(self._steps.get(step), self._shared_memory)
+                for step in SELECTABLE_STEPS
+            },
             "source_read_only": True,
             "worker_started": False,
             "simulator_used": False,
@@ -1054,9 +1040,7 @@ class ImageReplayRunner:
             "metrics_used": False,
             "recording_enabled": False,
         }
-        self._perception_step = None
-        self._memory_step = None
-        self._decision_steps = None
+        self._steps = {}
         return cleanup
 
     def _check_run_id_locked(self, action: str, run_id: str | None) -> None:
@@ -1184,14 +1168,10 @@ class ImageReplayRunner:
     def _machine_detail(self) -> dict[str, Any]:
         return {
             "pipeline": {
-                "perception_preset": self._selection_preset("perception"),
-                "memory_preset": self._selection_preset("memory"),
-                "perception_plugin_report": plugin_report(self._perception_step),
-                "memory_plugin_report": plugin_report(self._memory_step),
+                **self._selection_presets(),
+                **self._step_reports(),
                 "observation_adapter": "autonomy.decision_cycle.observation.perception_summary.observation_from_perception",
                 "decision_cycle": "autonomy.decision_cycle.cycle.DecisionCycle",
-                "decision_steps": self._decision_step_plugins(),
-                "decision_config": self._decision_configuration(),
             },
             "source_contract": {
                 "sequence_id": WORKBENCH_SEQUENCE_ID,
@@ -1281,18 +1261,15 @@ class ImageReplayRunner:
         }
 
     def _decision_step_plugins(self) -> dict[str, list[str]]:
-        steps = self._decision_steps
         return {
-            step: list(getattr(getattr(steps, step, None), "plugin_ids", ()) or ())
+            step: list(getattr(self._steps.get(step), "plugin_ids", ()) or ())
             for step in DECISION_STEPS
         }
 
     def _decision_configuration(self) -> dict[str, Any]:
         """The proposal selection, plus the plan and action plugins it runs through."""
 
-        steps = self._decision_steps
-        proposal = getattr(steps, "proposal", None)
-        activation = getattr(proposal, "activation", None)
+        activation = getattr(self._steps.get("proposal"), "activation", None)
         document = activation.to_payload() if activation is not None else {}
         plugins = self._decision_step_plugins()
         return {
@@ -1351,6 +1328,18 @@ class ImageReplayRunner:
                 boundary="input",
             )
         return value.strip().lower()
+
+
+def _reset_status(runner: Any, shared_memory: dict[str, Any]) -> str:
+    """Reset a step's runner for cleanup; report ``reset``, ``not_created`` or the error."""
+
+    if runner is None:
+        return "not_created"
+    try:
+        runner.reset(shared_memory)
+    except Exception as exc:  # noqa: BLE001 - cleanup boundary
+        return f"error: {type(exc).__name__}: {exc}"
+    return "reset"
 
 
 def _now_ms() -> int:

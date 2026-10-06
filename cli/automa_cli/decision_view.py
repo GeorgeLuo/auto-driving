@@ -350,7 +350,7 @@ class DecisionView:
         provider_identity: dict[str, Any] | None = None,
     ) -> None:
         self._activation_path = Path(activation_path)
-        self._startup_activation = _json_copy(activation) if isinstance(activation, dict) else None
+        self._activation = _json_copy(activation) if isinstance(activation, dict) else None
         self.identity: dict[str, Any] | None = None
         self.generation_id: str | None = None
         self._provider_identity = (
@@ -359,12 +359,12 @@ class DecisionView:
         if self._provider_identity is not None:
             self.identity = provider_decision_view_identity(**self._provider_identity)
             self.generation_id = generation_id(self.identity)
-        elif self._startup_activation is not None and run_id is not None and worker_pid is not None:
+        elif self._activation is not None and run_id is not None and worker_pid is not None:
             self.identity = decision_view_identity(
                 vehicle_id=vehicle_id,
                 run_id=run_id,
                 worker_pid=worker_pid,
-                activation=self._startup_activation,
+                activation=self._activation,
             )
             self.generation_id = generation_id(self.identity)
         self._lock = threading.Lock()
@@ -395,6 +395,29 @@ class DecisionView:
             return None
         return f"/decision?{urlencode({'generation': self.generation_id})}"
 
+    def adopt(self, activation: dict[str, Any]) -> None:
+        """Publish under ``activation``, a restage the worker now runs.
+
+        The view takes that generation and drops the previous one's
+        transactions; a page pinned to the old generation gets a 409 naming
+        the new one, which it follows while the run and worker are the same.
+        """
+
+        if self.identity is None or self._provider_identity is not None:
+            return
+        identity = decision_view_identity(
+            vehicle_id=self.identity["vehicle_id"],
+            run_id=self.identity["run_id"],
+            worker_pid=self.identity["worker_pid"],
+            activation=activation,
+        )
+        with self._lock:
+            self._activation = _json_copy(activation)
+            self.identity = identity
+            self.generation_id = generation_id(identity)
+            self._transactions.clear()
+            self._latest_transaction_id = None
+
     def require_generation(self, generation: str) -> None:
         if self.generation_id is None or self.identity is None:
             raise DecisionViewError(503, "decision_unavailable", "decision view is not configured")
@@ -418,13 +441,13 @@ class DecisionView:
     ) -> bool:
         """Store one exact transaction only after all local identities agree."""
 
-        if self.identity is None or self._startup_activation is None or image is None:
+        if self.identity is None or self._activation is None or image is None:
             self.invalidate_latest()
             return False
         try:
             accept_decision_stream_frame(
                 stream_frame,
-                activation=self._startup_activation,
+                activation=self._activation,
                 automation_state={
                     "run_id": self.identity["run_id"],
                     "status": "running",
@@ -670,12 +693,12 @@ class DecisionView:
     def _activation_matches(self) -> bool:
         if self._provider_identity is not None:
             return True
-        if self._startup_activation is None:
+        if self._activation is None:
             return False
         try:
             # The staged decision steps under the vehicle's runtime directory.
             staged = decision_identity({"runtime_dir": str(self._activation_path)})
-            return _activation_identity(staged) == _activation_identity(self._startup_activation)
+            return _activation_identity(staged) == _activation_identity(self._activation)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             return False
 

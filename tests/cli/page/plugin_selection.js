@@ -77,11 +77,11 @@ if (mode === "order") {
   assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second", "first"]);
   assert.equal(panel.queued, null);
 } else if (mode === "state") {
-  for (const step of ["perception", "memory"]) {
+  for (const step of ["perception", "memory", "proposal"]) {
     const originalInputs = inputs(step);
     const original = ctx.state["active_" + step + "_plugin_ids"].slice();
     ctx.state["active_" + step + "_plugin_ids"] = [];
-    ctx.state.machine_detail.pipeline[step + "_preset"] = "custom";
+    ctx.state.machine_detail.pipeline[step + "_preset"] = step === "proposal" ? null : "custom";
     ctx.renderPlugins();
     assert.deepEqual(checked(step), [], "an API selection updates the browser's checkboxes");
     assert.strictEqual(inputs(step)[0], originalInputs[0], "polling preserves checkbox nodes");
@@ -96,10 +96,16 @@ if (mode === "order") {
   assert.deepEqual(Array.from(ctx.pluginPanels.perception.draft),
     [...snapshot.active_perception_plugin_ids, "frame"]);
 } else if (mode === "visibility") {
-  for (const step of ["perception", "memory"]) {
+  for (const step of ["perception", "memory", "proposal"]) {
     const panel = ctx.pluginPanels[step];
-    assert(elements[panel.summaryId].textContent.includes(snapshot.machine_detail.pipeline[step + "_preset"]),
-      "each step's preset is visible beside its controls");
+    const preset = snapshot.machine_detail.pipeline[step + "_preset"];
+    if (preset) {
+      assert(elements[panel.summaryId].textContent.includes(preset),
+        "a step's preset is visible beside its controls");
+    } else {
+      assert.equal(elements[panel.summaryId].textContent, "1 active · 1 available",
+        "proposal has no named preset and starts with counts");
+    }
     assert.equal(elements[step + "PluginOrder"].textContent,
       "Run order: " + snapshot["active_" + step + "_plugin_ids"].join(" → "));
     toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
@@ -108,8 +114,10 @@ if (mode === "order") {
     ctx.actionInFlight = false;
     ctx.renderPlugins();
   }
-  accept("memory", [], "custom");
-  assert.equal(elements.memoryPluginOrder.textContent, "No memory plugins selected.");
+  for (const step of ["memory", "proposal"]) {
+    accept(step, [], step === "proposal" ? null : "custom");
+    assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
+  }
 } else {
   throw new Error("unknown test mode " + mode);
 }

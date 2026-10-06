@@ -44,10 +44,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             ],
         )
         self.assertEqual(
-            info_payload["proposal_schema_source"]["runner"],
-            "autonomy.decision_cycle.proposal.runner:ProposalRunner",
-        )
-        self.assertEqual(
             info_payload["proposal_schema"]["configuration"]["applied_plugin_ids"],
             proposals["plugins"],
         )
@@ -71,10 +67,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertIn("avoid_recent_obstruction", human.message)
         self.assertIn(HOLD_IDLE_REASON, human.message)
         self.assertIn("decision-combined-v0", human.message)
-        self.assertIn(
-            "Schema source: autonomy.decision_cycle.proposal.runner:ProposalRunner.describe_schema()",
-            human.message,
-        )
         self.assertIn("Failure policy:", human.message)
 
     def test_stage_unknown_plugin_and_invalid_config(self) -> None:

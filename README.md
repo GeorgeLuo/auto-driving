@@ -272,7 +272,6 @@ Inspect the machine-readable contracts declared by the staged code:
 ```sh
 ./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles info proposal --id chase-sim-chaser
-./cli/automa vehicles info decision --id chase-sim-chaser
 ```
 
 The control-taking form remains available for deliberately requested controller
@@ -490,11 +489,12 @@ their default configs from `implementations/decision_cycle/proposal/catalog.py`.
 Proposal has no presets; without `--plugin` it stages its default plugins.
 
 `vehicles info proposal` reports the staged plugins and the available ones,
-and the staged runner's `proposal_schema_v1` contract. `--json` returns
-`vehicle_proposal_info_v1` with that contract under `proposal_schema`.
-`vehicles info decision` lists every step's selection with the proposal,
-plan and action contract, and points to `vehicles info proposal` for the
-schema. Staging replaces the selection. A worker loads the staged proposals
+the staged runner's `proposal_schema_v1` contract, the decision view a running
+worker publishes the proposals to, and the plan and action plugins that act on
+them. `--json` returns `vehicle_proposal_info_v1` with that contract under
+`proposal_schema`, the view under `published_view`, and the decision
+generation, plan selector and action authority under `decision`. Staging
+replaces the selection. A worker loads the staged proposals
 from the controller bundle when it starts, as it loads memory, and reports
 them under `proposal` in its state and `proposal_plugin_report` in each frame.
 Proposals are part of the decision generation, so a running worker stops

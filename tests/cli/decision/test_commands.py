@@ -41,15 +41,15 @@ class DecisionCommandTests(unittest.TestCase):
 
             before_info = snapshot_files()
             info = run_automa(
-                "vehicles", "info", "decision", *vehicle,
+                "vehicles", "info", "proposal", *vehicle,
                 runtime_root=runtime_root,
             )
             self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
             payload = json.loads(info.stdout)
-            self.assertEqual(payload["schema"], "vehicle_decision_info_v1")
-            self.assertEqual(payload["proposals"]["plugins"], ["avoid_recent_obstruction"])
-            self.assertEqual(payload["proposals"]["authority"]["gate_id"], "mode")
-            self.assertFalse(payload["combined_view"]["available"])
+            self.assertEqual(payload["schema"], "vehicle_proposal_info_v1")
+            self.assertEqual(payload["activation"]["plugins"], ["avoid_recent_obstruction"])
+            self.assertEqual(payload["decision"]["authority"]["gate_id"], "mode")
+            self.assertFalse(payload["published_view"]["available"])
             self.assertEqual(before_info, snapshot_files())
 
 

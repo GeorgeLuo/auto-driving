@@ -1,8 +1,8 @@
 """Decision surfaces over the proposal, plan, and action steps: info, stream, and offline apply.
 
 ``vehicles info proposal`` reports the staged proposal step as ``vehicles info
-memory`` reports memory; ``vehicles info decision`` reports every step's
-selection and the decision contract.
+memory`` reports memory, with the decision view it publishes to and the plan
+and action steps that act on its proposals.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ from autonomy.decision_cycle.action.result import (
     ACTION_RESULT_SCHEMA,
     ActionResult,
 )
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
+from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
@@ -76,7 +76,6 @@ from .step_activations import (
     decision_identity,
     format_activation_problems,
     proposal_plugin_ids,
-    step_info,
 )
 from .paths import ROOT, display_path, safe_path_part
 from .step_schema import format_staged_step, staged_step_info
@@ -433,111 +432,45 @@ def get_vehicle_proposal_info(*, vehicle_id: str, json_output: bool = False) -> 
     staged, error = staged_step_info(bundle, vehicle_id, "proposal")
     if error is not None:
         return CommandResult(2, error)
+    try:
+        identity = _read_surface_identity(bundle, vehicle_id=vehicle_id)
+    except DecisionSurfaceError as err:
+        return CommandResult(err.exit_code, err.message_text)
+    steps = identity["steps"]
+    plan_plugins = (steps.get("plan") or {}).get("plugins") or []
+    action_plugins = (steps.get("action") or {}).get("plugins") or []
+
+    from .decision_view import get_decision_view_status
+
+    # A short, read-only loopback probe; it never starts a worker.
+    view = get_decision_view_status(
+        automation_dir=Path(bundle["runtime_dir"]) / "automation",
+        vehicle_id=vehicle_id,
+        activation=identity,
+    )
     payload: dict[str, Any] = {
         "schema": "vehicle_proposal_info_v1",
         "vehicle_id": vehicle_id,
         **staged,
-    }
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, "\n".join(format_staged_step("proposal", payload)))
-
-
-def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> CommandResult:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    if not Path(bundle["runtime_dir"]).is_dir():
-        return _error_result(
-            DecisionSurfaceError(
-                "activation_missing",
-                f"No controller bundle is staged for {vehicle_id!r}.\n"
-                "Run: ./cli/automa vehicles update proposal --id <vehicle_id>",
-                vehicle_id=vehicle_id,
-            ),
-            json_output=json_output,
-        )
-    try:
-        # Info lists every step's selection, so it reads all six documents.
-        _require_valid_activations(bundle, vehicle_id=vehicle_id, steps=STEPS)
-        identity = _read_surface_identity(bundle, vehicle_id=vehicle_id, require_proposal=False)
-    except DecisionSurfaceError as err:
-        return _error_result(err, json_output=json_output)
-
-    steps = identity["steps"]
-    action_plugins = (steps.get("action") or {}).get("plugins") or []
-    action_plugin = action_plugins[0] if action_plugins else None
-    plan_plugins = (steps.get("plan") or {}).get("plugins") or []
-    proposals: dict[str, Any] | None = None
-    if steps.get("proposal") is not None:
-        # The staged runner's inputs; `vehicles info proposal` reports its schema.
-        staged, error = staged_step_info(bundle, vehicle_id, "proposal")
-        if error is not None:
-            return _error_result(
-                DecisionSurfaceError("activation_invalid", error, vehicle_id=vehicle_id),
-                json_output=json_output,
-            )
-        proposals = {
-            "decision_inputs": [item["name"] for item in staged["proposal_schema"]["inputs"]],
-            "plugins": proposal_plugin_ids(steps),
+        "decision": {
+            "generation_id": identity["generation_id"],
             "selector_id": plan_plugins[0] if plan_plugins else None,
-            "output_schemas": {
-                "proposal_result": PROPOSAL_RESULT_SCHEMA,
-                "action_proposal": ACTION_PROPOSAL_SCHEMA,
-                "action_plan": ACTION_PLAN_SCHEMA,
-                "authority": AUTHORITY_RESULT_SCHEMA,
-                "action_result": ACTION_RESULT_SCHEMA,
-            },
-            "authority": _action_authority_description(action_plugin),
-        }
-
-    # D2 discovery is a short, read-only loopback probe. It never starts a
-    # worker or creates a capture; an unavailable producer remains explicit.
-    if proposals is None:
-        view_status = {
-            "available": False,
-            "status": "unavailable",
-            "reason": "no_proposal_step",
-            "generation_id": None,
-            "identity": None,
-            "api_url": None,
-            "url": None,
-        }
-    else:
-        from .decision_view import get_decision_view_status
-
-        view_status = get_decision_view_status(
-            automation_dir=Path(bundle["runtime_dir"]) / "automation",
-            vehicle_id=vehicle_id,
-            activation=identity,
-        )
-
-    combined_view = {
-        "view_id": COMBINED_VIEW_ID,
-        "path_template": f"cli/automa_cli/decision_view.html#{COMBINED_VIEW_ID}",
-        "launch_command": (
-            "./cli/automa vehicles decision inspect --id "
-            + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
-        ),
-        "available": view_status["available"],
-        "status": view_status["status"],
-        "reason": view_status["reason"],
-        "url": view_status["url"],
-        "api_url": view_status["api_url"],
-        "generation_id": view_status["generation_id"],
-        "identity": view_status["identity"],
-    }
-
-    payload = {
-        "schema": "vehicle_decision_info_v1",
-        "vehicle_id": vehicle_id,
-        "generation_id": identity["generation_id"],
-        "steps": step_info(bundle),
-        "activations": steps,
-        "proposals": proposals,
-        "combined_view": combined_view,
+            "authority": _action_authority_description(
+                action_plugins[0] if action_plugins else None
+            ),
+        },
+        "published_view": {
+            "view_id": COMBINED_VIEW_ID,
+            **view,
+            "launch_command": (
+                "./cli/automa vehicles decision inspect --id "
+                + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
+            ),
+        },
     }
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, _format_decision_info(payload))
+    return CommandResult(0, _format_proposal_info(payload))
 
 
 def load_decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
@@ -3249,57 +3182,28 @@ def _cleanup_record_paths(*paths: Path) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _format_decision_info(payload: dict[str, Any]) -> str:
-    lines = [
-        f"Decision: {payload['vehicle_id']}  generation={payload.get('generation_id')}",
-        "",
-        "Steps:",
-    ]
-    for step, info in (payload.get("steps") or {}).items():
-        plugins = ", ".join(info.get("plugins") or []) or "(none)"
-        where = info.get("activation") or info.get("source")
-        lines.append(f"- {step}: {plugins} [{where}]")
-    proposals = payload.get("proposals")
-    if isinstance(proposals, dict):
-        authority = proposals.get("authority") or {}
-        lines.extend(
-            [
-                "",
-                "Proposal decision:",
-                f"- plugins: {', '.join(proposals.get('plugins') or []) or '(none)'}",
-                f"- inputs: {', '.join(proposals.get('decision_inputs') or []) or '(none)'}",
-                f"- plan: {proposals.get('selector_id')}",
-                f"- output_schemas: {json.dumps(proposals.get('output_schemas') or {}, sort_keys=True)}",
-                (
-                    f"- authority: action={authority.get('gate_id')} "
-                    f"proposed_applied={authority.get('proposed_applied')} "
-                    f"idle_reason={authority.get('authorized_idle_reason')}"
-                ),
-                "- schema: ./cli/automa vehicles info proposal --id "
-                + shlex.quote(str(payload["vehicle_id"])),
-            ]
-        )
+def _format_proposal_info(payload: dict[str, Any]) -> str:
+    view = payload["published_view"]
+    if view.get("available"):
+        view_line = f"Decision view: {view['url']}"
     else:
-        lines.extend(
-            [
-                "",
-                "No proposal plugins are staged; the vehicle proposes nothing and holds.",
-                "Stage proposals with: ./cli/automa vehicles update proposal --id <vehicle>",
-            ]
+        view_line = (
+            f"Decision view: unavailable ({view.get('reason')}); run automation, "
+            f"or open saved input with `{view['launch_command']}`"
         )
-    combined = payload.get("combined_view") if isinstance(payload.get("combined_view"), dict) else {}
-    live_view = (
-        f"status={combined.get('status')} url={combined.get('url')} "
-        f"reason={combined.get('reason')}"
-    )
-    lines.extend(
-        [
-            "",
-            f"Combined view: id={combined.get('view_id')} "
-            f"{live_view} path_template={combined.get('path_template')}",
-            f"Open saved input: {combined.get('launch_command')}",
-        ]
-    )
+    decision = payload["decision"]
+    authority = decision["authority"]
+    lines = [
+        *format_staged_step("proposal", payload, view=view_line),
+        "",
+        f"Decision: generation={decision['generation_id']}",
+        f"- plan: {decision['selector_id']}",
+        (
+            f"- action: {authority.get('gate_id')} "
+            f"proposed_applied={authority.get('proposed_applied')} "
+            f"idle_reason={authority.get('authorized_idle_reason')}"
+        ),
+    ]
     return "\n".join(lines)
 
 

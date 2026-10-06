@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
 from cli.automa_cli import decision as decision_module
-from cli.automa_cli.decision import get_vehicle_decision_info
+from cli.automa_cli.decision import get_vehicle_proposal_info
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
@@ -154,11 +154,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
     def test_info_reports_generation_url_while_warming(self) -> None:
         generation = self.server.decision.generation_id
         self.assertIsNotNone(generation)
-        info = get_vehicle_decision_info(
+        info = get_vehicle_proposal_info(
             vehicle_id="chase-sim-chaser", json_output=True
         )
         self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["combined_view"]
+        combined = json.loads(info.message)["published_view"]
         self.assertTrue(combined["available"])
         self.assertEqual(combined["status"], "warming")
         self.assertEqual(

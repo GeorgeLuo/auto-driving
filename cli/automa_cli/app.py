@@ -19,7 +19,6 @@ from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision import (
     RUNTIME_ROOT as DECISION_RUNTIME_ROOT,
     apply_vehicle_decision,
-    get_vehicle_decision_info,
     get_vehicle_proposal_info,
     stream_vehicle_decision,
 )
@@ -961,24 +960,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_info.set_defaults(handler=_handle_vehicles_info_perception)
 
-    decision_info = info_commands.add_parser(
-        "decision",
-        help="Show the locally staged decision steps (proposal, plan, action).",
-        description="Show every step's staged plugins and the proposal, plan, and action contract.",
-    )
-    decision_info.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    decision_info.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable decision info payload.",
-    )
-    decision_info.set_defaults(handler=_handle_vehicles_info_decision)
-
     memory_info = info_commands.add_parser(
         "memory",
         help="Show the staged memory preset and plugins, the runner schema and the live memory step state.",
@@ -999,8 +980,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     proposal_info = info_commands.add_parser(
         "proposal",
-        help="Show the staged proposal plugins and the runner schema.",
-        description="Show the staged proposal plugins and the runner schema.",
+        help="Show the staged proposal plugins, the runner schema and the decision view URL.",
+        description=(
+            "Show the staged proposal plugins, the runner schema, the decision view URL "
+            "and the plan and action steps that act on the proposals."
+        ),
     )
     proposal_info.add_argument(
         "--id",
@@ -1657,9 +1641,8 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "automa vehicles info commands",
                 "",
                 "- perception  show staged perception schema and live view",
-                "- decision    show the staged steps and decision contract",
                 "- memory      show staged memory schema and live memory",
-                "- proposal    show staged proposal schema",
+                "- proposal    show staged proposal schema and decision view",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1984,8 +1967,7 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "",
                 "Stage proposals (held idle):  ./cli/automa vehicles update proposal --id <vehicle>",
                 "Apply them in live modes:     ./cli/automa vehicles update action --id <vehicle> --plugin mode",
-                "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
-                "Proposal schema:       ./cli/automa vehicles info proposal --id <vehicle>",
+                "Proposal schema and view: ./cli/automa vehicles info proposal --id <vehicle>",
                 "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
                 "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
                 "",
@@ -2178,16 +2160,6 @@ def _handle_vehicles_update_autonomy(args: argparse.Namespace) -> int:
 
 def _handle_vehicles_info_perception(args: argparse.Namespace) -> int:
     result = get_vehicle_perception_info(
-        vehicle_id=args.vehicle_id,
-        json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_vehicles_info_decision(args: argparse.Namespace) -> int:
-    result = get_vehicle_decision_info(
         vehicle_id=args.vehicle_id,
         json_output=args.json,
     )

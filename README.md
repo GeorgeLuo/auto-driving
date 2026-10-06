@@ -498,12 +498,15 @@ info, it probes the running autonomy engine and reports its proposal step under
 `live` (`vehicle_proposal_live_v1`): the plugins it runs and its run and
 failure counts, from the Chase worker's state or the PiCar's
 `/autonomy/status`. That is the engine's step, not the proposals any view last
-rendered. Staging replaces the selection. A worker loads the staged proposals
-from the controller bundle when it starts, as it loads memory, and reports
-them under `proposal` in its state and `proposal_plugin_report` in each frame.
-Proposals are part of the decision generation, so a running worker stops
-publishing decision frames once they are restaged; restart it to run the new
-selection:
+rendered. A worker loads the staged proposals from the controller bundle when
+it starts, as it loads memory, and reports them under `proposal` in its state
+and `proposal_plugin_report` in each frame. Staging replaces the selection. A
+running worker applies a changed plugin list at its next frame and changed
+plugin configs when it restarts; a stopped one uses the selection the next time
+it starts. Proposals are part of the decision generation: once the worker runs
+the new selection it publishes under the restaged generation, and an open
+decision view follows it. After a config restage it publishes no decision
+frames until it restarts:
 
 ```sh
 ./cli/automa vehicles info proposal --id chase-sim-chaser

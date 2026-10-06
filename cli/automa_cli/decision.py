@@ -1948,9 +1948,9 @@ def publish_decision_frame(
 ) -> bool:
     """Publish generation-scoped latest frame. Returns True when written.
 
-    The worker passes the decision identity its steps were loaded from. The
-    staged identity is re-read and must still be that generation; restaging
-    while running leaves the invalidated latest file untouched until the
+    The worker passes the decision identity its steps run. The staged
+    identity is re-read and must still be that generation; a restage the
+    worker cannot run leaves the invalidated latest file untouched until the
     worker restarts.
     """
 

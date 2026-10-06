@@ -221,6 +221,44 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertNotIn("transaction_id", error)
                 self.assertNotIn("current_image", error)
 
+    def test_adopted_restage_moves_the_view_and_names_it_to_old_sessions(self) -> None:
+        self._publish_exact_transaction()
+        old_generation = self.server.decision.generation_id
+        # Restaging the same proposals stages a new identity the worker runs.
+        code, message = update_vehicle_step(
+            vehicle_id="chase-sim-chaser",
+            step="proposal",
+            runtime_root=self.runtime_root,
+            json_output=True,
+        )
+        self.assertEqual(code, 0, message)
+        self.activation = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
+        self.server.decision.adopt(self.activation)
+        new_generation = self.server.decision.generation_id
+        self.assertNotEqual(new_generation, old_generation)
+
+        with self.assertRaises(HTTPError) as rejected:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={old_generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(rejected.exception.code, 409)
+        error = json.loads(rejected.exception.read().decode("utf-8"))
+        self.assertEqual(error["generation_id"], new_generation)
+        self.assertEqual(error["identity"]["run_id"], "run-live")
+
+        self._publish_exact_transaction()
+        with urlopen(
+            f"{self.server.url}api/decision/latest?generation={new_generation}",
+            timeout=1.0,
+        ) as response:
+            self.assertEqual(json.loads(response.read().decode("utf-8"))["status"], "current")
+        info = get_vehicle_proposal_info(vehicle_id="chase-sim-chaser", json_output=True)
+        self.assertEqual(
+            json.loads(info.message)["published_view"]["url"],
+            f"{self.server.url}decision?generation={new_generation}",
+        )
+
     def test_old_session_cannot_attach_to_same_port_replacement(self) -> None:
         self._publish_exact_transaction()
         old_url = self.server.url

@@ -49,6 +49,7 @@ from .paths import display_path, safe_path_part
 from .step_activations import (
     bundle_activation_path,
     bundle_activation_problems,
+    decision_generation_id,
     decision_identity,
     format_activation_problems,
     read_bundle_activation,
@@ -529,6 +530,37 @@ def run_vehicle_automation(
         except OSError:
             pass
 
+    def adopt_staged_decision() -> None:
+        """Publish under the staged decision generation once this worker runs it.
+
+        A changed proposal plugin list is applied at the frame's start, as for
+        perception and memory, so the staged generation is then this worker's;
+        restaged proposal configs, plan, or action wait for a restart.
+        """
+
+        nonlocal identity
+        try:
+            staged = decision_identity(bundle)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return
+        manager = getattr(proposal_step, "plugin_manager", None)
+        if staged == identity or manager is None:
+            return
+        running = {
+            **identity["steps"],
+            "proposal": {**identity["steps"]["proposal"], "plugins": list(manager.selected_ids)},
+        }
+        if decision_generation_id(running) != staged["generation_id"]:
+            return
+        identity = staged
+        with state_lock:
+            state["decision"].update(
+                generation_id=staged["generation_id"], steps=staged["steps"]
+            )
+        if view_server is not None:
+            view_server.decision.adopt(staged)
+        _emit(output, f"Decision generation: {staged['generation_id']} (restaged)")
+
     def process_frame(pending: _PendingAutomationFrame) -> None:
         apply_memory_reset_if_requested()
         context = pending.context
@@ -540,6 +572,9 @@ def run_vehicle_automation(
         sync_live_selection(perception_step, manifest_path, perception_activation)
         if memory_step is not None and memory_activation is not None:
             sync_live_selection(memory_step, memory_activation_path, memory_activation)
+        if proposal_step is not None and proposal_activation is not None:
+            sync_live_selection(proposal_step, proposal_activation_path, proposal_activation)
+            adopt_staged_decision()
         cycle_result = cycle_host.run(context)
         # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
@@ -557,7 +592,7 @@ def run_vehicle_automation(
             )
             if not published and decision_published:
                 # Count for workers that staged proposals at start (including
-                # after restage invalidation where the live generation no longer matches).
+                # after a restage this worker cannot run until it restarts).
                 reason = (
                     "gate_rejected"
                     if last_cycle is None

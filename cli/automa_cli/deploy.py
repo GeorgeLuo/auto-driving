@@ -510,6 +510,15 @@ def update_vehicle_autonomy(
                 f"Decision generation: {payload['activation']['generation_id']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
                 *verified_lines,
+                *(
+                    []
+                    if restart
+                    else [
+                        "A running runtime selects restaged perception, memory, and proposal "
+                        "plugins on its next frame; changed plugin specs or configs, plan, "
+                        "and action need --restart."
+                    ]
+                ),
             ]
         ),
     )

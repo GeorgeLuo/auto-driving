@@ -54,7 +54,7 @@ from .step_activations import (
     format_activation_problems,
     read_bundle_activation,
 )
-from .step_hosting import load_staged_runner, plugin_report, sync_live_selection
+from .step_hosting import load_staged_runner, plugin_report
 from .runtime_view import RuntimeViewServer
 from .perception_view import (
     get_perception_view_status,
@@ -300,6 +300,12 @@ def run_vehicle_automation(
             steps, perception=perception_step, memory=memory_step, proposal=proposal_step
         ),
     )
+    # Restaged selections apply between frames, as on the Donkey host.
+    cycle_host.watch_selection("perception", manifest_path, perception_activation)
+    if memory_activation is not None:
+        cycle_host.watch_selection("memory", memory_activation_path, memory_activation)
+    if proposal_activation is not None:
+        cycle_host.watch_selection("proposal", proposal_activation_path, proposal_activation)
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
     run_id = _now_id("automation")
@@ -570,11 +576,7 @@ def run_vehicle_automation(
             raise ValueError(f"{context.frame_id} has no sensor frame")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
-        sync_live_selection(perception_step, manifest_path, perception_activation)
-        if memory_step is not None and memory_activation is not None:
-            sync_live_selection(memory_step, memory_activation_path, memory_activation)
-        if proposal_step is not None and proposal_activation is not None:
-            sync_live_selection(proposal_step, proposal_activation_path, proposal_activation)
+        cycle_host.sync_selection()
         cycle_result = cycle_host.run(context)
         if proposal_step is not None:
             adopt_staged_decision()

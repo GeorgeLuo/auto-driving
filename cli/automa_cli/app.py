@@ -1264,7 +1264,11 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy.add_argument(
         "--restart",
         action="store_true",
-        help="Restart the supervised Donkey runtime after activating the release.",
+        help=(
+            "Restart the supervised Donkey runtime after activating the release. Without it, "
+            "a running runtime selects restaged plugins on its next frame; changed plugin "
+            "specs or configs, plan, and action need a restart."
+        ),
     )
     autonomy.add_argument(
         "--drive-args",

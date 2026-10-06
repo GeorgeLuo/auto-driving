@@ -3,7 +3,9 @@
 ``AutonomyCycleHost`` owns the host map every step's plugins share, runs the
 cycle once per frame, and keeps the last result. ``set_step`` swaps one step's
 runner between frames (for example after its activation changes), and
-``status`` reports each step runner's status.
+``status`` reports each step runner's status. ``watch_selection`` and
+``sync_selection`` let every vehicle host apply a selection restaged into a
+step's ``active.json`` between frames; changed specs or configs need a restart.
 """
 
 from __future__ import annotations
@@ -14,7 +16,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
-from autonomy.decision_cycle.activation import STEPS, require_step
+from autonomy.decision_cycle.activation import (
+    STEPS,
+    StepActivation,
+    read_step_activation,
+    require_step,
+)
 from autonomy.decision_cycle.cycle import (
     DecisionCycle,
     DecisionCycleResult,
@@ -40,6 +47,7 @@ class AutonomyCycleHost:
         self.error_count = 0
         self.last_error: str | None = None
         self._status_providers: dict[str, Callable[[], dict[str, Any]]] = {}
+        self._watched: dict[str, tuple[Path, StepActivation]] = {}
 
     @classmethod
     def from_runtime(cls, runtime_root: Path) -> "AutonomyCycleHost":
@@ -59,6 +67,27 @@ class AutonomyCycleHost:
 
         with self._lock:
             self.cycle.steps = replace(self.cycle.steps, **{require_step(step): runner})
+
+    def watch_selection(self, step: str, path: Path, loaded: StepActivation) -> None:
+        """Follow ``path`` for selection changes to the runner loaded from ``loaded``."""
+
+        with self._lock:
+            self._watched[require_step(step)] = (Path(path), loaded)
+
+    def sync_selection(self) -> dict[str, StepActivation]:
+        """Select each watched step's restaged plugin IDs before the next frame.
+
+        Returns the activation each changed step now requests. The runner
+        applies the selection during its next call.
+        """
+
+        with self._lock:
+            requested = {}
+            for step, (path, loaded) in self._watched.items():
+                live = sync_live_selection(self.step(step), path, loaded)
+                if live is not None:
+                    requested[step] = live
+            return requested
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
         with self._lock:
@@ -151,3 +180,28 @@ class AutonomyCycleHost:
             self.shared_memory.clear()
             self.shared_memory.update(fresh)
             return memory.report()
+
+
+def sync_live_selection(
+    runner: Any, activation_path: Path, loaded: StepActivation
+) -> StepActivation | None:
+    """Select the staged plugin IDs when only the selection changed since loading.
+
+    Returns the live activation when it changed the runner's selection.
+    """
+
+    try:
+        live = read_step_activation(activation_path, loaded.step)
+    except (OSError, ValueError, TypeError):
+        # An incomplete or stale activation must not replace the current set.
+        return None
+    if live.plugin_specs != loaded.plugin_specs or live.plugin_configs != loaded.plugin_configs:
+        return None
+    manager = getattr(runner, "plugin_manager", None)
+    if manager is None or tuple(live.plugins) == tuple(manager.selected_ids):
+        return None
+    try:
+        manager.select(live.plugins)
+    except Exception:  # noqa: BLE001 - a bad selection keeps the applied plugins
+        return None
+    return live

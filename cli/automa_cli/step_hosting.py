@@ -3,10 +3,10 @@
 ``load_staged_runner`` builds a step's runner. When the activation was staged
 into a controller bundle, the runner's plugins are imported from that bundle
 and every runner call runs inside the bundle's import context, so the worker
-runs the staged code rather than the workspace. ``sync_live_selection`` applies
-a selection edited with the CLI to a running runner between frames; changed
-specs or configs need a worker restart. ``plugin_report`` copies a hosted
-runner's plugin report for the worker's and the workbench's publications.
+runs the staged code rather than the workspace. ``plugin_report`` copies a
+hosted runner's plugin report for the worker's and the workbench's
+publications. Live selection changes are the cycle host's
+(``AutonomyCycleHost.sync_selection``), shared with the Donkey host.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import copy
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.activation import StepActivation, read_step_activation
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.steps import step_runner
 
 from .staged_bundle import StagedBundleImport
@@ -66,25 +66,6 @@ def load_staged_runner(activation: StepActivation) -> Any:
     with import_context.activate():
         runner = step_runner(activation)
     return StagedStep(runner, import_context)
-
-
-def sync_live_selection(runner: Any, activation_path: Path, loaded: StepActivation) -> None:
-    """Select the staged plugin IDs when only the selection changed since loading."""
-
-    try:
-        live = read_step_activation(activation_path, loaded.step)
-    except (OSError, ValueError, TypeError):
-        # An incomplete or stale activation must not replace the current set.
-        return
-    if live.plugin_specs != loaded.plugin_specs or live.plugin_configs != loaded.plugin_configs:
-        return
-    manager = getattr(runner, "plugin_manager", None)
-    if manager is None or tuple(live.plugins) == tuple(manager.selected_ids):
-        return
-    try:
-        manager.select(live.plugins)
-    except Exception:  # noqa: BLE001 - a bad selection keeps the applied plugins
-        return
 
 
 def plugin_report(runner: Any) -> dict[str, Any] | None:

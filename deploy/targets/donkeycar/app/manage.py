@@ -505,6 +505,14 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         else "stays empty",
                     )
             host = AutonomyCycleHost(steps=decision_steps(activations))
+            # Selections restaged with `vehicles update autonomy` apply between
+            # frames, as in the Chase worker; changed specs or configs need
+            # --restart.
+            for step in ("perception", "memory", "proposal"):
+                if step in activations:
+                    host.watch_selection(
+                        step, step_activation_path(runtime_root, step), activations[step]
+                    )
             # A decision step with neither an activation nor a built-in (no
             # proposal plugins staged) is recorded as None in the identity.
             decision_activations = {}

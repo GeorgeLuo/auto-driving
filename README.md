@@ -493,8 +493,12 @@ the staged runner's `proposal_schema_v1` contract, the decision view a running
 worker publishes the proposals to, and the plan and action plugins that act on
 them. `--json` returns `vehicle_proposal_info_v1` with that contract under
 `proposal_schema`, the view under `published_view`, and the decision
-generation, plan selector and action authority under `decision`. Staging
-replaces the selection. A worker loads the staged proposals
+generation, plan selector and action authority under `decision`. Like memory
+info, it probes the running autonomy engine and reports its proposal step under
+`live` (`vehicle_proposal_live_v1`): the plugins it runs and its run and
+failure counts, from the Chase worker's state or the PiCar's
+`/autonomy/status`. That is the engine's step, not the proposals any view last
+rendered. Staging replaces the selection. A worker loads the staged proposals
 from the controller bundle when it starts, as it loads memory, and reports
 them under `proposal` in its state and `proposal_plugin_report` in each frame.
 Proposals are part of the decision generation, so a running worker stops

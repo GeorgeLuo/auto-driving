@@ -980,10 +980,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     proposal_info = info_commands.add_parser(
         "proposal",
-        help="Show the staged proposal plugins, the runner schema and the decision view URL.",
+        help="Show the staged proposal plugins, the runner schema, the decision view URL and the live proposal step state.",
         description=(
-            "Show the staged proposal plugins, the runner schema, the decision view URL "
-            "and the plan and action steps that act on the proposals."
+            "Show the staged proposal plugins, the runner schema, the decision view URL, "
+            "the plan and action steps that act on the proposals, and the proposal step "
+            "as the running autonomy engine has it."
         ),
     )
     proposal_info.add_argument(
@@ -1642,7 +1643,7 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show staged perception schema and live view",
                 "- memory      show staged memory schema and live memory",
-                "- proposal    show staged proposal schema and decision view",
+                "- proposal    show staged proposal schema, decision view and live proposals",
                 "- help        show this summary",
                 "",
                 "Detailed help:",

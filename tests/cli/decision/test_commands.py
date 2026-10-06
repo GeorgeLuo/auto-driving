@@ -50,6 +50,9 @@ class DecisionCommandTests(unittest.TestCase):
             self.assertEqual(payload["activation"]["plugins"], ["avoid_recent_obstruction"])
             self.assertEqual(payload["decision"]["authority"]["gate_id"], "mode")
             self.assertFalse(payload["published_view"]["available"])
+            # No worker runs, so the engine probe has no proposal step to report.
+            self.assertEqual(payload["live"]["schema"], "vehicle_proposal_live_v1")
+            self.assertEqual(payload["live"]["status"], "unavailable")
             self.assertEqual(before_info, snapshot_files())
 
 

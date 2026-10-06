@@ -427,7 +427,13 @@ def _read_surface_identity(
     return identity
 
 
-def get_vehicle_proposal_info(*, vehicle_id: str, json_output: bool = False) -> CommandResult:
+def get_vehicle_proposal_info(
+    *,
+    vehicle_id: str,
+    json_output: bool = False,
+    include_live: bool = True,
+    timeout_s: float = 3.0,
+) -> CommandResult:
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     staged, error = staged_step_info(bundle, vehicle_id, "proposal")
     if error is not None:
@@ -467,7 +473,12 @@ def get_vehicle_proposal_info(*, vehicle_id: str, json_output: bool = False) -> 
                 + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
             ),
         },
+        "live": None,
     }
+    if include_live:
+        from .streaming import probe_live_step
+
+        payload["live"] = probe_live_step("proposal", vehicle_id=vehicle_id, timeout_s=timeout_s)
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, _format_proposal_info(payload))
@@ -3204,6 +3215,11 @@ def _format_proposal_info(payload: dict[str, Any]) -> str:
             f"idle_reason={authority.get('authorized_idle_reason')}"
         ),
     ]
+    live = payload.get("live")
+    if isinstance(live, dict):
+        from .streaming import format_live_step_screen
+
+        lines.extend(["", format_live_step_screen("proposal", vehicle_id=payload["vehicle_id"], live=live)])
     return "\n".join(lines)
 
 

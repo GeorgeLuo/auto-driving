@@ -395,8 +395,11 @@ class MemoryRunner:
                 "schema": MEMORY_REPORT_SCHEMA,
                 "ledger_summary_keys": list(LEDGER_SUMMARY_KEYS),
                 "missing_field_behavior": (
-                    "a missing ledger key is null in the report; "
-                    "the framework does not reject the plugin"
+                    "the report preserves plugin status without adding missing keys; "
+                    "the framework does not reject the plugin; live CLI ledger "
+                    "projections return null for missing keys; inspect and workbench "
+                    "frame rows default a missing record_count to 0, preserve an "
+                    "explicit null, and omit bounds"
                 ),
             },
             "composition": composition_declaration(),

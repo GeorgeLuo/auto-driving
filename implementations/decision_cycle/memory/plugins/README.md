@@ -31,6 +31,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   Inspect, the live probes, the PiCar pages, and the workbench each list
   every plugin and that publisher. The evidence slot itself stays one value,
   last write wins.
+  Publisher tracking compares object identity before and after `update` or
+  `reset`: replacing the value names that plugin; removing the key clears the
+  publisher. Reassigning the same object or changing it in place keeps the
+  previous publisher. Publish a replacement value to attribute new evidence
+  to this plugin; see `autonomy/decision_cycle/memory/runner.py`.
 - How several plugins share that map, and what a failure does, is declared in
   `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
   (selection order, one `EVIDENCE_KEY`, last write wins) and `failure_policy`

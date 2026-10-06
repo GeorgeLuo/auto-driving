@@ -408,6 +408,8 @@
       const fingerprint = [publisher || "", shown, ...plugins.map((entry) => entry.plugin_id)].join("\0");
       if (fingerprint !== lastPluginsFingerprint) {
         lastPluginsFingerprint = fingerprint;
+        const focusedPlugin = pluginList.contains(document.activeElement)
+          ? document.activeElement.dataset.plugin : null;
         pluginList.replaceChildren();
         if (!plugins.length) {
           const empty = document.createElement("div");
@@ -433,6 +435,7 @@
           meta.className = "key-meta";
           button.append(label, id, meta);
           pluginList.append(button);
+          if (entry.plugin_id === focusedPlugin) button.focus();
         }
       }
       const byId = new Map(plugins.map((entry) => [entry.plugin_id, entry]));
@@ -663,11 +666,15 @@
 
     // Stable parent handlers so selection survives DOM rebuild races.
     // pointerdown fires before refresh can replace the button under a click.
-    pluginList.addEventListener("pointerdown", (event) => {
+    function pickPlugin(event) {
       const button = event.target.closest(".plugin-row");
       if (!button || !pluginList.contains(button)) return;
       event.preventDefault();
       selectPlugin(button.dataset.plugin);
+    }
+    pluginList.addEventListener("pointerdown", pickPlugin);
+    pluginList.addEventListener("click", (event) => {
+      if (event.detail === 0) pickPlugin(event);
     });
 
     keyList.addEventListener("pointerdown", (event) => {

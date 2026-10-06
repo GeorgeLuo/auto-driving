@@ -5,15 +5,20 @@ const vm = require("vm");
 function fakeElement() {
   return {
     hidden: false, open: false, value: "", className: "", children: [], attributes: {},
-    _text: "",
+    _text: "", listeners: {},
     get textContent() { return this._text; },
     set textContent(value) {
       this._text = String(value);
       if (value === "") this.children = [];
     },
-    getAttribute(name) { return name === "data-bound" ? "true" : this.attributes[name]; },
+    getAttribute(name) { return this.attributes[name]; },
     setAttribute(name, value) { this.attributes[name] = String(value); },
-    addEventListener() {},
+    addEventListener(type, handler) { (this.listeners[type] ||= []).push(handler); },
+    closest(selector) {
+      return selector === "button[data-plugin-id]" && this.attributes["data-plugin-id"] ? this : null;
+    },
+    contains(node) { return node === this || this.children.includes(node); },
+    focus() { ctx.document.activeElement = this; },
     appendChild(child) { this.children.push(child); },
     querySelector() { return this.children[0] || null; },
     querySelectorAll() { return this.children.filter((child) => child.attributes["data-record-id"]); },
@@ -107,18 +112,27 @@ assert.equal(elements.memoryCount.textContent, "2");
 assert.deepEqual(recordIds(), ["thing:a", "thing:b"]);
 
 // Picking the other plugin shows its ledger; the publisher stays named.
-ctx.selectMemoryPlugin("recording_test");
+// Enter and Space activate a native button through a click with detail 0.
+elements.memoryPlugins.children[1].focus();
+for (const handler of elements.memoryPlugins.listeners.click || []) {
+  handler({ target: elements.memoryPlugins.children[1], detail: 0, stopPropagation() {} });
+}
 assert.equal(ctx.notice, "Showing memory plugin recording_test.");
 assert.deepEqual(pluginRows().map((row) => row.shown), [false, true]);
 assert.equal(elements.memoryPublisher.textContent, "bounded_evidence");
 assert.equal(elements.memoryHealth.textContent, "no health");
 assert.equal(elements.memoryEpoch.textContent, "epoch-1");
 assert.deepEqual(recordIds(), ["rec-1"]);
+assert.equal(ctx.document.activeElement.getAttribute("data-plugin-id"), "recording_test");
 
 // The pick holds on the next frame while the report lists that plugin.
 ctx.state.steps = { memory: twoPluginReport("bounded_evidence") };
+ctx.state.steps.memory.plugins[1].state.record_count = 2;
+ctx.state.steps.memory.plugins[1].state.records.push(record("rec-2"));
 ctx.renderMemory();
-assert.deepEqual(recordIds(), ["rec-1"]);
+assert.deepEqual(recordIds(), ["rec-1", "rec-2"]);
+assert.equal(ctx.document.activeElement.getAttribute("data-plugin-id"), "recording_test");
+assert(elements.memoryPlugins.children.includes(ctx.document.activeElement));
 
 // With no publisher and no listed pick, no plugin is shown by position.
 ctx.state.steps = { memory: {

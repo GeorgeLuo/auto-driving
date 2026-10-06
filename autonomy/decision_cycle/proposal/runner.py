@@ -144,18 +144,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
 
-    def _commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        previous = self.plugins
-        super()._commit_selection(shared_memory)
-        current = self.plugins
-        # A replacement under the same ID has not executed yet. Retained
-        # instances keep their diagnostics through a selection-only change.
-        self._execution_records = {
-            plugin_id: record
-            for plugin_id, record in self._execution_records.items()
-            if plugin_id in current and current[plugin_id] is previous.get(plugin_id)
-        }
-
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         with self._runtime_lock:
             self._execution_records = {}
@@ -398,12 +386,12 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         raised: BaseException | None = None
         returned: object = None
         try:
-            try:
-                # Each plugin gets its own detached source and the shared host map.
-                returned = plugin.propose(deepcopy(source), shared_memory)
-            except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
-                raised = exc
-                error = describe_exception(exc)
+            # Each plugin gets its own detached source and the shared host map.
+            returned = plugin.propose(deepcopy(source), shared_memory)
+        except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
+            raised = exc
+            error = describe_exception(exc)
+        try:
             candidate = _admit_candidate(
                 returned=returned,
                 invoked_plugin_id=definition.plugin_id,
@@ -412,7 +400,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             )
             if candidate.lifecycle == "error" and error is None:
                 error = candidate.reason
-            return candidate
         except Exception as exc:
             error = describe_exception(exc)
             raise
@@ -422,3 +409,4 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                 "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
                 "error": error,
             }
+        return candidate

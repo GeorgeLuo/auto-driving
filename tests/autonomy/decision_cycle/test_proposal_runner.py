@@ -6,7 +6,6 @@ from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.proposal.interface import FAILURE_POLICY, PROPOSAL_SCHEMA
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.proposal.values import ActionProposal
-from autonomy.plugins import PluginDefinition
 from tests.support.action_fixtures import DecisionChain
 
 
@@ -270,31 +269,6 @@ class ProposalRunnerTests(unittest.TestCase):
         self.assertEqual(runner.plugin_report()["plugins"], [
             {"plugin_id": "p0", "duration_ms": None, "error": None},
         ])
-
-    def test_changed_selection_keeps_records_only_for_retained_instances(self) -> None:
-        runner = ProposalRunner.from_activation(_activation(["p0", "p1"], count=2))
-        runner.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
-        original = runner.plugins["p1"]
-        record = runner.plugin_report()["plugins"][1]
-        runner.plugin_manager.select([
-            runner.plugin_manager.selected[1],
-            PluginDefinition(
-                "proposal", "p0", _spec("_ConfiguredProposal"),
-                config={"plugin_id": "p0", "reason": "new_config"},
-            ),
-        ])
-        runner.apply_selection({})
-        self.assertIs(runner.plugins["p1"], original)
-        self.assertEqual(runner.plugin_report()["plugins"], [
-            record, {"plugin_id": "p0", "duration_ms": None, "error": None},
-        ])
-
-        runner.plugin_manager.remove("p1")
-        runner.apply_selection({})
-        runner.plugin_manager.add("p1")
-        runner.apply_selection({})
-        self.assertIsNot(runner.plugins["p1"], original)
-        self.assertIsNone(runner.plugin_report()["plugins"][1]["duration_ms"])
 
     def test_evidence_audit_uses_first_declared_key_and_plugins_share_the_host_map(self) -> None:
         first = _RecordsSource(plugin_id="first")

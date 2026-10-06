@@ -16,7 +16,9 @@ PROPOSAL_SCHEMA = "proposal_schema_v1"
 # A proposal plugin that raises is isolated: its candidate becomes a synthetic
 # error candidate and the other plugins still propose. A reset error
 # propagates. A missing observation is still passed to the plugin, marked
-# unavailable or error in the source.
+# unavailable or error in the source. Isolation also covers a wrong return type
+# or identity. Lifecycle and size violations fail admission for the whole step,
+# with no candidates; they are not isolated plugin exceptions.
 FAILURE_POLICY = FailurePolicy(
     update="isolate_plugin",
     reset="propagate",

@@ -3,16 +3,19 @@
 ``ProposalRunner`` builds the detached ``DecisionDataSource`` for the cycle,
 calls each selected proposal plugin's ``propose`` with its own copy of the
 source and the shared host map, and admits one candidate per plugin. A plugin
-that raises or returns an invalid candidate is replaced by a synthetic error
-candidate under its selected ID. Failures that leave no trustworthy candidate
-set end the step with status ``error``. There is no plugin-count limit; with
-no plugins selected the step returns no candidates and the plan is idle.
+that raises, returns a different type, or returns another identity is replaced
+by a synthetic error candidate under its selected ID. A candidate that fails
+lifecycle or size validation ends the step with status ``error`` and no
+candidates. There is no plugin-count limit; with no plugins selected the step
+returns no candidates and the plan is idle.
 Plugin failures and missing inputs follow ``FAILURE_POLICY`` in ``interface``;
 ``describe_schema`` reports the step's contract.
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any, ClassVar
 
@@ -47,8 +50,13 @@ from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     synthetic_error_proposal,
 )
-from autonomy.decision_cycle.runner import StepRunner, describe_configuration, describe_plugin
-from autonomy.plugins import PluginDefinition
+from autonomy.decision_cycle.runner import (
+    StepRunner,
+    describe_configuration,
+    describe_exception,
+    describe_plugin,
+)
+from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.shared_memory import SharedMemory
 
@@ -122,10 +130,51 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
     step: ClassVar[str] = "proposal"
     plugin_id: ClassVar[str] = "autonomy.proposal.plugin-runner-v0"
 
+    def __init__(
+        self,
+        plugin_manager: PluginManager,
+        *,
+        provided: Mapping[str, ProposalPlugin] | None = None,
+    ) -> None:
+        self._execution_records: dict[str, dict[str, Any]] = {}
+        super().__init__(plugin_manager, provided=provided)
+
     def validate_plugin(self, plugin: ProposalPlugin, definition: PluginDefinition) -> None:
         require_ascii_id(definition.plugin_id, field_name="plugin_id")
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
+
+    def _commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
+        previous = self.plugins
+        super()._commit_selection(shared_memory)
+        current = self.plugins
+        # A replacement under the same ID has not executed yet. Retained
+        # instances keep their diagnostics through a selection-only change.
+        self._execution_records = {
+            plugin_id: record
+            for plugin_id, record in self._execution_records.items()
+            if plugin_id in current and current[plugin_id] is previous.get(plugin_id)
+        }
+
+    def reset(self, shared_memory: SharedMemory | None = None) -> None:
+        with self._runtime_lock:
+            self._execution_records = {}
+            super().reset(shared_memory)
+
+    def _plugin_records(self) -> list[dict[str, Any]]:
+        """Each applied plugin's last invocation timing and error.
+
+        Isolated candidate errors belong to the plugin record; step failures
+        remain on ``status``. Records are null before invocation and after reset.
+        """
+
+        return [
+            self._execution_records.get(
+                definition.plugin_id,
+                {"plugin_id": definition.plugin_id, "duration_ms": None, "error": None},
+            )
+            for definition, _plugin in self.applied
+        ]
 
     @property
     def evidence_key(self) -> str | None:
@@ -202,7 +251,8 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                             "meaning": (
                                 f"one {ACTION_PROPOSAL_SCHEMA} per selected plugin, in "
                                 "selection order; a synthetic error candidate when the "
-                                "plugin raises or returns an invalid candidate"
+                                "plugin raises, returns a different type, or returns "
+                                "another plugin or frame identity"
                             ),
                         },
                         {
@@ -210,6 +260,11 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                             "meaning": "the detached decision data source the plugins read",
                         },
                     ],
+                    "invalid_candidate_behavior": (
+                        "a lifecycle or size violation fails the step with "
+                        "action_proposal_matrix_violated and no candidates; "
+                        "the plan step does not plan and action fails closed"
+                    ),
                     "error_reasons": sorted(CYCLE_ERROR_REASONS),
                 },
                 "composition": composition_declaration(),
@@ -273,6 +328,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         with self._runtime_lock:
             self.refresh_selection(shared_memory)
             self.run_count += 1
+            self._execution_records = {}
             if isinstance(observation, Observation):
                 observation = Observation.from_dict(
                     omit_forbidden_channel_keys(observation.to_dict())
@@ -312,22 +368,9 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             candidates: list[ActionProposal] = []
             try:
                 for definition, plugin in applied:
-                    raised: BaseException | None = None
-                    returned: object = None
-                    try:
-                        # Isolate the source so one plugin cannot mutate another's view;
-                        # the host map is shared on purpose, as for the other steps.
-                        returned = plugin.propose(deepcopy(source), plugin_memory)
-                    except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
-                        raised = exc
                     try:
                         candidates.append(
-                            _admit_candidate(
-                                returned=returned,
-                                invoked_plugin_id=definition.plugin_id,
-                                frame_id=frame_id,
-                                raised=raised,
-                            )
+                            self._execute_plugin(definition, plugin, source, plugin_memory)
                         )
                     except ActionProposalMatrixError:
                         return fail("action_proposal_matrix_violated", source=source)
@@ -342,3 +385,40 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                 return fail("step_internal_error", source=source)
             self.last_error = None
             return result
+
+    def _execute_plugin(
+        self,
+        definition: PluginDefinition,
+        plugin: ProposalPlugin,
+        source: DecisionDataSource,
+        shared_memory: SharedMemory,
+    ) -> ActionProposal:
+        started = time.perf_counter()
+        error: str | None = None
+        raised: BaseException | None = None
+        returned: object = None
+        try:
+            try:
+                # Each plugin gets its own detached source and the shared host map.
+                returned = plugin.propose(deepcopy(source), shared_memory)
+            except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
+                raised = exc
+                error = describe_exception(exc)
+            candidate = _admit_candidate(
+                returned=returned,
+                invoked_plugin_id=definition.plugin_id,
+                frame_id=source.frame_id,
+                raised=raised,
+            )
+            if candidate.lifecycle == "error" and error is None:
+                error = candidate.reason
+            return candidate
+        except Exception as exc:
+            error = describe_exception(exc)
+            raise
+        finally:
+            self._execution_records[definition.plugin_id] = {
+                "plugin_id": definition.plugin_id,
+                "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                "error": error,
+            }

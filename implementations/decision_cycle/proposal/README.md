@@ -14,12 +14,14 @@ them lives in `autonomy/decision_cycle/proposal/`.
 
 ## Catalog and selection
 
-The catalog says which plugins exist. With one plugin, proposal has no
-presets: `implementations/decision_cycle/catalog.py` builds an activation from
-a plugin list with `packaged_activation("proposal", plugins)`, and from
-`DEFAULT_PROPOSAL_PLUGINS` when the list is omitted. A second plugin brings a
-`presets.py`, as perception and memory have. `automa vehicles update proposal
---plugin ID` stages a selection.
+The catalog says which plugins exist. Proposal currently selects an ordered
+plugin list without named configuration presets:
+`implementations/decision_cycle/catalog.py` builds an activation with
+`packaged_activation("proposal", plugins)`, and from
+`DEFAULT_PROPOSAL_PLUGINS` when the list is omitted. Named configuration
+recipes belong in `presets.py` when needed, as in perception and memory;
+their usefulness does not depend on the number of plugins. `automa vehicles
+update proposal --plugin ID` stages a selection.
 
 Proposal plugins read a detached copy of the cycle's inputs and the host map,
 not the camera feed. `avoid_recent_obstruction` steers away from the

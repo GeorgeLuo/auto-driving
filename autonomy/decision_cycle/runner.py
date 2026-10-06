@@ -15,10 +15,11 @@ plugin with the host map, and a plugin whose reset raises follows the step's
 ``FAILURE_POLICY.reset``. Memory's ``reset`` also returns the keys its plugins
 wrote, for a host that clears its map at a reset to restore.
 
-Each step declares what a plugin failure or a missing input does as one
-``FailurePolicy``, ``FAILURE_POLICY`` in the step's ``interface``. The runner
-reads it, and ``describe_schema`` reports it under ``failure_policy``. A step
-that describes its contract builds the ``configuration`` and ``plugins``
+Perception, memory, and proposal declare what a plugin failure or a missing
+input does as one ``FailurePolicy``, ``FAILURE_POLICY`` in the step's
+``interface``. Their ``describe_schema`` methods report it under
+``failure_policy``. A step that describes its contract builds the
+``configuration`` and ``plugins``
 entries of that schema with ``describe_configuration`` and ``describe_plugin``.
 
 Every step's runner is a ``StepRunner``. A step adds what its plugins need

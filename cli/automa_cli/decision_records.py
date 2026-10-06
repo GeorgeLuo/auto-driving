@@ -116,6 +116,8 @@ class DecisionRunners:
             activation = activations.get(step) or builtin_activation(step)
             if activation is None:
                 raise ValueError(f"no {step} activation is staged")
+            if activation.step != step:
+                raise ValueError(f"activation is for step {activation.step!r}, not {step!r}")
             return activation
 
         return cls(

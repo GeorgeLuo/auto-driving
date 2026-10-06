@@ -72,6 +72,10 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual([item.plugin_id for item in replay.proposal.candidates], ["bundle_only"])
         self.assertEqual(shared_memory["bundle_marker"], "from the staged bundle")
+        # The generic loader must preserve each slot's step validation.
+        wrong_step = read_step_activation(bundle_activation_path(bundle, "action"), "action")
+        with self.assertRaisesRegex(ValueError, "activation is for step 'action', not 'proposal'"):
+            DecisionRunners.from_activations({"proposal": wrong_step})
 
     def test_info_reports_a_missing_action_bundle_as_an_activation_error(self) -> None:
         self._stage()

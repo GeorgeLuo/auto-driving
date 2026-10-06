@@ -1,9 +1,10 @@
 """Shared staged-bundle import swaps and activation writes.
 
-Memory and perception both replace process-global modules while a staged
-controller bundle is active. They share one lock because they edit the same
-``sys.modules`` table. Each caller names the top-level modules that come from
-the bundle; every other module keeps the host process's classes.
+CLI hosts replace process-global plugin modules while a staged controller
+bundle is active. Step info, worker, and decision replay callers share one
+lock because they edit the same ``sys.modules`` table. Each caller names the
+top-level modules that come from the bundle; every other module keeps the
+host process's classes.
 """
 
 from __future__ import annotations

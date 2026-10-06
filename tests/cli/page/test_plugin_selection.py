@@ -36,5 +36,5 @@ class PluginSelectionTests(unittest.TestCase):
     def test_polled_selections_update_controls_without_losing_local_drafts(self) -> None:
         self._check_page("state")
 
-    def test_both_panels_show_the_preset_and_execution_order(self) -> None:
+    def test_each_panel_shows_execution_order_and_its_preset_when_present(self) -> None:
         self._check_page("visibility")

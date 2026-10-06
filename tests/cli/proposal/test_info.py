@@ -1,19 +1,93 @@
 from __future__ import annotations
+
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
+from autonomy.decision_cycle.activation import (
+    read_step_activation,
+    step_activation,
+    write_step_activation,
+)
 from autonomy.decision_cycle.steps import load_decision_steps
 from implementations.decision_cycle.catalog import step_plugins
-from cli.automa_cli.decision import get_vehicle_proposal_info
-from cli.automa_cli.step_activations import update_vehicle_step
+from cli.automa_cli.proposal import get_vehicle_proposal_info
+from cli.automa_cli.decision_records import DecisionRunners
+from cli.automa_cli.step_activations import (
+    bundle_activation_path,
+    update_vehicle_step,
+    vehicle_bundle,
+)
 from tests.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
     packaged_decision_steps,
 )
 
 
-class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
+class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
+    def test_info_and_replay_load_a_plugin_only_available_in_the_staged_bundle(self) -> None:
+        self._stage()
+        bundle = vehicle_bundle("chase-sim-chaser", self.runtime_root)
+        activation_path = bundle_activation_path(bundle, "proposal")
+        original = read_step_activation(activation_path, "proposal")
+        plugin_path = Path(bundle["root_dir"]) / (
+            "implementations/decision_cycle/proposal/plugins/bundle_only.py"
+        )
+        plugin_path.write_text(
+            "from implementations.decision_cycle.proposal.plugins."
+            "avoid_recent_obstruction.plugin import AvoidRecentObstruction\n"
+            "class BundleOnlyProposal(AvoidRecentObstruction):\n"
+            "    plugin_id = 'bundle_only'\n"
+            "    def propose(self, source, shared_memory):\n"
+            "        from implementations.decision_cycle.proposal.plugins."
+            "bundle_only_helper import MARKER\n"
+            "        shared_memory['bundle_marker'] = MARKER\n"
+            "        return super().propose(source, shared_memory)\n",
+            encoding="utf-8",
+        )
+        plugin_path.with_name("bundle_only_helper.py").write_text(
+            "MARKER = 'from the staged bundle'\n", encoding="utf-8",
+        )
+        write_step_activation(activation_path, step_activation(
+            "proposal", ["bundle_only"],
+            {"bundle_only": "implementations.decision_cycle.proposal.plugins.bundle_only:BundleOnlyProposal"},
+            metadata=original.metadata,
+        ))
+
+        info = get_vehicle_proposal_info(
+            vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
+        )
+        self.assertEqual(info.exit_code, 0, info.message)
+        payload = json.loads(info.message)
+        self.assertEqual(payload["activation"]["plugins"], ["bundle_only"])
+        self.assertEqual(
+            payload["proposal_schema"]["configuration"]["applied_plugin_ids"], ["bundle_only"],
+        )
+        shared_memory = {}
+        replay = DecisionRunners.from_payloads(self._identity()["steps"]).run(
+            frame_id="bundle-frame", frame_index=1, timestamp_ms=1_000,
+            shared_memory=shared_memory,
+        )
+        self.assertEqual([item.plugin_id for item in replay.proposal.candidates], ["bundle_only"])
+        self.assertEqual(shared_memory["bundle_marker"], "from the staged bundle")
+
+    def test_info_reports_a_missing_action_bundle_as_an_activation_error(self) -> None:
+        self._stage()
+        bundle = vehicle_bundle("chase-sim-chaser", self.runtime_root)
+        path = bundle_activation_path(bundle, "action")
+        original = read_step_activation(path, "action")
+        payload = original.to_payload()
+        payload["metadata"]["controller_bundle"]["root_dir"] = str(self.runtime_root / "missing-bundle")
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        info = get_vehicle_proposal_info(
+            vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
+        )
+        self.assertEqual(info.exit_code, 2)
+        self.assertIn("Controller bundle is missing", info.message)
+
     def test_stage_hold_action_and_info_contract(self) -> None:
         identity = self._stage()
         staged = identity["steps"]["proposal"]

@@ -19,10 +19,10 @@ from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision import (
     RUNTIME_ROOT as DECISION_RUNTIME_ROOT,
     apply_vehicle_decision,
-    get_vehicle_proposal_info,
     stream_vehicle_decision,
 )
 from .decision_inspector import run_decision_inspector
+from .proposal import get_vehicle_proposal_info
 from .decision_live import run_live_decision_monitor
 from .memory import (
     get_vehicle_memory_info,

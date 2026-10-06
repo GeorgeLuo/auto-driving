@@ -119,7 +119,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
-| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info show the staged preset, enabled and available plugins, and runner schema (inputs, output, composition and failure policy); decision info shows the proposal runner's schema in the same sections; perception info also reports the live view URL, and memory info the live memory step. |
+| `vehicles info perception\|memory\|proposal` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception and memory also show their preset. Each reports its view; memory and proposal include live runner status. Proposal also shows the decision generation, plan selector, and action authority. |
 | `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
@@ -505,8 +505,11 @@ running worker applies a changed plugin list at its next frame and changed
 plugin configs when it restarts; a stopped one uses the selection the next time
 it starts. Proposals are part of the decision generation: once the worker runs
 the new selection it publishes under the restaged generation, and an open
-decision view follows it. After a config restage it publishes no decision
-frames until it restarts:
+decision view follows it. The generation changes after the cycle confirms
+which plugins were applied. A plugin load or removal-reset failure keeps the
+old applied selection and generation, and publishing is refused while they
+differ from the staged decision. After a config restage it publishes no
+decision frames until it restarts:
 
 ```sh
 ./cli/automa vehicles info proposal --id chase-sim-chaser
@@ -673,7 +676,7 @@ Step selections are local until the next autonomy deployment:
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
-`vehicles info perception|memory|proposal|decision --id piracer` inspects staged
+`vehicles info perception|memory|proposal --id piracer` inspects staged
 activation and release metadata. Local staging does not require the Pi to be
 online; the subsequent autonomy deploy does.
 

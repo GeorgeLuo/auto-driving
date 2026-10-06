@@ -22,7 +22,7 @@ VEHICLE_ID = "chase-sim-chaser"
 
 
 class AutomationProposalSelectionTests(unittest.TestCase):
-    def run_with_restage(self, restaged):
+    def run_with_restage(self, restaged, *, reject_reset=False):
         """Run four frames, staging ``restaged`` with the CLI's writer during the first.
 
         The restage lands mid-frame, so the first frame's publish is refused.
@@ -51,6 +51,11 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             def wrap_proposal(step_name, step):
                 if step_name != "proposal":
                     return
+                if reject_reset:
+                    def failing_reset(shared_memory=None):
+                        raise RuntimeError("proposal reset unavailable")
+
+                    step.plugins["avoid_recent_obstruction"].reset = failing_reset
                 run = step.run
 
                 def run_with_cli_restage(**kwargs):
@@ -108,6 +113,21 @@ class AutomationProposalSelectionTests(unittest.TestCase):
         self.assertEqual(state["decision"]["latest_frame_publish_skips"], 4)
         self.assertIsNone(latest)
         self.assertEqual(view["identity"]["activation_generation_id"], startup)
+
+    def test_failed_selection_keeps_the_generation_of_the_applied_plugins(self):
+        startup, staged, applied, state, latest, view = self.run_with_restage(
+            packaged_activation("proposal", []), reject_reset=True,
+        )
+
+        self.assertNotEqual(staged["generation_id"], startup)
+        self.assertEqual(applied, [("avoid_recent_obstruction",)] * 4)
+        report = state["proposal"]["status"]["plugin_report"]
+        self.assertEqual(report["selected_plugin_ids"], [])
+        self.assertEqual(report["applied_plugin_ids"], ["avoid_recent_obstruction"])
+        self.assertEqual(state["decision"]["generation_id"], startup)
+        self.assertEqual(view["identity"]["activation_generation_id"], startup)
+        self.assertEqual(state["decision"]["latest_frame_publish_skips"], 4)
+        self.assertIsNone(latest)
 
 
 if __name__ == "__main__":

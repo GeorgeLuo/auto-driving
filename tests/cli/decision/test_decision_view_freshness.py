@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
 from cli.automa_cli import decision as decision_module
-from cli.automa_cli.decision import get_vehicle_proposal_info
+from cli.automa_cli.proposal import get_vehicle_proposal_info
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer

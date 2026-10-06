@@ -219,21 +219,24 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(
             state["steps"]["observation"]["metadata"]["source"], "workbench.image_replay.v1"
         )
-        self.assertEqual(state["steps"]["memory"]["health"], "healthy")
-        self.assertGreaterEqual(state["steps"]["memory"]["record_count"], 2)
-        self.assertEqual(state["summary"]["memory_health"], "healthy")
+        ledger = state["steps"]["memory"]["plugins"][0]
+        self.assertEqual(ledger["state"]["health"], "healthy")
+        self.assertGreaterEqual(ledger["state"]["record_count"], 2)
+        self.assertEqual(state["summary"]["memory_evidence_publisher"], ledger["plugin_id"])
+        self.assertEqual(state["summary"]["memory_plugins"][0]["health"], "healthy")
         self.assertEqual(
-            state["summary"]["memory_records"], state["steps"]["memory"]["record_count"]
+            state["summary"]["memory_plugins"][0]["record_count"],
+            ledger["state"]["record_count"],
         )
         self.assertEqual(
-            state["timeline"][-1]["memory_record_count"],
-            state["steps"]["memory"]["record_count"],
+            state["timeline"][-1]["memory_plugins"][0]["record_count"],
+            ledger["state"]["record_count"],
         )
         self.assertNotIn("frames", state["source"])
         self.assertNotIn("perception", state["timeline"][0])
         self.assertEqual(state["steps"]["perception"]["status"], "ok")
         self.assertIsNotNone(state["steps"]["observation"]["observation_id"])
-        self.assertTrue(state["timeline"][0]["memory_effect"]["added"])
+        self.assertTrue(state["timeline"][0]["memory_effects"][0]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])

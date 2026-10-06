@@ -147,7 +147,8 @@ def check_parity() -> list[str]:
                     problems.append(f"{label}: plugin runs {got_runs}, inspect {want_runs}")
                 if not (entry.get("decision") or {}).get("status"):
                     problems.append(f"{label}: no decision status")
-                if entry.get("memory_record_count") is None:
+                plugins = entry.get("memory_plugins") or []
+                if not plugins or any(item.get("record_count") is None for item in plugins):
                     problems.append(f"{label}: no memory record count")
                 if len(problems) > 20:
                     break

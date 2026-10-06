@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import unittest
-from cli.automa_cli.memory_report import last_plugin_state
+from cli.automa_cli.memory_report import evidence_publisher, plugin_states
 from cli.automa_cli.physical_observation import publication_to_frame_record
 from cli.automa_cli.perception_view import (
+    PUBLICATION_SCHEMA,
     _publication_payload,
 )
-from tests.support.memory_fixtures import memory_report
+from tests.support.memory_fixtures import TWO_PLUGIN_IDS, memory_report, two_plugin_runner
 
 
 class MemoryViewPublicationTests(unittest.TestCase):
@@ -62,10 +63,9 @@ class MemoryViewPublicationTests(unittest.TestCase):
             "control": {"steering": 0.0, "throttle": 0.0},
         }
         frame_record = publication_to_frame_record(publication)
-        self.assertEqual(last_plugin_state(frame_record["memory"])["health"], "healthy")
-        self.assertEqual(
-            last_plugin_state(frame_record["memory"])["records"][0]["kind"], "floor_boundary"
-        )
+        recorded = dict(plugin_states(frame_record["memory"]))
+        self.assertEqual(recorded["bounded_evidence"]["health"], "healthy")
+        self.assertEqual(recorded["bounded_evidence"]["records"][0]["kind"], "floor_boundary")
 
         view_payload = _publication_payload(
             vehicle_id="piracer",
@@ -80,11 +80,41 @@ class MemoryViewPublicationTests(unittest.TestCase):
             perception_record=frame_record,
             generated_at_ms=200,
         )
-        self.assertEqual(view_payload["memory"]["epoch_id"], "epoch-2")
+        self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
+        self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication_v2")
+        self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
+        shown = dict(plugin_states(view_payload["memory"]))
+        self.assertEqual(shown["bounded_evidence"]["epoch_id"], "epoch-2")
         self.assertEqual(
-            view_payload["memory"]["records"][0]["origin"]["frame_id"],
+            shown["bounded_evidence"]["records"][0]["origin"]["frame_id"],
             "donkey_frame_0",
         )
+
+    def test_view_payload_carries_every_plugin_and_the_publisher(self) -> None:
+        # bounded_evidence runs first and publishes, so the last plugin is not
+        # the publisher.
+        runner, _shared = two_plugin_runner()
+        report = runner.report()
+        frame_record = publication_to_frame_record(
+            {
+                "health": "healthy",
+                "frame": {"frame_id": "donkey_frame_1", "frame_index": 1, "has_image": True},
+                "perception": {"things": []},
+                "memory": report,
+            }
+        )
+        view_payload = _publication_payload(
+            vehicle_id="piracer",
+            frame={"frame_id": "donkey_frame_1", "frame_index": 1},
+            perception_record=frame_record,
+            generated_at_ms=200,
+        )
+        self.assertEqual(view_payload["memory"], report)
+        states = dict(plugin_states(view_payload["memory"]))
+        self.assertEqual(tuple(states), TWO_PLUGIN_IDS)
+        self.assertEqual(states["bounded_evidence"]["record_count"], 1)
+        self.assertEqual(len(states["recording_test"]["records"]), 1)
+        self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
 
 
 if __name__ == "__main__":

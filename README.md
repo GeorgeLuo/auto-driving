@@ -500,11 +500,14 @@ frame before the action returns. This includes the last frame still displayed
 between loop passes.
 
 For workbench API integrations, `GET /api/state` reports schema
-`workbench_image_replay_state_v2`. Read `<step>_plugin_catalog` for availability
+`workbench_image_replay_state_v3`. Read `<step>_plugin_catalog` for availability
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
 `custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
-plugins that were applied. Replace v1's generic perception `plugin_catalog` and
+plugins that were applied. Each frame's `memory_plugins` lists every applied
+memory plugin's health, record count, and epoch, and
+`memory_evidence_publisher` names the plugin whose evidence the step published.
+`steps.memory` is that plugin's report, not one plugin's state. Replace v1's generic perception `plugin_catalog` and
 `active_plugin_ids` with the step-named fields; use the catalog's `digest` in
 place of `catalog_digest` / `run_catalog_digest`, and the selected or applied ids
 in place of `plugin_order` / `run_plugin_order` / `run_active_plugin_ids`.

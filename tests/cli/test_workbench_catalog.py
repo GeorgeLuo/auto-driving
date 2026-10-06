@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import unittest
 from unittest import mock
+from autonomy.decision_cycle.memory.interface import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorFrame
@@ -18,6 +19,10 @@ from tests.cli.workbench_fixtures import (
     image_source,
     perception_activations,
 )
+
+
+def _empty_memory_report() -> dict:
+    return {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None}
 
 
 def _plugin_ids(perception: dict | None) -> list[str]:
@@ -483,7 +488,7 @@ class WorkbenchStartingSelectionTests(unittest.TestCase):
             runner.start()
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
-        self.assertIsNone(state["steps"]["memory"])
+        self.assertEqual(state["steps"]["memory"], _empty_memory_report())
         self.assertEqual(
             state["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"], []
         )
@@ -586,7 +591,7 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
                 [item["id"] for item in selected["memory_plugin_catalog"]["plugins"] if item["active"]],
                 [],
             )
-            self.assertIsNone(selected["steps"]["memory"])
+            self.assertEqual(selected["steps"]["memory"], _empty_memory_report())
             self.assertEqual(
                 selected["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"],
                 [],
@@ -607,7 +612,8 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             self.assertEqual(restored["position"], 4)
             self.assertEqual(runner._memory_step.update_count, 4)
             self.assertEqual(runner._memory_step.plugin_ids, ("bounded_evidence",))
-            self.assertEqual(restored["steps"]["memory"]["plugin_id"], "bounded_evidence")
+            self.assertEqual(restored["steps"]["memory"]["plugins"][0]["plugin_id"], "bounded_evidence")
+            self.assertEqual(restored["steps"]["memory"]["evidence_publisher"], "bounded_evidence")
             runner.dispatch("reset", run_id=run_id)
 
     def test_memory_selection_before_start_applies_to_the_run(self) -> None:
@@ -617,7 +623,7 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             runner.start()
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
-        self.assertIsNone(state["steps"]["memory"])
+        self.assertEqual(state["steps"]["memory"], _empty_memory_report())
         self.assertEqual(
             state["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"], []
         )
@@ -633,7 +639,7 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(len(state["timeline"]), 12)
-        self.assertIsNone(state["steps"]["memory"])
+        self.assertEqual(state["steps"]["memory"], _empty_memory_report())
         self.assertEqual(
             state["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"], []
         )

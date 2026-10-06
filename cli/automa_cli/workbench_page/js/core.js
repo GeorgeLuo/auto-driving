@@ -20,8 +20,8 @@ var elements = {};
   "startButton", "pauseButton", "resumeButton", "stepButton",
   "resetButton", "notice",
   "perceptionPluginSelectionSummary", "perceptionPluginCatalog", "perceptionPluginDigest", "perceptionPluginOrder",
-  "memoryPluginSelectionSummary", "memoryPluginCatalog", "memoryPluginDigest", "memoryPluginOrder", "memorySelection", "memoryHealth", "memoryEpoch",
-  "memoryCount", "memoryPolicy", "memoryDrops", "memoryDropsSummary", "memoryDropsText",
+  "memoryPluginSelectionSummary", "memoryPluginCatalog", "memoryPluginDigest", "memoryPluginOrder", "memorySelection", "memoryHealth", "memoryPlugins",
+  "memoryPublisher", "memoryEpoch", "memoryCount", "memoryPolicy", "memoryDrops", "memoryDropsSummary", "memoryDropsText",
   "memorySearch", "memoryRecords", "failurePanel", "failureText",
   "memorySelected", "decisionSummary", "decisionFrameIdentity", "decisionStatus", "decisionSelected",
   "decisionProposed", "decisionAuthority", "decisionReason", "decisionSource", "decisionCandidates"

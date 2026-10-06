@@ -10,12 +10,10 @@ from typing import Any
 from urllib.parse import quote, urljoin, urlparse
 from urllib.request import urlopen
 
-from .memory_report import last_plugin_state
-
 from PIL import Image
 
 VIEW_SCHEMA = "automa_perception_view_v1"
-PUBLICATION_SCHEMA = "automa_perception_publication_v1"
+PUBLICATION_SCHEMA = "automa_perception_publication_v2"
 VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MAX_BUFFERED_FRAMES = 8
@@ -262,8 +260,10 @@ def _publication_payload(
     source = perception_record or {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
-    # The last memory plugin's state from the frame record's memory report.
-    memory = last_plugin_state(source.get("memory"))
+    # The frame record's memory report: every plugin's state by plugin_id and
+    # the evidence publisher, as the memory step reported them.
+    memory = source.get("memory")
+    memory = memory if isinstance(memory, dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,

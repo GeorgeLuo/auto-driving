@@ -103,7 +103,8 @@ class SelectionRebuildTests(unittest.TestCase):
                         shown[f"active_{other}_plugin_ids"],
                     )
                     self.assertEqual(
-                        selected["steps"]["memory"]["plugin_id"], "bounded_evidence"
+                        selected["steps"]["memory"]["plugins"][0]["plugin_id"],
+                        "bounded_evidence",
                     )
                     if phase == "paused":
                         self.assertEqual(selected["position"], 1)

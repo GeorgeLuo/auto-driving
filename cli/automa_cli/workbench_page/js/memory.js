@@ -1,9 +1,74 @@
-// Memory region: records, search, and selection.
+// Memory region: plugins, records, search, and selection.
 // Classic script: the page's files share one global scope.
 "use strict";
 
 var selectedRecordId = null;
+var selectedMemoryPluginId = null;
 var memoryListSignature = "";
+var memoryPluginSignature = "";
+// steps.memory is the memory step's report: every applied plugin by plugin_id,
+// and the evidence publisher. The panel lists every plugin and shows one
+// plugin's ledger: the plugin the viewer picked, else the evidence publisher.
+// With neither, it asks for a pick.
+function memoryPlugins(memory) {
+  var list = memory && Array.isArray(memory.plugins) ? memory.plugins : [];
+  return list.filter(function (entry) {
+    return entry && typeof entry.plugin_id === "string";
+  });
+}
+function memoryEvidencePublisher(memory) {
+  var publisher = memory && memory.evidence_publisher;
+  return typeof publisher === "string" && publisher ? publisher : null;
+}
+function shownMemoryPlugin(memory) {
+  var wanted = selectedMemoryPluginId || memoryEvidencePublisher(memory);
+  return memoryPlugins(memory).find(function (entry) {
+    return entry.plugin_id === wanted;
+  }) || null;
+}
+function shownMemoryState(memory) {
+  var entry = shownMemoryPlugin(memory);
+  return entry && entry.state && typeof entry.state === "object" ? entry.state : null;
+}
+function memoryPluginText(entry, publisher) {
+  var count = entry.state ? entry.state.record_count : null;
+  return entry.plugin_id + " · " + text(count, "?") + " records"
+    + (entry.plugin_id === publisher ? " · publisher" : "");
+}
+function renderMemoryPlugins(memory) {
+  var plugins = memoryPlugins(memory);
+  var publisher = memoryEvidencePublisher(memory);
+  var shown = shownMemoryPlugin(memory);
+  var shownId = shown ? shown.plugin_id : null;
+  var signature = plugins.map(function (entry) {
+    return memoryPluginText(entry, publisher);
+  }).join("\n") + "\0" + String(shownId);
+  if (signature === memoryPluginSignature) return;
+  memoryPluginSignature = signature;
+  elements.memoryPlugins.textContent = "";
+  plugins.forEach(function (entry) {
+    var isShown = entry.plugin_id === shownId;
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "text-action" + (isShown ? " selected" : "");
+    button.setAttribute("data-plugin-id", entry.plugin_id);
+    button.setAttribute("aria-pressed", isShown ? "true" : "false");
+    button.textContent = memoryPluginText(entry, publisher);
+    elements.memoryPlugins.appendChild(button);
+  });
+}
+function selectMemoryPlugin(pluginId) {
+  var memory = currentPayload("memory");
+  var entry = memoryPlugins(memory).find(function (candidate) {
+    return candidate.plugin_id === pluginId;
+  });
+  if (!entry) return;
+  selectedMemoryPluginId = pluginId;
+  selectedRecordId = null;
+  memoryListSignature = "";
+  setNotice("Showing memory plugin " + pluginId + ".");
+  renderMemory();
+}
 function memorySearchPattern() {
   var term = String(elements.memorySearch.value || "").trim().toLowerCase();
   if (!term) return null;
@@ -69,11 +134,35 @@ function bindMemoryList() {
     event.stopPropagation();
     selectRecord(button.getAttribute("data-record-id"));
   });
+  elements.memoryPlugins.addEventListener("pointerdown", function (event) {
+    var button = event.target.closest("button[data-plugin-id]");
+    if (!button) return;
+    event.stopPropagation();
+    selectMemoryPlugin(button.getAttribute("data-plugin-id"));
+  });
+}
+function clearMemoryLedger() {
+  setText("memoryEpoch", null);
+  setText("memoryCount", null);
+  setText("memoryPolicy", null);
+  elements.memoryDrops.hidden = true;
+  elements.memoryDrops.open = false;
+  setText("memorySelection", "no record selected");
 }
 function renderMemory() {
   bindMemoryList();
-  var memory = currentPayload("memory");
-  if (!memory) {
+  var report = currentPayload("memory");
+  var plugins = memoryPlugins(report);
+  // Keep the viewer's pick across frames; drop it only when a report lists
+  // plugins and it is not among them.
+  if (selectedMemoryPluginId && plugins.length && !plugins.some(function (entry) {
+    return entry.plugin_id === selectedMemoryPluginId;
+  })) {
+    selectedMemoryPluginId = null;
+  }
+  renderMemoryPlugins(report);
+  setText("memoryPublisher", memoryEvidencePublisher(report), report ? "none" : "—");
+  if (!report) {
     var updateFailed = state && state.phase === "failed" &&
       state.failure_boundary === "memory";
     var disabled = state && Array.isArray(state.active_memory_plugin_ids) &&
@@ -81,12 +170,7 @@ function renderMemory() {
     memoryListSignature = "";
     elements.memoryRecords.textContent = "";
     setText("memoryHealth", updateFailed ? "update failed" : disabled ? "disabled" : "no frame yet");
-    setText("memoryEpoch", null);
-    setText("memoryCount", null);
-    setText("memoryPolicy", null);
-    elements.memoryDrops.hidden = true;
-    elements.memoryDrops.open = false;
-    setText("memorySelection", "no record selected");
+    clearMemoryLedger();
     var noSnapshot = document.createElement("p");
     noSnapshot.className = "memory-empty muted help";
     noSnapshot.textContent = updateFailed
@@ -96,10 +180,25 @@ function renderMemory() {
     elements.memorySelected.textContent = "Select a server-produced memory record to inspect its origin.";
     return;
   }
+  if (!shownMemoryPlugin(report)) {
+    memoryListSignature = "";
+    elements.memoryRecords.textContent = "";
+    setText("memoryHealth", plugins.length ? "pick a plugin" : "no plugins");
+    clearMemoryLedger();
+    var noPublisher = document.createElement("p");
+    noPublisher.className = "memory-empty muted help";
+    noPublisher.textContent = plugins.length
+      ? "No evidence publisher this frame. Pick a plugin to see its records."
+      : "The memory report lists no plugins.";
+    elements.memoryRecords.appendChild(noPublisher);
+    elements.memorySelected.textContent = "Select a server-produced memory record to inspect its origin.";
+    return;
+  }
+  var memory = shownMemoryState(report) || {};
   var metadata = memory.metadata || {};
   var dropCount = Number(metadata.last_update_drop_count) || 0;
   var conflictCount = Number(metadata.conflict_count) || 0;
-  setText("memoryHealth", memory.health
+  setText("memoryHealth", text(memory.health, "no health")
     + (conflictCount ? " · " + conflictCount + " conflicts total" : "")
     + (dropCount ? " · " + dropCount + " dropped now" : ""));
   setText("memoryEpoch", memory.epoch_id);
@@ -163,7 +262,7 @@ function renderMemory() {
   paintMemorySelection(records);
 }
 function selectRecord(recordId) {
-  var memory = currentPayload("memory");
+  var memory = shownMemoryState(currentPayload("memory"));
   var records = memory && Array.isArray(memory.records) ? memory.records : [];
   var selected = records.find(function (record) {
     return memoryRecordId(record) === recordId;

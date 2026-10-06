@@ -46,22 +46,6 @@ def plugin_states(report: object) -> list[tuple[str, dict[str, Any] | None]]:
     return states
 
 
-def last_plugin_state(report: object) -> dict[str, Any] | None:
-    """State of the last applied memory plugin, or None when there is none.
-
-    The perception publication and the workbench still read this; they move
-    to ``plugin_states`` next, and this goes.
-    """
-
-    if not isinstance(report, dict):
-        return None
-    plugins = report.get("plugins")
-    if not isinstance(plugins, list) or not plugins or not isinstance(plugins[-1], dict):
-        return None
-    state = plugins[-1].get("state")
-    return state if isinstance(state, dict) else None
-
-
 def evidence_publisher(report: object) -> str | None:
     """The plugin whose value ``EVIDENCE_KEY`` holds, or None."""
 

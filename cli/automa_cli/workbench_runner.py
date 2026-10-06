@@ -18,7 +18,7 @@ from autonomy.decision_cycle.perception.interface import (
 )
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
 
-from .memory_report import last_plugin_state, memory_summary
+from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -60,6 +60,36 @@ def _empty_steps() -> dict[str, Any]:
 
 def _safe_status(value: Any) -> str:
     return str(value or "").strip().lower()
+
+
+def _record_ids(state: dict[str, Any] | None) -> set[str]:
+    records = (state or {}).get("records")
+    if not isinstance(records, (list, tuple)):
+        return set()
+    return {str(item.get("record_id")) for item in records if isinstance(item, dict)}
+
+
+def _memory_effects(previous: Any, current: Any) -> list[dict[str, Any]]:
+    """Each plugin's record ids added, removed and retained since the shown frame.
+
+    Plugins are matched by ``plugin_id``. A plugin the previous report did not
+    list starts from no records.
+    """
+
+    before = {plugin_id: _record_ids(state) for plugin_id, state in plugin_states(previous)}
+    effects: list[dict[str, Any]] = []
+    for plugin_id, state in plugin_states(current):
+        now = _record_ids(state)
+        prior = before.get(plugin_id, set())
+        effects.append(
+            {
+                "plugin_id": plugin_id,
+                "added": sorted(now - prior),
+                "removed": sorted(prior - now),
+                "retained": sorted(now & prior),
+            }
+        )
+    return effects
 
 
 def _state_action_set(phase: str) -> list[str]:
@@ -899,7 +929,9 @@ class ImageReplayRunner:
                 observation_payload = (
                     result.observation.to_dict() if result.observation else None
                 )
-                memory_payload = copy.deepcopy(last_plugin_state(result.memory))
+                # The memory step's report: every plugin's state by plugin_id
+                # and the evidence publisher, as inspect and the live probes read it.
+                memory_payload = copy.deepcopy(result.memory)
                 with self._condition:
                     previous_memory = self._state["steps"]["memory"]
                     self._state["current_frame"] = frame.to_dict()
@@ -1126,7 +1158,6 @@ class ImageReplayRunner:
         frames_total: int | None = None,
     ) -> dict[str, Any]:
         progress = self._state.get("progress", {}) if hasattr(self, "_state") else {}
-        memory_state = memory_summary(memory)
         summary = {
             "frames_completed": (
                 int(progress.get("completed", 0))
@@ -1142,8 +1173,8 @@ class ImageReplayRunner:
             "perception_things": len(perception.things) if perception else 0,
             "perception_signals": len(perception.signals) if perception else 0,
             "observation_available": observation is not None,
-            "memory_health": memory_state["health"],
-            "memory_records": memory_state["record_count"],
+            "memory_plugins": plugin_summaries(memory),
+            "memory_evidence_publisher": evidence_publisher(memory),
             "last_duration_ms": round(float(duration_ms), 3)
             if duration_ms is not None
             else None,
@@ -1201,17 +1232,7 @@ class ImageReplayRunner:
         result: Any,
         previous_memory: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        memory = copy.deepcopy(last_plugin_state(result.memory))
-        previous_ids = {
-            str(item.get("record_id"))
-            for item in (previous_memory or {}).get("records", [])
-            if isinstance(item, dict)
-        }
-        current_ids = {
-            str(item.get("record_id"))
-            for item in (memory or {}).get("records", [])
-            if isinstance(item, dict)
-        }
+        memory = copy.deepcopy(result.memory)
         return {
             "frame": frame.to_dict(include_path=False),
             "steps": {
@@ -1223,12 +1244,9 @@ class ImageReplayRunner:
             "perception_status": result.perception.status
             if result.perception
             else None,
-            "memory_record_count": memory_summary(memory)["record_count"],
-            "memory_effect": {
-                "added": sorted(current_ids - previous_ids),
-                "removed": sorted(previous_ids - current_ids),
-                "retained": sorted(current_ids & previous_ids),
-            },
+            "memory_plugins": plugin_summaries(memory),
+            "memory_evidence_publisher": evidence_publisher(memory),
+            "memory_effects": _memory_effects(previous_memory, memory),
             "duration_ms": result.duration_ms,
         }
 
@@ -1255,8 +1273,9 @@ class ImageReplayRunner:
                 "absence_reason": frame["absence_reason"],
             },
             "perception_status": detail["perception_status"],
-            "memory_record_count": detail["memory_record_count"],
-            "memory_effect": copy.deepcopy(detail["memory_effect"]),
+            "memory_plugins": copy.deepcopy(detail["memory_plugins"]),
+            "memory_evidence_publisher": detail["memory_evidence_publisher"],
+            "memory_effects": copy.deepcopy(detail["memory_effects"]),
             "decision": self._decision_timeline_item(detail["steps"]["decision"]),
             "duration_ms": detail["duration_ms"],
         }

@@ -18,7 +18,11 @@ from cli.automa_cli.deploy import (
 )
 from cli.automa_cli.memory import ensure_vehicle_memory_activation
 from cli.automa_cli.perception import ensure_vehicle_perception_activation
-from cli.automa_cli.step_activations import bundle_activation_path, ensure_builtin_activations
+from cli.automa_cli.step_activations import (
+    CONTROLLER_BUNDLE_KEYS,
+    bundle_activation_path,
+    ensure_builtin_activations,
+)
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
 TARGET = PhysicalTarget(
@@ -117,6 +121,13 @@ class PhysicalDeployTests(unittest.TestCase):
             ensure_builtin_activations(vehicle_id="piracer", bundle=bundle, release=release)
             steps = ("perception", "memory", "observation", "plan", "action")
             release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
+            for step in steps:
+                staged = json.loads(bundle_activation_path(bundle, step).read_text(encoding="utf-8"))
+                self.assertEqual(
+                    set(staged["metadata"]["controller_bundle"]),
+                    set(CONTROLLER_BUNDLE_KEYS),
+                )
+                self.assertNotIn("source_dir", staged["metadata"])
             deploy_files = _write_remote_activation_files(
                 target=TARGET,
                 vehicle_runtime_dir=vehicle_runtime,
@@ -144,6 +155,16 @@ class PhysicalDeployTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            for step in steps:
+                remote = json.loads(deploy_files[step].read_text(encoding="utf-8"))
+                self.assertEqual(
+                    set(remote["metadata"]["controller_bundle"]),
+                    set(CONTROLLER_BUNDLE_KEYS),
+                )
+                self.assertNotIn("source_dir", remote["metadata"])
+                self.assertTrue(
+                    str(remote["metadata"]["controller_bundle"]["autonomy_dir"]).endswith("/autonomy")
+                )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((app_root / "autonomy").is_symlink())
             self.assertTrue((app_root / "implementations").is_symlink())

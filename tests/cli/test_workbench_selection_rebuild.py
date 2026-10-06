@@ -17,16 +17,16 @@ from tests.support.cli_runner import run_automa
 
 
 class SelectionRebuildTests(unittest.TestCase):
-    def test_cli_help_describes_selection_replay_for_both_steps(self) -> None:
+    def test_cli_help_describes_selection_replay_for_every_step(self) -> None:
         help_text = " ".join(
             run_automa("vehicles", "workbench", "replay", "--help").stdout.split()
         )
-        self.assertIn("Changing perception or memory plugins", help_text)
-        self.assertIn("rebuilds both pipelines", help_text)
+        self.assertIn("Changing a step's plugins", help_text)
+        self.assertIn("rebuilds every step's pipeline", help_text)
         self.assertIn("displayed frame before returning", help_text)
         self.assertIn("append newly checked plugins", help_text)
         self.assertIn("changed ordered selection uses default configs for that step", help_text)
-        self.assertIn("other step keeps its selection and configs", help_text)
+        self.assertIn("other steps keep their selections and configs", help_text)
         self.assertIn("same ordered selection keeps the current configs and pass", help_text)
 
     def test_either_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
@@ -109,8 +109,8 @@ class SelectionRebuildTests(unittest.TestCase):
                     if phase == "paused":
                         self.assertEqual(selected["position"], 1)
                         self.assertEqual(len(selected["timeline"]), 1)
-                        self.assertEqual(runner._memory_step.update_count, 1)
-                        unchanged_step = runner._perception_step
+                        self.assertEqual(runner._steps["memory"].update_count, 1)
+                        unchanged_step = runner._steps["perception"]
                         unchanged = post_action(
                             base,
                             {
@@ -120,7 +120,7 @@ class SelectionRebuildTests(unittest.TestCase):
                                 "active_plugin_ids": selected_ids,
                             },
                         )["state"]
-                        self.assertIs(runner._perception_step, unchanged_step)
+                        self.assertIs(runner._steps["perception"], unchanged_step)
                         self.assertEqual(unchanged["position"], 1)
                     post_action(base, {"action": "reset", "run_id": run_id})
 
@@ -191,7 +191,7 @@ class SelectionRebuildTests(unittest.TestCase):
                 self.assertEqual(selected["position"], 2)
                 self.assertEqual(len(selected["timeline"]), 2)
                 self.assertNotIn("future-marker", runner._shared_memory)
-                self.assertEqual(runner._memory_step.update_count, 2)
+                self.assertEqual(runner._steps["memory"].update_count, 2)
 
                 reference = ImageReplayRunner(
                     root, activations=perception_activations(*tracked), cadence_ms=30000

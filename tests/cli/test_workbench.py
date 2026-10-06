@@ -159,7 +159,7 @@ class WorkbenchTests(unittest.TestCase):
             broken_state = ImageReplayRunner(
                 broken,
                 cadence_ms=0,
-                perception_step_factory=lambda: broken_mapper,
+                step_factories={"perception": lambda: broken_mapper},
             ).start()
             self.assertEqual(broken_state["phase"], "failed")
             self.assertEqual(broken_state["failure_boundary"], "source")
@@ -172,7 +172,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: error_mapper,
+                step_factories={"perception": lambda: error_mapper},
             )
             started = runner.start()
             state = runner.wait(5) if started["phase"] == "running" else started
@@ -184,8 +184,7 @@ class WorkbenchTests(unittest.TestCase):
             memory_runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: memory_mapper,
-                memory_step_factory=lambda: ErrorMemory(),
+                step_factories={"perception": lambda: memory_mapper, "memory": lambda: ErrorMemory()},
             )
             memory_started = memory_runner.start()
             memory_state = (
@@ -207,7 +206,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: perception_step,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
             state = runner.wait(5)
@@ -258,7 +257,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: perception_step,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
             state = runner.wait(5)
@@ -310,7 +309,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: perception_step,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
             state = runner.wait(5)
@@ -326,7 +325,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: perception_step,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
             self.assertTrue(perception_step.second_started.wait(3))

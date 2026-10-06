@@ -5,7 +5,7 @@ from unittest.mock import patch
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.steps import load_decision_steps
 from implementations.decision_cycle.catalog import step_plugins
-from cli.automa_cli.decision import get_vehicle_decision_info
+from cli.automa_cli.decision import get_vehicle_decision_info, get_vehicle_proposal_info
 from cli.automa_cli.step_activations import update_vehicle_step
 from tests.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
@@ -43,8 +43,14 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 "prior_host_applied_command",
             ],
         )
+        proposal_info = get_vehicle_proposal_info(
+            vehicle_id="chase-sim-chaser", json_output=True
+        )
+        self.assertEqual(proposal_info.exit_code, 0, proposal_info.message)
         self.assertEqual(
-            info_payload["proposal_schema"]["configuration"]["applied_plugin_ids"],
+            json.loads(proposal_info.message)["proposal_schema"]["configuration"][
+                "applied_plugin_ids"
+            ],
             proposals["plugins"],
         )
         self.assertEqual(proposals["plugins"], ["avoid_recent_obstruction"])
@@ -67,7 +73,11 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertIn("avoid_recent_obstruction", human.message)
         self.assertIn(HOLD_IDLE_REASON, human.message)
         self.assertIn("decision-combined-v0", human.message)
-        self.assertIn("Failure policy:", human.message)
+        self.assertIn("vehicles info proposal", human.message)
+        self.assertIn(
+            "Failure policy:",
+            get_vehicle_proposal_info(vehicle_id="chase-sim-chaser").message,
+        )
 
     def test_stage_unknown_plugin_and_invalid_config(self) -> None:
         code, message = update_vehicle_step(

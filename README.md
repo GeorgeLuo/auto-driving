@@ -136,8 +136,9 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 `stream perception` and `stream memory` take the same flags. By default each
 refresh redraws the terminal view, and on PiCar updates the local view whose
-URL it shows. `--json` prints one `vehicle_<step>_live_v0` probe per refresh in
-place of both, for scripts.
+URL it shows. `--json` prints one probe per refresh in place of both, for
+scripts: `vehicle_perception_live_v0` for perception and
+`vehicle_memory_live_v1` for memory.
 `--once` exits 2 unless the probe's `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
 Discovery failures also emit one `unavailable` JSON probe and exit 2, even
@@ -154,7 +155,10 @@ result from the current automation run and reports its frame identity and
 On PiCar, perception reads `/autonomy/observation/latest`: a healthy publication
 with a perception payload is live, and `age_ms` comes from the Pi's clock.
 Memory reads the retained step in `/autonomy/status`: the step's presence is
-live, while `last_health`, `last_error`, and counters report its update health.
+live. Its `plugins[]` entries retain each applied plugin's `state` and expose
+that plugin's `health`, `epoch_id`, `record_count`, and `bounds` alongside it;
+`evidence_publisher` names the plugin whose evidence is published.
+`last_error` and counters report the step's update health.
 Use the nested perception result and plugin reports to inspect plugin outcomes;
 `live` describes availability rather than promising that every plugin succeeded.
 
@@ -450,7 +454,8 @@ same frames:
 ```
 
 The report prints to the terminal: the source, both step selections, and each
-memory plugin's health, record count and epoch after every frame. `--record`
+memory plugin's health, record count and epoch after every frame, together with
+the evidence publisher. `--record`
 also saves the source frames, timing, both step selections and the report as
 `report.json` under `runtime/memory-inspections/<run>/`, and prints that
 directory after `Recorded:`. Memory recordings copy their images with relative
@@ -507,7 +512,8 @@ and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
 plugins that were applied. Each frame's `memory_plugins` lists every applied
 memory plugin's health, record count, and epoch, and
 `memory_evidence_publisher` names the plugin whose evidence the step published.
-`steps.memory` is that plugin's report, not one plugin's state. Replace v1's generic perception `plugin_catalog` and
+`steps.memory` is the complete memory step report, with its `plugins[]` and
+`evidence_publisher`. Replace v1's generic perception `plugin_catalog` and
 `active_plugin_ids` with the step-named fields; use the catalog's `digest` in
 place of `catalog_digest` / `run_catalog_digest`, and the selected or applied ids
 in place of `plugin_order` / `run_plugin_order` / `run_active_plugin_ids`.

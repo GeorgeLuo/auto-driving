@@ -1,4 +1,8 @@
-"""Read-only adapter from physical decision publications to RuntimeViewServer."""
+"""Read-only adapter from physical decision publications to RuntimeViewServer.
+
+A Chase automation worker serves the same decision page itself; ``decision
+live`` points at it rather than adapting anything.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import threading
 import time
 import webbrowser
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TextIO
 
 from autonomy.decision_cycle.memory.interface import (
@@ -14,14 +19,18 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryPluginReport,
     MemoryReport,
 )
+from .bundles import controller_bundle_paths
 from .decision import (
+    RUNTIME_ROOT,
     CommandResult,
     DecisionSurfaceError,
     accept_physical_decision_publication,
+    load_decision_identity,
     physical_decision_view_frame,
 )
 from .decision_view import (
     build_decision_host_telemetry_capture,
+    get_decision_view_status,
     project_decision_with_host_telemetry,
     unavailable_host_telemetry_panel,
 )
@@ -40,11 +49,13 @@ from .physical_observation import (
     physical_observation_dir,
     picar_base_url,
 )
+from .paths import safe_path_part
 from .runtime_view import RuntimeViewServer
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
     format_active_vehicles,
+    is_chase_vehicle_id,
 )
 
 
@@ -307,6 +318,8 @@ def run_live_decision_monitor(
 
     if not 0 <= int(port) <= 65535:
         return CommandResult(2, "--port must be between 0 and 65535.")
+    if is_chase_vehicle_id(vehicle_id):
+        return _chase_decision_view(vehicle_id, open_browser=open_browser)
     try:
         resolved, error = _resolve_physical_vehicle(
             vehicle_id,
@@ -366,6 +379,37 @@ def run_live_decision_monitor(
     finally:
         if server is not None:
             server.stop()
+
+
+def _chase_decision_view(vehicle_id: str, *, open_browser: bool) -> CommandResult:
+    """The decision page the running Chase automation worker serves."""
+
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    try:
+        identity = load_decision_identity(bundle)
+    except DecisionSurfaceError as exc:
+        return CommandResult(exc.exit_code, exc.message_text)
+    view = get_decision_view_status(
+        automation_dir=Path(bundle["runtime_dir"]) / "automation",
+        vehicle_id=vehicle_id,
+        activation=identity,
+    )
+    if not view.get("available"):
+        return CommandResult(
+            2,
+            f"Live decision view unavailable for {vehicle_id}: {view.get('reason')}.\n"
+            f"Start it: ./cli/automa vehicles automation run --id {vehicle_id} --observe-only",
+        )
+    view_url = str(view["url"])
+    lines = [
+        f"Live decision view: {view_url}",
+        f"Vehicle: {vehicle_id} (chase-sim automation worker)",
+        "Read-only decision view; no vehicle commands are sent. "
+        "The automation worker serves it until it stops.",
+    ]
+    if open_browser and not webbrowser.open(view_url, new=2):
+        lines.append(f"Open the view manually: {view_url}")
+    return CommandResult(0, "\n".join(lines))
 
 
 def read_host_telemetry_panel(

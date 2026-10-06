@@ -81,7 +81,7 @@ from .physical_observation import (
     normalize_physical_decision_publication,
     picar_base_url,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, is_chase_vehicle_id
 
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
@@ -1906,23 +1906,6 @@ def publish_decision_frame(
     return True
 
 
-def _physical_decision_output(
-    normalized: dict[str, Any],
-    *,
-    provider: str = "picar",
-) -> dict[str, Any]:
-    """Return a JSON-safe physical result while retaining the source payload."""
-
-    publication = deepcopy(normalized["publication"])
-    publication["provider"] = provider
-    publication["accepted"] = True
-    publication["freshness"] = {
-        "age_ms": normalized["result_age_ms"],
-        "max_age_ms": normalized["max_age_ms"],
-    }
-    return publication
-
-
 def physical_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
     """Adapt one accepted physical cycle to the provider-neutral decision view."""
 
@@ -1947,24 +1930,26 @@ def physical_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _format_physical_decision(normalized: dict[str, Any]) -> str:
-    decision = normalized["decision"]
-    frame = physical_decision_view_frame(normalized)
-    lines = [
-        f"Decision stream: {decision.get('vehicle_id')} frame={decision.get('frame_id')} provider=picar",
-        f"Source: {decision.get('source_id')}  run={decision.get('run_id')} "
-        f"generation={decision.get('generation_id')}",
-        "Decision steps: "
-        + ", ".join(
-            f"{step}={','.join((payload or {}).get('plugins') or []) or '-'}"
-            for step, payload in ((decision.get("activation") or {}).get("steps") or {}).items()
-        ),
-        f"Freshness: age_ms={normalized.get('result_age_ms')} "
-        f"max_age_ms={normalized.get('max_age_ms')}",
-    ]
-    stream_text = _format_stream_frame(frame)
-    lines.extend(stream_text.splitlines()[2:])
-    return "\n".join(lines)
+def _decision_stream_output(
+    frame: dict[str, Any],
+    *,
+    provider: str,
+    steps: Mapping[str, Any],
+    age_ms: Any,
+    max_age_ms: Any,
+) -> dict[str, Any]:
+    """What every vehicle's decision stream prints: its accepted stream
+    frame, the provider, each decision step's plugins, and freshness."""
+
+    return {
+        **frame,
+        "provider": provider,
+        "decision_steps": {
+            step: list((payload or {}).get("plugins") or [])
+            for step, payload in steps.items()
+        },
+        "freshness": {"age_ms": age_ms, "max_age_ms": max_age_ms},
+    }
 
 
 def _stream_physical_decision(
@@ -2003,64 +1988,28 @@ def _stream_physical_decision(
             vehicle_id=vehicle_id,
             now_ms=int(time.time() * 1000),
         )
-        return {
-            "publication": _physical_decision_output(normalized),
-            "normalized": normalized,
-        }
+        decision = normalized["decision"]
+        return _decision_stream_output(
+            {
+                **physical_decision_view_frame(normalized),
+                "generation_id": decision["generation_id"],
+            },
+            provider="picar",
+            steps=(decision.get("activation") or {}).get("steps") or {},
+            # The Pi computes the result age on its own clock.
+            age_ms=normalized["result_age_ms"],
+            max_age_ms=normalized["max_age_ms"],
+        )
 
-    if once:
-        try:
-            accepted = _accept_once()
-        except DecisionSurfaceError as exc:
-            return _error_result(exc, json_output=json_output)
-        if json_output:
-            return CommandResult(
-                0,
-                json.dumps(accepted["publication"], indent=2, sort_keys=True),
-            )
-        return CommandResult(0, _format_physical_decision(accepted["normalized"]))
-
-    stream = output
-    last_error: str | None = None
-    try:
-        while True:
-            try:
-                accepted = _accept_once()
-                last_error = None
-                text = (
-                    json.dumps(accepted["publication"], sort_keys=True)
-                    if json_output
-                    else _format_physical_decision(accepted["normalized"])
-                )
-                if stream is not None:
-                    if not no_clear and not json_output:
-                        stream.write("\033[2J\033[H")
-                    stream.write(text + "\n")
-                    stream.flush()
-            except DecisionSurfaceError as exc:
-                last_error = exc.message_text
-                if stream is not None and not json_output:
-                    if not no_clear:
-                        stream.write("\033[2J\033[H")
-                    stream.write(last_error + "\n")
-                    stream.flush()
-                elif stream is not None and json_output:
-                    stream.write(
-                        json.dumps(
-                            decision_error_payload(
-                                error=exc.error,
-                                message=exc.message_text,
-                                vehicle_id=vehicle_id,
-                                details=exc.details,
-                            ),
-                            sort_keys=True,
-                        )
-                        + "\n"
-                    )
-                    stream.flush()
-            time.sleep(max(0.05, float(refresh_s)))
-    except KeyboardInterrupt:
-        return CommandResult(130, last_error or "")
+    return _poll_decision(
+        vehicle_id=vehicle_id,
+        accept=_accept_once,
+        refresh_s=refresh_s,
+        once=once,
+        no_clear=no_clear,
+        json_output=json_output,
+        output=output,
+    )
 
 
 def stream_vehicle_decision(
@@ -2082,7 +2031,7 @@ def stream_vehicle_decision(
     # discovered through the existing read-only vehicle registry and consumed
     # through their onboard publication endpoint; no local PID/run state is
     # fabricated for them.
-    if not vehicle_id.startswith("chase-sim"):
+    if not is_chase_vehicle_id(vehicle_id):
         try:
             discovery = discover_active_vehicles(
                 timeout_s=max(0.1, float(timeout_s)),
@@ -2147,32 +2096,70 @@ def stream_vehicle_decision(
         activation = _load_activation()
         frame = _load_frame()
         state = _load_state()
+        now_ms = int(time.time() * 1000)
         accept_decision_stream_frame(
             frame,
             activation=activation,
             automation_state=state,
-            now_ms=int(time.time() * 1000),
+            now_ms=now_ms,
             is_pid_alive=is_pid_alive,
         )
-        return frame
+        return _decision_stream_output(
+            frame,
+            provider="chase-sim",
+            steps=activation["steps"],
+            age_ms=now_ms - frame["published_at_ms"],
+            max_age_ms=DECISION_STREAM_MAX_AGE_MS,
+        )
+
+    return _poll_decision(
+        vehicle_id=vehicle_id,
+        accept=_accept_once,
+        refresh_s=refresh_s,
+        once=once,
+        no_clear=no_clear,
+        json_output=json_output,
+        output=output,
+    )
+
+
+def _poll_decision(
+    *,
+    vehicle_id: str,
+    accept: Callable[[], dict[str, Any]],
+    refresh_s: float,
+    once: bool,
+    no_clear: bool,
+    json_output: bool,
+    output: TextIO | None,
+) -> CommandResult:
+    """The polling loop behind every vehicle's decision stream.
+
+    ``accept`` returns one accepted stream output or raises
+    DecisionSurfaceError, which the loop prints and keeps polling past.
+    """
 
     if once:
         try:
-            frame = _accept_once()
+            accepted = accept()
         except DecisionSurfaceError as exc:
             return _error_result(exc, json_output=json_output)
         if json_output:
-            return CommandResult(0, json.dumps(frame, indent=2, sort_keys=True))
-        return CommandResult(0, _format_stream_frame(frame))
+            return CommandResult(0, json.dumps(accepted, indent=2, sort_keys=True))
+        return CommandResult(0, _format_stream_frame(accepted))
 
     stream = output
     last_error: str | None = None
     try:
         while True:
             try:
-                frame = _accept_once()
+                accepted = accept()
                 last_error = None
-                text = json.dumps(frame, sort_keys=True) if json_output else _format_stream_frame(frame)
+                text = (
+                    json.dumps(accepted, sort_keys=True)
+                    if json_output
+                    else _format_stream_frame(accepted)
+                )
                 if stream is not None:
                     if not no_clear and not json_output:
                         stream.write("\033[2J\033[H")
@@ -2218,9 +2205,21 @@ def _format_stream_frame(frame: dict[str, Any]) -> str:
     )
     mem = frame.get("memory_summary") if isinstance(frame.get("memory_summary"), dict) else {}
     proposed = authority.get("proposed")
+    freshness = frame.get("freshness") if isinstance(frame.get("freshness"), dict) else {}
+    steps = frame.get("decision_steps") if isinstance(frame.get("decision_steps"), dict) else {}
+    # The producer: the Chase worker process, or the PiCar's onboard source.
+    producer = (
+        f"pid={frame.get('worker_pid')}"
+        if frame.get("worker_pid") is not None
+        else f"source={frame.get('source_id')}"
+    )
     lines = [
-        f"Decision stream: {frame.get('vehicle_id')} frame={frame.get('frame_id')}",
-        f"Generation: {frame.get('generation_id')}  run={frame.get('run_id')}  pid={frame.get('worker_pid')}",
+        f"Decision stream: {frame.get('vehicle_id')} frame={frame.get('frame_id')} "
+        f"provider={frame.get('provider')}",
+        f"Generation: {frame.get('generation_id')}  run={frame.get('run_id')}  {producer}",
+        "Decision steps: "
+        + ", ".join(f"{step}={','.join(plugins) or '-'}" for step, plugins in steps.items()),
+        f"Freshness: age_ms={freshness.get('age_ms')} max_age_ms={freshness.get('max_age_ms')}",
         f"Observation: status={obs.get('status')} frame_id={obs.get('frame_id')} "
         f"reason={obs.get('reason')}",
         "Observation image: unavailable (no image path published in stream frame)",

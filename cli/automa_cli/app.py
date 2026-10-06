@@ -640,18 +640,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_live = decision_control_commands.add_parser(
         "live",
-        help="Open the shared read-only decision view for a live PiCar.",
+        help="Open the shared read-only decision view for a live vehicle.",
         description=(
-            "Adapt the PiCar decision publication into the same RuntimeViewServer "
-            "decision page used by Chase, with matched image-relative evidence and "
-            "proposed versus authorized output. It sends no vehicle commands."
+            "Open the decision page with matched image-relative evidence and "
+            "proposed versus authorized output. A Chase automation worker serves "
+            "it; for a PiCar this adapts the decision publication into the same "
+            "RuntimeViewServer page until Ctrl-C. It sends no vehicle commands."
         ),
     )
     decision_live.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="PiCar vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles active`.",
     )
     decision_live.add_argument(
         "--port",

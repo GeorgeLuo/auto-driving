@@ -184,6 +184,13 @@ new id known offline. Existing perception identity metadata remains usable.
 Older memory or decision activations without provider metadata require a
 matching identity in another step or discovery on the next update.
 
+Every step update records `metadata.controller_bundle` with `root_dir`,
+`autonomy_dir`, `implementations_dir`, `runtime_dir`, and `release`.
+`vehicles info perception|memory --json` exposes those same bundle keys.
+The paths identify the staged code; `release` identifies the packaged source
+and archive. Plugin selections and constructor configs remain in `plugins`,
+`plugin_specs`, and `plugin_configs`.
+
 Perception additionally reports Chase readiness after staging. Its
 `--timeout-s` also bounds each live readiness check and simulator operation;
 it is not a deadline for the entire update command. Perception `--restart`
@@ -367,6 +374,13 @@ are.
 A recording restores its perception selection, frame identity and timestamps;
 `--preset` or `--plugin` overrides the selection. Without a recording, a live
 read uses the vehicle's staged selection and images use the default preset.
+
+Live inspection refreshes the local code bundle when workspace source changes.
+It rebuilds a staged named perception preset from the current catalog, including
+its configs; a `custom` activation keeps its selection, specs and configs.
+An explicit inspection selection runs from that bundle without saving the
+override to the vehicle's activation.
+
 Both inspection commands read recorded frames the same way: equal timestamps
 are allowed at millisecond resolution, frame indices preserve ordering and
 timestamps cannot go backwards. Camera manifests (`camera_frames`) and
@@ -577,8 +591,11 @@ startup.
 The first physical autonomy deployment creates the default
 `lightweight_observer` perception activation, built-in observation/plan/action
 activations, and `bounded_evidence` memory activation when none exist. No
-proposal is staged by default, so the cycle holds. Existing staged selections
-are preserved. The Pi loads those activations. The Donkey assembly runs the
+proposal is staged by default, so the cycle holds. A named perception preset
+is rebuilt from the current catalog, including its configs; custom perception
+activations and all other staged steps keep their selection, specs and configs,
+including named memory presets. Every deployed step records the same release
+and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. Each drive-loop tick
 publishes the newest camera sample on
 `/autonomy/camera/latest` and does not wait for perception, so a capture can

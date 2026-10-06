@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Callable, TextIO
 
 from .automation import (
     CHASE_WORKER_PROBE_MAX_AGE_MS,
@@ -245,6 +245,108 @@ def once_stream_outcome(
     return 2, "" if stream is not None else (line or diagnostic)
 
 
+def _poll_stream(
+    *,
+    step: str,
+    probe: Callable[[], tuple[dict[str, Any], Any]],
+    render: Callable[[dict[str, Any], Any], str],
+    refresh_s: float,
+    once: bool,
+    no_clear: bool,
+    json_output: bool,
+    stream: TextIO | None,
+) -> CommandResult:
+    """The polling loop behind every vehicle's step stream.
+
+    ``probe`` returns the live probe and the source material it read;
+    ``render`` turns both into the terminal screen. JSON mode prints the
+    probe alone.
+    """
+
+    try:
+        while True:
+            live, source = probe()
+            line = json.dumps(live, sort_keys=True) if json_output else render(live, source)
+            if stream is not None:
+                if not no_clear and not json_output:
+                    print("\033[2J\033[H", end="", file=stream)
+                print(line, file=stream, flush=True)
+            if once:
+                return CommandResult(
+                    *once_stream_outcome(step=step, live=live, line=line, stream=stream)
+                )
+            time.sleep(max(0.1, float(refresh_s)))
+    except KeyboardInterrupt:
+        return CommandResult(130, "")
+
+
+class _PhysicalViewFeed:
+    """A loopback runtime view a stream feeds from the PiCar publication.
+
+    The Chase worker serves its own view (``published_view`` in its state);
+    the PiCar serves none, so its terminal streams host one locally.
+    """
+
+    def __init__(self, vehicle_id: str) -> None:
+        runtime_dir = physical_observation_dir(vehicle_id)
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        self.frame_path = runtime_dir / "latest_frame.jpg"
+        self.server: RuntimeViewServer | None = None
+        self.error: str | None = None
+        try:
+            self.server = RuntimeViewServer(
+                vehicle_id=vehicle_id,
+                automation_dir=runtime_dir,
+            ).start()
+        except OSError as exc:
+            self.error = f"{type(exc).__name__}: {exc}"
+
+    @property
+    def url(self) -> str | None:
+        return self.server.url if self.server is not None else None
+
+    def publish(
+        self,
+        *,
+        base_url: str,
+        publication: dict[str, Any] | None,
+        timeout_s: float,
+    ) -> None:
+        if publication is None or self.server is None:
+            return
+        try:
+            _publish_physical_view(
+                view_server=self.server,
+                base_url=base_url,
+                publication=publication,
+                frame_path=self.frame_path,
+                timeout_s=timeout_s,
+            )
+            self.error = None
+        except (ConnectionError, OSError, TypeError, ValueError) as exc:
+            self.error = f"{type(exc).__name__}: {exc}"
+
+    def stop(self) -> None:
+        if self.server is not None:
+            self.server.stop()
+
+
+def _chase_view(state: dict[str, Any] | None) -> tuple[str | None, str | None]:
+    """The Chase worker's own runtime view: its URL, or why there is none."""
+
+    view = state.get("published_view") if isinstance(state, dict) else None
+    view = view if isinstance(view, dict) else {}
+    if view.get("available") and view.get("url"):
+        return str(view["url"]), None
+    return None, str(view.get("reason") or view.get("status") or "the worker publishes no view")
+
+
+def _view_line(label: str, url: str | None, error: str | None, route: str = "") -> str:
+    if url:
+        return f"{label}: {url.rstrip('/') + route if route else url}"
+    return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"
+
+
 def _stream_chase_perception(
     *,
     vehicle_id: str,
@@ -254,14 +356,7 @@ def _stream_chase_perception(
     json_output: bool,
     output: TextIO | None,
 ) -> CommandResult:
-    stream = output
     automation_dir = _automation_dir(vehicle_id)
-    state_path = automation_dir / "state.json"
-    process_path = automation_dir / "process.json"
-    latest_text_path = automation_dir / "latest_perception.txt"
-    latest_json_path = automation_dir / "latest_perception.json"
-    default_log_path = automation_dir / "automation.log"
-
     if not json_output and not automation_dir.exists():
         return CommandResult(
             2,
@@ -273,35 +368,20 @@ def _stream_chase_perception(
                 ]
             ),
         )
-
-    try:
-        while True:
-            live = _probe_chase_perception(vehicle_id=vehicle_id)
-            if json_output:
-                line = json.dumps(live, sort_keys=True)
-            else:
-                line = _render_chase_perception_screen(
-                    vehicle_id=vehicle_id,
-                    live=live,
-                    state=_read_json(state_path),
-                    process=_read_json(process_path),
-                    latest=_read_json(latest_json_path),
-                    latest_text=_read_text(latest_text_path),
-                    state_path=state_path,
-                    default_log_path=default_log_path,
-                )
-            if stream is not None:
-                if not no_clear and not json_output:
-                    print("\033[2J\033[H", end="", file=stream)
-                print(line, file=stream, flush=True)
-
-            if once:
-                return CommandResult(
-                    *once_stream_outcome(step="perception", live=live, line=line, stream=stream)
-                )
-            time.sleep(max(0.1, float(refresh_s)))
-    except KeyboardInterrupt:
-        return CommandResult(130, "")
+    return _poll_stream(
+        step="perception",
+        probe=lambda: (_probe_chase_perception(vehicle_id=vehicle_id), None),
+        render=lambda live, _source: _chase_perception_screen(
+            vehicle_id=vehicle_id,
+            live=live,
+            automation_dir=automation_dir,
+        ),
+        refresh_s=refresh_s,
+        once=once,
+        no_clear=no_clear,
+        json_output=json_output,
+        stream=output,
+    )
 
 
 def _stream_physical_perception(
@@ -315,79 +395,47 @@ def _stream_physical_perception(
     json_output: bool,
     output: TextIO | None,
 ) -> CommandResult:
-    stream = output
     base_url = picar_base_url(vehicle)
     if not json_output and not base_url:
         return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+    # JSON output prints the probe alone; only the terminal view feeds a view.
+    view = None if json_output else _PhysicalViewFeed(vehicle_id)
 
-    # The terminal view comes with the local view and its frame file; JSON
-    # output prints the probe alone.
-    view_server: RuntimeViewServer | None = None
-    view_error: str | None = None
-    frame_path: Path | None = None
-    if not json_output:
-        runtime_dir = physical_observation_dir(vehicle_id)
-        runtime_dir.mkdir(parents=True, exist_ok=True)
-        frame_path = runtime_dir / "latest_frame.jpg"
-        try:
-            view_server = RuntimeViewServer(
-                vehicle_id=vehicle_id,
-                automation_dir=runtime_dir,
-            ).start()
-        except OSError as exc:
-            view_error = f"{type(exc).__name__}: {exc}"
+    def probe() -> tuple[dict[str, Any], Any]:
+        publication, fetch_error = _read_physical_publication(base_url, timeout_s=timeout_s)
+        live = _probe_physical_perception(
+            vehicle_id=vehicle_id,
+            base_url=base_url,
+            publication=publication,
+            fetch_error=fetch_error,
+        )
+        return live, publication
+
+    def render(live: dict[str, Any], publication: Any) -> str:
+        assert view is not None and base_url
+        view.publish(base_url=base_url, publication=publication, timeout_s=timeout_s)
+        return _physical_perception_screen(
+            vehicle_id=vehicle_id,
+            live=live,
+            base_url=base_url,
+            publication=publication,
+            view=view,
+        )
 
     try:
-        while True:
-            publication, fetch_error = _read_physical_publication(base_url, timeout_s=timeout_s)
-            live = _probe_physical_perception(
-                vehicle_id=vehicle_id,
-                base_url=base_url,
-                publication=publication,
-                fetch_error=fetch_error,
-            )
-
-            if json_output:
-                line = json.dumps(live, sort_keys=True)
-            else:
-                view_url = view_server.url if view_server is not None else None
-                if publication is not None and view_server is not None and frame_path is not None:
-                    try:
-                        _publish_physical_view(
-                            view_server=view_server,
-                            base_url=base_url,
-                            publication=publication,
-                            frame_path=frame_path,
-                            timeout_s=timeout_s,
-                        )
-                        view_url = view_server.url
-                        view_error = None
-                    except (ConnectionError, OSError, TypeError, ValueError) as exc:
-                        view_error = f"{type(exc).__name__}: {exc}"
-                line = _render_physical_perception_screen(
-                    vehicle_id=vehicle_id,
-                    live=live,
-                    base_url=base_url,
-                    publication=publication,
-                    fetch_error=fetch_error,
-                    view_url=view_url,
-                    view_error=view_error,
-                )
-            if stream is not None:
-                if not no_clear and not json_output:
-                    print("\033[2J\033[H", end="", file=stream)
-                print(line, file=stream, flush=True)
-
-            if once:
-                return CommandResult(
-                    *once_stream_outcome(step="perception", live=live, line=line, stream=stream)
-                )
-            time.sleep(max(0.1, float(refresh_s)))
-    except KeyboardInterrupt:
-        return CommandResult(130, "")
+        return _poll_stream(
+            step="perception",
+            probe=probe,
+            render=render,
+            refresh_s=refresh_s,
+            once=once,
+            no_clear=no_clear,
+            json_output=json_output,
+            stream=output,
+        )
     finally:
-        if view_server is not None:
-            view_server.stop()
+        if view is not None:
+            view.stop()
 
 
 def _probe_chase_perception(*, vehicle_id: str) -> dict[str, Any]:
@@ -573,179 +621,138 @@ def _publish_physical_view(
     view_server.perception.publish_perception(frame_record=frame_record)
 
 
-def _render_chase_perception_screen(
+def _render_perception_screen(
     *,
     vehicle_id: str,
     live: dict[str, Any],
-    state: dict[str, Any] | None,
-    process: dict[str, Any] | None,
-    latest: dict[str, Any] | None,
-    latest_text: str,
-    state_path: Path,
-    default_log_path: Path,
+    source: str,
+    record: dict[str, Any],
+    preset: Any,
+    mode: Any,
+    cadence: dict[str, Any],
+    view: str,
+    details: list[str],
+    body: str,
 ) -> str:
-    now_ms = _timestamp_ms()
-    state = state if isinstance(state, dict) else {}
-    process = process if isinstance(process, dict) else {}
-    latest = latest if isinstance(latest, dict) else {}
-    last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
-    pid = live.get("worker_pid")
+    """The perception screen of every vehicle; ``source`` and ``details`` are its own.
 
-    perception = latest.get("perception") if isinstance(latest.get("perception"), dict) else {}
-    things = perception.get("things")
-    thing_count = len(things) if isinstance(things, list) else last_frame.get("things")
+    ``record`` is the latest frame record (the Chase worker's
+    ``latest_perception.json``, or the PiCar publication adapted to one);
+    ``cadence`` names interval_s, processed, skipped, cycle_ms and age_ms.
+    """
+
+    perception = record.get("perception") if isinstance(record.get("perception"), dict) else {}
+    control = record.get("control") if isinstance(record.get("control"), dict) else {}
     signals = perception.get("signals")
-    signal_count = len(signals) if isinstance(signals, list) else last_frame.get("signals")
-    completed_at = _int_or_none(last_frame.get("perception_completed_at_ms"))
-    age_ms = None if completed_at is None else max(0, now_ms - completed_at)
-
-    header = [
+    things = perception.get("things")
+    lines = [
         "automa perception stream",
         "",
         f"vehicle: {vehicle_id}",
-        f"source: chase-sim automation worker",
+        f"source: {source}",
         f"status: {live.get('status', 'unknown')}",
-        f"worker: {live.get('worker_status') or 'unknown'}  pid: {pid or 'unknown'}",
-        f"control: {state.get('control_source', 'unknown')}  action: {state.get('action_policy', 'unknown')}",
-        f"recording: {state.get('recording', 'unknown')}  frames_processed: {state.get('frames_processed', 0)}",
-        _chase_cadence_line(state, last_frame, age_ms),
-        _latest_line(last_frame, signal_count, thing_count),
-        f"state: {display_path(state_path)}",
-        _log_line(process, default_log_path),
+        *([f"error: {live['error']}"] if live.get("error") else []),
+        f"preset: {_shown(preset)}  mode: {_shown(mode)}",
+        (
+            f"control: steering={_shown(control.get('steering'))}  "
+            f"throttle={_shown(control.get('throttle'))}  reason={_shown(control.get('reason'))}"
+        ),
+        "cadence: " + "  ".join(f"{key}={_shown(value)}" for key, value in cadence.items()),
+        (
+            f"latest: frame={_shown(record.get('frame_id'), 'none')}  "
+            f"captured_at_ms={_shown(record.get('captured_at_ms'))}  "
+            f"signals={_shown(len(signals) if isinstance(signals, list) else None)}  "
+            f"things={_shown(len(things) if isinstance(things, list) else None)}"
+        ),
+        view,
+        *details,
         "",
         "latest perception",
         "-----------------",
+        body.strip() or "(no latest perception yet)",
     ]
-    if live.get("error"):
-        header.insert(5, f"error: {live['error']}")
-    body = latest_text.strip() if latest_text.strip() else "(no latest perception yet)"
-    return "\n".join([*header, body])
+    return "\n".join(lines)
 
 
-def _render_physical_perception_screen(
+def _chase_perception_screen(
+    *,
+    vehicle_id: str,
+    live: dict[str, Any],
+    automation_dir: Path,
+) -> str:
+    state = _read_json(automation_dir / "state.json") or {}
+    process = _read_json(automation_dir / "process.json") or {}
+    record = _read_json(automation_dir / "latest_perception.json") or {}
+    step = state.get("perception") if isinstance(state.get("perception"), dict) else {}
+    completed_at = _int_or_none(record.get("perception_completed_at_ms"))
+    view_url, view_error = _chase_view(state)
+    return _render_perception_screen(
+        vehicle_id=vehicle_id,
+        live=live,
+        source="chase-sim automation worker",
+        record=record,
+        preset=step.get("preset"),
+        mode=state.get("action_policy"),
+        cadence={
+            "interval_s": state.get("interval_s"),
+            "processed": state.get("frames_processed"),
+            "skipped": state.get("frames_dropped"),
+            "cycle_ms": record.get("cycle_duration_ms"),
+            "age_ms": None if completed_at is None else max(0, _timestamp_ms() - completed_at),
+        },
+        view=_view_line("view", view_url, view_error),
+        details=[
+            (
+                f"worker: {live.get('worker_status') or state.get('status') or 'unknown'}  "
+                f"pid: {live.get('worker_pid') or state.get('pid') or 'unknown'}  "
+                f"control_source: {_shown(state.get('control_source'))}  "
+                f"recording: {_shown(state.get('recording'))}  "
+                f"max_frames: {_shown(state.get('max_frames'), 'unbounded')}"
+            ),
+            f"state: {display_path(automation_dir / 'state.json')}",
+            _log_line(process, automation_dir / "automation.log"),
+        ],
+        body=_read_text(automation_dir / "latest_perception.txt"),
+    )
+
+
+def _physical_perception_screen(
     *,
     vehicle_id: str,
     live: dict[str, Any],
     base_url: str,
     publication: dict[str, Any] | None,
-    fetch_error: str | None,
-    view_url: str | None,
-    view_error: str | None,
+    view: _PhysicalViewFeed,
 ) -> str:
-    if fetch_error is not None:
-        body = ""
-        health = "unavailable"
-        frame_id = "none"
-        age_ms: Any = "unknown"
-        thing_count: Any = "unknown"
-        signal_count: Any = "unknown"
-        preset = "unknown"
-        control_text = "unknown"
-        duration_ms: Any = "unknown"
-        processed: Any = "unknown"
-        skipped: Any = "unknown"
-        mode = "unknown"
-        min_interval: Any = "unknown"
-    else:
-        publication = publication if isinstance(publication, dict) else {}
-        health = str(publication.get("health") or "unknown")
-        frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-        frame_id = frame.get("frame_id") or "none"
-        age_ms = publication.get("result_age_ms")
-        if age_ms is None:
-            age_ms = "unknown"
-        perception = (
-            publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
-        )
-        things = perception.get("things")
-        thing_count = len(things) if isinstance(things, list) else "unknown"
-        signals = perception.get("signals")
-        signal_count = len(signals) if isinstance(signals, list) else "unknown"
-        preset = publication.get("preset") or "unknown"
-        control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
-        control_text = (
-            f"steering={control.get('steering', 'unknown')} "
-            f"throttle={control.get('throttle', 'unknown')} "
-            f"reason={control.get('reason', 'unknown')}"
-        )
-        duration_ms = publication.get("duration_ms")
-        if duration_ms is None:
-            duration_ms = "unknown"
-        processed = publication.get("processed_count")
-        if processed is None:
-            processed = "unknown"
-        skipped = publication.get("skipped_count")
-        if skipped is None:
-            skipped = "unknown"
-        mode = publication.get("mode") or publication.get("drive_mode") or "unknown"
-        min_interval = publication.get("min_interval_s")
-        if min_interval is None:
-            min_interval = "unknown"
-        body = perception_text_from_publication(publication)
-
-    if view_url:
-        view_line = f"view: {view_url}"
-    elif view_error:
-        view_line = f"view: unavailable ({view_error})"
-    else:
-        view_line = "view: unavailable"
-
-    header = [
-        "automa perception stream",
-        "",
-        f"vehicle: {vehicle_id}",
-        f"source: physical onboard  endpoint: {base_url}",
-        f"status: {live.get('status', 'unknown')}",
-        f"publication: {health}  drive_mode: {mode}  preset: {preset}",
-        f"control: {control_text}",
-        (
-            f"cadence: min_interval_s={min_interval}  processed={processed}  "
-            f"skipped={skipped}  duration_ms={duration_ms}  age_ms={age_ms}"
-        ),
-        (
-            f"latest: frame={frame_id}  signals={signal_count}  things={thing_count}  "
-            f"json={LATEST_JSON_PATH}  frame={LATEST_FRAME_PATH}"
-        ),
-        view_line,
-        "",
-        "latest perception",
-        "-----------------",
-    ]
-    if live.get("error"):
-        header.insert(5, f"error: {live['error']}")
-    return "\n".join([*header, body if body.strip() else "(no latest perception yet)"])
-
-
-def _chase_cadence_line(
-    state: dict[str, Any],
-    last_frame: dict[str, Any],
-    age_ms: int | None,
-) -> str:
-    interval = state.get("interval_s")
-    perception_ms = last_frame.get("perception_duration_ms")
-    cycle_ms = last_frame.get("cycle_duration_ms")
-    max_frames = state.get("max_frames")
-    parts = [
-        f"cadence: interval_s={interval if interval is not None else 'unknown'}",
-        f"max_frames={max_frames if max_frames is not None else 'unbounded'}",
-        f"perception_ms={perception_ms if perception_ms is not None else 'unknown'}",
-        f"cycle_ms={cycle_ms if cycle_ms is not None else 'unknown'}",
-        f"age_ms={age_ms if age_ms is not None else 'unknown'}",
-    ]
-    return "  ".join(parts)
-
-
-def _latest_line(
-    last_frame: dict[str, Any],
-    signal_count: Any,
-    thing_count: Any,
-) -> str:
-    return (
-        f"latest: frame={last_frame.get('frame_id', 'none')}  "
-        f"captured_at_ms={last_frame.get('captured_at_ms', 'unknown')}  "
-        f"signals={signal_count if signal_count is not None else 'unknown'}  "
-        f"things={thing_count if thing_count is not None else 'unknown'}"
+    publication = publication if isinstance(publication, dict) else {}
+    return _render_perception_screen(
+        vehicle_id=vehicle_id,
+        live=live,
+        source=f"picar onboard autonomy  endpoint: {base_url}",
+        record=publication_to_frame_record(publication),
+        preset=publication.get("preset"),
+        mode=publication.get("mode") or publication.get("drive_mode"),
+        cadence={
+            "interval_s": publication.get("min_interval_s"),
+            "processed": publication.get("processed_count"),
+            "skipped": publication.get("skipped_count"),
+            "cycle_ms": publication.get("duration_ms"),
+            # The Pi computes the result age on its own clock.
+            "age_ms": publication.get("result_age_ms"),
+        },
+        view=_view_line("view", view.url, view.error),
+        details=[
+            (
+                f"publication: {publication.get('health') or 'unavailable'}  "
+                f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
+            )
+        ],
+        body=perception_text_from_publication(publication) if publication else "",
     )
+
+
+def _shown(value: Any, default: str = "unknown") -> Any:
+    return default if value is None else value
 
 
 def _log_line(process: dict[str, Any], default_log_path: Path) -> str:

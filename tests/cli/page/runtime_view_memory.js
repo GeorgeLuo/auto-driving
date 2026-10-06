@@ -52,7 +52,11 @@ function pageContext(fetchLatest) {
         if (!byId.has(id)) byId.set(id, fakeElement());
         return byId.get(id);
       },
-      createElement() { return fakeElement(); }
+      createElement() {
+        const element = fakeElement();
+        element.focus = () => { ctx.document.activeElement = element; };
+        return element;
+      }
     }
   };
   vm.createContext(ctx);
@@ -139,13 +143,24 @@ async function memoryPage() {
   ]);
   assert.equal(pluginRows()[1].meta, "no health · epoch epoch-1 · 1 keys");
 
-  // Picking the other plugin shows its keys; the publisher stays named.
+  // Keyboard activation selects the other plugin; the publisher stays named.
   const recording = $("pluginList").querySelectorAll(".plugin-row")[1];
-  $("pluginList").listeners.pointerdown[0]({ target: recording, preventDefault() {} });
+  recording.focus();
+  for (const handler of $("pluginList").listeners.click || []) {
+    handler({ target: recording, detail: 0, preventDefault() {} });
+  }
   assert.deepEqual(pluginRows().map((row) => row.shown), [false, true]);
   assert.equal(metrics($("ledgerMetrics"))["Plugin"], "recording_test");
   assert.equal(metrics($("ledgerMetrics"))["Evidence publisher"], "bounded_evidence");
   assert.deepEqual(keys(), ["rec-1"]);
+  assert.equal(ctx.document.activeElement.dataset.plugin, "recording_test");
+  assert($("pluginList").contains(ctx.document.activeElement));
+
+  // Pointer selection continues to work while live updates rebuild the list.
+  const bounded = $("pluginList").querySelectorAll(".plugin-row")[0];
+  $("pluginList").listeners.pointerdown[0]({ target: bounded, preventDefault() {} });
+  assert.equal(metrics($("ledgerMetrics"))["Plugin"], "bounded_evidence");
+  assert.deepEqual(keys(), ["thing:a", "thing:b"]);
 
   // No publisher and no listed pick: nothing is shown by position.
   latest = publication([

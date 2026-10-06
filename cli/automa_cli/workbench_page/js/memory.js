@@ -45,6 +45,8 @@ function renderMemoryPlugins(memory) {
   }).join("\n") + "\0" + String(shownId);
   if (signature === memoryPluginSignature) return;
   memoryPluginSignature = signature;
+  var focusedId = elements.memoryPlugins.contains(document.activeElement)
+    ? document.activeElement.getAttribute("data-plugin-id") : null;
   elements.memoryPlugins.textContent = "";
   plugins.forEach(function (entry) {
     var isShown = entry.plugin_id === shownId;
@@ -55,6 +57,7 @@ function renderMemoryPlugins(memory) {
     button.setAttribute("aria-pressed", isShown ? "true" : "false");
     button.textContent = memoryPluginText(entry, publisher);
     elements.memoryPlugins.appendChild(button);
+    if (entry.plugin_id === focusedId) button.focus();
   });
 }
 function selectMemoryPlugin(pluginId) {
@@ -134,11 +137,15 @@ function bindMemoryList() {
     event.stopPropagation();
     selectRecord(button.getAttribute("data-record-id"));
   });
-  elements.memoryPlugins.addEventListener("pointerdown", function (event) {
+  function pickPlugin(event) {
     var button = event.target.closest("button[data-plugin-id]");
     if (!button) return;
     event.stopPropagation();
     selectMemoryPlugin(button.getAttribute("data-plugin-id"));
+  }
+  elements.memoryPlugins.addEventListener("pointerdown", pickPlugin);
+  elements.memoryPlugins.addEventListener("click", function (event) {
+    if (event.detail === 0) pickPlugin(event);
   });
 }
 function clearMemoryLedger() {

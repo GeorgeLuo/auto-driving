@@ -12,6 +12,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
+from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
 
@@ -20,29 +21,16 @@ PERCEPTION_SCHEMA = "perception_schema_v3"
 PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
 
-# Same field names as memory's failure policy. The values differ: a perception
-# plugin error is isolated, an explicit reset error propagates, and a missing
-# feed skips that plugin. A stateful plugin is reset on a missing feed inside
-# frame execution; a failure there follows the update isolation policy.
-FAILURE_POLICY_FIELDS = ("update", "reset", "missing_input")
-UPDATE_FAILURE = "isolate_plugin"
-RESET_FAILURE = "propagate"
-MISSING_INPUT = "skip_plugin"
-
-
-def failure_policy() -> dict[str, str]:
-    """The values ``PerceptionRunner`` reads when a plugin fails or a feed is missing.
-
-    ``reset`` governs explicit reset and selection removal. A stateful plugin's
-    automatic reset on a missing feed happens inside frame execution, so its
-    exception follows ``update`` and becomes that plugin's error result.
-    """
-
-    return {
-        "update": UPDATE_FAILURE,
-        "reset": RESET_FAILURE,
-        "missing_input": MISSING_INPUT,
-    }
+# A perception plugin error is isolated, an explicit reset error propagates,
+# and a missing feed skips that plugin. ``reset`` governs explicit reset and
+# selection removal. A stateful plugin is also reset on a missing feed, inside
+# frame execution, so an exception there follows ``update`` and becomes that
+# plugin's error result.
+FAILURE_POLICY = FailurePolicy(
+    update="isolate_plugin",
+    reset="propagate",
+    missing_input="skip_plugin",
+)
 
 
 def composition_declaration() -> dict[str, str]:

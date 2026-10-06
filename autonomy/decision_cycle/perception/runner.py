@@ -40,16 +40,13 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
 )
 from autonomy.decision_cycle.perception.interface import (
-    MISSING_INPUT,
+    FAILURE_POLICY,
     PERCEPTION_SCHEMA,
     PERCEPTION_TEXT_SCHEMA,
-    RESET_FAILURE,
-    UPDATE_FAILURE,
     PerceptionPluginRun,
     PerceptionText,
     PluginResultStatus,
     composition_declaration,
-    failure_policy,
 )
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
@@ -324,7 +321,7 @@ class PerceptionRunner:
                 ],
             },
             "composition": composition_declaration(),
-            "failure_policy": failure_policy(),
+            "failure_policy": FAILURE_POLICY.to_dict(),
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
@@ -521,7 +518,7 @@ class PerceptionRunner:
 
         try:
             feeds, missing = self._resolve_inputs(plugin.contract, request)
-            if missing and MISSING_INPUT == "skip_plugin":
+            if missing and FAILURE_POLICY.missing_input == "skip_plugin":
                 if plugin.contract.state_mode != "stateless":
                     _reset_plugin(plugin, request.shared_memory)
                 details = "; ".join(
@@ -565,7 +562,7 @@ class PerceptionRunner:
                 error=exc.reason,
             )
         except Exception as exc:
-            if UPDATE_FAILURE != "isolate_plugin":
+            if FAILURE_POLICY.update != "isolate_plugin":
                 raise
             return _execution(
                 started,
@@ -666,7 +663,7 @@ def _reset_plugin(plugin: Any, shared_memory=None) -> None:
         else:
             reset()
     except Exception:
-        if RESET_FAILURE == "propagate":
+        if FAILURE_POLICY.reset == "propagate":
             raise
 
 

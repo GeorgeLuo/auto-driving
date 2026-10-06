@@ -10,6 +10,10 @@ selection between cycles (each call also picks up the manager's selection),
 ``plugin_report`` and ``status`` for diagnostics, and ``reset`` to start a new
 epoch.
 
+Each step declares what a plugin failure or a missing input does as one
+``FailurePolicy``, ``FAILURE_POLICY`` in the step's ``interface``. The runner
+reads it, and ``describe_schema`` reports it under ``failure_policy``.
+
 ``StepRunner`` implements that surface for steps whose plugins need no more
 than load, validate, and reset. The perception and memory runners implement the
 same surface with their own component and host-map handling.
@@ -19,6 +23,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
+from dataclasses import dataclass
 from threading import RLock
 from typing import Any, ClassVar, Generic, TypeVar
 
@@ -36,6 +41,42 @@ from autonomy.shared_memory import SharedMemory
 PluginT = TypeVar("PluginT")
 # Entrypoint module name for instances handed to ``StepRunner.from_plugins``.
 PROVIDED_ENTRYPOINT = "provided"
+
+FAILURE_POLICY_FIELDS = ("update", "reset", "missing_input")
+# The values a step may declare for each field:
+# - update: a plugin that raises while it runs. ``isolate_plugin`` records the
+#   error as that plugin's result and the other plugins still run;
+#   ``stop_cycle`` re-raises, which ends the step and the cycle.
+# - reset: a plugin whose reset raises. ``propagate`` re-raises to the caller;
+#   ``record`` records the error on the plugin and the other plugins still
+#   reset.
+# - missing_input: an input the plugin reads is absent this cycle.
+#   ``skip_plugin`` does not call the plugin; ``invoke`` calls it with the
+#   input missing.
+FAILURE_POLICY_VALUES: Mapping[str, frozenset[str]] = {
+    "update": frozenset({"isolate_plugin", "stop_cycle"}),
+    "reset": frozenset({"propagate", "record"}),
+    "missing_input": frozenset({"skip_plugin", "invoke"}),
+}
+
+
+@dataclass(frozen=True)
+class FailurePolicy:
+    """What one step does when a plugin fails or an input is missing."""
+
+    update: str
+    reset: str
+    missing_input: str
+
+    def __post_init__(self) -> None:
+        for name in FAILURE_POLICY_FIELDS:
+            value = getattr(self, name)
+            if value not in FAILURE_POLICY_VALUES[name]:
+                allowed = ", ".join(sorted(FAILURE_POLICY_VALUES[name]))
+                raise ValueError(f"failure policy {name} must be one of {allowed}; got {value!r}")
+
+    def to_dict(self) -> dict[str, str]:
+        return {name: getattr(self, name) for name in FAILURE_POLICY_FIELDS}
 
 
 def require_step_manager(plugin_manager: object, step: str) -> PluginManager:

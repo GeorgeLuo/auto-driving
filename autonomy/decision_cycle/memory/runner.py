@@ -9,7 +9,7 @@ not the report.
 
 ``MemoryPluginRuntime`` times and reports one applied plugin. It sits here, in
 the runner's file, as perception keeps its per-plugin execution in its own.
-Update and reset failures follow ``failure_policy`` in ``interface``.
+Update and reset failures follow ``FAILURE_POLICY`` in ``interface``.
 """
 
 from __future__ import annotations
@@ -26,14 +26,11 @@ from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.memory.interface import (
     LEDGER_SUMMARY_KEYS,
     MEMORY_REPORT_SCHEMA,
+    FAILURE_POLICY,
     MEMORY_SCHEMA,
-    MISSING_INPUT,
-    RESET_FAILURE,
-    UPDATE_FAILURE,
     MemoryPluginReport,
     MemoryReport,
     composition_declaration,
-    failure_policy,
 )
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
@@ -95,7 +92,7 @@ class MemoryPluginRuntime:
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
             self.last_error = _diagnostic(exc)
-            if UPDATE_FAILURE == "stop_cycle":
+            if FAILURE_POLICY.update == "stop_cycle":
                 raise
         finally:
             self.last_duration_ms = (time.perf_counter() - started) * 1000.0
@@ -113,7 +110,7 @@ class MemoryPluginRuntime:
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
             self.last_error = _diagnostic(exc)
-            if RESET_FAILURE == "propagate":
+            if FAILURE_POLICY.reset == "propagate":
                 raise
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
@@ -279,7 +276,7 @@ class MemoryRunner:
                     try:
                         # A missing observation still reaches the plugin when
                         # the declared policy is ``invoke``.
-                        if observation is not None or MISSING_INPUT == "invoke":
+                        if observation is not None or FAILURE_POLICY.missing_input == "invoke":
                             plugin.update(memory_context, observation)
                     finally:
                         self._note_evidence(plugin.plugin_id, before)
@@ -369,7 +366,7 @@ class MemoryRunner:
                     "source": "the cycle's observation, written by perception",
                     "missing_behavior": (
                         "the plugin is still called with observation None"
-                        if MISSING_INPUT == "invoke"
+                        if FAILURE_POLICY.missing_input == "invoke"
                         else "the plugin is not called when observation is None"
                     ),
                 },
@@ -403,7 +400,7 @@ class MemoryRunner:
                 ),
             },
             "composition": composition_declaration(),
-            "failure_policy": failure_policy(),
+            "failure_policy": FAILURE_POLICY.to_dict(),
         }
 
     def report(self) -> dict[str, Any]:

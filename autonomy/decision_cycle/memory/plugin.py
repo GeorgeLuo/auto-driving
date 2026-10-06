@@ -21,7 +21,7 @@ null for missing keys. Inspect and workbench frame rows default a missing
 
 How several plugins share one map, including the one ``EVIDENCE_KEY`` and
 last-write-wins, is ``composition_declaration`` in ``interface``. What a
-failure does is ``failure_policy`` there: an update failure stops the cycle,
+failure does is ``FAILURE_POLICY`` there: an update failure stops the cycle,
 and a reset failure is recorded. ``MemoryRunner`` reads those values.
 """
 

@@ -46,6 +46,7 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
+from .physical_observation import fetch_autonomy_status, physical_view_status, picar_base_url
 from .step_activations import (
     apply_staged,
     bundle_activation_path,
@@ -149,11 +150,103 @@ def _onboard_automation(vehicle_id: str, provider: Any) -> CommandResult:
 def _staged_onboard_provider(vehicle_id: str) -> str | None:
     """The provider of a non-Chase vehicle known from staging or discovery."""
 
+    vehicle = _staged_onboard_vehicle(vehicle_id)
+    return None if vehicle is None else vehicle["provider"]
+
+
+def _staged_onboard_vehicle(vehicle_id: str) -> dict[str, Any] | None:
     if is_chase_vehicle_id(vehicle_id):
         return None
     vehicle, _unknown = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=1.0)
     provider = vehicle.get("provider") if isinstance(vehicle, dict) else None
-    return provider if isinstance(provider, str) and provider != "chase-sim" else None
+    return vehicle if isinstance(provider, str) and provider != "chase-sim" else None
+
+
+def _onboard_runtime_status(
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    *,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """An onboard runtime's ``/autonomy/status`` in the worker status rows.
+
+    The Chase worker reports these rows from its local state files; a PiCar
+    reports the same cycle counters from its observation status provider.
+    The local view is the one a terminal ``vehicles stream`` hosts.
+    """
+
+    base_url = picar_base_url(vehicle)
+    endpoint = f"{base_url}/autonomy/status" if base_url else None
+    try:
+        if not base_url:
+            raise ConnectionError(f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+        status = fetch_autonomy_status(base_url, timeout_s=max(0.1, timeout_s))
+        error = None
+    except ConnectionError as exc:
+        status, error = {}, str(exc)
+    autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
+    components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
+    observation = (
+        components.get("observation") if isinstance(components.get("observation"), dict) else {}
+    )
+    latest = observation.get("latest") if isinstance(observation.get("latest"), dict) else {}
+    completed_at_ms = _int_or_none(latest.get("completed_at_ms"))
+    if error is None and not autonomy:
+        error = "onboard runtime is up but reports no autonomy host"
+    worker_status = "running" if error is None else "error"
+    view = physical_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
+    if not view.get("available"):
+        view = {
+            **view,
+            "reason": f"start `./cli/automa vehicles stream perception --id {vehicle_id}` to host it",
+        }
+    return {
+        "process": {
+            "pid": None,
+            "running": error is None,
+            "pid_state": f"onboard {base_url or 'no endpoint'}",
+            "status": worker_status,
+            "generation_matches": True,
+            "reason": error,
+            "recovery": (
+                apply_staged(vehicle_id, vehicle["provider"], "perception")["restart_command"]
+                if error is not None
+                else None
+            ),
+            "log_to_disk": False,
+            "log_path": None,
+            "command": None,
+            "process_record": endpoint,
+        },
+        "state": {
+            "status": worker_status,
+            "run_id": None,
+            "frames_captured": observation.get("camera_frame_count", 0),
+            "frames_processed": observation.get("processed_count", 0),
+            "frames_dropped": observation.get("skipped_count", 0),
+            "max_frames": None,
+            "interval_s": observation.get("min_interval_s"),
+            "recording": False,
+            "control_source": "onboard",
+            "action_policy": status.get("drive_mode"),
+            "error": error,
+            "last_frame": (
+                {
+                    "frame_id": latest.get("frame_id"),
+                    "perception_completed_at_ms": completed_at_ms,
+                    "cycle_duration_ms": latest.get("duration_ms"),
+                }
+                if latest
+                else {}
+            ),
+            "latest_perception_text": endpoint,
+            "state_record": endpoint,
+            "latest_perception_age_ms": (
+                None if completed_at_ms is None else max(0, _timestamp_ms() - completed_at_ms)
+            ),
+        },
+        "published_view": view,
+    }
 
 
 def run_vehicle_automation(
@@ -2104,6 +2197,7 @@ def _collect_automation_status(
     statuses = []
     for vehicle_runtime_dir in candidates:
         vehicle_name = vehicle_runtime_dir.name
+        onboard = _staged_onboard_vehicle(vehicle_name)
         bundle = controller_bundle_paths(vehicle_runtime_dir)
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
@@ -2295,6 +2389,14 @@ def _collect_automation_status(
                 "published_view": published_view,
             }
         )
+        if onboard is not None:
+            statuses[-1].update(
+                _onboard_runtime_status(
+                    vehicle_name, onboard, timeout_s=_remaining_view_budget() or 0.5
+                )
+            )
+            if activation_problems:
+                statuses[-1]["process"]["recovery"] = activation_problems[0]["command"]
     return statuses
 
 

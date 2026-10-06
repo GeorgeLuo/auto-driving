@@ -71,12 +71,10 @@ from .step_activations import (
     decision_identity,
     format_activation_problems,
     proposal_plugin_ids,
-    read_bundle_activation,
     step_info,
 )
 from .paths import ROOT, display_path, safe_path_part
-from .step_hosting import load_staged_runner
-from .step_schema import format_schema, schema_source
+from .step_schema import format_schema, schema_source, staged_step_info
 from .physical_observation import (
     PhysicalDecisionPublicationError,
     fetch_decision_publication,
@@ -451,21 +449,14 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
     proposals: dict[str, Any] | None = None
     proposal_schema: dict[str, Any] | None = None
     if steps.get("proposal") is not None:
-        try:
-            # From the staged bundle, as perception and memory info read theirs.
-            proposal_schema = load_staged_runner(
-                read_bundle_activation(bundle, "proposal")
-            ).describe_schema()
-        except Exception as exc:
+        # From the staged bundle, as perception and memory info read theirs.
+        staged, error = staged_step_info(bundle, vehicle_id, "proposal")
+        if error is not None:
             return _error_result(
-                DecisionSurfaceError(
-                    "activation_invalid",
-                    f"Could not inspect staged proposal for {vehicle_id!r}: "
-                    f"{type(exc).__name__}: {exc}",
-                    vehicle_id=vehicle_id,
-                ),
+                DecisionSurfaceError("activation_invalid", error, vehicle_id=vehicle_id),
                 json_output=json_output,
             )
+        proposal_schema = staged["proposal_schema"]
         proposals = {
             "decision_inputs": [item["name"] for item in proposal_schema["inputs"]],
             "plugins": proposal_plugin_ids(steps),
@@ -525,9 +516,7 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
         "activations": steps,
         "proposals": proposals,
         "proposal_schema_source": (
-            schema_source("autonomy.decision_cycle.proposal.runner:ProposalRunner")
-            if proposal_schema is not None
-            else None
+            schema_source("proposal") if proposal_schema is not None else None
         ),
         "proposal_schema": proposal_schema,
         "combined_view": combined_view,

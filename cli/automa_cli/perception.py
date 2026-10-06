@@ -36,7 +36,6 @@ from .step_activations import (
     bundle_activation_problems,
     ensure_builtin_activations,
     format_activation_problems,
-    CONTROLLER_BUNDLE_KEYS,
     read_bundle_activation,
     refresh_release,
     stage_activation,
@@ -45,7 +44,7 @@ from .step_activations import (
     step_update_error,
 )
 from .step_hosting import load_staged_runner
-from .step_schema import format_schema, schema_source
+from .step_schema import format_staged_step, staged_step_info
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
 from .physical_observation import (
@@ -168,98 +167,23 @@ def get_vehicle_perception_info(
     )
     live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
 
-    if not has_local_activation and live_provider != "picar":
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No active perception preset found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(manifest_path)}",
-                    "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
-                ]
-            ),
-        )
-
     payload: dict[str, Any] = {
         "schema": "vehicle_perception_info_v0",
         "vehicle_id": vehicle_id,
     }
 
-    if has_local_activation:
-        problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
-        if problems:
-            return CommandResult(2, format_activation_problems(problems))
-        manifest = _read_manifest(manifest_path)
-
-        bundle_root_text = _manifest_bundle(manifest).get("root_dir")
-        if not isinstance(bundle_root_text, str) or not bundle_root_text:
-            return CommandResult(
-                2,
-                f"Activation {display_path(manifest_path)} does not record its controller bundle.",
-            )
-        bundle_root = Path(bundle_root_text)
-        if not bundle_root.exists():
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Controller bundle is missing for {vehicle_id!r}: {display_path(bundle_root)}",
-                        "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
-                    ]
-                ),
-            )
-
-        plugins_text = ", ".join(manifest["plugins"]) or "(none)"
-        try:
-            runner = load_staged_runner(_manifest_activation(manifest, manifest_path))
-        except Exception as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not load active perception for {vehicle_id!r}.",
-                        f"Plugins: {plugins_text}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-        try:
-            schema = runner.describe_schema()
-        except Exception as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not inspect active perception for {vehicle_id!r}.",
-                        f"Plugins: {plugins_text}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-
+    # A PiRacer reached live can be reported without a local staged activation.
+    if has_local_activation or live_provider != "picar":
+        staged, error = staged_step_info(bundle, vehicle_id, "perception")
+        if error is not None:
+            return CommandResult(2, error)
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
         published_view, automation_status = _perception_view_with_automation_status(
             automation_dir
         )
         payload.update(
             {
-                "activation": {
-                    "path": display_path(manifest_path),
-                    "preset": _manifest_preset(manifest),
-                    "plugins": list(manifest["plugins"]),
-                    "available_plugins": sorted(manifest["plugin_specs"]),
-                    "plugin_specs": dict(manifest["plugin_specs"]),
-                    "plugin_configs": dict(manifest["plugin_configs"]),
-                },
-                "controller_bundle": {
-                    key: value
-                    for key, value in _manifest_bundle(manifest).items()
-                    if key in CONTROLLER_BUNDLE_KEYS
-                },
-                "perception_schema_source": schema_source(
-                    "autonomy.decision_cycle.perception.runner:PerceptionRunner"
-                ),
-                "perception_schema": schema,
+                **staged,
                 "published_view": published_view,
                 "automation": automation_status,
             }
@@ -749,16 +673,6 @@ def _success_message(
     return "\n".join(lines)
 
 
-def _read_manifest(path: Path) -> dict[str, Any]:
-    """The staged perception activation payload; raises ValueError when invalid."""
-
-    try:
-        payload = load_activation_json(path.read_text(encoding="utf-8"))
-    except ValueError as exc:
-        raise ValueError(f"Could not parse perception activation {display_path(path)}: {exc}") from exc
-    return step_activation_from_payload(payload, step="perception", source_path=path).to_payload()
-
-
 def _manifest_activation(manifest: dict[str, Any], path: Path | None = None):
     return step_activation_from_payload(manifest, step="perception", source_path=path)
 
@@ -768,64 +682,17 @@ def _manifest_preset(manifest: dict[str, Any]) -> str | None:
     return preset if isinstance(preset, str) else None
 
 
-def _manifest_bundle(manifest: dict[str, Any]) -> dict[str, Any]:
-    metadata = manifest.setdefault("metadata", {})
-    bundle = metadata.get("controller_bundle")
-    if not isinstance(bundle, dict):
-        bundle = {}
-        metadata["controller_bundle"] = bundle
-    return bundle
-
-
 def _format_perception_info(payload: dict[str, Any]) -> str:
-    activation = payload.get("activation") if isinstance(payload.get("activation"), dict) else None
-    bundle = (
-        payload.get("controller_bundle")
-        if isinstance(payload.get("controller_bundle"), dict)
-        else None
-    )
-    schema = (
-        payload.get("perception_schema")
-        if isinstance(payload.get("perception_schema"), dict)
-        else None
-    )
     live = (
         payload.get("live_observation")
         if isinstance(payload.get("live_observation"), dict)
         else None
     )
 
-    if activation is not None:
-        release = bundle.get("release") if isinstance((bundle or {}).get("release"), dict) else {}
-        preset = activation.get("preset") or "unknown"
-        lines = [
-            f"Perception: {payload['vehicle_id']} -> {preset}",
-        ]
-        lines.append(f"Enabled plugins: {', '.join(_configured_plugins(activation)) or 'none'}")
-        lines.append(
-            f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}"
+    if isinstance(payload.get("activation"), dict):
+        lines = format_staged_step(
+            "perception", payload, view=_format_published_view(payload.get("published_view"))
         )
-        lines.extend(
-            [
-                _format_published_view(payload.get("published_view")),
-                f"Bundle: {(bundle or {}).get('root_dir', 'unknown')}",
-                f"Activation: {activation['path']}",
-            ]
-        )
-        if release:
-            archive = release.get("archive")
-            manifest = release.get("manifest")
-            lines.append(f"Release: {release.get('tree_sha256', 'unknown')}")
-            if archive:
-                lines.append(f"Archive: {archive}")
-            if manifest:
-                lines.append(f"Release manifest: {manifest}")
-        else:
-            lines.append(
-                "Release: not recorded; run `vehicles update perception` to package and attach release metadata"
-            )
-        if schema is not None:
-            lines.extend(format_schema(payload.get("perception_schema_source"), schema))
     else:
         lines = [
             f"Perception: {payload['vehicle_id']} (no local staged activation)",
@@ -1063,10 +930,3 @@ def _process_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
-
-
-def _configured_plugins(activation: dict[str, Any]) -> list[str]:
-    plugins = activation.get("plugins")
-    if not isinstance(plugins, list):
-        return []
-    return [str(plugin) for plugin in plugins]

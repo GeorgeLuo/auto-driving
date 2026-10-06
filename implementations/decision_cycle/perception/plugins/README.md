@@ -17,7 +17,7 @@ plugin lives in `plugins/frame/`.
   `PerceptionSignal` and `ViewLocation`, in a `PerceptionEvidenceBatch`.
 - How several plugins share one frame, and what a failure does, is declared in
   `autonomy/decision_cycle/perception/interface.py`: `composition_declaration`
-  and `failure_policy`. `PerceptionRunner` reads those values. A plugin error
+  and `FAILURE_POLICY`. `PerceptionRunner` reads those values. A plugin error
   is isolated, a missing feed skips that plugin, and an explicit reset or
   selection-removal reset error propagates. Missing feeds also reset stateful
   plugins inside frame execution; an error in that reset is isolated as the

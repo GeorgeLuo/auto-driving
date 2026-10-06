@@ -1,4 +1,4 @@
-"""Loopback HTTP boundary for the perception-memory workbench."""
+"""Loopback HTTP boundary for the decision playback workbench."""
 
 from __future__ import annotations
 

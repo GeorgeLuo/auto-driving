@@ -1,4 +1,9 @@
-"""Decision surfaces over the proposal, plan, and action steps: info, stream, and offline apply."""
+"""Decision stream and offline apply over the proposal, plan, and action steps.
+
+The proposal step's info command lives in ``proposal``, beside ``perception``
+and ``memory``. This module owns the combined decision records and their
+publication, acceptance, streaming, and offline application.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,6 @@ import html
 import json
 import os
 import secrets
-import shlex
 import shutil
 import stat as stat_mod
 import time
@@ -35,7 +39,6 @@ from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
 )
 from autonomy.decision_cycle.action.hold import (
-    HOLD_IDLE_REASON,
     HoldAction,
     idle_output,
 )
@@ -48,7 +51,7 @@ from autonomy.decision_cycle.action.result import (
     ACTION_RESULT_SCHEMA,
     ActionResult,
 )
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
+from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
@@ -59,7 +62,6 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.serialization import canonical_json_utf8
-from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.runtime.control import AutonomyControl
 
@@ -71,7 +73,6 @@ from .step_activations import (
     decision_identity,
     format_activation_problems,
     proposal_plugin_ids,
-    step_info,
 )
 from .paths import ROOT, display_path, safe_path_part
 from .physical_observation import (
@@ -270,13 +271,6 @@ LOCATION_REQUIRED_KEYS = frozenset(
     {"frame", "zone", "bbox_xyxy_norm", "polygon_xy_norm"}
 )
 
-PROPOSAL_DECISION_INPUTS = (
-    "observation",
-    "shared_memory",
-    "capabilities",
-    "prior_host_applied_command",
-)
-
 @dataclass(frozen=True)
 class CommandResult:
     exit_code: int
@@ -360,23 +354,6 @@ def _error_result(
     return CommandResult(exc.exit_code, exc.message_text)
 
 
-def _action_authority_description(plugin_id: str | None) -> dict[str, Any]:
-    """How the staged action plugin authorizes control, for operator-facing summaries."""
-
-    if plugin_id == HoldAction.plugin_id:
-        return {
-            "gate_id": HoldAction.plugin_id,
-            "proposed_applied": False,
-            "authorized_idle_reason": HOLD_IDLE_REASON,
-        }
-    if plugin_id == ModeAction.plugin_id:
-        return {
-            "gate_id": ModeAction.plugin_id,
-            "proposed_applied": f"in {'/'.join(sorted(LIVE_MODES))} drive modes",
-            "authorized_idle_reason": None,
-        }
-    return {"gate_id": plugin_id, "proposed_applied": None, "authorized_idle_reason": None}
-
 
 def _require_valid_activations(
     bundle: dict[str, str],
@@ -420,7 +397,7 @@ def _read_surface_identity(
         )
     try:
         DecisionRunners.from_payloads(identity["steps"]) if identity["steps"]["proposal"] else None
-    except (ImportError, AttributeError, TypeError, ValueError) as exc:
+    except Exception as exc:  # noqa: BLE001 - staged plugins are third-party code
         raise DecisionSurfaceError(
             "activation_invalid",
             f"Staged decision steps cannot be loaded: {exc}",
@@ -428,95 +405,6 @@ def _read_surface_identity(
         ) from exc
     return identity
 
-
-def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> CommandResult:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    if not Path(bundle["runtime_dir"]).is_dir():
-        return _error_result(
-            DecisionSurfaceError(
-                "activation_missing",
-                f"No controller bundle is staged for {vehicle_id!r}.\n"
-                "Run: ./cli/automa vehicles update proposal --id <vehicle_id>",
-                vehicle_id=vehicle_id,
-            ),
-            json_output=json_output,
-        )
-    try:
-        # Info lists every step's selection, so it reads all six documents.
-        _require_valid_activations(bundle, vehicle_id=vehicle_id, steps=STEPS)
-        identity = _read_surface_identity(bundle, vehicle_id=vehicle_id, require_proposal=False)
-    except DecisionSurfaceError as err:
-        return _error_result(err, json_output=json_output)
-
-    steps = identity["steps"]
-    action_plugins = (steps.get("action") or {}).get("plugins") or []
-    action_plugin = action_plugins[0] if action_plugins else None
-    plan_plugins = (steps.get("plan") or {}).get("plugins") or []
-    proposals: dict[str, Any] | None = None
-    if steps.get("proposal") is not None:
-        proposals = {
-            "decision_inputs": list(PROPOSAL_DECISION_INPUTS),
-            "plugins": proposal_plugin_ids(steps),
-            "selector_id": plan_plugins[0] if plan_plugins else None,
-            "output_schemas": {
-                "proposal_result": PROPOSAL_RESULT_SCHEMA,
-                "action_proposal": ACTION_PROPOSAL_SCHEMA,
-                "action_plan": ACTION_PLAN_SCHEMA,
-                "authority": AUTHORITY_RESULT_SCHEMA,
-                "action_result": ACTION_RESULT_SCHEMA,
-            },
-            "authority": _action_authority_description(action_plugin),
-        }
-
-    # D2 discovery is a short, read-only loopback probe. It never starts a
-    # worker or creates a capture; an unavailable producer remains explicit.
-    if proposals is None:
-        view_status = {
-            "available": False,
-            "status": "unavailable",
-            "reason": "no_proposal_step",
-            "generation_id": None,
-            "identity": None,
-            "api_url": None,
-            "url": None,
-        }
-    else:
-        from .decision_view import get_decision_view_status
-
-        view_status = get_decision_view_status(
-            automation_dir=Path(bundle["runtime_dir"]) / "automation",
-            vehicle_id=vehicle_id,
-            activation=identity,
-        )
-
-    combined_view = {
-        "view_id": COMBINED_VIEW_ID,
-        "path_template": f"cli/automa_cli/decision_view.html#{COMBINED_VIEW_ID}",
-        "launch_command": (
-            "./cli/automa vehicles decision inspect --id "
-            + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
-        ),
-        "available": view_status["available"],
-        "status": view_status["status"],
-        "reason": view_status["reason"],
-        "url": view_status["url"],
-        "api_url": view_status["api_url"],
-        "generation_id": view_status["generation_id"],
-        "identity": view_status["identity"],
-    }
-
-    payload = {
-        "schema": "vehicle_decision_info_v1",
-        "vehicle_id": vehicle_id,
-        "generation_id": identity["generation_id"],
-        "steps": step_info(bundle),
-        "activations": steps,
-        "proposals": proposals,
-        "combined_view": combined_view,
-    }
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, _format_decision_info(payload))
 
 
 def load_decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
@@ -1983,9 +1871,9 @@ def publish_decision_frame(
 ) -> bool:
     """Publish generation-scoped latest frame. Returns True when written.
 
-    The worker passes the decision identity its steps were loaded from. The
-    staged identity is re-read and must still be that generation; restaging
-    while running leaves the invalidated latest file untouched until the
+    The worker passes the decision identity its steps run. The staged
+    identity is re-read and must still be that generation; a restage the
+    worker cannot run leaves the invalidated latest file untouched until the
     worker restarts.
     """
 
@@ -3221,62 +3109,3 @@ def _cleanup_record_paths(*paths: Path) -> list[str]:
         except Exception as exc:  # noqa: BLE001 - preserve both failure causes
             errors.append(f"{display_path(path)}: {type(exc).__name__}: {exc}")
     return errors
-
-
-# ---------------------------------------------------------------------------
-# Shared formatting / activation helpers
-# ---------------------------------------------------------------------------
-
-
-def _format_decision_info(payload: dict[str, Any]) -> str:
-    lines = [
-        f"Decision: {payload['vehicle_id']}  generation={payload.get('generation_id')}",
-        "",
-        "Steps:",
-    ]
-    for step, info in (payload.get("steps") or {}).items():
-        plugins = ", ".join(info.get("plugins") or []) or "(none)"
-        where = info.get("activation") or info.get("source")
-        lines.append(f"- {step}: {plugins} [{where}]")
-    proposals = payload.get("proposals")
-    if isinstance(proposals, dict):
-        authority = proposals.get("authority") or {}
-        lines.extend(
-            [
-                "",
-                "Proposal decision:",
-                f"- inputs: {', '.join(proposals.get('decision_inputs') or [])}",
-                f"- plugins: {', '.join(proposals.get('plugins') or []) or '(none)'}",
-                f"- plan: {proposals.get('selector_id')}",
-                f"- output_schemas: {json.dumps(proposals.get('output_schemas') or {}, sort_keys=True)}",
-                (
-                    f"- authority: action={authority.get('gate_id')} "
-                    f"proposed_applied={authority.get('proposed_applied')} "
-                    f"idle_reason={authority.get('authorized_idle_reason')}"
-                ),
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "",
-                "No proposal plugins are staged; the vehicle proposes nothing and holds.",
-                "Stage proposals with: ./cli/automa vehicles update proposal --id <vehicle>",
-            ]
-        )
-    combined = payload.get("combined_view") if isinstance(payload.get("combined_view"), dict) else {}
-    live_view = (
-        f"status={combined.get('status')} url={combined.get('url')} "
-        f"reason={combined.get('reason')}"
-    )
-    lines.extend(
-        [
-            "",
-            f"Combined view: id={combined.get('view_id')} "
-            f"{live_view} path_template={combined.get('path_template')}",
-            f"Open saved input: {combined.get('launch_command')}",
-        ]
-    )
-    return "\n".join(lines)
-
-

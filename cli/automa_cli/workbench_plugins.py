@@ -1,11 +1,12 @@
 """Packaged plugin listing and selection for the replay workbench.
 
 The workbench offers every packaged plugin of the steps whose selection the
-operator can change: perception and memory. A selection is checked and built
-through ``selection_activation``, the activation the CLI uses for that step,
-so a preset given on the command line keeps its plugin configs. Listing a
-catalog does not construct plugins;
-construction happens only after the operator selects plugins for a replay.
+operator can change: perception, memory and proposal. A selection is checked
+and built by ``step_selection``, the activation the CLI stages for that step:
+perception and memory select a preset or a plugin list, so a preset given on
+the command line keeps its plugin configs; proposal has no presets and selects
+a plugin list. Listing a catalog does not construct plugins; construction
+happens only after the operator selects plugins for a replay.
 """
 
 from __future__ import annotations
@@ -16,11 +17,11 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.memory.runner import MemoryRunner
-from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.decision_cycle.steps import step_runner
 from autonomy.plugins import PluginDefinition
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
+    STEP_PRESETS,
     packaged_activation,
     selection_activation,
     step_plugins,
@@ -28,7 +29,27 @@ from implementations.decision_cycle.catalog import (
 
 
 PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog_v1"
-SELECTABLE_STEPS = ("perception", "memory")
+SELECTABLE_STEPS = ("perception", "memory", "proposal")
+
+
+def step_selection(
+    step: str,
+    *,
+    preset: str | None = None,
+    plugins: Sequence[str] | None = None,
+) -> StepActivation:
+    """The activation the CLI stages for this selection of ``step``.
+
+    A step with presets takes a preset or an ordered plugin list, and its
+    default preset with neither. A step without presets takes an ordered
+    plugin list, and its default plugins without one.
+    """
+
+    if step in STEP_PRESETS:
+        return selection_activation(step, preset=preset, plugins=plugins)
+    if preset is not None:
+        raise ValueError(f"{step} has no presets; select its plugins instead")
+    return packaged_activation(step, plugins)
 
 
 class PluginCatalogError(ValueError):
@@ -86,7 +107,7 @@ class PluginCatalog:
         """Validate ids while preserving the given order.
 
         An empty selection disables plugins for this step. Replay still
-        displays frames, and the other step keeps its selection.
+        displays frames, and the other steps keep their selections.
         """
 
         raw_values = [] if active_ids is None else list(active_ids)
@@ -103,15 +124,14 @@ class PluginCatalog:
         """The CLI's activation for these ids; unknown ids are a catalog error."""
 
         try:
-            return selection_activation(self.step, plugins=list(active_ids))
+            return step_selection(self.step, plugins=list(active_ids))
         except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc
 
-    def build(self, activation: StepActivation) -> PerceptionRunner | MemoryRunner:
+    def build(self, activation: StepActivation) -> Any:
         """Construct exactly the activation's plugins and configs, as the step's runner."""
 
-        runner = PerceptionRunner if self.step == "perception" else MemoryRunner
-        return runner.from_activation(activation)
+        return step_runner(activation)
 
 
 def packaged_plugin_catalog(step: str) -> PluginCatalog:
@@ -119,7 +139,7 @@ def packaged_plugin_catalog(step: str) -> PluginCatalog:
 
     if step not in SELECTABLE_STEPS:
         raise PluginCatalogError(
-            f"plugins can be selected for {' and '.join(SELECTABLE_STEPS)}, not {step!r}"
+            f"plugins can be selected for {', '.join(SELECTABLE_STEPS)}, not {step!r}"
         )
     default_ids = DEFAULT_STEP_PLUGINS[step]
     entries = step_plugins(step)
@@ -161,4 +181,5 @@ __all__ = [
     "PluginDescriptor",
     "SELECTABLE_STEPS",
     "packaged_plugin_catalog",
+    "step_selection",
 ]

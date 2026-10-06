@@ -272,7 +272,7 @@
 
   <script>
     const params = new URLSearchParams(location.search);
-    const generation = params.get("generation");
+    let generation = params.get("generation");
     const frameImage = document.getElementById("frame");
     const canvas = document.getElementById("overlay");
     const context = canvas.getContext("2d");
@@ -549,6 +549,18 @@
         now >= freshness.published_at_ms && now <= freshness.expires_at_ms;
     }
 
+    // A worker that runs restaged proposals publishes a new generation; follow
+    // it while the run and worker are the ones this page has been showing.
+    function restagedGeneration(response, payload) {
+      const shown = latest?.identity;
+      const next = payload?.identity;
+      return response.status === 409 && payload?.reason === "generation_mismatch" &&
+        /^[0-9a-f]{64}$/.test(payload?.generation_id || "") &&
+        shown && next && shown.run_id === next.run_id && shown.worker_pid === next.worker_pid
+        ? payload.generation_id
+        : null;
+    }
+
     function supersededPayload(payload) {
       const incoming = payload?.freshness?.published_at_ms;
       const displayed = latest?.freshness?.published_at_ms;
@@ -580,6 +592,12 @@
         }
         const response = await fetch("/api/decision/latest?generation=" + encodeURIComponent(generation), { cache: "no-store" });
         const payload = await response.json();
+        const restaged = restagedGeneration(response, payload);
+        if (restaged) {
+          generation = restaged;
+          history.replaceState(null, "", "?" + new URLSearchParams({ generation }));
+          throw new Error("decision restaged; following its generation");
+        }
         if (!response.ok || payload.status !== "current" || payload.generation_id !== generation) {
           throw new Error(payload.reason || `HTTP ${response.status}`);
         }

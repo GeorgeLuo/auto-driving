@@ -19,10 +19,10 @@ from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision import (
     RUNTIME_ROOT as DECISION_RUNTIME_ROOT,
     apply_vehicle_decision,
-    get_vehicle_decision_info,
     stream_vehicle_decision,
 )
 from .decision_inspector import run_decision_inspector
+from .proposal import get_vehicle_proposal_info
 from .decision_live import run_live_decision_monitor
 from .memory import (
     get_vehicle_memory_info,
@@ -825,8 +825,8 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_replay = workbench_commands.add_parser(
         "replay",
         help=(
-            "Replay an ordered image directory through perception, memory, and "
-            "decisions."
+            "Replay an ordered image directory through perception, memory, "
+            "proposals, and decisions."
         ),
         description=(
             "Run the bounded decision playback workbench against an ordered "
@@ -835,14 +835,16 @@ def build_parser() -> argparse.ArgumentParser:
             "packaged plugins. Recorded perception and memory runs preserve frame order "
             "and timestamps. Perception and memory each start from a packaged preset "
             "or an ordered plugin list, as the inspect and update commands take "
-            "them; a preset keeps its plugin configs. Page checkboxes retain the order "
+            "them; a preset keeps its plugin configs. Proposal has no presets and "
+            "starts from an ordered plugin list, as vehicles update proposal takes "
+            "it, or its default plugins. Page checkboxes retain the order "
             "of selected plugins and append newly checked plugins. A changed ordered "
-            "selection uses default configs for that step; the other step keeps its "
-            "selection and configs. The same ordered selection keeps the current "
+            "selection uses default configs for that step; the other steps keep their "
+            "selections and configs. The same ordered selection keeps the current "
             "configs and pass. Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
-            "pause, step, reset, and another run. Changing perception or memory "
-            "plugins in a running or paused served replay rebuilds both pipelines "
+            "pause, step, reset, and another run. Changing a step's plugins in a "
+            "running or paused served replay rebuilds every step's pipeline "
             "and replays from the first frame to the displayed frame before returning."
         ),
     )
@@ -879,6 +881,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PLUGIN_ID",
         help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
+    )
+    workbench_replay.add_argument(
+        "--proposal-plugin",
+        action="append",
+        dest="proposal_plugins",
+        default=None,
+        metavar="PLUGIN_ID",
+        help="Packaged proposal plugin to select instead of the default plugins; repeat to select several in order.",
     )
     workbench_replay.add_argument(
         "--cadence-ms",
@@ -950,24 +960,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_info.set_defaults(handler=_handle_vehicles_info_perception)
 
-    decision_info = info_commands.add_parser(
-        "decision",
-        help="Show the locally staged decision steps (proposal, plan, action).",
-        description="Show every step's staged plugins and the proposal, plan, and action contract.",
-    )
-    decision_info.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    decision_info.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable decision info payload.",
-    )
-    decision_info.set_defaults(handler=_handle_vehicles_info_decision)
-
     memory_info = info_commands.add_parser(
         "memory",
         help="Show the staged memory preset and plugins, the runner schema and the live memory step state.",
@@ -985,6 +977,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable memory info payload.",
     )
     memory_info.set_defaults(handler=_handle_vehicles_info_memory)
+
+    proposal_info = info_commands.add_parser(
+        "proposal",
+        help="Show the staged proposal plugins, the runner schema, the decision view URL and the live proposal step state.",
+        description=(
+            "Show the staged proposal plugins, the runner schema, the decision view URL, "
+            "the plan and action steps that act on the proposals, and the proposal step "
+            "as the running autonomy engine has it."
+        ),
+    )
+    proposal_info.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    proposal_info.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable proposal info payload.",
+    )
+    proposal_info.set_defaults(handler=_handle_vehicles_info_proposal)
 
     perception_control = vehicle_commands.add_parser(
         "perception",
@@ -1542,10 +1556,10 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (inspect, viability, reset)",
-                "- decision     offline decision apply/replay (stage via update decision)",
+                "- decision     offline decision apply/replay (stage via update proposal)",
                 (
-                    "- workbench    replay images through perception, memory, and "
-                    "decisions"
+                    "- workbench    replay images through perception, memory, proposals, "
+                    "and decisions"
                 ),
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
@@ -1628,8 +1642,8 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "automa vehicles info commands",
                 "",
                 "- perception  show staged perception schema and live view",
-                "- decision    show the staged steps and decision contract",
                 "- memory      show staged memory schema and live memory",
+                "- proposal    show staged proposal schema, decision view and live proposals",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1666,6 +1680,7 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show latest local automation perception output",
                 "- memory      show live memory lifecycle health",
+                "- decision    show the latest decision frame",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1953,7 +1968,7 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "",
                 "Stage proposals (held idle):  ./cli/automa vehicles update proposal --id <vehicle>",
                 "Apply them in live modes:     ./cli/automa vehicles update action --id <vehicle> --plugin mode",
-                "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
+                "Proposal schema and view: ./cli/automa vehicles info proposal --id <vehicle>",
                 "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
                 "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
                 "",
@@ -2072,7 +2087,7 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
                 "",
                 (
                     "- replay  replay an ordered image directory through perception, "
-                    "memory, and decisions"
+                    "memory, proposals, and decisions"
                 ),
                 "- help    show this summary",
                 "",
@@ -2091,6 +2106,7 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
         perception_plugins=args.perception_plugins,
         memory_preset=args.memory_preset,
         memory_plugins=args.memory_plugins,
+        proposal_plugins=args.proposal_plugins,
         cadence_ms=args.cadence_ms,
         pace=args.pace,
         max_frames=args.max_frames,
@@ -2153,8 +2169,8 @@ def _handle_vehicles_info_perception(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_info_decision(args: argparse.Namespace) -> int:
-    result = get_vehicle_decision_info(
+def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
+    result = get_vehicle_memory_info(
         vehicle_id=args.vehicle_id,
         json_output=args.json,
     )
@@ -2163,8 +2179,8 @@ def _handle_vehicles_info_decision(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
-    result = get_vehicle_memory_info(
+def _handle_vehicles_info_proposal(args: argparse.Namespace) -> int:
+    result = get_vehicle_proposal_info(
         vehicle_id=args.vehicle_id,
         json_output=args.json,
     )

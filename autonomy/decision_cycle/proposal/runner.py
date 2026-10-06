@@ -3,17 +3,23 @@
 ``ProposalRunner`` builds the detached ``DecisionDataSource`` for the cycle,
 calls each selected proposal plugin's ``propose`` with its own copy of the
 source and the shared host map, and admits one candidate per plugin. A plugin
-that raises or returns an invalid candidate is replaced by a synthetic error
-candidate under its selected ID. Failures that leave no trustworthy candidate
-set end the step with status ``error``. There is no plugin-count limit; with
-no plugins selected the step returns no candidates and the plan is idle.
+that raises, returns a different type, or returns another identity is replaced
+by a synthetic error candidate under its selected ID. A candidate that fails
+lifecycle or size validation ends the step with status ``error`` and no
+candidates. There is no plugin-count limit; with no plugins selected the step
+returns no candidates and the plan is idle.
+Plugin failures and missing inputs follow ``FAILURE_POLICY`` in ``interface``;
+``describe_schema`` reports the step's contract.
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any, ClassVar
 
+from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.action_identifiers import (
     ActionInputError,
     ActionProposalMatrixError,
@@ -31,15 +37,26 @@ from autonomy.decision_cycle.proposal.inputs import (
     omit_forbidden_channel_keys,
     ready_envelope,
 )
+from autonomy.decision_cycle.proposal.interface import (
+    FAILURE_POLICY,
+    PROPOSAL_SCHEMA,
+    composition_declaration,
+)
 from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
-from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
 from autonomy.decision_cycle.proposal.values import (
+    ACTION_PROPOSAL_SCHEMA,
     MAX_PROPOSAL_BYTES,
     ActionProposal,
     synthetic_error_proposal,
 )
-from autonomy.decision_cycle.runner import StepRunner
-from autonomy.plugins import PluginDefinition
+from autonomy.decision_cycle.runner import (
+    StepRunner,
+    describe_configuration,
+    describe_exception,
+    describe_plugin,
+)
+from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.shared_memory import SharedMemory
 
@@ -102,25 +119,145 @@ def _admit_candidate(
     return validated
 
 
+def _declared_evidence_key(plugin: ProposalPlugin) -> str | None:
+    key = getattr(plugin, "evidence_key", None)
+    return key if isinstance(key, str) and key else None
+
+
 class ProposalRunner(StepRunner[ProposalPlugin]):
     """Run every selected proposal plugin once per cycle."""
 
     step: ClassVar[str] = "proposal"
+    plugin_id: ClassVar[str] = "autonomy.proposal.plugin-runner-v0"
+
+    def __init__(
+        self,
+        plugin_manager: PluginManager,
+        *,
+        provided: Mapping[str, ProposalPlugin] | None = None,
+    ) -> None:
+        self._execution_records: dict[str, dict[str, Any]] = {}
+        super().__init__(plugin_manager, provided=provided)
 
     def validate_plugin(self, plugin: ProposalPlugin, definition: PluginDefinition) -> None:
         require_ascii_id(definition.plugin_id, field_name="plugin_id")
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
 
+    def reset(self, shared_memory: SharedMemory | None = None) -> None:
+        with self._runtime_lock:
+            self._execution_records = {}
+            super().reset(shared_memory)
+
+    def _plugin_records(self) -> list[dict[str, Any]]:
+        """Each applied plugin's last invocation timing and error.
+
+        Isolated candidate errors belong to the plugin record; step failures
+        remain on ``status``. Records are null before invocation and after reset.
+        """
+
+        return [
+            self._execution_records.get(
+                definition.plugin_id,
+                {"plugin_id": definition.plugin_id, "duration_ms": None, "error": None},
+            )
+            for definition, _plugin in self.applied
+        ]
+
     @property
     def evidence_key(self) -> str | None:
         """The first host-map evidence key a selected plugin declares, for the audit copy."""
 
         for _definition, plugin in self.applied:
-            key = getattr(plugin, "evidence_key", None)
-            if isinstance(key, str) and key:
+            key = _declared_evidence_key(plugin)
+            if key is not None:
                 return key
         return None
+
+    def describe_schema(self) -> dict[str, Any]:
+        """The step's contract: configuration, inputs, plugins, output, composition, failure."""
+
+        with self._runtime_lock:
+            applied = self.applied
+            return {
+                "schema": PROPOSAL_SCHEMA,
+                "plugin_id": self.plugin_id,
+                "runner": f"{type(self).__module__}:{type(self).__name__}",
+                "configuration": describe_configuration(self.plugin_manager, applied),
+                "inputs": [
+                    {
+                        "name": "observation",
+                        "required": False,
+                        "source": "the cycle's observation, in the source",
+                        "missing_behavior": (
+                            "the source marks it unavailable, or error with the "
+                            "observation step's reason; the plugin is still called"
+                            if FAILURE_POLICY.missing_input == "invoke"
+                            else "the plugin is not called"
+                        ),
+                    },
+                    {
+                        "name": "shared_memory",
+                        "required": False,
+                        "source": "the host map on the frame context, shared by every plugin",
+                        "missing_behavior": "plugins get an empty map, as in offline replay",
+                    },
+                    {
+                        "name": "evidence",
+                        "required": False,
+                        "source": (
+                            "an audit copy, in the source, of the host-map value at the "
+                            "evidence_key the first selected plugin declares"
+                        ),
+                        "missing_behavior": "the source marks it unavailable",
+                    },
+                    {
+                        "name": "capabilities",
+                        "required": False,
+                        "source": "the host's capabilities envelope in context.metadata",
+                        "missing_behavior": "the source holds the default capabilities",
+                    },
+                    {
+                        "name": "prior_host_applied_command",
+                        "required": False,
+                        "source": "the host's last applied command in context.metadata",
+                        "missing_behavior": "the source marks it unavailable",
+                    },
+                ],
+                "plugins": [
+                    {
+                        **describe_plugin(definition),
+                        "evidence_key": _declared_evidence_key(plugin),
+                    }
+                    for definition, plugin in applied
+                ],
+                "output": {
+                    "schema": PROPOSAL_RESULT_SCHEMA,
+                    "records": [
+                        {
+                            "record": "candidates[]",
+                            "meaning": (
+                                f"one {ACTION_PROPOSAL_SCHEMA} per selected plugin, in "
+                                "selection order; a synthetic error candidate when the "
+                                "plugin raises, returns a different type, or returns "
+                                "another plugin or frame identity"
+                            ),
+                        },
+                        {
+                            "record": "source",
+                            "meaning": "the detached decision data source the plugins read",
+                        },
+                    ],
+                    "invalid_candidate_behavior": (
+                        "a lifecycle or size violation fails the step with "
+                        "action_proposal_matrix_violated and no candidates; "
+                        "the plan step does not plan and action fails closed"
+                    ),
+                    "error_reasons": sorted(CYCLE_ERROR_REASONS),
+                },
+                "composition": composition_declaration(),
+                "failure_policy": FAILURE_POLICY.to_dict(),
+            }
 
     def __call__(
         self,
@@ -179,6 +316,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         with self._runtime_lock:
             self.refresh_selection(shared_memory)
             self.run_count += 1
+            self._execution_records = {}
             if isinstance(observation, Observation):
                 observation = Observation.from_dict(
                     omit_forbidden_channel_keys(observation.to_dict())
@@ -218,22 +356,9 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             candidates: list[ActionProposal] = []
             try:
                 for definition, plugin in applied:
-                    raised: BaseException | None = None
-                    returned: object = None
-                    try:
-                        # Isolate the source so one plugin cannot mutate another's view;
-                        # the host map is shared on purpose, as for the other steps.
-                        returned = plugin.propose(deepcopy(source), plugin_memory)
-                    except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
-                        raised = exc
                     try:
                         candidates.append(
-                            _admit_candidate(
-                                returned=returned,
-                                invoked_plugin_id=definition.plugin_id,
-                                frame_id=frame_id,
-                                raised=raised,
-                            )
+                            self._execute_plugin(definition, plugin, source, plugin_memory)
                         )
                     except ActionProposalMatrixError:
                         return fail("action_proposal_matrix_violated", source=source)
@@ -248,3 +373,40 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                 return fail("step_internal_error", source=source)
             self.last_error = None
             return result
+
+    def _execute_plugin(
+        self,
+        definition: PluginDefinition,
+        plugin: ProposalPlugin,
+        source: DecisionDataSource,
+        shared_memory: SharedMemory,
+    ) -> ActionProposal:
+        started = time.perf_counter()
+        error: str | None = None
+        raised: BaseException | None = None
+        returned: object = None
+        try:
+            # Each plugin gets its own detached source and the shared host map.
+            returned = plugin.propose(deepcopy(source), shared_memory)
+        except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
+            raised = exc
+            error = describe_exception(exc)
+        try:
+            candidate = _admit_candidate(
+                returned=returned,
+                invoked_plugin_id=definition.plugin_id,
+                frame_id=source.frame_id,
+                raised=raised,
+            )
+            if candidate.lifecycle == "error" and error is None:
+                error = candidate.reason
+        except Exception as exc:
+            error = describe_exception(exc)
+            raise
+        finally:
+            self._execution_records[definition.plugin_id] = {
+                "plugin_id": definition.plugin_id,
+                "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                "error": error,
+            }
+        return candidate

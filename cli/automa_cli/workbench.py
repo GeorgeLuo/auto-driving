@@ -14,8 +14,6 @@ import webbrowser
 from collections.abc import Sequence
 from typing import Any, TextIO
 
-from implementations.decision_cycle.catalog import selection_activation
-
 from .perception_runs import CommandResult
 from .workbench_contract import (
     ReplayActionError,
@@ -28,9 +26,11 @@ from .workbench_contract import (
 )
 from .workbench_runner import ImageReplayRunner
 from .workbench_plugins import (
+    SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
+    step_selection,
 )
 from .workbench_server import WorkbenchServer
 from .workbench_source import (
@@ -50,6 +50,7 @@ def run_workbench_replay(
     perception_plugins: Sequence[str] | None = None,
     memory_preset: str | None = None,
     memory_plugins: Sequence[str] | None = None,
+    proposal_plugins: Sequence[str] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -63,21 +64,22 @@ def run_workbench_replay(
 
     Perception and memory each start from a packaged preset or an ordered
     plugin list, as the inspect and update commands take them; with neither,
-    the step's default preset. A preset keeps its plugin configs. Page checkboxes
-    retain selected plugins' order and append newly checked plugins. Changing a
-    step's ordered selection uses catalog default configs for that step; the
-    other step keeps its selection and configs. Submitting the same ordered list
+    the step's default preset. A preset keeps its plugin configs. Proposal has
+    no presets: it starts from an ordered plugin list, as ``vehicles update
+    proposal`` takes it, or its default plugins. Page checkboxes retain
+    selected plugins' order and append newly checked plugins. Changing a step's
+    ordered selection uses catalog default configs for that step; the other
+    steps keep their selections and configs. Submitting the same ordered list
     keeps the current configs and pass.
     """
 
     try:
         activations = {
-            "perception": selection_activation(
+            "perception": step_selection(
                 "perception", preset=perception_preset, plugins=perception_plugins
             ),
-            "memory": selection_activation(
-                "memory", preset=memory_preset, plugins=memory_plugins
-            ),
+            "memory": step_selection("memory", preset=memory_preset, plugins=memory_plugins),
+            "proposal": step_selection("proposal", plugins=proposal_plugins),
         }
     except ValueError as exc:
         return CommandResult(2, f"Workbench replay failed: {exc}")
@@ -150,11 +152,12 @@ def _format_workbench_status(
         f"sequence: {state.get('sequence_id')}",
         f"run_id: {state.get('run_id') or '(none)'}",
         f"source: {source.get('source_path') or source.get('path') or '(none)'}",
-        "perception: " + _selection_text(
-            pipeline.get("perception_preset"), state.get("active_perception_plugin_ids")
-        ),
-        "memory: " + _selection_text(
-            pipeline.get("memory_preset"), state.get("active_memory_plugin_ids")
+        *(
+            f"{step}: "
+            + _selection_text(
+                pipeline.get(f"{step}_preset"), state.get(f"active_{step}_plugin_ids")
+            )
+            for step in SELECTABLE_STEPS
         ),
         f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
     ]
@@ -170,24 +173,21 @@ def _format_workbench_status(
         lines.append(f"recovery: {recovery}")
     cleanup = state.get("cleanup")
     if isinstance(cleanup, dict):
+        fields = (*SELECTABLE_STEPS, "source_read_only", "movement_control")
         lines.append(
-            "cleanup: perception={perception}; memory={memory}; "
-            "source_read_only={source_read_only}; "
-            "movement_control={movement_control}".format(
-                perception=cleanup.get("perception"),
-                memory=cleanup.get("memory"),
-                source_read_only=cleanup.get("source_read_only"),
-                movement_control=cleanup.get("movement_control"),
-            )
+            "cleanup: " + "; ".join(f"{field}={cleanup.get(field)}" for field in fields)
         )
     return "\n".join(lines)
 
 
 def _selection_text(preset: Any, plugin_ids: Any) -> str:
-    """A step's selection as the inspect commands print it: preset (plugins)."""
+    """A step's selection as the inspect commands print it: preset (plugins).
+
+    A step without presets prints its plugins alone.
+    """
 
     plugins = ", ".join(str(item) for item in plugin_ids or []) or "none"
-    return f"{preset or '(none)'} ({plugins})"
+    return f"{preset} ({plugins})" if preset else plugins
 
 
 __all__ = [

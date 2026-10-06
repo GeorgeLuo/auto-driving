@@ -38,7 +38,7 @@ One folder per plugin, named for its `plugin_id`. For example, the
   to this plugin; see `autonomy/decision_cycle/memory/runner.py`.
 - How several plugins share that map, and what a failure does, is declared in
   `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
-  (selection order, one `EVIDENCE_KEY`, last write wins) and `failure_policy`
+  (selection order, one `EVIDENCE_KEY`, last write wins) and `FAILURE_POLICY`
   (an update failure stops the cycle, a reset failure is recorded, a missing
   observation is still passed in). `MemoryRunner` reads those values.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's

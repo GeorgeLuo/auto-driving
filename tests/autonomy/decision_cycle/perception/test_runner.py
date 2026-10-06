@@ -169,8 +169,8 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(perception.things[0].source_plugin_id, "working")
         self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
         self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
-        self.assertEqual(mapper.plugins[0].plugin_id, "working")
-        self.assertEqual(mapper.plugins[0].asserted_value, 42)
+        self.assertEqual(list(mapper.plugins), ["working", "exploding"])
+        self.assertEqual(mapper.plugins["working"].asserted_value, 42)
         reported = {
             item["plugin_id"]: item for item in mapper.plugin_report()["plugins"]
         }
@@ -192,7 +192,7 @@ class PluginRunnerTests(unittest.TestCase):
                 "frame": step_plugins("perception")["frame"]["spec"],
             },
         )
-        plugin = mapper.plugins[0]
+        plugin = mapper.plugins["working"]
 
         mapper.reset()
         mapper.reset()
@@ -212,7 +212,7 @@ class PluginRunnerTests(unittest.TestCase):
 
         self.assertEqual(perception.status, "partial")
         self.assertEqual([run.status for run in perception.plugin_runs], ["ok", "unavailable"])
-        self.assertEqual(mapper.plugins[1].invocations, 0)
+        self.assertEqual(mapper.plugins["unavailable"].invocations, 0)
 
     def test_schema_uses_full_manager_catalog_without_constructing_unselected_plugins(self) -> None:
         manager = PluginManager.from_specs("perception", {
@@ -223,7 +223,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(
             mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
         )
-        self.assertEqual(mapper.plugins, ())
+        self.assertEqual(mapper.plugins, {})
         manager.add("working")
         mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
         self.assertEqual(
@@ -235,7 +235,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(
             mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
         )
-        self.assertEqual(mapper.plugins, ())
+        self.assertEqual(mapper.plugins, {})
 
     def test_manager_selection_is_applied_at_the_next_perception_frame(self) -> None:
         manager = PluginManager.from_specs(
@@ -247,7 +247,7 @@ class PluginRunnerTests(unittest.TestCase):
         )
         manager.select(["working"])
         mapper = PerceptionRunner(plugin_manager=manager)
-        working = mapper.plugins[0]
+        working = mapper.plugins["working"]
 
         first = mapper.perceive(
             build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
@@ -263,7 +263,7 @@ class PluginRunnerTests(unittest.TestCase):
             [run.plugin_id for run in second.plugin_runs],
             ["working", "unavailable"],
         )
-        self.assertIs(mapper.plugins[0], working)
+        self.assertIs(mapper.plugins["working"], working)
 
         manager.remove("working")
         third = mapper.perceive(
@@ -315,17 +315,16 @@ class PluginRunnerTests(unittest.TestCase):
         )
         manager.select(["working"])
         mapper = PerceptionRunner(plugin_manager=manager)
-        working = mapper.plugins[0]
+        working = mapper.plugins["working"]
         manager.select(["unavailable"])
 
         mapper.prepare_selection()
 
-        self.assertEqual(mapper.plugin_ids, ("working",))
-        self.assertIs(mapper.plugins[0], working)
+        self.assertEqual(mapper.plugins, {"working": working})
         self.assertEqual(working.reset_count, 0)
         mapper.commit_selection()
         self.assertEqual(mapper.plugin_ids, ("unavailable",))
-        self.assertIsNot(mapper.plugins[0], working)
+        self.assertIsNot(mapper.plugins["unavailable"], working)
         self.assertEqual(working.reset_count, 1)
 
 
@@ -377,7 +376,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(executed["last_plugin_runs"][0]["duration_ms"], record["duration_ms"])
         self.assertEqual(step.plugin_report(), executed["plugin_report"])
         self.assertEqual(result.plugin_runs[0].plugin_id, "working")
-        self.assertEqual(step.plugins[0].plugin_id, "working")
+        self.assertEqual(list(step.plugins), ["working"])
 
         step.plugin_manager.select(["exploding"])
         waiting = step.status()
@@ -410,7 +409,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(reported["last_plugin_runs"][0]["status"], "error")
         self.assertEqual(reported["last_plugin_runs"][0]["plugin_id"], "exploding")
         self.assertEqual(failed.plugin_runs[0].plugin_id, "exploding")
-        self.assertEqual(step.plugins[0].plugin_id, "exploding")
+        self.assertEqual(list(step.plugins), ["exploding"])
         self.assertEqual(step.plugin_report(), reported["plugin_report"])
 
         step.reset()

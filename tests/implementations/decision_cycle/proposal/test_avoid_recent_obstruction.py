@@ -8,7 +8,7 @@ from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
+from implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin import (
     AvoidRecentObstruction,
     propose as _propose,
 )

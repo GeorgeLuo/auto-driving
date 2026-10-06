@@ -139,8 +139,10 @@ class LoadingContractTests(unittest.TestCase):
 
         # Plugins come from the bundle copy; autonomy, and so every value class
         # the cycle passes between steps, stays the host's.
-        self.assertIs(type(perception.runner.plugins[0].contract), host_contract)
-        self.assertIsNot(type(memory.runner.plugins[0]), host_ledger)
+        self.assertIs(type(perception.runner.plugins["frame"].contract), host_contract)
+        self.assertIsNot(
+            type(memory.runner.plugins["bounded_evidence"].implementation), host_ledger
+        )
         with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
             staged = importlib.import_module(
                 "implementations.decision_cycle.memory.shared.evidence_ledger.reduction"

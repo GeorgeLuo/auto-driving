@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.memory.presets import (
@@ -27,15 +26,12 @@ from .bundles import (
 )
 from .paths import ROOT, display_path, safe_path_part
 from .step_activations import (
-    CONTROLLER_BUNDLE_KEYS,
-    bundle_activation_problems,
-    format_activation_problems,
     refresh_release,
     stage_activation,
     staging_vehicle,
     step_update_error,
 )
-from .step_hosting import load_staged_runner
+from .step_schema import format_staged_step, staged_step_info
 from .streaming import _format_live_memory_screen, probe_live_memory
 from .vehicles import DEFAULT_CHASE_READINESS_TIMEOUT_S
 
@@ -131,110 +127,13 @@ def get_vehicle_memory_info(
     timeout_s: float = 3.0,
 ) -> CommandResult:
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    if not activation_path.exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No active memory preset found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(activation_path)}",
-                    "Run: ./cli/automa vehicles update memory --id <vehicle_id>",
-                ]
-            ),
-        )
-
-    problems = bundle_activation_problems(bundle, vehicle_id, steps=("memory",))
-    if problems:
-        return CommandResult(2, format_activation_problems(problems))
-    try:
-        activation = read_step_activation(activation_path, "memory")
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
-        return CommandResult(
-            2,
-            f"Could not read memory activation {display_path(activation_path)}: {exc}",
-        )
-    stored_bundle = activation.metadata.get("controller_bundle")
-    if not isinstance(stored_bundle, dict):
-        stored_bundle = {}
-    bundle_root_text = stored_bundle.get("root_dir")
-    if not isinstance(bundle_root_text, str) or not bundle_root_text:
-        return CommandResult(
-            2,
-            f"Activation {display_path(activation_path)} does not record its controller bundle.",
-        )
-    if not Path(bundle_root_text).exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Controller bundle is missing for {vehicle_id!r}: {display_path(Path(bundle_root_text))}",
-                    "Run: ./cli/automa vehicles update memory --id <vehicle_id>",
-                ]
-            ),
-        )
-    plugins_text = ", ".join(activation.plugins) or "(none)"
-    try:
-        runner = load_staged_runner(activation)
-    except Exception as exc:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Could not load active memory for {vehicle_id!r}.",
-                    f"Plugins: {plugins_text}",
-                    f"Reason: {type(exc).__name__}: {exc}",
-                ]
-            ),
-        )
-    try:
-        schema = runner.describe_schema()
-    except Exception as exc:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Could not inspect active memory for {vehicle_id!r}.",
-                    f"Plugins: {plugins_text}",
-                    f"Reason: {type(exc).__name__}: {exc}",
-                ]
-            ),
-        )
-    try:
-        manager = activation.plugin_manager()
-        available = manager.available
-    except Exception as exc:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Could not load active memory for {vehicle_id!r}.",
-                    f"Plugins: {plugins_text}",
-                    f"Reason: {type(exc).__name__}: {exc}",
-                ]
-            ),
-        )
-
+    staged, error = staged_step_info(bundle, vehicle_id, "memory")
+    if error is not None:
+        return CommandResult(2, error)
     payload: dict[str, Any] = {
         "schema": "vehicle_memory_info_v1",
         "vehicle_id": vehicle_id,
-        "activation": {
-            "path": display_path(activation_path),
-            "preset": activation.metadata.get("preset"),
-            "plugins": list(manager.selected_ids),
-            "available_plugins": sorted(item.plugin_id for item in available),
-            "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
-            "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
-        },
-        "controller_bundle": {
-            key: stored_bundle.get(key) for key in CONTROLLER_BUNDLE_KEYS
-        },
-        "memory_schema_source": {
-            "kind": "runner_method",
-            "method": "describe_schema",
-            "runner": "autonomy.decision_cycle.memory.runner:MemoryRunner",
-        },
-        "memory_schema": schema,
+        **staged,
         "live": None,
     }
     if include_live:
@@ -267,79 +166,10 @@ def _selected_memory(preset: str | None, plugins: list[str] | None) -> tuple[Any
 
 
 def _format_memory_info(payload: dict[str, Any]) -> str:
-    activation = payload["activation"]
-    bundle = payload.get("controller_bundle") if isinstance(payload.get("controller_bundle"), dict) else {}
-    lines = [
-        f"Memory: {payload['vehicle_id']} -> {activation.get('preset') or 'unknown'}",
-        f"Enabled plugins: {', '.join(activation.get('plugins', [])) or 'none'}",
-        f"Available plugins: {', '.join(activation.get('available_plugins', [])) or 'none'}",
-        f"Bundle: {bundle.get('root_dir', 'unknown')}",
-        f"Activation: {activation['path']}",
-    ]
-    release = bundle.get("release") if isinstance(bundle.get("release"), dict) else {}
-    if release:
-        archive = release.get("archive")
-        manifest = release.get("manifest")
-        lines.append(f"Release: {release.get('tree_sha256', 'unknown')}")
-        if archive:
-            lines.append(f"Archive: {archive}")
-        if manifest:
-            lines.append(f"Release manifest: {manifest}")
-    else:
-        lines.append(
-            "Release: not recorded; run `vehicles update memory` to package and attach release metadata"
-        )
-    schema = payload.get("memory_schema") if isinstance(payload.get("memory_schema"), dict) else None
-    if schema is not None:
-        source = payload.get("memory_schema_source") if isinstance(payload.get("memory_schema_source"), dict) else {}
-        lines.append(f"Schema source: {source.get('runner', 'unknown')}.describe_schema()")
-        lines.extend(_format_schema_sections(schema))
+    lines = format_staged_step("memory", payload)
     live = payload.get("live")
     if isinstance(live, dict):
         lines.append("")
         lines.append(_format_live_memory_screen(vehicle_id=payload["vehicle_id"], live=live))
     return "\n".join(lines)
-
-
-def _format_schema_sections(schema: dict[str, Any]) -> list[str]:
-    """Section titles shared with perception info, for the fields both steps have."""
-
-    lines = ["", "Inputs:"]
-    for item in schema.get("inputs") or []:
-        if not isinstance(item, dict):
-            continue
-        label = item.get("name") or item.get("feed_id") or "unknown"
-        required = "required" if item.get("required") else "optional"
-        lines.append(f"- {label} ({required})")
-        if item.get("source"):
-            lines.append(f"  source: {item['source']}")
-        if item.get("missing_behavior"):
-            lines.append(f"  missing: {item['missing_behavior']}")
-    plugins = schema.get("plugins")
-    if isinstance(plugins, list) and plugins:
-        lines.extend(["", "Plugins:"])
-        for plugin in plugins:
-            if isinstance(plugin, dict):
-                lines.append(
-                    f"- {plugin.get('plugin_id', 'unknown')} "
-                    f"[{plugin.get('spec', 'unknown')}]"
-                )
-    output = schema.get("output") if isinstance(schema.get("output"), dict) else {}
-    lines.extend(["", "Output:", f"- schema: {output.get('schema', 'unknown')}"])
-    keys = output.get("ledger_summary_keys")
-    if isinstance(keys, list) and keys:
-        lines.append(f"- ledger: {', '.join(map(str, keys))}")
-    if output.get("missing_field_behavior"):
-        lines.append(f"- missing: {output['missing_field_behavior']}")
-    composition = schema.get("composition") if isinstance(schema.get("composition"), dict) else {}
-    if composition:
-        lines.extend(["", "Composition:"])
-        for key, value in composition.items():
-            lines.append(f"- {key}: {value}")
-    failure = schema.get("failure_policy") if isinstance(schema.get("failure_policy"), dict) else {}
-    if failure:
-        lines.extend(["", "Failure policy:"])
-        for key, value in failure.items():
-            lines.append(f"- {key}: {value}")
-    return lines
 

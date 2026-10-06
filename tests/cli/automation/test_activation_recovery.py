@@ -157,7 +157,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
 
     def test_info_and_decision_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
         with fake_metrics_ui_server() as ws_url:
-            for step in STEPS:
+            for step in ("perception", "memory", *DECISION_STEPS):
                 with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
                     runtime_root = Path(tmp) / "vehicles"
                     path = runtime_root / VEHICLE_ID / "bundle/runtime" / step / "active.json"
@@ -165,9 +165,9 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa vehicles update {step} --id {VEHICLE_ID}"
-                    # Decision info lists all six steps; the other surfaces read their own.
-                    surfaces = [("info", "decision")]
-                    if step in ("perception", "memory"):
+                    # Each step's info reads its own activation; the decision stream reads its three.
+                    surfaces = []
+                    if step in ("perception", "memory", "proposal"):
                         surfaces.append(("info", step))
                     if step in DECISION_STEPS:
                         surfaces.append(("stream", "decision", "--once"))
@@ -180,8 +180,10 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                         self.assertEqual(result.stderr, "")
                         self.assertIn(f"Invalid {step} activation:", result.stdout)
                         self.assertIn(f"Restage with your intended selection: {command}", result.stdout)
+                    if step not in DECISION_STEPS:
+                        continue
                     machine = run_automa(
-                        "vehicles", "info", "decision", "--id", VEHICLE_ID, "--json",
+                        "vehicles", "stream", "decision", "--once", "--id", VEHICLE_ID, "--json",
                         runtime_root=runtime_root, extra_env=env, check=False,
                     )
                     payload = json.loads(machine.stdout)

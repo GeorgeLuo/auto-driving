@@ -1,7 +1,7 @@
 """The memory step's contract, report, and the ledger summary tooling reads.
 
 ``MemoryBackend`` is the runner boundary, as ``PerceptionBackend`` is for
-perception. ``failure_policy`` and ``composition_declaration`` are the values
+perception. ``FAILURE_POLICY`` and ``composition_declaration`` are the values
 ``MemoryRunner`` and ``describe_schema`` read. The evidence slot stays one
 value, last write wins.
 
@@ -22,28 +22,19 @@ from typing import Any, Protocol, runtime_checkable
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
 MEMORY_SCHEMA = "memory_schema_v1"
 MEMORY_REPORT_SCHEMA = "memory_report_v1"
 
-# Same field names as perception's failure policy. The values differ: a memory
-# plugin that raises stops the cycle, a reset failure is recorded, and a
-# missing observation is still passed to the plugin.
-FAILURE_POLICY_FIELDS = ("update", "reset", "missing_input")
-UPDATE_FAILURE = "stop_cycle"
-RESET_FAILURE = "record"
-MISSING_INPUT = "invoke"
-
-
-def failure_policy() -> dict[str, str]:
-    """The values ``MemoryRunner`` reads when a plugin fails or an input is missing."""
-
-    return {
-        "update": UPDATE_FAILURE,
-        "reset": RESET_FAILURE,
-        "missing_input": MISSING_INPUT,
-    }
+# A memory plugin that raises stops the cycle, a reset failure is recorded,
+# and a missing observation is still passed to the plugin.
+FAILURE_POLICY = FailurePolicy(
+    update="stop_cycle",
+    reset="record",
+    missing_input="invoke",
+)
 
 
 def composition_declaration() -> dict[str, str]:

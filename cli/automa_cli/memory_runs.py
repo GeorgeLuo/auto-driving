@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
@@ -115,9 +114,7 @@ def inspect_memory(
         try:
             outcome = run_frame(
                 frame,
-                perception_step=perception_runner,
-                memory_step=memory,
-                steps=DecisionSteps(),
+                steps={"perception": perception_runner, "memory": memory},
                 shared_memory=shared_memory,
             )
         except Exception as exc:  # Plugins are third-party code; name the frame that broke.

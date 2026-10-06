@@ -6,10 +6,10 @@ import unittest
 from unittest.mock import patch
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
+from cli.automa_cli.proposal import get_vehicle_proposal_info
 from cli.automa_cli.decision import (
     apply_vehicle_decision,
     build_decision_stream_frame,
-    get_vehicle_decision_info,
     _format_stream_frame,
     latest_decision_path,
     publish_decision_frame,
@@ -236,7 +236,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     json.dumps(mutated_activation),
                     encoding="utf-8",
                 )
-                info = get_vehicle_decision_info(
+                info = get_vehicle_proposal_info(
                     vehicle_id="chase-sim-chaser",
                     json_output=True,
                 )
@@ -259,7 +259,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     worker_pid=1,
                     activation=activation,
                 )
-                for result in (info, stream, applied):
+                self.assertEqual(info.exit_code, 2, info.message)
+                for result in (stream, applied):
                     self.assertEqual(result.exit_code, 2, result.message)
                     self.assertEqual(
                         json.loads(result.message)["error"],

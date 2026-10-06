@@ -37,7 +37,7 @@ class WorkbenchTests(unittest.TestCase):
             })
             runner = ImageReplayRunner(
                 cadence_ms=5000,
-                perception_step_factory=FixtureMapper,
+                step_factories={"perception": FixtureMapper},
             )
             base = serve_workbench(self, runner)
 

@@ -84,7 +84,7 @@ class MemorySelectionTests(unittest.TestCase):
         manager = _manager()
         step = MemoryRunner(plugin_manager=manager)
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
-        self.assertEqual(step.plugins, ())
+        self.assertEqual(step.plugins, {})
         manager.add("second")
         report = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
         self.assertEqual(report["plugins"][0]["plugin_id"], "second")
@@ -92,7 +92,7 @@ class MemorySelectionTests(unittest.TestCase):
         manager.remove("second")
         step.update(DecisionFrameContext("frame-2", 2, 200, shared_memory={}), None)
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
-        self.assertEqual(step.plugins, ())
+        self.assertEqual(step.plugins, {})
 
     def test_manager_selection_runs_in_order_and_later_plugins_see_earlier_writes(self):
         manager = _manager()
@@ -125,23 +125,23 @@ class MemorySelectionTests(unittest.TestCase):
         manager = _manager()
         manager.select(["first", "second"])
         step = MemoryRunner(plugin_manager=manager)
-        first, second = step.plugins
+        first, second = step.plugins.values()
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
         step.update(context, None)
         manager.select(["second", "first"])
         step.update(context, None)
-        self.assertIs(step.plugins[0], second)
-        self.assertIs(step.plugins[1], first)
+        self.assertEqual(step.plugins, {"second": second, "first": first})
+        self.assertEqual(list(step.plugins), ["second", "first"])
         manager.remove("first")
         step.update(context, None)
         self.assertEqual(first.reset_count, 1)
-        self.assertIs(step.plugins[0], second)
+        self.assertEqual(step.plugins, {"second": second})
         self.assertEqual(second.reset_count, 0)
         manager.add("first")
         step.update(context, None)
-        self.assertIsNot(step.plugins[1], first)
-        self.assertIs(step.plugins[0], second)
-        self.assertEqual(step.plugins[1].update_count, 1)
+        self.assertIsNot(step.plugins["first"], first)
+        self.assertIs(step.plugins["second"], second)
+        self.assertEqual(step.plugins["first"].update_count, 1)
 
     def test_empty_selection_can_be_enabled_then_disabled_between_cycles(self):
         manager = _manager()
@@ -167,18 +167,18 @@ class MemorySelectionTests(unittest.TestCase):
         )
         manager.select(["first"])
         step = MemoryRunner(plugin_manager=manager)
-        original = step.plugins[0]
+        original = step.plugins["first"]
         manager.select(["second"])
 
         step.prepare_selection()
 
         self.assertEqual(_OnceMemory.constructions, 1)
-        self.assertIs(step.plugins[0], original)
+        self.assertEqual(step.plugins, {"first": original})
         self.assertEqual(original.reset_count, 0)
         step.commit_selection()
         self.assertEqual(_OnceMemory.constructions, 1)
         self.assertEqual(step.plugin_ids, ("second",))
-        self.assertEqual(step.plugins[0].implementation.plugin_id, "second")
+        self.assertEqual(step.plugins["second"].implementation.plugin_id, "second")
         self.assertEqual(original.reset_count, 1)
 
     def test_a_selection_that_cannot_load_raises_and_the_next_good_edit_recovers(self):
@@ -193,7 +193,7 @@ class MemorySelectionTests(unittest.TestCase):
         )
         manager.select(["first"])
         step = MemoryRunner(plugin_manager=manager)
-        first = step.plugins[0]
+        first = step.plugins["first"]
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
         step.update(context, None)
 
@@ -205,12 +205,11 @@ class MemorySelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "does not satisfy MemoryPlugin"):
             step.update(context, None)
         # Nothing was published: the plugin that was applied is still the one that runs.
-        self.assertEqual(step.plugin_ids, ("first",))
-        self.assertIs(step.plugins[0], first)
+        self.assertEqual(step.plugins, {"first": first})
 
         manager.select(["first"])
         step.update(context, None)
-        self.assertIs(step.plugins[0], first)
+        self.assertIs(step.plugins["first"], first)
         self.assertEqual(first.update_count, 2)
 
 

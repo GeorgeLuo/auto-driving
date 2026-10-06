@@ -34,9 +34,11 @@ from .physical_observation import (
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 PERCEPTION_LIVE_SCHEMA = "vehicle_perception_live_v0"
-# Memory's live schema sits with perception's. Stream, probe, and the live
-# screen for memory are in this module.
+# Memory's and proposal's live schemas sit with perception's. Their probe and
+# live screen, and memory's stream, are in this module.
 MEMORY_LIVE_SCHEMA = "vehicle_memory_live_v1"
+PROPOSAL_LIVE_SCHEMA = "vehicle_proposal_live_v1"
+LIVE_STEP_SCHEMAS = {"memory": MEMORY_LIVE_SCHEMA, "proposal": PROPOSAL_LIVE_SCHEMA}
 # Onboard publication health -> probe status; "healthy" is the only live one.
 _PHYSICAL_PERCEPTION_STATUS = {
     "warming": "absent",
@@ -979,6 +981,24 @@ def probe_live_memory(
 ) -> dict[str, Any]:
     """Return a normalized live-memory probe without requiring stream mode."""
 
+    return probe_live_step("memory", vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
+
+
+def probe_live_step(
+    step: str,
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any] | None = None,
+    timeout_s: float = 3.0,
+) -> dict[str, Any]:
+    """``step`` as the running autonomy engine has it: its runner's status.
+
+    The PiCar reports it under ``/autonomy/status``; a Chase automation
+    worker under its step in ``state.json``. That is what the engine runs,
+    not what any view last rendered.
+    """
+
+    schema = LIVE_STEP_SCHEMAS[step]
     if vehicle is None:
         discovery = discover_active_vehicles(
             timeout_s=timeout_s,
@@ -989,7 +1009,7 @@ def probe_live_memory(
         vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
         if error or vehicle is None:
             return {
-                "schema": MEMORY_LIVE_SCHEMA,
+                "schema": schema,
                 "vehicle_id": vehicle_id,
                 "status": "unavailable",
                 "error": error or f"Vehicle {vehicle_id!r} was not found.",
@@ -998,19 +1018,43 @@ def probe_live_memory(
 
     provider = vehicle.get("provider")
     if provider == "picar":
-        return _probe_physical_memory(vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
+        return _probe_physical_step(step, vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
     if provider == "chase-sim":
-        return _probe_chase_memory(vehicle_id=vehicle_id)
+        return _probe_chase_step(step, vehicle_id=vehicle_id)
     return {
-        "schema": MEMORY_LIVE_SCHEMA,
+        "schema": schema,
         "vehicle_id": vehicle_id,
         "status": "unavailable",
         "error": (
             f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "live memory supports picar and chase-sim."
+            f"live {step} supports picar and chase-sim."
         ),
         "probed_at_ms": int(time.time() * 1000),
     }
+
+
+def _live_step_fields(step: str, status: dict[str, Any]) -> dict[str, Any]:
+    """The runner status fields a live probe reports; memory adds its ledgers."""
+
+    fields = {
+        "activation": status.get("activation"),
+        "plugin_ids": status.get("plugin_ids", []),
+        "selected_plugin_ids": status.get("selected_plugin_ids", []),
+        "plugin_report": status.get("plugin_report"),
+        "last_error": status.get("last_error"),
+        "failure_count": status.get("failure_count"),
+    }
+    if step == "memory":
+        fields.update(
+            plugins=_probe_plugins(status),
+            evidence_publisher=evidence_publisher(status),
+            last_duration_ms=status.get("last_duration_ms"),
+            update_count=status.get("update_count"),
+            reset_count=status.get("reset_count"),
+        )
+    else:
+        fields["run_count"] = status.get("run_count")
+    return fields
 
 
 def _probe_plugins(status: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1044,7 +1088,8 @@ def _live_plugins(live: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _probe_physical_memory(
+def _probe_physical_step(
+    step: str,
     *,
     vehicle_id: str,
     vehicle: dict[str, Any],
@@ -1054,7 +1099,7 @@ def _probe_physical_memory(
     probed_at_ms = int(time.time() * 1000)
     if not base_url:
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "picar",
             "status": "unavailable",
@@ -1065,7 +1110,7 @@ def _probe_physical_memory(
         status = fetch_autonomy_status(base_url, timeout_s=timeout_s)
     except ConnectionError as exc:
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "picar",
             "status": "error",
@@ -1076,57 +1121,55 @@ def _probe_physical_memory(
 
     autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
     steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
-    memory = steps.get("memory") if isinstance(steps.get("memory"), dict) else None
+    runner = steps.get(step) if isinstance(steps.get(step), dict) else None
     last_control = autonomy.get("last_control") if isinstance(autonomy.get("last_control"), dict) else {}
     control_meta = (
         last_control.get("metadata") if isinstance(last_control.get("metadata"), dict) else {}
     )
-    if memory is None:
+    # Whether the engine's last cycle saw memory; only memory's probe reports it.
+    has_memory = (
+        {"has_memory": bool(control_meta.get("has_memory"))} if step == "memory" else {}
+    )
+    if runner is None:
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "picar",
             "status": "absent",
             "endpoint": f"{base_url}/autonomy/status",
             "drive_mode": status.get("drive_mode"),
-            "has_memory": bool(control_meta.get("has_memory")),
+            **has_memory,
             "error": (
-                "No live memory step in /autonomy/status. "
+                f"No live {step} step in /autonomy/status. "
                 "If activation was deployed, update core then autonomy with --restart."
             ),
             "probed_at_ms": probed_at_ms,
         }
 
     return {
-        "schema": MEMORY_LIVE_SCHEMA,
+        "schema": LIVE_STEP_SCHEMAS[step],
         "vehicle_id": vehicle_id,
         "provider": "picar",
         "status": "live",
         "endpoint": f"{base_url}/autonomy/status",
         "drive_mode": status.get("drive_mode"),
-        "has_memory": bool(control_meta.get("has_memory")),
-        "activation": memory.get("activation"),
-        "plugin_ids": memory.get("plugin_ids", []),
-        "selected_plugin_ids": memory.get("selected_plugin_ids", []),
-        "plugins": _probe_plugins(memory),
-        "evidence_publisher": evidence_publisher(memory),
-        "plugin_report": memory.get("plugin_report"),
-        "last_duration_ms": memory.get("last_duration_ms"),
-        "last_error": memory.get("last_error"),
-        "update_count": memory.get("update_count"),
-        "reset_count": memory.get("reset_count"),
-        "failure_count": memory.get("failure_count"),
+        **has_memory,
+        **_live_step_fields(step, runner),
         "probed_at_ms": probed_at_ms,
     }
 
 
 def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
+    return _probe_chase_step("memory", vehicle_id=vehicle_id)
+
+
+def _probe_chase_step(step: str, *, vehicle_id: str) -> dict[str, Any]:
     probed_at_ms = int(time.time() * 1000)
     automation_dir = _automation_dir(vehicle_id)
     state_path = automation_dir / "state.json"
     if not state_path.exists():
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "unavailable",
@@ -1140,7 +1183,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         state = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "error",
@@ -1149,7 +1192,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         }
     if not isinstance(state, dict):
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "error",
@@ -1160,12 +1203,12 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
     liveness = assess_chase_worker_liveness(
         state=state,
         probed_at_ms=probed_at_ms,
-        step="memory",
+        step=step,
         vehicle_id=vehicle_id,
     )
     if not liveness["live"]:
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": liveness["status"],
@@ -1177,43 +1220,34 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
             "max_age_ms": CHASE_WORKER_PROBE_MAX_AGE_MS,
         }
 
-    memory = state.get("memory") if isinstance(state.get("memory"), dict) else None
-    if memory is None or memory.get("status") == "absent":
+    entry = state.get(step) if isinstance(state.get(step), dict) else None
+    if entry is None or entry.get("status") == "absent":
         return {
-            "schema": MEMORY_LIVE_SCHEMA,
+            "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "absent",
             "error": (
-                "Automation worker has no live memory step. "
-                f"Stage memory then restart automation: "
-                f"./cli/automa vehicles update memory --id {vehicle_id}"
+                f"Automation worker has no live {step} step. "
+                f"Stage {step} then restart automation: "
+                f"./cli/automa vehicles update {step} --id {vehicle_id}"
             ),
             "probed_at_ms": probed_at_ms,
-            "worker_memory": memory,
+            f"worker_{step}": entry,
             "worker_status": state.get("status"),
             "worker_pid": liveness.get("pid"),
         }
 
-    status_block = memory.get("status") if isinstance(memory.get("status"), dict) else memory
+    status_block = entry.get("status") if isinstance(entry.get("status"), dict) else entry
     if not isinstance(status_block, dict):
         status_block = {}
     return {
-        "schema": MEMORY_LIVE_SCHEMA,
+        "schema": LIVE_STEP_SCHEMAS[step],
         "vehicle_id": vehicle_id,
         "provider": "chase-sim",
         "status": "live",
-        "activation": memory.get("activation") or status_block.get("activation"),
-        "plugin_ids": status_block.get("plugin_ids", []),
-        "selected_plugin_ids": status_block.get("selected_plugin_ids", []),
-        "plugins": _probe_plugins(status_block),
-        "evidence_publisher": evidence_publisher(status_block),
-        "plugin_report": status_block.get("plugin_report"),
-        "last_duration_ms": status_block.get("last_duration_ms"),
-        "last_error": status_block.get("last_error"),
-        "update_count": status_block.get("update_count"),
-        "reset_count": status_block.get("reset_count"),
-        "failure_count": status_block.get("failure_count"),
+        **_live_step_fields(step, status_block),
+        "activation": entry.get("activation") or status_block.get("activation"),
         "probed_at_ms": probed_at_ms,
         "worker_status": state.get("status"),
         "worker_pid": liveness.get("pid"),
@@ -1223,9 +1257,13 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
 
 
 def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
+    return format_live_step_screen("memory", vehicle_id=vehicle_id, live=live)
+
+
+def format_live_step_screen(step: str, *, vehicle_id: str, live: dict[str, Any]) -> str:
     status = str(live.get("status") or "unknown")
     lines = [
-        f"Live memory: {vehicle_id} [{status}]",
+        f"Live {step}: {vehicle_id} [{status}]",
     ]
     if live.get("provider"):
         lines.append(f"Provider: {live.get('provider')}")
@@ -1235,17 +1273,22 @@ def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
         lines.append(f"Drive mode: {live.get('drive_mode')}")
     if status == "live":
         lines.append(f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}")
-        lines.extend(_format_plugin_ledgers(_live_plugins(live)))
-        lines.extend(
-            [
-                f"Evidence publisher: {live.get('evidence_publisher') or 'none'}",
-                (
-                    f"Counters: updates={live.get('update_count')} "
-                    f"resets={live.get('reset_count')} "
-                    f"failures={live.get('failure_count')}"
-                ),
-            ]
-        )
+        if step == "memory":
+            lines.extend(_format_plugin_ledgers(_live_plugins(live)))
+            lines.extend(
+                [
+                    f"Evidence publisher: {live.get('evidence_publisher') or 'none'}",
+                    (
+                        f"Counters: updates={live.get('update_count')} "
+                        f"resets={live.get('reset_count')} "
+                        f"failures={live.get('failure_count')}"
+                    ),
+                ]
+            )
+        else:
+            lines.append(
+                f"Counters: runs={live.get('run_count')} failures={live.get('failure_count')}"
+            )
         if live.get("last_duration_ms") is not None:
             lines.append(f"Last update duration: {live.get('last_duration_ms')} ms")
         if live.get("last_error"):

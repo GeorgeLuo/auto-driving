@@ -256,7 +256,7 @@ class MemoryCommandTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("No active memory preset found", result.stdout)
+        self.assertIn("No active memory activation found", result.stdout)
         self.assertIn("vehicles update memory", result.stdout)
 
 

@@ -8,7 +8,7 @@ from typing import Any
 PROPOSAL_PLUGINS: tuple[dict[str, Any], ...] = (
     {
         "spec": (
-            "implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin:"
+            "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:"
             "AvoidRecentObstruction"
         ),
         "description": (

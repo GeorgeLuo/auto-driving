@@ -31,7 +31,6 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.steps import builtin_activation, step_runner
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import (
-    DEFAULT_STEP_PLUGINS,
     packaged_activation,
     step_plugins,
 )
@@ -494,24 +493,6 @@ def update_vehicle_step(
     )
 
 
-def step_info(bundle: dict[str, str]) -> dict[str, Any]:
-    """Each step's staged selection, or the built-in it falls back to."""
-
-    info: dict[str, Any] = {}
-    for step in STEPS:
-        staged = read_bundle_activation(bundle, step)
-        fallback = None if staged is not None else builtin_activation(step)
-        activation = staged or fallback
-        info[step] = {
-            "activation": display_path(bundle_activation_path(bundle, step)) if staged else None,
-            "source": "staged" if staged else ("builtin" if fallback else "none"),
-            "plugins": list(activation.plugins) if activation is not None else [],
-            "available_plugins": sorted(step_plugins(step)),
-            "default_plugins": list(DEFAULT_STEP_PLUGINS[step]),
-        }
-    return info
-
-
 __all__ = [
     "BUILTIN_STEPS",
     "GENERIC_UPDATE_STEPS",
@@ -531,7 +512,6 @@ __all__ = [
     "staged_activation",
     "staging_metadata",
     "staging_vehicle",
-    "step_info",
     "step_update_error",
     "update_vehicle_step",
     "vehicle_bundle",

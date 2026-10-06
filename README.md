@@ -119,7 +119,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
-| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info show the staged preset, enabled and available plugins, and runner schema (inputs, output, composition and failure policy); perception info also reports the live view URL, and memory info the live memory step. |
+| `vehicles info perception\|memory\|proposal` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception and memory also show their preset. Each reports its view; memory and proposal include live runner status. Proposal also shows the decision generation, plan selector, and action authority. |
 | `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
@@ -190,7 +190,7 @@ matching identity in another step or discovery on the next update.
 
 Every step update records `metadata.controller_bundle` with `root_dir`,
 `autonomy_dir`, `implementations_dir`, `runtime_dir`, and `release`.
-`vehicles info perception|memory --json` exposes those same bundle keys.
+`vehicles info perception|memory|proposal --json` exposes those same bundle keys.
 The paths identify the staged code; `release` identifies the packaged source
 and archive. Plugin selections and constructor configs remain in `plugins`,
 `plugin_specs`, and `plugin_configs`.
@@ -271,7 +271,7 @@ Inspect the machine-readable contracts declared by the staged code:
 
 ```sh
 ./cli/automa vehicles info perception --id chase-sim-chaser
-./cli/automa vehicles info decision --id chase-sim-chaser
+./cli/automa vehicles info proposal --id chase-sim-chaser
 ```
 
 The control-taking form remains available for deliberately requested controller
@@ -424,7 +424,8 @@ and a plugin list is recorded as the preset it equals, else `custom`.
 `vehicles info memory` reports the staged preset, its enabled plugins and the
 available ones, and the staged runner's `memory_schema_v1` contract.
 `--json` returns `vehicle_memory_info_v1` with that contract under `memory_schema`.
-Both steps describe inputs, plugins, output, composition and failure policy;
+Perception, memory, and proposal (`vehicles info proposal`) describe inputs,
+plugins, output, composition and failure policy;
 memory's contract also names the ledger fields the CLI and viewers project from
 each plugin's status. The report itself preserves that status, including absent
 ledger keys. Staging replaces the selection. A running worker applies a
@@ -481,13 +482,49 @@ Older memory recordings contain only summary fields. They use default step
 selections and image-directory ordering and timing, because those reports did
 not save executable configs or an image inventory.
 
+### Proposal Plugins
+
+`--plugin` selects packaged proposal plugins by catalog key, in order, with
+their default configs from `implementations/decision_cycle/proposal/catalog.py`.
+Proposal has no presets; without `--plugin` it stages its default plugins.
+
+`vehicles info proposal` reports the staged plugins and the available ones,
+the staged runner's `proposal_schema_v1` contract, the decision view a running
+worker publishes the proposals to, and the plan and action plugins that act on
+them. `--json` returns `vehicle_proposal_info_v1` with that contract under
+`proposal_schema`, the view under `published_view`, and the decision
+generation, plan selector and action authority under `decision`. Like memory
+info, it probes the running autonomy engine and reports its proposal step under
+`live` (`vehicle_proposal_live_v1`): the plugins it runs and its run and
+failure counts, from the Chase worker's state or the PiCar's
+`/autonomy/status`. That is the engine's step, not the proposals any view last
+rendered. A worker loads the staged proposals from the controller bundle when
+it starts, as it loads memory, and reports them under `proposal` in its state
+and `proposal_plugin_report` in each frame. Staging replaces the selection. A
+running worker applies a changed plugin list at its next frame and changed
+plugin configs when it restarts; a stopped one uses the selection the next time
+it starts. Proposals are part of the decision generation: once the worker runs
+the new selection it publishes under the restaged generation, and an open
+decision view follows it. The generation changes after the cycle confirms
+which plugins were applied. A plugin load or removal-reset failure keeps the
+old applied selection and generation, and publishing is refused while they
+differ from the staged decision. After a config restage it publishes no
+decision frames until it restarts:
+
+```sh
+./cli/automa vehicles info proposal --id chase-sim-chaser
+./cli/automa vehicles update proposal --id chase-sim-chaser --plugin avoid_recent_obstruction
+```
+
 ## Decision Playback Workbench
 
 The workbench reads the same recorded frame order and timing. `vehicles
 workbench replay` starts each step from `--perception-preset` or
-`--perception-plugin` and `--memory-preset` or `--memory-plugin`, as the
-inspect and update commands take them. With neither flag, a step uses its
-default preset. The CLI and page show each step's preset and ordered plugins.
+`--perception-plugin`, `--memory-preset` or `--memory-plugin`, and
+`--proposal-plugin`, as the inspect and update commands take them. With no
+flag, a step uses its default preset; proposal has no presets and uses its
+default plugins. The CLI and page show each step's preset, where it has one,
+and ordered plugins.
 The page's catalog lists available plugins; its separate **Run order** shows
 execution order. Newly checked plugins run last, and retained plugins keep
 their order. Unchecking every plugin disables its plugins.
@@ -501,21 +538,21 @@ absent and shows the reason while memory can still show retained records.
 A preset keeps its plugin configs until that step's ordered selection changes.
 A changed selection uses catalog defaults for every selected plugin; it does
 not restore a recording's step configs or a tuned preset just because its ids
-match. Start with the named preset again to restore its tuning. The other step
-keeps its selection and configs. Submitting the same ordered list again keeps
-the current configs and pass.
+match. Start with the named preset again to restore its tuning. The other
+steps keep their selections and configs. Submitting the same ordered list again
+keeps the current configs and pass.
 
-Perception tracks and memory evidence carry state across frames, so changing
-either step's selection during a running or paused replay rebuilds both
-pipelines with a fresh shared map and runs from the first frame to the displayed
-frame before the action returns. This includes the last frame still displayed
+Perception tracks and memory evidence carry state across frames, and proposals
+read them, so changing any step's selection during a running or paused replay
+rebuilds every step's pipeline with a fresh shared map and runs from the first
+frame to the displayed frame before the action returns. This includes the last frame still displayed
 between loop passes.
 
 For workbench API integrations, `GET /api/state` reports schema
 `workbench_image_replay_state_v3`. Read `<step>_plugin_catalog` for availability
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
-`custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
+`custom` (null for proposal, which has no presets). The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
 plugins that were applied. Each frame's `memory_plugins` lists every applied
 memory plugin's health, record count, and epoch, and
 `memory_evidence_publisher` names the plugin whose evidence the step published.
@@ -528,7 +565,7 @@ Cleanup now names `perception` instead of `mapper`. The removed CLI flags
 `--plugin`, `--active-plugin`, and `--active-plugin-id` become
 `--perception-plugin`; memory uses `--memory-plugin`.
 
-Send `POST /api/action` with an explicit step for either selection; omitting
+Send `POST /api/action` with an explicit step for any selection; omitting
 `step` is a 400 input error. `active_plugin_ids` remains the common request field
 and may be empty. Include the current state's `run_id` during playback:
 
@@ -639,7 +676,7 @@ Step selections are local until the next autonomy deployment:
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
-`vehicles info perception|decision|memory --id piracer` inspects staged
+`vehicles info perception|memory|proposal --id piracer` inspects staged
 activation and release metadata. Local staging does not require the Pi to be
 online; the subsequent autonomy deploy does.
 

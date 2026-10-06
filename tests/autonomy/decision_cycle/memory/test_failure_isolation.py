@@ -30,7 +30,7 @@ class MemoryFailureIsolationTests(unittest.TestCase):
                 del context, observation
                 raise RuntimeError("x" * 300_000)
 
-            step.plugins[0].implementation.update = huge_fail  # type: ignore[method-assign]
+            step.plugins["recording_test"].implementation.update = huge_fail  # type: ignore[method-assign]
             with self.assertRaises(RuntimeError):
                 step.update(
                     DecisionFrameContext("frame_8", 8, 800, shared_memory={}),
@@ -55,7 +55,7 @@ class MemoryFailureIsolationTests(unittest.TestCase):
                 Observation("obs_a", 90, {}),
             )
             before = dict(shared)
-            step.plugins[0].implementation.fail_on_update = True
+            step.plugins["recording_test"].implementation.fail_on_update = True
             with self.assertRaises(RuntimeError):
                 step.update(
                     DecisionFrameContext("frame_b", 2, 200, shared_memory=shared),
@@ -67,7 +67,7 @@ class MemoryFailureIsolationTests(unittest.TestCase):
     def test_reset_failure_is_recorded_with_a_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = _runner(tmp)
-            step.plugins[0].implementation.fail_on_reset = True
+            step.plugins["recording_test"].implementation.fail_on_reset = True
 
             self.assertEqual(step.reset({}), {})
 

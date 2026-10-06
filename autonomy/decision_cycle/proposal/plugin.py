@@ -4,7 +4,15 @@ A proposal plugin returns one candidate command per cycle from the detached
 ``DecisionDataSource`` and the host map. Its candidate is admitted only under
 the plugin ID it was selected by. A plugin that reads retained evidence from
 the host map may declare that key as ``evidence_key``; the step records an
-audit copy of it in the source.
+audit copy of the first selected plugin's declared key in every source copy.
+Other plugins still read their own keys directly from the shared host map.
+
+An optional ``reset()`` or ``reset(shared_memory)`` starts a new epoch and also
+runs when the plugin leaves the selection. Reset errors propagate. Return a
+valid ``ActionProposal`` for this plugin and frame; wrong types or identities
+become synthetic error candidates, while lifecycle or size violations fail
+the whole step. ``ProposalRunner.plugin_report`` reports each plugin's last
+invocation timing and error, separately from step failures in ``status``.
 """
 
 from __future__ import annotations

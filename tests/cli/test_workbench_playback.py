@@ -84,13 +84,12 @@ class WorkbenchTests(unittest.TestCase):
 
         with image_source(2) as root:
             runner = ImageReplayRunner(
-                root, cadence_ms=0, perception_step_factory=lambda: perception_step,
-                memory_step_factory=memory_factory,
+                root, cadence_ms=0, step_factories={"perception": lambda: perception_step, "memory": memory_factory},
             )
             runner.start()
             completed = runner.wait(5)
             self.assertEqual(completed["phase"], "completed")
-            reads = perception_step.plugins[0].reads
+            reads = perception_step.plugins["probe"].reads
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
@@ -153,7 +152,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: perception_step,
+                step_factories={"perception": lambda: perception_step},
             )
 
             runner.start()
@@ -171,7 +170,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=5000,
-                perception_step_factory=lambda: perception_step,
+                step_factories={"perception": lambda: perception_step},
             )
             started = runner.start()
             run_id = started["run_id"]
@@ -221,7 +220,7 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                perception_step_factory=lambda: perception_step,
+                step_factories={"perception": lambda: perception_step},
                 loop=True,
             )
             started = runner.start()
@@ -284,7 +283,7 @@ class WorkbenchTests(unittest.TestCase):
                 root,
                 cadence_ms=0,
                 pace="realtime",
-                perception_step_factory=FixtureMapper,
+                step_factories={"perception": FixtureMapper},
             )
             started = runner.start()
             self.assertEqual(started["controls"]["pace"], "realtime")

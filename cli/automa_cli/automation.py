@@ -49,11 +49,12 @@ from .paths import display_path, safe_path_part
 from .step_activations import (
     bundle_activation_path,
     bundle_activation_problems,
+    decision_generation_id,
     decision_identity,
     format_activation_problems,
     read_bundle_activation,
 )
-from .step_hosting import load_staged_runner, sync_live_selection
+from .step_hosting import load_staged_runner, plugin_report, sync_live_selection
 from .runtime_view import RuntimeViewServer
 from .perception_view import (
     get_perception_view_status,
@@ -110,18 +111,6 @@ def _step_status(cycle_host: AutonomyCycleHost) -> dict[str, Any]:
         )
         for step, item in steps.items()
     } | {"cycle_count": status.get("cycle_count"), "error_count": status.get("error_count")}
-
-
-def _execution_plugin_report(owner: Any) -> dict[str, Any] | None:
-    """Copy a step's common plugin envelope, when that step publishes one."""
-
-    report_for = getattr(owner, "plugin_report", None)
-    if not callable(report_for):
-        return None
-    report = report_for()
-    if not isinstance(report, dict):
-        return None
-    return copy.deepcopy(report)
 
 
 @dataclass(frozen=True)
@@ -236,10 +225,11 @@ def run_vehicle_automation(
     try:
         perception_activation = read_step_activation(manifest_path, "perception")
         memory_activation = read_bundle_activation(bundle, "memory")
+        proposal_activation = read_bundle_activation(bundle, "proposal")
         identity = decision_identity(bundle)
         activations = {
             step: read_bundle_activation(bundle, step)
-            for step in ("observation", "proposal", "plan", "action")
+            for step in ("observation", "plan", "action")
         }
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
@@ -281,17 +271,34 @@ def run_vehicle_automation(
                     ]
                 ),
             )
+    # Proposals load from the bundle, as memory does; without a staged
+    # activation the vehicle proposes nothing and holds.
+    proposal_activation_path = bundle_activation_path(bundle, "proposal")
+    proposal_step = None
+    if proposal_activation is not None:
+        try:
+            proposal_step = load_staged_runner(proposal_activation)
+        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Could not load proposal activation for {vehicle_id}.",
+                        f"Activation: {display_path(proposal_activation_path)}",
+                        f"Reason: {type(exc).__name__}: {exc}",
+                    ]
+                ),
+            )
     try:
         steps = decision_steps(
-            {
-                **{step: activation for step, activation in activations.items() if activation},
-                "proposal": activations["proposal"],
-            }
+            {step: activation for step, activation in activations.items() if activation}
         )
     except Exception as exc:
         return CommandResult(2, f"Could not load decision steps for {vehicle_id}: {type(exc).__name__}: {exc}")
     cycle_host = AutonomyCycleHost(
-        steps=replace(steps, perception=perception_step, memory=memory_step),
+        steps=replace(
+            steps, perception=perception_step, memory=memory_step, proposal=proposal_step
+        ),
     )
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
@@ -356,7 +363,7 @@ def run_vehicle_automation(
             "activation": display_path(manifest_path),
             "preset": perception_activation.metadata.get("preset"),
             "plugins": list(perception_activation.plugins),
-            "plugin_report": _execution_plugin_report(perception_step),
+            "plugin_report": plugin_report(perception_step),
         },
         "decision": {
             "generation_id": identity["generation_id"],
@@ -373,6 +380,17 @@ def run_vehicle_automation(
             if memory_step is not None
             else {
                 "activation": display_path(memory_activation_path),
+                "status": "absent",
+            }
+        ),
+        "proposal": (
+            {
+                "activation": display_path(proposal_activation_path),
+                "status": proposal_step.status(),
+            }
+            if proposal_step is not None
+            else {
+                "activation": display_path(proposal_activation_path),
                 "status": "absent",
             }
         ),
@@ -512,6 +530,38 @@ def run_vehicle_automation(
         except OSError:
             pass
 
+    def adopt_staged_decision() -> None:
+        """Publish under the staged decision generation once this worker runs it.
+
+        The proposal runner applies a changed plugin list during the cycle.
+        Adopt only after its applied IDs match the staged generation: a load
+        or reset failure can leave the requested selection unapplied.
+        Restaged proposal configs, plan, or action wait for a restart.
+        """
+
+        nonlocal identity
+        try:
+            staged = decision_identity(bundle)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return
+        applied_ids = getattr(proposal_step, "plugin_ids", None)
+        if staged == identity or applied_ids is None:
+            return
+        running = {
+            **identity["steps"],
+            "proposal": {**identity["steps"]["proposal"], "plugins": list(applied_ids)},
+        }
+        if decision_generation_id(running) != staged["generation_id"]:
+            return
+        identity = staged
+        with state_lock:
+            state["decision"].update(
+                generation_id=staged["generation_id"], steps=staged["steps"]
+            )
+        if view_server is not None:
+            view_server.decision.adopt(staged)
+        _emit(output, f"Decision generation: {staged['generation_id']} (restaged)")
+
     def process_frame(pending: _PendingAutomationFrame) -> None:
         apply_memory_reset_if_requested()
         context = pending.context
@@ -523,7 +573,11 @@ def run_vehicle_automation(
         sync_live_selection(perception_step, manifest_path, perception_activation)
         if memory_step is not None and memory_activation is not None:
             sync_live_selection(memory_step, memory_activation_path, memory_activation)
+        if proposal_step is not None and proposal_activation is not None:
+            sync_live_selection(proposal_step, proposal_activation_path, proposal_activation)
         cycle_result = cycle_host.run(context)
+        if proposal_step is not None:
+            adopt_staged_decision()
         # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False
@@ -540,7 +594,7 @@ def run_vehicle_automation(
             )
             if not published and decision_published:
                 # Count for workers that staged proposals at start (including
-                # after restage invalidation where the live generation no longer matches).
+                # after a restage this worker cannot run until it restarts).
                 reason = (
                     "gate_rejected"
                     if last_cycle is None
@@ -581,10 +635,9 @@ def run_vehicle_automation(
         else:
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
-        perception_plugin_report = _execution_plugin_report(perception_step)
-        memory_plugin_report = (
-            _execution_plugin_report(memory_step) if memory_step is not None else None
-        )
+        perception_plugin_report = plugin_report(perception_step)
+        memory_plugin_report = plugin_report(memory_step)
+        proposal_plugin_report = plugin_report(proposal_step)
 
         control_record = {
             **cycle_result.control.to_dict(),
@@ -618,6 +671,7 @@ def run_vehicle_automation(
             "perception": perception_dict,
             "perception_plugin_report": perception_plugin_report,
             "memory_plugin_report": memory_plugin_report,
+            "proposal_plugin_report": proposal_plugin_report,
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
@@ -742,6 +796,11 @@ def run_vehicle_automation(
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
                     "status": memory_step.status(),
+                }
+            if proposal_step is not None:
+                state["proposal"] = {
+                    "activation": display_path(proposal_activation_path),
+                    "status": proposal_step.status(),
                 }
             perception_state = state.get("perception")
             if isinstance(perception_state, dict):

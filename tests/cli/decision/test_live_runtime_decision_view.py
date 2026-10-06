@@ -2,21 +2,21 @@ from __future__ import annotations
 import json
 import os
 import unittest
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
-from implementations.runtime.engines.catalog import create_action_composition
 from cli.automa_cli.automation import _read_latest_decision_frame_for_view
+from cli.automa_cli.proposal import get_vehicle_proposal_info
 from cli.automa_cli.decision import (
-    ENGINE_ID,
-    get_vehicle_decision_info,
     publish_decision_frame,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
+from cli.automa_cli.decision_records import DecisionRunners
+from tests.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
     ACTIVE_RUN,
     LiveRuntimeDecisionViewFixture,
@@ -53,11 +53,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get_content_type(), "text/html")
 
-        info = get_vehicle_decision_info(
+        info = get_vehicle_proposal_info(
             vehicle_id="chase-sim-chaser", json_output=True
         )
         self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["combined_view"]
+        combined = json.loads(info.message)["published_view"]
         self.assertTrue(combined["available"])
         self.assertEqual(combined["status"], "current")
         self.assertEqual(
@@ -129,7 +129,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))[
             "frames"
         ][0]
-        cycle = create_action_composition().run(
+        cycle = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
@@ -146,7 +146,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 run_id="run-live",
                 worker_pid=os.getpid(),
                 activation=self.activation,
-                staged_engine_id=ENGINE_ID,
             )
         )
         latest = _read_latest_decision_frame_for_view(
@@ -154,7 +153,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             frame_id=raw["frame_id"],
             run_id="run-live",
             worker_pid=os.getpid(),
-            activation_activated_at_ms=self.activation["activated_at_ms"],
+            generation_id=self.activation["generation_id"],
         )
         if latest is None:
             self.fail("decision publish did not write a matching latest decision frame")
@@ -166,7 +165,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             "captured_at_ms": latest["timestamp_ms"],
             "run_id": "run-live",
             "worker_pid": os.getpid(),
-            "sensor_snapshot": {
+            "sensor_frame": {
                 "readings": {"front_camera": {"read_id": latest["frame_id"]}}
             },
         }
@@ -206,14 +205,14 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             payload["provenance"]["evidence"]["value"][0],
         )
 
-    def test_unmatched_retained_evidence_preserves_provenance_without_overlay(
+    def test_unmatched_retained_evidence_preserves_origin_without_overlay(
         self,
     ) -> None:
         def older_frame(_raw, record, _thing) -> None:
-            record["provenance"]["frame_id"] = "frame_older"
+            record["origin"]["frame_id"] = "frame_older"
 
         def observation_mismatch(_raw, record, _thing) -> None:
-            record["provenance"]["observation_id"] = "obs_other"
+            record["origin"]["observation_id"] = "obs_other"
 
         def missing_evidence(_raw, _record, thing) -> None:
             thing["thing_id"] = "ev_other"
@@ -222,7 +221,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             raw["observation"]["things"].append(deepcopy(thing))
 
         def provenance_mismatch(_raw, record, _thing) -> None:
-            record["provenance"]["source_plugin_id"] = "other_plugin"
+            record["origin"]["source_plugin_id"] = "other_plugin"
 
         def geometry_mismatch(_raw, _record, thing) -> None:
             thing["location"]["bbox_xyxy_norm"] = [0.1, 0.0, 0.3, 0.5]
@@ -256,8 +255,8 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertEqual(projected["reason"], expected_reason)
                 self.assertIsNone(projected["record"])
                 self.assertEqual(
-                    projected["provenance"],
+                    projected["origin"],
                     payload["provenance"]["evidence"]["value"][0][
-                        "provenance"
+                        "origin"
                     ],
                 )

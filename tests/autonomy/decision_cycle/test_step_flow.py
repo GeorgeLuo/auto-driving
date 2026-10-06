@@ -11,14 +11,14 @@ from autonomy.decision_cycle.cycle import (
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from autonomy.runtime import AutonomyControl
-from tests.support.action_fixtures import fixed_control_composition
+from autonomy.runtime.control import AutonomyControl
+from tests.support.action_fixtures import fixed_action_runner, plan_runner, proposal_runner
 
 
 class DecisionStageFlowTests(unittest.TestCase):
@@ -41,7 +41,7 @@ class DecisionStageFlowTests(unittest.TestCase):
         observation = Observation(
             observation_id=context.frame_id,
             created_at_ms=701,
-            sensor_snapshot={},
+            sensor_frame={},
             perception_schema=perception.schema,
             perception_plugin_id=perception.plugin_id,
             summary=perception.lines,
@@ -60,9 +60,9 @@ class DecisionStageFlowTests(unittest.TestCase):
                     kind="signal",
                     label="path clear evidence",
                     confidence=0.9,
-                    provenance=MemoryProvenance(
+                    origin=MemoryOrigin(
                         observation_id=observation.observation_id,
-                        evidence_id="path_clear",
+                        observed_id="path_clear",
                         coordinate_frame="image",
                         observed_at_ms=701,
                         updated_at_ms=702,
@@ -73,11 +73,10 @@ class DecisionStageFlowTests(unittest.TestCase):
                 ),
         )
         memory = {
-            "schema": "memory_report_v0",
+            "schema": "memory_report_v1",
             "plugins": [
                 {
                     "plugin_id": "test_memory",
-                    "implementation_id": "test_memory",
                     "state": {"records": [record.to_dict() for record in records]},
                 }
             ],
@@ -88,7 +87,9 @@ class DecisionStageFlowTests(unittest.TestCase):
             confidence=0.9,
             reason="path-clear",
         )
-        composition = fixed_control_composition(control)
+        proposal_step = proposal_runner({})
+        plan_step = plan_runner()
+        action_step = fixed_action_runner(control)
         step_calls: list[tuple[str, tuple[int, ...]]] = []
 
         def record(step: str, *values: object) -> None:
@@ -107,31 +108,28 @@ class DecisionStageFlowTests(unittest.TestCase):
             received_context.shared_memory["test_memory.records"] = records
             return memory
 
-        def act(
-            received_context,
-            received_perception,
-            received_observation,
-        ):
-            record(
-                "act",
-                received_context,
-                received_perception,
-                received_observation,
-            )
+        def propose(received_context, received_observation):
+            record("propose", received_context, received_observation)
             # Proposals read what memory published in the host map.
             self.assertIs(received_context.shared_memory["test_memory.records"], records)
-            return composition.act(
-                received_context,
-                received_perception,
-                received_observation,
-            )
+            return proposal_step(received_context, received_observation)
+
+        def plan(received_context, received_proposal):
+            record("plan", received_context, received_proposal)
+            return plan_step(received_context, received_proposal)
+
+        def act(received_context, received_proposal, received_plan):
+            record("act", received_context, received_proposal, received_plan)
+            return action_step(received_context, received_proposal, received_plan)
 
         cycle = DecisionCycle(
             DecisionSteps(
-                perceive=perceive,
-                observe=observe,
-                remember=remember,
-                act=act,
+                perception=perceive,
+                observation=observe,
+                memory=remember,
+                proposal=propose,
+                plan=plan,
+                action=act,
             )
         )
 
@@ -147,14 +145,9 @@ class DecisionStageFlowTests(unittest.TestCase):
                 ("perceive", (id(context),)),
                 ("observe", (id(context), id(perception))),
                 ("remember", (id(context), id(observation))),
-                (
-                    "act",
-                    (
-                        id(context),
-                        id(perception),
-                        id(observation),
-                    ),
-                ),
+                ("propose", (id(context), id(observation))),
+                ("plan", (id(context), id(result.proposal))),
+                ("act", (id(context), id(result.proposal), id(result.plan))),
             ],
         )
         self.assertIs(result.context, context)
@@ -169,6 +162,8 @@ class DecisionStageFlowTests(unittest.TestCase):
         self.assertEqual(serialized["context"]["frame_id"], "frame_007")
         self.assertEqual(serialized["memory"], memory)
         self.assertEqual(serialized["control"], control.to_dict())
+        self.assertEqual(serialized["proposal"], result.proposal.to_dict())
+        self.assertEqual(serialized["plan"], result.plan.to_dict())
         self.assertEqual(serialized["action"], result.action.to_dict())
         self.assertEqual(serialized["action"]["frame_id"], "frame_007")
         self.assertNotIn("patterns", serialized)

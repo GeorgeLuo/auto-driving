@@ -9,99 +9,28 @@ from tests.support.cli_runner import run_automa
 
 
 class DecisionCommandTests(unittest.TestCase):
-    def test_decision_update_and_info_use_engine_schema(self) -> None:
+    def test_update_steps_then_info_is_read_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            update = run_automa(
-                "vehicles",
-                "update",
-                "decision",
-                "--id",
-                "chase-sim-chaser",
-                "--engine",
-                "idle",
-                "--json",
+            vehicle = ("--id", "chase-sim-chaser", "--json")
+            runtime = runtime_root / "chase-sim-chaser" / "bundle" / "runtime"
+
+            dry_run = run_automa(
+                "vehicles", "update", "action", *vehicle, "--plugin", "mode", "--dry-run",
                 runtime_root=runtime_root,
             )
-            info = run_automa(
-                "vehicles",
-                "info",
-                "decision",
-                "--id",
-                "chase-sim-chaser",
-                "--json",
-                runtime_root=runtime_root,
-            )
+            self.assertEqual(dry_run.returncode, 0, dry_run.stderr + dry_run.stdout)
+            self.assertFalse((runtime / "action" / "active.json").exists())
 
-        update_payload = json.loads(update.stdout)
-        self.assertEqual(update_payload["schema"], "vehicle_decision_update_v0")
-        self.assertEqual(update_payload["manifest"]["decision"]["engine_id"], "idle")
-        self.assertIsNotNone(update_payload["release"]["tree_sha256"])
-
-        info_payload = json.loads(info.stdout)
-        self.assertEqual(info_payload["schema"], "vehicle_decision_info_v0")
-        self.assertEqual(info_payload["activation"]["engine_id"], "idle")
-        self.assertEqual(info_payload["engine_schema"]["schema"], "autonomy_engine_schema_v0")
-        self.assertEqual(info_payload["engine_schema_source"]["method"], "describe_schema")
-
-    def test_decision_update_dry_run_does_not_write_activation(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            result = run_automa(
-                "vehicles",
-                "update",
-                "decision",
-                "--id",
-                "chase-sim-chaser",
-                "--dry-run",
-                "--json",
-                runtime_root=runtime_root,
-            )
-
-            payload = json.loads(result.stdout)
-            activation = runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "decision" / "active.json"
-            self.assertTrue(payload["dry_run"])
-            self.assertFalse(activation.exists())
-
-    def test_obstacle_avoidance_engine_can_be_staged(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            result = run_automa(
-                "vehicles",
-                "update",
-                "decision",
-                "--id",
-                "piracer",
-                "--engine",
-                "obstacle-avoidance",
-                "--json",
-                runtime_root=runtime_root,
-            )
-
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        payload = json.loads(result.stdout)
-        decision = payload["manifest"]["decision"]
-        self.assertEqual(decision["engine_id"], "obstacle-avoidance")
-        self.assertEqual(
-            decision["engine_spec"],
-            "implementations.runtime.engines.mode_gated_action:ModeGatedActionEngine",
-        )
-
-    def test_info_probe_is_read_only_without_a_runtime_producer(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            update = run_automa(
-                "vehicles",
-                "update",
-                "decision",
-                "--id",
-                "chase-sim-chaser",
-                "--engine",
-                "hold-action",
-                "--json",
-                runtime_root=runtime_root,
-            )
-            self.assertEqual(update.returncode, 0, update.stderr + update.stdout)
+            for step, plugins in (("proposal", ()), ("action", ("--plugin", "mode"))):
+                update = run_automa(
+                    "vehicles", "update", step, *vehicle, *plugins,
+                    runtime_root=runtime_root,
+                )
+                self.assertEqual(update.returncode, 0, update.stderr + update.stdout)
+                self.assertEqual(json.loads(update.stdout)["step"], step)
+            action = json.loads((runtime / "action" / "active.json").read_text())
+            self.assertEqual(action["plugins"], ["mode"])
 
             def snapshot_files() -> dict[Path, bytes]:
                 return {
@@ -112,24 +41,18 @@ class DecisionCommandTests(unittest.TestCase):
 
             before_info = snapshot_files()
             info = run_automa(
-                "vehicles",
-                "info",
-                "decision",
-                "--id",
-                "chase-sim-chaser",
-                "--json",
+                "vehicles", "info", "proposal", *vehicle,
                 runtime_root=runtime_root,
             )
             self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
             payload = json.loads(info.stdout)
-            self.assertEqual(payload["schema"], "vehicle_decision_info_v0")
-            self.assertEqual(payload["activation"]["engine_id"], "hold-action")
-            combined = payload["combined_view"]
-            self.assertFalse(combined["available"])
-            self.assertEqual(combined["status"], "unavailable")
-            self.assertTrue(combined["reason"])
-            self.assertIsNone(combined["url"])
-            self.assertIsNone(combined["api_url"])
+            self.assertEqual(payload["schema"], "vehicle_proposal_info_v1")
+            self.assertEqual(payload["activation"]["plugins"], ["avoid_recent_obstruction"])
+            self.assertEqual(payload["decision"]["authority"]["gate_id"], "mode")
+            self.assertFalse(payload["published_view"]["available"])
+            # No worker runs, so the engine probe has no proposal step to report.
+            self.assertEqual(payload["live"]["schema"], "vehicle_proposal_live_v1")
+            self.assertEqual(payload["live"]["status"], "unavailable")
             self.assertEqual(before_info, snapshot_files())
 
 

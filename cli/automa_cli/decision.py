@@ -1,4 +1,9 @@
-"""Automa decision step, info, stream, and offline apply surfaces (M006-05)."""
+"""Decision stream and offline apply over the proposal, plan, and action steps.
+
+The proposal step's info command lives in ``proposal``, beside ``perception``
+and ``memory``. This module owns the combined decision records and their
+publication, acceptance, streaming, and offline application.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,6 @@ import html
 import json
 import os
 import secrets
-import shlex
 import shutil
 import stat as stat_mod
 import time
@@ -17,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from autonomy.decision_cycle.planning.values import (
+from autonomy.decision_cycle.plan.values import (
     ACTION_PLAN_SCHEMA,
     SELECTOR_ID,
     ActionPlan,
@@ -34,21 +38,23 @@ from autonomy.decision_cycle.proposal.inputs import (
     ComponentEnvelope,
     DecisionDataSource,
 )
-from autonomy.decision_cycle.action_gate.hold import (
-    GATE_ID as HOLD_GATE_ID,
-    HOLD_IDLE_REASON,
+from autonomy.decision_cycle.action.hold import (
+    HoldAction,
     idle_output,
 )
-from autonomy.decision_cycle.action_gate.values import (
+from autonomy.decision_cycle.action.values import (
     AUTHORITY_RESULT_SCHEMA,
     AuthorityResult,
     control_output,
 )
-from autonomy.decision_cycle.result import (
+from autonomy.decision_cycle.action.result import (
     ACTION_RESULT_SCHEMA,
     ActionResult,
 )
-from autonomy.decision_cycle.planning.selector import select_action_plan
+from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.plan.runner import PlanRunner
+from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
 from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
@@ -56,24 +62,17 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.serialization import canonical_json_utf8
-from implementations.runtime.engines.catalog import (
-    create_action_composition,
-    validate_engine_config,
-)
-from implementations.runtime.engines.config import default_engine_config
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
-from implementations.runtime.engines.mode_gated_action import (
-    ADAPTER_ENGINE_SPEC as LIVE_ADAPTER_ENGINE_SPEC,
-    ENGINE_ID as LIVE_ENGINE_ID,
-    GATE_ID as LIVE_GATE_ID,
-)
-from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC, ENGINE_ID
-from autonomy.runtime import AutonomyControl, AutonomyManager, read_decision_activation
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.runtime.control import AutonomyControl
 
-from .bundles import (
-    controller_bundle_paths,
-    release_activation_summary,
-    sync_controller_bundle,
+from .bundles import controller_bundle_paths
+from .decision_records import DecisionRecords, DecisionRunners, activations_from_payloads
+from .step_activations import (
+    bundle_activation_path,
+    bundle_activation_problems,
+    decision_identity,
+    format_activation_problems,
+    proposal_plugin_ids,
 )
 from .paths import ROOT, display_path, safe_path_part
 from .physical_observation import (
@@ -111,11 +110,9 @@ STREAM_FRAME_EXACT_KEYS = frozenset(
     {
         "schema",
         "vehicle_id",
-        "engine_id",
+        "generation_id",
         "run_id",
         "worker_pid",
-        "activation_engine_id",
-        "activation_activated_at_ms",
         "published_at_ms",
         "frame_id",
         "frame_index",
@@ -128,9 +125,12 @@ STREAM_FRAME_EXACT_KEYS = frozenset(
         "view",
     }
 )
-CYCLE_EXACT_KEYS = frozenset(
-    {"schema", "frame_id", "status", "reason", "source", "plan", "authority"}
+# A decision frame's cycle holds the proposal, plan, and action step records.
+CYCLE_EXACT_KEYS = frozenset({"proposal", "plan", "action"})
+PROPOSAL_RECORD_EXACT_KEYS = frozenset(
+    {"schema", "frame_id", "status", "reason", "source", "candidates"}
 )
+ACTION_RECORD_EXACT_KEYS = frozenset({"schema", "frame_id", "status", "reason", "authority"})
 AUTHORITY_EXACT_KEYS = frozenset(
     {
         "schema",
@@ -235,7 +235,7 @@ OBSERVATION_REQUIRED_KEYS = frozenset(
         "schema",
         "observation_id",
         "created_at_ms",
-        "sensor_snapshot",
+        "sensor_frame",
         "perception_schema",
         "perception_plugin_id",
         "summary",
@@ -251,15 +251,15 @@ RECORD_REQUIRED_KEYS = frozenset(
         "kind",
         "label",
         "confidence",
-        "provenance",
+        "origin",
         "location",
         "properties",
     }
 )
-PROVENANCE_REQUIRED_KEYS = frozenset(
+ORIGIN_REQUIRED_KEYS = frozenset(
     {
         "observation_id",
-        "evidence_id",
+        "observed_id",
         "coordinate_frame",
         "observed_at_ms",
         "updated_at_ms",
@@ -270,43 +270,6 @@ PROVENANCE_REQUIRED_KEYS = frozenset(
 LOCATION_REQUIRED_KEYS = frozenset(
     {"frame", "zone", "bbox_xyxy_norm", "polygon_xy_norm"}
 )
-
-PROPOSAL_DECISION_INPUTS = (
-    "observation",
-    "shared_memory",
-    "capabilities",
-    "prior_host_applied_command",
-)
-
-PROPOSAL_ENGINE_IDS = frozenset({ENGINE_ID, LIVE_ENGINE_ID})
-ENGINE_GATE_IDS = {ENGINE_ID: HOLD_GATE_ID, LIVE_ENGINE_ID: LIVE_GATE_ID}
-
-DECISION_ENGINES: dict[str, dict[str, Any]] = {
-    "idle": {
-        "description": "Safe default engine that always holds position.",
-        "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
-        "engine_config": {},
-    },
-    ENGINE_ID: {
-        "description": (
-            "Proposals through the hold gate. Authorized output is idle; "
-            f"proposed_applied=false; reason={HOLD_IDLE_REASON}."
-        ),
-        "engine_spec": ADAPTER_ENGINE_SPEC,
-        "engine_config": default_engine_config(),
-    },
-    LIVE_ENGINE_ID: {
-        "description": (
-            "Explicit-autonomy PiCar obstacle avoidance using the existing "
-            "avoid_recent_obstruction proposal; clear or unusable evidence "
-            "returns idle. The mode gate applies the selected command in "
-            "autonomy/local drive modes and records proposed_applied."
-        ),
-        "engine_spec": LIVE_ADAPTER_ENGINE_SPEC,
-        "engine_config": default_engine_config(),
-    },
-}
-
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -332,10 +295,6 @@ class DecisionSurfaceError(Exception):
         self.vehicle_id = vehicle_id
         self.details = details or {}
         self.exit_code = exit_code
-
-
-def available_decision_engine_ids() -> tuple[str, ...]:
-    return tuple(sorted(DECISION_ENGINES))
 
 
 def decision_apply_output_root() -> Path:
@@ -395,377 +354,64 @@ def _error_result(
     return CommandResult(exc.exit_code, exc.message_text)
 
 
-def _validate_proposal_engine_config(
-    engine_config: dict[str, Any],
-    *,
-    engine_label: str,
-) -> dict[str, Any]:
-    """Validate a proposal engine document without interpreting its fields."""
 
-    if not isinstance(engine_config, dict):
-        raise DecisionSurfaceError(
-            "invalid_engine_config",
-            f"{engine_label} engine_config must be a JSON object.",
-        )
-    try:
-        return validate_engine_config(engine_config)
-    except (TypeError, ValueError) as exc:
-        raise DecisionSurfaceError(
-            "invalid_engine_config",
-            f"Invalid {engine_label} engine_config: {exc}",
-        ) from exc
-
-
-def _engine_authority_description(engine_id: str) -> dict[str, Any]:
-    """How the engine's gate authorizes control, for operator-facing summaries."""
-
-    if engine_id == ENGINE_ID:
-        return {
-            "gate_id": HOLD_GATE_ID,
-            "proposed_applied": False,
-            "authorized_idle_reason": HOLD_IDLE_REASON,
-        }
-    return {
-        "gate_id": LIVE_GATE_ID,
-        "proposed_applied": "in autonomy/local drive modes",
-        "authorized_idle_reason": None,
-    }
-
-
-def validate_hold_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
-    """Fail closed before activation write when hold-action config is invalid."""
-
-    return _validate_proposal_engine_config(
-        engine_config,
-        engine_label=ENGINE_ID,
-    )
-
-
-def validate_live_engine_config(engine_config: dict[str, Any]) -> dict[str, Any]:
-    """Fail closed before activation write when live config is invalid."""
-
-    return _validate_proposal_engine_config(
-        engine_config,
-        engine_label=LIVE_ENGINE_ID,
-    )
-
-
-def _validate_engine_config_for(
-    engine_id: str,
-    engine_config: dict[str, Any],
-) -> dict[str, Any]:
-    validator = (
-        validate_hold_engine_config
-        if engine_id == ENGINE_ID
-        else validate_live_engine_config
-    )
-    return validator(engine_config)
-
-
-def _read_surface_activation(
-    activation_path: Path,
+def _require_valid_activations(
+    bundle: dict[str, str],
     *,
     vehicle_id: str,
-) -> dict[str, Any]:
-    """Canonical activation read for every operator-facing decision surface."""
+    steps: tuple[str, ...],
+) -> None:
+    """Refuse invalid staged documents with each owning step's restage command."""
 
-    try:
-        decoded = read_decision_activation(activation_path)
-    except FileNotFoundError:
-        raise
-    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    problems = bundle_activation_problems(bundle, vehicle_id, steps=steps)
+    if problems:
         raise DecisionSurfaceError(
             "activation_invalid",
-            f"Invalid decision activation {display_path(activation_path)}: {exc}",
+            format_activation_problems(problems),
             vehicle_id=vehicle_id,
-        ) from exc
-
-    if decoded.engine_id in PROPOSAL_ENGINE_IDS:
-        expected_spec = (
-            ADAPTER_ENGINE_SPEC
-            if decoded.engine_id == ENGINE_ID
-            else LIVE_ADAPTER_ENGINE_SPEC
+            details={"activation_problems": problems},
         )
-        if decoded.engine_spec != expected_spec:
-            raise DecisionSurfaceError(
-                "activation_invalid",
-                f"{decoded.engine_id} engine_spec must be {expected_spec!r}; "
-                f"got {decoded.engine_spec!r}.",
-                vehicle_id=vehicle_id,
-                details={
-                    "expected_engine_spec": expected_spec,
-                    "got_engine_spec": decoded.engine_spec,
-                },
-            )
-        try:
-            _validate_engine_config_for(decoded.engine_id, decoded.engine_config)
-        except DecisionSurfaceError as exc:
-            raise DecisionSurfaceError(
-                "activation_invalid",
-                exc.message_text,
-                vehicle_id=vehicle_id,
-                details=exc.details,
-            ) from exc
-    return decoded.payload
 
 
-def update_vehicle_decision(
-    *,
-    vehicle_id: str,
-    engine_id: str = "idle",
-    dry_run: bool = False,
-    json_output: bool = False,
-    verbose: bool = False,
-    output: TextIO | None = None,
-) -> CommandResult:
-    if engine_id not in DECISION_ENGINES:
-        available = ", ".join(available_decision_engine_ids())
-        exc = DecisionSurfaceError(
-            "unknown_engine",
-            f"Unknown decision engine {engine_id!r}. Available engines: {available}.",
-            vehicle_id=vehicle_id,
-            details={"available_engines": list(available_decision_engine_ids())},
-        )
-        return _error_result(exc, json_output=json_output)
-
-    engine_entry = DECISION_ENGINES[engine_id]
-    engine_config = dict(engine_entry["engine_config"])
-    if engine_id in PROPOSAL_ENGINE_IDS:
-        try:
-            validator = (
-                validate_hold_engine_config
-                if engine_id == ENGINE_ID
-                else validate_live_engine_config
-            )
-            validator(engine_config)
-        except DecisionSurfaceError as exc:
-            return _error_result(
-                DecisionSurfaceError(
-                    exc.error,
-                    exc.message_text,
-                    vehicle_id=vehicle_id,
-                    details=exc.details,
-                ),
-                json_output=json_output,
-            )
-
-    stream = output if verbose else None
-    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
-    bundle = controller_bundle_paths(vehicle_runtime_dir)
-    activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
-    manager = AutonomyManager(
-        default_engine_spec=engine_entry["engine_spec"],
-        default_engine_config=dict(engine_config),
-    )
-    release: dict[str, Any] | None = None
-
-    if not dry_run:
-        release = sync_controller_bundle(bundle, output=stream)
-
-    activation = _decision_activation(
-        vehicle_id=vehicle_id,
-        engine_id=engine_id,
-        bundle=bundle,
-        release=release,
-        manager=manager,
-        engine_config=engine_config,
-        engine_description=engine_entry["description"],
-        engine_spec=engine_entry["engine_spec"],
-    )
-
-    if not dry_run:
-        activation_path.parent.mkdir(parents=True, exist_ok=True)
-        activation_path.write_text(
-            json.dumps(activation, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        # Restage invalidates any prior latest decision frame.
-        invalidate_latest_decision_frame(vehicle_runtime_dir)
-
-    payload = {
-        "schema": "vehicle_decision_update_v0",
-        "vehicle_id": vehicle_id,
-        "engine_id": engine_id,
-        "dry_run": dry_run,
-        "activation": display_path(activation_path),
-        "manifest": activation,
-        "release": release_activation_summary(release) if release is not None else None,
-    }
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    verb = "Would activate" if dry_run else "Updated decision"
-    return CommandResult(
-        0,
-        "\n".join(
-            [
-                f"{verb}: {vehicle_id} -> {engine_id}",
-                f"Engine: {engine_entry['engine_spec']}",
-                f"Activation: {display_path(activation_path)}",
-            ]
-        ),
-    )
-
-
-def ensure_vehicle_decision_activation(
-    *,
-    vehicle_id: str,
+def _read_surface_identity(
     bundle: dict[str, str],
-    release: dict[str, Any],
-) -> Path:
-    activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
-    if activation_path.exists():
-        activation = read_decision_activation(activation_path).payload
-        controller_bundle = activation.get("controller_bundle")
-        if not isinstance(controller_bundle, dict):
-            raise ValueError(f"decision activation has no controller_bundle: {activation_path}")
-        controller_bundle["release"] = release_activation_summary(release)
-        activation_path.write_text(json.dumps(activation, indent=2, sort_keys=True), encoding="utf-8")
-        return activation_path
+    *,
+    vehicle_id: str,
+    require_proposal: bool = True,
+) -> dict[str, Any]:
+    """The staged decision steps every operator-facing decision surface reads."""
 
-    engine_id = "idle"
-    engine_entry = DECISION_ENGINES[engine_id]
-    manager = AutonomyManager(
-        default_engine_spec=engine_entry["engine_spec"],
-        default_engine_config=dict(engine_entry["engine_config"]),
-    )
-    activation = _decision_activation(
-        vehicle_id=vehicle_id,
-        engine_id=engine_id,
-        bundle=bundle,
-        release=release,
-        manager=manager,
-        engine_config=dict(engine_entry["engine_config"]),
-        engine_description=engine_entry["description"],
-        engine_spec=engine_entry["engine_spec"],
-    )
-    activation_path.parent.mkdir(parents=True, exist_ok=True)
-    activation_path.write_text(json.dumps(activation, indent=2, sort_keys=True), encoding="utf-8")
-    return activation_path
-
-
-def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> CommandResult:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
-    if not activation_path.exists():
-        exc = DecisionSurfaceError(
+    _require_valid_activations(bundle, vehicle_id=vehicle_id, steps=DECISION_STEPS)
+    identity = decision_identity(bundle)
+    if require_proposal and identity["steps"]["proposal"] is None:
+        raise DecisionSurfaceError(
             "activation_missing",
             "\n".join(
                 [
-                    f"No active decision engine found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(activation_path)}",
-                    "Run: ./cli/automa vehicles update decision --id <vehicle_id>",
+                    f"No proposal plugins are staged for {vehicle_id!r}.",
+                    f"Expected activation: {display_path(bundle_activation_path(bundle, 'proposal'))}",
+                    "Run: ./cli/automa vehicles update proposal --id <vehicle_id>",
                 ]
             ),
             vehicle_id=vehicle_id,
         )
-        return _error_result(exc, json_output=json_output)
-
     try:
-        activation = _read_surface_activation(
-            activation_path,
-            vehicle_id=vehicle_id,
-        )
-    except DecisionSurfaceError as err:
-        return _error_result(err, json_output=json_output)
-
-    decision = activation.get("decision")
-    if not isinstance(decision, dict):
-        err = DecisionSurfaceError(
+        DecisionRunners.from_payloads(identity["steps"]) if identity["steps"]["proposal"] else None
+    except Exception as exc:  # noqa: BLE001 - staged plugins are third-party code
+        raise DecisionSurfaceError(
             "activation_invalid",
-            f"Activation {display_path(activation_path)} has no decision section.",
+            f"Staged decision steps cannot be loaded: {exc}",
             vehicle_id=vehicle_id,
-        )
-        return _error_result(err, json_output=json_output)
-
-    engine_id = decision.get("engine_id")
-    engine_config = decision.get("engine_config") if isinstance(decision.get("engine_config"), dict) else {}
-    proposals: dict[str, Any] | None = None
-    if engine_id in PROPOSAL_ENGINE_IDS:
-        plugins = engine_config.get("plugins")
-        if not isinstance(plugins, list):
-            plugins = list(default_engine_config()["plugins"])
-        proposals = {
-            "decision_inputs": list(PROPOSAL_DECISION_INPUTS),
-            "plugins": list(plugins),
-            "selector_id": SELECTOR_ID,
-            "output_schemas": {
-                "action_proposal": ACTION_PROPOSAL_SCHEMA,
-                "action_plan": ACTION_PLAN_SCHEMA,
-                "authority": AUTHORITY_RESULT_SCHEMA,
-                "action_result": ACTION_RESULT_SCHEMA,
-            },
-            "authority": _engine_authority_description(engine_id),
-        }
-
-    # D2 discovery is a short, read-only loopback probe. It never starts a
-    # worker or creates a capture; an unavailable producer remains explicit.
-    if engine_id not in PROPOSAL_ENGINE_IDS:
-        view_status = {
-            "available": False,
-            "status": "unavailable",
-            "reason": "wrong_engine",
-            "generation_id": None,
-            "identity": None,
-            "api_url": None,
-            "url": None,
-        }
-    else:
-        from .decision_view import get_decision_view_status
-
-        view_status = get_decision_view_status(
-            automation_dir=Path(bundle["runtime_dir"]) / "automation",
-            vehicle_id=vehicle_id,
-            activation=activation,
-        )
-
-    combined_view = {
-        "view_id": COMBINED_VIEW_ID,
-        "path_template": f"cli/automa_cli/decision_view.html#{COMBINED_VIEW_ID}",
-        "launch_command": (
-            "./cli/automa vehicles decision inspect --id "
-            + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
-        ),
-        "available": view_status["available"],
-        "status": view_status["status"],
-        "reason": view_status["reason"],
-        "url": view_status["url"],
-        "api_url": view_status["api_url"],
-        "generation_id": view_status["generation_id"],
-        "identity": view_status["identity"],
-    }
-
-    payload = {
-        "schema": "vehicle_decision_info_v0",
-        "vehicle_id": vehicle_id,
-        "activation": {
-            "path": display_path(activation_path),
-            "engine_id": engine_id,
-            "engine_spec": decision.get("engine_spec"),
-            "engine_config": decision.get("engine_config"),
-        },
-        "proposals": proposals,
-        "engine_schema_source": {
-            "kind": "engine_method",
-            "method": "describe_schema",
-            "engine_spec": decision.get("engine_spec"),
-        },
-        "engine_schema": decision.get("engine_schema"),
-        "controller_bundle": activation.get("controller_bundle"),
-        "combined_view": combined_view,
-    }
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, _format_decision_info(payload))
-
-
-def load_decision_activation(bundle: dict[str, str]) -> dict[str, Any]:
-    activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
-    try:
-        return read_decision_activation(activation_path).payload
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(
-            f"{exc}; run `automa vehicles update decision --id <vehicle_id>`"
         ) from exc
+    return identity
+
+
+
+def load_decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
+    """The staged decision steps and their generation; a proposal step is required."""
+
+    vehicle_id = Path(bundle["root_dir"]).parent.name
+    return _read_surface_identity(bundle, vehicle_id=vehicle_id)
 
 
 # ---------------------------------------------------------------------------
@@ -779,51 +425,60 @@ def build_decision_stream_frame(
     vehicle_id: str,
     run_id: str,
     worker_pid: int,
-    activation_engine_id: str,
-    activation_activated_at_ms: int,
+    generation_id: str,
     published_at_ms: int | None = None,
-    engine_id: str = ENGINE_ID,
 ) -> dict[str, Any]:
-    """Build one ``vehicle_decision_stream_frame_v0`` from a cycle result."""
+    """Build one ``vehicle_decision_stream_frame_v0`` from a cycle's decision records."""
 
-    if hasattr(cycle_result, "to_dict"):
-        cycle_dict = cycle_result.to_dict()
-    elif isinstance(cycle_result, dict):
+    if isinstance(cycle_result, dict):
         cycle_dict = cycle_result
     else:
-        raise TypeError("cycle_result must provide to_dict() or be a dict")
+        records = (
+            cycle_result
+            if isinstance(cycle_result, DecisionRecords)
+            else DecisionRecords.from_cycle(cycle_result)
+        )
+        if records is None:
+            raise TypeError("cycle_result must carry proposal and action records")
+        cycle_dict = records.to_dict()
 
-    frame_id = cycle_dict.get("frame_id")
-    plan = cycle_dict.get("plan") if isinstance(cycle_dict.get("plan"), dict) else None
-    authority = (
-        cycle_dict.get("authority") if isinstance(cycle_dict.get("authority"), dict) else {}
-    )
-    source = cycle_dict.get("source") if isinstance(cycle_dict.get("source"), dict) else None
-
+    source, plan, authority, action = _cycle_parts(cycle_dict)
     return {
         "schema": STREAM_FRAME_SCHEMA,
         "vehicle_id": vehicle_id,
-        "engine_id": engine_id,
+        "generation_id": generation_id,
         "run_id": run_id,
         "worker_pid": int(worker_pid),
-        "activation_engine_id": activation_engine_id,
-        "activation_activated_at_ms": int(activation_activated_at_ms),
         "published_at_ms": int(
             published_at_ms if published_at_ms is not None else int(time.time() * 1000)
         ),
-        "frame_id": frame_id,
-        "frame_index": _cycle_frame_index(source, cycle_dict),
-        "timestamp_ms": _cycle_timestamp_ms(source, cycle_dict),
+        "frame_id": action.get("frame_id"),
+        "frame_index": _cycle_frame_index(source, action),
+        "timestamp_ms": _cycle_timestamp_ms(source, action),
         "cycle": cycle_dict,
         "observation_summary": _observation_summary(source),
         "memory_summary": _memory_summary(source),
         "plan_summary": _plan_summary(plan),
-        "authority_summary": _authority_summary(authority, cycle_dict),
+        "authority_summary": _authority_summary(authority, action),
         "view": {
             "view_id": COMBINED_VIEW_ID,
             "applied_emphasized": True,
         },
     }
+
+
+def _cycle_parts(
+    cycle: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any], dict[str, Any]]:
+    """The source, plan, authority, and action record of a decision cycle dict."""
+
+    cycle = cycle if isinstance(cycle, Mapping) else {}
+    proposal = cycle.get("proposal") if isinstance(cycle.get("proposal"), dict) else {}
+    action = cycle.get("action") if isinstance(cycle.get("action"), dict) else {}
+    source = proposal.get("source") if isinstance(proposal.get("source"), dict) else None
+    plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else None
+    authority = action.get("authority") if isinstance(action.get("authority"), dict) else {}
+    return source, plan, authority, action
 
 
 def _cycle_frame_index(source: dict[str, Any] | None, cycle: dict[str, Any]) -> int:
@@ -892,14 +547,14 @@ def _memory_summary(source: dict[str, Any] | None) -> dict[str, Any]:
         for item in value[:12]:
             if not isinstance(item, dict):
                 continue
-            prov = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+            origin = item.get("origin") if isinstance(item.get("origin"), dict) else {}
             records_out.append(
                 {
                     "record_id": item.get("record_id"),
                     "kind": item.get("kind"),
                     "confidence": item.get("confidence"),
-                    "frame_id": prov.get("frame_id"),
-                    "observation_id": prov.get("observation_id"),
+                    "frame_id": origin.get("frame_id"),
+                    "observation_id": origin.get("observation_id"),
                 }
             )
         return {
@@ -993,7 +648,7 @@ def _authority_summary(
         "cycle_reason": authority.get("cycle_reason")
         if authority.get("cycle_reason") is not None
         else (cycle.get("reason") or ""),
-        "gate_id": authority.get("gate_id") or HOLD_GATE_ID,
+        "gate_id": authority.get("gate_id") or HoldAction.plugin_id,
     }
 
 
@@ -1006,7 +661,11 @@ def accept_decision_stream_frame(
     is_pid_alive: Callable[[int], bool],
     max_age_ms: int | None = None,
 ) -> None:
-    """Production stream acceptance predicate. Raises DecisionSurfaceError."""
+    """Production stream acceptance predicate. Raises DecisionSurfaceError.
+
+    ``activation`` is the staged decision identity: the proposal, plan, and
+    action activations and the generation ID they identify.
+    """
 
     ceiling = DECISION_STREAM_MAX_AGE_MS if max_age_ms is None else int(max_age_ms)
     if type(ceiling) is not int or ceiling <= 0:
@@ -1022,57 +681,13 @@ def accept_decision_stream_frame(
         )
     reconstructed_cycle = _require_stream_frame_envelope(frame)
 
-    if not isinstance(activation, dict):
-        raise DecisionSurfaceError(
-            "activation_missing",
-            "No active decision engine found for stream decision.",
-        )
-    decision = activation.get("decision")
-    if not isinstance(decision, dict):
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            "Decision activation has no decision section.",
-        )
-    engine_id = decision.get("engine_id")
-    if engine_id not in PROPOSAL_ENGINE_IDS:
-        raise DecisionSurfaceError(
-            "wrong_engine",
-            f"stream decision requires engine_id in {sorted(PROPOSAL_ENGINE_IDS)!r}; "
-            f"got {engine_id!r}. "
-            f"Run: ./cli/automa vehicles update decision --id <vehicle> --engine {ENGINE_ID}",
-        )
-    engine_config = decision.get("engine_config")
-    if not isinstance(engine_config, dict):
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            "Decision activation engine_config must be an object.",
-        )
-    try:
-        proposal_config = _validate_engine_config_for(engine_id, engine_config)
-    except DecisionSurfaceError as exc:
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            exc.message_text,
-            details=exc.details,
-        ) from exc
-    _require_runner_plan_alignment(
-        reconstructed_cycle, proposal_config, engine_id=engine_id
-    )
+    steps = _require_identity_steps(activation, error="activation_missing")
+    _require_runner_plan_alignment(reconstructed_cycle, steps)
 
-    activated_at = activation.get("activated_at_ms")
-    if type(activated_at) is not int:
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            "Decision activation activated_at_ms must be a non-bool int.",
-        )
-    if (
-        frame.get("activation_activated_at_ms") != activated_at
-        or frame.get("activation_engine_id") != engine_id
-        or frame.get("engine_id") != engine_id
-    ):
+    if frame.get("generation_id") != activation.get("generation_id"):
         raise DecisionSurfaceError(
             "latest_frame_stale",
-            f"Latest decision frame does not match the current {engine_id} activation generation.",
+            "Latest decision frame does not match the currently staged decision generation.",
         )
 
     if not isinstance(automation_state, dict):
@@ -1117,19 +732,42 @@ def accept_decision_stream_frame(
             f"Latest decision frame age {age} ms is outside 0..{ceiling} ms.",
             details={"age_ms": age, "max_age_ms": ceiling},
         )
+    _require_stream_summaries_match_cycle(frame, frame["cycle"])
 
-    cycle = frame.get("cycle")
-    if not isinstance(cycle, dict):
+
+def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
+    """The decision steps of an identity; its generation ID must match their content."""
+
+    if not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict):
         raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Latest decision frame is missing cycle object.",
+            error,
+            "No staged decision steps found for stream decision.",
         )
-    if frame.get("frame_id") != cycle.get("frame_id"):
+    steps = identity["steps"]
+    if set(steps) != set(DECISION_STEPS):
         raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "frame_id must equal cycle.frame_id.",
+            "activation_invalid" if error == "activation_missing" else error,
+            f"Decision identity must name exactly the steps {list(DECISION_STEPS)!r}.",
         )
-    _require_stream_summaries_match_cycle(frame, cycle)
+    if steps.get("proposal") is None:
+        raise DecisionSurfaceError(
+            error,
+            "stream decision requires a staged proposal step. "
+            "Run: ./cli/automa vehicles update proposal --id <vehicle>",
+        )
+    try:
+        expected = activation_generation_id(activations_from_payloads(steps), prefix="decision")
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "activation_invalid" if error == "activation_missing" else error,
+            f"Decision step activations are invalid: {exc}",
+        ) from exc
+    if identity.get("generation_id") != expected:
+        raise DecisionSurfaceError(
+            "activation_invalid" if error == "activation_missing" else error,
+            "Decision generation_id does not match its step activations.",
+        )
+    return steps
 
 
 def _accept_provider_neutral_decision_cycle(
@@ -1141,8 +779,8 @@ def _accept_provider_neutral_decision_cycle(
 
     A PiCar publication carries its source-owned identity in the physical wire
     envelope. It must not be relabeled as a Chase worker frame merely to reuse
-    local ``state.json`` or PID checks. The typed action result remains subject
-    to the same exact reconstruction and runner/activation checks.
+    local ``state.json`` or PID checks. The decision records remain subject to
+    the same exact reconstruction and step-activation checks.
     """
 
     cycle = decision.get("cycle")
@@ -1152,41 +790,10 @@ def _accept_provider_neutral_decision_cycle(
             "Physical decision cycle must be an object.",
         )
     reconstructed_cycle = _require_exact_cycle_export(cycle)
-    engine_id = decision.get("activation_engine_id")
-    if engine_id not in PROPOSAL_ENGINE_IDS:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"Physical decision engine must be one of {sorted(PROPOSAL_ENGINE_IDS)!r}; "
-            f"got {engine_id!r}.",
-        )
     activation = decision.get("activation")
-    engine_config = activation.get("engine_config") if isinstance(activation, dict) else None
-    if not isinstance(engine_config, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Physical decision activation engine_config must be an object.",
-        )
-    try:
-        proposal_config = _validate_engine_config_for(engine_id, engine_config)
-    except DecisionSurfaceError as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            exc.message_text,
-            details=exc.details,
-        ) from exc
-    _require_runner_plan_alignment(
-        reconstructed_cycle, proposal_config, engine_id=engine_id
-    )
-
-    if decision.get("activation_engine_id") != activation.get("engine_id"):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Physical decision activation engine identity does not match its envelope.",
-        )
-    if (
-        decision.get("activation_activated_at_ms") != activation.get("activated_at_ms")
-        or decision.get("generation_id") != activation.get("generation_id")
-    ):
+    steps = _require_identity_steps(activation, error="latest_frame_invalid")
+    _require_runner_plan_alignment(reconstructed_cycle, steps)
+    if decision.get("generation_id") != activation.get("generation_id"):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "Physical decision activation generation does not match its envelope.",
@@ -1289,7 +896,7 @@ def _require_exact_keys(
 
 def _require_stream_frame_envelope(
     frame: dict[str, Any],
-) -> ActionResult:
+) -> DecisionRecords:
     """Validate exact vehicle_decision_stream_frame_v0 + nested cycle export."""
 
     if "applied_control" in frame:
@@ -1305,7 +912,7 @@ def _require_stream_frame_envelope(
         )
     _require_exact_keys(frame, STREAM_FRAME_EXACT_KEYS, field="stream_frame")
 
-    for key in ("vehicle_id", "engine_id", "run_id", "activation_engine_id"):
+    for key in ("vehicle_id", "generation_id", "run_id"):
         if type(frame.get(key)) is not str or not str(frame.get(key)):
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
@@ -1321,10 +928,6 @@ def _require_stream_frame_envelope(
             details={"field": "frame_id"},
         ) from exc
     _require_non_bool_int(frame.get("worker_pid"), field="worker_pid")
-    _require_non_bool_int(
-        frame.get("activation_activated_at_ms"),
-        field="activation_activated_at_ms",
-    )
     _require_non_bool_int(frame.get("published_at_ms"), field="published_at_ms")
     _require_non_bool_int(frame.get("frame_index"), field="frame_index")
     _require_non_bool_int(frame.get("timestamp_ms"), field="timestamp_ms")
@@ -1646,13 +1249,16 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
             f"{field} must not include applied_control.",
             details={"field": field},
         )
+    # The deciding action plugin; the staged-activation check names which one.
     gate_id = payload.get("gate_id")
-    if gate_id not in {HOLD_GATE_ID, LIVE_GATE_ID}:
+    try:
+        require_ascii_id(gate_id, field_name="gate_id")
+    except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"{field}.gate_id must be {HOLD_GATE_ID!r} or {LIVE_GATE_ID!r}.",
+            f"{field}.gate_id must be an action plugin id: {exc}",
             details={"field": f"{field}.gate_id"},
-        )
+        ) from exc
     if type(payload.get("proposed_applied")) is not bool:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
@@ -1660,7 +1266,7 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
             details={"field": field},
         )
     authorized_output = payload.get("authorized_output")
-    if gate_id == HOLD_GATE_ID:
+    if gate_id == HoldAction.plugin_id:
         if payload.get("proposed_applied") is not False:
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
@@ -1847,61 +1453,93 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
     return source
 
 
-def _require_exact_cycle_export(cycle: dict[str, Any]) -> ActionResult:
+def _require_exact_cycle_export(cycle: dict[str, Any]) -> DecisionRecords:
     """Strict reconstruction + full canonical export equality for the cycle.
 
-    One owning boundary: reconstruct typed PR #74 objects (authority, plan,
-    proposals/commands, source) and require lossless ``to_dict()`` equality.
-    Adjacent nested authority/command/mode tampering is rejected as a class.
-    Returns the reconstructed cycle for aggregate alignment checks.
+    One owning boundary: reconstruct the typed proposal, plan, and action
+    records (source, candidates, plan, authority) and require lossless
+    ``to_dict()`` equality. Adjacent nested authority/command/mode tampering
+    is rejected as a class. Returns the records for alignment checks.
     """
 
     _require_exact_keys(cycle, CYCLE_EXACT_KEYS, field="cycle")
-    if cycle.get("schema") != ACTION_RESULT_SCHEMA:
+    proposal_payload = cycle.get("proposal")
+    action_payload = cycle.get("action")
+    if not isinstance(proposal_payload, dict) or not isinstance(action_payload, dict):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"cycle.schema must be {ACTION_RESULT_SCHEMA!r}.",
-            details={"field": "cycle.schema"},
+            "cycle.proposal and cycle.action must be objects.",
+            details={"field": "cycle"},
         )
-    if cycle.get("status") not in {"ok", "engine_error"}:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "cycle.status must be ok or engine_error.",
-        )
-    if type(cycle.get("reason")) is not str:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "cycle.reason must be a string.",
-        )
+    _require_exact_keys(proposal_payload, PROPOSAL_RECORD_EXACT_KEYS, field="cycle.proposal")
+    _require_exact_keys(action_payload, ACTION_RECORD_EXACT_KEYS, field="cycle.action")
+    for field, payload, schema in (
+        ("cycle.proposal", proposal_payload, PROPOSAL_RESULT_SCHEMA),
+        ("cycle.action", action_payload, ACTION_RESULT_SCHEMA),
+    ):
+        if payload.get("schema") != schema:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field}.schema must be {schema!r}.",
+                details={"field": f"{field}.schema"},
+            )
+        if payload.get("status") not in {"ok", "error"}:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field}.status must be ok or error.",
+            )
+        if type(payload.get("reason")) is not str:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field}.reason must be a string.",
+            )
 
-    authority = _strict_decode_authority(cycle.get("authority"), field="cycle.authority")
+    authority = _strict_decode_authority(
+        action_payload.get("authority"), field="cycle.action.authority"
+    )
     plan_payload = cycle.get("plan")
-    plan: ActionPlan | None
-    if plan_payload is None:
-        plan = None
-    else:
-        plan = _strict_decode_plan(plan_payload, field="cycle.plan")
-    source_payload = cycle.get("source")
-    source: DecisionDataSource | None
-    if source_payload is None:
-        source = None
-    else:
-        source = _strict_decode_source(source_payload, field="cycle.source")
+    plan = None if plan_payload is None else _strict_decode_plan(plan_payload, field="cycle.plan")
+    source_payload = proposal_payload.get("source")
+    source = (
+        None
+        if source_payload is None
+        else _strict_decode_source(source_payload, field="cycle.proposal.source")
+    )
+    raw_candidates = proposal_payload.get("candidates")
+    if not isinstance(raw_candidates, list):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.proposal.candidates must be a list.",
+            details={"field": "cycle.proposal.candidates"},
+        )
+    candidates = [
+        _strict_decode_proposal(item, field=f"cycle.proposal.candidates[{index}]")
+        for index, item in enumerate(raw_candidates)
+    ]
 
     try:
-        reconstructed = ActionResult(
-            frame_id=str(cycle["frame_id"]),
-            status=str(cycle["status"]),
-            reason=str(cycle.get("reason") or ""),
-            source=source,
+        reconstructed = DecisionRecords(
+            proposal=ProposalResult(
+                frame_id=str(proposal_payload["frame_id"]),
+                status=str(proposal_payload["status"]),
+                reason=str(proposal_payload["reason"]),
+                source=source,
+                candidates=tuple(candidates),
+                schema=str(proposal_payload["schema"]),
+            ),
             plan=plan,
-            authority=authority,
-            schema=str(cycle.get("schema") or ACTION_RESULT_SCHEMA),
+            action=ActionResult(
+                frame_id=str(action_payload["frame_id"]),
+                status=str(action_payload["status"]),
+                reason=str(action_payload["reason"]),
+                authority=authority,
+                schema=str(action_payload["schema"]),
+            ),
         )
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"cycle failed ActionResult construction: {exc}",
+            f"cycle failed record construction: {exc}",
             details={"field": "cycle"},
         ) from exc
     _require_canonical_export_equal(cycle, reconstructed.to_dict(), field="cycle")
@@ -1910,11 +1548,12 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> ActionResult:
 
 def _require_aggregate_cycle_alignment(
     frame: dict[str, Any],
-    cycle: ActionResult,
+    cycle: DecisionRecords,
 ) -> None:
     """Enforce cross-object cycle alignment the nested constructors do not own.
 
-    - cycle / authority / plan / source share one frame_id
+    - proposal / plan / action / authority / source share one frame_id
+    - the plan is over exactly the proposal step's candidates
     - plan/source timestamps agree when both present
     - stream envelope frame_index/timestamp_ms come from the cycle source
     - authority.proposed is the selected plan command (or null for idle/error)
@@ -1931,7 +1570,27 @@ def _require_aggregate_cycle_alignment(
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "authority.frame_id must equal cycle.frame_id.",
-            details={"field": "cycle.authority.frame_id"},
+            details={"field": "cycle.action.authority.frame_id"},
+        )
+    if cycle.proposal.frame_id != frame_id:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "proposal.frame_id must equal cycle.frame_id.",
+            details={"field": "cycle.proposal.frame_id"},
+        )
+    if cycle.proposal.status != "ok" and cycle.status != "error":
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "A failed proposal step must end the action with status error.",
+            details={"field": "cycle.action.status"},
+        )
+    if cycle.plan is not None and sorted(c.proposal_id for c in cycle.plan.candidates) != sorted(
+        c.proposal_id for c in cycle.proposal.candidates
+    ):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "plan candidates must be the proposal step's candidates.",
+            details={"field": "cycle.plan.candidates"},
         )
 
     plan = cycle.plan
@@ -1946,7 +1605,7 @@ def _require_aggregate_cycle_alignment(
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "source.frame_id must equal cycle.frame_id.",
-            details={"field": "cycle.source.frame_id"},
+            details={"field": "cycle.proposal.source.frame_id"},
         )
     if plan is not None and source is not None:
         if plan.timestamp_ms != source.timestamp_ms:
@@ -1982,12 +1641,12 @@ def _require_aggregate_cycle_alignment(
 
     # authority.proposed must be the selected plan command (detached equal value).
     proposed = cycle.authority.proposed
-    if cycle.status == "engine_error" or plan is None or plan.status == "idle":
+    if cycle.status == "error" or plan is None or plan.status == "idle":
         if proposed is not None:
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
-                "authority.proposed must be null when plan is idle/absent or cycle is engine_error.",
-                details={"field": "cycle.authority.proposed"},
+                "authority.proposed must be null when plan is idle/absent or the cycle failed.",
+                details={"field": "cycle.action.authority.proposed"},
             )
         return
 
@@ -2004,14 +1663,14 @@ def _require_aggregate_cycle_alignment(
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
                 "authority.proposed must be null when the selected candidate has no command.",
-                details={"field": "cycle.authority.proposed"},
+                details={"field": "cycle.action.authority.proposed"},
             )
         return
     if proposed is None:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "authority.proposed must equal the selected plan command.",
-            details={"field": "cycle.authority.proposed"},
+            details={"field": "cycle.action.authority.proposed"},
         )
     try:
         if canonical_json_utf8(_json_ready(proposed.to_dict())) != canonical_json_utf8(
@@ -2020,40 +1679,39 @@ def _require_aggregate_cycle_alignment(
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
                 "authority.proposed must equal the selected plan command.",
-                details={"field": "cycle.authority.proposed"},
+                details={"field": "cycle.action.authority.proposed"},
             )
     except ValueError as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"authority.proposed/selected command are not strictly JSON-serializable: {exc}",
-            details={"field": "cycle.authority.proposed"},
+            details={"field": "cycle.action.authority.proposed"},
         ) from exc
 
 
 def _require_runner_plan_alignment(
-    cycle: ActionResult,
-    config: Mapping[str, Any],
-    *,
-    engine_id: str,
+    cycle: DecisionRecords,
+    steps: Mapping[str, Any],
 ) -> None:
-    """Enforce the engine's gate, candidate membership, and selector output."""
+    """Enforce the staged action plugin, candidate membership, and plan output."""
 
-    expected_gate = ENGINE_GATE_IDS[engine_id]
+    action_plugins = (steps.get("action") or {}).get("plugins") or []
+    expected_gate = action_plugins[0] if len(action_plugins) == 1 else None
     if cycle.authority.gate_id != expected_gate:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"{engine_id} cycles must come from the {expected_gate!r} gate.",
+            f"cycles must come from the staged {expected_gate!r} action plugin.",
             details={
-                "field": "cycle.authority.gate_id",
+                "field": "cycle.action.authority.gate_id",
                 "expected_gate_id": expected_gate,
                 "got_gate_id": cycle.authority.gate_id,
             },
         )
-    if cycle.status == "engine_error":
-        if cycle.plan is not None:
+    if cycle.status == "error":
+        if cycle.plan is not None and cycle.proposal.status != "ok":
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
-                "engine_error cycle must not include an action plan.",
+                "a failed proposal step must not be followed by a plan.",
                 details={"field": "cycle.plan"},
             )
         return
@@ -2065,12 +1723,12 @@ def _require_runner_plan_alignment(
             "ok cycle must include an action plan.",
             details={"field": "cycle.plan"},
         )
-    expected_plugins = tuple(sorted(config["plugins"]))
+    expected_plugins = tuple(sorted(proposal_plugin_ids(dict(steps))))
     actual_plugins = tuple(candidate.plugin_id for candidate in plan.candidates)
     if actual_plugins != expected_plugins:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "cycle.plan candidates must match the activation's selected proposal plugins exactly.",
+            "cycle.plan candidates must match the staged proposal plugins exactly.",
             details={
                 "field": "cycle.plan.candidates",
                 "expected_plugins": list(expected_plugins),
@@ -2078,18 +1736,27 @@ def _require_runner_plan_alignment(
             },
         )
     try:
-        expected = select_action_plan(
-            frame_id=plan.frame_id,
-            timestamp_ms=plan.timestamp_ms,
-            candidates=plan.candidates,
-            metadata=plan.to_dict()["metadata"],
+        plan_step = PlanRunner.from_activation(
+            activations_from_payloads(dict(steps))["plan"]
         )
-    except (TypeError, ValueError) as exc:
+        expected = plan_step(
+            DecisionFrameContext(
+                frame_id=plan.frame_id, frame_index=0, timestamp_ms=plan.timestamp_ms
+            ),
+            cycle.proposal,
+        )
+    except (TypeError, ValueError, ImportError, AttributeError) as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"cycle.plan failed deterministic selector validation: {exc}",
+            f"cycle.plan failed staged plan validation: {exc}",
             details={"field": "cycle.plan"},
         ) from exc
+    if expected is None:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"cycle.plan failed staged plan validation: {plan_step.last_error}",
+            details={"field": "cycle.plan"},
+        )
     _require_canonical_export_equal(
         plan.to_dict(),
         expected.to_dict(),
@@ -2103,14 +1770,12 @@ def _require_stream_summaries_match_cycle(
 ) -> None:
     """Rebuild summaries from cycle and require canonical equality (check #10)."""
 
-    plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else None
-    authority = cycle.get("authority") if isinstance(cycle.get("authority"), dict) else {}
-    source = cycle.get("source") if isinstance(cycle.get("source"), dict) else None
+    source, plan, authority, action = _cycle_parts(cycle)
     expected = {
         "observation_summary": _observation_summary(source),
         "memory_summary": _memory_summary(source),
         "plan_summary": _plan_summary(plan),
-        "authority_summary": _authority_summary(authority, cycle),
+        "authority_summary": _authority_summary(authority, action),
         "view": {
             "view_id": COMBINED_VIEW_ID,
             "applied_emphasized": True,
@@ -2185,26 +1850,13 @@ def invalidate_latest_decision_frame(vehicle_runtime_dir: Path | str) -> None:
 
 
 def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, Any] | None:
-    """Read the current on-disk decision activation, or None if unusable."""
+    """The currently staged decision identity, or None if it is unusable."""
 
     try:
         bundle = controller_bundle_paths(Path(vehicle_runtime_dir))
-        activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
-        vehicle_id = Path(vehicle_runtime_dir).name
-        payload = _read_surface_activation(
-            activation_path,
-            vehicle_id=vehicle_id,
-        )
-    except (
-        FileNotFoundError,
-        OSError,
-        json.JSONDecodeError,
-        TypeError,
-        ValueError,
-        DecisionSurfaceError,
-    ):
+        return _read_surface_identity(bundle, vehicle_id=Path(vehicle_runtime_dir).name)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, DecisionSurfaceError):
         return None
-    return payload
 
 
 def publish_decision_frame(
@@ -2216,63 +1868,39 @@ def publish_decision_frame(
     run_id: str,
     worker_pid: int,
     activation: dict[str, Any] | None = None,
-    staged_engine_id: str | None = None,
 ) -> bool:
     """Publish generation-scoped latest frame. Returns True when written.
 
-    The worker must pass the activation generation under which its engine was
-    constructed. Live on-disk activation is re-read and must still match that
-    generation (engine_id + activated_at_ms). Restage while running leaves the
-    invalidated latest file untouched until the worker reloads/restarts.
+    The worker passes the decision identity its steps run. The staged
+    identity is re-read and must still be that generation; a restage the
+    worker cannot run leaves the invalidated latest file untouched until the
+    worker restarts.
     """
 
-    if cycle_result is None:
+    if cycle_result is None or not isinstance(activation, dict):
         return False
-    if staged_engine_id is not None and staged_engine_id not in PROPOSAL_ENGINE_IDS:
+    records = (
+        cycle_result
+        if isinstance(cycle_result, DecisionRecords)
+        else DecisionRecords.from_cycle(cycle_result)
+    )
+    if records is None or records.frame_id != context_frame_id:
         return False
-    if not isinstance(activation, dict):
-        return False
-    worker_decision = activation.get("decision")
-    if not isinstance(worker_decision, dict):
-        return False
-    engine_id = worker_decision.get("engine_id")
-    if engine_id not in PROPOSAL_ENGINE_IDS:
-        return False
-    if staged_engine_id is not None and staged_engine_id != engine_id:
-        return False
-    worker_activated_at = activation.get("activated_at_ms")
-    if type(worker_activated_at) is not int:
-        return False
-
-    frame_id = getattr(cycle_result, "frame_id", None)
-    if frame_id is None and isinstance(cycle_result, dict):
-        frame_id = cycle_result.get("frame_id")
-    if frame_id != context_frame_id:
+    generation_id = activation.get("generation_id")
+    if not isinstance(generation_id, str) or not generation_id:
         return False
 
     live = load_live_decision_activation(vehicle_runtime_dir)
-    if live is None:
-        return False
-    live_decision = live.get("decision")
-    if not isinstance(live_decision, dict) or live_decision.get("engine_id") != engine_id:
-        return False
-    live_activated_at = live.get("activated_at_ms")
-    if type(live_activated_at) is not int:
-        return False
     # Refuse to relabel a generation-A worker cycle as generation B.
-    if live_activated_at != worker_activated_at:
-        return False
-    if live_decision.get("engine_id") != worker_decision.get("engine_id"):
+    if live is None or live.get("generation_id") != generation_id:
         return False
 
     frame = build_decision_stream_frame(
-        cycle_result,
+        records,
         vehicle_id=vehicle_id,
         run_id=run_id,
         worker_pid=worker_pid,
-        activation_engine_id=engine_id,
-        activation_activated_at_ms=worker_activated_at,
-        engine_id=engine_id,
+        generation_id=generation_id,
     )
     write_latest_decision_frame(latest_decision_path(vehicle_runtime_dir), frame)
     return True
@@ -2300,14 +1928,12 @@ def physical_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
 
     decision = normalized["decision"]
     cycle = decision["cycle"]
-    source = cycle.get("source") if isinstance(cycle, dict) else None
+    source, plan, authority, action = _cycle_parts(cycle)
     return {
         "schema": "provider_decision_stream_frame_v0",
         "vehicle_id": decision["vehicle_id"],
         "source_id": decision["source_id"],
         "run_id": decision["run_id"],
-        "activation_engine_id": decision["activation_engine_id"],
-        "activation_activated_at_ms": decision["activation_activated_at_ms"],
         "producer_generation_id": decision["generation_id"],
         "frame_id": decision["frame_id"],
         "frame_index": decision["frame_index"],
@@ -2316,21 +1942,23 @@ def physical_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
         "cycle": deepcopy(cycle),
         "observation_summary": _observation_summary(source),
         "memory_summary": _memory_summary(source),
-        "plan_summary": _plan_summary(cycle.get("plan")),
-        "authority_summary": _authority_summary(cycle.get("authority", {}), cycle),
+        "plan_summary": _plan_summary(plan),
+        "authority_summary": _authority_summary(authority, action),
     }
 
 
 def _format_physical_decision(normalized: dict[str, Any]) -> str:
     decision = normalized["decision"]
-    cycle = decision.get("cycle") if isinstance(decision.get("cycle"), dict) else {}
     frame = physical_decision_view_frame(normalized)
     lines = [
         f"Decision stream: {decision.get('vehicle_id')} frame={decision.get('frame_id')} provider=picar",
         f"Source: {decision.get('source_id')}  run={decision.get('run_id')} "
         f"generation={decision.get('generation_id')}",
-        f"Activation: {decision.get('activation_engine_id')} "
-        f"at={decision.get('activation_activated_at_ms')}",
+        "Decision steps: "
+        + ", ".join(
+            f"{step}={','.join((payload or {}).get('plugins') or []) or '-'}"
+            for step, payload in ((decision.get("activation") or {}).get("steps") or {}).items()
+        ),
         f"Freshness: age_ms={normalized.get('result_age_ms')} "
         f"max_age_ms={normalized.get('max_age_ms')}",
     ]
@@ -2449,7 +2077,6 @@ def stream_vehicle_decision(
 
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
-    activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
 
     # Chase keeps its generation-scoped local state files. Physical targets are
     # discovered through the existing read-only vehicle registry and consumed
@@ -2481,23 +2108,7 @@ def stream_vehicle_decision(
     frame_path = latest_decision_path(vehicle_runtime_dir)
 
     def _load_activation() -> dict[str, Any]:
-        if not activation_path.exists():
-            raise DecisionSurfaceError(
-                "activation_missing",
-                "\n".join(
-                    [
-                        f"No active decision engine found for {vehicle_id!r}.",
-                        f"Expected activation: {display_path(activation_path)}",
-                        "Run: ./cli/automa vehicles update decision --id <vehicle_id> "
-                        f"--engine {ENGINE_ID}",
-                    ]
-                ),
-                vehicle_id=vehicle_id,
-            )
-        return _read_surface_activation(
-            activation_path,
-            vehicle_id=vehicle_id,
-        )
+        return _read_surface_identity(bundle, vehicle_id=vehicle_id)
 
     def _load_state() -> dict[str, Any] | None:
         if not state_path.exists():
@@ -2532,24 +2143,8 @@ def stream_vehicle_decision(
         return payload
 
     def _accept_once() -> dict[str, Any]:
-        # Activation/engine gates before frame IO so wrong_engine surfaces cleanly.
+        # Staged-step gates before frame IO so a missing proposal step surfaces cleanly.
         activation = _load_activation()
-        decision = activation.get("decision")
-        if not isinstance(decision, dict):
-            raise DecisionSurfaceError(
-                "activation_invalid",
-                "Decision activation has no decision section.",
-                vehicle_id=vehicle_id,
-            )
-        if decision.get("engine_id") not in PROPOSAL_ENGINE_IDS:
-            raise DecisionSurfaceError(
-                "wrong_engine",
-                f"stream decision requires engine_id in {sorted(PROPOSAL_ENGINE_IDS)!r}; "
-                f"got {decision.get('engine_id')!r}. "
-                "Run: ./cli/automa vehicles update decision --id <vehicle> "
-                f"--engine {ENGINE_ID}",
-                vehicle_id=vehicle_id,
-            )
         frame = _load_frame()
         state = _load_state()
         accept_decision_stream_frame(
@@ -2625,7 +2220,7 @@ def _format_stream_frame(frame: dict[str, Any]) -> str:
     proposed = authority.get("proposed")
     lines = [
         f"Decision stream: {frame.get('vehicle_id')} frame={frame.get('frame_id')}",
-        f"Engine: {frame.get('engine_id')}  run={frame.get('run_id')}  pid={frame.get('worker_pid')}",
+        f"Generation: {frame.get('generation_id')}  run={frame.get('run_id')}  pid={frame.get('worker_pid')}",
         f"Observation: status={obs.get('status')} frame_id={obs.get('frame_id')} "
         f"reason={obs.get('reason')}",
         "Observation image: unavailable (no image path published in stream frame)",
@@ -2769,11 +2364,11 @@ def strict_decode_apply_evidence(payload: object) -> tuple[RetainedEvidence, ...
                 "run_invalid",
                 "evidence record key set must match RetainedEvidence.to_dict().",
             )
-        provenance = item.get("provenance")
-        if not isinstance(provenance, dict) or set(provenance.keys()) != PROVENANCE_REQUIRED_KEYS:
+        origin = item.get("origin")
+        if not isinstance(origin, dict) or set(origin.keys()) != ORIGIN_REQUIRED_KEYS:
             raise DecisionSurfaceError(
                 "run_invalid",
-                "evidence record provenance must be a complete MemoryProvenance export.",
+                "evidence record origin must be a complete MemoryOrigin export.",
             )
         location = item.get("location")
         if location is not None:
@@ -2943,63 +2538,27 @@ def _apply_vehicle_decision_body(
         )
 
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
-    if not activation_path.exists():
+    identity = _read_surface_identity(bundle, vehicle_id=vehicle_id)
+    steps = identity["steps"]
+    action_plugins = (steps.get("action") or {}).get("plugins") or []
+    if action_plugins != [HoldAction.plugin_id]:
         raise DecisionSurfaceError(
-            "activation_missing",
-            "\n".join(
-                [
-                    f"No active decision engine found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(activation_path)}",
-                    "Run: ./cli/automa vehicles update decision --id <vehicle_id> "
-                    f"--engine {ENGINE_ID}",
-                ]
-            ),
+            "wrong_action",
+            f"decision apply replays the {HoldAction.plugin_id!r} action only; "
+            f"the staged action plugins are {action_plugins!r}. "
+            f"Run: ./cli/automa vehicles update action --id <vehicle> --plugin {HoldAction.plugin_id}",
             vehicle_id=vehicle_id,
         )
-    activation = _read_surface_activation(
-        activation_path,
-        vehicle_id=vehicle_id,
-    )
-    decision = activation.get("decision")
-    if not isinstance(decision, dict):
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            "Decision activation has no decision section.",
-            vehicle_id=vehicle_id,
-        )
-    if decision.get("engine_id") != ENGINE_ID:
-        raise DecisionSurfaceError(
-            "wrong_engine",
-            f"decision apply requires engine_id={ENGINE_ID!r}; got {decision.get('engine_id')!r}.",
-            vehicle_id=vehicle_id,
-        )
-    engine_config = decision.get("engine_config")
-    if not isinstance(engine_config, dict):
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            "Decision activation engine_config must be an object.",
-            vehicle_id=vehicle_id,
-        )
-    try:
-        cfg = validate_hold_engine_config(dict(engine_config))
-    except DecisionSurfaceError as exc:
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            exc.message_text,
-            vehicle_id=vehicle_id,
-            details=exc.details,
-        ) from exc
 
     normalized_frames = _normalize_apply_frames(frames, vehicle_id=vehicle_id)
 
-    digest_a = _run_apply_pass(cfg, normalized_frames)
+    digest_a = _run_apply_pass(steps, normalized_frames)
     bytes_a = canonical_json_utf8(digest_a)
     digest_sha256 = hashlib.sha256(bytes_a).hexdigest()
     second_pass_sha: str | None = None
     deterministic = True
     if verify_twice:
-        digest_b = _run_apply_pass(cfg, normalized_frames)
+        digest_b = _run_apply_pass(steps, normalized_frames)
         bytes_b = canonical_json_utf8(digest_b)
         second_pass_sha = hashlib.sha256(bytes_b).hexdigest()
         deterministic = bytes_a == bytes_b
@@ -3019,8 +2578,10 @@ def _apply_vehicle_decision_body(
         "vehicle_id": vehicle_id,
         "from_run": display_path(run_dir if run_dir.is_dir() else sequence_path.parent),
         "frame_count": len(normalized_frames),
-        "engine_id": ENGINE_ID,
-        "activation": display_path(activation_path),
+        "generation_id": identity["generation_id"],
+        "activations": {
+            step: display_path(bundle_activation_path(bundle, step)) for step in DECISION_STEPS
+        },
         "digest": digest_a,
         "digest_sha256": digest_sha256,
         "deterministic": deterministic,
@@ -3035,7 +2596,7 @@ def _apply_vehicle_decision_body(
             from_run_dir=run_dir if run_dir.is_dir() else sequence_path.parent,
             frames=normalized_frames,
             payload=payload,
-            engine_config=cfg,
+            steps=steps,
             output_root=output_root or decision_apply_output_root(),
         )
         payload["recorded"] = True
@@ -3046,8 +2607,7 @@ def _apply_vehicle_decision_body(
     lines = [
         f"Decision apply: {vehicle_id}",
         f"From-run: {payload['from_run']} ({payload['frame_count']} frames)",
-        f"Engine: {ENGINE_ID}",
-        f"Activation: {payload['activation']}",
+        f"Generation: {payload['generation_id']}",
         f"Digest sha256: {digest_sha256}",
         "Deterministic: yes (canonical_json_utf8 byte equality)"
         if deterministic
@@ -3148,13 +2708,13 @@ def _recorded_shared_memory(frame: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _run_apply_pass(
-    cfg: Mapping[str, Any],
+    steps: Mapping[str, Any],
     frames: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    engine = create_action_composition(cfg)
+    runners = DecisionRunners.from_payloads(steps)
     digest_frames: list[dict[str, Any]] = []
     for frame in frames:
-        cycle_result = engine.run(
+        cycle_result = runners.run(
             frame_id=frame["frame_id"],
             frame_index=frame["frame_index"],
             timestamp_ms=frame["timestamp_ms"],
@@ -3210,7 +2770,7 @@ def _write_apply_record(
     from_run_dir: Path,
     frames: list[dict[str, Any]],
     payload: dict[str, Any],
-    engine_config: Mapping[str, Any],
+    steps: Mapping[str, Any],
     output_root: Path,
 ) -> Path:
     output_root = Path(output_root)
@@ -3235,10 +2795,10 @@ def _write_apply_record(
         frames_dir.mkdir()
         source_frames_dir.mkdir()
 
-        engine = create_action_composition(engine_config)
+        runners = DecisionRunners.from_payloads(steps)
         cycle_results: list[Any] = []
         for frame in frames:
-            cycle_result = engine.run(
+            cycle_result = runners.run(
                 frame_id=frame["frame_id"],
                 frame_index=frame["frame_index"],
                 timestamp_ms=frame["timestamp_ms"],
@@ -3417,9 +2977,7 @@ def render_decision_exact_frame_html(
     host_telemetry: dict[str, Any] | None = None,
 ) -> str:
     cycle = cycle_result.to_dict() if hasattr(cycle_result, "to_dict") else dict(cycle_result)
-    plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else None
-    authority = cycle.get("authority") if isinstance(cycle.get("authority"), dict) else {}
-    source = cycle.get("source") if isinstance(cycle.get("source"), dict) else None
+    source, plan, authority, action = _cycle_parts(cycle)
     plan_summary = _plan_summary(plan)
     selected_id = plan_summary.get("selected_proposal_id")
     contribution_plugins = [
@@ -3551,93 +3109,3 @@ def _cleanup_record_paths(*paths: Path) -> list[str]:
         except Exception as exc:  # noqa: BLE001 - preserve both failure causes
             errors.append(f"{display_path(path)}: {type(exc).__name__}: {exc}")
     return errors
-
-
-# ---------------------------------------------------------------------------
-# Shared formatting / activation helpers
-# ---------------------------------------------------------------------------
-
-
-def _decision_activation(
-    *,
-    vehicle_id: str,
-    engine_id: str,
-    bundle: dict[str, str],
-    release: dict[str, Any] | None,
-    manager: AutonomyManager,
-    engine_config: dict[str, Any],
-    engine_description: str,
-    engine_spec: str,
-) -> dict[str, Any]:
-    return {
-        "schema": "automa_decision_activation_v0",
-        "vehicle_id": vehicle_id,
-        "activated_at_ms": int(time.time() * 1000),
-        "controller_bundle": {
-            "root_dir": bundle["root_dir"],
-            "autonomy_dir": bundle["autonomy_dir"],
-            "implementations_dir": bundle["implementations_dir"],
-            "decision_dir": bundle["decision_dir"],
-            "decision_runtime_dir": bundle["decision_runtime_dir"],
-            "release": release_activation_summary(release) if release is not None else None,
-        },
-        "decision": {
-            "engine_id": engine_id,
-            "description": engine_description,
-            "engine_spec": engine_spec,
-            "engine_config": dict(engine_config),
-            "engine_schema": manager.status()["engine_schema"],
-        },
-    }
-
-
-def _format_decision_info(payload: dict[str, Any]) -> str:
-    activation = payload["activation"]
-    schema = payload.get("engine_schema") if isinstance(payload.get("engine_schema"), dict) else {}
-    steps = schema.get("steps") if isinstance(schema.get("steps"), dict) else {}
-    lines = [
-        f"Decision: {payload['vehicle_id']} -> {activation.get('engine_id', 'unknown')}",
-        f"Engine: {activation.get('engine_spec', 'unknown')}",
-        f"Activation: {activation['path']}",
-        f"Schema source: {(payload.get('engine_schema_source') or {}).get('engine_spec', 'unknown')}.describe_schema()",
-        "",
-        "Steps:",
-        *(
-            [f"- {name}: {value if value is not None else 'disabled'}" for name, value in steps.items()]
-            or ["- none declared"]
-        ),
-        "",
-        f"Output: {(schema.get('output') or {}).get('type', 'unknown') if isinstance(schema.get('output'), dict) else 'unknown'}",
-    ]
-    proposals = payload.get("proposals")
-    if isinstance(proposals, dict):
-        authority = proposals.get("authority") or {}
-        lines.extend(
-            [
-                "",
-                "Proposal decision:",
-                f"- inputs: {', '.join(proposals.get('decision_inputs') or [])}",
-                f"- plugins: {', '.join(proposals.get('plugins') or []) or '(none)'}",
-                f"- selector: {proposals.get('selector_id')}",
-                f"- output_schemas: {json.dumps(proposals.get('output_schemas') or {}, sort_keys=True)}",
-                (
-                    f"- authority: gate={authority.get('gate_id')} "
-                    f"proposed_applied={authority.get('proposed_applied')} "
-                    f"idle_reason={authority.get('authorized_idle_reason')}"
-                ),
-            ]
-        )
-    combined = payload.get("combined_view") if isinstance(payload.get("combined_view"), dict) else {}
-    live_view = (
-        f"status={combined.get('status')} url={combined.get('url')} "
-        f"reason={combined.get('reason')}"
-    )
-    lines.extend(
-        [
-            "",
-            f"Combined view: id={combined.get('view_id')} "
-            f"{live_view} path_template={combined.get('path_template')}",
-            f"Open saved input: {combined.get('launch_command')}",
-        ]
-    )
-    return "\n".join(lines)

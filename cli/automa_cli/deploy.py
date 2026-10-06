@@ -14,10 +14,11 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from implementations.decision_cycle.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
+from implementations.decision_cycle.perception.presets import (
+    DEFAULT_PERCEPTION_PRESET,
 )
-from implementations.decision_cycle.memory.catalog import DEFAULT_MEMORY_IMPLEMENTATION
+from autonomy.decision_cycle.activation import STEPS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 from implementations.vehicle.picar.defaults import (
     get_default_local_car_base_url,
     get_default_local_car_id,
@@ -29,7 +30,6 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from .decision import ensure_vehicle_decision_activation
 from .donkeycar_vendor import (
     donkeycar_vendor_source_dir,
     ensure_donkeycar_vendor,
@@ -38,6 +38,15 @@ from .donkeycar_vendor import (
 from .memory import ensure_vehicle_memory_activation
 from .paths import display_path, safe_path_part
 from .perception import ensure_vehicle_perception_activation
+from .step_activations import (
+    CONTROLLER_BUNDLE_KEYS,
+    bundle_activation_path,
+    bundle_activation_problems,
+    decision_generation_id,
+    ensure_builtin_activations,
+    format_activation_problems,
+    read_bundle_activation,
+)
 from .vehicles import discover_active_vehicles, find_vehicle_by_id
 
 
@@ -64,10 +73,10 @@ archive = Path(sys.argv[1])
 release_root = Path(sys.argv[2])
 app_root = Path(sys.argv[3])
 expected_sha256 = sys.argv[4]
-perception_source = Path(sys.argv[5])
-decision_source = Path(sys.argv[6])
-memory_source = Path(sys.argv[7])
-release_id = sys.argv[8]
+release_id = sys.argv[5]
+# <step>-active.json files and identity.json, from the artifact directory.
+sources = [Path(item) for item in sys.argv[6:]]
+STEPS = ("perception", "observation", "memory", "proposal", "plan", "action")
 
 digest = hashlib.sha256()
 with archive.open("rb") as handle:
@@ -115,11 +124,17 @@ for package_name in ("autonomy", "implementations"):
         shutil.move(str(package_link), str(backup_root / package_name))
     os.replace(next_link, package_link)
 
-activation_targets = (
-    (perception_source, app_root / "runtime" / "perception" / "active.json"),
-    (decision_source, app_root / "runtime" / "decision" / "active.json"),
-    (memory_source, app_root / "runtime" / "memory" / "active.json"),
-)
+activation_targets = []
+deployed_steps = set()
+for source in sources:
+    if source.name == "identity.json":
+        activation_targets.append((source, app_root / "runtime" / "identity.json"))
+        continue
+    step = source.name.removesuffix("-active.json")
+    if step not in STEPS or source.name != f"{step}-active.json":
+        raise RuntimeError(f"unexpected activation file: {source}")
+    deployed_steps.add(step)
+    activation_targets.append((source, app_root / "runtime" / step / "active.json"))
 for source, target in activation_targets:
     payload = json.loads(source.read_text(encoding="utf-8"))
     if not isinstance(payload.get("schema"), str):
@@ -128,6 +143,14 @@ for source, target in activation_targets:
     pending = target.with_name(f".{target.name}.{release_id}.pending")
     shutil.copy2(source, pending)
     os.replace(pending, target)
+# A step that is no longer staged must not keep running from an older deploy.
+for step in STEPS:
+    stale = app_root / "runtime" / step / "active.json"
+    if step not in deployed_steps and stale.exists():
+        stale.unlink()
+legacy = app_root / "runtime" / "decision" / "active.json"
+if legacy.exists():
+    legacy.unlink()
 
 status_path = app_root / "runtime" / "controller-release.json"
 status_pending = status_path.with_name(f".{status_path.name}.pending")
@@ -350,9 +373,8 @@ def update_vehicle_autonomy(
             release_id=release_id,
             archive_path=preview_archive,
             archive_sha256="<archive-sha256>",
-            perception_activation_path=preview_dir / "perception-active.json",
-            decision_activation_path=preview_dir / "decision-active.json",
-            memory_activation_path=preview_dir / "memory-active.json",
+            deploy_files=[preview_dir / f"{step}-active.json" for step in STEPS]
+            + [preview_dir / "identity.json"],
         )
         payload = _autonomy_update_payload(
             target=target,
@@ -363,50 +385,53 @@ def update_vehicle_autonomy(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
-            perception_algorithm=DEFAULT_PERCEPTION_ALGORITHM,
-            decision_engine="idle",
-            memory_implementation=DEFAULT_MEMORY_IMPLEMENTATION,
+            perception_preset=DEFAULT_PERCEPTION_PRESET,
+            steps={step: list(DEFAULT_STEP_PLUGINS[step]) for step in STEPS if step != "proposal"},
+            generation_id=None,
             runtime_verification=None,
         )
         if json_output:
             return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(0, _format_autonomy_dry_run(payload))
 
+    # The deployment refreshes and ships every staged step. Validate the
+    # documents it reads before packaging or writing.
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
+
     release = sync_controller_bundle(bundle, output=output)
     perception_activation_path = ensure_vehicle_perception_activation(
         vehicle=dict(target.vehicle),
-        algorithm=DEFAULT_PERCEPTION_ALGORITHM,
+        preset=DEFAULT_PERCEPTION_PRESET,
         bundle=bundle,
         release=release,
     )
-    decision_activation_path = ensure_vehicle_decision_activation(
+    ensure_vehicle_memory_activation(
         vehicle_id=vehicle_id,
         bundle=bundle,
         release=release,
     )
-    memory_activation_path = ensure_vehicle_memory_activation(
-        vehicle_id=vehicle_id,
-        bundle=bundle,
-        release=release,
-    )
+    ensure_builtin_activations(vehicle_id=vehicle_id, bundle=bundle, release=release)
+    activations = {
+        step: activation
+        for step in STEPS
+        if (activation := read_bundle_activation(bundle, step)) is not None
+    }
     release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
     deploy_files = _write_remote_activation_files(
         target=target,
         vehicle_runtime_dir=vehicle_runtime_dir,
         release=release,
         release_id=release_id,
-        perception_activation_path=perception_activation_path,
-        decision_activation_path=decision_activation_path,
-        memory_activation_path=memory_activation_path,
+        activation_paths={step: bundle_activation_path(bundle, step) for step in activations},
     )
     commands = _autonomy_sync_commands(
         target=target,
         release_id=release_id,
         archive_path=Path(release["archive"]["path"]),
         archive_sha256=str(release["archive"]["sha256"]),
-        perception_activation_path=deploy_files["perception"],
-        decision_activation_path=deploy_files["decision"],
-        memory_activation_path=deploy_files["memory"],
+        deploy_files=list(deploy_files.values()),
     )
 
     for label, command in commands:
@@ -425,17 +450,20 @@ def update_vehicle_autonomy(
         if code != 0:
             return CommandResult(code, f"Restart failed with exit code {code}.")
 
-    perception_manifest = json.loads(perception_activation_path.read_text(encoding="utf-8"))
-    decision_manifest = json.loads(decision_activation_path.read_text(encoding="utf-8"))
-    memory_manifest = json.loads(memory_activation_path.read_text(encoding="utf-8"))
-    memory_implementation_id = str(memory_manifest["memory"]["implementation_id"])
+    perception_preset = str(
+        activations["perception"].metadata.get("preset")
+        if "perception" in activations
+        else perception_activation_path.name
+    )
+    deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
+    generation_id = decision_generation_id(
+        {step: activations.get(step) for step in ("proposal", "plan", "action")}
+    )
     if restart:
         try:
             runtime_verification = _verify_physical_autonomy_runtime(
                 target=target,
-                expected_engine_spec=str(decision_manifest["decision"]["engine_spec"]),
-                expected_perception_algorithm=str(perception_manifest["perception"]["algorithm"]),
-                expected_memory_implementation=memory_implementation_id,
+                expected_steps=deployed_steps,
                 timeout_s=max(3.0, timeout_s),
             )
         except RuntimeError as exc:
@@ -457,9 +485,9 @@ def update_vehicle_autonomy(
         commands=commands,
         restart=restart,
         drive_args=drive_args,
-        perception_algorithm=str(perception_manifest["perception"]["algorithm"]),
-        decision_engine=str(decision_manifest["decision"]["engine_id"]),
-        memory_implementation=memory_implementation_id,
+        perception_preset=perception_preset,
+        steps=deployed_steps,
+        generation_id=generation_id,
         runtime_verification=runtime_verification,
     )
     if json_output:
@@ -467,14 +495,9 @@ def update_vehicle_autonomy(
     verified_lines: list[str] = []
     if runtime_verification is not None:
         verified_lines.append(
-            "Runtime verified: selected engine and perception loaded; "
+            "Runtime verified: every deployed step runs its staged plugins; "
             "drive mode remains manual"
         )
-        if runtime_verification.get("memory_implementation"):
-            verified_lines.append(
-                "Memory verified: "
-                f"{runtime_verification['memory_implementation']} step is live"
-            )
     return CommandResult(
         0,
         "\n".join(
@@ -482,9 +505,9 @@ def update_vehicle_autonomy(
                 f"Autonomy updated: {vehicle_id} -> {target.ssh_target}",
                 f"Release: {release_id}",
                 f"Tree SHA-256: {release['tree_sha256']}",
-                f"Perception: {payload['activation']['perception_algorithm']}",
-                f"Decision: {payload['activation']['decision_engine']}",
-                f"Memory: {payload['activation']['memory_implementation']}",
+                f"Perception: {payload['activation']['perception_preset']}",
+                *_step_lines(payload["activation"]["steps"]),
+                f"Decision generation: {payload['activation']['generation_id']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
                 *verified_lines,
             ]
@@ -579,10 +602,10 @@ def _write_remote_activation_files(
     vehicle_runtime_dir: Path,
     release: dict[str, Any],
     release_id: str,
-    perception_activation_path: Path,
-    decision_activation_path: Path,
-    memory_activation_path: Path,
+    activation_paths: dict[str, Path],
 ) -> dict[str, Path]:
+    """Write the Pi's copy of each staged activation and the runtime identity."""
+
     deploy_dir = vehicle_runtime_dir / "deploy" / "donkeycar" / release_id
     deploy_dir.mkdir(parents=True, exist_ok=True)
     remote_app_root = f"{target.pi_home}/mycar"
@@ -592,65 +615,62 @@ def _write_remote_activation_files(
     remote_release["archive"] = f"{remote_artifact_dir}/{Path(release['archive']['path']).name}"
     remote_release["manifest"] = f"{remote_release_root}/bundle-manifest.json"
 
-    remote_bundle = {
+    # Same controller_bundle keys staging_metadata records locally, with the Pi's paths.
+    remote_values = {
         "root_dir": remote_app_root,
         "autonomy_dir": f"{remote_app_root}/autonomy",
         "implementations_dir": f"{remote_app_root}/implementations",
-        "perception_dir": f"{remote_app_root}/implementations/decision_cycle/perception",
-        "decision_dir": f"{remote_app_root}/implementations/runtime/engines",
         "runtime_dir": f"{remote_app_root}/runtime",
-        "perception_runtime_dir": f"{remote_app_root}/runtime/perception",
-        "decision_runtime_dir": f"{remote_app_root}/runtime/decision",
-        "memory_runtime_dir": f"{remote_app_root}/runtime/memory",
         "release": remote_release,
     }
+    remote_bundle = {key: remote_values[key] for key in CONTROLLER_BUNDLE_KEYS}
 
-    perception = copy.deepcopy(json.loads(perception_activation_path.read_text(encoding="utf-8")))
-    perception["provider"] = target.provider
-    perception["runtime"] = {
-        "kind": "onboard_controller",
-        "connection": target.vehicle.get("connection"),
-    }
-    perception["controller_bundle"] = copy.deepcopy(remote_bundle)
-    perception["perception"]["source_dir"] = remote_bundle["perception_dir"]
-
-    decision = copy.deepcopy(json.loads(decision_activation_path.read_text(encoding="utf-8")))
-    decision["controller_bundle"] = copy.deepcopy(remote_bundle)
-
-    memory = copy.deepcopy(json.loads(memory_activation_path.read_text(encoding="utf-8")))
-    memory["controller_bundle"] = copy.deepcopy(remote_bundle)
-
-    perception_path = deploy_dir / "perception-active.json"
-    decision_path = deploy_dir / "decision-active.json"
-    memory_path = deploy_dir / "memory-active.json"
-    perception_path.write_text(json.dumps(perception, indent=2, sort_keys=True), encoding="utf-8")
-    decision_path.write_text(json.dumps(decision, indent=2, sort_keys=True), encoding="utf-8")
-    memory_path.write_text(json.dumps(memory, indent=2, sort_keys=True), encoding="utf-8")
-    (deploy_dir / "deployment.json").write_text(
+    written: dict[str, Path] = {}
+    for step, path in activation_paths.items():
+        payload = copy.deepcopy(json.loads(path.read_text(encoding="utf-8")))
+        metadata = payload.setdefault("metadata", {})
+        metadata["controller_bundle"] = copy.deepcopy(remote_bundle)
+        if step == "perception":
+            # The Pi runs this activation onboard. Other steps keep the identity
+            # recorded when they were staged.
+            metadata["provider"] = target.provider
+            metadata["runtime"] = {
+                "kind": "onboard_controller",
+                "connection": target.vehicle.get("connection"),
+            }
+        written[step] = deploy_dir / f"{step}-active.json"
+        written[step].write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    identity_path = deploy_dir / "identity.json"
+    identity_path.write_text(
         json.dumps(
             {
-                "schema": "automa_physical_autonomy_deployment_v0",
-                "created_at_ms": int(time.time() * 1000),
+                "schema": "automa_runtime_identity_v0",
                 "vehicle_id": target.vehicle_id,
-                "ssh_target": target.ssh_target,
-                "release_id": release_id,
-                "release": remote_release,
-                "activation": {
-                    "perception": str(perception_path),
-                    "decision": str(decision_path),
-                    "memory": str(memory_path),
-                },
+                "source_id": f"donkeycar:{target.vehicle_id}",
             },
             indent=2,
             sort_keys=True,
         ),
         encoding="utf-8",
     )
-    return {
-        "perception": perception_path,
-        "decision": decision_path,
-        "memory": memory_path,
-    }
+    written["identity"] = identity_path
+    (deploy_dir / "deployment.json").write_text(
+        json.dumps(
+            {
+                "schema": "automa_physical_autonomy_deployment_v1",
+                "created_at_ms": int(time.time() * 1000),
+                "vehicle_id": target.vehicle_id,
+                "ssh_target": target.ssh_target,
+                "release_id": release_id,
+                "release": remote_release,
+                "activation": {name: str(path) for name, path in written.items()},
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return written
 
 
 def _autonomy_sync_commands(
@@ -659,9 +679,7 @@ def _autonomy_sync_commands(
     release_id: str,
     archive_path: Path,
     archive_sha256: str,
-    perception_activation_path: Path,
-    decision_activation_path: Path,
-    memory_activation_path: Path,
+    deploy_files: list[Path],
 ) -> list[tuple[str, list[str]]]:
     remote_app_root = f"{target.pi_home}/mycar"
     remote_runtime = f"{remote_app_root}/runtime"
@@ -677,10 +695,8 @@ def _autonomy_sync_commands(
             remote_release_root,
             remote_app_root,
             archive_sha256,
-            f"{remote_artifact_dir}/{perception_activation_path.name}",
-            f"{remote_artifact_dir}/{decision_activation_path.name}",
-            f"{remote_artifact_dir}/{memory_activation_path.name}",
             release_id,
+            *(f"{remote_artifact_dir}/{path.name}" for path in deploy_files),
         ]
     )
     return [
@@ -693,9 +709,7 @@ def _autonomy_sync_commands(
                 "-p",
                 remote_artifact_dir,
                 f"{remote_runtime}/controller-releases",
-                f"{remote_runtime}/perception",
-                f"{remote_runtime}/decision",
-                f"{remote_runtime}/memory",
+                *(f"{remote_runtime}/{step}" for step in STEPS),
             ],
         ),
         (
@@ -704,9 +718,7 @@ def _autonomy_sync_commands(
                 "rsync",
                 "-az",
                 str(archive_path),
-                str(perception_activation_path),
-                str(decision_activation_path),
-                str(memory_activation_path),
+                *(str(path) for path in deploy_files),
                 f"{target.ssh_target}:{remote_artifact_dir}/",
             ],
         ),
@@ -727,9 +739,9 @@ def _autonomy_update_payload(
     commands: list[tuple[str, list[str]]],
     restart: bool,
     drive_args: str | None,
-    perception_algorithm: str,
-    decision_engine: str,
-    memory_implementation: str,
+    perception_preset: str,
+    steps: dict[str, list[str]],
+    generation_id: str | None,
     runtime_verification: dict[str, Any] | None,
 ) -> dict[str, Any]:
     command_status = "planned" if dry_run else "completed"
@@ -766,9 +778,9 @@ def _autonomy_update_payload(
         "release_id": release_id,
         "release": release_activation_summary(release) if release is not None else None,
         "activation": {
-            "perception_algorithm": perception_algorithm,
-            "decision_engine": decision_engine,
-            "memory_implementation": memory_implementation,
+            "perception_preset": perception_preset,
+            "steps": steps,
+            "generation_id": generation_id,
         },
         "restart_requested": restart,
         "runtime_verification": runtime_verification,
@@ -896,9 +908,12 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
             f"source tree SHA-256: {payload['source']['tree_sha256']}",
             f"source files: {payload['source']['file_count']}",
             (
-                f"activation defaults: perception={payload['activation']['perception_algorithm']} "
-                f"decision={payload['activation']['decision_engine']} "
-                f"memory={payload['activation']['memory_implementation']}"
+                f"activation defaults: perception={payload['activation']['perception_preset']} "
+                + " ".join(
+                    f"{step}={','.join(plugins) or '-'}"
+                    for step, plugins in payload["activation"]["steps"].items()
+                    if step != "perception"
+                )
             ),
             "planned commands:",
             *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
@@ -958,9 +973,7 @@ def _restart_drive_service(
 def _verify_physical_autonomy_runtime(
     *,
     target: PhysicalTarget,
-    expected_engine_spec: str,
-    expected_perception_algorithm: str,
-    expected_memory_implementation: str | None = None,
+    expected_steps: dict[str, list[str]],
     timeout_s: float,
 ) -> dict[str, Any]:
     verification = inspect_physical_autonomy_runtime(
@@ -968,40 +981,35 @@ def _verify_physical_autonomy_runtime(
         timeout_s=timeout_s,
     )
     status_url = str(verification["status_url"])
-    actual_engine = verification["engine"]
-    actual_perception = verification["perception_algorithm"]
-    actual_memory = verification.get("memory_implementation")
-    drive_mode = verification["drive_mode"]
-    if actual_engine != expected_engine_spec:
-        raise RuntimeError(
-            f"{status_url} reported engine {actual_engine!r}, expected {expected_engine_spec!r}"
-        )
-    if actual_perception != expected_perception_algorithm:
-        raise RuntimeError(
-            f"{status_url} reported perception {actual_perception!r}, "
-            f"expected {expected_perception_algorithm!r}"
-        )
-    if expected_memory_implementation:
-        if not actual_memory:
+    actual_steps = verification["steps"]
+    for step, plugins in expected_steps.items():
+        actual = actual_steps.get(step)
+        if actual is None:
             vehicle_id = target.vehicle_id
             raise RuntimeError(
-                f"{status_url} has no live memory step, but activation "
-                f"{expected_memory_implementation!r} was deployed. "
-                "Memory activation is installed by autonomy deploy; the load path "
-                "lives in the Donkey manage.py harness from core. "
+                f"{status_url} has no live {step} step, but {plugins!r} was deployed. "
+                "The step loader lives in the Donkey manage.py harness from core. "
                 f"Run: ./cli/automa vehicles update core --id {vehicle_id} --restart "
                 f"then ./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
             )
-        if actual_memory != expected_memory_implementation:
+        if list(actual) != list(plugins):
             raise RuntimeError(
-                f"{status_url} reported memory {actual_memory!r}, "
-                f"expected {expected_memory_implementation!r}"
+                f"{status_url} reported {step} plugins {actual!r}, expected {plugins!r}"
             )
+    drive_mode = verification["drive_mode"]
     if drive_mode != "user":
         raise RuntimeError(
             f"{status_url} reported drive mode {drive_mode!r}; expected 'user' for idle smoke verification"
         )
     return verification
+
+
+def _step_lines(steps: dict[str, list[str]]) -> list[str]:
+    return [
+        f"{step.capitalize()}: {', '.join(plugins) or '(no plugins)'}"
+        for step, plugins in steps.items()
+        if step != "perception"
+    ]
 
 
 def inspect_physical_autonomy_runtime(
@@ -1029,38 +1037,27 @@ def inspect_physical_autonomy_runtime(
     if not isinstance(payload, dict):
         raise RuntimeError(f"{status_url} did not return a JSON object")
     if payload.get("ok") is not True:
-        raise RuntimeError(f"{status_url} did not report an available autonomy manager")
+        raise RuntimeError(f"{status_url} did not report an available decision cycle")
 
     autonomy = payload.get("autonomy")
     if not isinstance(autonomy, dict):
         raise RuntimeError(f"{status_url} did not report autonomy runtime status")
 
-    actual_engine = autonomy.get("engine")
-    if not isinstance(actual_engine, str) or not actual_engine.strip():
-        raise RuntimeError(f"{status_url} did not report a loaded decision engine")
+    reported = autonomy.get("steps")
+    if not isinstance(reported, dict):
+        raise RuntimeError(f"{status_url} did not report the cycle's steps")
+    steps: dict[str, list[str] | None] = {}
+    for step in STEPS:
+        status = reported.get(step)
+        plugin_ids = status.get("plugin_ids") if isinstance(status, dict) else None
+        steps[step] = list(plugin_ids) if isinstance(plugin_ids, list) else None
+    if steps["action"] is None:
+        raise RuntimeError(f"{status_url} did not report a loaded action step")
 
-    components = autonomy.get("components")
-    if not isinstance(components, dict):
-        components = {}
-    perception = components.get("perception")
-    actual_perception = perception.get("algorithm") if isinstance(perception, dict) else None
-    if not isinstance(actual_perception, str) or not actual_perception.strip():
-        raise RuntimeError(f"{status_url} did not report an active perception algorithm")
-
-    memory = components.get("memory")
-    actual_memory: str | None = None
-    if isinstance(memory, dict):
-        memory_id = memory.get("implementation_id")
-        if isinstance(memory_id, str) and memory_id.strip():
-            actual_memory = memory_id.strip()
-
-    drive_mode = payload.get("drive_mode")
     return {
         "status_url": status_url,
-        "engine": actual_engine.strip(),
-        "perception_algorithm": actual_perception.strip(),
-        "memory_implementation": actual_memory,
-        "drive_mode": drive_mode,
+        "steps": steps,
+        "drive_mode": payload.get("drive_mode"),
         "ok": True,
     }
 

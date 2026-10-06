@@ -1,7 +1,8 @@
-"""Whole perception step boundary.
+"""The perception step's output and the request-level perception boundary.
 
-``PerceptionMapper`` takes a ``PerceptionRequest`` and returns current evidence
-as ``PerceptionText``, with one ``PerceptionPluginRun`` per plugin.
+``PerceptionText`` is current evidence, with one ``PerceptionPluginRun`` per
+plugin. ``PerceptionBackend`` is anything that runs perception on a
+``PerceptionRequest``, such as the step's ``PerceptionRunner``.
 """
 
 from __future__ import annotations
@@ -9,14 +10,39 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from autonomy.decision_cycle.perception.components.context import PerceptionRequest
+from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
+from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
 
 PERCEPTION_TEXT_SCHEMA = "perception_text_v2"
+PERCEPTION_SCHEMA = "perception_schema_v3"
 PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
+
+# A perception plugin error is isolated, an explicit reset error propagates,
+# and a missing feed skips that plugin. ``reset`` governs explicit reset and
+# selection removal. A stateful plugin is also reset on a missing feed, inside
+# frame execution, so an exception there follows ``update`` and becomes that
+# plugin's error result.
+FAILURE_POLICY = FailurePolicy(
+    update="isolate_plugin",
+    reset="propagate",
+    missing_input="skip_plugin",
+)
+
+
+def composition_declaration() -> dict[str, str]:
+    """How several perception plugins share one frame."""
+
+    return {
+        "order": "selection_order",
+        "partial_result": (
+            "partial when an error or unavailable plugin runs alongside an ok, "
+            "empty, or warming_up plugin"
+        ),
+    }
 
 
 @dataclass(frozen=True)
@@ -30,14 +56,12 @@ class PerceptionPluginRun:
     thing_count: int
     artifact_count: int
     error: str | None = None
-    implementation_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionPluginRun":
-        implementation_id = data.get("implementation_id")
         return cls(
             plugin_id=str(data.get("plugin_id") or "unknown"),
             status=str(data.get("status") or "error"),
@@ -46,9 +70,6 @@ class PerceptionPluginRun:
             thing_count=int(data.get("thing_count") or 0),
             artifact_count=int(data.get("artifact_count") or 0),
             error=str(data["error"]) if data.get("error") is not None else None,
-            implementation_id=(
-                str(implementation_id) if implementation_id else None
-            ),
         )
 
 
@@ -115,8 +136,8 @@ class PerceptionText:
 
 
 @runtime_checkable
-class PerceptionMapper(Protocol):
-    """Whole perception step: sensors in, current evidence out."""
+class PerceptionBackend(Protocol):
+    """Run perception on one request: sensors in, current evidence out."""
 
     plugin_id: str
 

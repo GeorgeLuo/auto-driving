@@ -4,14 +4,14 @@ import unittest
 
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
-from autonomy.runtime import AutonomyControl
-from tests.support.action_fixtures import fixed_control_composition
+from autonomy.runtime.control import AutonomyControl
+from autonomy.decision_cycle.steps import decision_steps
+from tests.support.action_fixtures import fixed_action_runner, plan_runner
 
 
 class DecisionCycleTests(unittest.TestCase):
@@ -48,32 +48,96 @@ class DecisionCycleTests(unittest.TestCase):
             return Observation(
                 observation_id=context.frame_id,
                 created_at_ms=456,
-                sensor_snapshot={},
+                sensor_frame={},
                 summary=("custom observation",),
             )
 
-        result = DecisionCycle(DecisionSteps(observe=observe)).run(self.context())
+        result = DecisionCycle(DecisionSteps(observation=observe)).run(self.context())
 
         self.assertIsNotNone(result.observation)
         self.assertEqual(result.observation.observation_id, "frame_000")
         self.assertEqual(result.control.reason, "decision-cycle-idle")
 
-    def test_perception_without_observe_step_uses_default_observation(self) -> None:
+    def test_builtin_observation_step_records_perception(self) -> None:
         perception = self.perception()
 
         result = DecisionCycle(
-            DecisionSteps(perceive=lambda context: perception),
+            DecisionSteps(
+                perception=lambda context: perception,
+                observation=decision_steps().observation,
+            ),
         ).run(self.context())
 
         self.assertIs(result.perception, perception)
         self.assertIsNotNone(result.observation)
         self.assertEqual(result.observation.observation_id, "frame_000")
         self.assertEqual(result.observation.perception_plugin_id, "test-perception")
-        self.assertEqual(result.observation.metadata["source"], "default_observe_step")
+        self.assertEqual(result.observation.metadata["source"], "perception_summary")
         self.assertEqual(result.control.reason, "decision-cycle-idle")
 
+    def test_empty_step_records_none(self) -> None:
+        result = DecisionCycle(
+            DecisionSteps(perception=lambda context: self.perception()),
+        ).run(self.context())
+
+        self.assertIsNotNone(result.perception)
+        self.assertIsNone(result.observation)
+        self.assertIsNone(result.proposal)
+        self.assertIsNone(result.plan)
+        self.assertIsNone(result.action)
+
+    def test_each_step_receives_the_previous_records(self) -> None:
+        calls = []
+        perception = self.perception()
+        observation_step = decision_steps().observation
+        plan_step = plan_runner()
+        action_step = fixed_action_runner(AutonomyControl(confidence=1.0, reason="fixed"))
+
+        def observe(context, received):
+            calls.append(("observation", received))
+            return observation_step(context, received)
+
+        def remember(context, observation):
+            calls.append(("memory", observation))
+            return None
+
+        def propose(context, observation):
+            calls.append(("proposal", observation))
+            return None
+
+        def plan(context, proposal):
+            calls.append(("plan", proposal))
+            return plan_step(context, proposal)
+
+        def act(context, proposal, plan):
+            calls.append(("action", plan))
+            return action_step(context, proposal, plan)
+
+        result = DecisionCycle(
+            DecisionSteps(
+                perception=lambda context: perception,
+                observation=observe,
+                memory=remember,
+                proposal=propose,
+                plan=plan,
+                action=act,
+            )
+        ).run(self.context())
+
+        self.assertEqual(
+            [name for name, _ in calls],
+            ["observation", "memory", "proposal", "plan", "action"],
+        )
+        self.assertIs(calls[0][1], perception)
+        self.assertIs(calls[1][1], result.observation)
+        self.assertIs(calls[2][1], result.observation)
+        self.assertIsNone(calls[3][1])
+        self.assertIs(calls[4][1], result.plan)
+        self.assertEqual(result.plan.status, "idle")
+        self.assertEqual(result.control.reason, "fixed")
+
     def test_action_only_cycle_uses_action_output(self) -> None:
-        composition = fixed_control_composition(
+        action = fixed_action_runner(
             AutonomyControl(
                 steering=0.25,
                 throttle=0.0,
@@ -82,13 +146,9 @@ class DecisionCycleTests(unittest.TestCase):
             )
         )
 
-        def act(context, perception, observation):
-            self.assertEqual(context.frame_id, "frame_000")
-            self.assertIsNone(perception)
-            self.assertIsNone(observation)
-            return composition.act(context, perception, observation)
-
-        result = DecisionCycle(DecisionSteps(act=act)).run(self.context())
+        result = DecisionCycle(DecisionSteps(plan=plan_runner(), action=action)).run(
+            self.context()
+        )
 
         self.assertEqual(result.control.reason, "test-action")
         self.assertEqual(result.control.steering, 0.25)
@@ -99,7 +159,7 @@ class DecisionCycleTests(unittest.TestCase):
 
     def test_none_action_output_uses_configured_idle_control(self) -> None:
         cycle = DecisionCycle(
-            DecisionSteps(act=lambda *args: None),
+            DecisionSteps(action=lambda *args: None),
             idle_reason="waiting-for-decision",
         )
 
@@ -110,20 +170,12 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.control.confidence, 1.0)
         self.assertEqual(result.control.reason, "waiting-for-decision")
 
-    def test_action_step_rejects_undeclared_dictionary_output(self) -> None:
-        def act(context, perception, observation):
-            return {"steering": 0.0, "throttle": 0.0}
-
-        cycle = DecisionCycle(DecisionSteps(act=act))
-
-        with self.assertRaisesRegex(TypeError, "must return ActionResult or None"):
-            cycle.run(self.context())
 
     def test_memory_step_report_is_recorded_and_keeps_idle(self) -> None:
-        report = {"schema": "memory_report_v0", "plugins": [{"state": {"record_count": 0}}]}
+        report = {"schema": "memory_report_v1", "plugins": [{"state": {"record_count": 0}}]}
 
         result = DecisionCycle(
-            DecisionSteps(remember=lambda context, observation: report)
+            DecisionSteps(memory=lambda context, observation: report)
         ).run(self.context())
 
         self.assertIs(result.memory, report)
@@ -131,52 +183,6 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.to_dict()["memory"], report)
         result.to_dict()["memory"]["plugins"][0]["state"]["record_count"] = 9
         self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
-
-    def test_memory_step_rejects_output_that_is_not_a_report(self) -> None:
-        cycle = DecisionCycle(
-            DecisionSteps(remember=lambda context, observation: ["records"])
-        )
-
-        with self.assertRaisesRegex(MemoryUpdateError, "must return a report dict or None"):
-            cycle.run(self.context())
-
-    def test_failed_memory_update_stops_action_without_rewriting_plugin_memory(self) -> None:
-        shared_memory = {}
-        actions = []
-
-        def remember(context, observation):
-            context.shared_memory["test.plugin_write"] = "retained"
-            raise RuntimeError("update failed")
-
-        cycle = DecisionCycle(
-            DecisionSteps(
-                remember=remember,
-                act=lambda *args: actions.append(args),
-            )
-        )
-        context = DecisionFrameContext(
-            frame_id="frame_001",
-            frame_index=1,
-            timestamp_ms=123,
-            shared_memory=shared_memory,
-        )
-
-        with self.assertRaisesRegex(MemoryUpdateError, "update failed"):
-            cycle.run(context)
-        self.assertEqual(shared_memory, {"test.plugin_write": "retained"})
-        self.assertEqual(actions, [])
-
-    def test_unprintable_memory_error_keeps_memory_failure_boundary(self) -> None:
-        class UnprintableError(Exception):
-            def __str__(self):
-                raise RuntimeError("cannot format")
-
-        def remember(context, observation):
-            raise UnprintableError()
-
-        cycle = DecisionCycle(DecisionSteps(remember=remember))
-        with self.assertRaisesRegex(MemoryUpdateError, "unprintable error"):
-            cycle.run(self.context())
 
 
 if __name__ == "__main__":

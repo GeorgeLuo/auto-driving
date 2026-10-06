@@ -3,7 +3,7 @@
 The runtime server owns this short-lived view.  It receives an accepted
 ``vehicle_decision_stream_frame_v0`` and the already-published capture bytes
 for that frame, retaining a small number of immutable transactions.  It never
-runs an engine, reads an image path, or follows a URL supplied by a client.
+runs a decision step, reads an image path, or follows a URL supplied by a client.
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def _evidence_projection(
 
     The accepted cycle remains available unchanged under ``provenance``. This
     projection is the machine-visible rendering gate: an unavailable record
-    carries its raw provenance but never carries renderable geometry.
+    carries its raw origin but never carries renderable geometry.
     """
 
     observation_value = (
@@ -135,27 +135,27 @@ def _evidence_projection(
     projected: list[dict[str, Any]] = []
     for record in raw_records:
         record_id = record.get("record_id") if isinstance(record, dict) else None
-        provenance = record.get("provenance") if isinstance(record, dict) else None
+        origin = record.get("origin") if isinstance(record, dict) else None
         reason = ""
         matched_thing: dict[str, Any] | None = None
         if not isinstance(record, dict) or type(record_id) is not str or not record_id:
             reason = "invalid_record"
-        elif not isinstance(provenance, dict):
+        elif not isinstance(origin, dict):
             reason = "provenance_unavailable"
-        elif provenance.get("frame_id") != frame_id:
+        elif origin.get("frame_id") != frame_id:
             reason = "source_image_unavailable"
         elif type(observation_id) is not str or not observation_id:
             reason = "observation_unavailable"
-        elif provenance.get("observation_id") != observation_id:
+        elif origin.get("observation_id") != observation_id:
             reason = "observation_mismatch"
-        elif type(provenance.get("evidence_id")) is not str or not provenance.get("evidence_id"):
+        elif type(origin.get("observed_id")) is not str or not origin.get("observed_id"):
             reason = "provenance_unavailable"
         else:
             matches = [
                 thing
                 for thing in things
                 if isinstance(thing, dict)
-                and thing.get("thing_id") == provenance["evidence_id"]
+                and thing.get("thing_id") == origin["observed_id"]
             ]
             if not matches:
                 reason = "evidence_missing"
@@ -169,8 +169,8 @@ def _evidence_projection(
             if source_plugin_id is None:
                 source_plugin_id = observation_plugin_id
             if (
-                provenance.get("coordinate_frame") != "image"
-                or provenance.get("source_plugin_id") != source_plugin_id
+                origin.get("coordinate_frame") != "image"
+                or origin.get("source_plugin_id") != source_plugin_id
             ):
                 reason = "provenance_mismatch"
             elif not _supported_image_bbox(record.get("location")):
@@ -189,7 +189,7 @@ def _evidence_projection(
                 "record_id": record_id if type(record_id) is str else None,
                 "status": "available" if available else "unavailable",
                 "reason": reason,
-                "provenance": _json_copy(provenance) if isinstance(provenance, dict) else None,
+                "origin": _json_copy(origin) if isinstance(origin, dict) else None,
                 "record": _json_copy(record) if available else None,
             }
         )
@@ -215,26 +215,24 @@ def _evidence_projection(
     }
 
 
+def decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
+    from .step_activations import decision_identity as staged_identity
+
+    return staged_identity(bundle)
+
+
 def _activation_identity(activation: dict[str, Any]) -> dict[str, Any]:
-    decision = activation.get("decision") if isinstance(activation, dict) else None
-    if not isinstance(decision, dict):
-        raise ValueError("decision activation has no decision section")
-    engine_id = decision.get("engine_id")
-    activated_at_ms = activation.get("activated_at_ms")
-    if type(engine_id) is not str or not engine_id:
-        raise ValueError("decision activation engine_id is invalid")
-    if type(activated_at_ms) is not int:
-        raise ValueError("decision activation activated_at_ms is invalid")
-    signed = {
-        "engine_id": engine_id,
-        "engine_spec": decision.get("engine_spec"),
-        "engine_config": decision.get("engine_config"),
-        "activated_at_ms": activated_at_ms,
-    }
+    """The decision generation of a staged identity (``generation_id`` and ``steps``)."""
+
+    generation = activation.get("generation_id") if isinstance(activation, dict) else None
+    steps = activation.get("steps") if isinstance(activation, dict) else None
+    if type(generation) is not str or not generation:
+        raise ValueError("decision identity generation_id is invalid")
+    if not isinstance(steps, dict):
+        raise ValueError("decision identity has no steps")
     return {
-        "activation_engine_id": engine_id,
-        "activation_activated_at_ms": activated_at_ms,
-        "activation_sha256": _sha256_json(signed),
+        "activation_generation_id": generation,
+        "activation_sha256": _sha256_json(steps),
     }
 
 
@@ -264,8 +262,6 @@ def provider_decision_view_identity(
     vehicle_id: str,
     source_id: str,
     run_id: str,
-    activation_engine_id: str,
-    activation_activated_at_ms: int,
     producer_generation_id: str,
 ) -> dict[str, Any]:
     """Identify a non-local producer without inventing local process state."""
@@ -274,19 +270,14 @@ def provider_decision_view_identity(
         ("vehicle_id", vehicle_id),
         ("source_id", source_id),
         ("run_id", run_id),
-        ("activation_engine_id", activation_engine_id),
         ("producer_generation_id", producer_generation_id),
     ):
         if type(value) is not str or not value:
             raise ValueError(f"decision view {field} is invalid")
-    if type(activation_activated_at_ms) is not int:
-        raise ValueError("decision view activation_activated_at_ms is invalid")
     return {
         "vehicle_id": vehicle_id,
         "source_id": source_id,
         "run_id": run_id,
-        "activation_engine_id": activation_engine_id,
-        "activation_activated_at_ms": activation_activated_at_ms,
         "producer_generation_id": producer_generation_id,
     }
 
@@ -296,16 +287,13 @@ def generation_id(identity: dict[str, Any]) -> str:
         "vehicle_id",
         "run_id",
         "worker_pid",
-        "activation_engine_id",
-        "activation_activated_at_ms",
+        "activation_generation_id",
         "activation_sha256",
     }
     provider_expected = {
         "vehicle_id",
         "source_id",
         "run_id",
-        "activation_engine_id",
-        "activation_activated_at_ms",
         "producer_generation_id",
     }
     if frozenset(identity) not in {frozenset(local_expected), frozenset(provider_expected)}:
@@ -362,7 +350,7 @@ class DecisionView:
         provider_identity: dict[str, Any] | None = None,
     ) -> None:
         self._activation_path = Path(activation_path)
-        self._startup_activation = _json_copy(activation) if isinstance(activation, dict) else None
+        self._activation = _json_copy(activation) if isinstance(activation, dict) else None
         self.identity: dict[str, Any] | None = None
         self.generation_id: str | None = None
         self._provider_identity = (
@@ -371,12 +359,12 @@ class DecisionView:
         if self._provider_identity is not None:
             self.identity = provider_decision_view_identity(**self._provider_identity)
             self.generation_id = generation_id(self.identity)
-        elif self._startup_activation is not None and run_id is not None and worker_pid is not None:
+        elif self._activation is not None and run_id is not None and worker_pid is not None:
             self.identity = decision_view_identity(
                 vehicle_id=vehicle_id,
                 run_id=run_id,
                 worker_pid=worker_pid,
-                activation=self._startup_activation,
+                activation=self._activation,
             )
             self.generation_id = generation_id(self.identity)
         self._lock = threading.Lock()
@@ -407,6 +395,29 @@ class DecisionView:
             return None
         return f"/decision?{urlencode({'generation': self.generation_id})}"
 
+    def adopt(self, activation: dict[str, Any]) -> None:
+        """Publish under ``activation``, a restage the worker now runs.
+
+        The view takes that generation and drops the previous one's
+        transactions; a page pinned to the old generation gets a 409 naming
+        the new one, which it follows while the run and worker are the same.
+        """
+
+        if self.identity is None or self._provider_identity is not None:
+            return
+        identity = decision_view_identity(
+            vehicle_id=self.identity["vehicle_id"],
+            run_id=self.identity["run_id"],
+            worker_pid=self.identity["worker_pid"],
+            activation=activation,
+        )
+        with self._lock:
+            self._activation = _json_copy(activation)
+            self.identity = identity
+            self.generation_id = generation_id(identity)
+            self._transactions.clear()
+            self._latest_transaction_id = None
+
     def require_generation(self, generation: str) -> None:
         if self.generation_id is None or self.identity is None:
             raise DecisionViewError(503, "decision_unavailable", "decision view is not configured")
@@ -430,13 +441,13 @@ class DecisionView:
     ) -> bool:
         """Store one exact transaction only after all local identities agree."""
 
-        if self.identity is None or self._startup_activation is None or image is None:
+        if self.identity is None or self._activation is None or image is None:
             self.invalidate_latest()
             return False
         try:
             accept_decision_stream_frame(
                 stream_frame,
-                activation=self._startup_activation,
+                activation=self._activation,
                 automation_state={
                     "run_id": self.identity["run_id"],
                     "status": "running",
@@ -447,14 +458,8 @@ class DecisionView:
             )
             if any(
                 stream_frame.get(key) != self.identity[key]
-                for key in (
-                    "vehicle_id",
-                    "run_id",
-                    "worker_pid",
-                    "activation_engine_id",
-                    "activation_activated_at_ms",
-                )
-            ):
+                for key in ("vehicle_id", "run_id", "worker_pid")
+            ) or stream_frame.get("generation_id") != self.identity["activation_generation_id"]:
                 self.invalidate_latest()
                 return False
             frame_id = stream_frame.get("frame_id")
@@ -515,8 +520,6 @@ class DecisionView:
                 "vehicle_id": stream_frame.get("vehicle_id"),
                 "source_id": stream_frame.get("source_id"),
                 "run_id": stream_frame.get("run_id"),
-                "activation_engine_id": stream_frame.get("activation_engine_id"),
-                "activation_activated_at_ms": stream_frame.get("activation_activated_at_ms"),
                 "producer_generation_id": stream_frame.get("producer_generation_id"),
             }
             cycle = stream_frame.get("cycle")
@@ -530,7 +533,8 @@ class DecisionView:
                 or type(stream_frame.get("published_at_ms")) is not int
             ):
                 raise ValueError("provider frame identity is invalid")
-            if not isinstance(cycle, dict) or cycle.get("frame_id") != frame_id:
+            action = cycle.get("action") if isinstance(cycle, dict) else None
+            if not isinstance(action, dict) or action.get("frame_id") != frame_id:
                 raise ValueError("provider cycle frame does not match")
             if frame_record.get("frame_id") != frame_id:
                 raise ValueError("provider image frame does not match")
@@ -619,7 +623,8 @@ class DecisionView:
             {"generation": generation, "id": transaction.transaction_id}
         )
         cycle = transaction.stream_frame["cycle"]
-        source = cycle.get("source") if isinstance(cycle, dict) else None
+        proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
+        source = proposal.get("source") if isinstance(proposal, dict) else None
         authority = transaction.stream_frame.get("authority_summary")
         observation = source.get("observation") if isinstance(source, dict) else None
         # The audit copy of the retained evidence the proposals read.
@@ -658,7 +663,7 @@ class DecisionView:
                 "url": image_url,
             },
             "provenance": {
-                "sensor_snapshot": _json_copy(transaction.frame_record.get("sensor_snapshot")),
+                "sensor_frame": _json_copy(transaction.frame_record.get("sensor_frame")),
                 "observation": _json_copy(observation),
                 "evidence": _json_copy(evidence_input),
             },
@@ -688,11 +693,12 @@ class DecisionView:
     def _activation_matches(self) -> bool:
         if self._provider_identity is not None:
             return True
-        if self._startup_activation is None:
+        if self._activation is None:
             return False
         try:
-            payload = json.loads(self._activation_path.read_text(encoding="utf-8"))
-            return _activation_identity(payload) == _activation_identity(self._startup_activation)
+            # The staged decision steps under the vehicle's runtime directory.
+            staged = decision_identity({"runtime_dir": str(self._activation_path)})
+            return _activation_identity(staged) == _activation_identity(self._activation)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             return False
 

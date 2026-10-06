@@ -229,7 +229,7 @@ def _frame_record() -> dict:
         "control_source": "simulator",
         "control_application": "not_applied",
         "action_policy": "observe_only",
-        "sensor_snapshot": {
+        "sensor_frame": {
             "readings": {
                 "front_camera": {
                     "metadata": {"content_type": "image/png"},

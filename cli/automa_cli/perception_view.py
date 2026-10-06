@@ -10,12 +10,10 @@ from typing import Any
 from urllib.parse import quote, urljoin, urlparse
 from urllib.request import urlopen
 
-from .memory_report import memory_state
-
 from PIL import Image
 
 VIEW_SCHEMA = "automa_perception_view_v1"
-PUBLICATION_SCHEMA = "automa_perception_publication_v1"
+PUBLICATION_SCHEMA = "automa_perception_publication_v2"
 VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MAX_BUFFERED_FRAMES = 8
@@ -262,8 +260,10 @@ def _publication_payload(
     source = perception_record or {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
-    # The last memory plugin's state from the frame record's memory report.
-    memory = memory_state(source.get("memory"))
+    # The frame record's memory report: every plugin's state by plugin_id and
+    # the evidence publisher, as the memory step reported them.
+    memory = source.get("memory")
+    memory = memory if isinstance(memory, dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,
@@ -280,7 +280,7 @@ def _publication_payload(
         },
         "perception": perception,
         "memory": memory,
-        "sensor_snapshot": source.get("sensor_snapshot"),
+        "sensor_frame": source.get("sensor_frame"),
         "observation": source.get("observation"),
         "control": source.get("control"),
         "engine": source.get("engine"),
@@ -360,9 +360,9 @@ def _image_dimensions(frame_path: Path) -> tuple[int, int]:
 
 
 def _frame_content_type(frame_path: Path, frame_record: dict[str, Any]) -> str:
-    snapshot = frame_record.get("sensor_snapshot")
-    if isinstance(snapshot, dict):
-        readings = snapshot.get("readings")
+    sensor_frame = frame_record.get("sensor_frame")
+    if isinstance(sensor_frame, dict):
+        readings = sensor_frame.get("readings")
         reading = readings.get("front_camera") if isinstance(readings, dict) else None
         metadata = reading.get("metadata") if isinstance(reading, dict) else None
         content_type = metadata.get("content_type") if isinstance(metadata, dict) else None

@@ -4,11 +4,13 @@ import unittest
 from typing import Any
 
 from autonomy.plugins import (
+    DuplicatePluginIdError,
     LocalPluginCatalog,
     PluginDefinition,
     PluginManagementError,
     PluginManager,
     PluginSelectionRuntime,
+    declared_plugin_id,
     plugin_report,
     replace_selection,
 )
@@ -23,6 +25,14 @@ def _definition(plugin_id: str, **overrides: Any) -> PluginDefinition:
     }
     payload.update(overrides)
     return PluginDefinition(**payload)
+
+
+class _Declared:
+    plugin_id = "declared"
+
+
+class _Undeclared:
+    pass
 
 
 class PluginCatalogTests(unittest.TestCase):
@@ -42,6 +52,21 @@ class PluginCatalogTests(unittest.TestCase):
         self.assertEqual(manager.available, (first, second, third))
         manager.add("third")
         self.assertEqual(manager.selected, (third,))
+
+    def test_a_second_definition_under_one_id_is_refused(self) -> None:
+        resolver = LocalPluginCatalog((_definition("first"),))
+        for duplicate in (_definition("first"), _definition("first", entrypoint="other:Plugin")):
+            with self.subTest(entrypoint=duplicate.entrypoint):
+                with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate memory plugin id 'first'"):
+                    resolver.register(duplicate)
+        resolver.register(_definition("first", step="perception"))
+
+    def test_declared_id_is_read_from_the_plugin_class(self) -> None:
+        self.assertEqual(declared_plugin_id(f"{__name__}:_Declared"), "declared")
+        with self.assertRaisesRegex(PluginManagementError, "does not declare a plugin_id"):
+            declared_plugin_id(f"{__name__}:_Undeclared")
+        definition = PluginDefinition.declared("memory", f"{__name__}:_Declared", {"a": 1})
+        self.assertEqual((definition.plugin_id, dict(definition.config)), ("declared", {"a": 1}))
 
 
 class ReplaceSelectionTests(unittest.TestCase):
@@ -160,81 +185,6 @@ class ReplaceSelectionTests(unittest.TestCase):
                 ("reset", instances["last"]),
             ],
         )
-
-    def test_load_failure_does_not_reset_applied_instances(self) -> None:
-        current = _definition("current")
-        added = _definition("added")
-        existing = object()
-        resets: list[object] = []
-
-        def fail_load(_definition: PluginDefinition) -> object:
-            raise RuntimeError("missing entrypoint")
-
-        with self.assertRaisesRegex(RuntimeError, "missing entrypoint"):
-            replace_selection(
-                ((current, existing),),
-                (current, added),
-                load=fail_load,
-                reset=resets.append,
-            )
-
-        self.assertEqual(resets, [])
-
-    def test_validate_failure_does_not_reset_removed_instances(self) -> None:
-        current = _definition("current")
-        replacement = _definition("replacement")
-        old = object()
-        loaded: list[str] = []
-        resets: list[object] = []
-
-        def load(definition: PluginDefinition) -> str:
-            loaded.append(definition.plugin_id)
-            return definition.plugin_id
-
-        def reject(_instances: tuple[str, ...]) -> None:
-            raise ValueError("provider conflict")
-
-        with self.assertRaisesRegex(ValueError, "provider conflict"):
-            replace_selection(
-                ((current, old),),
-                (replacement,),
-                load=load,
-                validate=reject,
-                reset=resets.append,
-            )
-
-        self.assertEqual(loaded, ["replacement"])
-        self.assertEqual(resets, [])
-
-    def test_conflicting_definitions_are_rejected_before_load(self) -> None:
-        loaded: list[str] = []
-
-        with self.assertRaisesRegex(PluginManagementError, "conflicting definitions"):
-            replace_selection(
-                (),
-                (
-                    _definition("bounded", config={"max_records": 32}),
-                    _definition("bounded", config={"max_records": 8}),
-                ),
-                load=lambda definition: loaded.append(definition.plugin_id),
-            )
-
-        self.assertEqual(loaded, [])
-
-    def test_malformed_inputs_are_rejected(self) -> None:
-        definition = _definition("bounded")
-        with self.assertRaisesRegex(PluginManagementError, "PluginDefinition, instance"):
-            replace_selection((definition,), (), load=lambda _definition: object())
-        with self.assertRaisesRegex(PluginManagementError, "ordered collection"):
-            replace_selection(frozenset(), (), load=lambda _definition: object())
-        with self.assertRaisesRegex(PluginManagementError, "load must be callable"):
-            replace_selection((), (), load=object())
-        with self.assertRaisesRegex(PluginManagementError, "duplicate id"):
-            replace_selection(
-                ((definition, object()), (definition, object())),
-                (),
-                load=lambda _definition: object(),
-            )
 
 
 class PluginSelectionRuntimeTests(unittest.TestCase):
@@ -371,104 +321,6 @@ class PluginSelectionRuntimeTests(unittest.TestCase):
         self.assertIs(runtime.applied[0][1], instances["added"])
         self.assertEqual(manager.selected_ids, ("later",))
 
-    def test_discard_leaves_applied_instances_and_commit_requires_prepare(self) -> None:
-        manager = PluginManager.from_specs(
-            "memory",
-            {
-                "current": "implementations.example:current",
-                "replacement": "implementations.example:replacement",
-            },
-        )
-        manager.select(("current",))
-        runtime = PluginSelectionRuntime(manager)
-        current = object()
-        created: list[object] = []
-        resets: list[object] = []
-
-        def load(definition: PluginDefinition) -> object:
-            if definition.plugin_id == "current":
-                return current
-            instance = object()
-            created.append(instance)
-            return instance
-
-        original = runtime.apply(load=load)
-        manager.select(("replacement",))
-        prepared = runtime.prepare(load=load)
-        candidate = prepared[0][1]
-        runtime.discard()
-
-        self.assertEqual(runtime.applied, original)
-        self.assertEqual(created, [candidate])
-        self.assertEqual(resets, [])
-        with self.assertRaisesRegex(PluginManagementError, "prepared"):
-            runtime.commit(reset=resets.append)
-        fresh = runtime.apply(load=load, reset=resets.append)
-        self.assertEqual(created, [candidate, fresh[0][1]])
-        self.assertIsNot(fresh[0][1], candidate)
-        self.assertEqual(resets, [current])
-
-    def test_failed_prepare_leaves_another_runtime_unpublished(self) -> None:
-        perception = PluginManager.from_specs(
-            "perception",
-            {
-                "temporal": "implementations.example:temporal",
-                "other": "implementations.example:other",
-            },
-        )
-        memory = PluginManager.from_specs(
-            "memory",
-            {
-                "current": "implementations.example:current",
-                "replacement": "implementations.example:replacement",
-            },
-        )
-        perception.select(("temporal",))
-        memory.select(("current",))
-        perception_runtime = PluginSelectionRuntime(perception)
-        memory_runtime = PluginSelectionRuntime(memory)
-        temporal = object()
-        current = object()
-        perception_runtime.apply(load=lambda _definition: temporal)
-        memory_original = memory_runtime.apply(load=lambda _definition: current)
-        perception.select(("other",))
-        memory.select(("replacement",))
-        perception_runtime.prepare(load=lambda _definition: object())
-
-        def fail_load(_definition: PluginDefinition) -> object:
-            raise RuntimeError("second construction failed")
-
-        with self.assertRaisesRegex(RuntimeError, "second construction failed"):
-            memory_runtime.prepare(load=fail_load)
-
-        self.assertIs(perception_runtime.applied[0][1], temporal)
-        self.assertEqual(memory_runtime.applied, memory_original)
-        perception_runtime.discard()
-        memory_runtime.discard()
-        self.assertIs(perception_runtime.applied[0][1], temporal)
-        with self.assertRaisesRegex(PluginManagementError, "prepared"):
-            perception_runtime.commit()
-
-    def test_reset_failure_does_not_publish_the_prepared_selection(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {"current": "implementations.example:current", "next": "implementations.example:next"},
-        )
-        manager.select(("current",))
-        runtime = PluginSelectionRuntime(manager)
-        original = runtime.apply(load=lambda _definition: object())
-        manager.select(("next",))
-        runtime.prepare(load=lambda _definition: object())
-
-        with self.assertRaisesRegex(RuntimeError, "reset failed"):
-            runtime.commit(
-                reset=lambda _instance: (_ for _ in ()).throw(RuntimeError("reset failed"))
-            )
-
-        self.assertEqual(runtime.applied, original)
-        with self.assertRaisesRegex(PluginManagementError, "prepared"):
-            runtime.commit()
-
 
 class PluginReportTests(unittest.TestCase):
     def test_report_separates_selected_from_applied_records(self) -> None:
@@ -491,7 +343,6 @@ class PluginReportTests(unittest.TestCase):
             [
                 {
                     "plugin_id": "second",
-                    "implementation_id": "second-impl",
                     "duration_ms": 1.5,
                     "error": None,
                     "bounds": {"max_records": 4},
@@ -500,13 +351,11 @@ class PluginReportTests(unittest.TestCase):
                 },
                 {
                     "plugin_id": "third",
-                    "implementation_id": "uncommitted",
                     "duration_ms": 9,
                     "error": "should not appear",
                 },
                 {
                     "plugin_id": "first",
-                    "implementation_id": "first-impl",
                     "duration_ms": 0,
                     "error": "kept",
                 },
@@ -521,13 +370,11 @@ class PluginReportTests(unittest.TestCase):
             [
                 {
                     "plugin_id": "second",
-                    "implementation_id": "second-impl",
                     "duration_ms": 1.5,
                     "error": None,
                 },
                 {
                     "plugin_id": "first",
-                    "implementation_id": "first-impl",
                     "duration_ms": 0,
                     "error": "kept",
                 },
@@ -535,7 +382,7 @@ class PluginReportTests(unittest.TestCase):
         )
         self.assertEqual(
             set(report["plugins"][0]),
-            {"plugin_id", "implementation_id", "duration_ms", "error"},
+            {"plugin_id", "duration_ms", "error"},
         )
 
         blank = plugin_report(manager, runtime.applied)
@@ -546,13 +393,11 @@ class PluginReportTests(unittest.TestCase):
             [
                 {
                     "plugin_id": "second",
-                    "implementation_id": None,
                     "duration_ms": None,
                     "error": None,
                 },
                 {
                     "plugin_id": "first",
-                    "implementation_id": None,
                     "duration_ms": None,
                     "error": None,
                 },

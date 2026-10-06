@@ -2,45 +2,37 @@ from __future__ import annotations
 import json
 import os
 import io
-import threading
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
-from implementations.runtime.engines.catalog import create_action_composition
-from implementations.runtime.engines.hold_action import HoldActionEngine
-from cli.automa_cli.automation import _record_decision_publish_skip
+from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
+from cli.automa_cli.proposal import get_vehicle_proposal_info
 from cli.automa_cli.decision import (
-    ENGINE_ID,
     apply_vehicle_decision,
     build_decision_stream_frame,
-    get_vehicle_decision_info,
     _format_stream_frame,
     latest_decision_path,
     publish_decision_frame,
     strict_decode_apply_observation,
     stream_vehicle_decision,
-    update_vehicle_decision,
     write_latest_decision_frame,
 )
+from cli.automa_cli.decision_records import DecisionRunners
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
     NO_MEM_RUN,
     DecisionSurfaceFixture,
+    packaged_decision_steps,
+    packaged_identity,
 )
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_publish_and_stream_once_cli(self) -> None:
-        self._stage()
+        activation = self._stage()
         cycle = self._sample_cycle()
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
-        activation_path = (
-            vehicle_runtime / "bundle" / "runtime" / "decision" / "active.json"
-        )
-        activation = json.loads(activation_path.read_text())
         published = publish_decision_frame(
             cycle_result=cycle,
             context_frame_id="frame_001",
@@ -49,7 +41,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             run_id="run-live",
             worker_pid=os.getpid(),
             activation=activation,
-            staged_engine_id=ENGINE_ID,
         )
         self.assertTrue(published)
         # matching automation state for accept
@@ -100,21 +91,15 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertNotIn("applied_control", stream_payload)
 
     def test_continuous_json_emits_one_object_per_refresh_line(self) -> None:
-        self._stage()
+        activation = self._stage()
         cycle = self._sample_cycle()
-        vehicle_runtime = self.runtime_root / "chase-sim-chaser"
-        activation_path = (
-            vehicle_runtime / "bundle" / "runtime" / "decision" / "active.json"
-        )
-        activation = json.loads(activation_path.read_text())
         now_ms = int(__import__("time").time() * 1000)
         frame = build_decision_stream_frame(
             cycle,
             vehicle_id="chase-sim-chaser",
             run_id="run-lines",
             worker_pid=os.getpid(),
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=activation["activated_at_ms"],
+            generation_id=activation["generation_id"],
             published_at_ms=now_ms,
         )
         vehicle_runtime_dir = self.runtime_root / "chase-sim-chaser"
@@ -179,8 +164,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             vehicle_id="chase-sim-chaser",
             run_id="run-human",
             worker_pid=1,
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=1000,
+            generation_id=packaged_identity()["generation_id"],
             published_at_ms=1000,
         )
         selected_text = _format_stream_frame(selected)
@@ -199,10 +183,9 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         ):
             self.assertIn(expected, selected_text)
 
-        engine = create_action_composition()
         no_memory_sequence = json.loads((NO_MEM_RUN / "sequence.json").read_text())
         raw = no_memory_sequence["frames"][0]
-        idle_cycle = engine.run(
+        idle_cycle = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
@@ -213,8 +196,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             vehicle_id="chase-sim-chaser",
             run_id="run-human",
             worker_pid=1,
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=1000,
+            generation_id=packaged_identity()["generation_id"],
             published_at_ms=1000,
         )
         idle_text = _format_stream_frame(idle)
@@ -228,25 +210,18 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             / "chase-sim-chaser"
             / "bundle"
             / "runtime"
-            / "decision"
+            / "proposal"
             / "active.json"
         )
         mutations = (
             lambda payload: {**payload, "schema": "bogus_activation_v0"},
             lambda _payload: ["not", "an", "object"],
+            lambda payload: {**payload, "step": "plan"},
             lambda payload: {
                 **payload,
-                "decision": {
-                    **payload["decision"],
-                    "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
-                },
-            },
-            lambda payload: {
-                **payload,
-                "decision": {
-                    **payload["decision"],
-                    "engine_config": {
-                        **payload["decision"]["engine_config"],
+                "plugin_configs": {
+                    "avoid_recent_obstruction": {
+                        **payload["plugin_configs"]["avoid_recent_obstruction"],
                         "steer_magnitude": 0.0,
                     },
                 },
@@ -254,14 +229,14 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         for mutate in mutations:
             with self.subTest(mutate=mutate):
-                self._stage()
+                activation = self._stage()
                 payload = json.loads(activation_path.read_text())
                 mutated_activation = mutate(payload)
                 activation_path.write_text(
                     json.dumps(mutated_activation),
                     encoding="utf-8",
                 )
-                info = get_vehicle_decision_info(
+                info = get_vehicle_proposal_info(
                     vehicle_id="chase-sim-chaser",
                     json_output=True,
                 )
@@ -282,14 +257,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     vehicle_runtime_dir=self.runtime_root / "chase-sim-chaser",
                     run_id="invalid-activation",
                     worker_pid=1,
-                    activation=(
-                        mutated_activation
-                        if isinstance(mutated_activation, dict)
-                        else None
-                    ),
-                    staged_engine_id=ENGINE_ID,
+                    activation=activation,
                 )
-                for result in (info, stream, applied):
+                self.assertEqual(info.exit_code, 2, info.message)
+                for result in (stream, applied):
                     self.assertEqual(result.exit_code, 2, result.message)
                     self.assertEqual(
                         json.loads(result.message)["error"],
@@ -297,8 +268,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     )
                 self.assertFalse(published)
 
-    def test_stream_wrong_engine_cli(self) -> None:
-        self._stage(engine_id="idle")
+    def test_stream_without_proposal_cli(self) -> None:
+        self._stage(proposal=False)
         cli = run_automa(
             "vehicles",
             "stream",
@@ -312,156 +283,64 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual(cli.returncode, 2)
         payload = json.loads(cli.stdout)
-        self.assertEqual(payload["error"], "wrong_engine")
+        self.assertEqual(payload["error"], "activation_missing")
 
     def test_publish_rechecks_live_activation_after_restage(self) -> None:
         """Restage while a worker is 'running' must not republish an old generation."""
 
-        self._stage()
+        activation_a = self._stage()
         cycle = self._sample_cycle()
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
-        activation_path = (
-            vehicle_runtime / "bundle" / "runtime" / "decision" / "active.json"
-        )
-        activation_a = json.loads(activation_path.read_text())
-        activated_a = activation_a["activated_at_ms"]
-        self.assertTrue(
-            publish_decision_frame(
-                cycle_result=cycle,
+
+        def publish(activation: dict, cycle_result=cycle, run_id: str = "run-a") -> bool:
+            return publish_decision_frame(
+                cycle_result=cycle_result,
                 context_frame_id="frame_001",
                 vehicle_id="chase-sim-chaser",
                 vehicle_runtime_dir=vehicle_runtime,
-                run_id="run-a",
+                run_id=run_id,
                 worker_pid=1,
-                activation=activation_a,
-                staged_engine_id=ENGINE_ID,
+                activation=activation,
             )
-        )
+
+        self.assertTrue(publish(activation_a))
         frame_path = latest_decision_path(vehicle_runtime)
-        self.assertTrue(frame_path.exists())
         first = json.loads(frame_path.read_text())
-        self.assertEqual(first["activation_activated_at_ms"], activated_a)
+        self.assertEqual(first["generation_id"], activation_a["generation_id"])
 
-        # Restage to idle invalidates latest and changes live activation.
-        idle = update_vehicle_decision(
-            vehicle_id="chase-sim-chaser",
-            engine_id="idle",
-            json_output=True,
-        )
-        self.assertEqual(idle.exit_code, 0, idle.message)
-        self.assertFalse(
-            frame_path.exists()
-            or (
-                frame_path.exists()
-                and json.loads(frame_path.read_text()).get("schema")
-                == "vehicle_decision_stream_frame_v0"
-            )
-        )
-
-        # Startup-captured activation must not allow republish after restage.
-        republished = publish_decision_frame(
-            cycle_result=cycle,
-            context_frame_id="frame_001",
-            vehicle_id="chase-sim-chaser",
-            vehicle_runtime_dir=vehicle_runtime,
-            run_id="run-a",
-            worker_pid=1,
-            activation=activation_a,
-            staged_engine_id=ENGINE_ID,
-        )
-        self.assertFalse(republished)
-        if frame_path.exists():
-            payload = json.loads(frame_path.read_text())
-            self.assertNotEqual(
-                payload.get("schema"), "vehicle_decision_stream_frame_v0"
-            )
+        # Unstaging the proposals leaves no live generation to publish under.
+        (vehicle_runtime / "bundle" / "runtime" / "proposal" / "active.json").unlink()
+        self.assertFalse(publish(activation_a))
+        self.assertEqual(json.loads(frame_path.read_text()), first)
 
         # Restage to a new generation B: worker still holding A must not
         # publish a cycle labeled as B.
-        self._stage()
-        activation_b = json.loads(activation_path.read_text())
-        self.assertNotEqual(activation_b["activated_at_ms"], activated_a)
-        self.assertFalse(
-            publish_decision_frame(
-                cycle_result=cycle,
-                context_frame_id="frame_001",
-                vehicle_id="chase-sim-chaser",
-                vehicle_runtime_dir=vehicle_runtime,
-                run_id="run-b",
-                worker_pid=1,
-                activation=activation_a,  # generation-A worker capture
-                staged_engine_id=ENGINE_ID,
-            )
-        )
+        activation_b = self._stage(action="mode")
+        self.assertNotEqual(activation_b["generation_id"], activation_a["generation_id"])
+        self.assertFalse(frame_path.exists())
+        self.assertFalse(publish(activation_a, run_id="run-b"))
         # Only a worker that reloads with generation B may publish under B.
-        self.assertTrue(
-            publish_decision_frame(
-                cycle_result=cycle,
-                context_frame_id="frame_001",
-                vehicle_id="chase-sim-chaser",
-                vehicle_runtime_dir=vehicle_runtime,
-                run_id="run-b",
-                worker_pid=1,
-                activation=activation_b,
-                staged_engine_id=ENGINE_ID,
-            )
-        )
+        self.assertTrue(publish(activation_b, self._sample_cycle("mode"), run_id="run-b"))
         second = json.loads(frame_path.read_text())
-        self.assertEqual(
-            second["activation_activated_at_ms"],
-            activation_b["activated_at_ms"],
-        )
+        self.assertEqual(second["generation_id"], activation_b["generation_id"])
 
-    def test_publish_skip_counter_write_failure_is_non_fatal(self) -> None:
-        state: dict = {
-            "decision": {
-                "engine_id": ENGINE_ID,
-                "latest_frame_publish_skips": 0,
-                "latest_frame_publish_skip_reason": None,
-            }
-        }
-        lock = threading.Lock()
-        # Unwritable path: parent does not exist and cannot be created if we
-        # force _write_json to raise.
-        bad_path = Path("/nonexistent-automa-root-zzz/state.json")
-
-        def boom(*_args, **_kwargs):
-            raise OSError("disk full")
-
-        with patch("cli.automa_cli.automation._write_json", side_effect=boom):
-            # Must not raise even when persistence fails.
-            _record_decision_publish_skip(
-                state, bad_path, lock, reason="unit-test-write-fail"
-            )
-        self.assertEqual(state["decision"]["latest_frame_publish_skips"], 1)
-        self.assertEqual(
-            state["decision"]["latest_frame_publish_skip_reason"],
-            "unit-test-write-fail",
-        )
 
     def test_no_stale_republish_after_bad_step(self) -> None:
-        self._stage()
-        from autonomy.decision_cycle.context import DecisionFrameContext
-        from autonomy.runtime.manager import AutonomyManager
-        from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
-
-        manager = AutonomyManager(default_engine_spec=ADAPTER_ENGINE_SPEC)
-        first = manager.act(
-            DecisionFrameContext(frame_id="frame_001", frame_index=1, timestamp_ms=1000),
-            None,
-            Observation(
-                observation_id="obs",
-                created_at_ms=1000,
-                sensor_snapshot={},
-            ),
+        activation = self._stage()
+        runners = DecisionRunners.from_payloads(packaged_decision_steps())
+        observation = Observation(
+            observation_id="obs",
+            created_at_ms=1000,
+            sensor_frame={},
+        )
+        first = runners.run(
+            frame_id="frame_001",
+            frame_index=1,
+            timestamp_ms=1000,
+            observation=observation,
         )
         self.assertEqual(first.control.reason, HOLD_IDLE_REASON)
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
-        activation = json.loads(
-            (
-                vehicle_runtime / "bundle" / "runtime" / "decision" / "active.json"
-            ).read_text()
-        )
         self.assertTrue(
             publish_decision_frame(
                 cycle_result=first,
@@ -471,18 +350,13 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 run_id="r1",
                 worker_pid=1,
                 activation=activation,
-                staged_engine_id=ENGINE_ID,
             )
         )
-        # A bad step yields no action; the prior result is never republished
+        # A bad step yields no records; the prior result is never republished
         # for a later frame.
-        bad = manager.act(
-            DecisionFrameContext(frame_id="!!!", frame_index=2, timestamp_ms=2000),
-            None,
-            None,
-        )
-        self.assertIsNone(bad)
-        for cycle_result in (bad, first):
+        with self.assertRaises(Exception):
+            runners.run(frame_id="!!!", frame_index=2, timestamp_ms=2000, observation=None)
+        for cycle_result in (None, first):
             self.assertFalse(
                 publish_decision_frame(
                     cycle_result=cycle_result,
@@ -492,6 +366,5 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     run_id="r1",
                     worker_pid=1,
                     activation=activation,
-                    staged_engine_id=ENGINE_ID,
                 )
             )

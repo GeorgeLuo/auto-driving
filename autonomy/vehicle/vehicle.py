@@ -68,7 +68,7 @@ class VehiclePulse:
 
 @dataclass(frozen=True)
 class SensorReadRequest:
-    """Request for a vehicle sensor snapshot.
+    """Request for a vehicle sensor frame.
 
     The vehicle boundary is generic, but today's implementations only expose a
     fixed front camera. Additional sensors can be added without changing the
@@ -100,7 +100,7 @@ class SensorReadRequest:
 
 @dataclass(frozen=True)
 class SensorReading:
-    """One sensor's output for a single sensor snapshot."""
+    """One sensor's output for a single sensor frame."""
 
     sensor_id: str
     sensor_kind: str
@@ -121,7 +121,7 @@ class SensorReading:
 
 
 @dataclass(frozen=True)
-class SensorSnapshot:
+class SensorFrame:
     """A coherent read of the vehicle's available sensor inputs."""
 
     read_id: str
@@ -184,7 +184,7 @@ class CarInterface(Protocol):
     def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
         ...
 
-    def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:
+    def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         ...
 
 VEHICLE_ACTION_FIELDS = ("forward", "reverse", "steering")

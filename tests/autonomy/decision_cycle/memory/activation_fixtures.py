@@ -1,15 +1,15 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
-from autonomy.decision_cycle.memory.activation import MEMORY_ACTIVATION_SCHEMA
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
+from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
 class _RecordingMemory:
     """Test double used only by activation tests.
 
-    Keeps its epoch and records at ``<implementation_id>.state`` in the host map.
+    Keeps its epoch and records at ``<plugin_id>.state`` in the host map.
     """
 
     def __init__(
@@ -17,16 +17,16 @@ class _RecordingMemory:
         *,
         fail_on_update: bool = False,
         fail_on_reset: bool = False,
-        implementation_id: str = "recording_test",
+        plugin_id: str = "recording_test",
         **_ignored,
     ) -> None:
-        self.implementation_id = implementation_id
+        self.plugin_id = plugin_id
         self.fail_on_update = fail_on_update
         self.fail_on_reset = fail_on_reset
 
     @property
     def state_key(self) -> str:
-        return f"{self.implementation_id}.state"
+        return f"{self.plugin_id}.state"
 
     def state(self, shared_memory) -> dict:
         current = shared_memory.get(self.state_key) if shared_memory is not None else None
@@ -45,9 +45,9 @@ class _RecordingMemory:
                     kind="observation_presence",
                     label="observed",
                     confidence=1.0,
-                    provenance=MemoryProvenance(
+                    origin=MemoryOrigin(
                         observation_id=observation.observation_id,
-                        evidence_id="observation",
+                        observed_id="observation",
                         coordinate_frame="image",
                         observed_at_ms=observation.created_at_ms,
                         updated_at_ms=context.timestamp_ms,
@@ -79,35 +79,19 @@ class _RecordingMemory:
 
 
 class _ConfigurableIdMemory(_RecordingMemory):
-    """Allows activation to declare a custom implementation_id (including multibyte)."""
+    """Allows activation to declare a custom plugin_id (including multibyte)."""
 
 
-class _BrokenStringError(RuntimeError):
-    def __str__(self) -> str:
-        raise RuntimeError("stringification failed")
+RECORDING_SPEC = "tests.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 
 
-class _BrokenStrMemory(_RecordingMemory):
-    def update(self, context, observation):
-        raise _BrokenStringError("payload")
-
-    def reset(self, shared_memory):
-        raise _BrokenStringError("payload")
-
-    def status(self, shared_memory):
-        raise _BrokenStringError("payload")
-
-
-def _valid_payload() -> dict:
+def _valid_payload(plugin_id: str = "recording_test") -> dict:
     return {
-        "schema": MEMORY_ACTIVATION_SCHEMA,
-        "memory": {
-            "implementation_id": "recording_test",
-            "implementation_spec": (
-                "tests.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
-            ),
-            "implementation_config": {},
-        },
+        "schema": STEP_ACTIVATION_SCHEMA,
+        "step": "memory",
+        "plugins": [plugin_id],
+        "plugin_specs": {plugin_id: RECORDING_SPEC},
+        "plugin_configs": {plugin_id: {}},
     }
 
 

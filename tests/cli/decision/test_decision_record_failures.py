@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from autonomy.decision_cycle.action_gate.hold import HOLD_IDLE_REASON
+from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from cli.automa_cli.decision import apply_vehicle_decision
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.runtime.manager import AutonomyManager
-from cli.automa_cli.decision import DECISION_ENGINES, ENGINE_ID
+from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.runtime.engines.hold_action import ADAPTER_ENGINE_SPEC
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.donkeycar import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
@@ -21,19 +21,15 @@ from implementations.runtime.donkeycar import (
 
 class ObservationPublicationTests(unittest.TestCase):
     def _hold_part(self) -> AutonomyPilotPart:
-        manager = AutonomyManager(
-            default_engine_spec=ADAPTER_ENGINE_SPEC,
-            default_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
-        )
+        activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
-            host=AutonomyCycleHost(manager=manager),
+            host=AutonomyCycleHost(steps=decision_steps(activations)),
             min_interval_s=0.0,
             vehicle_id="piracer",
             source_id="donkeycar:piracer",
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=1_000,
-            activation_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
-            generation_id=f"{ENGINE_ID}:1000",
+            decision_activations={
+                step: activation.to_payload() for step, activation in activations.items()
+            },
             run_id="donkey-run-fixture",
         )
 
@@ -41,14 +37,14 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(),
             min_interval_s=0.0,
-            algorithm="lightweight_observer",
+            preset="lightweight_observer",
         )
         payload = part.publish_latest(now_ms=1_000)
         self.assertEqual(payload["schema"], OBSERVATION_PUBLICATION_SCHEMA)
         self.assertEqual(payload["health"], "warming")
         self.assertFalse(payload["ok"])
         self.assertIsNone(payload["frame"])
-        self.assertEqual(payload["algorithm"], "lightweight_observer")
+        self.assertEqual(payload["preset"], "lightweight_observer")
         self.assertEqual(payload["latest_json_path"], LATEST_JSON_PATH)
         self.assertEqual(payload["latest_frame_path"], LATEST_FRAME_PATH)
 
@@ -56,14 +52,14 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(),
             min_interval_s=0.0,
-            algorithm="test-observer",
+            preset="test-observer",
         )
         image = np.zeros((8, 12, 3), dtype=np.uint8)
         image[:, :] = (10, 20, 30)
         part.run(image_array=image, mode="user")
         part.wait_for_cycle()
 
-        payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms + 10)
+        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms + 10)
         self.assertEqual(payload["health"], "healthy")
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["mode"], "user")
@@ -71,18 +67,18 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["control"]["throttle"], 0.0)
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
         self.assertTrue(payload["frame"]["has_image"])
-        self.assertEqual(payload["algorithm"], "test-observer")
+        self.assertEqual(payload["preset"], "test-observer")
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
-        self.assertEqual(payload["control"]["reason"], "engine-idle")
+        self.assertEqual(payload["control"]["reason"], "hold-idle")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
     def test_publication_includes_the_memory_report_when_step_present(self) -> None:
         from autonomy.decision_cycle.context import DecisionFrameContext
         from autonomy.decision_cycle.cycle import DecisionSteps
         from autonomy.decision_cycle.observation.values import Observation
-        from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+        from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
         from autonomy.runtime.cycle_host import AutonomyCycleHost
 
@@ -93,9 +89,9 @@ class ObservationPublicationTests(unittest.TestCase):
                         kind="floor_boundary",
                         label="boundary",
                         confidence=0.9,
-                        provenance=MemoryProvenance(
+                        origin=MemoryOrigin(
                             observation_id="obs",
-                            evidence_id="boundary",
+                            observed_id="boundary",
                             coordinate_frame="image",
                             observed_at_ms=context.timestamp_ms,
                             updated_at_ms=context.timestamp_ms,
@@ -108,11 +104,10 @@ class ObservationPublicationTests(unittest.TestCase):
                         ),
             )
             return {
-                "schema": "memory_report_v0",
+                "schema": "memory_report_v1",
                 "plugins": [
                     {
                         "plugin_id": "bounded_evidence",
-                        "implementation_id": "bounded_evidence",
                         "state": {
                             "health": "healthy",
                             "record_count": 1,
@@ -120,18 +115,20 @@ class ObservationPublicationTests(unittest.TestCase):
                         },
                     }
                 ],
+                "evidence_publisher": "bounded_evidence",
             }
 
-        host = AutonomyCycleHost(steps=DecisionSteps(remember=remember))
-        part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
+        host = AutonomyCycleHost(steps=DecisionSteps(memory=remember))
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0, preset="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
+        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
         self.assertIsNotNone(payload["memory"])
         state = payload["memory"]["plugins"][0]["state"]
         self.assertEqual(state["health"], "healthy")
         self.assertEqual(state["record_count"], 1)
         self.assertEqual(state["records"][0]["kind"], "floor_boundary")
+        self.assertEqual(payload["memory"]["evidence_publisher"], "bounded_evidence")
 
         jpeg, frame_meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)
@@ -140,11 +137,66 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(frame_meta["health"], "healthy")
         self.assertTrue(jpeg.startswith(b"\xff\xd8"))
 
+    def test_publication_lists_each_memory_plugin_and_the_evidence_publisher(self) -> None:
+        from autonomy.decision_cycle.cycle import DecisionSteps
+        from autonomy.decision_cycle.memory.runner import MemoryRunner
+        from autonomy.decision_cycle.observation.values import Observation
+        from implementations.decision_cycle.catalog import step_plugins
+        from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
+            BoundedEvidenceLedger,
+        )
+        from tests.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+
+        def observe(context, perception):
+            return Observation(
+                observation_id=context.frame_id,
+                created_at_ms=context.timestamp_ms,
+                sensor_frame={},
+                things=({
+                    "thing_id": "a",
+                    "kind": "floor_boundary",
+                    "label": "boundary",
+                    "confidence": 0.9,
+                    "location": {"frame": "image", "zone": "center"},
+                },),
+            )
+
+        config = step_plugins("memory")["bounded_evidence"]["default_config"]
+        memory = MemoryRunner.from_plugins({
+            "recording_test": _RecordingMemory(),
+            "bounded_evidence": BoundedEvidenceLedger(**config),
+        })
+        part = AutonomyPilotPart(
+            host=AutonomyCycleHost(steps=DecisionSteps(observation=observe, memory=memory)),
+            min_interval_s=0.0,
+        )
+        part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+
+        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["memory"]
+
+        states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
+        self.assertEqual(list(states), ["recording_test", "bounded_evidence"])
+        self.assertEqual(states["recording_test"]["record_count"], 1)
+        self.assertEqual(states["bounded_evidence"]["record_count"], 1)
+        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
+        self.assertEqual(
+            part.host.status()["steps"]["memory"]["evidence_publisher"], "bounded_evidence",
+        )
+
+        part.reset_memory()
+        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["memory"]
+
+        states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
+        self.assertEqual(states["recording_test"]["record_count"], 0)
+        self.assertEqual(states["bounded_evidence"]["record_count"], 0)
+        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
+
     def test_stale_and_error_health_states(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.5)
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        completed = part.latest_snapshot.completed_at_ms
+        completed = part.latest_state.completed_at_ms
         stale = part.publish_latest(now_ms=completed + 5_000)
         self.assertEqual(stale["health"], "stale")
         self.assertTrue(stale["ok"])
@@ -152,7 +204,7 @@ class ObservationPublicationTests(unittest.TestCase):
 
         class Boom:
             def status(self):
-                return {"engine": {"engine": "boom"}}
+                return {"steps": {}}
 
             def run(self, context):
                 del context
@@ -161,7 +213,7 @@ class ObservationPublicationTests(unittest.TestCase):
         failing = AutonomyPilotPart(host=Boom(), min_interval_s=0.0)  # type: ignore[arg-type]
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
-        errored = failing.publish_latest(now_ms=failing.latest_snapshot.completed_at_ms)
+        errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)
         self.assertEqual(errored["health"], "error")
         self.assertFalse(errored["ok"])
         self.assertIn("RuntimeError", errored["error"] or "")
@@ -170,7 +222,7 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
         part.run(image_array=None, mode="user")
         part.wait_for_cycle()
-        payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
+        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
         self.assertEqual(payload["health"], "unavailable")
         jpeg, meta = part.publish_latest_frame_jpeg()
         self.assertIsNone(jpeg)
@@ -180,8 +232,8 @@ class ObservationPublicationTests(unittest.TestCase):
         part = self._hold_part()
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        assert part.latest_snapshot is not None
-        completed_at_ms = part.latest_snapshot.completed_at_ms
+        assert part.latest_state is not None
+        completed_at_ms = part.latest_state.completed_at_ms
 
         decision = part.publish_decision_latest(now_ms=completed_at_ms)
         self.assertEqual(decision["schema"], DECISION_PUBLICATION_SCHEMA)
@@ -193,28 +245,39 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["vehicle_id"], "piracer")
         self.assertEqual(published["source_id"], "donkeycar:piracer")
         self.assertEqual(published["run_id"], "donkey-run-fixture")
-        self.assertEqual(published["generation_id"], f"{ENGINE_ID}:1000")
+        expected_generation = activation_generation_id(
+            {step: packaged_activation(step) for step in DECISION_STEPS}, prefix="decision"
+        )
+        self.assertEqual(published["generation_id"], expected_generation)
+        self.assertEqual(published["activation"]["generation_id"], expected_generation)
+        self.assertEqual(sorted(published["activation"]["steps"]), sorted(DECISION_STEPS))
+        self.assertEqual(
+            published["activation"]["steps"]["proposal"]["plugins"],
+            ["avoid_recent_obstruction"],
+        )
         self.assertNotIn("producer_pid", published)
-        self.assertEqual(published["frame_id"], part.latest_snapshot.frame_id)
-        self.assertEqual(published["frame_index"], part.latest_snapshot.frame_index)
-        self.assertEqual(published["timestamp_ms"], part.latest_snapshot.captured_at_ms)
+        self.assertEqual(published["frame_id"], part.latest_state.frame_id)
+        self.assertEqual(published["frame_index"], part.latest_state.frame_index)
+        self.assertEqual(published["timestamp_ms"], part.latest_state.captured_at_ms)
         self.assertEqual(
             published["source_frame"],
             {
-                "frame_id": part.latest_snapshot.frame_id,
-                "frame_index": part.latest_snapshot.frame_index,
-                "captured_at_ms": part.latest_snapshot.captured_at_ms,
-                "completed_at_ms": part.latest_snapshot.completed_at_ms,
+                "frame_id": part.latest_state.frame_id,
+                "frame_index": part.latest_state.frame_index,
+                "captured_at_ms": part.latest_state.captured_at_ms,
+                "completed_at_ms": part.latest_state.completed_at_ms,
             },
         )
-        self.assertEqual(published["cycle"]["frame_id"], published["frame_id"])
+        self.assertEqual(sorted(published["cycle"]), ["action", "plan", "proposal"])
+        self.assertEqual(published["cycle"]["action"]["frame_id"], published["frame_id"])
+        self.assertEqual(published["cycle"]["plan"]["frame_id"], published["frame_id"])
         self.assertEqual(
-            published["cycle"]["source"]["frame_index"],
+            published["cycle"]["proposal"]["source"]["frame_index"],
             published["frame_index"],
         )
         self.assertNotIn(
             "runtime_identity",
-            published["cycle"]["source"]["metadata"],
+            published["cycle"]["proposal"]["source"]["metadata"],
         )
         # The dedicated route owns decision publication. Existing observation
         # consumers retain their established payload shape.
@@ -226,8 +289,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertFalse(expired["ok"])
         self.assertEqual(expired["reason"], "expired")
 
-        # A reload replaces the engine, which retires its result.
-        part.host.manager.reload_engine()
+        # Replacing a decision step retires its result.
+        part.host.set_step("action", decision_steps().action)
         reset = part.publish_decision_latest(now_ms=completed_at_ms)
         self.assertFalse(reset["ok"])
         self.assertEqual(reset["reason"], "reset")
@@ -279,7 +342,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Single atomic call still pairs metadata and image.
         jpeg, meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)
-        self.assertEqual(meta["frame"]["frame_id"], part.latest_snapshot.frame_id)
+        self.assertEqual(meta["frame"]["frame_id"], part.latest_state.frame_id)
 
     def test_manage_and_web_wire_publication_routes(self) -> None:
         manage = (
@@ -290,8 +353,8 @@ class ObservationPublicationTests(unittest.TestCase):
             / "app"
             / "manage.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("observation_publisher = autonomy_part", manage)
-        self.assertIn("algorithm=perception_algorithm", manage)
+        self.assertIn("autonomy_controller.observation_publisher = autonomy_part", manage)
+        self.assertIn("preset=perception_preset", manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (

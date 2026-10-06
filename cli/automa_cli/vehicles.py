@@ -109,7 +109,7 @@ def discover_active_vehicles(
     return payload
 
 
-def format_active_vehicles_snapshot(
+def format_active_vehicles(
     payload: dict[str, Any],
     *,
     include_inactive: bool = False,
@@ -693,13 +693,25 @@ def _vehicle_next_action(
             "passive_capture",
             "run observation-only automation",
         )
+    deployment = layers["automation_deployment"].get("details") or {}
+    problems = deployment.get("activation_problems") or []
+    if problems:
+        return (
+            action(
+                "step_activation_invalid",
+                command=problems[0]["command"],
+                expected_state="automation_deployment=deployed",
+            ),
+            "automation_deployment",
+            "run observation-only automation",
+        )
     if layers["automation_deployment"]["state"] != "deployed":
         return (
             action(
                 "automation_not_deployed",
                 command=(
                     "./cli/automa vehicles update perception "
-                    f"--id {vehicle_id} --algorithm lightweight_observer"
+                    f"--id {vehicle_id} --preset lightweight_observer"
                 ),
                 expected_state="automation_deployment=deployed",
             ),
@@ -794,6 +806,10 @@ def _format_vehicle_status_card(card: dict[str, Any]) -> list[str]:
     ):
         layer = layers.get(name) if isinstance(layers.get(name), dict) else {}
         lines.append(f"{name}: {layer.get('state', 'unknown')}")
+    deployment = layers.get("automation_deployment", {}).get("details") or {}
+    for problem in deployment.get("activation_problems") or []:
+        lines.append(f"Invalid {problem['step']} activation: {problem['activation']}")
+        lines.append(f"Reason: {problem['reason']}")
     worker = (
         layers.get("automation_worker")
         if isinstance(layers.get("automation_worker"), dict)
@@ -889,15 +905,17 @@ def _format_vehicle(index: int, vehicle: dict[str, Any]) -> list[str]:
 
     autonomy = status.get("autonomy")
     if isinstance(autonomy, dict):
-        engine = autonomy.get("engine")
+        steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
+        action = steps.get("action") if isinstance(steps.get("action"), dict) else {}
+        action_plugins = action.get("plugin_ids") if isinstance(action.get("plugin_ids"), list) else []
         last_control = autonomy.get("last_control")
         reason = None
         if isinstance(last_control, dict):
             reason = last_control.get("reason")
-        engine_line = f"   autonomy: {engine or 'unknown'}"
+        autonomy_line = f"   autonomy: action={','.join(action_plugins) or 'unknown'}"
         if reason:
-            engine_line += f" ({reason})"
-        lines.append(engine_line)
+            autonomy_line += f" ({reason})"
+        lines.append(autonomy_line)
 
     metrics_ui = status.get("metrics_ui")
     if isinstance(metrics_ui, dict):

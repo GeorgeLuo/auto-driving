@@ -26,9 +26,11 @@ except:
     pass
 
 
+import json
 import os
 import secrets
 import sys
+import time
 from pathlib import Path
 
 _AUTODRIVING_PATH_CANDIDATES = [
@@ -446,7 +448,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
               outputs=['pilot/throttle'])
 
     #
-    # Optional generic autonomy engine. It writes the standard Donkey pilot
+    # Optional decision cycle. Each step loads its activation from
+    # runtime/<step>/active.json; the cycle writes the standard Donkey pilot
     # outputs so existing user/local_angle/local mode switching still applies.
     #
     # The host telemetry publisher is optional and diagnostic. It is attached
@@ -455,195 +458,142 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     host_telemetry_publisher = None
     if getattr(cfg, "AUTONOMY_ENABLED", True):
         autonomy_controller = getattr(V, "web_controller", None)
-        autonomy_manager = getattr(autonomy_controller, "autonomy_manager", None)
-        if autonomy_manager is None:
-            logger.warning("Autonomy endpoints unavailable; manager was not created.")
-        else:
-            activation_path = Path(__file__).resolve().parent / "runtime" / "decision" / "active.json"
-            if not activation_path.exists():
-                logger.warning("Autonomy bundle is not activated; expected %s", activation_path)
-            else:
+        runtime_root = Path(__file__).resolve().parent / "runtime"
+        identity_path = runtime_root / "identity.json"
+        try:
+            from autonomy.decision_cycle.activation import (
+                DECISION_STEPS,
+                STEPS,
+                activation_generation_id,
+                read_step_activation,
+                step_activation_path,
+            )
+            from autonomy.decision_cycle.steps import (
+                builtin_activation,
+                decision_steps,
+            )
+            from autonomy.runtime.cycle_host import AutonomyCycleHost
+            from implementations.runtime.donkeycar.donkey_part import (
+                DEFAULT_OBSERVATION_INTERVAL_S,
+                AutonomyPilotPart,
+            )
+            from implementations.runtime.donkeycar.host_telemetry import (
+                DriveModeTelemetryAdapter,
+                HostTelemetryStore,
+            )
+
+            activations = {}
+            for step in STEPS:
+                path = step_activation_path(runtime_root, step)
+                if not path.exists():
+                    logger.warning("No %s activation at %s", step, path)
+                    continue
                 try:
-                    from autonomy.runtime import apply_decision_activation, read_decision_activation
-                    from autonomy.decision_cycle.cycle import DecisionSteps
-                    from autonomy.decision_cycle.memory.activation import (
-                        load_memory_step_if_present,
+                    activations[step] = read_step_activation(path, step)
+                    logger.info(
+                        "Activated %s plugins %s",
+                        step,
+                        ", ".join(activations[step].plugins) or "(none)",
                     )
-                    from autonomy.decision_cycle.perception.activation import (
-                        ActivatedPerceptionStep,
-                        read_perception_activation,
-                    )
-                    from autonomy.runtime.cycle_host import AutonomyCycleHost
-                    from implementations.runtime.donkeycar.donkey_part import (
-                        DEFAULT_OBSERVATION_INTERVAL_S,
-                        AutonomyPilotPart,
-                    )
-                    from implementations.runtime.donkeycar.host_telemetry import (
-                        DriveModeTelemetryAdapter,
-                        HostTelemetryStore,
-                    )
-
-                    activation = read_decision_activation(activation_path)
-                    apply_decision_activation(autonomy_manager, activation)
-
-                    telemetry_store = None
-                    source_id = None
-                    generation_id = None
-                    run_id = None
-                    try:
-                        activation_payload = activation.payload
-                        if not isinstance(activation_payload, dict):
-                            raise ValueError("decision activation payload is not an object")
-                        vehicle_id = activation_payload.get("vehicle_id")
-                        activated_at_ms = activation_payload.get("activated_at_ms")
-                        if type(vehicle_id) is not str or not vehicle_id:
-                            raise ValueError(
-                                "decision activation is missing runtime vehicle_id"
-                            )
-                        if type(activated_at_ms) is not int or activated_at_ms < 0:
-                            raise ValueError(
-                                "decision activation is missing runtime activated_at_ms"
-                            )
-                        source_id = activation_payload.get("source_id")
-                        if source_id is None:
-                            source_id = f"donkeycar:{vehicle_id}"
-                        generation_id = activation_payload.get("generation_id")
-                        if generation_id is None:
-                            generation_id = f"{activation.engine_id}:{activated_at_ms}"
-                        run_id = activation_payload.get("run_id")
-                        if run_id is None:
-                            run_id = (
-                                f"donkey-run-{os.getpid()}-{activated_at_ms}-"
-                                f"{secrets.token_hex(8)}"
-                            )
-                        telemetry_store = HostTelemetryStore(
-                            vehicle_id=vehicle_id,
-                            source_id=source_id,
-                            run_id=run_id,
-                            generation_id=generation_id,
-                            activation_engine_id=activation.engine_id,
-                            activation_activated_at_ms=activated_at_ms,
-                            activation_engine_config=activation.engine_config,
-                        )
-                        host_telemetry_publisher = DriveModeTelemetryAdapter(
-                            telemetry_store
-                        )
-                    except (TypeError, ValueError, OverflowError) as exc:
-                        # Existing observation/DriveMode behavior remains
-                        # available when an older activation cannot provide the
-                        # producer-owned identity required by this contract.
-                        logger.error(
-                            "Host telemetry unavailable; runtime identity is incomplete: %s",
-                            exc,
-                        )
-                    perception_step = None
-                    memory_step = None
-                    perception_algorithm = None
-                    perception_activation_path = (
-                        Path(__file__).resolve().parent / "runtime" / "perception" / "active.json"
-                    )
-                    if perception_activation_path.exists():
-                        try:
-                            perception_step = ActivatedPerceptionStep(
-                                read_perception_activation(perception_activation_path)
-                            )
-                            perception_algorithm = perception_step.activation.algorithm
-                            autonomy_manager.register_status_provider(
-                                "perception", perception_step.status
-                            )
-                            logger.info(
-                                "Activated onboard perception algorithm %s",
-                                perception_step.activation.algorithm,
-                            )
-                        except Exception:
-                            logger.exception(
-                                "Unable to activate onboard perception from %s; "
-                                "continuing with a no-op perception step",
-                                perception_activation_path,
-                            )
-                            perception_step = None
-                    else:
-                        logger.warning(
-                            "Onboard perception activation unavailable; expected %s",
-                            perception_activation_path,
-                        )
-                    memory_activation_path = (
-                        Path(__file__).resolve().parent / "runtime" / "memory" / "active.json"
-                    )
-                    if memory_activation_path.exists():
-                        try:
-                            memory_step = load_memory_step_if_present(memory_activation_path)
-                            if memory_step is not None:
-                                autonomy_manager.register_status_provider(
-                                    "memory", memory_step.status
-                                )
-                                logger.info(
-                                    "Activated onboard memory implementation %s",
-                                    memory_step.activation.implementation_id,
-                                )
-                        except Exception:
-                            logger.exception(
-                                "Unable to activate onboard memory from %s; "
-                                "continuing without a memory step",
-                                memory_activation_path,
-                            )
-                            memory_step = None
-                    steps = DecisionSteps(
-                        perceive=perception_step,
-                        remember=memory_step,
-                    )
-                    # Always-on observation: run independently of run_pilot so
-                    # manual user mode still executes the shared cycle at a
-                    # bounded cadence. DriveMode remains movement authority.
-                    observation_interval_s = float(
-                        getattr(
-                            cfg,
-                            "AUTONOMY_OBSERVATION_INTERVAL_S",
-                            DEFAULT_OBSERVATION_INTERVAL_S,
-                        )
-                    )
-                    autonomy_part = AutonomyPilotPart(
-                        host=AutonomyCycleHost(manager=autonomy_manager, steps=steps),
-                        min_interval_s=observation_interval_s,
-                        algorithm=perception_algorithm,
-                        vehicle_id=activation.payload.get("vehicle_id"),
-                        source_id=source_id if telemetry_store is not None else None,
-                        activation_engine_id=activation.engine_id,
-                        activation_activated_at_ms=activation.payload.get(
-                            "activated_at_ms"
-                        ),
-                        activation_engine_config=activation.engine_config,
-                        generation_id=generation_id if telemetry_store is not None else None,
-                        run_id=run_id if telemetry_store is not None else None,
-                        host_telemetry=host_telemetry_publisher,
-                    )
-                    observation_publisher = autonomy_part
-                    if telemetry_store is not None:
-                        autonomy_manager.register_status_provider(
-                            "host_telemetry",
-                            telemetry_store.status,
-                        )
-                        if autonomy_controller is not None:
-                            autonomy_controller.host_telemetry_publisher = (
-                                host_telemetry_publisher
-                            )
-                    autonomy_manager.register_status_provider(
-                        "observation",
-                        autonomy_part.observation_status,
-                    )
-                    # HTTP publication handlers read this publisher without
-                    # re-entering AutonomyManager.status.
-                    if autonomy_controller is not None:
-                        autonomy_controller.observation_publisher = observation_publisher
-                    V.add(
-                        autonomy_part,
-                        inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],
-                        outputs=[
-                            'pilot/angle', 'pilot/throttle', 'autonomy/control',
-                            'autonomy/engine', 'autonomy/cycle'
-                        ])
                 except Exception:
-                    logger.exception("Unable to activate autonomy bundle from %s", activation_path)
+                    logger.exception(
+                        "Unable to read the %s activation at %s; the step %s",
+                        step,
+                        path,
+                        "uses its built-in plugin"
+                        if builtin_activation(step) is not None
+                        else "stays empty",
+                    )
+            host = AutonomyCycleHost(steps=decision_steps(activations))
+            # A decision step with neither an activation nor a built-in (no
+            # proposal plugins staged) is recorded as None in the identity.
+            decision_activations = {}
+            for step in DECISION_STEPS:
+                activation = activations.get(step) or builtin_activation(step)
+                decision_activations[step] = (
+                    activation.to_payload() if activation is not None else None
+                )
+            perception = activations.get("perception")
+            perception_preset = (
+                perception.metadata.get("preset") if perception is not None else None
+            )
+
+            telemetry_store = None
+            vehicle_id = None
+            source_id = None
+            generation_id = activation_generation_id(decision_activations, prefix="decision")
+            run_id = None
+            try:
+                identity = (
+                    json.loads(identity_path.read_text(encoding="utf-8"))
+                    if identity_path.exists()
+                    else {}
+                )
+                if not isinstance(identity, dict):
+                    raise ValueError("runtime identity is not an object")
+                vehicle_id = identity.get("vehicle_id")
+                if type(vehicle_id) is not str or not vehicle_id:
+                    raise ValueError("runtime identity is missing vehicle_id")
+                source_id = identity.get("source_id") or f"donkeycar:{vehicle_id}"
+                run_id = (
+                    f"donkey-run-{os.getpid()}-{int(time.time() * 1000)}-"
+                    f"{secrets.token_hex(8)}"
+                )
+                telemetry_store = HostTelemetryStore(
+                    vehicle_id=vehicle_id,
+                    source_id=source_id,
+                    run_id=run_id,
+                    generation_id=generation_id,
+                )
+                host_telemetry_publisher = DriveModeTelemetryAdapter(telemetry_store)
+            except (OSError, TypeError, ValueError, OverflowError) as exc:
+                # Observation and DriveMode behavior remain available when the
+                # runtime identity required by telemetry is missing.
+                logger.error(
+                    "Host telemetry unavailable; runtime identity is incomplete: %s",
+                    exc,
+                )
+            # Always-on observation: run independently of run_pilot so
+            # manual user mode still executes the shared cycle at a
+            # bounded cadence. DriveMode remains movement authority.
+            observation_interval_s = float(
+                getattr(
+                    cfg,
+                    "AUTONOMY_OBSERVATION_INTERVAL_S",
+                    DEFAULT_OBSERVATION_INTERVAL_S,
+                )
+            )
+            autonomy_part = AutonomyPilotPart(
+                host=host,
+                min_interval_s=observation_interval_s,
+                preset=perception_preset,
+                vehicle_id=vehicle_id,
+                source_id=source_id if telemetry_store is not None else None,
+                decision_activations=decision_activations,
+                generation_id=generation_id,
+                run_id=run_id if telemetry_store is not None else None,
+                host_telemetry=host_telemetry_publisher,
+            )
+            if telemetry_store is not None:
+                host.register_status_provider("host_telemetry", telemetry_store.status)
+                if autonomy_controller is not None:
+                    autonomy_controller.host_telemetry_publisher = host_telemetry_publisher
+            host.register_status_provider("observation", autonomy_part.observation_status)
+            # HTTP handlers read the host status and this publisher.
+            if autonomy_controller is not None:
+                autonomy_controller.autonomy_host = host
+                autonomy_controller.observation_publisher = autonomy_part
+            else:
+                logger.warning("Autonomy endpoints unavailable; no web controller.")
+            V.add(
+                autonomy_part,
+                inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],
+                outputs=[
+                    'pilot/angle', 'pilot/throttle', 'autonomy/control',
+                    'autonomy/generation', 'autonomy/cycle'
+                ])
+        except Exception:
+            logger.exception("Unable to start the decision cycle from %s", runtime_root)
 
     #
     # to give the car a boost when starting ai mode in a race.

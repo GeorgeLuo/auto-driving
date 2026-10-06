@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from autonomy.shared_memory import SharedMemory
-from autonomy.vehicle import SensorSnapshot
+from autonomy.vehicle import SensorFrame
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class DecisionFrameContext:
     frame_id: str
     frame_index: int
     timestamp_ms: int
-    sensor_snapshot: SensorSnapshot | None = None
+    sensor_frame: SensorFrame | None = None
     mode: str = "autonomy"
     user_steering: float = 0.0
     user_throttle: float = 0.0
@@ -33,7 +33,7 @@ class DecisionFrameContext:
             "frame_id": self.frame_id,
             "frame_index": self.frame_index,
             "timestamp_ms": self.timestamp_ms,
-            "sensor_snapshot": self.sensor_snapshot.to_dict() if self.sensor_snapshot is not None else None,
+            "sensor_frame": self.sensor_frame.to_dict() if self.sensor_frame is not None else None,
             "mode": self.mode,
             "user_steering": self.user_steering,
             "user_throttle": self.user_throttle,

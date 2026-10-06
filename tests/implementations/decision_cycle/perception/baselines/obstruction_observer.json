@@ -1,0 +1,182 @@
+[
+ {
+  "frame_id": "frame_0",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.1938,
+      0.2917,
+      0.425,
+      0.625
+     ],
+     "confidence": 0.6287,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "new"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_1",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2036,
+      0.2917,
+      0.4359,
+      0.625
+     ],
+     "confidence": 0.6285,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_2",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2209,
+      0.2917,
+      0.4529,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_3",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.242,
+      0.2917,
+      0.4748,
+      0.625
+     ],
+     "confidence": 0.6285,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_4",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2667,
+      0.2917,
+      0.499,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_5",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2667,
+      0.2917,
+      0.499,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "held"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_6",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2667,
+      0.2917,
+      0.499,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "held"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_7",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.3112,
+      0.2917,
+      0.5431,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_8",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.3499,
+      0.2917,
+      0.5827,
+      0.625
+     ],
+     "confidence": 0.6285,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ }
+]

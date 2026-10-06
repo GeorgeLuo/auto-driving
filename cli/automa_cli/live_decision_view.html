@@ -179,7 +179,7 @@
     }
 
     .run.ok, .run.active { border-color: var(--green); }
-    .run.error, .run.unavailable, .run.engine_error { border-color: var(--red); }
+    .run.error, .run.unavailable { border-color: var(--red); }
     .run.inactive, .run.missing_input, .run.incompatible { border-color: var(--amber); }
     .secondary { color: var(--muted); font-size: 12px; margin-top: 3px; }
 
@@ -272,7 +272,7 @@
 
   <script>
     const params = new URLSearchParams(location.search);
-    const generation = params.get("generation");
+    let generation = params.get("generation");
     const frameImage = document.getElementById("frame");
     const canvas = document.getElementById("overlay");
     const context = canvas.getContext("2d");
@@ -451,7 +451,7 @@
       const cycleMetrics = document.getElementById("cycleMetrics");
       cycleMetrics.replaceChildren();
       appendMetric(cycleMetrics, "Frame", latest.current_image?.frame_id);
-      appendMetric(cycleMetrics, "Status", cycle.status || latest.status);
+      appendMetric(cycleMetrics, "Status", cycle.action?.status || latest.status);
       appendMetric(cycleMetrics, "Proposal", candidate?.reason || plan.status || "—");
       appendMetric(cycleMetrics, "Freshness", candidate?.freshness || candidate?.lifecycle || "—");
       appendMetric(cycleMetrics, "Capture age", latest.freshness?.capture_age_ms != null ? `${latest.freshness.capture_age_ms} ms` : "—");
@@ -501,7 +501,7 @@
           const unavailable = document.createElement("div");
           unavailable.className = "thing";
           const name = document.createElement("div");
-          name.textContent = `${item?.record_id || item?.provenance?.evidence_id || "evidence"} · unavailable`;
+          name.textContent = `${item?.record_id || item?.origin?.observed_id || "evidence"} · unavailable`;
           const detail = document.createElement("div");
           detail.className = "secondary";
           detail.textContent = item?.reason || "evidence_association_unavailable";
@@ -532,13 +532,13 @@
       latest = payload;
       const cycle = payload?.decision?.cycle || {};
       const candidate = selectedCandidate();
-      if (cycle.status === "engine_error") {
-        return { text: `Live | ${cycle.reason || "engine_error"}`, mode: "error" };
+      if (cycle.action?.status === "error") {
+        return { text: `Live | ${cycle.action.reason || "error"}`, mode: "error" };
       }
       if (candidate?.reason) {
         return { text: `Live | ${candidate.reason.replaceAll("_", " ")}`, mode: "live" };
       }
-      return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.status || "idle"}`, mode: "stale" };
+      return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.action?.status || "idle"}`, mode: "stale" };
     }
 
     function nonExpiredPayload(payload, now = Date.now()) {
@@ -547,6 +547,18 @@
         Number.isInteger(freshness.expires_at_ms) &&
         freshness.expires_at_ms >= freshness.published_at_ms &&
         now >= freshness.published_at_ms && now <= freshness.expires_at_ms;
+    }
+
+    // A worker that runs restaged proposals publishes a new generation; follow
+    // it while the run and worker are the ones this page has been showing.
+    function restagedGeneration(response, payload) {
+      const shown = latest?.identity;
+      const next = payload?.identity;
+      return response.status === 409 && payload?.reason === "generation_mismatch" &&
+        /^[0-9a-f]{64}$/.test(payload?.generation_id || "") &&
+        shown && next && shown.run_id === next.run_id && shown.worker_pid === next.worker_pid
+        ? payload.generation_id
+        : null;
     }
 
     function supersededPayload(payload) {
@@ -580,6 +592,12 @@
         }
         const response = await fetch("/api/decision/latest?generation=" + encodeURIComponent(generation), { cache: "no-store" });
         const payload = await response.json();
+        const restaged = restagedGeneration(response, payload);
+        if (restaged) {
+          generation = restaged;
+          history.replaceState(null, "", "?" + new URLSearchParams({ generation }));
+          throw new Error("decision restaged; following its generation");
+        }
         if (!response.ok || payload.status !== "current" || payload.generation_id !== generation) {
           throw new Error(payload.reason || `HTTP ${response.status}`);
         }

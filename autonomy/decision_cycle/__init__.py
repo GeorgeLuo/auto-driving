@@ -1,14 +1,11 @@
-"""Decision-cycle contracts used by the step modules.
+"""The decision cycle and its steps.
 
-``context.DecisionFrameContext`` is the input for one cycle tick.
-``memory.errors.MemoryUpdateError`` is the failure raised when remember
-cannot continue. ``observation`` holds the current-frame record and the
-default observe step. ``proposal.inputs`` holds the detached view a proposal
-reads, ``proposal.values`` its candidate commands, and
-``action_identifiers`` the identifier grammar for action inputs, proposals,
-and plans. ``planning`` holds plan values and the built-in selector, and
-``action_gate`` the gate contract, its authority record, and the hold gate.
-``result`` is the aggregate action result and ``errors`` its engine error
-reasons. ``action`` composes proposal, planning, and a gate for one cycle.
-``cycle`` orders perceive, observe, remember, and act.
+``cycle`` orders the six steps (perception, observation, memory, proposal,
+plan, action) and records one output per step. Each step is a package of the
+same name holding its plugin protocol (``plugin``), its runner (``runner``),
+and its record values; ``runner`` at this level is the shape those runners
+share. ``activation`` is the per-step activation document and ``steps`` builds
+runners from activations. ``context.DecisionFrameContext`` is the input for
+one cycle tick, ``action_identifiers`` the identifier grammar for proposals and
+plans, and ``errors`` the reasons a cycle fails closed.
 """

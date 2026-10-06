@@ -3,19 +3,37 @@ import json
 import time
 from pathlib import Path
 from PIL import Image
+from unittest.mock import patch
+from autonomy.decision_cycle.activation import step_activation
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
+from cli.automa_cli import automation as automation_module
+from implementations.decision_cycle.catalog import packaged_activation, preset_activation
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 
 class _SlowMapper:
+    """A perception runner stand-in that records frames and perceives slowly."""
+
+    plugins = ()
+
     def __init__(self) -> None:
         self.frame_ids: list[str] = []
 
+    def __call__(self, context):
+        return self.perceive(build_perception_request(context.sensor_frame))
+
+    def reset(self, shared_memory=None) -> None:
+        del shared_memory
+
+    def status(self) -> dict:
+        return {"step": "perception", "frames": len(self.frame_ids)}
+
     def perceive(self, request):
-        self.frame_ids.append(request.snapshot.read_id)
+        self.frame_ids.append(request.sensor_frame.read_id)
         time.sleep(0.05)
         return PerceptionText(
             schema=PERCEPTION_TEXT_SCHEMA,
@@ -87,7 +105,7 @@ class _FakeCar:
                 "frame_id": f"chase_frame_{simulator_frame_index:06d}",
             },
         )
-        return SensorSnapshot(
+        return SensorFrame(
             read_id=request.read_id,
             readings={FRONT_CAMERA_SENSOR_ID: reading},
             started_at_ms=now_ms,
@@ -115,36 +133,41 @@ class _RunningProcess:
         return None
 
 
-def _write_activations(bundle: dict[str, str]) -> None:
+def _write_activations(
+    bundle: dict[str, str],
+    *,
+    preset: str = "lightweight_observer",
+    plugins: list[str] | None = None,
+) -> None:
+    """Stage perception and the packaged proposals; plan and action run their built-ins."""
+
+    packaged = preset_activation("perception", preset)
+    activation = step_activation(
+        "perception",
+        packaged.plugins if plugins is None else plugins,
+        packaged.plugin_specs,
+        packaged.plugin_configs,
+        metadata={**packaged.metadata, "controller_bundle": {"root_dir": bundle["root_dir"]}},
+    )
     perception_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    decision_path = Path(bundle["decision_runtime_dir"]) / "active.json"
     perception_path.parent.mkdir(parents=True, exist_ok=True)
-    decision_path.parent.mkdir(parents=True, exist_ok=True)
-    perception_path.write_text(
-        json.dumps(
-            {
-                "schema": "automa_perception_activation_v0",
-                "controller_bundle": {"root_dir": bundle["root_dir"]},
-                "perception": {
-                    "algorithm": "test",
-                    "mapper_spec": "test:SlowMapper",
-                    "mapper_config": {},
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    decision_path.write_text(
-        json.dumps(
-            {
-                "schema": "automa_decision_activation_v0",
-                "controller_bundle": {"root_dir": bundle["root_dir"]},
-                "decision": {
-                    "engine_id": "idle",
-                    "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
-                    "engine_config": {},
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    perception_path.write_text(json.dumps(activation.to_payload()), encoding="utf-8")
+    proposal_path = Path(bundle["proposal_runtime_dir"]) / "active.json"
+    proposal_path.parent.mkdir(parents=True, exist_ok=True)
+    proposal_path.write_text(json.dumps(packaged_activation("proposal").to_payload()), encoding="utf-8")
+
+
+def staged_runners(*, perception=None, wrap=None):
+    """Patch the worker's step loading: substitute ``perception`` and/or ``wrap`` loaded runners."""
+
+    load = automation_module.load_staged_runner
+
+    def load_runner(activation):
+        if activation.step == "perception" and perception is not None:
+            return perception
+        runner = load(activation)
+        if wrap is not None:
+            wrap(activation.step, getattr(runner, "runner", runner))
+        return runner
+
+    return patch("cli.automa_cli.automation.load_staged_runner", side_effect=load_runner)

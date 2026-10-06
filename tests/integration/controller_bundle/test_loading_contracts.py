@@ -13,21 +13,15 @@ from __future__ import annotations
 
 import importlib
 import json
-import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision_cycle.memory.activation import read_memory_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.memory_runtime import _BUNDLE_PREFIXES as MEMORY_BUNDLE_PREFIXES
-from cli.automa_cli.memory_runtime import load_memory_step_from_bundle
-from cli.automa_cli.perception import _BUNDLE_PREFIXES as PERCEPTION_BUNDLE_PREFIXES
-from cli.automa_cli.perception import _load_mapper
 from cli.automa_cli.staged_bundle import StagedBundleImport
-from implementations.decision_cycle.memory.catalog import build_memory_activation_payload
-from implementations.decision_cycle.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
+from cli.automa_cli.step_hosting import BUNDLE_PREFIXES, load_staged_runner
+from implementations.decision_cycle.catalog import packaged_activation
 from tests.integration.controller_bundle.loading_inventory import (
     LEGACY_EXPORTS,
     LEGACY_MODULES,
@@ -114,33 +108,6 @@ class LoadingContractTests(unittest.TestCase):
                     mismatches.append(f"{module_name}: {type(exc).__name__}: {exc}")
         self.assertEqual(mismatches, [], "legacy path does not resolve to its canonical owner")
 
-    def test_engine_spec_modules_reload_their_owner(self) -> None:
-        # Runs in a fresh process because reloading replaces the engine classes.
-        script = """
-import importlib
-import sys
-from autonomy.runtime.manager import AutonomyManager
-
-for owner, class_name in (
-    ("implementations.runtime.engines.hold_action", "HoldActionEngine"),
-    ("implementations.runtime.engines.mode_gated_action", "ModeGatedActionEngine"),
-):
-    manager = AutonomyManager(default_engine_spec=f"{owner}:{class_name}")
-    before = type(manager.engine)
-    manager.reload_engine()
-    after = type(manager.engine)
-    assert after is not before, owner
-    assert after is getattr(sys.modules[owner], class_name), owner
-"""
-        completed = subprocess.run(
-            [sys.executable, "-c", script],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-
     def test_controller_bundle_archives_source_paths(self) -> None:
         self.assertEqual(self.release["schema"], "automa_controller_bundle_manifest_v0")
         self.assertEqual(
@@ -158,82 +125,38 @@ for owner, class_name in (
         )
         self.assertEqual(manifest["tree_sha256"], self.release["tree_sha256"])
 
-    def test_staged_perception_shares_one_bundle_copy(self) -> None:
-        host_mapper = importlib.import_module("autonomy.decision_cycle.perception.plugin_runner").PluginPerceptionMapper
-        host_contract = importlib.import_module("autonomy.decision_cycle.perception.plugin").PerceptionPluginContract
-        mapper = _load_mapper(
-            PERCEPTION_MAPPER_SPEC,
-            {
-                "plugins": ["frame"],
-                "plugin_specs": {"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
-            },
-            bundle_root=self.bundle_root,
-        )
-        self.assertIsNot(type(mapper), host_mapper)
-        self.assertIsNot(type(mapper.plugins[0].contract), host_contract)
-
-        # Both trees are evicted, so the plugin and the mapper bind the same
-        # bundle classes rather than the classes already imported by the host.
-        with StagedBundleImport(self.bundle_root, PERCEPTION_BUNDLE_PREFIXES).activate():
-            mapper_module = importlib.import_module(
-                "autonomy.decision_cycle.perception.plugin_runner"
-            )
-            plugin_module = importlib.import_module(
-                "implementations.decision_cycle.perception.frame_observation.plugin"
-            )
-            self.assertIn(str(self.bundle_root), mapper_module.__file__ or "")
-            self.assertIn(str(self.bundle_root), plugin_module.__file__ or "")
-            self.assertIs(plugin_module.PerceptionPluginContract, mapper_module.PerceptionPluginContract)
-            self.assertIsNot(plugin_module.PerceptionPluginContract, host_contract)
-            self.assertIsNot(mapper_module.PluginPerceptionMapper, host_mapper)
-
-    def test_staged_memory_keeps_host_autonomy_classes(self) -> None:
+    def test_staged_steps_keep_host_autonomy_classes(self) -> None:
+        host_contract = importlib.import_module(
+            "autonomy.decision_cycle.perception.plugin"
+        ).PerceptionPluginContract
         host_evidence = importlib.import_module("autonomy.decision_cycle.memory.evidence").RetainedEvidence
-        host_context = importlib.import_module("autonomy.decision_cycle.context").DecisionFrameContext
         host_ledger = importlib.import_module(
-            "implementations.decision_cycle.memory.bounded_evidence.plugin"
+            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin"
         ).BoundedEvidenceLedger
-        payload = build_memory_activation_payload()
-        payload["controller_bundle"] = {"root_dir": str(self.bundle_root)}
-        activation_path = self.bundle_root / "runtime" / "memory" / "active.json"
-        activation_path.parent.mkdir(parents=True, exist_ok=True)
-        activation_path.write_text(json.dumps(payload), encoding="utf-8")
-        step = load_memory_step_from_bundle(read_memory_activation(activation_path))
+        metadata = {"controller_bundle": {"root_dir": str(self.bundle_root)}}
+        perception = load_staged_runner(packaged_activation("perception", ["frame"], metadata=metadata))
+        memory = load_staged_runner(packaged_activation("memory", metadata=metadata))
 
-        self.assertIsNot(type(step.implementation), host_ledger)
-        # autonomy stays imported from the host. Its package __path__ is the
-        # host tree, including submodules imported for the first time here.
-        with StagedBundleImport(self.bundle_root, MEMORY_BUNDLE_PREFIXES).activate():
+        # Plugins come from the bundle copy; autonomy, and so every value class
+        # the cycle passes between steps, stays the host's.
+        self.assertIs(type(perception.runner.plugins["frame"].contract), host_contract)
+        self.assertIsNot(
+            type(memory.runner.plugins["bounded_evidence"].implementation), host_ledger
+        )
+        with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
             staged = importlib.import_module(
-                "implementations.decision_cycle.memory.bounded_evidence.plugin"
+                "implementations.decision_cycle.memory.shared.evidence_ledger.reduction"
             )
             self.assertIn(str(self.bundle_root), staged.__file__ or "")
-            self.assertIsNot(staged.BoundedEvidenceLedger, host_ledger)
             self.assertIs(staged.RetainedEvidence, host_evidence)
-            self.assertIs(staged.DecisionFrameContext, host_context)
 
-    def test_memory_staging_ignores_autonomy_files_present_only_in_the_bundle(self) -> None:
+    def test_staging_ignores_autonomy_files_present_only_in_the_bundle(self) -> None:
         extra = self.bundle_root / "autonomy" / "vehicle" / "only_in_bundle.py"
         extra.write_text("MARKER = 'bundle'\n", encoding="utf-8")
         try:
-            with StagedBundleImport(self.bundle_root, MEMORY_BUNDLE_PREFIXES).activate():
+            with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
                 with self.assertRaises(ModuleNotFoundError):
                     importlib.import_module("autonomy.vehicle.only_in_bundle")
-            with StagedBundleImport(self.bundle_root, PERCEPTION_BUNDLE_PREFIXES).activate():
-                loaded = importlib.import_module("autonomy.vehicle.only_in_bundle")
-                self.assertEqual(loaded.MARKER, "bundle")
-                self.assertIn(str(self.bundle_root), loaded.__file__ or "")
         finally:
             extra.unlink(missing_ok=True)
             sys.modules.pop("autonomy.vehicle.only_in_bundle", None)
-
-    def test_memory_staging_loads_lab_modules_from_the_bundle(self) -> None:
-        lab = self.bundle_root / "lab"
-        lab.mkdir()
-        (lab / "__init__.py").write_text("", encoding="utf-8")
-        (lab / "probe.py").write_text("MARKER = 'bundle'\n", encoding="utf-8")
-        with StagedBundleImport(self.bundle_root, MEMORY_BUNDLE_PREFIXES).activate():
-            probe = importlib.import_module("lab.probe")
-            self.assertEqual(probe.MARKER, "bundle")
-            self.assertIn(str(self.bundle_root), probe.__file__ or "")
-        self.assertNotIn("lab.probe", sys.modules)

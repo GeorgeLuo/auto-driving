@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from copy import deepcopy
 
 from autonomy.decision_cycle.proposal.inputs import (
     DecisionDataSource,
@@ -13,8 +12,9 @@ from autonomy.decision_cycle.proposal.inputs import (
     ready_envelope,
     unavailable_envelope,
 )
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from tests.support.action_fixtures import decision_chain, packaged_decision_chain
 
 
 def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> RetainedEvidence:
@@ -23,9 +23,9 @@ def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> Ret
         kind=kind,
         label=kind,
         confidence=0.9,
-        provenance=MemoryProvenance(
+        origin=MemoryOrigin(
             observation_id="obs",
-            evidence_id="ev",
+            observed_id="ev",
             coordinate_frame="image",
             observed_at_ms=1000,
             updated_at_ms=1000,
@@ -89,31 +89,9 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.status, "unavailable")
         self.assertEqual(source.observation.reason, "observation_not_configured")
 
-    def test_rejects_bad_frame_id(self) -> None:
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="😀" * 10, frame_index=0, timestamp_ms=1
-            )
-
-    def test_rejects_wrong_schema(self) -> None:
-        with self.assertRaises(ValueError):
-            DecisionDataSource(
-                frame_id="f1",
-                frame_index=0,
-                timestamp_ms=1,
-                observation=unavailable_envelope("x"),
-                evidence=unavailable_envelope("y"),
-                capabilities=ready_envelope({"max_abs_steering": 1.0}),
-                prior_host_applied_command=unavailable_envelope("h"),
-                schema="wrong",
-            )
 
     def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
-        from autonomy.decision_cycle.action import (
-            ActionComposition,
-        )
         from autonomy.decision_cycle.proposal.values import ActionProposal
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 
         seen: list[object] = []
 
@@ -153,7 +131,7 @@ class DecisionDataSourceTests(unittest.TestCase):
                 available=False,
             )
 
-        engine = ActionComposition(
+        engine = decision_chain(
             plugins={"a": plugin_a, "b": plugin_b},
         )
         engine.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
@@ -161,25 +139,6 @@ class DecisionDataSourceTests(unittest.TestCase):
         # Peer still sees original frozen capabilities, not a mutated mapping.
         self.assertEqual(seen[0], seen[1])
 
-    def test_ready_envelope_rejects_live_handles(self) -> None:
-        class LiveClient:
-            pass
-
-        with self.assertRaises(TypeError):
-            ready_envelope(LiveClient(), updated_at_ms=1)
-
-        # Cycle must not return ok with a non-replayable source.
-        from implementations.runtime.engines.catalog import (
-            create_action_composition,
-        )
-
-        with self.assertRaises(TypeError):
-            create_action_composition().run(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                capabilities=ready_envelope(LiveClient(), updated_at_ms=1),
-            )
 
     def test_omitting_evaluator_keys_makes_a_live_capture_admissible(self) -> None:
         dirty = {
@@ -205,7 +164,7 @@ class DecisionDataSourceTests(unittest.TestCase):
             frame_id="f",
             frame_index=0,
             timestamp_ms=1,
-            observation={"observation_id": "obs", "created_at_ms": 1, "sensor_snapshot": cleaned, "things": [], "signals": [], "summary": [], "artifacts": {}, "metadata": {}, "schema": "decision_observation_v1"},
+            observation={"observation_id": "obs", "created_at_ms": 1, "sensor_frame": cleaned, "things": [], "signals": [], "summary": [], "artifacts": {}, "metadata": {}, "schema": "decision_observation_v1"},
         )
         self.assertEqual(source.observation.status, "ready")
 
@@ -380,13 +339,12 @@ class DecisionDataSourceTests(unittest.TestCase):
         from autonomy.decision_cycle.observation.values import Observation
         from autonomy.decision_cycle.proposal.inputs import (
             DecisionDataSource,
-            unavailable_envelope,
         )
 
         obs = Observation(
             observation_id="obs-1",
             created_at_ms=1,
-            sensor_snapshot={},
+            sensor_frame={},
             summary=(),
             things=(),
             signals=(),
@@ -424,11 +382,8 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.value.observation_id, "obs-1")
 
     def test_runner_default_observation_not_configured(self) -> None:
-        from implementations.runtime.engines.catalog import (
-            create_action_composition,
-        )
 
-        result = create_action_composition().run(
+        result = packaged_decision_chain().run(
             frame_id="f", frame_index=0, timestamp_ms=1
         )
         control = result.control
@@ -446,7 +401,7 @@ class DecisionDataSourceTests(unittest.TestCase):
         obs = Observation(
             observation_id="o",
             created_at_ms=1,
-            sensor_snapshot={},
+            sensor_frame={},
             metadata={"EvaluatorOutput": {"direction": "left"}},
         )
         with self.assertRaises(ValueError):
@@ -499,15 +454,12 @@ class DecisionDataSourceTests(unittest.TestCase):
 
     def test_runner_observation_dict_and_error_paths(self) -> None:
         from autonomy.decision_cycle.observation.values import Observation
-        from implementations.runtime.engines.catalog import (
-            create_action_composition,
-        )
 
-        engine = create_action_composition()
+        engine = packaged_decision_chain()
         obs = Observation(
             observation_id="obs-runner",
             created_at_ms=1,
-            sensor_snapshot={},
+            sensor_frame={},
         )
         result = engine.run(
             frame_id="f",

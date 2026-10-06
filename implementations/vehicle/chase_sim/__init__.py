@@ -8,8 +8,8 @@ from .frame_identity import (
     evaluate_chase_evaluator_reference,
     format_chase_frame_id,
     score_reference_alignment_batch,
-    simulator_epoch_from_snapshot,
-    simulator_frame_index_from_snapshot,
+    simulator_epoch_from_sensor_frame,
+    simulator_frame_index_from_sensor_frame,
     validate_chase_sensor_capture,
 )
 
@@ -22,7 +22,7 @@ __all__ = [
     "evaluate_chase_evaluator_reference",
     "format_chase_frame_id",
     "score_reference_alignment_batch",
-    "simulator_epoch_from_snapshot",
-    "simulator_frame_index_from_snapshot",
+    "simulator_epoch_from_sensor_frame",
+    "simulator_frame_index_from_sensor_frame",
     "validate_chase_sensor_capture",
 ]

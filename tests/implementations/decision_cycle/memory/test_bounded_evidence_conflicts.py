@@ -5,13 +5,13 @@ from copy import deepcopy
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import (
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     serialized_ledger_bytes,
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from implementations.decision_cycle.memory.bounded_evidence.plugin import (
+from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
     CONFLICT_POLICY,
-    _BoundedEvidenceReducer as BoundedEvidenceReducer,
+    BoundedEvidenceReducer,
     json_values_equal,
     location_geometry_signature,
     namespaced_record_id,
@@ -28,7 +28,7 @@ def _observation(
     return Observation(
         observation_id=observation_id,
         created_at_ms=created_at_ms,
-        sensor_snapshot={},
+        sensor_frame={},
         perception_plugin_id="lightweight_observer",
         summary=("test",),
         things=things,
@@ -47,7 +47,7 @@ def _thing(
     bbox: list[float] | None = None,
     polygon: list[list[float]] | None = None,
     properties: dict | None = None,
-    source_plugin_id: str = "floor-plane-v0",
+    source_plugin_id: str = "floor_plane",
     include_location: bool = True,
 ) -> dict:
     thing: dict = {
@@ -180,7 +180,7 @@ class ConflictMatrixTests(unittest.TestCase):
             [
                 {
                     "record_id": namespaced_record_id(
-                        "thing", "floor_boundary_000", "floor-plane-v0"
+                        "thing", "floor_boundary_000", "floor_plane"
                     ),
                     "reason": "kind_changed",
                     "action": "removed_prior_and_rejected_current",
@@ -489,7 +489,7 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(regress.records[0].location.zone, "center")
         self.assertEqual(regress.metadata["last_update_conflict_count"], 0)
 
-    def test_snapshot_preserves_last_update_conflict_count(self) -> None:
+    def test_state_preserves_last_update_conflict_count(self) -> None:
         ledger = _ledger()
         ledger.update(
             _ctx("f1", 1, 100),
@@ -552,7 +552,7 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(len(pressure.metadata["last_update_drops"]), 12)
         self.assertEqual(pressure.metadata["last_update_drops_omitted"], 7)
 
-    def test_drop_details_fit_snapshot_byte_limit(self) -> None:
+    def test_drop_details_fit_state_byte_limit(self) -> None:
         ledger = _ledger(max_records=1, max_property_bytes=32, max_serialized_bytes=1024)
         state = ledger.update(
             _ctx("f1", 1, 100),

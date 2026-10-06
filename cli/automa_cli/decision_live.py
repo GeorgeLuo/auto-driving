@@ -8,7 +8,12 @@ import webbrowser
 from dataclasses import dataclass
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.memory.plugin_runner import MEMORY_REPORT_SCHEMA
+from autonomy.decision_cycle.memory.interface import (
+    MEMORY_REPORT_SCHEMA,
+    RECORD_COUNT,
+    MemoryPluginReport,
+    MemoryReport,
+)
 from .decision import (
     CommandResult,
     DecisionSurfaceError,
@@ -39,7 +44,7 @@ from .runtime_view import RuntimeViewServer
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
-    format_active_vehicles_snapshot,
+    format_active_vehicles,
 )
 
 
@@ -65,8 +70,8 @@ def _resolve_physical_vehicle(
         return None, "\n\n".join(
             [
                 error,
-                "Discovery snapshot:",
-                format_active_vehicles_snapshot(discovery, include_inactive=True),
+                "Discovery:",
+                format_active_vehicles(discovery, include_inactive=True),
             ]
         )
     if vehicle is None:
@@ -84,15 +89,14 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
         "vehicle_id": normalized["vehicle_id"],
         "source_id": normalized["source_id"],
         "run_id": normalized["run_id"],
-        "activation_engine_id": normalized["activation_engine_id"],
-        "activation_activated_at_ms": normalized["activation_activated_at_ms"],
         "producer_generation_id": normalized["generation_id"],
     }
 
 
 def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
     cycle = normalized["decision"]["cycle"]
-    source = cycle.get("source") if isinstance(cycle, dict) else None
+    proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
+    source = proposal.get("source") if isinstance(proposal, dict) else None
     observation = source.get("observation") if isinstance(source, dict) else None
     observation_value = (
         observation.get("value")
@@ -109,8 +113,8 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         else None
     )
     evidence_value = evidence_value if isinstance(evidence_value, list) else None
-    sensor_snapshot = (
-        observation_value.get("sensor_snapshot")
+    sensor_frame = (
+        observation_value.get("sensor_frame")
         if isinstance(observation_value, dict)
         else None
     )
@@ -145,7 +149,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         "frame_index": normalized["frame_index"],
         "captured_at_ms": normalized["timestamp_ms"],
         "run_id": normalized["run_id"],
-        "sensor_snapshot": sensor_snapshot,
+        "sensor_frame": sensor_frame,
         "perception_completed_at_ms": (
             observation_value.get("created_at_ms")
             if isinstance(observation_value, dict)
@@ -155,21 +159,25 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         "observation": observation_value,
         # The publication carries the evidence the decision read, not the memory
         # step's report; present it as one labeled entry for the memory panel.
+        # That entry holds the evidence value, so it is named the publisher.
         "memory": (
-            {
-                "schema": MEMORY_REPORT_SCHEMA,
-                "plugins": [
-                    {
-                        "plugin_id": "decision_evidence",
-                        "implementation_id": None,
-                        "state": {"records": evidence_value, "record_count": len(evidence_value)},
-                    }
-                ],
-            }
+            MemoryReport(
+                schema=MEMORY_REPORT_SCHEMA,
+                plugins=(
+                    MemoryPluginReport(
+                        plugin_id="decision_evidence",
+                        state={
+                            "records": evidence_value,
+                            RECORD_COUNT: len(evidence_value),
+                        },
+                    ),
+                ),
+                evidence_publisher="decision_evidence",
+            ).to_dict()
             if evidence_value is not None
             else None
         ),
-        "algorithm": (
+        "preset": (
             observation_value.get("perception_plugin_id")
             if isinstance(observation_value, dict)
             else None
@@ -239,7 +247,7 @@ class PhysicalDecisionViewAdapter:
         self.view_server = view_server
         self.timeout_s = timeout_s
 
-    def publish_snapshot(
+    def publish_frame(
         self,
         normalized: dict[str, Any],
         image: tuple[bytes, str],
@@ -284,7 +292,7 @@ class PhysicalDecisionViewAdapter:
             vehicle_id=self.vehicle_id,
             timeout_s=self.timeout_s,
         )
-        return self.publish_snapshot(normalized, image)
+        return self.publish_frame(normalized, image)
 
 
 def run_live_decision_monitor(
@@ -329,7 +337,7 @@ def run_live_decision_monitor(
             view_server=server,
             timeout_s=max(0.1, float(timeout_s)),
         )
-        if not adapter.publish_snapshot(normalized, image):
+        if not adapter.publish_frame(normalized, image):
             return CommandResult(2, "physical decision transaction was rejected")
         page_path = server.decision.page_url()
         if page_path is None or server.url is None:
@@ -588,8 +596,6 @@ def _host_record_matches_identity(
         "run_id": record.get("run_id"),
         "generation_id": record.get("generation_id"),
         "activation": {
-            "engine_id": activation.get("engine_id"),
-            "activated_at_ms": activation.get("activated_at_ms"),
             "generation_id": activation.get("generation_id"),
         },
         "source_frame": {

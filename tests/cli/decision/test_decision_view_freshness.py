@@ -8,7 +8,8 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
 from cli.automa_cli import decision as decision_module
-from cli.automa_cli.decision import get_vehicle_decision_info, update_vehicle_decision
+from cli.automa_cli.proposal import get_vehicle_proposal_info
+from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
@@ -153,11 +154,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
     def test_info_reports_generation_url_while_warming(self) -> None:
         generation = self.server.decision.generation_id
         self.assertIsNotNone(generation)
-        info = get_vehicle_decision_info(
+        info = get_vehicle_proposal_info(
             vehicle_id="chase-sim-chaser", json_output=True
         )
         self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["combined_view"]
+        combined = json.loads(info.message)["published_view"]
         self.assertTrue(combined["available"])
         self.assertEqual(combined["status"], "warming")
         self.assertEqual(
@@ -198,17 +199,16 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
 
         # Use the public update command to replace the active decision
         # generation while the old producer is still serving its URL.
-        restage = update_vehicle_decision(
+        code, message = update_vehicle_step(
             vehicle_id="chase-sim-chaser",
-            engine_id="idle",
+            step="action",
+            plugins=["mode"],
+            runtime_root=self.runtime_root,
             json_output=True,
         )
-        self.assertEqual(restage.exit_code, 0, restage.message)
-        current_activation = json.loads(
-            self.activation_path.read_text(encoding="utf-8")
-        )
-        self.assertEqual(current_activation["decision"]["engine_id"], "idle")
-        self.assertNotEqual(current_activation, self.activation)
+        self.assertEqual(code, 0, message)
+        current = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
+        self.assertNotEqual(current["generation_id"], self.activation["generation_id"])
 
         for old_url in (old_latest_url, old_image_url):
             with self.subTest(old_url=old_url):
@@ -220,6 +220,44 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertEqual(error["reason"], "activation_mismatch")
                 self.assertNotIn("transaction_id", error)
                 self.assertNotIn("current_image", error)
+
+    def test_adopted_restage_moves_the_view_and_names_it_to_old_sessions(self) -> None:
+        self._publish_exact_transaction()
+        old_generation = self.server.decision.generation_id
+        # Restaging the same proposals stages a new identity the worker runs.
+        code, message = update_vehicle_step(
+            vehicle_id="chase-sim-chaser",
+            step="proposal",
+            runtime_root=self.runtime_root,
+            json_output=True,
+        )
+        self.assertEqual(code, 0, message)
+        self.activation = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
+        self.server.decision.adopt(self.activation)
+        new_generation = self.server.decision.generation_id
+        self.assertNotEqual(new_generation, old_generation)
+
+        with self.assertRaises(HTTPError) as rejected:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={old_generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(rejected.exception.code, 409)
+        error = json.loads(rejected.exception.read().decode("utf-8"))
+        self.assertEqual(error["generation_id"], new_generation)
+        self.assertEqual(error["identity"]["run_id"], "run-live")
+
+        self._publish_exact_transaction()
+        with urlopen(
+            f"{self.server.url}api/decision/latest?generation={new_generation}",
+            timeout=1.0,
+        ) as response:
+            self.assertEqual(json.loads(response.read().decode("utf-8"))["status"], "current")
+        info = get_vehicle_proposal_info(vehicle_id="chase-sim-chaser", json_output=True)
+        self.assertEqual(
+            json.loads(info.message)["published_view"]["url"],
+            f"{self.server.url}decision?generation={new_generation}",
+        )
 
     def test_old_session_cannot_attach_to_same_port_replacement(self) -> None:
         self._publish_exact_transaction()

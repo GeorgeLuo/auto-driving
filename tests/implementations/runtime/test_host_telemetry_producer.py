@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.manager import AutonomyManager
 from implementations.runtime.donkeycar.donkey_part import AutonomyPilotPart
 from implementations.runtime.donkeycar.host_telemetry import (
     HOST_TELEMETRY_BOUNDARY,
@@ -58,9 +57,7 @@ def _store(clock: _Clock | None = None, *, max_records: int = 256) -> HostTeleme
         vehicle_id="piracer",
         source_id="donkeycar:piracer",
         run_id="donkey-run-test",
-        generation_id="hold-action:1000",
-        activation_engine_id="hold-action",
-        activation_activated_at_ms=1_000,
+        generation_id="decision-test",
         clock=active_clock,
         max_records=max_records,
     )
@@ -116,18 +113,14 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 record["source_id"],
                 record["run_id"],
                 record["generation_id"],
-                record["activation"]["engine_id"],
-                record["activation"]["activated_at_ms"],
-                record["activation"]["generation_id"],
+                record["activation"],
             ),
             (
                 "piracer",
                 "donkeycar:piracer",
                 "donkey-run-test",
-                "hold-action:1000",
-                "hold-action",
-                1_000,
-                "hold-action:1000",
+                "decision-test",
+                {"generation_id": "decision-test"},
             ),
         )
         self.assertEqual(record["source_frame"], _frame(1))
@@ -141,10 +134,8 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 "piracer",
                 "donkeycar:piracer",
                 "donkey-run-test",
-                "hold-action:1000",
-                "hold-action",
-                1_000,
-                "hold-action:1000",
+                "decision-test",
+                "decision-test",
                 "donkey_frame_000001",
                 1,
                 10_000,
@@ -163,10 +154,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 vehicle_id="piracer",
                 source_id="donkeycar:piracer",
                 run_id="donkey-run-test",
-                generation_id="hold-action:1000",
-                activation_engine_id="hold-action",
-                activation_activated_at_ms=1_000,
-                activation_generation_id="other-generation",
+                generation_id="",
             )
 
         mismatch = _store()
@@ -431,10 +419,9 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 return_value=10_000,
             ),
             patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
-            patch("autonomy.runtime.manager.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(
-                host=AutonomyCycleHost(manager=AutonomyManager()),
+                host=AutonomyCycleHost(),
                 min_interval_s=0.0,
                 host_telemetry=adapter,
             )
@@ -473,7 +460,6 @@ class DriveModeBoundaryTests(unittest.TestCase):
         with (
             patch.object(module, "timestamp_ms", return_value=10_000),
             patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
-            patch("autonomy.runtime.manager.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(
                 host=AutonomyCycleHost(),
@@ -493,7 +479,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         self.assertTrue(records["ok"])
         self.assertEqual(len(records["records"]), 2)
         self.assertEqual(records["records"][0]["source_frame"], records["records"][1]["source_frame"])
-        self.assertEqual(part.latest_snapshot.frame_index, 0)
+        self.assertEqual(part.latest_state.frame_index, 0)
         self.assertEqual(records["records"][1]["host_tick"]["skipped_since_previous"], 0)
 
     def test_observer_failure_preserves_drive_mode_output_and_shutdown_stops_store(self) -> None:

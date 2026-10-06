@@ -1,1 +1,0 @@
-"""Floor-continuity candidate implementation."""

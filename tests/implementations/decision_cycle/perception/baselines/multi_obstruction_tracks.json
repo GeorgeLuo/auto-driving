@@ -1,0 +1,171 @@
+[
+ {
+  "frame_id": "frame_0",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.1938,
+      0.2917,
+      0.425,
+      0.625
+     ],
+     "confidence": 0.6287,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "new"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_1",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.212,
+      0.2917,
+      0.4453,
+      0.625
+     ],
+     "confidence": 0.6284,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_2",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2387,
+      0.2917,
+      0.4707,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_3",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2664,
+      0.2917,
+      0.4999,
+      0.625
+     ],
+     "confidence": 0.6283,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_4",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2964,
+      0.2917,
+      0.5284,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_5",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.2964,
+      0.2917,
+      0.5284,
+      0.625
+     ],
+     "confidence": 0.6286,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "held"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_6",
+  "tracked_observation": {
+   "things": [],
+   "track_events": {
+    "0": "lost"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_7",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.3597,
+      0.2917,
+      0.5912,
+      0.625
+     ],
+     "confidence": 0.6287,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "reacquired"
+   }
+  }
+ },
+ {
+  "frame_id": "frame_8",
+  "tracked_observation": {
+   "things": [
+    {
+     "bbox_xyxy_norm": [
+      0.4001,
+      0.2917,
+      0.6335,
+      0.625
+     ],
+     "confidence": 0.6284,
+     "thing_id": "obstruction_track_000"
+    }
+   ],
+   "track_events": {
+    "0": "matched"
+   }
+  }
+ }
+]

@@ -21,7 +21,7 @@ class PiRuntimeSmokeTests(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertEqual(status["drive_mode"], "user")
         self.assertTrue(status["engine"])
-        self.assertTrue(status["perception_algorithm"])
+        self.assertTrue(status["perception_preset"])
 
 
 if __name__ == "__main__":

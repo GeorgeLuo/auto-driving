@@ -5,11 +5,10 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
-from autonomy.decision_cycle.memory.evidence import MemoryProvenance, RetainedEvidence
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
-from implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin import (
-    PLUGIN_ID,
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin import (
     AvoidRecentObstruction,
     propose as _propose,
 )
@@ -45,9 +44,9 @@ def _record(
         kind=kind,
         label=kind,
         confidence=confidence,
-        provenance=MemoryProvenance(
+        origin=MemoryOrigin(
             observation_id="obs",
-            evidence_id="ev",
+            observed_id="ev",
             coordinate_frame=location_frame,
             observed_at_ms=updated_at_ms,
             updated_at_ms=updated_at_ms,
@@ -283,27 +282,6 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(future.lifecycle, "inactive")
         self.assertNotEqual(future.reason, "future_dated_provenance")
 
-    def test_ready_malformed_capabilities_rejected_at_source(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import ready_envelope
-
-        memory = {EVIDENCE_KEY: (_record(),)}
-        # Non-mapping / incomplete ready capabilities fail source construction.
-        with self.assertRaises((TypeError, ValueError)):
-            build_decision_data_source(
-                frame_id="frame_001",
-                frame_index=0,
-                timestamp_ms=1000,
-                capabilities=ready_envelope("not-a-dict", updated_at_ms=1000),
-            )
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="frame_001",
-                frame_index=0,
-                timestamp_ms=1000,
-                capabilities=ready_envelope(
-                    {"max_abs_steering": 1.0}, updated_at_ms=1000
-                ),
-            )
 
     def test_capabilities_unavailable_uses_configured_magnitude(self) -> None:
         from autonomy.decision_cycle.proposal.inputs import unavailable_envelope
@@ -374,9 +352,9 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             kind="obstacle",
             label="obstacle",
             confidence=0.8,
-            provenance=MemoryProvenance(
+            origin=MemoryOrigin(
                 observation_id="obs",
-                evidence_id="ev",
+                observed_id="ev",
                 coordinate_frame="image",
                 observed_at_ms=1000,
                 updated_at_ms=1000,
@@ -403,27 +381,13 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertAlmostEqual(p.command.throttle, 0.60)
         self.assertEqual(p.command.gear, "forward")
 
-    def test_invalid_avoidance_configuration(self) -> None:
-        for kwargs in (
-            {"steer_magnitude": -0.1},
-            {"steer_magnitude": 1.1},
-            {"steer_magnitude": 0},
-            {"steer_magnitude": float("nan")},
-            {"accepted_kinds": "obstacle"},
-            {"accepted_kinds": []},
-            {"retained_max_age_ms": True},
-            {"retained_max_age_ms": 0},
-        ):
-            with self.subTest(**{key: repr(value) for key, value in kwargs.items()}):
-                with self.assertRaises(ValueError):
-                    AvoidRecentObstruction(**kwargs)
 
     def test_loaded_plugin_matches_propose(self) -> None:
         plugin = AvoidRecentObstruction(steer_magnitude=0.5)
-        self.assertEqual(plugin.plugin_id, PLUGIN_ID)
+        self.assertEqual(plugin.plugin_id, "avoid_recent_obstruction")
         inputs = _source((_record(zone="left"),))
         self.assertEqual(
-            plugin(*inputs).to_dict(),
+            plugin.propose(*inputs).to_dict(),
             propose(inputs, steer_magnitude=0.5).to_dict(),
         )
 

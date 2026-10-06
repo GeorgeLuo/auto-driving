@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import selectors
+import signal
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support.cli_runner import run_automa
+from tests.support.cli_runner import AUTOMA_PATH, WORKSPACE_ROOT, run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
 
@@ -22,6 +27,60 @@ def _session_fingerprint(payload: dict) -> dict:
 
 
 class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
+    def test_interrupting_a_terminal_stream_does_not_stop_the_background_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
+            runtime_root = Path(tmp) / "vehicles"
+            env = {"CHASE_UI_WS_URL": ws_url}
+            run_automa(
+                "vehicles", "update", "perception", "--id", "chase-sim-chaser",
+                runtime_root=runtime_root, extra_env=env,
+            )
+            try:
+                run_automa(
+                    "vehicles", "automation", "run", "--id", "chase-sim-chaser",
+                    "--observe-only", "--frames", "0", runtime_root=runtime_root, extra_env=env,
+                )
+                stream_env = {
+                    **os.environ, **env,
+                    "AUTOMA_RUNTIME_ROOT": str(runtime_root),
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                    "PYTHONPATH": os.pathsep.join(filter(None, (
+                        str(WORKSPACE_ROOT / "tests/support/offline"),
+                        os.environ.get("PYTHONPATH"),
+                    ))),
+                }
+                with subprocess.Popen(
+                    [sys.executable, str(AUTOMA_PATH), "vehicles", "stream", "perception",
+                     "--id", "chase-sim-chaser", "--json"],
+                    cwd=WORKSPACE_ROOT, env=stream_env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                ) as stream:
+                    try:
+                        with selectors.DefaultSelector() as reader:
+                            reader.register(stream.stdout, selectors.EVENT_READ)
+                            self.assertTrue(reader.select(timeout=10), "stream did not publish")
+                            self.assertEqual(json.loads(stream.stdout.readline())["status"], "live")
+                        stream.send_signal(signal.SIGINT)
+                        _, stderr = stream.communicate(timeout=10)
+                        self.assertEqual(stream.returncode, 130)
+                        self.assertEqual(stderr, "")
+                    finally:
+                        if stream.poll() is None:
+                            stream.terminate()
+                            stream.wait(timeout=5)
+                status = json.loads(run_automa(
+                    "vehicles", "automation", "status", "--id", "chase-sim-chaser", "--json",
+                    runtime_root=runtime_root, extra_env=env,
+                ).stdout)
+                self.assertTrue(status["vehicles"][0]["process"]["running"])
+                self.assertEqual(status["vehicles"][0]["activation_problems"], [])
+                self.assertFalse((runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").exists())
+            finally:
+                run_automa(
+                    "vehicles", "automation", "stop", "--id", "chase-sim-chaser",
+                    runtime_root=runtime_root, extra_env=env, check=False,
+                )
+
     def test_primary_journey_uses_shared_passive_gates_and_cleans_up(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
@@ -57,13 +116,18 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 )
                 initial_fingerprint = _session_fingerprint(initial_vehicle)
 
+                run_automa(
+                    "vehicles", "update", "memory", "--id", "chase-sim-chaser",
+                    "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
+                )
+
                 update = run_automa(
                     "vehicles",
                     "update",
                     "perception",
                     "--id",
                     "chase-sim-chaser",
-                    "--algorithm",
+                    "--preset",
                     "lightweight_observer",
                     runtime_root=runtime_root,
                     extra_env=env,
@@ -92,6 +156,30 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         "Ready for: inspect perception and stop automation",
                         run.stdout,
                     )
+
+                    for step in ("perception", "memory"):
+                        probe = json.loads(run_automa(
+                            "vehicles", "stream", step, "--id", "chase-sim-chaser",
+                            "--once", "--json", runtime_root=runtime_root, extra_env=env,
+                        ).stdout)
+                        self.assertEqual(probe["status"], "live")
+
+                    old_run = json.loads(run_automa(
+                        "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                        "--json", runtime_root=runtime_root, extra_env=env,
+                    ).stdout)["vehicles"][0]["state"]["run_id"]
+                    restarted = run_automa(
+                        "vehicles", "automation", "restart", "--id", "chase-sim-chaser",
+                        "--observe-only", "--frames", "0", "--open-view",
+                        runtime_root=runtime_root, extra_env=env,
+                    )
+                    self.assertIn("Automation ready", restarted.stdout)
+                    self.assertIn("Browser opened:", restarted.stdout)
+                    new_run = json.loads(run_automa(
+                        "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                        "--json", runtime_root=runtime_root, extra_env=env,
+                    ).stdout)["vehicles"][0]["state"]["run_id"]
+                    self.assertNotEqual(new_run, old_run)
 
                     running = json.loads(
                         run_automa(

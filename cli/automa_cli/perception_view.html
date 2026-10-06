@@ -507,6 +507,20 @@
       };
     }
 
+    // Every memory plugin's key count by plugin_id; /memory shows each ledger.
+    function memoryKeysText(memory) {
+      if (!memory) return "open /memory";
+      const plugins = Array.isArray(memory.plugins)
+        ? memory.plugins.filter((entry) => entry && typeof entry.plugin_id === "string")
+        : [];
+      if (!plugins.length) return "no plugins";
+      return plugins.map((entry) => {
+        const state = entry.state || {};
+        const count = state.record_count ?? (Array.isArray(state.records) ? state.records.length : "?");
+        return `${entry.plugin_id} ${count}`;
+      }).join(", ");
+    }
+
     function renderData() {
       document.getElementById("vehicle").textContent = latest.vehicle_id || "unknown vehicle";
       const metrics = document.getElementById("frameMetrics");
@@ -520,7 +534,12 @@
       appendMetric(metrics, "Perception", `${latest.cycle?.perception_duration_ms ?? "?"} ms`);
       appendMetric(metrics, "Confidence", Number(latest.perception?.confidence || 0).toFixed(3));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");
-      appendMetric(metrics, "Memory keys", latest.memory?.record_count ?? latest.memory?.records?.length ?? "open /memory");
+      appendMetric(metrics, "Memory keys", memoryKeysText(latest.memory));
+      appendMetric(
+        metrics,
+        "Evidence publisher",
+        latest.memory ? latest.memory.evidence_publisher || "none" : "—"
+      );
 
       const runs = document.getElementById("pluginRuns");
       runs.replaceChildren();

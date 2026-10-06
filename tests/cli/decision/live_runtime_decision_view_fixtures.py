@@ -2,22 +2,23 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from implementations.decision_cycle.memory.bounded_evidence.ledger import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
-from implementations.runtime.engines.catalog import create_action_composition
 from cli.automa_cli import decision as decision_module
+from cli.automa_cli import proposal as proposal_module
 from cli.automa_cli.decision import (
-    ENGINE_ID,
     build_decision_stream_frame,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,
-    update_vehicle_decision,
 )
+from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
+from tests.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
 
 
 SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
@@ -40,15 +41,22 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(
             setattr, decision_module, "RUNTIME_ROOT", self._old_runtime_root
         )
-        staged = update_vehicle_decision(
-            vehicle_id="chase-sim-chaser", engine_id=ENGINE_ID, json_output=True
-        )
-        self.assertEqual(staged.exit_code, 0, staged.message)
+        proposal_root = proposal_module.RUNTIME_ROOT
+        proposal_module.RUNTIME_ROOT = self.runtime_root
+        self.addCleanup(setattr, proposal_module, "RUNTIME_ROOT", proposal_root)
+        for step in ("proposal", "action"):
+            code, message = update_vehicle_step(
+                vehicle_id="chase-sim-chaser",
+                step=step,
+                runtime_root=self.runtime_root,
+                json_output=True,
+            )
+            self.assertEqual(code, 0, message)
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"
-        self.activation_path = self.runtime_dir / "decision" / "active.json"
-        self.activation = json.loads(self.activation_path.read_text(encoding="utf-8"))
+        self.activation_path = self.runtime_dir
+        self.activation = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
         self.server = RuntimeViewServer(
             vehicle_id="chase-sim-chaser",
             automation_dir=self.automation_dir,
@@ -71,7 +79,7 @@ class LiveRuntimeDecisionViewFixture:
             raw = json.loads(
                 (ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8")
             )["frames"][0]
-        cycle = create_action_composition().run(
+        cycle = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
@@ -79,14 +87,12 @@ class LiveRuntimeDecisionViewFixture:
             shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
             host_application=host_application,
         )
-        _control = cycle.control
         return build_decision_stream_frame(
             cycle,
             vehicle_id="chase-sim-chaser",
             run_id=run_id,
             worker_pid=os.getpid(),
-            activation_engine_id=ENGINE_ID,
-            activation_activated_at_ms=self.activation["activated_at_ms"],
+            generation_id=self.activation["generation_id"],
         )
 
     def _accepted_frame_with_evidence(self, mutate=None) -> dict:
@@ -96,15 +102,15 @@ class LiveRuntimeDecisionViewFixture:
             ][0]
         )
         record = raw["evidence"][0]
-        provenance = record["provenance"]
+        origin = record["origin"]
         thing = {
-            "thing_id": provenance["evidence_id"],
+            "thing_id": origin["observed_id"],
             "kind": record["kind"],
             "label": record["label"],
             "location": deepcopy(record["location"]),
             "confidence": record["confidence"],
             "properties": deepcopy(record["properties"]),
-            "source_plugin_id": provenance["source_plugin_id"],
+            "source_plugin_id": origin["source_plugin_id"],
         }
         raw["observation"]["things"] = [thing]
         if mutate is not None:
@@ -130,7 +136,7 @@ class LiveRuntimeDecisionViewFixture:
             "captured_at_ms": stream_frame["timestamp_ms"],
             "run_id": run_id,
             "worker_pid": os.getpid(),
-            "sensor_snapshot": {
+            "sensor_frame": {
                 "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
             },
         }

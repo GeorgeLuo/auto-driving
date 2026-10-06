@@ -1,0 +1,45 @@
+# Memory plugins
+
+One folder per plugin, named for its `plugin_id`. For example, the
+`bounded_evidence` plugin lives in `plugins/bounded_evidence/`.
+
+## Rules
+
+- `plugin.py` holds the plugin class, which declares `plugin_id`. Ids are
+  unique within the memory step: registering a second definition under an
+  existing id raises `DuplicatePluginIdError`. Ids are scoped to a step, so a
+  perception plugin may share a memory plugin's id.
+- Memory plugins do not read the camera feed. The runner hands them the frame
+  context without `sensor_frame`; evidence from the feed comes through the
+  observation, from a perception plugin.
+- Register a plugin with one entry in `../catalog.py`: its `spec`
+  (`module.path:Class`), a description, and its default config.
+- Keep cross-frame state in `context.shared_memory`, under keys the plugin
+  owns. Publish what later steps read at the keys named in
+  `autonomy/decision_cycle/memory/publication.py`: `EVIDENCE_KEY` for
+  retained evidence records.
+- A retained-evidence ledger's status summary uses the names in
+  `autonomy/decision_cycle/memory/interface.py`: `LEDGER_SUMMARY_KEYS`
+  (`epoch_id`, `health`, `bounds`, `record_count`). `health` is `empty` or
+  `healthy`. The framework does not require them. Live CLI probes return null
+  for missing fields. Inspect frame rows default a missing `record_count` to
+  0, preserve an explicit null, and omit `bounds`. The reset check reads
+  `health` and `record_count` from every applied plugin. A reset emptied the
+  memory when each plugin reports `empty` health or no records.
+- The report keeps every applied plugin's status, keyed by `plugin_id`, and
+  names `evidence_publisher`: the plugin whose value `EVIDENCE_KEY` holds.
+  Inspect, the live probes, the PiCar pages, and the workbench each list
+  every plugin and that publisher. The evidence slot itself stays one value,
+  last write wins.
+  Publisher tracking compares object identity before and after `update` or
+  `reset`: replacing the value names that plugin; removing the key clears the
+  publisher. Reassigning the same object or changing it in place keeps the
+  previous publisher. Publish a replacement value to attribute new evidence
+  to this plugin; see `autonomy/decision_cycle/memory/runner.py`.
+- How several plugins share that map, and what a failure does, is declared in
+  `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
+  (selection order, one `EVIDENCE_KEY`, last write wins) and `FAILURE_POLICY`
+  (an update failure stops the cycle, a reset failure is recorded, a missing
+  observation is still passed in). `MemoryRunner` reads those values.
+- Reuse goes through `../shared/`. A plugin does not import another plugin's
+  modules.

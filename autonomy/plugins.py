@@ -1,30 +1,38 @@
 """Step-independent plugin discovery and selection.
 
+A plugin declares its own ID as its ``plugin_id`` attribute; that is the only
+ID it has. IDs are unique within a step. Whoever owns a catalog resolves
+conflicts: registering a second definition under an ID the step already has
+raises ``DuplicatePluginIdError``, and a loaded plugin must declare the ID it
+was selected under (``require_plugin_id``).
+
 The core tracks which plugin definitions are selected. A step owns construction,
 execution, reset, and validation of the behavior declared by those definitions.
 ``replace_selection`` sequences that handoff when a resolved selection changes.
 ``PluginSelectionRuntime`` can prepare the same handoff and commit it later, so
 the next selection is loaded and validated before published instances are reset.
 ``plugin_report`` describes the catalog, the manager's requested selection, and
-the instances a step has published. Definitions may come from packaged entries,
-explicit JSON files, or a future catalog implementing ``PluginResolver``.
+the instances a step has published. Definitions may come from packaged entries
+or a future catalog implementing ``PluginResolver``.
+``instantiate_plugin`` constructs a definition's entrypoint with its config; a
+step checks the resulting instance against its own plugin protocol.
 """
 
 from __future__ import annotations
 
-import json
+import importlib
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar
-
-
-PluginReference = str | Path
 
 
 class PluginManagementError(ValueError):
     """A definition or selection could not be resolved."""
+
+
+class DuplicatePluginIdError(PluginManagementError):
+    """Two plugin definitions in one step share an ID."""
 
 
 @dataclass(frozen=True)
@@ -36,7 +44,6 @@ class PluginDefinition:
     entrypoint: str
     config: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
-    source: Path | None = None
 
     def __post_init__(self) -> None:
         for name in ("step", "plugin_id", "entrypoint"):
@@ -50,44 +57,36 @@ class PluginDefinition:
             object.__setattr__(self, name, deepcopy(dict(value)))
 
     @classmethod
-    def from_file(cls, path: str | Path) -> PluginDefinition:
-        """Read a local definition without importing or constructing its plugin."""
+    def declared(
+        cls,
+        step: str,
+        entrypoint: str,
+        config: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> PluginDefinition:
+        """A definition under the ID the entrypoint declares; nothing is constructed."""
 
-        source = Path(path).expanduser().resolve()
-        try:
-            payload = json.loads(source.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            raise PluginManagementError(f"could not read plugin file {source}: {exc}") from exc
-        if not isinstance(payload, dict):
-            raise PluginManagementError(f"plugin file {source} must contain an object")
-        try:
-            return cls(
-                step=payload["step"],
-                plugin_id=payload["id"],
-                entrypoint=payload["entrypoint"],
-                config=payload.get("config", {}),
-                metadata=payload.get("metadata", {}),
-                source=source,
-            )
-        except (KeyError, PluginManagementError) as exc:
-            raise PluginManagementError(f"invalid plugin file {source}: {exc}") from exc
+        return cls(
+            step=step,
+            plugin_id=declared_plugin_id(entrypoint),
+            entrypoint=entrypoint,
+            config=config or {},
+            metadata=metadata or {},
+        )
 
 
 class PluginResolver(Protocol):
-    """An ID or file resolver; a remote catalog can provide this later."""
+    """An ID resolver; a remote catalog can provide this later."""
 
     def list(self, step: str) -> tuple[PluginDefinition, ...]:
-        """List selectable catalog definitions without constructing plugins.
-
-        Explicit file references can also be resolved but are not enumerated.
-        """
+        """List selectable catalog definitions without constructing plugins."""
         ...
 
-    def resolve(self, step: str, reference: PluginReference) -> PluginDefinition: ...
+    def resolve(self, step: str, plugin_id: str) -> PluginDefinition: ...
 
 
 class LocalPluginCatalog:
-    """Packaged definitions by ID, with explicit file references as an option."""
+    """Definitions by step and ID; an ID appears at most once per step."""
 
     def __init__(self, definitions: Iterable[PluginDefinition] = ()) -> None:
         self._definitions: dict[tuple[str, str], PluginDefinition] = {}
@@ -97,9 +96,10 @@ class LocalPluginCatalog:
     def register(self, definition: PluginDefinition) -> None:
         key = (definition.step, definition.plugin_id)
         existing = self._definitions.get(key)
-        if existing is not None and existing != definition:
-            raise PluginManagementError(
-                f"duplicate plugin id {definition.plugin_id!r} for step {definition.step!r}"
+        if existing is not None:
+            raise DuplicatePluginIdError(
+                f"duplicate {definition.step} plugin id {definition.plugin_id!r}: "
+                f"declared by {existing.entrypoint} and {definition.entrypoint}"
             )
         self._definitions[key] = definition
 
@@ -109,17 +109,13 @@ class LocalPluginCatalog:
             if item_step == step
         )
 
-    def resolve(self, step: str, reference: PluginReference) -> PluginDefinition:
-        if isinstance(reference, Path):
-            return PluginDefinition.from_file(reference)
-        if not isinstance(reference, str) or not reference.strip():
-            raise PluginManagementError("plugin reference must be an ID or file path")
-        definition = self._definitions.get((step, reference))
-        if definition is not None:
-            return definition
-        if reference.endswith(".json") or "/" in reference or "\\" in reference:
-            return PluginDefinition.from_file(reference)
-        raise PluginManagementError(f"unknown plugin id {reference!r} for step {step!r}")
+    def resolve(self, step: str, plugin_id: str) -> PluginDefinition:
+        if not isinstance(plugin_id, str) or not plugin_id.strip():
+            raise PluginManagementError("plugin id must be a non-empty string")
+        definition = self._definitions.get((step, plugin_id))
+        if definition is None:
+            raise PluginManagementError(f"unknown plugin id {plugin_id!r} for step {step!r}")
+        return definition
 
 
 class PluginManager:
@@ -176,12 +172,12 @@ class PluginManager:
         return tuple(definition.plugin_id for definition in self._selected)
 
     def select(
-        self, references: Iterable[PluginReference | PluginDefinition]
+        self, references: Iterable[str | PluginDefinition]
     ) -> tuple[PluginDefinition, ...]:
         """Resolve the full selection before changing the active definitions."""
 
         if isinstance(references, (str, bytes, Mapping)):
-            raise PluginManagementError("plugin selection must be a collection of IDs or paths")
+            raise PluginManagementError("plugin selection must be a collection of IDs")
         try:
             values = list(references)
         except TypeError as exc:
@@ -208,14 +204,10 @@ class PluginManager:
         self._selected = tuple(selected.values())
         return self._selected
 
-    def add(self, reference: PluginReference) -> tuple[PluginDefinition, ...]:
-        definition = self.resolver.resolve(self.step, reference)
+    def add(self, plugin_id: str) -> tuple[PluginDefinition, ...]:
+        definition = self.resolver.resolve(self.step, plugin_id)
         if definition.plugin_id in self.selected_ids:
-            # A file reference may have changed since the previous selection.
-            return self.select(
-                definition if item.plugin_id == definition.plugin_id else item
-                for item in self._selected
-            )
+            return self._selected
         return self.select((*self._selected, definition))
 
     def remove(self, plugin_id: str) -> tuple[PluginDefinition, ...]:
@@ -321,6 +313,47 @@ class PluginSelectionRuntime(Generic[_T]):
 
         self.prepare(load=load, validate=validate)
         return self.commit(reset=reset)
+
+
+def _import_entrypoint(entrypoint: str, *, reload_module: bool = False) -> Any:
+    module_name, separator, attribute = entrypoint.partition(":")
+    if not separator or not module_name or not attribute:
+        raise PluginManagementError(
+            f"plugin entrypoint must be 'module.path:Name', got {entrypoint!r}"
+        )
+    importlib.invalidate_caches()
+    module = importlib.import_module(module_name)
+    if reload_module:
+        module = importlib.reload(module)
+    return getattr(module, attribute)
+
+
+def declared_plugin_id(entrypoint: str) -> str:
+    """The ``plugin_id`` the entrypoint declares, read without constructing it."""
+
+    plugin_id = getattr(_import_entrypoint(entrypoint), "plugin_id", None)
+    if not isinstance(plugin_id, str) or not plugin_id.strip():
+        raise PluginManagementError(f"plugin {entrypoint} does not declare a plugin_id")
+    return plugin_id
+
+
+def instantiate_plugin(definition: PluginDefinition, *, reload_module: bool = False) -> Any:
+    """Import ``definition.entrypoint`` and call it with a copy of its config."""
+
+    factory = _import_entrypoint(definition.entrypoint, reload_module=reload_module)
+    return factory(**deepcopy(dict(definition.config)))
+
+
+def require_plugin_id(plugin: Any, definition: PluginDefinition) -> str:
+    """Return the instance's ``plugin_id``; it must equal the ID it was selected under."""
+
+    plugin_id = getattr(plugin, "plugin_id", None)
+    if plugin_id != definition.plugin_id:
+        raise TypeError(
+            f"{definition.step} plugin {definition.entrypoint} declares plugin_id "
+            f"{plugin_id!r}, selected as {definition.plugin_id!r}"
+        )
+    return plugin_id
 
 
 def replace_selection(
@@ -511,18 +544,9 @@ def _report_records(
 def _report_plugin(plugin_id: str, record: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "plugin_id": plugin_id,
-        "implementation_id": _report_identifier(record.get("implementation_id")),
         "duration_ms": _report_duration(record.get("duration_ms")),
         "error": _report_error(record.get("error")),
     }
-
-
-def _report_identifier(value: Any) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        raise PluginManagementError("plugin implementation_id must be a non-empty string")
-    return value
 
 
 def _report_duration(value: Any) -> float | int | None:

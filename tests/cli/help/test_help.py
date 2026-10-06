@@ -24,7 +24,7 @@ class HelpCommandTests(unittest.TestCase):
                 "perception",
                 "--id",
                 "chase-sim-chaser",
-                "--algorithm",
+                "--preset",
                 "lightweight_observer",
             ],
             [

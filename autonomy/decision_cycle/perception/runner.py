@@ -291,7 +291,11 @@ class PerceptionRunner:
                     "required": True,
                     "required_by": plugin_ids,
                     "source": "resolved once by the framework and injected by plugin-local name",
-                    "missing_behavior": "framework marks the plugin unavailable without invoking it",
+                    "missing_behavior": (
+                        "framework skips perceive and resets stateful plugins; "
+                        "the plugin is unavailable unless its reset fails, "
+                        "which is isolated as that plugin's frame error"
+                    ),
                 }
                 for feed_id, plugin_ids in sorted(feed_consumers.items())
             ],

@@ -14,8 +14,10 @@ from the feed reaches it through the observation or the map, written by a
 perception plugin.
 
 The CLI and the viewers it serves read ``LEDGER_SUMMARY_KEYS`` from each
-plugin's status. A missing key is null in that report; the framework does not
-reject the plugin. Inspect frame rows default a missing ``record_count`` to 0.
+plugin's status. The report preserves that status without adding missing keys;
+the framework does not reject the plugin. Live CLI ledger projections return
+null for missing keys. Inspect and workbench frame rows default a missing
+``record_count`` to 0, preserve an explicit null, and omit ``bounds``.
 
 How several plugins share one map, including the one ``EVIDENCE_KEY`` and
 last-write-wins, is ``composition_declaration`` in ``interface``. What a

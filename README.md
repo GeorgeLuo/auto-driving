@@ -119,7 +119,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
-| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info open with the staged preset and its enabled and available plugins; perception info also reports the live view URL, and memory info the live memory step. |
+| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info show the staged preset, enabled and available plugins, and runner schema (inputs, output, composition and failure policy); perception info also reports the live view URL, and memory info the live memory step. |
 | `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
@@ -136,7 +136,8 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 `stream perception` and `stream memory` take the same flags. By default each
 refresh redraws the terminal view, and on PiCar updates the local view whose
-URL it shows. `--json` prints one `vehicle_<step>_live_v0` probe per refresh in
+URL it shows. `--json` prints one `vehicle_perception_live_v0` or
+`vehicle_memory_live_v1` probe per refresh in
 place of both, for scripts.
 `--once` exits 2 unless the probe's `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
@@ -333,7 +334,9 @@ their default configs from `implementations/decision_cycle/perception/catalog.py
 and a plugin list is recorded as the preset it equals, else `custom`.
 
 `vehicles info perception` reports the staged preset, its enabled plugins and
-the available ones. Staging replaces the selection. A running worker applies a
+the available ones, and the staged runner's `perception_schema_v3` contract.
+`--json` returns `vehicle_perception_info_v0` with that contract under
+`perception_schema`. Staging replaces the selection. A running worker applies a
 changed plugin list at its next frame and changed plugin configs when it
 restarts; a stopped one uses the selection the next time it starts:
 
@@ -416,7 +419,12 @@ default configs from `implementations/decision_cycle/memory/catalog.py`.
 and a plugin list is recorded as the preset it equals, else `custom`.
 
 `vehicles info memory` reports the staged preset, its enabled plugins and the
-available ones. Staging replaces the selection. A running worker applies a
+available ones, and the staged runner's `memory_schema_v1` contract.
+`--json` returns `vehicle_memory_info_v1` with that contract under `memory_schema`.
+Both steps describe inputs, plugins, output, composition and failure policy;
+memory's contract also names the ledger fields the CLI and viewers project from
+each plugin's status. The report itself preserves that status, including absent
+ledger keys. Staging replaces the selection. A running worker applies a
 changed plugin list at its next frame and changed plugin configs when it
 restarts; a stopped one uses the selection the next time it starts:
 

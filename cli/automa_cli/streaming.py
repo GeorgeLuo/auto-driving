@@ -13,6 +13,7 @@ from .automation import (
 )
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
+from .step_activations import absent_step_error
 from autonomy.decision_cycle.memory.interface import (
     BOUNDS,
     EPOCH_ID,
@@ -1139,10 +1140,7 @@ def _probe_physical_step(
             "endpoint": f"{base_url}/autonomy/status",
             "drive_mode": status.get("drive_mode"),
             **has_memory,
-            "error": (
-                f"No live {step} step in /autonomy/status. "
-                "If activation was deployed, update core then autonomy with --restart."
-            ),
+            "error": absent_step_error(step, vehicle_id, "picar"),
             "probed_at_ms": probed_at_ms,
         }
 
@@ -1227,11 +1225,7 @@ def _probe_chase_step(step: str, *, vehicle_id: str) -> dict[str, Any]:
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
             "status": "absent",
-            "error": (
-                f"Automation worker has no live {step} step. "
-                f"Stage {step} then restart automation: "
-                f"./cli/automa vehicles update {step} --id {vehicle_id}"
-            ),
+            "error": absent_step_error(step, vehicle_id, "chase-sim"),
             "probed_at_ms": probed_at_ms,
             f"worker_{step}": entry,
             "worker_status": state.get("status"),

@@ -33,9 +33,11 @@ from .bundles import (
 )
 from .step_activations import (
     BUILTIN_STEPS,
+    apply_staged,
     bundle_activation_problems,
     ensure_builtin_activations,
     format_activation_problems,
+    format_apply_staged,
     read_bundle_activation,
     refresh_release,
     stage_activation,
@@ -374,6 +376,7 @@ def update_vehicle_perception(
         sample_paths=sample_paths,
         restart=restart,
     )
+    payload["apply"] = apply_staged(vehicle_id, provider, "perception")
     readiness = None
     next_action = None
     readiness_exit_code = 0
@@ -410,6 +413,7 @@ def update_vehicle_perception(
         manifest_path=manifest_path,
         sample_paths=sample_paths,
     )
+    message += "\n" + "\n".join(format_apply_staged(payload["apply"]))
     if readiness is not None:
         label = "Ready for" if readiness["status"] == "ready" else "Not ready for"
         message += f"\n{label}: {readiness['ready_for']}"

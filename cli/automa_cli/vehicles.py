@@ -233,7 +233,7 @@ def get_vehicle_status(
     deployed_by_id = {
         deployed_id: item
         for deployed_id, item in all_deployed_by_id.items()
-        if _is_chase_vehicle_id(deployed_id)
+        if is_chase_vehicle_id(deployed_id)
     }
     other_local_deployments = [
         {
@@ -355,7 +355,7 @@ def format_vehicle_status(payload: dict[str, Any]) -> str:
     return "\n".join(_format_vehicle_status_card(payload))
 
 
-def _is_chase_vehicle_id(vehicle_id: str) -> bool:
+def is_chase_vehicle_id(vehicle_id: str) -> bool:
     return vehicle_id == "chase-sim-chaser" or vehicle_id.startswith("chase-sim-")
 
 

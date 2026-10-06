@@ -22,7 +22,7 @@ from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS, AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import (
     ChaseCaptureValidationError,
@@ -47,12 +47,14 @@ from .decision import (
 )
 from .paths import display_path, safe_path_part
 from .step_activations import (
+    apply_staged,
     bundle_activation_path,
     bundle_activation_problems,
     decision_generation_id,
     decision_identity,
     format_activation_problems,
     read_bundle_activation,
+    staging_vehicle,
 )
 from .step_hosting import load_staged_runner, plugin_report
 from .runtime_view import RuntimeViewServer
@@ -65,6 +67,7 @@ from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
     format_active_vehicles,
+    is_chase_vehicle_id,
 )
 
 
@@ -127,6 +130,32 @@ class _PendingAutomationFrame:
     chaser_reference: dict[str, Any] | None = None
 
 
+def _onboard_automation(vehicle_id: str, provider: Any) -> CommandResult:
+    """`automation` hosts the Chase worker; the PiCar hosts the same cycle onboard."""
+
+    restart = apply_staged(vehicle_id, provider, "perception")["restart_command"]
+    return CommandResult(
+        2,
+        "\n".join(
+            [
+                f"{vehicle_id} ({provider}) runs its automation onboard.",
+                f"Start or reload it: {restart}",
+                f"Watch it: ./cli/automa vehicles stream perception --id {vehicle_id}",
+            ]
+        ),
+    )
+
+
+def _staged_onboard_provider(vehicle_id: str) -> str | None:
+    """The provider of a non-Chase vehicle known from staging or discovery."""
+
+    if is_chase_vehicle_id(vehicle_id):
+        return None
+    vehicle, _unknown = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=1.0)
+    provider = vehicle.get("provider") if isinstance(vehicle, dict) else None
+    return provider if isinstance(provider, str) and provider != "chase-sim" else None
+
+
 def run_vehicle_automation(
     *,
     vehicle_id: str,
@@ -159,10 +188,7 @@ def run_vehicle_automation(
     if vehicle is None:
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
     if vehicle.get("provider") != "chase-sim":
-        return CommandResult(
-            2,
-            f"Vehicle {vehicle_id!r} is provider {vehicle.get('provider')!r}; automation run currently supports chase-sim.",
-        )
+        return _onboard_automation(vehicle_id, vehicle.get("provider"))
     if not take_control:
         vehicle_status = (
             vehicle.get("status")
@@ -301,11 +327,13 @@ def run_vehicle_automation(
         ),
     )
     # Restaged selections apply between frames, as on the Donkey host.
-    cycle_host.watch_selection("perception", manifest_path, perception_activation)
-    if memory_activation is not None:
-        cycle_host.watch_selection("memory", memory_activation_path, memory_activation)
-    if proposal_activation is not None:
-        cycle_host.watch_selection("proposal", proposal_activation_path, proposal_activation)
+    for step, activation in (
+        ("perception", perception_activation),
+        ("memory", memory_activation),
+        ("proposal", proposal_activation),
+    ):
+        if step in LIVE_SELECTION_STEPS and activation is not None:
+            cycle_host.watch_selection(step, bundle_activation_path(bundle, step), activation)
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
     run_id = _now_id("automation")
@@ -1235,6 +1263,8 @@ def start_vehicle_automation_background(
     open_view: bool = False,
     startup_wait_s: float = 20.0,
 ) -> CommandResult:
+    if (provider := _staged_onboard_provider(vehicle_id)) is not None:
+        return _onboard_automation(vehicle_id, provider)
     automation_dir = _automation_dir(vehicle_id)
     automation_dir.mkdir(parents=True, exist_ok=True)
     process_path = automation_dir / "process.json"
@@ -2010,6 +2040,8 @@ def restart_vehicle_automation(
     open_view: bool = False,
     wait_s: float = 3.0,
 ) -> CommandResult:
+    if (provider := _staged_onboard_provider(vehicle_id)) is not None:
+        return _onboard_automation(vehicle_id, provider)
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     problems = bundle_activation_problems(bundle, vehicle_id)
     if problems:

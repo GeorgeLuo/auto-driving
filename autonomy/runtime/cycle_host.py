@@ -33,6 +33,9 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.shared_memory import SharedMemory
 
 IDLE_REASON = "cycle-idle"
+# Steps whose restaged plugin selection a running host applies between frames.
+# Other steps, and changed specs or configs, take effect on a restart.
+LIVE_SELECTION_STEPS = ("perception", "memory", "proposal")
 
 
 class AutonomyCycleHost:

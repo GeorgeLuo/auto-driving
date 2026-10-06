@@ -29,6 +29,7 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 from autonomy.decision_cycle.steps import builtin_activation, step_runner
+from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import (
     packaged_activation,
@@ -103,6 +104,51 @@ def format_activation_problems(problems: list[dict[str, str]]) -> str:
             f"Reason: {problem['reason']}",
             f"Restage with your intended selection: {problem['command']}",
         )
+    )
+
+
+def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
+    """How a vehicle's running autonomy picks up ``step`` as ``vehicles update`` staged it.
+
+    The Chase worker hosts the local bundle; the PiCar hosts the copy that
+    ``vehicles update autonomy`` installs onboard. Either host selects a
+    restaged live-selection step's plugins on its next frame
+    (``selection_command`` is ``None`` when nothing needs to run); other
+    steps, and changed plugin specs or configs, take effect after
+    ``restart_command``.
+    """
+
+    live = step in LIVE_SELECTION_STEPS
+    if provider == "picar":
+        install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
+        selection, restart = install, f"{install} --restart"
+    else:
+        selection = None
+        restart = f"./cli/automa vehicles automation restart --id {vehicle_id} --observe-only"
+    return {
+        "live_selection": live,
+        "selection_command": selection if live else restart,
+        "restart_command": restart,
+    }
+
+
+def format_apply_staged(apply: dict[str, Any]) -> list[str]:
+    if not apply.get("live_selection"):
+        return [f"Apply: {apply.get('restart_command')}"]
+    selection = apply.get("selection_command") or "automatic on the running worker's next frame"
+    return [
+        f"Apply selection: {selection}",
+        f"Apply changed specs or configs: {apply.get('restart_command')}",
+    ]
+
+
+def absent_step_error(step: str, vehicle_id: str, provider: Any) -> str:
+    """The same guidance for every vehicle whose running autonomy lacks ``step``."""
+
+    restart = apply_staged(vehicle_id, provider, step)["restart_command"]
+    return (
+        f"{vehicle_id} runs no {step} step. Stage it with "
+        f"./cli/automa vehicles update {step} --id {vehicle_id}, then restart: {restart}"
     )
 
 
@@ -481,6 +527,7 @@ def update_vehicle_step(
         "activation": display_path(path),
         "manifest": activation.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
+        "apply": apply_staged(vehicle_id, vehicle.get("provider"), step),
     }
     if json_output:
         return 0, json.dumps(payload, indent=2, sort_keys=True)
@@ -489,6 +536,7 @@ def update_vehicle_step(
         [
             f"{verb} {step}: {vehicle_id} -> {', '.join(activation.plugins) or '(no plugins)'}",
             f"Activation: {display_path(path)}",
+            *format_apply_staged(payload["apply"]),
         ]
     )
 
@@ -496,6 +544,9 @@ def update_vehicle_step(
 __all__ = [
     "BUILTIN_STEPS",
     "GENERIC_UPDATE_STEPS",
+    "absent_step_error",
+    "apply_staged",
+    "format_apply_staged",
     "bundle_activation_path",
     "bundle_activation_problems",
     "decision_activations",

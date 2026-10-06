@@ -191,7 +191,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation = vehicle_commands.add_parser(
         "automation",
-        help="Manage locally deployed automation workers and their current views.",
+        help=(
+            "Manage the local Chase automation worker and its view; a PiCar runs the "
+            "same cycle onboard, started with `vehicles update autonomy --restart`."
+        ),
     )
     automation.set_defaults(handler=_handle_vehicles_automation_help)
     automation_commands = automation.add_subparsers(dest="automation_command")

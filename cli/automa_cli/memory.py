@@ -26,6 +26,8 @@ from .bundles import (
 )
 from .paths import ROOT, display_path, safe_path_part
 from .step_activations import (
+    apply_staged,
+    format_apply_staged,
     refresh_release,
     stage_activation,
     staging_vehicle,
@@ -82,6 +84,7 @@ def update_vehicle_memory(
         "activation": display_path(activation_path),
         "manifest": activation.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
+        "apply": apply_staged(vehicle_id, vehicle.get("provider"), "memory"),
     }
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -94,6 +97,7 @@ def update_vehicle_memory(
                 f"Preset: {activation.metadata['preset']}",
                 *(f"Plugin: {plugin_id} ({activation.plugin_specs[plugin_id]})" for plugin_id in selected),
                 f"Activation: {display_path(activation_path)}",
+                *format_apply_staged(payload["apply"]),
             ]
         ),
     )

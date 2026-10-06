@@ -20,6 +20,7 @@ from .decision import (
     RUNTIME_ROOT as DECISION_RUNTIME_ROOT,
     apply_vehicle_decision,
     get_vehicle_decision_info,
+    get_vehicle_proposal_info,
     stream_vehicle_decision,
 )
 from .decision_inspector import run_decision_inspector
@@ -996,6 +997,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory_info.set_defaults(handler=_handle_vehicles_info_memory)
 
+    proposal_info = info_commands.add_parser(
+        "proposal",
+        help="Show the staged proposal plugins and the runner schema.",
+        description="Show the staged proposal plugins and the runner schema.",
+    )
+    proposal_info.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    proposal_info.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable proposal info payload.",
+    )
+    proposal_info.set_defaults(handler=_handle_vehicles_info_proposal)
+
     perception_control = vehicle_commands.add_parser(
         "perception",
         help="Inspect what perception detects and measure its viability.",
@@ -1640,6 +1659,7 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "- perception  show staged perception schema and live view",
                 "- decision    show the staged steps and decision contract",
                 "- memory      show staged memory schema and live memory",
+                "- proposal    show staged proposal schema",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -2176,6 +2196,16 @@ def _handle_vehicles_info_decision(args: argparse.Namespace) -> int:
 
 def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
     result = get_vehicle_memory_info(
+        vehicle_id=args.vehicle_id,
+        json_output=args.json,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_info_proposal(args: argparse.Namespace) -> int:
+    result = get_vehicle_proposal_info(
         vehicle_id=args.vehicle_id,
         json_output=args.json,
     )

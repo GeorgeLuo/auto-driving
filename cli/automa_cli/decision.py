@@ -1,4 +1,9 @@
-"""Decision surfaces over the proposal, plan, and action steps: info, stream, and offline apply."""
+"""Decision surfaces over the proposal, plan, and action steps: info, stream, and offline apply.
+
+``vehicles info proposal`` reports the staged proposal step as ``vehicles info
+memory`` reports memory; ``vehicles info decision`` reports every step's
+selection and the decision contract.
+"""
 
 from __future__ import annotations
 
@@ -74,7 +79,7 @@ from .step_activations import (
     step_info,
 )
 from .paths import ROOT, display_path, safe_path_part
-from .step_schema import format_schema, schema_source, staged_step_info
+from .step_schema import format_staged_step, staged_step_info
 from .physical_observation import (
     PhysicalDecisionPublicationError,
     fetch_decision_publication,
@@ -423,6 +428,21 @@ def _read_surface_identity(
     return identity
 
 
+def get_vehicle_proposal_info(*, vehicle_id: str, json_output: bool = False) -> CommandResult:
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    staged, error = staged_step_info(bundle, vehicle_id, "proposal")
+    if error is not None:
+        return CommandResult(2, error)
+    payload: dict[str, Any] = {
+        "schema": "vehicle_proposal_info_v1",
+        "vehicle_id": vehicle_id,
+        **staged,
+    }
+    if json_output:
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    return CommandResult(0, "\n".join(format_staged_step("proposal", payload)))
+
+
 def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> CommandResult:
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     if not Path(bundle["runtime_dir"]).is_dir():
@@ -447,18 +467,16 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
     action_plugin = action_plugins[0] if action_plugins else None
     plan_plugins = (steps.get("plan") or {}).get("plugins") or []
     proposals: dict[str, Any] | None = None
-    proposal_schema: dict[str, Any] | None = None
     if steps.get("proposal") is not None:
-        # From the staged bundle, as perception and memory info read theirs.
+        # The staged runner's inputs; `vehicles info proposal` reports its schema.
         staged, error = staged_step_info(bundle, vehicle_id, "proposal")
         if error is not None:
             return _error_result(
                 DecisionSurfaceError("activation_invalid", error, vehicle_id=vehicle_id),
                 json_output=json_output,
             )
-        proposal_schema = staged["proposal_schema"]
         proposals = {
-            "decision_inputs": [item["name"] for item in proposal_schema["inputs"]],
+            "decision_inputs": [item["name"] for item in staged["proposal_schema"]["inputs"]],
             "plugins": proposal_plugin_ids(steps),
             "selector_id": plan_plugins[0] if plan_plugins else None,
             "output_schemas": {
@@ -515,10 +533,6 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
         "steps": step_info(bundle),
         "activations": steps,
         "proposals": proposals,
-        "proposal_schema_source": (
-            schema_source("proposal") if proposal_schema is not None else None
-        ),
-        "proposal_schema": proposal_schema,
         "combined_view": combined_view,
     }
     if json_output:
@@ -3253,6 +3267,7 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
                 "",
                 "Proposal decision:",
                 f"- plugins: {', '.join(proposals.get('plugins') or []) or '(none)'}",
+                f"- inputs: {', '.join(proposals.get('decision_inputs') or []) or '(none)'}",
                 f"- plan: {proposals.get('selector_id')}",
                 f"- output_schemas: {json.dumps(proposals.get('output_schemas') or {}, sort_keys=True)}",
                 (
@@ -3260,11 +3275,10 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
                     f"proposed_applied={authority.get('proposed_applied')} "
                     f"idle_reason={authority.get('authorized_idle_reason')}"
                 ),
+                "- schema: ./cli/automa vehicles info proposal --id "
+                + shlex.quote(str(payload["vehicle_id"])),
             ]
         )
-        schema = payload.get("proposal_schema")
-        if isinstance(schema, dict):
-            lines.extend(format_schema(payload.get("proposal_schema_source"), schema))
     else:
         lines.extend(
             [

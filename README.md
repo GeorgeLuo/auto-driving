@@ -190,7 +190,7 @@ matching identity in another step or discovery on the next update.
 
 Every step update records `metadata.controller_bundle` with `root_dir`,
 `autonomy_dir`, `implementations_dir`, `runtime_dir`, and `release`.
-`vehicles info perception|memory --json` exposes those same bundle keys.
+`vehicles info perception|memory|proposal --json` exposes those same bundle keys.
 The paths identify the staged code; `release` identifies the packaged source
 and archive. Plugin selections and constructor configs remain in `plugins`,
 `plugin_specs`, and `plugin_configs`.
@@ -271,6 +271,7 @@ Inspect the machine-readable contracts declared by the staged code:
 
 ```sh
 ./cli/automa vehicles info perception --id chase-sim-chaser
+./cli/automa vehicles info proposal --id chase-sim-chaser
 ./cli/automa vehicles info decision --id chase-sim-chaser
 ```
 
@@ -424,8 +425,8 @@ and a plugin list is recorded as the preset it equals, else `custom`.
 `vehicles info memory` reports the staged preset, its enabled plugins and the
 available ones, and the staged runner's `memory_schema_v1` contract.
 `--json` returns `vehicle_memory_info_v1` with that contract under `memory_schema`.
-Perception, memory, and proposal (`proposal_schema` in `vehicles info
-decision`) describe inputs, plugins, output, composition and failure policy;
+Perception, memory, and proposal (`vehicles info proposal`) describe inputs,
+plugins, output, composition and failure policy;
 memory's contract also names the ledger fields the CLI and viewers project from
 each plugin's status. The report itself preserves that status, including absent
 ledger keys. Staging replaces the selection. A running worker applies a
@@ -481,6 +482,24 @@ frames; source, plugin-loading and execution exceptions exit 2.
 Older memory recordings contain only summary fields. They use default step
 selections and image-directory ordering and timing, because those reports did
 not save executable configs or an image inventory.
+
+### Proposal Plugins
+
+`--plugin` selects packaged proposal plugins by catalog key, in order, with
+their default configs from `implementations/decision_cycle/proposal/catalog.py`.
+Proposal has no presets; without `--plugin` it stages its default plugins.
+
+`vehicles info proposal` reports the staged plugins and the available ones,
+and the staged runner's `proposal_schema_v1` contract. `--json` returns
+`vehicle_proposal_info_v1` with that contract under `proposal_schema`.
+`vehicles info decision` lists every step's selection with the proposal,
+plan and action contract, and points to `vehicles info proposal` for the
+schema:
+
+```sh
+./cli/automa vehicles info proposal --id chase-sim-chaser
+./cli/automa vehicles update proposal --id chase-sim-chaser --plugin avoid_recent_obstruction
+```
 
 ## Decision Playback Workbench
 
@@ -642,7 +661,7 @@ Step selections are local until the next autonomy deployment:
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
-`vehicles info perception|decision|memory --id piracer` inspects staged
+`vehicles info perception|memory|proposal|decision --id piracer` inspects staged
 activation and release metadata. Local staging does not require the Pi to be
 online; the subsequent autonomy deploy does.
 

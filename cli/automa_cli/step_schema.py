@@ -1,7 +1,7 @@
 """A staged step and its runner's ``describe_schema()`` as the info commands report them.
 
 ``vehicles info perception``, ``vehicles info memory`` and ``vehicles info
-decision`` (for the proposal step) read the step's staged activation and load
+proposal`` read the step's staged activation and load
 its runner from the controller bundle with ``staged_step_info``. Their JSON
 carries its ``activation`` and ``controller_bundle`` records and the step's
 schema under ``<step>_schema``, with ``<step>_schema_source`` naming the

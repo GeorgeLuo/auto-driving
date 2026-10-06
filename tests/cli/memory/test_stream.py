@@ -15,7 +15,7 @@ from cli.automa_cli.automation import (
     _automation_command_matches_vehicle,
     assess_chase_worker_liveness,
 )
-from cli.automa_cli.memory import probe_live_memory, stream_vehicle_memory
+from cli.automa_cli.streaming import probe_live_memory, stream_vehicle_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.support.cli_runner import run_automa
 from tests.support.memory_fixtures import TWO_PLUGIN_IDS, two_plugin_runner
@@ -89,7 +89,7 @@ class MemoryStreamTests(unittest.TestCase):
             },
         }
         with patch(
-            "cli.automa_cli.memory.fetch_autonomy_status",
+            "cli.automa_cli.streaming.fetch_autonomy_status",
             return_value=status,
         ):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
@@ -121,7 +121,7 @@ class MemoryStreamTests(unittest.TestCase):
             "autonomy": {"steps": {"perception": {"plugin_ids": ["floor_continuity"]}, "memory": None}},
         }
         with patch(
-            "cli.automa_cli.memory.fetch_autonomy_status",
+            "cli.automa_cli.streaming.fetch_autonomy_status",
             return_value=status,
         ):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
@@ -143,7 +143,7 @@ class MemoryStreamTests(unittest.TestCase):
             )
         )
         status = {"ok": True, "drive_mode": "user", "autonomy": host.status()}
-        with patch("cli.automa_cli.memory.fetch_autonomy_status", return_value=status):
+        with patch("cli.automa_cli.streaming.fetch_autonomy_status", return_value=status):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
 
         self.assertEqual(live["status"], "live")
@@ -151,7 +151,7 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertEqual(live["selected_plugin_ids"], ["bounded_evidence"])
 
         status["autonomy"] = AutonomyCycleHost(steps=decision_steps()).status()
-        with patch("cli.automa_cli.memory.fetch_autonomy_status", return_value=status):
+        with patch("cli.automa_cli.streaming.fetch_autonomy_status", return_value=status):
             absent = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
         self.assertEqual(absent["status"], "absent")
 
@@ -189,10 +189,10 @@ class MemoryStreamTests(unittest.TestCase):
             },
         }
         with patch(
-            "cli.automa_cli.memory.discover_active_vehicles",
+            "cli.automa_cli.streaming.discover_active_vehicles",
             return_value=discovery,
         ), patch(
-            "cli.automa_cli.memory.fetch_autonomy_status",
+            "cli.automa_cli.streaming.fetch_autonomy_status",
             return_value=status,
         ):
             result = stream_vehicle_memory(
@@ -233,9 +233,9 @@ class MemoryStreamTests(unittest.TestCase):
             "probed_at_ms": now,
         }
         with patch(
-            "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+            "cli.automa_cli.streaming.discover_active_vehicles", return_value=discovery
         ), patch(
-            "cli.automa_cli.memory.probe_live_memory", return_value=live_payload
+            "cli.automa_cli.streaming.probe_live_memory", return_value=live_payload
         ):
             result = stream_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
@@ -265,9 +265,9 @@ class MemoryStreamTests(unittest.TestCase):
             "worker_status": "running",
         }
         with patch(
-            "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+            "cli.automa_cli.streaming.discover_active_vehicles", return_value=discovery
         ), patch(
-            "cli.automa_cli.memory.probe_live_memory", return_value=stale_payload
+            "cli.automa_cli.streaming.probe_live_memory", return_value=stale_payload
         ):
             result = stream_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
@@ -297,9 +297,9 @@ class MemoryStreamTests(unittest.TestCase):
             "worker_status": "completed",
         }
         with patch(
-            "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+            "cli.automa_cli.streaming.discover_active_vehicles", return_value=discovery
         ), patch(
-            "cli.automa_cli.memory.probe_live_memory", return_value=stopped_payload
+            "cli.automa_cli.streaming.probe_live_memory", return_value=stopped_payload
         ):
             result = stream_vehicle_memory(
                 vehicle_id="chase-sim-chaser",
@@ -351,9 +351,9 @@ class MemoryStreamTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch("cli.automa_cli.memory.RUNTIME_ROOT", runtime_root), patch(
-                "cli.automa_cli.memory._automation_dir",
+                "cli.automa_cli.streaming._automation_dir",
                 return_value=state_path.parent,
-            ), patch("cli.automa_cli.memory.time.time", return_value=now / 1000.0):
+            ), patch("cli.automa_cli.streaming.time.time", return_value=now / 1000.0):
                 live = probe_live_memory(
                     vehicle_id="chase-sim-chaser",
                     vehicle={"vehicle_id": "chase-sim-chaser", "provider": "chase-sim"},
@@ -634,12 +634,12 @@ class MemoryStreamTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch("cli.automa_cli.memory.RUNTIME_ROOT", runtime_root), patch(
-                "cli.automa_cli.memory._automation_dir",
+                "cli.automa_cli.streaming._automation_dir",
                 return_value=state_path.parent,
             ), patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
                 "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
             ), patch(
-                "cli.automa_cli.memory.time.time", return_value=now / 1000.0
+                "cli.automa_cli.streaming.time.time", return_value=now / 1000.0
             ):
                 live = probe_live_memory(
                     vehicle_id="chase-sim-chaser",
@@ -686,15 +686,15 @@ class MemoryStreamTests(unittest.TestCase):
             probes = {}
             screens = {}
             with patch(
-                "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+                "cli.automa_cli.streaming.discover_active_vehicles", return_value=discovery
             ), patch(
-                "cli.automa_cli.memory._automation_dir", return_value=state_path.parent
+                "cli.automa_cli.streaming._automation_dir", return_value=state_path.parent
             ), patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
                 "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
             ), patch(
-                "cli.automa_cli.memory.time.time", return_value=now / 1000.0
+                "cli.automa_cli.streaming.time.time", return_value=now / 1000.0
             ), patch(
-                "cli.automa_cli.memory.fetch_autonomy_status",
+                "cli.automa_cli.streaming.fetch_autonomy_status",
                 return_value={"ok": True, "autonomy": {"steps": {"memory": status}}},
             ):
                 for vehicle_id in ("chase-sim-chaser", "piracer"):

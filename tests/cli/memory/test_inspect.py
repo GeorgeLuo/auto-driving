@@ -9,8 +9,8 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from cli.automa_cli import memory
-from cli.automa_cli.memory import inspect_memory
+from cli.automa_cli import memory_runs
+from cli.automa_cli.memory_runs import inspect_memory
 from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
@@ -36,7 +36,7 @@ class MemoryInspectTests(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
         self.frames = write_frames(self.tmp / "frames")
         self.root = self.tmp / "inspections"
-        patcher = patch.object(memory, "INSPECT_ROOT", self.root)
+        patcher = patch.object(memory_runs, "INSPECT_ROOT", self.root)
         patcher.start()
         self.addCleanup(patcher.stop)
 

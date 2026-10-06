@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli import memory
-from cli.automa_cli.memory import inspect_memory
+from cli.automa_cli import memory_runs
+from cli.automa_cli.memory_runs import inspect_memory
 from cli.automa_cli.memory_report import plugin_summaries
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from tests.cli.memory.test_inspect import write_frames
@@ -18,7 +18,7 @@ class WorkbenchAgreesWithInspectTests(unittest.TestCase):
 
     def test_workbench_reads_a_memory_recordings_frame_identity_and_time(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.object(
-            memory, "INSPECT_ROOT", Path(directory) / "inspections"
+            memory_runs, "INSPECT_ROOT", Path(directory) / "inspections"
         ):
             root = Path(directory)
             frames = write_frames(root / "frames", count=2)
@@ -59,7 +59,7 @@ class WorkbenchAgreesWithInspectTests(unittest.TestCase):
 
     def test_workbench_memory_equals_inspect_for_the_same_source_and_selection(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.object(
-            memory, "INSPECT_ROOT", Path(directory) / "inspections"
+            memory_runs, "INSPECT_ROOT", Path(directory) / "inspections"
         ):
             frames = write_frames(Path(directory) / "frames", count=4)
             result = inspect_memory(str(frames), json_output=True)

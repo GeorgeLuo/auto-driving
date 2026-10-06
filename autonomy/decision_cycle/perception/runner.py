@@ -2,36 +2,30 @@
 
 ``PerceptionRunner`` resolves the feed inputs each selected perception
 plugin's contract declares, runs the plugins in selection order on one sensor
-frame, and merges their evidence into one ``PerceptionText``.
+frame, and merges their evidence into one ``PerceptionText``. It is a
+``StepRunner``: ``validate_selection`` resolves a changed selection's feed
+providers, and commit publishes them with the plugins.
 """
 
 from __future__ import annotations
 
 import importlib
 import time
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
-from threading import RLock
-from typing import Any
+from typing import Any, ClassVar
 
-from autonomy.decision_cycle.activation import StepActivation, step_activation
+from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.runner import (
-    PROVIDED_ENTRYPOINT,
+    StepRunner,
     describe_configuration,
+    describe_exception,
     describe_plugin,
-    require_step_activation,
-    require_step_manager,
 )
-from autonomy.plugins import (
-    PluginDefinition,
-    PluginManager,
-    PluginSelectionRuntime,
-    instantiate_plugin,
-    plugin_report as build_plugin_report,
-    require_plugin_id,
-)
+from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.feeds.interface import FeedProvider
 from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
@@ -71,42 +65,35 @@ class _PluginExecution:
     error: str | None = None
 
 
-class PerceptionRunner:
+class PerceptionRunner(StepRunner[Any]):
     """Run the manager's selected perception plugins once per sensor frame.
 
     The cycle calls the runner with the frame context. ``perceive`` runs the
     selection on an already built ``PerceptionRequest`` for offline tools.
+    A plugin's own errors are isolated into its run; ``run_count``,
+    ``failure_count`` and ``last_error`` count frames and the errors that
+    stopped one.
     """
 
-    step = "perception"
-    plugin_id = "autonomy.perception.plugin-runner-v0"
+    step: ClassVar[str] = "perception"
+    plugin_id: ClassVar[str] = "autonomy.perception.plugin-runner-v0"
 
     def __init__(
         self,
         plugin_manager: PluginManager,
         *,
-        provided: dict[str, Any] | None = None,
+        provided: Mapping[str, Any] | None = None,
     ) -> None:
-        self.plugin_manager = require_step_manager(plugin_manager, self.step)
-        self.activation: StepActivation | None = None
-        self._provided = dict(provided or {})
-        self._selection_runtime = PluginSelectionRuntime(plugin_manager)
-        self._runtime_lock = RLock()
         self.last_output: PerceptionText | None = None
         self.last_duration_ms: float | None = None
         self.last_frame_index: int | None = None
         self._feed_providers: dict[str, FeedProvider] = {}
-        self._feed_provider_specs: dict[str, str] = {}
+        # Providers a changed selection resolves while it validates, held with
+        # the prepared plugins until commit publishes both.
+        self._validated_providers: dict[str, FeedProvider] | None = None
         self._pending_providers: dict[str, FeedProvider] | None = None
-        self._pending_provider_specs: dict[str, str] | None = None
         self._execution_runs: tuple[PerceptionPluginRun, ...] = ()
-        self._apply_selection()
-
-    @classmethod
-    def from_activation(cls, activation: StepActivation) -> "PerceptionRunner":
-        runner = cls(require_step_activation(activation, cls.step).plugin_manager())
-        runner.activation = activation
-        return runner
+        super().__init__(plugin_manager, provided=provided)
 
     @classmethod
     def from_selection(
@@ -118,16 +105,6 @@ class PerceptionRunner:
         return cls.from_activation(
             step_activation(cls.step, plugins, plugin_specs, plugin_configs)
         )
-
-    @classmethod
-    def from_plugins(cls, plugins: dict[str, Any]) -> "PerceptionRunner":
-        """Run already constructed plugins, selected in the mapping's order."""
-
-        manager = PluginManager.from_specs(
-            cls.step, {plugin_id: f"{PROVIDED_ENTRYPOINT}:{plugin_id}" for plugin_id in plugins}
-        )
-        manager.select(tuple(plugins))
-        return cls(manager, provided=plugins)
 
     def __call__(self, context) -> PerceptionText | None:
         """Perceive the context's sensor frame; without one, reset and return None."""
@@ -167,15 +144,7 @@ class PerceptionRunner:
         with self._runtime_lock:
             output = self.last_output
             return {
-                "step": self.step,
-                "activation": (
-                    str(self.activation.source_path)
-                    if self.activation and self.activation.source_path
-                    else None
-                ),
-                "available_plugins": sorted(self.plugin_manager.available_ids),
-                "selected_plugin_ids": list(self.plugin_manager.selected_ids),
-                "plugin_ids": list(self.plugin_ids),
+                **super().status(),
                 "last_status": output.status if output is not None else None,
                 "last_duration_ms": self.last_duration_ms,
                 "last_frame_index": self.last_frame_index,
@@ -185,18 +154,7 @@ class PerceptionRunner:
                     if output is not None
                     else []
                 ),
-                "plugin_report": self._plugin_report(),
             }
-
-    @property
-    def plugin_ids(self) -> tuple[str, ...]:
-        return tuple(definition.plugin_id for definition, _plugin in self._selection_runtime.applied)
-
-    @property
-    def plugins(self) -> dict[str, Any]:
-        """The applied plugins by selected plugin ID, in selection order."""
-
-        return {definition.plugin_id: plugin for definition, plugin in self._selection_runtime.applied}
 
     @property
     def plugin_specs(self) -> dict[str, str]:
@@ -215,28 +173,22 @@ class PerceptionRunner:
             self.last_output = None
             self.last_duration_ms = None
             self.last_frame_index = None
-            for _definition, plugin in self._selection_runtime.applied:
-                _reset_plugin(plugin, shared_memory)
+            super().reset(shared_memory)
 
     def describe_schema(self) -> dict[str, Any]:
         with self._runtime_lock:
             return self._describe_schema()
 
-    def plugin_report(self) -> dict[str, Any]:
-        """Report catalog, requested selection, and the last published execution.
+    def _plugin_records(self) -> list[dict[str, Any]]:
+        """Timing and error from the last published execution.
 
-        Timing and error come from that execution. They stay null before the
-        first run and after reset. Domain run fields stay on the perception
-        result, not in this envelope.
+        They stay null before the first run and after reset. Domain run fields
+        stay on the perception result, not in the plugin report.
         """
 
-        with self._runtime_lock:
-            return self._plugin_report()
-
-    def _plugin_report(self) -> dict[str, Any]:
         runs = {run.plugin_id: run for run in self._execution_runs}
         records = []
-        for definition, plugin in self._selection_runtime.applied:
+        for definition, _plugin in self.applied:
             run = runs.get(definition.plugin_id)
             duration_ms = None
             error = None
@@ -250,17 +202,13 @@ class PerceptionRunner:
                     "error": error,
                 }
             )
-        return build_plugin_report(
-            self.plugin_manager,
-            self._selection_runtime.applied,
-            records,
-        )
+        return records
 
     def _describe_schema(self) -> dict[str, Any]:
         feed_consumers: dict[str, list[str]] = {}
         feed_providers: dict[str, str] = {}
         plugin_schemas = []
-        applied = self._selection_runtime.applied
+        applied = self.applied
         for definition, plugin in applied:
             contract = plugin.contract
             for item in contract.inputs:
@@ -322,8 +270,16 @@ class PerceptionRunner:
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
         with self._runtime_lock:
             # Core snapshots the manager's selection once for this sensor frame.
-            self._apply_selection(request.shared_memory)
-            return self._perceive_selected(request)
+            self.apply_selection(request.shared_memory)
+            self.run_count += 1
+            try:
+                output = self._perceive_selected(request)
+            except Exception as exc:
+                self.failure_count += 1
+                self.last_error = describe_exception(exc)
+                raise
+            self.last_error = None
+            return output
 
     def _perceive_selected(self, request: PerceptionRequest) -> PerceptionText:
         lines = [
@@ -340,7 +296,7 @@ class PerceptionRunner:
 
         # Catalog plugin_id attributes results. The instance plugin_id is the
         # implementation identity and is not rewritten to repair provenance.
-        for definition, plugin in self._selection_runtime.applied:
+        for definition, plugin in self.applied:
             catalog_id = definition.plugin_id
             execution = self._execute_plugin(plugin, request, catalog_id)
             attributed_signals = tuple(
@@ -401,94 +357,73 @@ class PerceptionRunner:
             limits=tuple(dict.fromkeys(limits)),
         )
 
-    def prepare_selection(self) -> None:
-        """Load and validate the manager selection without resetting or publishing."""
+    # Selection hooks ------------------------------------------------------
 
-        with self._runtime_lock:
-            self._prepare_selection()
+    def validate_plugin(self, plugin: Any, definition: PluginDefinition) -> None:
+        if not isinstance(getattr(plugin, "contract", None), PerceptionPluginContract):
+            raise TypeError(
+                f"plugin {definition.plugin_id!r} must expose PerceptionPluginContract as contract"
+            )
+        if not callable(getattr(plugin, "perceive", None)):
+            raise TypeError(f"plugin {definition.plugin_id!r} must implement perceive()")
 
-    def commit_selection(self, shared_memory=None) -> None:
-        """Reset removed plugins and publish the prepared selection."""
+    def validate_selection(self, plugins: tuple[Any, ...]) -> None:
+        """Resolve the feed provider each plugin declares; a feed has one provider."""
 
-        with self._runtime_lock:
-            self._commit_selection(shared_memory)
-
-    def discard_selection(self) -> None:
-        """Drop a prepared selection without resetting published plugins."""
-
-        with self._runtime_lock:
-            self._discard_selection()
-
-    def _apply_selection(
-        self,
-        shared_memory=None,
-    ) -> None:
-        self._prepare_selection()
-        self._commit_selection(shared_memory)
+        super().validate_selection(plugins)
+        provider_specs: dict[str, str] = {}
+        providers: dict[str, FeedProvider] = {}
+        for plugin in plugins:
+            for item in plugin.contract.inputs:
+                spec = item.provider_spec
+                if spec not in providers:
+                    provider = self._feed_providers.get(spec)
+                    if provider is None:
+                        provider = _load_symbol(spec)
+                    if not callable(provider):
+                        raise TypeError(f"feed provider {spec!r} is not callable")
+                    providers[spec] = provider
+                # Specs that name the same provider (a legacy and a canonical
+                # path) agree.
+                existing = provider_specs.get(item.feed_id)
+                if existing is None:
+                    provider_specs[item.feed_id] = spec
+                elif providers[existing] is not providers[spec]:
+                    raise ValueError(
+                        f"feed {item.feed_id!r} declares conflicting providers: "
+                        f"{existing!r} and {spec!r}"
+                    )
+        self._validated_providers = providers
 
     def _prepare_selection(self) -> None:
-        candidate_provider_specs: dict[str, str] | None = None
-        candidate_providers: dict[str, FeedProvider] | None = None
-
-        def validate(candidate_plugins: tuple[Any, ...]) -> None:
-            nonlocal candidate_provider_specs, candidate_providers
-            candidate_provider_specs = {}
-            candidate_providers = {}
-
-            for plugin in candidate_plugins:
-                for item in plugin.contract.inputs:
-                    spec = item.provider_spec
-                    if spec not in candidate_providers:
-                        provider = self._feed_providers.get(spec)
-                        if provider is None:
-                            provider = _load_symbol(spec)
-                        if not callable(provider):
-                            raise TypeError(f"feed provider {spec!r} is not callable")
-                        candidate_providers[spec] = provider
-                    # Specs that name the same provider (a legacy and a
-                    # canonical path) agree.
-                    existing = candidate_provider_specs.get(item.feed_id)
-                    if existing is None:
-                        candidate_provider_specs[item.feed_id] = spec
-                    elif candidate_providers[existing] is not candidate_providers[spec]:
-                        raise ValueError(
-                            f"feed {item.feed_id!r} declares conflicting providers: "
-                            f"{existing!r} and {spec!r}"
-                        )
-
-        self._selection_runtime.prepare(load=self._load_plugin, validate=validate)
-        # Retain providers with the prepared instances. Publish happens on commit,
-        # and an unchanged selection leaves these unset so commit does not republish.
-        self._pending_provider_specs = candidate_provider_specs
-        self._pending_providers = candidate_providers
+        self._validated_providers = None
+        super()._prepare_selection()
+        # An unchanged selection is not validated, so commit keeps the
+        # published providers.
+        self._pending_providers = self._validated_providers
 
     def _commit_selection(self, shared_memory=None) -> None:
-        specs = self._pending_provider_specs
-        providers = self._pending_providers
-        self._pending_provider_specs = None
-        self._pending_providers = None
-        self._selection_runtime.commit(
-            reset=lambda plugin: _reset_plugin(plugin, shared_memory),
-        )
-        if specs is None or providers is None:
-            return
-
-        # Publish providers only after the prepared plugins and providers validated.
-        self._feed_provider_specs = specs
-        self._feed_providers = providers
-
-    def _load_plugin(self, definition: PluginDefinition) -> Any:
-        if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
-            plugin = self._provided[definition.plugin_id]
-        else:
-            plugin = instantiate_plugin(definition)
-        _validate_plugin(plugin, definition)
-        return plugin
+        providers, self._pending_providers = self._pending_providers, None
+        super()._commit_selection(shared_memory)
+        if providers is not None:
+            self._feed_providers = providers
 
     def _discard_selection(self) -> None:
-        self._selection_runtime.discard()
-        self._pending_provider_specs = None
+        super()._discard_selection()
         self._pending_providers = None
+
+    def _reset_plugin(self, plugin: Any, shared_memory=None) -> None:
+        reset = getattr(plugin, "reset", None)
+        if not callable(reset):
+            return
+        try:
+            if plugin.contract.memory_required:
+                reset(shared_memory)
+            else:
+                reset()
+        except Exception:
+            if FAILURE_POLICY.reset == "propagate":
+                raise
 
     def _execute_plugin(
         self,
@@ -513,7 +448,7 @@ class PerceptionRunner:
             feeds, missing = self._resolve_inputs(plugin.contract, request)
             if missing and FAILURE_POLICY.missing_input == "skip_plugin":
                 if plugin.contract.state_mode != "stateless":
-                    _reset_plugin(plugin, request.shared_memory)
+                    self._reset_plugin(plugin, request.shared_memory)
                 details = "; ".join(
                     f"{name}: {reason}" for name, reason in sorted(missing.items())
                 )
@@ -636,28 +571,6 @@ def _load_symbol(spec: str) -> Any:
         raise ValueError(f"import spec must be 'module.path:name', got {spec!r}")
     module = importlib.import_module(module_name)
     return getattr(module, name)
-
-
-def _validate_plugin(plugin: Any, definition: PluginDefinition) -> None:
-    plugin_id = require_plugin_id(plugin, definition)
-    if not isinstance(getattr(plugin, "contract", None), PerceptionPluginContract):
-        raise TypeError(f"plugin {plugin_id!r} must expose PerceptionPluginContract as contract")
-    if not callable(getattr(plugin, "perceive", None)):
-        raise TypeError(f"plugin {plugin_id!r} must implement perceive()")
-
-
-def _reset_plugin(plugin: Any, shared_memory=None) -> None:
-    reset = getattr(plugin, "reset", None)
-    if not callable(reset):
-        return
-    try:
-        if plugin.contract.memory_required:
-            reset(shared_memory)
-        else:
-            reset()
-    except Exception:
-        if FAILURE_POLICY.reset == "propagate":
-            raise
 
 
 def _line_value(value: str) -> str:

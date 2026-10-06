@@ -347,9 +347,9 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["active_perception_plugin_ids"], ["floor_continuity"])
 
     def test_running_perception_selection_that_cannot_be_built_keeps_the_working_run(self) -> None:
-        from autonomy.decision_cycle.perception import runner as perception_runner
+        from autonomy.decision_cycle import runner as step_runner
 
-        instantiate = perception_runner.instantiate_plugin
+        instantiate = step_runner.instantiate_plugin
 
         def failing_instantiate(definition):
             if definition.plugin_id == "floor_continuity":
@@ -368,7 +368,7 @@ class WorkbenchTests(unittest.TestCase):
             retained = perception_step.plugins["classical_regions"]
             runner._shared_memory["retention-marker"] = "kept"
 
-            with mock.patch.object(perception_runner, "instantiate_plugin", failing_instantiate):
+            with mock.patch.object(step_runner, "instantiate_plugin", failing_instantiate):
                 with self.assertRaises(ReplayActionError) as caught:
                     runner.dispatch(
                         "select_plugins", step="perception", run_id=run_id,

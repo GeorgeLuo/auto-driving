@@ -972,8 +972,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_info = info_commands.add_parser(
         "memory",
-        help="Show the staged memory preset and plugins and the live memory step state.",
-        description="Show the staged memory preset and plugins and the live memory step state.",
+        help="Show the staged memory preset and plugins, their schema and the live memory step state.",
+        description="Show the staged memory preset and plugins, their schema and the live memory step state.",
     )
     memory_info.add_argument(
         "--id",
@@ -1631,7 +1631,7 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show staged perception schema and live view",
                 "- decision    show the staged steps and decision contract",
-                "- memory      show locally staged memory plugins",
+                "- memory      show staged memory schema and live memory",
                 "- help        show this summary",
                 "",
                 "Detailed help:",

@@ -807,7 +807,8 @@ def stream_vehicle_memory(
     JSON mode emits probes even when discovery fails. ``live`` means the
     retained step is available; update health stays in the plugin diagnostics.
     Each probe lists every applied plugin's ledger and names the evidence
-    publisher; the terminal view prints the same.
+    publisher; the terminal view prints the same, then the memory map and
+    perception view URLs and the latest published memory report.
     """
 
     discovery = discover_active_vehicles(
@@ -846,139 +847,77 @@ def stream_vehicle_memory(
             )
         )
 
-    if vehicle.get("provider") == "picar" and not json_output:
-        return _stream_physical_memory_with_inspector(
+    provider = vehicle.get("provider")
+    base_url = picar_base_url(vehicle) if provider == "picar" else None
+    if provider == "picar" and not json_output and not base_url:
+        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+    # JSON output prints the probe alone; only the terminal view feeds a view.
+    view = _PhysicalViewFeed(vehicle_id) if base_url and not json_output else None
+
+    def render(live: dict[str, Any], _source: Any) -> str:
+        if view is not None and base_url:
+            publication, fetch_error = _read_physical_publication(base_url, timeout_s=timeout_s)
+            view.publish(base_url=base_url, publication=publication, timeout_s=timeout_s)
+            view_url, view_error = view.url, view.error
+        else:
+            automation_dir = _automation_dir(vehicle_id)
+            view_url, view_error = _chase_view(_read_json(automation_dir / "state.json"))
+            publication, fetch_error = _read_json(automation_dir / "latest_perception.json"), None
+        return _memory_screen(
             vehicle_id=vehicle_id,
-            vehicle=vehicle,
+            live=live,
+            view_url=view_url,
+            view_error=view_error,
+            report=publication.get("memory") if isinstance(publication, dict) else None,
+            report_error=fetch_error,
+        )
+
+    try:
+        return _poll_stream(
+            step="memory",
+            probe=lambda: (
+                probe_live_memory(vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s),
+                None,
+            ),
+            render=render,
             refresh_s=refresh_s,
             once=once,
             no_clear=no_clear,
-            timeout_s=timeout_s,
-            output=output,
+            json_output=json_output,
+            stream=output,
         )
-
-    stream = output
-    try:
-        while True:
-            live = probe_live_memory(
-                vehicle_id=vehicle_id,
-                vehicle=vehicle,
-                timeout_s=timeout_s,
-            )
-            if json_output:
-                line = json.dumps(live, sort_keys=True)
-            else:
-                line = _format_live_memory_screen(vehicle_id=vehicle_id, live=live)
-            if stream is not None:
-                if not no_clear and not json_output:
-                    print("\033[2J\033[H", end="", file=stream)
-                print(line, file=stream, flush=True)
-            if once:
-                return CommandResult(
-                    *once_stream_outcome(step="memory", live=live, line=line, stream=stream)
-                )
-            time.sleep(max(0.1, float(refresh_s)))
-    except KeyboardInterrupt:
-        return CommandResult(130, "")
+    finally:
+        if view is not None:
+            view.stop()
 
 
-def _stream_physical_memory_with_inspector(
+def _memory_screen(
     *,
     vehicle_id: str,
-    vehicle: dict[str, Any],
-    refresh_s: float,
-    once: bool,
-    no_clear: bool,
-    timeout_s: float,
-    output: TextIO | None,
-) -> CommandResult:
-    """Poll status, feed the shared loopback publication, and serve the /memory inspector."""
+    live: dict[str, Any],
+    view_url: str | None,
+    view_error: str | None,
+    report: Any,
+    report_error: str | None,
+) -> str:
+    """The memory screen of every vehicle: the engine's memory step, the
+    views, and the memory report its latest cycle published (the Chase
+    worker's ``latest_perception.json``, or the PiCar publication)."""
 
-    stream = output
-    base_url = picar_base_url(vehicle)
-    if not base_url:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
-
-    runtime_dir = physical_observation_dir(vehicle_id)
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    frame_path = runtime_dir / "latest_frame.jpg"
-    view_server: RuntimeViewServer | None = None
-    view_error: str | None = None
-    try:
-        view_server = RuntimeViewServer(
-            vehicle_id=vehicle_id,
-            automation_dir=runtime_dir,
-        ).start()
-    except OSError as exc:
-        view_error = f"{type(exc).__name__}: {exc}"
-
-    try:
-        while True:
-            live = probe_live_memory(
-                vehicle_id=vehicle_id,
-                vehicle=vehicle,
-                timeout_s=timeout_s,
-            )
-            publication: dict[str, Any] | None = None
-            fetch_error: str | None = None
-            try:
-                publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
-            except ConnectionError as exc:
-                fetch_error = str(exc)
-
-            memory_view_url = None
-            if view_server is not None and view_server.url:
-                memory_view_url = view_server.url.rstrip("/") + "/memory"
-            if publication is not None and view_server is not None:
-                try:
-                    _publish_physical_view(
-                        view_server=view_server,
-                        base_url=base_url,
-                        publication=publication,
-                        frame_path=frame_path,
-                        timeout_s=timeout_s,
-                    )
-                    memory_view_url = view_server.url.rstrip("/") + "/memory"
-                    view_error = None
-                except (ConnectionError, OSError, TypeError, ValueError) as exc:
-                    view_error = f"{type(exc).__name__}: {exc}"
-
-            if stream is not None:
-                if not no_clear:
-                    print("\033[2J\033[H", end="", file=stream)
-                lines = [
-                    _format_live_memory_screen(vehicle_id=vehicle_id, live=live),
-                    "",
-                ]
-                if memory_view_url:
-                    lines.append(f"memory map: {memory_view_url}")
-                    lines.append("perception view: " + memory_view_url.rsplit("/", 1)[0] + "/perception")
-                elif view_error:
-                    lines.append(f"memory map: unavailable ({view_error})")
-                else:
-                    lines.append("memory map: unavailable")
-                if fetch_error:
-                    lines.append(f"publication: {fetch_error}")
-                # The published memory report: each plugin's ledger and the publisher.
-                elif isinstance(publication, dict) and isinstance(publication.get("memory"), dict):
-                    report = publication["memory"]
-                    lines.append(
-                        "publication memory: evidence publisher "
-                        f"{evidence_publisher(report) or 'none'}"
-                    )
-                    lines.extend(_format_plugin_ledgers(plugin_ledgers(report)))
-                print("\n".join(lines), file=stream, flush=True)
-
-            if once:
-                return CommandResult(
-                    *once_stream_outcome(step="memory", live=live, line="", stream=stream)
-                )
-            time.sleep(max(0.1, float(refresh_s)))
-    except KeyboardInterrupt:
-        return CommandResult(130, "")
-    finally:
-        if view_server is not None:
-            view_server.stop()
+    lines = [
+        _format_live_memory_screen(vehicle_id=vehicle_id, live=live),
+        "",
+        _view_line("memory map", view_url, view_error, "/memory"),
+        _view_line("perception view", view_url, view_error, "/perception"),
+    ]
+    if report_error:
+        lines.append(f"publication memory: {report_error}")
+    elif isinstance(report, dict):
+        lines.append(
+            f"publication memory: evidence publisher {evidence_publisher(report) or 'none'}"
+        )
+        lines.extend(_format_plugin_ledgers(plugin_ledgers(report)))
+    return "\n".join(lines)
 
 
 def probe_live_memory(

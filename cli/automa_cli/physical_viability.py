@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
+from .automation import _automation_dir
 from .paths import ROOT, display_path
 from .physical_observation import (
     fetch_observation_publication,
@@ -29,6 +30,9 @@ DEFAULT_SAMPLE_PERIOD_S = 0.25
 REQUIRED_MIN_FRESH_HZ = 2.0
 REQUIRED_CADENCE_FRACTION = 0.90
 REQUIRED_P95_AGE_MS = 1000.0
+# Modes that leave the decision unapplied: the PiCar's user drive mode and
+# the Chase worker's observe_only action policy.
+_UNAPPLIED_MODES = frozenset({None, "user", "observe_only"})
 
 
 @dataclass(frozen=True)
@@ -90,7 +94,7 @@ def _resolve_viability_vehicle(
         return failure(
             "unsupported_provider",
             f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            f"{step} viability measures picar vehicles and passes chase-sim with a stub.",
+            f"{step} viability measures picar and chase-sim vehicles.",
         )
     if provider == "picar" and not picar_base_url(vehicle):
         return failure(
@@ -112,10 +116,11 @@ def run_perception_viability_measurement(
     fetch_publication: Callable[[str], dict[str, Any]] | None = None,
     sample_host_metrics: Callable[[], dict[str, Any]] | None = None,
 ) -> CommandResult:
-    """Health-check perception on a vehicle, dispatching on its provider.
+    """Health-check perception cadence and freshness on a vehicle.
 
-    A PiCar is measured for onboard cadence/freshness. The simulator passes
-    with a stub result; any other provider is refused.
+    A PiCar's onboard publication and a Chase worker's latest cycle are
+    polled the same way; only the PiCar adds ssh host metrics. Any other
+    provider is refused.
     """
     vehicle, failure = _resolve_viability_vehicle(
         step="perception",
@@ -126,13 +131,14 @@ def run_perception_viability_measurement(
     if failure is not None:
         return failure
     assert vehicle is not None
-    if vehicle.get("provider") == "chase-sim":
-        return _perception_simulator_stub_result(vehicle_id, json_output=json_output)
     base_url = picar_base_url(vehicle)
-
-    get_pub = fetch_publication or (
-        lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
-    )
+    if fetch_publication is not None:
+        get_pub = fetch_publication
+    elif vehicle.get("provider") == "chase-sim":
+        get_pub = lambda _url: _chase_worker_publication(vehicle_id)
+    else:
+        get_pub = lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
+    endpoint = base_url or f"chase-sim automation worker {display_path(_automation_dir(vehicle_id))}"
     host_sampler = sample_host_metrics or _ssh_host_sampler(vehicle)
 
     duration_s = max(1.0, float(duration_s))
@@ -144,7 +150,7 @@ def run_perception_viability_measurement(
 
     _emit(output, "Perception viability measurement")
     _emit(output, f"vehicle: {vehicle_id}")
-    _emit(output, f"endpoint: {base_url}")
+    _emit(output, f"endpoint: {endpoint}")
     _emit(output, f"duration_s: {duration_s}")
     _emit(output, f"sample_period_s: {sample_period_s}")
     if out_dir is not None:
@@ -217,6 +223,7 @@ def run_perception_viability_measurement(
         "run_id": run_id,
         "vehicle_id": vehicle_id,
         "base_url": base_url,
+        "endpoint": endpoint,
         "duration_s_requested": duration_s,
         "duration_s_elapsed": round(elapsed_s, 3),
         "sample_period_s": sample_period_s,
@@ -236,7 +243,7 @@ def run_perception_viability_measurement(
         "samples": samples,
         "host_samples": host_samples,
         "limits": [
-            "Polls the publication endpoint; does not instrument in-process Donkey loop counters directly.",
+            "Polls the latest publication; does not instrument in-process loop counters directly.",
             "Freshness uses frame_id transitions and published result_age_ms/duration_ms fields.",
             "Host RSS/CPU are sampled only when the vehicle supplies an ssh_target connection field.",
         ],
@@ -258,23 +265,39 @@ def run_perception_viability_measurement(
     return CommandResult(exit_code, _format_perception_report(report))
 
 
-def _perception_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
-    # The simulator gets a stub pass; measurement runs on PiCar.
-    report = {
-        "schema": "automa_physical_perception_viability_v0",
-        "vehicle_id": vehicle_id,
-        "provider": "chase-sim",
-        "passed": True,
-        "stub": True,
-        "gates": [],
-        "note": "Simulator viability is a stub pass; measurement runs on PiCar.",
+def _chase_worker_publication(vehicle_id: str) -> dict[str, Any]:
+    """The Chase worker's latest cycle in the onboard publication's shape.
+
+    Health is ``healthy`` when the worker's perception probe is live, and the
+    probe's status otherwise; the mode is the worker's action policy.
+    """
+
+    from .streaming import probe_live_perception
+
+    probe = probe_live_perception(vehicle_id=vehicle_id, vehicle={"provider": "chase-sim"})
+    automation_dir = _automation_dir(vehicle_id)
+    state = _read_object(automation_dir / "state.json")
+    record = _read_object(automation_dir / "latest_perception.json")
+    return {
+        "health": "healthy" if probe.get("status") == "live" else probe.get("status"),
+        "mode": state.get("action_policy"),
+        "preset": probe.get("preset"),
+        "frame": {"frame_id": probe.get("frame_id")},
+        "processed_count": state.get("frames_processed"),
+        "skipped_count": state.get("frames_dropped"),
+        "min_interval_s": state.get("interval_s"),
+        "duration_ms": record.get("cycle_duration_ms"),
+        "result_age_ms": probe.get("age_ms"),
+        "control": record.get("control"),
     }
-    if json_output:
-        return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
-    return CommandResult(
-        0,
-        f"Perception viability: PASS (stub)\nvehicle: {vehicle_id}\n{report['note']}",
-    )
+
+
+def _read_object(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _ssh_host_sampler(vehicle: dict[str, Any]) -> Callable[[], dict[str, Any]] | None:
@@ -331,7 +354,7 @@ def _compute_perception_metrics(
         and float(s.get("control_throttle") or 0.0) == 0.0
         for s in healthy
     ) if healthy else False
-    mode_user = all((s.get("mode") in {None, "user"}) for s in healthy) if healthy else False
+    mode_user = all((s.get("mode") in _UNAPPLIED_MODES) for s in healthy) if healthy else False
 
     processed_delta = (
         (processeds[-1] - processeds[0]) if len(processeds) >= 2 else 0
@@ -376,8 +399,8 @@ def _compute_perception_metrics(
         ),
         "dropped_frame_policy": {
             "description": (
-                "Onboard AutonomyPilotPart uses newest-frame consumption with "
-                "min_interval cadence skips; intermediate camera ticks are counted in skipped_count."
+                "The runtime consumes the newest frame at min_interval cadence; "
+                "superseded camera frames are counted in skipped_count."
             ),
             "skipped_count_delta": skipped_delta,
         },
@@ -502,7 +525,7 @@ def _format_perception_report(report: dict[str, Any]) -> str:
     lines = [
         f"Perception viability: {'PASS' if report['passed'] else 'FAIL'}",
         f"vehicle: {report['vehicle_id']}",
-        f"endpoint: {report['base_url']}",
+        f"endpoint: {report['endpoint']}",
         f"elapsed_s: {metrics.get('elapsed_s')}",
         f"fresh_results_per_s: {metrics.get('fresh_results_per_s')}",
         f"processed_results_per_s: {metrics.get('processed_results_per_s')}",
@@ -533,7 +556,7 @@ def _format_perception_markdown(report: dict[str, Any]) -> str:
         "",
         f"- result: `{'PASS' if report['passed'] else 'FAIL'}`",
         f"- vehicle: `{report['vehicle_id']}`",
-        f"- endpoint: `{report['base_url']}`",
+        f"- endpoint: `{report['endpoint']}`",
         f"- elapsed_s: {metrics.get('elapsed_s')}",
         "",
         "## Metrics",
@@ -593,13 +616,12 @@ def run_memory_viability_measurement(
     output: TextIO | None = None,
     probe: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> CommandResult:
-    """Health-check memory on a vehicle, dispatching on its provider.
+    """Health-check memory on a vehicle.
 
-    A PiCar's live memory step is polled for a bounded interval. Each sample
-    keeps every applied plugin's ledger and the evidence publisher. Each
-    plugin must keep one epoch, and the health values the plugins report must
-    be known. The simulator passes with a stub result; any other provider is
-    refused.
+    The live memory step of a PiCar or a Chase worker is polled for a
+    bounded interval. Each sample keeps every applied plugin's ledger and the
+    evidence publisher. Each plugin must keep one epoch, and the health
+    values the plugins report must be known. Any other provider is refused.
     """
     vehicle, failure = _resolve_viability_vehicle(
         step="memory",
@@ -610,9 +632,6 @@ def run_memory_viability_measurement(
     if failure is not None:
         return failure
     assert vehicle is not None
-    if vehicle.get("provider") == "chase-sim":
-        return _memory_simulator_stub_result(vehicle_id, json_output=json_output)
-
     from .streaming import probe_live_memory
 
     get_probe = probe or (
@@ -680,7 +699,7 @@ def run_memory_viability_measurement(
         "sample_count": len(samples),
         "samples": samples,
         "limits": [
-            "Polls the live memory step's status; does not instrument the Donkey loop.",
+            "Polls the live memory step's status; does not instrument the runtime loop.",
             "Update duration is the step's own last_duration_ms, not the cycle's wall time.",
             "Health and epoch come from each plugin's ledger summary; a plugin that keeps "
             "no ledger reports none and adds nothing to health_is_known.",
@@ -699,25 +718,6 @@ def run_memory_viability_measurement(
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
     return CommandResult(exit_code, _format_memory_report(report))
-
-
-def _memory_simulator_stub_result(vehicle_id: str, *, json_output: bool) -> CommandResult:
-    # The simulator gets a stub pass; measurement runs on PiCar.
-    report = {
-        "schema": "automa_physical_memory_viability_v1",
-        "vehicle_id": vehicle_id,
-        "provider": "chase-sim",
-        "passed": True,
-        "stub": True,
-        "gates": [],
-        "note": "Simulator viability is a stub pass; measurement runs on PiCar.",
-    }
-    if json_output:
-        return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
-    return CommandResult(
-        0,
-        f"Memory viability: PASS (stub)\nvehicle: {vehicle_id}\n{report['note']}",
-    )
 
 
 def _extract_memory_sample(

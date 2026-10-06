@@ -769,10 +769,10 @@ def build_parser() -> argparse.ArgumentParser:
         "viability",
         help="Health-check memory on a vehicle.",
         description=(
-            "Health-check memory on a vehicle. A PiCar's live memory step is polled for a "
-            "bounded interval (default 60s) to record update cadence, update duration, "
-            "failures, and each applied plugin's health and epoch stability. "
-            "Chase returns a stub pass. PiCar measurements save report.json under "
+            "Health-check memory on a vehicle. The live memory step of a PiCar or a "
+            "running Chase worker is polled for a bounded interval (default 60s) to "
+            "record update cadence, update duration, failures, and each applied "
+            "plugin's health and epoch stability. Measurements save report.json under "
             "lab/runs/memory-viability/ unless --no-record."
         ),
     )
@@ -780,7 +780,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
+        help="Vehicle id from `automa vehicles active`.",
     )
     memory_viability.add_argument(
         "--duration-s",
@@ -1107,18 +1107,18 @@ def build_parser() -> argparse.ArgumentParser:
         "viability",
         help="Health-check perception on a vehicle.",
         description=(
-            "Health-check perception on a vehicle. A PiCar is polled for a bounded "
-            "interval (default 60s) to record cadence, result age, processing duration, "
-            "and skip policy, plus host RSS/CPU when the vehicle supplies an ssh_target. "
-            "Chase returns a stub pass. PiCar measurements save report.json and summary.md "
-            "under lab/runs/perception-viability/ unless --no-record."
+            "Health-check perception on a vehicle. A PiCar's publication or a running "
+            "Chase worker's latest cycle is polled for a bounded interval (default 60s) "
+            "to record cadence, result age, processing duration, and skip policy, plus "
+            "host RSS/CPU when the vehicle supplies an ssh_target. Measurements save "
+            "report.json and summary.md under lab/runs/perception-viability/ unless --no-record."
         ),
     )
     perception_viability.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
+        help="Vehicle id from `automa vehicles active`.",
     )
     perception_viability.add_argument(
         "--duration-s",
@@ -1669,7 +1669,7 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
                 "automa vehicles perception commands",
                 "",
                 "- inspect    show what a selection detects, from images or a live vehicle",
-                "- viability  health-check perception (PiCar cadence/freshness; simulator stub)",
+                "- viability  health-check perception cadence and freshness",
                 "- help       show this summary",
                 "",
                 "Detailed help:",
@@ -2030,7 +2030,7 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
                 "automa vehicles memory commands",
                 "",
                 "- inspect what a memory selection retains for an image source, frame by frame; optional --record",
-                "- viability  health-check memory (PiCar update cadence/failures/epoch; simulator stub)",
+                "- viability  health-check memory update cadence, failures, and epoch",
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- help    show this summary",
                 "",

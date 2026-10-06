@@ -224,10 +224,11 @@ def run_vehicle_automation(
     try:
         perception_activation = read_step_activation(manifest_path, "perception")
         memory_activation = read_bundle_activation(bundle, "memory")
+        proposal_activation = read_bundle_activation(bundle, "proposal")
         identity = decision_identity(bundle)
         activations = {
             step: read_bundle_activation(bundle, step)
-            for step in ("observation", "proposal", "plan", "action")
+            for step in ("observation", "plan", "action")
         }
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
@@ -269,17 +270,34 @@ def run_vehicle_automation(
                     ]
                 ),
             )
+    # Proposals load from the bundle, as memory does; without a staged
+    # activation the vehicle proposes nothing and holds.
+    proposal_activation_path = bundle_activation_path(bundle, "proposal")
+    proposal_step = None
+    if proposal_activation is not None:
+        try:
+            proposal_step = load_staged_runner(proposal_activation)
+        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Could not load proposal activation for {vehicle_id}.",
+                        f"Activation: {display_path(proposal_activation_path)}",
+                        f"Reason: {type(exc).__name__}: {exc}",
+                    ]
+                ),
+            )
     try:
         steps = decision_steps(
-            {
-                **{step: activation for step, activation in activations.items() if activation},
-                "proposal": activations["proposal"],
-            }
+            {step: activation for step, activation in activations.items() if activation}
         )
     except Exception as exc:
         return CommandResult(2, f"Could not load decision steps for {vehicle_id}: {type(exc).__name__}: {exc}")
     cycle_host = AutonomyCycleHost(
-        steps=replace(steps, perception=perception_step, memory=memory_step),
+        steps=replace(
+            steps, perception=perception_step, memory=memory_step, proposal=proposal_step
+        ),
     )
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
@@ -361,6 +379,17 @@ def run_vehicle_automation(
             if memory_step is not None
             else {
                 "activation": display_path(memory_activation_path),
+                "status": "absent",
+            }
+        ),
+        "proposal": (
+            {
+                "activation": display_path(proposal_activation_path),
+                "status": proposal_step.status(),
+            }
+            if proposal_step is not None
+            else {
+                "activation": display_path(proposal_activation_path),
                 "status": "absent",
             }
         ),
@@ -571,6 +600,7 @@ def run_vehicle_automation(
             perception_dict = perception.to_dict()
         perception_plugin_report = plugin_report(perception_step)
         memory_plugin_report = plugin_report(memory_step)
+        proposal_plugin_report = plugin_report(proposal_step)
 
         control_record = {
             **cycle_result.control.to_dict(),
@@ -604,6 +634,7 @@ def run_vehicle_automation(
             "perception": perception_dict,
             "perception_plugin_report": perception_plugin_report,
             "memory_plugin_report": memory_plugin_report,
+            "proposal_plugin_report": proposal_plugin_report,
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
@@ -728,6 +759,11 @@ def run_vehicle_automation(
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
                     "status": memory_step.status(),
+                }
+            if proposal_step is not None:
+                state["proposal"] = {
+                    "activation": display_path(proposal_activation_path),
+                    "status": proposal_step.status(),
                 }
             perception_state = state.get("perception")
             if isinstance(perception_state, dict):

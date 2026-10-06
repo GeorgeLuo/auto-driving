@@ -494,7 +494,12 @@ and the staged runner's `proposal_schema_v1` contract. `--json` returns
 `vehicle_proposal_info_v1` with that contract under `proposal_schema`.
 `vehicles info decision` lists every step's selection with the proposal,
 plan and action contract, and points to `vehicles info proposal` for the
-schema:
+schema. Staging replaces the selection. A worker loads the staged proposals
+from the controller bundle when it starts, as it loads memory, and reports
+them under `proposal` in its state and `proposal_plugin_report` in each frame.
+Proposals are part of the decision generation, so a running worker stops
+publishing decision frames once they are restaged; restart it to run the new
+selection:
 
 ```sh
 ./cli/automa vehicles info proposal --id chase-sim-chaser

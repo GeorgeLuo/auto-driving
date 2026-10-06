@@ -15,7 +15,6 @@ Update and reset failures follow ``FAILURE_POLICY`` in ``interface``.
 from __future__ import annotations
 
 import time
-from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from threading import RLock
@@ -37,6 +36,8 @@ from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import (
     PROVIDED_ENTRYPOINT,
+    describe_configuration,
+    describe_plugin,
     require_step_activation,
     require_step_manager,
 )
@@ -343,22 +344,12 @@ class MemoryRunner:
             return self._describe_schema()
 
     def _describe_schema(self) -> dict[str, Any]:
-        catalog = self._plugin_report()
-        available = self.plugin_manager.available
+        applied = self._selection_runtime.applied
         return {
             "schema": MEMORY_SCHEMA,
             "plugin_id": self.plugin_id,
             "runner": f"{type(self).__module__}:{type(self).__name__}",
-            "configuration": {
-                "plugins": list(self.plugin_ids),
-                "available_plugins": sorted(item.plugin_id for item in available),
-                "selected_plugin_ids": list(catalog["selected_plugin_ids"]),
-                "applied_plugin_ids": list(catalog["applied_plugin_ids"]),
-                "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
-                "plugin_configs": {
-                    item.plugin_id: deepcopy(dict(item.config)) for item in available
-                },
-            },
+            "configuration": describe_configuration(self.plugin_manager, applied),
             "inputs": [
                 {
                     "name": "observation",
@@ -380,14 +371,7 @@ class MemoryRunner:
                     ),
                 },
             ],
-            "plugins": [
-                {
-                    "plugin_id": definition.plugin_id,
-                    "spec": definition.entrypoint,
-                    "config": deepcopy(dict(definition.config)),
-                }
-                for definition, _plugin in self._selection_runtime.applied
-            ],
+            "plugins": [describe_plugin(definition) for definition, _plugin in applied],
             "output": {
                 "schema": MEMORY_REPORT_SCHEMA,
                 "ledger_summary_keys": list(LEDGER_SUMMARY_KEYS),

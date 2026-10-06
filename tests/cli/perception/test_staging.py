@@ -135,7 +135,7 @@ class PerceptionCommandTests(unittest.TestCase):
         )
         self.assertIn("Plugins:", text_result.stdout)
         self.assertIn(
-            "frame [stateless] feeds=camera.rgb:front_camera",
+            "  contract: stateless feeds=camera.rgb:front_camera",
             text_result.stdout,
         )
 

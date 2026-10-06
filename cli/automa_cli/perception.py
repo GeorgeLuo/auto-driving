@@ -45,6 +45,7 @@ from .step_activations import (
     step_update_error,
 )
 from .step_hosting import load_staged_runner
+from .step_schema import format_schema, schema_source
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
 from .physical_observation import (
@@ -255,11 +256,9 @@ def get_vehicle_perception_info(
                     for key, value in _manifest_bundle(manifest).items()
                     if key in CONTROLLER_BUNDLE_KEYS
                 },
-                "perception_schema_source": {
-                    "kind": "runner_method",
-                    "method": "describe_schema",
-                    "runner": "autonomy.decision_cycle.perception.runner:PerceptionRunner",
-                },
+                "perception_schema_source": schema_source(
+                    "autonomy.decision_cycle.perception.runner:PerceptionRunner"
+                ),
                 "perception_schema": schema,
                 "published_view": published_view,
                 "automation": automation_status,
@@ -826,9 +825,7 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
                 "Release: not recorded; run `vehicles update perception` to package and attach release metadata"
             )
         if schema is not None:
-            lines.append(
-                f"Schema source: {payload['perception_schema_source']['runner']}.describe_schema()"
-            )
+            lines.extend(format_schema(payload.get("perception_schema_source"), schema))
     else:
         lines = [
             f"Perception: {payload['vehicle_id']} (no local staged activation)",
@@ -837,99 +834,6 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
 
     if live is not None:
         lines.extend(["", _format_live_observation(live)])
-
-    if schema is None:
-        return "\n".join(lines)
-
-    lines.extend(
-        [
-            "",
-            "Inputs:",
-        ]
-    )
-
-    for item in schema.get("inputs", []):
-        if not isinstance(item, dict):
-            continue
-        required = "required" if item.get("required") else "optional"
-        lines.append(f"- {item.get('feed_id', 'unknown')} ({required})")
-        required_by = item.get("required_by")
-        if isinstance(required_by, list) and required_by:
-            lines.append(f"  requested by: {', '.join(map(str, required_by))}")
-        source = item.get("source")
-        if source:
-            lines.append(f"  source: {source}")
-        missing = item.get("missing_behavior")
-        if missing:
-            lines.append(f"  missing: {missing}")
-        translations = item.get("translations")
-        if isinstance(translations, list) and translations:
-            lines.append("  translations:")
-            for translation in translations:
-                if not isinstance(translation, dict):
-                    continue
-                emits = translation.get("emits")
-                emit_text = f" -> {', '.join(map(str, emits))}" if isinstance(emits, list) and emits else ""
-                lines.append(
-                    f"  - {translation.get('name', 'unnamed')} "
-                    f"[{translation.get('implementation', 'unknown')}]{emit_text}"
-                )
-
-    plugins = schema.get("plugins")
-    if isinstance(plugins, list) and plugins:
-        lines.extend(["", "Plugins:"])
-        for plugin in plugins:
-            if not isinstance(plugin, dict):
-                continue
-            contract = plugin.get("contract") if isinstance(plugin.get("contract"), dict) else {}
-            inputs = contract.get("inputs")
-            feed_text = (
-                ", ".join(
-                    str(item.get("feed_id", "unknown"))
-                    for item in inputs
-                    if isinstance(item, dict)
-                )
-                if isinstance(inputs, list) and inputs
-                else "none"
-            )
-            catalog_id = plugin.get("plugin_id", "unknown")
-            lines.append(
-                f"- {catalog_id} "
-                f"[{contract.get('state_mode', 'unknown')}] "
-                f"feeds={feed_text}"
-            )
-
-    output_schema = schema.get("output") if isinstance(schema.get("output"), dict) else {}
-    lines.extend(
-        [
-            "",
-            "Output:",
-            f"- schema: {output_schema.get('schema', 'unknown')}",
-            f"- format: {output_schema.get('format', 'unknown')}",
-        ]
-    )
-    records = output_schema.get("records")
-    if isinstance(records, list) and records:
-        lines.append("- records:")
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            lines.append(f"  - {_format_output_record(record)}")
-    limits = output_schema.get("limits")
-    if isinstance(limits, list) and limits:
-        lines.append("- limits:")
-        for limit in limits:
-            lines.append(f"  - {limit}")
-    composition = schema.get("composition") if isinstance(schema.get("composition"), dict) else {}
-    if composition:
-        lines.extend(["", "Composition:"])
-        for key, value in composition.items():
-            lines.append(f"- {key}: {value}")
-    failure = schema.get("failure_policy") if isinstance(schema.get("failure_policy"), dict) else {}
-    if failure:
-        lines.extend(["", "Failure policy:"])
-        for key, value in failure.items():
-            lines.append(f"- {key}: {value}")
     return "\n".join(lines)
 
 
@@ -1159,29 +1063,6 @@ def _process_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
-
-
-def _format_output_record(record: dict[str, Any]) -> str:
-    if isinstance(record.get("record"), str):
-        described_parts = [record["record"]]
-        if isinstance(record.get("meaning"), str):
-            described_parts.append(f"- {record['meaning']}")
-        return " ".join(described_parts)
-
-    parts: list[str] = []
-    if isinstance(record.get("thing_id"), str):
-        parts.append(record["thing_id"])
-    if isinstance(record.get("thing_kind"), str):
-        parts.append(f"kind={record['thing_kind']}")
-    if isinstance(record.get("frame"), str):
-        parts.append(f"frame={record['frame']}")
-    if isinstance(record.get("zone"), str):
-        parts.append(f"zone={record['zone']}")
-    if isinstance(record.get("when"), str):
-        parts.append(f"when={record['when']}")
-    if isinstance(record.get("meaning"), str):
-        parts.append(f"- {record['meaning']}")
-    return " ".join(parts) if parts else json.dumps(record, sort_keys=True)
 
 
 def _configured_plugins(activation: dict[str, Any]) -> list[str]:

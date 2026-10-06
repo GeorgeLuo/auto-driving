@@ -36,6 +36,7 @@ from .step_activations import (
     step_update_error,
 )
 from .step_hosting import load_staged_runner
+from .step_schema import format_schema, schema_source
 from .streaming import _format_live_memory_screen, probe_live_memory
 from .vehicles import DEFAULT_CHASE_READINESS_TIMEOUT_S
 
@@ -229,11 +230,7 @@ def get_vehicle_memory_info(
         "controller_bundle": {
             key: stored_bundle.get(key) for key in CONTROLLER_BUNDLE_KEYS
         },
-        "memory_schema_source": {
-            "kind": "runner_method",
-            "method": "describe_schema",
-            "runner": "autonomy.decision_cycle.memory.runner:MemoryRunner",
-        },
+        "memory_schema_source": schema_source("autonomy.decision_cycle.memory.runner:MemoryRunner"),
         "memory_schema": schema,
         "live": None,
     }
@@ -291,55 +288,10 @@ def _format_memory_info(payload: dict[str, Any]) -> str:
         )
     schema = payload.get("memory_schema") if isinstance(payload.get("memory_schema"), dict) else None
     if schema is not None:
-        source = payload.get("memory_schema_source") if isinstance(payload.get("memory_schema_source"), dict) else {}
-        lines.append(f"Schema source: {source.get('runner', 'unknown')}.describe_schema()")
-        lines.extend(_format_schema_sections(schema))
+        lines.extend(format_schema(payload.get("memory_schema_source"), schema))
     live = payload.get("live")
     if isinstance(live, dict):
         lines.append("")
         lines.append(_format_live_memory_screen(vehicle_id=payload["vehicle_id"], live=live))
     return "\n".join(lines)
-
-
-def _format_schema_sections(schema: dict[str, Any]) -> list[str]:
-    """Section titles shared with perception info, for the fields both steps have."""
-
-    lines = ["", "Inputs:"]
-    for item in schema.get("inputs") or []:
-        if not isinstance(item, dict):
-            continue
-        label = item.get("name") or item.get("feed_id") or "unknown"
-        required = "required" if item.get("required") else "optional"
-        lines.append(f"- {label} ({required})")
-        if item.get("source"):
-            lines.append(f"  source: {item['source']}")
-        if item.get("missing_behavior"):
-            lines.append(f"  missing: {item['missing_behavior']}")
-    plugins = schema.get("plugins")
-    if isinstance(plugins, list) and plugins:
-        lines.extend(["", "Plugins:"])
-        for plugin in plugins:
-            if isinstance(plugin, dict):
-                lines.append(
-                    f"- {plugin.get('plugin_id', 'unknown')} "
-                    f"[{plugin.get('spec', 'unknown')}]"
-                )
-    output = schema.get("output") if isinstance(schema.get("output"), dict) else {}
-    lines.extend(["", "Output:", f"- schema: {output.get('schema', 'unknown')}"])
-    keys = output.get("ledger_summary_keys")
-    if isinstance(keys, list) and keys:
-        lines.append(f"- ledger: {', '.join(map(str, keys))}")
-    if output.get("missing_field_behavior"):
-        lines.append(f"- missing: {output['missing_field_behavior']}")
-    composition = schema.get("composition") if isinstance(schema.get("composition"), dict) else {}
-    if composition:
-        lines.extend(["", "Composition:"])
-        for key, value in composition.items():
-            lines.append(f"- {key}: {value}")
-    failure = schema.get("failure_policy") if isinstance(schema.get("failure_policy"), dict) else {}
-    if failure:
-        lines.extend(["", "Failure policy:"])
-        for key, value in failure.items():
-            lines.append(f"- {key}: {value}")
-    return lines
 

@@ -12,7 +12,9 @@ epoch.
 
 Each step declares what a plugin failure or a missing input does as one
 ``FailurePolicy``, ``FAILURE_POLICY`` in the step's ``interface``. The runner
-reads it, and ``describe_schema`` reports it under ``failure_policy``.
+reads it, and ``describe_schema`` reports it under ``failure_policy``. A step
+that describes its contract builds the ``configuration`` and ``plugins``
+entries of that schema with ``describe_configuration`` and ``describe_plugin``.
 
 ``StepRunner`` implements that surface for steps whose plugins need no more
 than load, validate, and reset. The perception and memory runners implement the
@@ -22,7 +24,8 @@ same surface with their own component and host-map handling.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any, ClassVar, Generic, TypeVar
@@ -288,6 +291,34 @@ def _accepts_argument(function: Any) -> bool:
         )
         for parameter in parameters
     )
+
+
+def describe_configuration(
+    plugin_manager: PluginManager,
+    applied: Iterable[tuple[PluginDefinition, Any]],
+) -> dict[str, Any]:
+    """The ``configuration`` entry of a step schema: catalog, selection, and applied plugins."""
+
+    report = build_plugin_report(plugin_manager, applied)
+    available = plugin_manager.available
+    return {
+        "plugins": list(report["applied_plugin_ids"]),
+        "available_plugins": sorted(item.plugin_id for item in available),
+        "selected_plugin_ids": list(report["selected_plugin_ids"]),
+        "applied_plugin_ids": list(report["applied_plugin_ids"]),
+        "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
+        "plugin_configs": {item.plugin_id: deepcopy(dict(item.config)) for item in available},
+    }
+
+
+def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
+    """One applied plugin in a step schema's ``plugins`` list; a step adds its own fields."""
+
+    return {
+        "plugin_id": definition.plugin_id,
+        "spec": definition.entrypoint,
+        "config": deepcopy(dict(definition.config)),
+    }
 
 
 def describe_exception(exc: BaseException) -> str:

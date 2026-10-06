@@ -19,6 +19,8 @@ from autonomy.decision_cycle.activation import StepActivation, step_activation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.runner import (
     PROVIDED_ENTRYPOINT,
+    describe_configuration,
+    describe_plugin,
     require_step_activation,
     require_step_manager,
 )
@@ -247,12 +249,11 @@ class PerceptionRunner:
         )
 
     def _describe_schema(self) -> dict[str, Any]:
-        report = self._plugin_report()
         feed_consumers: dict[str, list[str]] = {}
         feed_providers: dict[str, str] = {}
         plugin_schemas = []
-        available = self.plugin_manager.available
-        for definition, plugin in self._selection_runtime.applied:
+        applied = self._selection_runtime.applied
+        for definition, plugin in applied:
             contract = plugin.contract
             for item in contract.inputs:
                 feed_consumers.setdefault(item.feed_id, []).append(
@@ -260,27 +261,13 @@ class PerceptionRunner:
                 )
                 feed_providers[item.feed_id] = item.provider_spec
             plugin_schemas.append(
-                {
-                    "plugin_id": definition.plugin_id,
-                    "spec": definition.entrypoint,
-                    "config": deepcopy(dict(definition.config)),
-                    "contract": contract.to_dict(),
-                }
+                {**describe_plugin(definition), "contract": contract.to_dict()}
             )
         return {
             "schema": PERCEPTION_SCHEMA,
             "plugin_id": self.plugin_id,
-            "runner": f"{self.__class__.__module__}:{self.__class__.__name__}",
-            "configuration": {
-                "plugins": list(self.plugin_ids),
-                "available_plugins": sorted(item.plugin_id for item in available),
-                "selected_plugin_ids": list(report["selected_plugin_ids"]),
-                "applied_plugin_ids": list(report["applied_plugin_ids"]),
-                "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
-                "plugin_configs": {
-                    item.plugin_id: deepcopy(dict(item.config)) for item in available
-                },
-            },
+            "runner": f"{type(self).__module__}:{type(self).__name__}",
+            "configuration": describe_configuration(self.plugin_manager, applied),
             "inputs": [
                 {
                     "feed_id": feed_id,

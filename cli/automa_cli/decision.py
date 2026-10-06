@@ -71,9 +71,12 @@ from .step_activations import (
     decision_identity,
     format_activation_problems,
     proposal_plugin_ids,
+    read_bundle_activation,
     step_info,
 )
 from .paths import ROOT, display_path, safe_path_part
+from .step_hosting import load_staged_runner
+from .step_schema import format_schema, schema_source
 from .physical_observation import (
     PhysicalDecisionPublicationError,
     fetch_decision_publication,
@@ -270,13 +273,6 @@ LOCATION_REQUIRED_KEYS = frozenset(
     {"frame", "zone", "bbox_xyxy_norm", "polygon_xy_norm"}
 )
 
-PROPOSAL_DECISION_INPUTS = (
-    "observation",
-    "shared_memory",
-    "capabilities",
-    "prior_host_applied_command",
-)
-
 @dataclass(frozen=True)
 class CommandResult:
     exit_code: int
@@ -453,9 +449,25 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
     action_plugin = action_plugins[0] if action_plugins else None
     plan_plugins = (steps.get("plan") or {}).get("plugins") or []
     proposals: dict[str, Any] | None = None
+    proposal_schema: dict[str, Any] | None = None
     if steps.get("proposal") is not None:
+        try:
+            # From the staged bundle, as perception and memory info read theirs.
+            proposal_schema = load_staged_runner(
+                read_bundle_activation(bundle, "proposal")
+            ).describe_schema()
+        except Exception as exc:
+            return _error_result(
+                DecisionSurfaceError(
+                    "activation_invalid",
+                    f"Could not inspect staged proposal for {vehicle_id!r}: "
+                    f"{type(exc).__name__}: {exc}",
+                    vehicle_id=vehicle_id,
+                ),
+                json_output=json_output,
+            )
         proposals = {
-            "decision_inputs": list(PROPOSAL_DECISION_INPUTS),
+            "decision_inputs": [item["name"] for item in proposal_schema["inputs"]],
             "plugins": proposal_plugin_ids(steps),
             "selector_id": plan_plugins[0] if plan_plugins else None,
             "output_schemas": {
@@ -512,6 +524,12 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
         "steps": step_info(bundle),
         "activations": steps,
         "proposals": proposals,
+        "proposal_schema_source": (
+            schema_source("autonomy.decision_cycle.proposal.runner:ProposalRunner")
+            if proposal_schema is not None
+            else None
+        ),
+        "proposal_schema": proposal_schema,
         "combined_view": combined_view,
     }
     if json_output:
@@ -3245,7 +3263,6 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
             [
                 "",
                 "Proposal decision:",
-                f"- inputs: {', '.join(proposals.get('decision_inputs') or [])}",
                 f"- plugins: {', '.join(proposals.get('plugins') or []) or '(none)'}",
                 f"- plan: {proposals.get('selector_id')}",
                 f"- output_schemas: {json.dumps(proposals.get('output_schemas') or {}, sort_keys=True)}",
@@ -3256,6 +3273,9 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
                 ),
             ]
         )
+        schema = payload.get("proposal_schema")
+        if isinstance(schema, dict):
+            lines.extend(format_schema(payload.get("proposal_schema_source"), schema))
     else:
         lines.extend(
             [

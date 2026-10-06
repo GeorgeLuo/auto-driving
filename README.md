@@ -119,7 +119,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
-| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info show the staged preset, enabled and available plugins, and runner schema (inputs, output, composition and failure policy); perception info also reports the live view URL, and memory info the live memory step. |
+| `vehicles info ...` | Reads staged perception, decision steps, or memory configuration. Perception and memory info show the staged preset, enabled and available plugins, and runner schema (inputs, output, composition and failure policy); decision info shows the proposal runner's schema in the same sections; perception info also reports the live view URL, and memory info the live memory step. |
 | `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
@@ -424,7 +424,8 @@ and a plugin list is recorded as the preset it equals, else `custom`.
 `vehicles info memory` reports the staged preset, its enabled plugins and the
 available ones, and the staged runner's `memory_schema_v1` contract.
 `--json` returns `vehicle_memory_info_v1` with that contract under `memory_schema`.
-Both steps describe inputs, plugins, output, composition and failure policy;
+Perception, memory, and proposal (`proposal_schema` in `vehicles info
+decision`) describe inputs, plugins, output, composition and failure policy;
 memory's contract also names the ledger fields the CLI and viewers project from
 each plugin's status. The report itself preserves that status, including absent
 ledger keys. Staging replaces the selection. A running worker applies a

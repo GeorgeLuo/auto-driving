@@ -20,6 +20,7 @@ from __future__ import annotations
 LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("autonomy.decision_cycle.perception.runner:PerceptionRunner", "autonomy.decision_cycle.perception.runner", "PerceptionRunner"),
     ("autonomy.decision_cycle.memory.runner:MemoryRunner", "autonomy.decision_cycle.memory.runner", "MemoryRunner"),
+    ("autonomy.decision_cycle.proposal.runner:ProposalRunner", "autonomy.decision_cycle.proposal.runner", "ProposalRunner"),
     ("autonomy.decision_cycle.observation.perception_summary:PerceptionSummary", "autonomy.decision_cycle.observation.perception_summary", "PerceptionSummary"),
     ("autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan", "autonomy.decision_cycle.plan.highest_confidence", "HighestConfidencePlan"),
     ("autonomy.decision_cycle.action.hold:HoldAction", "autonomy.decision_cycle.action.hold", "HoldAction"),

@@ -7,6 +7,8 @@ that raises or returns an invalid candidate is replaced by a synthetic error
 candidate under its selected ID. Failures that leave no trustworthy candidate
 set end the step with status ``error``. There is no plugin-count limit; with
 no plugins selected the step returns no candidates and the plan is idle.
+Plugin failures and missing inputs follow ``FAILURE_POLICY`` in ``interface``;
+``describe_schema`` reports the step's contract.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, ClassVar
 
+from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.action_identifiers import (
     ActionInputError,
     ActionProposalMatrixError,
@@ -31,14 +34,20 @@ from autonomy.decision_cycle.proposal.inputs import (
     omit_forbidden_channel_keys,
     ready_envelope,
 )
+from autonomy.decision_cycle.proposal.interface import (
+    FAILURE_POLICY,
+    PROPOSAL_SCHEMA,
+    composition_declaration,
+)
 from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
-from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
 from autonomy.decision_cycle.proposal.values import (
+    ACTION_PROPOSAL_SCHEMA,
     MAX_PROPOSAL_BYTES,
     ActionProposal,
     synthetic_error_proposal,
 )
-from autonomy.decision_cycle.runner import StepRunner
+from autonomy.decision_cycle.runner import StepRunner, describe_configuration, describe_plugin
 from autonomy.plugins import PluginDefinition
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.shared_memory import SharedMemory
@@ -102,10 +111,16 @@ def _admit_candidate(
     return validated
 
 
+def _declared_evidence_key(plugin: ProposalPlugin) -> str | None:
+    key = getattr(plugin, "evidence_key", None)
+    return key if isinstance(key, str) and key else None
+
+
 class ProposalRunner(StepRunner[ProposalPlugin]):
     """Run every selected proposal plugin once per cycle."""
 
     step: ClassVar[str] = "proposal"
+    plugin_id: ClassVar[str] = "autonomy.proposal.plugin-runner-v0"
 
     def validate_plugin(self, plugin: ProposalPlugin, definition: PluginDefinition) -> None:
         require_ascii_id(definition.plugin_id, field_name="plugin_id")
@@ -117,10 +132,89 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         """The first host-map evidence key a selected plugin declares, for the audit copy."""
 
         for _definition, plugin in self.applied:
-            key = getattr(plugin, "evidence_key", None)
-            if isinstance(key, str) and key:
+            key = _declared_evidence_key(plugin)
+            if key is not None:
                 return key
         return None
+
+    def describe_schema(self) -> dict[str, Any]:
+        """The step's contract: configuration, inputs, plugins, output, composition, failure."""
+
+        with self._runtime_lock:
+            applied = self.applied
+            return {
+                "schema": PROPOSAL_SCHEMA,
+                "plugin_id": self.plugin_id,
+                "runner": f"{type(self).__module__}:{type(self).__name__}",
+                "configuration": describe_configuration(self.plugin_manager, applied),
+                "inputs": [
+                    {
+                        "name": "observation",
+                        "required": False,
+                        "source": "the cycle's observation, in the source",
+                        "missing_behavior": (
+                            "the source marks it unavailable, or error with the "
+                            "observation step's reason; the plugin is still called"
+                            if FAILURE_POLICY.missing_input == "invoke"
+                            else "the plugin is not called"
+                        ),
+                    },
+                    {
+                        "name": "shared_memory",
+                        "required": False,
+                        "source": "the host map on the frame context, shared by every plugin",
+                        "missing_behavior": "plugins get an empty map, as in offline replay",
+                    },
+                    {
+                        "name": "evidence",
+                        "required": False,
+                        "source": (
+                            "an audit copy, in the source, of the host-map value at the "
+                            "evidence_key the first selected plugin declares"
+                        ),
+                        "missing_behavior": "the source marks it unavailable",
+                    },
+                    {
+                        "name": "capabilities",
+                        "required": False,
+                        "source": "the host's capabilities envelope in context.metadata",
+                        "missing_behavior": "the source holds the default capabilities",
+                    },
+                    {
+                        "name": "prior_host_applied_command",
+                        "required": False,
+                        "source": "the host's last applied command in context.metadata",
+                        "missing_behavior": "the source marks it unavailable",
+                    },
+                ],
+                "plugins": [
+                    {
+                        **describe_plugin(definition),
+                        "evidence_key": _declared_evidence_key(plugin),
+                    }
+                    for definition, plugin in applied
+                ],
+                "output": {
+                    "schema": PROPOSAL_RESULT_SCHEMA,
+                    "records": [
+                        {
+                            "record": "candidates[]",
+                            "meaning": (
+                                f"one {ACTION_PROPOSAL_SCHEMA} per selected plugin, in "
+                                "selection order; a synthetic error candidate when the "
+                                "plugin raises or returns an invalid candidate"
+                            ),
+                        },
+                        {
+                            "record": "source",
+                            "meaning": "the detached decision data source the plugins read",
+                        },
+                    ],
+                    "error_reasons": sorted(CYCLE_ERROR_REASONS),
+                },
+                "composition": composition_declaration(),
+                "failure_policy": FAILURE_POLICY.to_dict(),
+            }
 
     def __call__(
         self,

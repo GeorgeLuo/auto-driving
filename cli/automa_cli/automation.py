@@ -53,7 +53,7 @@ from .step_activations import (
     format_activation_problems,
     read_bundle_activation,
 )
-from .step_hosting import load_staged_runner, sync_live_selection
+from .step_hosting import load_staged_runner, plugin_report, sync_live_selection
 from .runtime_view import RuntimeViewServer
 from .perception_view import (
     get_perception_view_status,
@@ -110,18 +110,6 @@ def _step_status(cycle_host: AutonomyCycleHost) -> dict[str, Any]:
         )
         for step, item in steps.items()
     } | {"cycle_count": status.get("cycle_count"), "error_count": status.get("error_count")}
-
-
-def _execution_plugin_report(owner: Any) -> dict[str, Any] | None:
-    """Copy a step's common plugin envelope, when that step publishes one."""
-
-    report_for = getattr(owner, "plugin_report", None)
-    if not callable(report_for):
-        return None
-    report = report_for()
-    if not isinstance(report, dict):
-        return None
-    return copy.deepcopy(report)
 
 
 @dataclass(frozen=True)
@@ -356,7 +344,7 @@ def run_vehicle_automation(
             "activation": display_path(manifest_path),
             "preset": perception_activation.metadata.get("preset"),
             "plugins": list(perception_activation.plugins),
-            "plugin_report": _execution_plugin_report(perception_step),
+            "plugin_report": plugin_report(perception_step),
         },
         "decision": {
             "generation_id": identity["generation_id"],
@@ -581,10 +569,8 @@ def run_vehicle_automation(
         else:
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
-        perception_plugin_report = _execution_plugin_report(perception_step)
-        memory_plugin_report = (
-            _execution_plugin_report(memory_step) if memory_step is not None else None
-        )
+        perception_plugin_report = plugin_report(perception_step)
+        memory_plugin_report = plugin_report(memory_step)
 
         control_record = {
             **cycle_result.control.to_dict(),

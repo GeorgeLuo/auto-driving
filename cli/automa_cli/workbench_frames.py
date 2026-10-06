@@ -6,7 +6,7 @@ replay frame and the active steps into a cycle result.
 
 from __future__ import annotations
 
-import copy
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,12 +14,13 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.perception.interface import PerceptionBackend, PerceptionText
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import packaged_activation
 
 from .perception_runs import run_perception
+from .step_hosting import plugin_report
 from .workbench_contract import WORKBENCH_SEQUENCE_ID
 from .workbench_source import ReplayFrame
 
@@ -55,10 +56,11 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
     )
 
 
-def workbench_decision_steps() -> Any:
+def workbench_decision_steps() -> dict[str, Any]:
     """The packaged proposals, built-in plan, and hold action the workbench replays."""
 
-    return decision_steps({"proposal": packaged_activation("proposal")})
+    steps = decision_steps({"proposal": packaged_activation("proposal")})
+    return {"proposal": steps.proposal, "plan": steps.plan, "action": steps.action}
 
 
 def decision_view(result: Any) -> dict[str, Any] | None:
@@ -77,35 +79,28 @@ def decision_view(result: Any) -> dict[str, Any] | None:
     }
 
 
-def plugin_report(owner: Any) -> dict[str, Any] | None:
-    """Copy a step's common plugin envelope, when that step publishes one."""
-
-    report_for = getattr(owner, "plugin_report", None)
-    if not callable(report_for):
-        return None
-    report = report_for()
-    if not isinstance(report, dict):
-        return None
-    return copy.deepcopy(report)
-
-
 @dataclass(frozen=True)
 class FrameOutcome:
     result: Any
     decision: dict[str, Any] | None
-    perception_plugin_report: dict[str, Any] | None
-    memory_plugin_report: dict[str, Any] | None
+    # Each step runner's plugin report after the frame, by step.
+    plugin_reports: dict[str, dict[str, Any] | None]
 
 
 def run_frame(
     frame: ReplayFrame,
     *,
-    perception_step: PerceptionBackend,
-    memory_step: Any,
-    steps: Any,
+    steps: Mapping[str, Any],
     shared_memory: dict[str, Any],
 ) -> FrameOutcome:
-    """Run one frame through every step with the given active plugins."""
+    """Run one frame through the step runners in ``steps``, keyed by step.
+
+    Perception is required and is adapted to the replay frame; observation is
+    built from it. Every other step runs its runner, and a missing step is
+    skipped as the cycle skips it.
+    """
+
+    perception_step = steps["perception"]
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
     context = DecisionFrameContext(
@@ -158,19 +153,14 @@ def run_frame(
         DecisionSteps(
             perception=perceive,
             observation=observe,
-            memory=memory_step,
-            proposal=steps.proposal,
-            plan=steps.plan,
-            action=steps.action,
+            memory=steps.get("memory"),
+            proposal=steps.get("proposal"),
+            plan=steps.get("plan"),
+            action=steps.get("action"),
         ),
     ).run(context)
-    decision_payload = decision_view(result)
-    perception_plugin_report = plugin_report(perception_step)
-    memory_plugin_report = plugin_report(memory_step)
-
     return FrameOutcome(
         result=result,
-        decision=decision_payload,
-        perception_plugin_report=perception_plugin_report,
-        memory_plugin_report=memory_plugin_report,
+        decision=decision_view(result),
+        plugin_reports={step: plugin_report(runner) for step, runner in steps.items()},
     )

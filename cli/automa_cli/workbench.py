@@ -28,6 +28,7 @@ from .workbench_contract import (
 )
 from .workbench_runner import ImageReplayRunner
 from .workbench_plugins import (
+    SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
@@ -150,11 +151,12 @@ def _format_workbench_status(
         f"sequence: {state.get('sequence_id')}",
         f"run_id: {state.get('run_id') or '(none)'}",
         f"source: {source.get('source_path') or source.get('path') or '(none)'}",
-        "perception: " + _selection_text(
-            pipeline.get("perception_preset"), state.get("active_perception_plugin_ids")
-        ),
-        "memory: " + _selection_text(
-            pipeline.get("memory_preset"), state.get("active_memory_plugin_ids")
+        *(
+            f"{step}: "
+            + _selection_text(
+                pipeline.get(f"{step}_preset"), state.get(f"active_{step}_plugin_ids")
+            )
+            for step in SELECTABLE_STEPS
         ),
         f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
     ]
@@ -170,15 +172,9 @@ def _format_workbench_status(
         lines.append(f"recovery: {recovery}")
     cleanup = state.get("cleanup")
     if isinstance(cleanup, dict):
+        fields = (*SELECTABLE_STEPS, "source_read_only", "movement_control")
         lines.append(
-            "cleanup: perception={perception}; memory={memory}; "
-            "source_read_only={source_read_only}; "
-            "movement_control={movement_control}".format(
-                perception=cleanup.get("perception"),
-                memory=cleanup.get("memory"),
-                source_read_only=cleanup.get("source_read_only"),
-                movement_control=cleanup.get("movement_control"),
-            )
+            "cleanup: " + "; ".join(f"{field}={cleanup.get(field)}" for field in fields)
         )
     return "\n".join(lines)
 

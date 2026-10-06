@@ -26,7 +26,7 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("autonomy.decision_cycle.action.hold:HoldAction", "autonomy.decision_cycle.action.hold", "HoldAction"),
     ("implementations.decision_cycle.action.mode.plugin:ModeAction", "implementations.decision_cycle.action.mode.plugin", "ModeAction"),
     ("implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger", "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger"),
-    ("implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin:AvoidRecentObstruction", "implementations.decision_cycle.proposal.avoid_recent_obstruction.plugin", "AvoidRecentObstruction"),
+    ("implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:AvoidRecentObstruction", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin", "AvoidRecentObstruction"),
     ("implementations.decision_cycle.perception.feeds.camera:provide_camera_frame", "implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame"),
     ("implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin", "implementations.decision_cycle.perception.plugins.motion_tracks.plugin", "MotionTracksPlugin"),
     ("implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin", "implementations.decision_cycle.perception.plugins.frame.plugin", "FrameObservationPlugin"),

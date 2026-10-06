@@ -134,7 +134,15 @@
                 "path": "implementations/decision_cycle/proposal/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Proposal plugins that propose a command, the proposal catalog, and offline inspection scenarios."
+                "responsibility": "Proposal plugins that propose a command, and offline inspection scenarios. catalog.py lists the plugins and the default selection; presets wait for a second plugin. The protocol, runner, and record values live under autonomy/decision_cycle/proposal/.",
+                "children": [
+                  {
+                    "path": "implementations/decision_cycle/proposal/plugins/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "One folder per proposal plugin, named for its plugin_id."
+                  }
+                ]
               },
               {
                 "path": "implementations/decision_cycle/action/",

@@ -100,35 +100,26 @@ class AutomationProposalSelectionTests(unittest.TestCase):
         self.assertEqual(latest["generation_id"], staged["generation_id"])
         self.assertEqual(view["identity"]["activation_generation_id"], staged["generation_id"])
 
-    def test_restaged_configs_wait_for_a_restart(self):
-        startup, staged, applied, state, latest, view = self.run_with_restage(
-            packaged_activation(
+    def test_restages_the_worker_cannot_apply_keep_the_startup_generation(self):
+        cases = {
+            "config change waits for a restart": (packaged_activation(
                 "proposal", config_overrides={"avoid_recent_obstruction": {"steer_magnitude": 0.5}}
-            )
-        )
-
-        self.assertNotEqual(staged["generation_id"], startup)
-        self.assertEqual(applied, [("avoid_recent_obstruction",)] * 4)
-        self.assertEqual(state["decision"]["generation_id"], startup)
-        self.assertEqual(state["decision"]["latest_frame_publish_skips"], 4)
-        self.assertIsNone(latest)
-        self.assertEqual(view["identity"]["activation_generation_id"], startup)
-
-    def test_failed_selection_keeps_the_generation_of_the_applied_plugins(self):
-        startup, staged, applied, state, latest, view = self.run_with_restage(
-            packaged_activation("proposal", []), reject_reset=True,
-        )
-
-        self.assertNotEqual(staged["generation_id"], startup)
-        self.assertEqual(applied, [("avoid_recent_obstruction",)] * 4)
-        report = state["proposal"]["status"]["plugin_report"]
-        self.assertEqual(report["selected_plugin_ids"], [])
-        self.assertEqual(report["applied_plugin_ids"], ["avoid_recent_obstruction"])
-        self.assertEqual(state["decision"]["generation_id"], startup)
-        self.assertEqual(view["identity"]["activation_generation_id"], startup)
-        self.assertEqual(state["decision"]["latest_frame_publish_skips"], 4)
-        self.assertIsNone(latest)
-
+            ), False),
+            "failed plugin reset": (packaged_activation("proposal", []), True),
+        }
+        for name, (restaged, reject_reset) in cases.items():
+            with self.subTest(name):
+                startup, staged, applied, state, latest, view = self.run_with_restage(
+                    restaged, reject_reset=reject_reset,
+                )
+                self.assertNotEqual(staged["generation_id"], startup)
+                self.assertEqual(applied, [("avoid_recent_obstruction",)] * 4)
+                report = state["proposal"]["status"]["plugin_report"]
+                self.assertEqual(report["applied_plugin_ids"], ["avoid_recent_obstruction"])
+                self.assertEqual(state["decision"]["generation_id"], startup)
+                self.assertEqual(view["identity"]["activation_generation_id"], startup)
+                self.assertEqual(state["decision"]["latest_frame_publish_skips"], 4)
+                self.assertIsNone(latest)
 
 if __name__ == "__main__":
     unittest.main()

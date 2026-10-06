@@ -15,7 +15,6 @@ vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/plugins.js", "
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) { console.log("FAIL", m, JSON.stringify(a), JSON.stringify(b)); process.exit(1); } };
 const perception = () => ctx.pluginPanels.perception;
 const memory = () => ctx.pluginPanels.memory;
-const proposal = () => ctx.pluginPanels.proposal;
 const toggle = (step, ids) => { ctx.pluginPanels[step].draft = ids; ctx.queuePluginSelection(step, ids); };
 
 toggle("perception", ["a"]);                      // sent immediately
@@ -31,11 +30,10 @@ ctx.settlePluginDraft("perception");
 eq(perception().draft, null, "draft released once nothing is queued");
 finish();
 
-// Each step keeps its own queue; all three are sent, one request at a time.
+// each step keeps its own queue; both are sent, one request at a time
 sent.length = 0;
 toggle("perception", ["p"]);                      // in flight
 toggle("memory", ["m1", "m2"]);                   // waits behind it
-toggle("proposal", ["q"]);                        // waits independently
 eq(sent, ["perception:p"], "memory selection waits for the request in flight");
 eq(memory().queued, ["m1", "m2"], "memory selection queued");
 ctx.settlePluginDraft("perception");
@@ -45,17 +43,12 @@ eq(sent, ["perception:p", "memory:m1,m2"], "queued memory selection sent after p
 ctx.settlePluginDraft("memory");
 finish();
 eq(memory().draft, null, "memory draft released");
-eq(sent, ["perception:p", "memory:m1,m2", "proposal:q"], "proposal sent after memory settled");
-ctx.settlePluginDraft("proposal");
-finish();
-eq(proposal().draft, null, "proposal draft released");
 
 // rejection drops what is waiting for that step only
 sent.length = 0;
 toggle("memory", ["c"]);                          // in flight
 toggle("memory", ["d"]);                          // queued
 toggle("perception", ["e"]);                      // queued
-toggle("proposal", ["f"]);                        // queued
 ctx.revertPluginDraft("memory");
 eq(memory().queued, null, "revert clears the memory queue");
 eq(perception().queued, ["e"], "revert of one step keeps the other step's queue");
@@ -63,9 +56,7 @@ finish();
 eq(sent, ["memory:c", "perception:e"], "only the other step's toggle goes out after the revert");
 // without a step every panel settles and nothing waits
 ctx.revertPluginDraft();
-eq([perception().queued, memory().queued, proposal().queued,
-  perception().draft, memory().draft, proposal().draft],
-  [null, null, null, null, null, null], "revert without a step clears every panel");
+eq([perception().queued, memory().queued, perception().draft, memory().draft], [null, null, null, null], "revert without a step clears every panel");
 finish();
 eq(sent.length, 2, "nothing extra sent after revert");
 

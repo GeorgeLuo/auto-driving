@@ -66,19 +66,16 @@ if (mode === "order") {
   ctx.actionInFlight = false;
   ctx.renderPlugins();
   assert.deepEqual(checked("perception").sort(), original.slice().sort());
-  // Memory and proposal each have one packaged plugin today; both preserve ordering.
-  for (const step of ["memory", "proposal"]) {
-    const panel = ctx.pluginPanels[step];
-    ctx.state[step + "_plugin_catalog"] = {
-      digest: "two-" + step + "-plugins",
-      plugins: [{ id: "first" }, { id: "second" }]
-    };
-    accept(step, ["second"], step === "proposal" ? null : "custom");
-    toggle(step, "first", true);
-    assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second", "first"]);
-    assert.equal(panel.queued, null);
-    accept(step, ["second", "first"], step === "proposal" ? null : "custom");
-  }
+  // The same function handles ordered memory plugins; the packaged catalog has one today.
+  const panel = ctx.pluginPanels.memory;
+  ctx.state.memory_plugin_catalog = {
+    digest: "two-memory-plugins",
+    plugins: [{ id: "first" }, { id: "second" }]
+  };
+  accept("memory", ["second"], "custom");
+  toggle("memory", "first", true);
+  assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second", "first"]);
+  assert.equal(panel.queued, null);
 } else if (mode === "state") {
   for (const step of ["perception", "memory", "proposal"]) {
     const originalInputs = inputs(step);

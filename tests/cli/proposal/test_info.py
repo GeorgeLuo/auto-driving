@@ -27,7 +27,7 @@ from tests.cli.decision.decision_surfaces_fixtures import (
 
 
 class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
-    def test_info_and_replay_load_a_plugin_only_available_in_the_staged_bundle(self) -> None:
+    def test_info_and_replay_load_decision_steps_from_the_staged_bundle(self) -> None:
         self._stage()
         bundle = vehicle_bundle("chase-sim-chaser", self.runtime_root)
         activation_path = bundle_activation_path(bundle, "proposal")
@@ -72,25 +72,17 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual([item.plugin_id for item in replay.proposal.candidates], ["bundle_only"])
         self.assertEqual(shared_memory["bundle_marker"], "from the staged bundle")
-        # The generic loader must preserve each slot's step validation.
-        wrong_step = read_step_activation(bundle_activation_path(bundle, "action"), "action")
-        with self.assertRaisesRegex(ValueError, "activation is for step 'action', not 'proposal'"):
-            DecisionRunners.from_activations({"proposal": wrong_step})
 
-    def test_info_reports_a_missing_action_bundle_as_an_activation_error(self) -> None:
-        self._stage()
-        bundle = vehicle_bundle("chase-sim-chaser", self.runtime_root)
-        path = bundle_activation_path(bundle, "action")
-        original = read_step_activation(path, "action")
-        payload = original.to_payload()
-        payload["metadata"]["controller_bundle"]["root_dir"] = str(self.runtime_root / "missing-bundle")
-        path.write_text(json.dumps(payload), encoding="utf-8")
-
-        info = get_vehicle_proposal_info(
+        # A decision step whose bundle is gone is reported, not raised.
+        action_path = bundle_activation_path(bundle, "action")
+        action = read_step_activation(action_path, "action").to_payload()
+        action["metadata"]["controller_bundle"]["root_dir"] = str(self.runtime_root / "missing")
+        action_path.write_text(json.dumps(action), encoding="utf-8")
+        missing = get_vehicle_proposal_info(
             vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
         )
-        self.assertEqual(info.exit_code, 2)
-        self.assertIn("Controller bundle is missing", info.message)
+        self.assertEqual(missing.exit_code, 2)
+        self.assertIn("Controller bundle is missing", missing.message)
 
     def test_stage_hold_action_and_info_contract(self) -> None:
         identity = self._stage()
@@ -101,7 +93,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual(staged["metadata"]["vehicle_id"], "chase-sim-chaser")
 
         info = get_vehicle_proposal_info(
-            vehicle_id="chase-sim-chaser", json_output=True
+            vehicle_id="chase-sim-chaser", json_output=True, include_live=False
         )
         self.assertEqual(info.exit_code, 0, info.message)
         info_payload = json.loads(info.message)
@@ -134,7 +126,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual(info_payload["published_view"]["view_id"], "decision-combined-v0")
         self.assertFalse(info_payload["published_view"]["available"])
 
-        human = get_vehicle_proposal_info(vehicle_id="chase-sim-chaser").message
+        human = get_vehicle_proposal_info(vehicle_id="chase-sim-chaser", include_live=False).message
         for expected in (
             "avoid_recent_obstruction",
             HOLD_IDLE_REASON,

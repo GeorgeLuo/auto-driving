@@ -825,8 +825,8 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_replay = workbench_commands.add_parser(
         "replay",
         help=(
-            "Replay an ordered image directory through perception, memory, and "
-            "decisions."
+            "Replay an ordered image directory through perception, memory, "
+            "proposals, and decisions."
         ),
         description=(
             "Run the bounded decision playback workbench against an ordered "
@@ -835,14 +835,16 @@ def build_parser() -> argparse.ArgumentParser:
             "packaged plugins. Recorded perception and memory runs preserve frame order "
             "and timestamps. Perception and memory each start from a packaged preset "
             "or an ordered plugin list, as the inspect and update commands take "
-            "them; a preset keeps its plugin configs. Page checkboxes retain the order "
+            "them; a preset keeps its plugin configs. Proposal has no presets and "
+            "starts from an ordered plugin list, as vehicles update proposal takes "
+            "it, or its default plugins. Page checkboxes retain the order "
             "of selected plugins and append newly checked plugins. A changed ordered "
-            "selection uses default configs for that step; the other step keeps its "
-            "selection and configs. The same ordered selection keeps the current "
+            "selection uses default configs for that step; the other steps keep their "
+            "selections and configs. The same ordered selection keeps the current "
             "configs and pass. Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
-            "pause, step, reset, and another run. Changing perception or memory "
-            "plugins in a running or paused served replay rebuilds both pipelines "
+            "pause, step, reset, and another run. Changing a step's plugins in a "
+            "running or paused served replay rebuilds every step's pipeline "
             "and replays from the first frame to the displayed frame before returning."
         ),
     )
@@ -879,6 +881,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PLUGIN_ID",
         help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
+    )
+    workbench_replay.add_argument(
+        "--proposal-plugin",
+        action="append",
+        dest="proposal_plugins",
+        default=None,
+        metavar="PLUGIN_ID",
+        help="Packaged proposal plugin to select instead of the default plugins; repeat to select several in order.",
     )
     workbench_replay.add_argument(
         "--cadence-ms",
@@ -2091,6 +2101,7 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
         perception_plugins=args.perception_plugins,
         memory_preset=args.memory_preset,
         memory_plugins=args.memory_plugins,
+        proposal_plugins=args.proposal_plugins,
         cadence_ms=args.cadence_ms,
         pace=args.pace,
         max_frames=args.max_frames,

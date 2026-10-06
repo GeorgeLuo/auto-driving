@@ -14,7 +14,7 @@ from typing import Any, Callable
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, StepActivation
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
+from implementations.decision_cycle.catalog import CUSTOM_PRESET, STEP_PRESETS
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
@@ -34,6 +34,7 @@ from .workbench_plugins import (
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
+    step_selection,
 )
 from .workbench_source import (
     ImageSource,
@@ -155,20 +156,25 @@ class ImageReplayRunner:
     def _initial_activations(
         activations: dict[str, StepActivation] | None,
     ) -> dict[str, StepActivation]:
-        """Each selectable step's activation; an unlisted step uses its default preset."""
+        """Each selectable step's activation; an unlisted step uses its default selection."""
 
         given = dict(activations or {})
         selected: dict[str, StepActivation] = {}
         for step in SELECTABLE_STEPS:
-            activation = given[step] if step in given else selection_activation(step)
+            activation = given[step] if step in given else step_selection(step)
             if activation.step != step:
                 raise ValueError(f"activation for {activation.step!r} given as {step!r}")
             selected[step] = activation
         return selected
 
-    def _selection_preset(self, step: str) -> str:
-        """The preset the step's selection came from or equals, else ``custom``."""
+    def _selection_preset(self, step: str) -> str | None:
+        """The preset the step's selection came from or equals, else ``custom``.
 
+        ``None`` for a step without presets.
+        """
+
+        if step not in STEP_PRESETS:
+            return None
         return str(self._activations[step].metadata.get("preset", CUSTOM_PRESET))
 
     def _plugin_configuration(self) -> dict[str, Any]:
@@ -188,12 +194,20 @@ class ImageReplayRunner:
 
         return {f"{step}_preset": self._selection_preset(step) for step in SELECTABLE_STEPS}
 
-    def _plugin_reports(self) -> dict[str, Any]:
-        """Each selectable step's plugin report, under ``<step>_plugin_report``."""
+    def _step_reports(self) -> dict[str, Any]:
+        """What the built steps report.
+
+        Each selectable step's plugin report, under ``<step>_plugin_report``,
+        and the plugins each decision step runs.
+        """
 
         return {
-            f"{step}_plugin_report": plugin_report(self._steps.get(step))
-            for step in SELECTABLE_STEPS
+            **{
+                f"{step}_plugin_report": plugin_report(self._steps.get(step))
+                for step in SELECTABLE_STEPS
+            },
+            "decision_steps": self._decision_step_plugins(),
+            "decision_config": self._decision_configuration(),
         }
 
     def _apply_plugin_configuration_locked(self) -> None:
@@ -536,9 +550,10 @@ class ImageReplayRunner:
 
             # The action lock serializes this boundary with frame processing.
             # Perception tracks and memory evidence are built up in the shared
-            # map from the frames before the displayed one, so either step's
-            # selection changes by starting the pass over (see below). The
-            # same plugins again keep the step's activation, configs included.
+            # map from the frames before the displayed one, and proposals read
+            # them, so any step's selection changes by starting the pass over
+            # (see below). The same plugins again keep the step's activation,
+            # configs included.
             catch_up: list[ReplayFrame] = []
             if normalized != self._activations[step].plugins:
                 activation = catalog.activation(normalized)
@@ -549,7 +564,7 @@ class ImageReplayRunner:
             self._apply_plugin_configuration_locked()
             if active_phase:
                 pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                pipeline.update(self._plugin_reports())
+                pipeline.update(self._step_reports())
             self._state["failure"] = None
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
@@ -571,10 +586,10 @@ class ImageReplayRunner:
         """Start the pass over under a new selection for ``step``.
 
         Perception tracks and memory evidence are built from every frame
-        before the displayed one, so neither selection can be swapped under
-        recorded frames. The pipelines are rebuilt with it, the recorded
-        frames and shared map dropped, and the frames up to the displayed one
-        returned to run again. A selection that cannot be built leaves the
+        before the displayed one, and proposals read them, so no selection
+        can be swapped under recorded frames. The pipelines are rebuilt with
+        it, the recorded frames and shared map dropped, and the frames up to
+        the displayed one returned to run again. A selection that cannot be built leaves the
         replay as it was.
         """
 
@@ -634,7 +649,7 @@ class ImageReplayRunner:
         )
 
     def _build_steps(self) -> dict[str, Any]:
-        """Every step's runner: selectable steps from their selections, the rest packaged."""
+        """Every step's runner: selectable steps from their selections, the rest built in."""
 
         steps = workbench_decision_steps()
         steps.update({step: self._build_step(step) for step in SELECTABLE_STEPS})
@@ -1154,11 +1169,9 @@ class ImageReplayRunner:
         return {
             "pipeline": {
                 **self._selection_presets(),
-                **self._plugin_reports(),
+                **self._step_reports(),
                 "observation_adapter": "autonomy.decision_cycle.observation.perception_summary.observation_from_perception",
                 "decision_cycle": "autonomy.decision_cycle.cycle.DecisionCycle",
-                "decision_steps": self._decision_step_plugins(),
-                "decision_config": self._decision_configuration(),
             },
             "source_contract": {
                 "sequence_id": WORKBENCH_SEQUENCE_ID,

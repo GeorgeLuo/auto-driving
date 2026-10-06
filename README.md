@@ -486,9 +486,11 @@ not save executable configs or an image inventory.
 
 The workbench reads the same recorded frame order and timing. `vehicles
 workbench replay` starts each step from `--perception-preset` or
-`--perception-plugin` and `--memory-preset` or `--memory-plugin`, as the
-inspect and update commands take them. With neither flag, a step uses its
-default preset. The CLI and page show each step's preset and ordered plugins.
+`--perception-plugin`, `--memory-preset` or `--memory-plugin`, and
+`--proposal-plugin`, as the inspect and update commands take them. With no
+flag, a step uses its default preset; proposal has no presets and uses its
+default plugins. The CLI and page show each step's preset, where it has one,
+and ordered plugins.
 The page's catalog lists available plugins; its separate **Run order** shows
 execution order. Newly checked plugins run last, and retained plugins keep
 their order. Unchecking every plugin disables its plugins.
@@ -502,21 +504,21 @@ absent and shows the reason while memory can still show retained records.
 A preset keeps its plugin configs until that step's ordered selection changes.
 A changed selection uses catalog defaults for every selected plugin; it does
 not restore a recording's step configs or a tuned preset just because its ids
-match. Start with the named preset again to restore its tuning. The other step
-keeps its selection and configs. Submitting the same ordered list again keeps
-the current configs and pass.
+match. Start with the named preset again to restore its tuning. The other
+steps keep their selections and configs. Submitting the same ordered list again
+keeps the current configs and pass.
 
-Perception tracks and memory evidence carry state across frames, so changing
-either step's selection during a running or paused replay rebuilds both
-pipelines with a fresh shared map and runs from the first frame to the displayed
-frame before the action returns. This includes the last frame still displayed
+Perception tracks and memory evidence carry state across frames, and proposals
+read them, so changing any step's selection during a running or paused replay
+rebuilds every step's pipeline with a fresh shared map and runs from the first
+frame to the displayed frame before the action returns. This includes the last frame still displayed
 between loop passes.
 
 For workbench API integrations, `GET /api/state` reports schema
 `workbench_image_replay_state_v3`. Read `<step>_plugin_catalog` for availability
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
-`custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
+`custom` (null for proposal, which has no presets). The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
 plugins that were applied. Each frame's `memory_plugins` lists every applied
 memory plugin's health, record count, and epoch, and
 `memory_evidence_publisher` names the plugin whose evidence the step published.
@@ -529,7 +531,7 @@ Cleanup now names `perception` instead of `mapper`. The removed CLI flags
 `--plugin`, `--active-plugin`, and `--active-plugin-id` become
 `--perception-plugin`; memory uses `--memory-plugin`.
 
-Send `POST /api/action` with an explicit step for either selection; omitting
+Send `POST /api/action` with an explicit step for any selection; omitting
 `step` is a 400 input error. `active_plugin_ids` remains the common request field
 and may be empty. Include the current state's `run_id` during playback:
 

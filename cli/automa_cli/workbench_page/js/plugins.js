@@ -1,4 +1,4 @@
-// Plugin panels: the perception and memory catalogs and their selection drafts.
+// Plugin panels: the perception, memory and proposal catalogs and their selection drafts.
 // Classic script: the page's files share one global scope.
 "use strict";
 
@@ -15,7 +15,8 @@ function newPluginPanel(step) {
 }
 var pluginPanels = {
   perception: newPluginPanel("perception"),
-  memory: newPluginPanel("memory")
+  memory: newPluginPanel("memory"),
+  proposal: newPluginPanel("proposal")
 };
 function queuePluginSelection(step, ids) {
   pluginPanels[step].queued = ids;
@@ -64,8 +65,10 @@ function selectedPluginIdsFromView(panel) {
 }
 function renderPluginSummary(panel, catalog, plugins, active) {
   var pipeline = state && state.machine_detail && state.machine_detail.pipeline;
-  var preset = panel.draft !== null ? "selection pending" : text(pipeline && pipeline[panel.presetKey]);
-  setText(panel.summaryId, preset + " · " + active.length + " active · " + plugins.length + " available");
+  // A step without presets (proposal) reports none; its summary starts at the counts.
+  var preset = panel.draft !== null ? "selection pending" : pipeline && pipeline[panel.presetKey];
+  var counts = active.length + " active · " + plugins.length + " available";
+  setText(panel.summaryId, preset ? preset + " · " + counts : counts);
   setText(panel.orderId, active.length ? "Run order: " + active.join(" → ")
     : "No " + panel.step + " plugins selected.");
   setText(panel.digestId, catalog ? "catalog " + text(catalog.digest) : "");

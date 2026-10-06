@@ -128,15 +128,13 @@ def ensure_local_perception_runtime(
     staged_payload = staged.to_payload()
     manifest = staged_payload
     if preset is not None or plugins:
-        manifest = selection_activation(
-            "perception", preset=preset, plugins=plugins
+        manifest = staged_activation(
+            bundle,
+            selection_activation("perception", preset=preset, plugins=plugins),
+            vehicle_id=_vehicle_id(vehicle),
+            vehicle=vehicle,
+            release_summary=_activation_release(staged),
         ).to_payload()
-        metadata = dict(manifest.get("metadata") or {})
-        stored = staged_payload.get("metadata", {}).get("controller_bundle", {})
-        metadata["controller_bundle"] = {
-            "release": stored.get("release") if isinstance(stored, dict) else None,
-        }
-        manifest["metadata"] = metadata
 
     return {
         "vehicle_id": vehicle_id,

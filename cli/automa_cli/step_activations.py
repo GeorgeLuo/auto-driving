@@ -3,7 +3,8 @@
 Every cycle step is staged the same way: ``bundle/runtime/<step>/active.json``
 holds a ``StepActivation`` for a vehicle ``staging_vehicle`` knows. The CLI
 records who staged it (vehicle, bundle, release, time) in the activation's
-``metadata``; runners do not read it.
+``metadata``. CLI hosts use its bundle path to load staged plugin code;
+the core step runners do not read it.
 The decision steps (proposal, plan, action) together identify a decision
 generation by the content of their activations.
 """

@@ -1,3 +1,10 @@
+"""What a PiCar's onboard autonomy host publishes, read over HTTP.
+
+Its autonomy status, observation and decision publications, frames and host
+telemetry. ``chase_observation`` reads the Chase worker's counterparts from
+its runtime directory.
+"""
+
 from __future__ import annotations
 
 import json

@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from .automation import _automation_dir
+from .chase_observation import (
+    ChaseStateError,
+    chase_automation_dir,
+    read_chase_record,
+    read_chase_state,
+)
 from .paths import ROOT, display_path
 from .picar_observation import (
     fetch_observation_publication,
@@ -138,7 +143,7 @@ def run_perception_viability_measurement(
         get_pub = lambda _url: _chase_worker_publication(vehicle_id)
     else:
         get_pub = lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
-    endpoint = base_url or f"chase-sim automation worker {display_path(_automation_dir(vehicle_id))}"
+    endpoint = base_url or f"chase-sim automation worker {display_path(chase_automation_dir(vehicle_id))}"
     host_sampler = sample_host_metrics or _ssh_host_sampler(vehicle)
 
     duration_s = max(1.0, float(duration_s))
@@ -275,9 +280,11 @@ def _chase_worker_publication(vehicle_id: str) -> dict[str, Any]:
     from .streaming import probe_live_perception
 
     probe = probe_live_perception(vehicle_id=vehicle_id, vehicle={"provider": "chase-sim"})
-    automation_dir = _automation_dir(vehicle_id)
-    state = _read_object(automation_dir / "state.json")
-    record = _read_object(automation_dir / "latest_perception.json")
+    try:
+        state = read_chase_state(vehicle_id)
+    except ChaseStateError:
+        state = {}
+    record = read_chase_record(vehicle_id) or {}
     return {
         "health": "healthy" if probe.get("status") == "live" else probe.get("status"),
         "mode": state.get("action_policy"),
@@ -290,14 +297,6 @@ def _chase_worker_publication(vehicle_id: str) -> dict[str, Any]:
         "result_age_ms": probe.get("age_ms"),
         "control": record.get("control"),
     }
-
-
-def _read_object(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return value if isinstance(value, dict) else {}
 
 
 def _ssh_host_sampler(vehicle: dict[str, Any]) -> Callable[[], dict[str, Any]] | None:

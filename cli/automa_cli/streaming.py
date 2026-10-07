@@ -6,10 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from .automation import (
+from .chase_observation import (
     CHASE_WORKER_PROBE_MAX_AGE_MS,
-    _automation_dir,
+    ChaseStateError,
     assess_chase_worker_liveness,
+    chase_automation_dir,
+    read_chase_record,
+    read_chase_state,
 )
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
@@ -356,7 +359,7 @@ def _stream_chase_perception(
     json_output: bool,
     output: TextIO | None,
 ) -> CommandResult:
-    automation_dir = _automation_dir(vehicle_id)
+    automation_dir = chase_automation_dir(vehicle_id)
     if not json_output and not automation_dir.exists():
         return CommandResult(
             2,
@@ -440,29 +443,16 @@ def _stream_physical_perception(
 
 def _probe_chase_perception(*, vehicle_id: str) -> dict[str, Any]:
     probed_at_ms = _timestamp_ms()
-    automation_dir = _automation_dir(vehicle_id)
-    state_path = automation_dir / "state.json"
     probe: dict[str, Any] = {
         "schema": PERCEPTION_LIVE_SCHEMA,
         "vehicle_id": vehicle_id,
         "provider": "chase-sim",
         "probed_at_ms": probed_at_ms,
     }
-    if not state_path.exists():
-        return {
-            **probe,
-            "status": "unavailable",
-            "error": (
-                f"No automation runtime state for {vehicle_id!r}. "
-                f"Run: ./cli/automa vehicles automation run --id {vehicle_id}"
-            ),
-        }
     try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return {**probe, "status": "error", "error": f"Could not read automation state: {exc}"}
-    if not isinstance(state, dict):
-        return {**probe, "status": "error", "error": "Automation state is not a JSON object."}
+        state = read_chase_state(vehicle_id)
+    except ChaseStateError as exc:
+        return {**probe, "status": exc.status, "error": str(exc)}
 
     liveness = assess_chase_worker_liveness(
         state=state,
@@ -491,7 +481,7 @@ def _probe_chase_perception(*, vehicle_id: str) -> dict[str, Any]:
         preset=step.get("preset"),
         plugin_ids=step.get("plugins", []),
     )
-    record = _read_json(automation_dir / "latest_perception.json")
+    record = read_chase_record(vehicle_id)
     # A record from an earlier run, or the start placeholder, is not this worker's.
     if record is None or record.get("run_id") != state.get("run_id"):
         return {
@@ -860,7 +850,7 @@ def stream_vehicle_memory(
             view.publish(base_url=base_url, publication=publication, timeout_s=timeout_s)
             view_url, view_error = view.url, view.error
         else:
-            automation_dir = _automation_dir(vehicle_id)
+            automation_dir = chase_automation_dir(vehicle_id)
             view_url, view_error = _chase_view(_read_json(automation_dir / "state.json"))
             publication, fetch_error = _read_json(automation_dir / "latest_perception.json"), None
         return _memory_screen(
@@ -1109,38 +1099,15 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
 
 def _probe_chase_step(step: str, *, vehicle_id: str) -> dict[str, Any]:
     probed_at_ms = int(time.time() * 1000)
-    automation_dir = _automation_dir(vehicle_id)
-    state_path = automation_dir / "state.json"
-    if not state_path.exists():
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "chase-sim",
-            "status": "unavailable",
-            "error": (
-                f"No automation runtime state for {vehicle_id!r}. "
-                f"Run: ./cli/automa vehicles automation run --id {vehicle_id}"
-            ),
-            "probed_at_ms": probed_at_ms,
-        }
     try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        state = read_chase_state(vehicle_id)
+    except ChaseStateError as exc:
         return {
             "schema": LIVE_STEP_SCHEMAS[step],
             "vehicle_id": vehicle_id,
             "provider": "chase-sim",
-            "status": "error",
-            "error": f"Could not read automation state: {exc}",
-            "probed_at_ms": probed_at_ms,
-        }
-    if not isinstance(state, dict):
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "chase-sim",
-            "status": "error",
-            "error": "Automation state is not a JSON object.",
+            "status": exc.status,
+            "error": str(exc),
             "probed_at_ms": probed_at_ms,
         }
 

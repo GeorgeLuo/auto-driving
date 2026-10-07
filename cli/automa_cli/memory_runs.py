@@ -24,7 +24,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from implementations.decision_cycle.catalog import selection_activation
 
-from .automation import _automation_dir
+from .chase_observation import chase_automation_dir
 from .inspection_runs import recorded_selection, selection_record
 from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
@@ -404,7 +404,7 @@ def _reset_chase_memory(
     before: dict[str, Any],
     wait_s: float,
 ) -> dict[str, Any]:
-    automation_dir = _automation_dir(vehicle_id)
+    automation_dir = chase_automation_dir(vehicle_id)
     if not automation_dir.exists():
         raise ValueError(
             f"No automation runtime for {vehicle_id!r}. "

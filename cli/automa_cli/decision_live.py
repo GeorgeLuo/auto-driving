@@ -10,7 +10,6 @@ import threading
 import time
 import webbrowser
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, TextIO
 
 from autonomy.decision_cycle.memory.interface import (
@@ -20,6 +19,7 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryReport,
 )
 from .bundles import controller_bundle_paths
+from .chase_observation import chase_automation_dir
 from .decision import (
     RUNTIME_ROOT,
     CommandResult,
@@ -88,7 +88,10 @@ def _resolve_picar_vehicle(
     if vehicle is None:
         return None, f"Vehicle {vehicle_id!r} was not found."
     if vehicle.get("provider") != "picar":
-        return None, f"Live decision view supports PiCar only; got {vehicle.get('provider')!r}."
+        return None, (
+            f"Vehicle {vehicle_id!r} is provider {vehicle.get('provider')!r}; "
+            "live decision view supports chase-sim and picar."
+        )
     base_url = picar_base_url(vehicle)
     if not base_url:
         return None, f"Vehicle {vehicle_id!r} has no PiCar base URL."
@@ -314,12 +317,32 @@ def run_live_decision_monitor(
     timeout_s: float = 2.0,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Serve the shared RuntimeViewServer decision page until Ctrl-C."""
+    """Open the live decision page for Chase or PiCar."""
 
     if not 0 <= int(port) <= 65535:
         return CommandResult(2, "--port must be between 0 and 65535.")
     if is_chase_vehicle_id(vehicle_id):
         return _chase_decision_view(vehicle_id, open_browser=open_browser)
+    return _picar_decision_view(
+        vehicle_id,
+        port=port,
+        open_browser=open_browser,
+        timeout_s=timeout_s,
+        output=output,
+    )
+
+
+def _picar_decision_view(
+    vehicle_id: str,
+    *,
+    port: int,
+    open_browser: bool,
+    timeout_s: float,
+    output: TextIO | None,
+) -> CommandResult:
+    """Serve the shared RuntimeViewServer decision page from the PiCar's
+    publications until Ctrl-C."""
+
     try:
         resolved, error = _resolve_picar_vehicle(
             vehicle_id,
@@ -390,7 +413,7 @@ def _chase_decision_view(vehicle_id: str, *, open_browser: bool) -> CommandResul
     except DecisionSurfaceError as exc:
         return CommandResult(exc.exit_code, exc.message_text)
     view = get_decision_view_status(
-        automation_dir=Path(bundle["runtime_dir"]) / "automation",
+        automation_dir=chase_automation_dir(vehicle_id),
         vehicle_id=vehicle_id,
         activation=identity,
     )

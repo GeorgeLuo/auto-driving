@@ -74,6 +74,7 @@ from .step_activations import (
     format_activation_problems,
     proposal_plugin_ids,
 )
+from .chase_observation import ChaseStateError, read_chase_state
 from .paths import ROOT, display_path, safe_path_part
 from .picar_observation import (
     PicarDecisionPublicationError,
@@ -2022,10 +2023,7 @@ def stream_vehicle_decision(
     output: TextIO | None = None,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    """Read and accept latest_decision.json under the production predicate."""
-
-    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
-    bundle = controller_bundle_paths(vehicle_runtime_dir)
+    """Poll the latest accepted decision for Chase or PiCar."""
 
     # Chase keeps its generation-scoped local state files. A PiCar is
     # discovered through the existing read-only vehicle registry and consumed
@@ -2052,21 +2050,39 @@ def stream_vehicle_decision(
                 output=output,
                 timeout_s=max(0.1, float(timeout_s)),
             )
+    return _stream_chase_decision(
+        vehicle_id=vehicle_id,
+        refresh_s=refresh_s,
+        once=once,
+        no_clear=no_clear,
+        json_output=json_output,
+        output=output,
+    )
 
-    state_path = Path(bundle["runtime_dir"]) / "automation" / "state.json"
+
+def _stream_chase_decision(
+    *,
+    vehicle_id: str,
+    refresh_s: float,
+    once: bool,
+    no_clear: bool,
+    json_output: bool,
+    output: TextIO | None,
+) -> CommandResult:
+    """Read and accept latest_decision.json under the production predicate."""
+
+    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
+    bundle = controller_bundle_paths(vehicle_runtime_dir)
     frame_path = latest_decision_path(vehicle_runtime_dir)
 
     def _load_activation() -> dict[str, Any]:
         return _read_surface_identity(bundle, vehicle_id=vehicle_id)
 
     def _load_state() -> dict[str, Any] | None:
-        if not state_path.exists():
-            return None
         try:
-            payload = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            return read_chase_state(vehicle_id)
+        except ChaseStateError:
             return None
-        return payload if isinstance(payload, dict) else None
 
     def _load_frame() -> dict[str, Any]:
         if not frame_path.exists():

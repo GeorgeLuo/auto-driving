@@ -583,6 +583,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 generation_id=generation_id,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
+                controller=autonomy_controller,
             )
             autonomy_execution = host.execution
             if telemetry_store is not None:
@@ -802,10 +803,11 @@ class DriveMode:
         """Deliver shared runtime output, or manual input without a runtime."""
         if self.execution is not None:
             from autonomy.runtime.control import AutonomyControl
+            from implementations.runtime.donkeycar.control import execution_mode
             manual = AutonomyControl(
                 steering=user_steering or 0.0, throttle=user_throttle or 0.0,
                 reason="manual-input",
-            ) if mode == "user" else None
+            ) if execution_mode(mode) == "manual" else None
             command = self.execution.output(manual)
             selected = (command.steering, command.throttle)
         elif mode == 'user':

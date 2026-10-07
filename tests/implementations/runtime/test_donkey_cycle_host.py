@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -11,6 +12,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.execution import ControlExecution
 from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.session import RunConfiguration
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.runtime.donkeycar import (
@@ -243,6 +245,52 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(calls, 2)
         self.assertEqual(part.processed_count, 2)
         self.assertEqual(part.completed_outputs("local")[:2], (0.0, 0.0))
+
+    def test_runtime_runs_set_the_controller_drive_mode(self) -> None:
+        controller = SimpleNamespace(mode="user", mode_latch=None, angle=0.3, throttle=0.2)
+        host = _pushy_host()
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0, controller=controller)
+
+        part.start(RunConfiguration(mode="autonomy", interval_s=0.0))
+        self.assertEqual((controller.mode, controller.mode_latch), ("local", "local"))
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
+        self.assertEqual(host.run_state, "running")
+
+        part.stop()
+        self.assertEqual(
+            (controller.mode, controller.mode_latch, controller.angle, controller.throttle),
+            ("user", "user", 0.0, 0.0),
+        )
+
+        part.start(RunConfiguration(mode="observe_only", interval_s=0.0))
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        self.assertEqual(host.run_state, "running")
+        self.assertEqual(controller.mode_latch, "user")
+
+    def test_a_run_the_host_ends_hands_donkey_back_to_the_operator(self) -> None:
+        controller = SimpleNamespace(mode="user", mode_latch=None, angle=0.3, throttle=0.2)
+        host = _pushy_host()
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0, controller=controller)
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        part.start(RunConfiguration(mode="autonomy", interval_s=0.0, frames=1))
+        part.run(image_array=image, mode="local")
+        part.wait_for_cycle()
+        self.assertEqual(host.run_state, "completed")
+
+        # Donkey still reports local until the controller applies the latch.
+        part.run(image_array=image, mode="local")
+        part.run(image_array=image, mode="local")
+        self.assertEqual(
+            (controller.mode_latch, controller.angle, controller.throttle),
+            ("user", 0.0, 0.0),
+        )
+        self.assertEqual(host.run_state, "completed")
+
+        part.run(image_array=image, mode="user")
+        part.run(image_array=image, mode="local")
+        self.assertEqual(host.run_state, "running")
 
     def test_status_omits_raw_image_payload(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)

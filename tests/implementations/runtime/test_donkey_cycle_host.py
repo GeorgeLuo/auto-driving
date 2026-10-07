@@ -3,18 +3,24 @@ from __future__ import annotations
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.execution import ControlExecution
 from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.session import RunConfiguration
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.runtime.donkeycar import (
     DEFAULT_OBSERVATION_INTERVAL_S,
     AutonomyPilotPart,
+    DonkeyControlTarget,
     ONBOARD_OBSERVATION_STATE_SCHEMA,
+    create_host,
 )
 
 
@@ -32,7 +38,7 @@ class _Clock:
 def _pushy_host(**steps) -> AutonomyCycleHost:
     """A host whose action step authorizes a fixed nonzero control."""
 
-    return AutonomyCycleHost(
+    return create_host(
         steps=fixed_control_steps(
             AutonomyControl(steering=0.7, throttle=0.4, confidence=1.0, reason="pushy-test-action"),
             **steps,
@@ -41,6 +47,8 @@ def _pushy_host(**steps) -> AutonomyCycleHost:
 
 
 class _ExplodingHost:
+    execution = ControlExecution(DonkeyControlTarget())
+
     def status(self) -> dict:
         return {"steps": {}, "last_cycle": None}
 
@@ -86,7 +94,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         )
 
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
 
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()
@@ -136,7 +144,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
     def test_bounded_cadence_uses_newest_frame_and_skips_intermediate_ticks(self) -> None:
         clock = _Clock(0.0)
-        host = AutonomyCycleHost()
+        host = create_host(steps=decision_steps())
         part = AutonomyPilotPart(
             host=host,
             min_interval_s=0.5,
@@ -181,7 +189,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(host.cycle_count, 2)
 
     def test_detaches_image_from_vehicle_memory(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
         image = np.zeros((3, 3, 3), dtype=np.uint8)
         part.run(image_array=image, mode="user")
         image[:] = 9
@@ -238,8 +246,54 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(part.processed_count, 2)
         self.assertEqual(part.completed_outputs("local")[:2], (0.0, 0.0))
 
+    def test_runtime_runs_set_the_controller_drive_mode(self) -> None:
+        controller = SimpleNamespace(mode="user", mode_latch=None, angle=0.3, throttle=0.2)
+        host = _pushy_host()
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0, controller=controller)
+
+        part.start(RunConfiguration(mode="autonomy", interval_s=0.0))
+        self.assertEqual((controller.mode, controller.mode_latch), ("local", "local"))
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
+        self.assertEqual(host.run_state, "running")
+
+        part.stop()
+        self.assertEqual(
+            (controller.mode, controller.mode_latch, controller.angle, controller.throttle),
+            ("user", "user", 0.0, 0.0),
+        )
+
+        part.start(RunConfiguration(mode="observe_only", interval_s=0.0))
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        self.assertEqual(host.run_state, "running")
+        self.assertEqual(controller.mode_latch, "user")
+
+    def test_a_run_the_host_ends_hands_donkey_back_to_the_operator(self) -> None:
+        controller = SimpleNamespace(mode="user", mode_latch=None, angle=0.3, throttle=0.2)
+        host = _pushy_host()
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0, controller=controller)
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        part.start(RunConfiguration(mode="autonomy", interval_s=0.0, frames=1))
+        part.run(image_array=image, mode="local")
+        part.wait_for_cycle()
+        self.assertEqual(host.run_state, "completed")
+
+        # Donkey still reports local until the controller applies the latch.
+        part.run(image_array=image, mode="local")
+        part.run(image_array=image, mode="local")
+        self.assertEqual(
+            (controller.mode_latch, controller.angle, controller.throttle),
+            ("user", 0.0, 0.0),
+        )
+        self.assertEqual(host.run_state, "completed")
+
+        part.run(image_array=image, mode="user")
+        part.run(image_array=image, mode="local")
+        self.assertEqual(host.run_state, "running")
+
     def test_status_omits_raw_image_payload(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
         part.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         latest = part.observation_status()["latest"]
@@ -247,7 +301,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertNotIn("image", latest)
 
     def test_observation_status_provider_does_not_reenter_host_status(self) -> None:
-        host = AutonomyCycleHost()
+        host = create_host(steps=decision_steps())
         part = AutonomyPilotPart(host=host, min_interval_s=0.0)
         host.register_status_provider("observation", part.observation_status)
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
@@ -264,6 +318,8 @@ class RuntimeCycleHostTests(unittest.TestCase):
         release = threading.Event()
 
         class _BlockingHost:
+            execution = ControlExecution(DonkeyControlTarget())
+
             def status(self) -> dict:
                 return {"steps": {}}
 

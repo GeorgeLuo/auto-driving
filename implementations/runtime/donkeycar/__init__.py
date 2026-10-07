@@ -1,5 +1,9 @@
 """DonkeyCar runtime host implementation."""
 
+from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.decision_cycle.cycle import DecisionSteps
+
+from .control import DonkeyControlTarget
 from .donkey_part import (
     CAMERA_LATEST_FRAME_PATH,
     CAMERA_LATEST_JSON_PATH,
@@ -30,4 +34,9 @@ __all__ = [
     "LatestObservationState",
     "OBSERVATION_PUBLICATION_SCHEMA",
     "ONBOARD_OBSERVATION_STATE_SCHEMA",
+    "create_host",
 ]
+
+
+def create_host(*, steps: DecisionSteps) -> AutonomyCycleHost:
+    return AutonomyCycleHost(steps=steps, target=DonkeyControlTarget())

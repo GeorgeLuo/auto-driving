@@ -99,6 +99,7 @@ class PiCar(CarInterface):
             recording=recording,
         )
         return {
+            "boundary": "donkey_http_input",
             "action": action.to_dict(),
             "angle": angle,
             "throttle": signed_throttle,

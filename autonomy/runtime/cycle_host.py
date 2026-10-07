@@ -1,7 +1,8 @@
 """Host one decision cycle on a vehicle loop.
 
 ``AutonomyCycleHost`` owns the host map every step's plugins share, runs the
-cycle once per frame, and keeps the last result. ``set_step`` swaps one step's
+cycle once per frame, applies its output through ControlExecution, and keeps
+the last result. A target-less host only computes decisions. ``set_step`` swaps one step's
 runner between frames (for example after its activation changes), and
 ``status`` reports each step runner's status. ``watch_selection`` and
 ``sync_selection`` let every vehicle host apply a selection restaged into a
@@ -30,6 +31,8 @@ from autonomy.decision_cycle.cycle import (
 )
 from autonomy.decision_cycle.steps import decision_steps, load_decision_steps
 from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlExecution, ControlTarget
+from autonomy.runtime.session import RunConfiguration
 from autonomy.shared_memory import SharedMemory
 
 IDLE_REASON = "cycle-idle"
@@ -41,11 +44,17 @@ LIVE_SELECTION_STEPS = ("perception", "memory", "proposal")
 class AutonomyCycleHost:
     """Run the decision cycle around the host map."""
 
-    def __init__(self, *, steps: DecisionSteps | None = None) -> None:
+    def __init__(self, *, steps: DecisionSteps | None = None, target: ControlTarget | None = None) -> None:
         self._lock = threading.RLock()
+        self.execution = ControlExecution(target) if target is not None else None
         self.cycle = DecisionCycle(steps or decision_steps(), idle_reason=IDLE_REASON)
         self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
+        self._session_lock = threading.RLock()
+        self.configuration = RunConfiguration(mode="manual")
+        self.run_state = "stopped"
+        self.run_frames = 0
+        self._run_generation = 0
         self.cycle_count = 0
         self.error_count = 0
         self.last_error: str | None = None
@@ -53,10 +62,10 @@ class AutonomyCycleHost:
         self._watched: dict[str, tuple[Path, StepActivation]] = {}
 
     @classmethod
-    def from_runtime(cls, runtime_root: Path) -> "AutonomyCycleHost":
+    def from_runtime(cls, runtime_root: Path, *, target: ControlTarget | None = None) -> "AutonomyCycleHost":
         """Load every step from ``runtime_root/<step>/active.json``."""
 
-        return cls(steps=load_decision_steps(runtime_root))
+        return cls(steps=load_decision_steps(runtime_root), target=target)
 
     @property
     def steps(self) -> DecisionSteps:
@@ -93,6 +102,11 @@ class AutonomyCycleHost:
             return requested
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
+        with self._session_lock:
+            run_generation = self._run_generation
+        ticket = self.execution.ticket() if self.execution is not None else None
+        if ticket is not None:
+            context = replace(context, mode=ticket.mode)
         with self._lock:
             if context.shared_memory is None:
                 context = replace(context, shared_memory=self.shared_memory)
@@ -100,7 +114,16 @@ class AutonomyCycleHost:
                 self.shared_memory = context.shared_memory
             try:
                 result = self.cycle.run(context)
+                if self.execution is not None:
+                    result = replace(result, application=self.execution.apply(result, ticket))
             except Exception as exc:
+                try:
+                    if self.execution is not None:
+                        self.execution.cycle_failed(ticket)
+                finally:
+                    with self._session_lock:
+                        if run_generation == self._run_generation:
+                            self.stop(reason="error")
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc)
@@ -109,7 +132,55 @@ class AutonomyCycleHost:
             self.cycle_count += 1
             self.last_error = None
             self.last_result = result
+            with self._session_lock:
+                if self.run_state == "running" and run_generation == self._run_generation:
+                    self.run_frames += 1
+                    if self.configuration.frames and self.run_frames >= self.configuration.frames:
+                        self.stop(reason="completed")
             return result
+
+    def start(self, configuration: RunConfiguration | None = None) -> dict[str, Any]:
+        configuration = configuration or RunConfiguration()
+        with self._session_lock:
+            self.stop()
+            self.configuration = configuration
+            self.run_frames = 0
+            self.set_mode(configuration.mode)
+            self._run_generation += 1
+            self.run_state = "running"
+            return self.session_status()
+
+    def stop(self, *, reason: str = "stopped") -> dict[str, Any]:
+        with self._session_lock:
+            self._run_generation += 1
+            self.run_state = reason
+            if self.execution is not None and not self.execution.status()["closed"]:
+                self.set_mode("manual")
+            return self.session_status()
+
+    def session_status(self) -> dict[str, Any]:
+        with self._session_lock:
+            return {
+                "status": self.run_state,
+                "configuration": self.configuration.to_dict(),
+                "processed_frames": self.run_frames,
+                "execution": self.execution.status() if self.execution is not None else None,
+            }
+
+    def set_mode(self, mode: str) -> dict[str, Any]:
+        if self.execution is None:
+            raise RuntimeError("host has no control target")
+        return self.execution.set_mode(mode)
+
+    def close(self) -> None:
+        """End the run and release control without raising on a failed stop."""
+        with self._session_lock:
+            if self.execution is not None and self.execution.status()["closed"]:
+                return
+            self._run_generation += 1
+            self.run_state = "stopped"
+            if self.execution is not None:
+                self.execution.close()
 
     def register_status_provider(
         self, component_id: str, provider: Callable[[], dict[str, Any]]
@@ -151,6 +222,8 @@ class AutonomyCycleHost:
                         "error": f"{type(exc).__name__}: {exc}",
                     }
             return {
+                "session": self.session_status(),
+                "execution": self.execution.status() if self.execution is not None else None,
                 "steps": steps,
                 "components": components,
                 "cycle_count": self.cycle_count,

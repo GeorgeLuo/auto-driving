@@ -4,11 +4,12 @@ This repository is the local source of truth for a vehicle-agnostic automation
 framework, a PiRacer/DonkeyCar target, and a Chase simulator adapter. Each frame
 runs one decision cycle of six steps: perception, observation, memory, proposal,
 plan, and action. Every step runs the plugins selected for it in its own
-activation (`runtime/<step>/active.json`). The default action plugin, `hold`,
-always authorizes idle control: the framework can capture sensors, run
-perception, produce an inspectable cycle, and select a controller without
-requiring autonomous navigation. The `mode` action plugin applies the selected
-proposal in live drive modes for the first bounded live-control path.
+activation (`runtime/<step>/active.json`). The default action plugin, `selected`,
+authorizes the plan's selected command. A shared execution runtime owns movement
+mode, delivery, freshness, and stopping on both Chase and PiCar. Starting
+`vehicles automation run --id <vehicle>` enables autonomous movement;
+`--observe-only` runs the same plugins without delivering their output.
+Without a proposal, the cycle produces idle control.
 
 ## Setup
 
@@ -274,8 +275,7 @@ Inspect the machine-readable contracts declared by the staged code:
 ./cli/automa vehicles info proposal --id chase-sim-chaser
 ```
 
-The control-taking form remains available for deliberately requested controller
-work, but it is not the passive perception journey:
+Run the same staged plugins with movement enabled:
 
 ```sh
 ./cli/automa vehicles automation run --id chase-sim-chaser
@@ -309,13 +309,13 @@ Stop or restart the worker:
 
 Useful run options:
 
-- `--frames N` makes a bounded capture run. `--frames 0` starts an unbounded
+- `--frames N` bounds the number of completed decision frames and stops movement afterward. `--frames 0` starts an unbounded
   background worker; the launch command returns after readiness. Use
   `vehicles automation stop` to stop it. Ctrl-C in a terminal stream stops
   that stream, not the worker.
-- `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds.
+- `--interval-s` sets the decision sampling cadence; it defaults to `0.25` seconds on both hosts.
 - `--interval-s 0` captures as quickly as the vehicle interface allows.
-- `--observe-only` preserves the current simulator session and applies no control.
+- `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
 - `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps timestamped frame and perception artifacts.
 - `--log` persists worker output to `automation.log`.
@@ -654,7 +654,7 @@ publishes the newest camera sample on
 `/autonomy/camera/latest` and does not wait for perception, so a capture can
 record at the loop rate (`DRIVE_LOOP_HZ`, 20 Hz) instead of the perception
 cadence. Perception still runs at `AUTONOMY_OBSERVATION_INTERVAL_S` (default
-0.5 s), in the background, on the sample that started the cycle. Samples that
+0.25 s), in the background, on the sample that started the cycle. Samples that
 arrive while that cycle is running stay available as camera frames and do not
 block the loop or the driving command. The matched perception result remains
 `/autonomy/observation/latest`. While mode remains `user`, pilot outputs stay
@@ -671,7 +671,7 @@ Step selections are local until the next autonomy deployment:
 
 ```sh
 ./cli/automa vehicles update proposal --id piracer
-./cli/automa vehicles update action --id piracer --plugin hold
+./cli/automa vehicles update action --id piracer --plugin selected
 ./cli/automa vehicles update memory --id piracer
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
@@ -680,35 +680,74 @@ Step selections are local until the next autonomy deployment:
 activation and release metadata. Local staging does not require the Pi to be
 online; the subsequent autonomy deploy does.
 
-### PiCar Happy-Path Motion
+### Shared Movement Workflow
 
-The existing `avoid_recent_obstruction` proposal can be run as a bounded live
-controller. It drives forward at normalized throttle `0.60` and uses maximum
-normalized steering magnitude (`1.0`) away from one fresh or recently retained
-left/right obstruction: left evidence produces rightward steering and right
-evidence produces leftward steering. With no qualifying lateral evidence it
-returns zero steering and throttle. The
-default `hold` action keeps it idle, and with `mode` the vehicle remains stopped
-until the operator explicitly selects autonomy mode.
-
-Raise the wheels or clear the path before trying it:
+Once the selected plugins are staged (and deployed for PiCar), the same commands
+control both vehicles. Change only the vehicle ID:
 
 ```sh
-./cli/automa vehicles update proposal --id piracer
-./cli/automa vehicles update action --id piracer --plugin mode
+./cli/automa vehicles automation run --id chase-sim-chaser --open-view
+./cli/automa vehicles automation stop --id chase-sim-chaser
+./cli/automa vehicles automation run --id piracer --open-view
+./cli/automa vehicles automation stop --id piracer
+```
+
+`automation restart --id <vehicle>` stops movement, recreates the host, and
+starts it with the requested options. `--observe-only`, `--frames`, and
+`--interval-s` have the same control semantics on both vehicles. The simulator
+acquires WS input automatically; the onboard host acquires its drivetrain
+output automatically. A separate mode HTTP request is unnecessary.
+
+Perception presets can differ: for example, `sim_debug` supplies image-based
+simulator evidence, while `obstruction_observer` supplies PiCar evidence. Memory,
+proposal, plan, and action retain their shared contracts. The existing
+`avoid_recent_obstruction` proposal requests throttle `0.60` and steering away
+from lateral obstruction evidence; without qualifying evidence it requests idle.
+It does not implement target chasing just because the perception preset detects
+an evader.
+
+Existing staged action activations remain explicit selections. To migrate an
+old `hold` activation, stage `selected` on that vehicle. `hold` remains available
+as a deliberately idle plugin; a custom action plugin can change the requested
+command but cannot bypass runtime movement authority.
+
+This change updates the physical harness and vendor HTTP API. Install both
+layers before using the shared commands on PiCar:
+
+```sh
+./cli/automa vehicles update core --id piracer
 ./cli/automa vehicles update autonomy --id piracer --restart
-curl -sS -X POST http://piracer.local:8887/autonomy/mode \
-  -H 'Content-Type: application/json' \
-  -d '{"mode":"autonomy"}'
 ```
 
-Return to manual stopped mode with:
+### Control Ownership and API
 
-```sh
-curl -sS -X POST http://piracer.local:8887/autonomy/mode \
-  -H 'Content-Type: application/json' \
-  -d '{"mode":"manual"}'
-```
+`AutonomyCycleHost` runs the six steps, then passes their result to
+`ControlExecution`. A `ControlTarget` provides only `acquire`, `write`, and
+`release`. Chase's `ChaseControlTarget` pushes each command to the simulator;
+Donkey's `DonkeyControlTarget` leaves it for the drivetrain loop to pull. Vehicle
+code cannot introduce a second launch command, partial-autonomy mode, or
+throttle multiplier.
+
+The local host and `OnboardRuntimeClient` accept the same `RunConfiguration`
+through `start(configuration)` and expose `stop()`. The CLI supplies these
+operations for either hosting location. Implementers using the vehicle boundary
+can use `implementations.vehicle.access.create_vehicle_access(vehicle, timeout_s=...)`
+with the discovered vehicle descriptor; transport preparation belongs to
+`ChaseControlTarget`, not plugin code.
+
+The shared runtime rejects results from before a mode transition or from an
+invalidated in-flight cycle. Commands expire two seconds after their source
+frame; a watchdog stops held output when capture or computation stalls. Cycle
+errors, bounded-run completion, and shutdown also stop autonomous output.
+The timeout is shared infrastructure, not a vehicle-specific CLI flag.
+
+Cycle records distinguish authorized `control` from actual `application`.
+`application.applied` means delivery was acknowledged at the receipt's named
+command boundary; it does not assert measured physical motion. The action
+record's legacy `proposed_applied` field describes plugin authorization only.
+Chase's current WS transport supports directional throttle at fixed scenario
+speed, so its receipt declares `directional_fixed_speed`; equal throttle values
+do not imply equal simulated and physical speed.
 
 ## Bounded Startup Check
 

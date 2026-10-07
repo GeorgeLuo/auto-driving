@@ -1,7 +1,7 @@
 """Built-in hold action plugin.
 
 ``HoldAction`` records the selected command and always authorizes idle
-control: the proposal is never applied. It is the action step's default
+control: the proposal is never applied. It is an explicitly selected
 selection.
 """
 

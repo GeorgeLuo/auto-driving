@@ -288,8 +288,8 @@ class ChaseSimCar(CarInterface):
             },
             notes=(
                 "Applies normalized RC-car-like actions to Chase via Metrics UI WS.",
-                "Chase WS control uses fixed scenario speed; throttle magnitude is represented by pulse duration.",
-                "Use prepare_for_external_control() before running an external decision model.",
+                "Chase WS has directional throttle at fixed scenario speed; receipts report this quantization.",
+                "Control acquisition is managed by the shared execution runtime.",
             ),
         )
 
@@ -474,6 +474,8 @@ class ChaseSimCar(CarInterface):
             "action": action.to_dict(),
             "throttle": max(0.0, min(1.0, float(throttle))),
             "payload": payload,
+            "boundary": "chase_ws_input",
+            "throttle_semantics": "directional_fixed_speed",
             "ack": ack,
             "sent_at_ms": int(time.time() * 1000),
         }

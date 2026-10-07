@@ -44,7 +44,7 @@ from .bundles import (
 )
 from .paths import display_path, safe_path_part
 from .vehicles import (
-    DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    DEFAULT_READINESS_TIMEOUT_S,
     discover_active_vehicles,
     find_vehicle_by_id,
     format_active_vehicles,
@@ -124,7 +124,7 @@ def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
         selection, restart = install, f"{install} --restart"
     else:
         selection = None
-        restart = f"./cli/automa vehicles automation restart --id {vehicle_id} --observe-only"
+        restart = f"./cli/automa vehicles automation restart --id {vehicle_id}"
     return {
         "live_selection": live,
         "selection_command": selection if live else restart,
@@ -156,7 +156,7 @@ def staging_vehicle(
     vehicle_id: str,
     *,
     runtime_root: Path,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     offline: bool = True,
     output: TextIO | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -475,7 +475,7 @@ def update_vehicle_step(
     step: str,
     plugins: list[str] | None = None,
     runtime_root: Path,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     dry_run: bool = False,
     json_output: bool = False,
     verbose: bool = False,

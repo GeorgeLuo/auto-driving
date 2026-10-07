@@ -450,12 +450,13 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     #
     # Optional decision cycle. Each step loads its activation from
     # runtime/<step>/active.json; the cycle writes the standard Donkey pilot
-    # outputs so existing user/local_angle/local mode switching still applies.
+    # diagnostics; shared execution alone selects autonomous movement.
     #
     # The host telemetry publisher is optional and diagnostic. It is attached
     # to the same final DriveMode seam as the vehicle output, but never enters
     # command selection or performs I/O in the drive loop.
     host_telemetry_publisher = None
+    autonomy_execution = None
     if getattr(cfg, "AUTONOMY_ENABLED", True):
         autonomy_controller = getattr(V, "web_controller", None)
         runtime_root = Path(__file__).resolve().parent / "runtime"
@@ -472,13 +473,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 builtin_activation,
                 decision_steps,
             )
-            from autonomy.runtime.cycle_host import (
-                LIVE_SELECTION_STEPS,
-                AutonomyCycleHost,
-            )
-            from implementations.runtime.donkeycar.donkey_part import (
+            from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
+            from implementations.runtime.donkeycar import (
                 DEFAULT_OBSERVATION_INTERVAL_S,
                 AutonomyPilotPart,
+                create_host,
             )
             from implementations.runtime.donkeycar.host_telemetry import (
                 DriveModeTelemetryAdapter,
@@ -507,7 +506,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         if builtin_activation(step) is not None
                         else "stays empty",
                     )
-            host = AutonomyCycleHost(steps=decision_steps(activations))
+            host = create_host(steps=decision_steps(activations))
             # Selections restaged with `vehicles update autonomy` apply between
             # frames, as in the Chase worker; changed specs or configs need
             # --restart.
@@ -566,7 +565,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 )
             # Always-on observation: run independently of run_pilot so
             # manual user mode still executes the shared cycle at a
-            # bounded cadence. DriveMode remains movement authority.
+            # bounded cadence. Shared execution owns movement authority.
             observation_interval_s = float(
                 getattr(
                     cfg,
@@ -584,7 +583,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 generation_id=generation_id,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
+                controller=autonomy_controller,
             )
+            autonomy_execution = host.execution
             if telemetry_store is not None:
                 host.register_status_provider("host_telemetry", telemetry_store.status)
                 if autonomy_controller is not None:
@@ -607,32 +608,13 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             logger.exception("Unable to start the decision cycle from %s", runtime_root)
 
     #
-    # to give the car a boost when starting ai mode in a race.
-    # This will also override the stop sign detector so that
-    # you can start at a stop sign using launch mode, but
-    # will stop when it comes to the stop sign the next time.
-    #
-    # NOTE: when launch throttle is in effect, pilot speed is set to None
-    #
-    aiLauncher = AiLaunch(cfg.AI_LAUNCH_DURATION, cfg.AI_LAUNCH_THROTTLE, cfg.AI_LAUNCH_KEEP_ENABLED)
-    V.add(aiLauncher,
-          inputs=['user/mode', 'pilot/throttle'],
-          outputs=['pilot/throttle'])
-
-    #
     # Decide what inputs should change the car's steering and throttle
     # based on the choice of user or autopilot drive mode
     #
-    V.add(DriveMode(cfg.AI_THROTTLE_MULT, host_telemetry=host_telemetry_publisher),
+    V.add(DriveMode(host_telemetry=host_telemetry_publisher, execution=autonomy_execution),
           inputs=['user/mode', 'user/angle', 'user/throttle',
                   'pilot/angle', 'pilot/throttle'],
           outputs=['steering', 'throttle'])
-
-
-    if (cfg.CONTROLLER_TYPE != "pigpio_rc") and (cfg.CONTROLLER_TYPE != "MM1"):
-        if isinstance(ctr, JoystickController):
-            ctr.set_button_down_trigger(cfg.AI_LAUNCH_ENABLE_BUTTON, aiLauncher.enable_ai_launch)
-
 
     # Ai Recording
     recording_control = ToggleRecording(cfg.AUTO_RECORD_ON_THROTTLE, cfg.RECORD_DURING_AI)
@@ -811,35 +793,27 @@ class ToggleRecording:
 
 
 class DriveMode:
-    def __init__(self, ai_throttle_mult=1.0, host_telemetry=None):
-        """
-        :param ai_throttle_mult: scale throttle in autopilot mode
-        """
-        self.ai_throttle_mult = ai_throttle_mult
+    def __init__(self, host_telemetry=None, execution=None):
+        self.execution = execution
         self.host_telemetry = host_telemetry
 
     def run(self, mode,
             user_steering, user_throttle,
             pilot_steering, pilot_throttle):
-        """
-        Main final steering and throttle values based on user mode
-        :param mode: 'user'|'local_angle'|'local_pilot'
-        :param user_steering: steering value in user (manual) mode
-        :param user_throttle: throttle value in user (manual) mode
-        :param pilot_steering: steering value in autopilot mode
-        :param pilot_throttle: throttle value in autopilot mode
-        :return: tuple of (steering, throttle) where throttle is
-                 scaled by ai_throttle_mult in autopilot mode
-        """
-        if mode == 'user':
+        """Deliver shared runtime output, or manual input without a runtime."""
+        if self.execution is not None:
+            from autonomy.runtime.control import AutonomyControl
+            from implementations.runtime.donkeycar.control import execution_mode
+            manual = AutonomyControl(
+                steering=user_steering or 0.0, throttle=user_throttle or 0.0,
+                reason="manual-input",
+            ) if execution_mode(mode) == "manual" else None
+            command = self.execution.output(manual)
+            selected = (command.steering, command.throttle)
+        elif mode == 'user':
             selected = (user_steering, user_throttle)
-        elif mode == 'local_angle':
-            selected = (pilot_steering if pilot_steering else 0.0, user_throttle)
         else:
-            selected = (
-                pilot_steering if pilot_steering else 0.0,
-                pilot_throttle * self.ai_throttle_mult if pilot_throttle else 0.0,
-            )
+            selected = (0.0, 0.0)
 
         observer = self.host_telemetry
         begin_tick = getattr(observer, "begin_tick", None)

@@ -35,7 +35,7 @@ from .step_activations import (
 )
 from .step_schema import format_staged_step, staged_step_info
 from .streaming import _format_live_memory_screen, probe_live_memory
-from .vehicles import DEFAULT_CHASE_READINESS_TIMEOUT_S
+from .vehicles import DEFAULT_READINESS_TIMEOUT_S
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 
@@ -51,7 +51,7 @@ def update_vehicle_memory(
     vehicle_id: str,
     preset: str | None = None,
     plugins: list[str] | None = None,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     dry_run: bool = False,
     json_output: bool = False,
     verbose: bool = False,

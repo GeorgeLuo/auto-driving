@@ -47,7 +47,7 @@ _BUILTINS = {
         "highest_confidence",
         "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan",
     ),
-    "action": ("hold", "autonomy.decision_cycle.action.hold:HoldAction"),
+    "action": ("selected", "autonomy.decision_cycle.action.selected:SelectedAction"),
 }
 
 

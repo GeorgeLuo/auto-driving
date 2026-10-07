@@ -58,7 +58,7 @@ from .viability import (
 )
 from .streaming import stream_vehicle_memory, stream_vehicle_perception
 from .vehicles import (
-    DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    DEFAULT_READINESS_TIMEOUT_S,
     discover_active_vehicles,
     format_active_vehicles,
     format_vehicle_status,
@@ -103,10 +103,10 @@ def build_parser() -> argparse.ArgumentParser:
     active.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
             "One wall-clock readiness deadline per candidate in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     active.add_argument(
@@ -176,10 +176,10 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
             "One wall-clock deadline for all Chase readiness phases in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     status.add_argument(
@@ -192,8 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
     automation = vehicle_commands.add_parser(
         "automation",
         help=(
-            "Manage the local Chase automation worker and its view; a PiCar runs the "
-            "same cycle onboard, started with `vehicles update autonomy --restart`."
+            "Run the shared decision and movement runtime on a vehicle. "
+            "The vehicle ID selects local or onboard hosting."
         ),
     )
     automation.set_defaults(handler=_handle_vehicles_automation_help)
@@ -205,9 +205,9 @@ def build_parser() -> argparse.ArgumentParser:
     automation_help.set_defaults(handler=_handle_vehicles_automation_help)
     automation_run = automation_commands.add_parser(
         "run",
-        help="Start a worker and verify one correlated camera/perception publication.",
+        help="Start an automation run and verify one correlated camera/perception publication.",
         description=(
-            "Start the automation worker. Success requires one camera frame, its "
+            "Start autonomous movement using the staged plugins. Success requires one camera frame, its "
             "completed perception result, and a healthy current-generation loopback view."
         ),
     )
@@ -220,10 +220,10 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock Chase readiness deadline in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            "Runtime readiness deadline in seconds "
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     automation_run.add_argument(
@@ -237,16 +237,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of camera frames to capture. 0 means an unbounded background "
-            "worker; stop it with vehicles automation stop."
+            "Number of decision frames to process. 0 means an unbounded background "
+            "run; stop it with vehicles automation stop."
         ),
     )
     automation_run.add_argument(
         "--observe-only",
         action="store_true",
         help=(
-            "Passively observe without changing scenario, playback, control source, "
-            "input, or applying vehicle control."
+            "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
     automation_run.add_argument(
@@ -265,13 +264,13 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run.add_argument(
         "--verbose",
         action="store_true",
-        help="Print every-frame worker detail when output is connected.",
+        help="Print every frame's detail when output is connected.",
     )
     automation_run.add_argument(
         "--log",
         action="store_true",
         dest="log_to_disk",
-        help="Persist background worker output to automation.log.",
+        help="Persist background run output to automation.log.",
     )
     automation_run.add_argument(
         "--foreground",
@@ -284,7 +283,7 @@ def build_parser() -> argparse.ArgumentParser:
         "stop",
         help="Stop the background automation loop for a vehicle.",
         description=(
-            "Stop the background worker. The local deployment remains staged and "
+            "Stop autonomous movement and its publication monitor. The deployment remains staged and "
             "its former view is no longer current-generation available."
         ),
     )
@@ -304,8 +303,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation_status = automation_commands.add_parser(
         "status",
-        help="Show locally deployed automation runtimes and worker status.",
-        description="Show locally deployed automation runtimes and worker status.",
+        help="Show locally deployed automation runtimes and run status.",
+        description="Show locally deployed automation runtimes and run status.",
     )
     automation_status.add_argument(
         "--id",
@@ -322,8 +321,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation_restart = automation_commands.add_parser(
         "restart",
-        help="Restart the automation worker and verify its correlated runtime view.",
-        description="Restart the automation worker and verify its correlated runtime view.",
+        help="Restart the automation run and verify its correlated runtime view.",
+        description="Restart the automation run and verify its correlated runtime view.",
     )
     automation_restart.add_argument(
         "--id",
@@ -334,10 +333,10 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock Chase readiness deadline in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            "Runtime readiness deadline in seconds "
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     automation_restart.add_argument(
@@ -351,16 +350,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of camera frames to capture. 0 means an unbounded background "
-            "worker; stop it with vehicles automation stop."
+            "Number of decision frames to process. 0 means an unbounded background "
+            "run; stop it with vehicles automation stop."
         ),
     )
     automation_restart.add_argument(
         "--observe-only",
         action="store_true",
         help=(
-            "Passively observe without changing scenario, playback, control source, "
-            "input, or applying vehicle control."
+            "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
     automation_restart.add_argument(
@@ -379,13 +377,13 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.add_argument(
         "--verbose",
         action="store_true",
-        help="Print every-frame worker detail when output is connected.",
+        help="Print every frame's detail when output is connected.",
     )
     automation_restart.add_argument(
         "--log",
         action="store_true",
         dest="log_to_disk",
-        help="Persist background worker output to automation.log.",
+        help="Persist background run output to automation.log.",
     )
     automation_restart.add_argument(
         "--wait-s",
@@ -1311,7 +1309,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
             _STAGING_DISCOVERY_TIMEOUT_HELP + " Also bounds each Chase readiness "
             "check after staging and live simulator operations with --restart."
@@ -1373,7 +1371,7 @@ def build_parser() -> argparse.ArgumentParser:
         step_parser.add_argument(
             "--timeout-s",
             type=float,
-            default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+            default=DEFAULT_READINESS_TIMEOUT_S,
             help=_STAGING_DISCOVERY_TIMEOUT_HELP,
         )
         step_parser.add_argument(
@@ -1418,7 +1416,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=_STAGING_DISCOVERY_TIMEOUT_HELP,
     )
     memory_selection = memory.add_mutually_exclusive_group()
@@ -1588,10 +1586,10 @@ def _handle_vehicles_automation_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles automation commands",
                 "",
-                "- run       start a worker and verify camera + perception + current view",
-                "- status    show locally deployed worker and view state",
-                "- restart   stop and start the automation worker",
-                "- stop      stop the worker; keep its deployment staged",
+                "- run       start a run and verify camera + perception + current view",
+                "- status    show locally deployed run and view state",
+                "- restart   stop and start the automation run",
+                "- stop      stop the run; keep its deployment staged",
                 "- help      show this summary",
                 "",
                 "Detailed help:",
@@ -1709,7 +1707,7 @@ _STAGING_VEHICLE_ID_HELP = (
 )
 _STAGING_DISCOVERY_TIMEOUT_HELP = (
     "Timeout in seconds for each vehicle discovery probe when local identity is unavailable "
-    f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+    f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
 )
 
 

@@ -15,10 +15,9 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
-from implementations.runtime.donkeycar import AutonomyPilotPart
+from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
 
 
 class PerceptionActivationIntegrationTests(unittest.TestCase):
@@ -62,7 +61,7 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
         self.assertEqual(runner.last_frame_index, 0)
 
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=replace(decision_steps(), perception=runner))
+            host=create_host(steps=replace(decision_steps(), perception=runner))
         )
         part.run(
             image_array=np.zeros((24, 32, 3), dtype=np.uint8),

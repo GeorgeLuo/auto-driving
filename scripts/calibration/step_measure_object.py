@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from implementations.vehicle.picar.defaults import get_default_local_car_base_url
+from implementations.vehicle.picar.defaults import get_default_picar_base_url
 from implementations.decision_cycle.perception.shared.features.feature_sequence import (
     analyze_tracked_sequence,
 )
@@ -183,7 +183,7 @@ def fit_step_scale(observations: list[Observation], hfov_deg: float | None) -> d
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Drive fixed steps toward the front object and measure apparent width.")
-    parser.add_argument("--base-url", default=get_default_local_car_base_url())
+    parser.add_argument("--base-url", default=get_default_picar_base_url())
     parser.add_argument("--steps", type=int, default=2)
     parser.add_argument("--throttle", type=float, default=0.18)
     parser.add_argument("--duration", type=float, default=0.22)

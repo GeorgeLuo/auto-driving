@@ -20,8 +20,8 @@ from implementations.decision_cycle.perception.presets import (
 from autonomy.decision_cycle.activation import STEPS
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 from implementations.vehicle.picar.defaults import (
-    get_default_local_car_base_url,
-    get_default_local_car_id,
+    get_default_picar_base_url,
+    get_default_picar_id,
 )
 
 from .bundles import (
@@ -553,8 +553,8 @@ def _resolve_picar_target(
         )
         found_vehicle, error = find_vehicle_by_id(payload, vehicle_id)
         if error:
-            if allow_offline_default and vehicle_id == get_default_local_car_id():
-                default_base_url = get_default_local_car_base_url()
+            if allow_offline_default and vehicle_id == get_default_picar_id():
+                default_base_url = get_default_picar_base_url()
                 vehicle = {
                     "vehicle_id": vehicle_id,
                     "vehicle_kind": "picar",

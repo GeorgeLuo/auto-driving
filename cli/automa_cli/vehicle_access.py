@@ -5,7 +5,7 @@ from typing import Any
 
 from autonomy.vehicle import CarInterface
 from implementations.vehicle.chase_sim import ChaseSimCar
-from implementations.vehicle.picar import create_local_car
+from implementations.vehicle.picar import create_picar
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
         if not base_url:
             raise ValueError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
         return VehicleAccess(
-            car=create_local_car(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id),
+            car=create_picar(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id),
             image_extension="jpg",
             front_camera_endpoint="/frame.jpg",
         )

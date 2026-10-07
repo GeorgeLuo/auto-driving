@@ -20,7 +20,7 @@ from implementations.vehicle.chase_sim.defaults import (
     CHASE_UI_WS_URL_ENV,
     DEFAULT_CHASE_UI_WS_URL,
 )
-from implementations.vehicle.picar import create_local_car
+from implementations.vehicle.picar import create_picar
 from implementations.vehicle.picar.defaults import (
     DEFAULT_LOCAL_CAR_BASE_URL,
     LOCAL_CAR_BASE_URL_ENV,
@@ -1105,7 +1105,7 @@ def chase_operator_url(ws_url: str) -> str:
 
 def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     base_url = candidate.url.rstrip("/")
-    car = create_local_car(base_url=base_url, timeout_s=timeout_s)
+    car = create_picar(base_url=base_url, timeout_s=timeout_s)
     capabilities = car.capabilities.to_dict()
 
     status, error = _get_json(base_url, "/autonomy/status", timeout_s=timeout_s)

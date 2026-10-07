@@ -265,9 +265,9 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
 
     # implementations.vehicle
     ("implementations.vehicle", "ChaseSimCar", "implementations.vehicle.chase_sim.car", "ChaseSimCar"),
-    ("implementations.vehicle", "DonkeyPiCar", "implementations.vehicle.picar.car", "DonkeyPiCar"),
-    ("implementations.vehicle", "create_local_car", "implementations.vehicle.picar.car", "create_local_car"),
-    ("implementations.vehicle", "describe_local_car", "implementations.vehicle.picar.car", "describe_local_car"),
+    ("implementations.vehicle", "PiCar", "implementations.vehicle.picar.car", "PiCar"),
+    ("implementations.vehicle", "create_picar", "implementations.vehicle.picar.car", "create_picar"),
+    ("implementations.vehicle", "describe_picar", "implementations.vehicle.picar.car", "describe_picar"),
     ("implementations.vehicle.chase_sim", "ChaseCaptureValidationError", "implementations.vehicle.chase_sim.frame_identity", "ChaseCaptureValidationError"),
     ("implementations.vehicle.chase_sim", "ChasePassiveCaptureError", "implementations.vehicle.chase_sim.car", "ChasePassiveCaptureError"),
     ("implementations.vehicle.chase_sim", "ChaseSimCar", "implementations.vehicle.chase_sim.car", "ChaseSimCar"),
@@ -279,7 +279,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.vehicle.chase_sim", "simulator_epoch_from_sensor_frame", "implementations.vehicle.chase_sim.frame_identity", "simulator_epoch_from_sensor_frame"),
     ("implementations.vehicle.chase_sim", "simulator_frame_index_from_sensor_frame", "implementations.vehicle.chase_sim.frame_identity", "simulator_frame_index_from_sensor_frame"),
     ("implementations.vehicle.chase_sim", "validate_chase_sensor_capture", "implementations.vehicle.chase_sim.frame_identity", "validate_chase_sensor_capture"),
-    ("implementations.vehicle.picar", "DonkeyPiCar", "implementations.vehicle.picar.car", "DonkeyPiCar"),
-    ("implementations.vehicle.picar", "create_local_car", "implementations.vehicle.picar.car", "create_local_car"),
-    ("implementations.vehicle.picar", "describe_local_car", "implementations.vehicle.picar.car", "describe_local_car"),
+    ("implementations.vehicle.picar", "PiCar", "implementations.vehicle.picar.car", "PiCar"),
+    ("implementations.vehicle.picar", "create_picar", "implementations.vehicle.picar.car", "create_picar"),
+    ("implementations.vehicle.picar", "describe_picar", "implementations.vehicle.picar.car", "describe_picar"),
 )

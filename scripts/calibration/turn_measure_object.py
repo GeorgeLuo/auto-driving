@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from implementations.vehicle.picar.defaults import get_default_local_car_base_url
+from implementations.vehicle.picar.defaults import get_default_picar_base_url
 from scripts.calibration.step_measure_object import Observation, observe, post_drive
 from implementations.decision_cycle.perception.shared.features.feature_sequence import (
     analyze_tracked_sequence,
@@ -55,7 +55,7 @@ def fit_center_shift(observations: list[Observation]) -> dict[str, float | None]
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Turn in fixed pulses and measure object center shift.")
-    parser.add_argument("--base-url", default=get_default_local_car_base_url())
+    parser.add_argument("--base-url", default=get_default_picar_base_url())
     parser.add_argument("--steps", type=int, default=3)
     parser.add_argument("--angle", type=float, default=-1.0,
                         help="Steering angle for the turn pulse. Negative is left.")

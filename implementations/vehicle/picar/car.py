@@ -8,8 +8,8 @@ from .donkey_client import DonkeyClient
 from .defaults import (
     DEFAULT_LOCAL_CAR_BASE_URL,
     DEFAULT_LOCAL_CAR_ID,
-    get_default_local_car_base_url,
-    get_default_local_car_id,
+    get_default_picar_base_url,
+    get_default_picar_id,
 )
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
@@ -33,7 +33,7 @@ def _reject_unsupported_sensors(request: SensorReadRequest) -> None:
         raise ValueError(f"unsupported PiCar sensors requested: {sorted(unsupported)}")
 
 
-class DonkeyPiCar(CarInterface):
+class PiCar(CarInterface):
     """PiCar/PiRacer embodiment implemented through the Donkey web server."""
 
     def __init__(
@@ -157,21 +157,21 @@ class DonkeyPiCar(CarInterface):
         )
 
 
-def create_local_car(
+def create_picar(
     *,
     base_url: str | None = None,
     timeout_s: float = 5.0,
     vehicle_id: str | None = None,
-) -> DonkeyPiCar:
+) -> PiCar:
     """Create the standard local-network PiCar object without touching the network."""
-    return DonkeyPiCar(
-        base_url=base_url or get_default_local_car_base_url(),
+    return PiCar(
+        base_url=base_url or get_default_picar_base_url(),
         timeout_s=timeout_s,
-        vehicle_id=vehicle_id or get_default_local_car_id(),
+        vehicle_id=vehicle_id or get_default_picar_id(),
     )
 
 
-def describe_local_car(car: DonkeyPiCar) -> dict[str, Any]:
+def describe_picar(car: PiCar) -> dict[str, Any]:
     return {
         "base_url": car.base_url,
         "capabilities": car.capabilities.to_dict(),

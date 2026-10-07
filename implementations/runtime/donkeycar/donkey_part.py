@@ -17,13 +17,14 @@ from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from .control import DonkeyControlTarget, execution_mode
+from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
 
 logger = logging.getLogger(__name__)
 
 ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state_v0"
 OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
-DEFAULT_OBSERVATION_INTERVAL_S = 0.5
+DEFAULT_OBSERVATION_INTERVAL_S = DEFAULT_INTERVAL_S
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 CAMERA_LATEST_FRAME_PATH = "/autonomy/camera/latest/frame.jpg"
@@ -186,6 +187,7 @@ class AutonomyPilotPart:
         if host.execution is None:
             host.attach_target(DonkeyControlTarget())
         self.control_target = host.execution.target
+        self._last_drive_mode = "manual"
         self.min_interval_s = float(min_interval_s)
         self.preset = preset
         self._monotonic = monotonic or time.monotonic
@@ -400,6 +402,15 @@ class AutonomyPilotPart:
     ) -> tuple[float, float, dict[str, Any], Any, dict[str, Any] | None]:
         """Return the pilot tuple from the last finished cycle, under the given mode."""
         return self._held_outputs(mode)
+
+    def start(self, configuration: RunConfiguration) -> dict[str, Any]:
+        self.min_interval_s = configuration.interval_s
+        self._last_drive_mode = "autonomy" if configuration.mode == "autonomy" else "manual"
+        return self.host.start(configuration)
+
+    def stop(self) -> dict[str, Any]:
+        self._last_drive_mode = "manual"
+        return self.host.stop()
 
     def shutdown(self) -> None:
         self.host.close()
@@ -820,7 +831,12 @@ class AutonomyPilotPart:
         user_throttle: float = 0.0,
     ):
         mode_name = execution_mode(mode or "user")
-        self.host.set_mode(mode_name)
+        if mode_name != self._last_drive_mode:
+            self._last_drive_mode = mode_name
+            if mode_name == "autonomy":
+                self.host.start(RunConfiguration(interval_s=self.min_interval_s))
+            else:
+                self.host.stop()
         captured_at_ms = timestamp_ms()
         detached = detach_image(image_array)
         with self._lock:

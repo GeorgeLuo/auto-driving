@@ -31,6 +31,7 @@ from autonomy.decision_cycle.cycle import (
 from autonomy.decision_cycle.steps import decision_steps, load_decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlExecution, ControlTarget
+from autonomy.runtime.session import RunConfiguration
 from autonomy.shared_memory import SharedMemory
 
 IDLE_REASON = "cycle-idle"
@@ -48,6 +49,11 @@ class AutonomyCycleHost:
         self.cycle = DecisionCycle(steps or decision_steps(), idle_reason=IDLE_REASON)
         self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
+        self._session_lock = threading.RLock()
+        self.configuration = RunConfiguration(mode="manual")
+        self.run_state = "stopped"
+        self.run_frames = 0
+        self._run_generation = 0
         self.cycle_count = 0
         self.error_count = 0
         self.last_error: str | None = None
@@ -95,6 +101,8 @@ class AutonomyCycleHost:
             return requested
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
+        with self._session_lock:
+            run_generation = self._run_generation
         ticket = self.execution.ticket() if self.execution is not None else None
         if ticket is not None:
             context = replace(context, mode=ticket.mode)
@@ -118,7 +126,40 @@ class AutonomyCycleHost:
             self.cycle_count += 1
             self.last_error = None
             self.last_result = result
+            with self._session_lock:
+                if self.run_state == "running" and run_generation == self._run_generation:
+                    self.run_frames += 1
+                    if self.configuration.frames and self.run_frames >= self.configuration.frames:
+                        self.stop(reason="completed")
             return result
+
+    def start(self, configuration: RunConfiguration | None = None) -> dict[str, Any]:
+        configuration = configuration or RunConfiguration()
+        with self._session_lock:
+            self.stop()
+            self.configuration = configuration
+            self.run_frames = 0
+            self.set_mode(configuration.mode)
+            self._run_generation += 1
+            self.run_state = "running"
+            return self.session_status()
+
+    def stop(self, *, reason: str = "stopped") -> dict[str, Any]:
+        with self._session_lock:
+            self._run_generation += 1
+            self.run_state = reason
+            if self.execution is not None:
+                self.set_mode("manual")
+            return self.session_status()
+
+    def session_status(self) -> dict[str, Any]:
+        with self._session_lock:
+            return {
+                "status": self.run_state,
+                "configuration": self.configuration.to_dict(),
+                "processed_frames": self.run_frames,
+                "execution": self.execution.status() if self.execution is not None else None,
+            }
 
     def attach_target(self, target: ControlTarget) -> None:
         if self.execution is not None or self.cycle_count:
@@ -131,6 +172,7 @@ class AutonomyCycleHost:
         return self.execution.set_mode(mode)
 
     def close(self) -> None:
+        self.stop()
         if self.execution is not None:
             self.execution.close()
 
@@ -174,6 +216,7 @@ class AutonomyCycleHost:
                         "error": f"{type(exc).__name__}: {exc}",
                     }
             return {
+                "session": self.session_status(),
                 "execution": self.execution.status() if self.execution is not None else None,
                 "steps": steps,
                 "components": components,

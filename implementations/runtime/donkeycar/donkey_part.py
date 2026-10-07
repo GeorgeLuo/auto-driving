@@ -16,7 +16,7 @@ from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from .control import DonkeyControlTarget, execution_mode
+from .control import execution_mode
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
 
 logger = logging.getLogger(__name__)
@@ -183,9 +183,9 @@ class AutonomyPilotPart:
     ) -> None:
         if min_interval_s < 0:
             raise ValueError("min_interval_s must be >= 0")
+        if getattr(host, "execution", None) is None:
+            raise ValueError("AutonomyPilotPart needs a host from create_host()")
         self.host = host
-        if host.execution is None:
-            host.attach_target(DonkeyControlTarget())
         self._last_drive_mode = "manual"
         self.min_interval_s = float(min_interval_s)
         self.preset = preset

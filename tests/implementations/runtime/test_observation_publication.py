@@ -8,7 +8,7 @@ import numpy as np
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.donkeycar import (
     DECISION_PUBLICATION_SCHEMA,
@@ -16,6 +16,8 @@ from implementations.runtime.donkeycar import (
     LATEST_JSON_PATH,
     OBSERVATION_PUBLICATION_SCHEMA,
     AutonomyPilotPart,
+    DonkeyControlTarget,
+    create_host,
 )
 
 
@@ -23,7 +25,7 @@ class ObservationPublicationTests(unittest.TestCase):
     def _hold_part(self) -> AutonomyPilotPart:
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=decision_steps(activations)),
+            host=create_host(steps=decision_steps(activations)),
             min_interval_s=0.0,
             vehicle_id="piracer",
             source_id="donkeycar:piracer",
@@ -35,7 +37,7 @@ class ObservationPublicationTests(unittest.TestCase):
 
     def test_warming_publication_before_first_result(self) -> None:
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(),
+            host=create_host(steps=decision_steps()),
             min_interval_s=0.0,
             preset="lightweight_observer",
         )
@@ -50,7 +52,7 @@ class ObservationPublicationTests(unittest.TestCase):
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(),
+            host=create_host(steps=decision_steps()),
             min_interval_s=0.0,
             preset="test-observer",
         )
@@ -80,7 +82,6 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.observation.values import Observation
         from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-        from autonomy.runtime.cycle_host import AutonomyCycleHost
 
         def remember(context, observation):
             del observation
@@ -118,7 +119,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 "evidence_publisher": "bounded_evidence",
             }
 
-        host = AutonomyCycleHost(steps=DecisionSteps(memory=remember))
+        host = create_host(steps=DecisionSteps(memory=remember))
         part = AutonomyPilotPart(host=host, min_interval_s=0.0, preset="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
@@ -167,7 +168,7 @@ class ObservationPublicationTests(unittest.TestCase):
             "bounded_evidence": BoundedEvidenceLedger(**config),
         })
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=DecisionSteps(observation=observe, memory=memory)),
+            host=create_host(steps=DecisionSteps(observation=observe, memory=memory)),
             min_interval_s=0.0,
         )
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
@@ -193,7 +194,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
     def test_stale_and_error_health_states(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.5)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.5)
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         completed = part.latest_state.completed_at_ms
@@ -203,6 +204,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertGreater(stale["result_age_ms"], stale["stale_after_ms"])
 
         class Boom:
+            execution = ControlExecution(DonkeyControlTarget())
+
             def status(self):
                 return {"steps": {}}
 
@@ -219,7 +222,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIn("RuntimeError", errored["error"] or "")
 
     def test_unavailable_when_image_missing(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
         part.run(image_array=None, mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
@@ -296,7 +299,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(reset["reason"], "reset")
 
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
         stop = threading.Event()
         errors: list[str] = []
 

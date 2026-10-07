@@ -7,14 +7,18 @@ from pathlib import Path
 import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.execution import ControlExecution
 from autonomy.runtime.control import AutonomyControl
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.runtime.donkeycar import (
     DEFAULT_OBSERVATION_INTERVAL_S,
     AutonomyPilotPart,
+    DonkeyControlTarget,
     ONBOARD_OBSERVATION_STATE_SCHEMA,
+    create_host,
 )
 
 
@@ -32,7 +36,7 @@ class _Clock:
 def _pushy_host(**steps) -> AutonomyCycleHost:
     """A host whose action step authorizes a fixed nonzero control."""
 
-    return AutonomyCycleHost(
+    return create_host(
         steps=fixed_control_steps(
             AutonomyControl(steering=0.7, throttle=0.4, confidence=1.0, reason="pushy-test-action"),
             **steps,
@@ -41,6 +45,8 @@ def _pushy_host(**steps) -> AutonomyCycleHost:
 
 
 class _ExplodingHost:
+    execution = ControlExecution(DonkeyControlTarget())
+
     def status(self) -> dict:
         return {"steps": {}, "last_cycle": None}
 
@@ -86,7 +92,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         )
 
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
 
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()
@@ -136,7 +142,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
     def test_bounded_cadence_uses_newest_frame_and_skips_intermediate_ticks(self) -> None:
         clock = _Clock(0.0)
-        host = AutonomyCycleHost()
+        host = create_host(steps=decision_steps())
         part = AutonomyPilotPart(
             host=host,
             min_interval_s=0.5,
@@ -181,7 +187,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(host.cycle_count, 2)
 
     def test_detaches_image_from_vehicle_memory(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
         image = np.zeros((3, 3, 3), dtype=np.uint8)
         part.run(image_array=image, mode="user")
         image[:] = 9
@@ -239,7 +245,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(part.completed_outputs("local")[:2], (0.0, 0.0))
 
     def test_status_omits_raw_image_payload(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), min_interval_s=0.0)
         part.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         latest = part.observation_status()["latest"]
@@ -247,7 +253,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertNotIn("image", latest)
 
     def test_observation_status_provider_does_not_reenter_host_status(self) -> None:
-        host = AutonomyCycleHost()
+        host = create_host(steps=decision_steps())
         part = AutonomyPilotPart(host=host, min_interval_s=0.0)
         host.register_status_provider("observation", part.observation_status)
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
@@ -264,6 +270,8 @@ class RuntimeCycleHostTests(unittest.TestCase):
         release = threading.Event()
 
         class _BlockingHost:
+            execution = ControlExecution(DonkeyControlTarget())
+
             def status(self) -> dict:
                 return {"steps": {}}
 

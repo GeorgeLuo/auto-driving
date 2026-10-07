@@ -9,8 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.runtime.donkeycar.donkey_part import AutonomyPilotPart
+from autonomy.decision_cycle.steps import decision_steps
+from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
 from implementations.runtime.donkeycar.host_telemetry import (
     HOST_TELEMETRY_BOUNDARY,
     HOST_TELEMETRY_LIMITS,
@@ -421,7 +421,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
             patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(
-                host=AutonomyCycleHost(),
+                host=create_host(steps=decision_steps()),
                 min_interval_s=0.0,
                 host_telemetry=adapter,
             )
@@ -462,7 +462,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
             patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
         ):
             part = AutonomyPilotPart(
-                host=AutonomyCycleHost(),
+                host=create_host(steps=decision_steps()),
                 min_interval_s=0.5,
                 monotonic=lambda: monotonic.now_ms / 1000.0,
                 host_telemetry=adapter,

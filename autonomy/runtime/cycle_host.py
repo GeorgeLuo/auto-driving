@@ -167,11 +167,6 @@ class AutonomyCycleHost:
                 "execution": self.execution.status() if self.execution is not None else None,
             }
 
-    def attach_target(self, target: ControlTarget) -> None:
-        if self.execution is not None or self.cycle_count:
-            raise RuntimeError("attach a control target before running the host")
-        self.execution = ControlExecution(target)
-
     def set_mode(self, mode: str) -> dict[str, Any]:
         if self.execution is None:
             raise RuntimeError("host has no control target")

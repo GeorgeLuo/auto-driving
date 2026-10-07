@@ -451,14 +451,6 @@ class ChaseSimCar(CarInterface):
             f"sources={sources}, sidebar_source={latest_sidebar_source!r}",
         )
 
-    def acquire_control(self) -> None:
-        self.prepare_for_external_control()
-
-    def release_control(self) -> None:
-        # Keep the stopped WS input selected; handing control to the built-in
-        # chaser would resume movement after an operator stop.
-        pass
-
     def stop(self) -> None:
         self.execute_action(VehicleAction(), throttle=0.0)
 

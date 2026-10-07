@@ -473,13 +473,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 builtin_activation,
                 decision_steps,
             )
-            from autonomy.runtime.cycle_host import (
-                LIVE_SELECTION_STEPS,
-                AutonomyCycleHost,
-            )
-            from implementations.runtime.donkeycar.donkey_part import (
+            from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
+            from implementations.runtime.donkeycar import (
                 DEFAULT_OBSERVATION_INTERVAL_S,
                 AutonomyPilotPart,
+                create_host,
             )
             from implementations.runtime.donkeycar.host_telemetry import (
                 DriveModeTelemetryAdapter,
@@ -508,7 +506,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         if builtin_activation(step) is not None
                         else "stays empty",
                     )
-            host = AutonomyCycleHost(steps=decision_steps(activations))
+            host = create_host(steps=decision_steps(activations))
             # Selections restaged with `vehicles update autonomy` apply between
             # frames, as in the Chase worker; changed specs or configs need
             # --restart.

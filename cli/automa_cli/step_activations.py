@@ -124,7 +124,7 @@ def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
         selection, restart = install, f"{install} --restart"
     else:
         selection = None
-        restart = f"./cli/automa vehicles automation restart --id {vehicle_id} --observe-only"
+        restart = f"./cli/automa vehicles automation restart --id {vehicle_id}"
     return {
         "live_selection": live,
         "selection_command": selection if live else restart,

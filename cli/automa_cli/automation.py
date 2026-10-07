@@ -22,6 +22,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS, AutonomyCycleHost
+from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.runtime.chase_sim import create_host
 from implementations.vehicle.chase_sim import (
@@ -129,22 +130,6 @@ class _PendingAutomationFrame:
     chaser_reference: dict[str, Any] | None = None
 
 
-def _onboard_automation(vehicle_id: str, provider: Any) -> CommandResult:
-    """`automation` hosts the Chase worker; the PiCar hosts the same cycle onboard."""
-
-    restart = apply_staged(vehicle_id, provider, "perception")["restart_command"]
-    return CommandResult(
-        2,
-        "\n".join(
-            [
-                f"{vehicle_id} ({provider}) runs its automation onboard.",
-                f"Start or reload it: {restart}",
-                f"Watch it: ./cli/automa vehicles stream perception --id {vehicle_id}",
-            ]
-        ),
-    )
-
-
 def _staged_onboard_provider(vehicle_id: str) -> str | None:
     """The provider of a non-Chase vehicle known from staging or discovery."""
 
@@ -226,7 +211,9 @@ def _onboard_runtime_status(
             "interval_s": observation.get("min_interval_s"),
             "recording": False,
             "control_source": "onboard",
-            "action_policy": status.get("drive_mode"),
+            "action_policy": (autonomy.get("execution") or {}).get("mode"),
+            "execution": autonomy.get("execution"),
+            "session": autonomy.get("session"),
             "error": error,
             "last_frame": (
                 {
@@ -258,6 +245,18 @@ def run_vehicle_automation(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
+    configuration = RunConfiguration(
+        mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames
+    )
+    onboard = _staged_onboard_vehicle(vehicle_id)
+    if onboard is not None:
+        from .onboard_automation import monitor_onboard_runtime
+        code, message = monitor_onboard_runtime(
+            vehicle_id=vehicle_id, base_url=picar_base_url(onboard),
+            automation_dir=chase_automation_dir(vehicle_id), configuration=configuration,
+            timeout_s=timeout_s, record=record, verbose=verbose, output=output,
+        )
+        return CommandResult(code, message)
     payload = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=False,
@@ -279,7 +278,7 @@ def run_vehicle_automation(
     if vehicle is None:
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
     if vehicle.get("provider") != "chase-sim":
-        return _onboard_automation(vehicle_id, vehicle.get("provider"))
+        return CommandResult(2, f"Unsupported runtime provider: {vehicle.get('provider')}")
     if not take_control:
         vehicle_status = (
             vehicle.get("status")
@@ -926,6 +925,7 @@ def run_vehicle_automation(
             perception_state = state.get("perception")
             if isinstance(perception_state, dict):
                 perception_state["plugin_report"] = copy.deepcopy(perception_plugin_report)
+            state["session"] = cycle_host.session_status()
             state["execution"] = cycle_host.execution.status()
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
@@ -1005,12 +1005,15 @@ def run_vehicle_automation(
         worker_thread.join()
 
     try:
-        cycle_host.set_mode("autonomy" if take_control else "observe_only")
+        cycle_host.start(RunConfiguration(
+            mode="autonomy" if take_control else "observe_only",
+            interval_s=interval_s, frames=frames,
+        ))
         worker_thread.start()
         capture_sequence = 0
         next_capture_at = time.monotonic()
         capture_interval_s = max(0.0, float(interval_s))
-        while max_frames == 0 or capture_sequence < max_frames:
+        while cycle_host.run_state == "running":
             if worker_failed.is_set():
                 raise worker_errors[0]
             apply_memory_reset_if_requested()
@@ -1358,8 +1361,6 @@ def start_vehicle_automation_background(
     open_view: bool = False,
     startup_wait_s: float = 20.0,
 ) -> CommandResult:
-    if (provider := _staged_onboard_provider(vehicle_id)) is not None:
-        return _onboard_automation(vehicle_id, provider)
     automation_dir = chase_automation_dir(vehicle_id)
     automation_dir.mkdir(parents=True, exist_ok=True)
     process_path = automation_dir / "process.json"
@@ -2022,6 +2023,13 @@ def stop_vehicle_automation(
     vehicle_id: str,
     wait_s: float = 3.0,
 ) -> CommandResult:
+    onboard = _staged_onboard_vehicle(vehicle_id)
+    if onboard is not None:
+        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+        try:
+            OnboardRuntimeClient(picar_base_url(onboard), timeout_s=max(1.0, wait_s)).stop()
+        except (RuntimeError, OSError, ValueError) as exc:
+            return CommandResult(2, f"Could not stop {vehicle_id}: {exc}")
     automation_dir = chase_automation_dir(vehicle_id)
     process_path = automation_dir / "process.json"
     state_path = automation_dir / "state.json"
@@ -2135,8 +2143,6 @@ def restart_vehicle_automation(
     open_view: bool = False,
     wait_s: float = 3.0,
 ) -> CommandResult:
-    if (provider := _staged_onboard_provider(vehicle_id)) is not None:
-        return _onboard_automation(vehicle_id, provider)
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     problems = bundle_activation_problems(bundle, vehicle_id)
     if problems:
@@ -2144,6 +2150,16 @@ def restart_vehicle_automation(
     stop_result = stop_vehicle_automation(vehicle_id=vehicle_id, wait_s=wait_s)
     if stop_result.exit_code != 0:
         return stop_result
+
+    onboard = _staged_onboard_vehicle(vehicle_id)
+    if onboard is not None:
+        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+        try:
+            OnboardRuntimeClient(picar_base_url(onboard), timeout_s=timeout_s).restart(
+                timeout_s=max(30.0, timeout_s)
+            )
+        except (RuntimeError, OSError, ValueError) as exc:
+            return CommandResult(2, f"Could not restart {vehicle_id}: {exc}")
 
     start_result = start_vehicle_automation_background(
         vehicle_id=vehicle_id,
@@ -2358,6 +2374,8 @@ def _collect_automation_status(
                     "pid": state.get("pid"),
                     "control_source": state.get("control_source"),
                     "action_policy": state.get("action_policy"),
+                    "execution": state.get("execution"),
+                    "session": state.get("session"),
                     "control_application": state.get("control_application"),
                     "passive_capture": state.get("passive_capture")
                     if isinstance(state.get("passive_capture"), dict)
@@ -2391,7 +2409,7 @@ def _collect_automation_status(
                 "published_view": published_view,
             }
         )
-        if onboard is not None:
+        if onboard is not None and not pid_alive:
             statuses[-1].update(
                 _onboard_runtime_status(
                     vehicle_name, onboard, timeout_s=_remaining_view_budget() or 0.5

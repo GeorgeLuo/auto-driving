@@ -192,8 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
     automation = vehicle_commands.add_parser(
         "automation",
         help=(
-            "Manage the local Chase automation worker and its view; a PiCar runs the "
-            "same cycle onboard, started with `vehicles update autonomy --restart`."
+            "Run the shared decision and movement runtime on a vehicle. "
+            "The vehicle ID selects local or onboard hosting."
         ),
     )
     automation.set_defaults(handler=_handle_vehicles_automation_help)
@@ -207,7 +207,7 @@ def build_parser() -> argparse.ArgumentParser:
         "run",
         help="Start a worker and verify one correlated camera/perception publication.",
         description=(
-            "Start the automation worker. Success requires one camera frame, its "
+            "Start autonomous movement using the staged plugins. Success requires one camera frame, its "
             "completed perception result, and a healthy current-generation loopback view."
         ),
     )
@@ -222,7 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock Chase readiness deadline in seconds "
+            "Runtime readiness deadline in seconds "
             f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
         ),
     )
@@ -237,7 +237,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of camera frames to capture. 0 means an unbounded background "
+            "Number of decision frames to process. 0 means an unbounded background "
             "worker; stop it with vehicles automation stop."
         ),
     )
@@ -245,8 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--observe-only",
         action="store_true",
         help=(
-            "Passively observe without changing scenario, playback, control source, "
-            "input, or applying vehicle control."
+            "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
     automation_run.add_argument(
@@ -284,7 +283,7 @@ def build_parser() -> argparse.ArgumentParser:
         "stop",
         help="Stop the background automation loop for a vehicle.",
         description=(
-            "Stop the background worker. The local deployment remains staged and "
+            "Stop autonomous movement and its publication monitor. The deployment remains staged and "
             "its former view is no longer current-generation available."
         ),
     )
@@ -336,7 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock Chase readiness deadline in seconds "
+            "Runtime readiness deadline in seconds "
             f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
         ),
     )
@@ -351,7 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of camera frames to capture. 0 means an unbounded background "
+            "Number of decision frames to process. 0 means an unbounded background "
             "worker; stop it with vehicles automation stop."
         ),
     )
@@ -359,8 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--observe-only",
         action="store_true",
         help=(
-            "Passively observe without changing scenario, playback, control source, "
-            "input, or applying vehicle control."
+            "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
     automation_restart.add_argument(

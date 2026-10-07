@@ -2,7 +2,7 @@
 
 ``ModeAction`` applies the plan's selected command when the cycle planned and
 the drive mode is in ``LIVE_MODES``; otherwise it authorizes idle control with
-the reason. The action record states whether the command was applied.
+the reason. The action record describes authorization; shared execution reports delivery.
 """
 
 from __future__ import annotations

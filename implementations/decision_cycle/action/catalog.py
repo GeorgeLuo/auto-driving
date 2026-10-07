@@ -1,4 +1,4 @@
-"""Packaged action plugins: the core hold plugin and the mode-gated plugin."""
+"""Packaged action plugins; selected delegates movement authority to the runtime."""
 
 from __future__ import annotations
 

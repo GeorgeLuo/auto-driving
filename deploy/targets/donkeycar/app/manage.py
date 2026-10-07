@@ -804,10 +804,11 @@ class DriveMode:
         """Deliver shared runtime output, or manual input without a runtime."""
         if self.execution is not None:
             from autonomy.runtime.control import AutonomyControl
-            command = self.execution.output(AutonomyControl(
+            manual = AutonomyControl(
                 steering=user_steering or 0.0, throttle=user_throttle or 0.0,
                 reason="manual-input",
-            ))
+            ) if mode == "user" else None
+            command = self.execution.output(manual)
             selected = (command.steering, command.throttle)
         elif mode == 'user':
             selected = (user_steering, user_throttle)

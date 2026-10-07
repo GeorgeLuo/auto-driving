@@ -21,6 +21,19 @@ on the Pi is sufficient to start the Donkey runtime. The service restarts an
 unexpectedly exited process and sends output to the system journal rather than
 an accumulating project log file.
 
+Movement uses the same commands as Chase after deployment:
+
+```sh
+./cli/automa vehicles automation run --id piracer
+./cli/automa vehicles automation stop --id piracer
+./cli/automa vehicles automation restart --id piracer --observe-only
+```
+
+These commands use `/autonomy/runtime` to operate the shared host. Restart
+stops execution and restarts the systemd-managed process before starting a new
+run. The service still boots in manual mode. The CLI's local monitor publishes
+the onboard frames and decisions; it never calculates a second control policy.
+
 The CLI prepares the generated DonkeyCar vendor checkout from
 `donkeycar-vendor.json` and `patches/` before syncing. The generated checkout is
 ignored by git and should not be edited directly.

@@ -938,7 +938,7 @@ def run_vehicle_automation(
                     return
                 if not isinstance(item, _PendingAutomationFrame):
                     raise TypeError("perception queue received an invalid frame")
-                if not worker_failed.is_set():
+                if not worker_failed.is_set() and cycle_host.run_state == "running":
                     process_frame(item)
             except BaseException as exc:
                 cycle_host.close()

@@ -34,7 +34,9 @@ def _chase_state(**overrides):
         "pid": 424242,
         "run_id": "run-7",
         "updated_at_ms": NOW - 1_000,
-        "frames_processed": 8,
+        "processed_count": 8,
+        "skipped_count": 2,
+        "action_policy": "observe_only",
         "perception": {
             "activation": "lightweight_observer",
             "preset": "lightweight_observer",
@@ -83,10 +85,13 @@ class PerceptionStreamJsonTests(unittest.TestCase):
         return result, buffer.getvalue()
 
     def _stream_chase(self, automation_dir: Path, *, pid_alive=True, **kwargs):
-        with patch.object(streaming, "_automation_dir", return_value=automation_dir), patch(
-            "cli.automa_cli.automation._pid_alive", return_value=pid_alive
+        with patch.object(streaming, "chase_automation_dir", return_value=automation_dir), patch(
+            "cli.automa_cli.chase_observation.chase_automation_dir",
+            return_value=automation_dir,
         ), patch(
-            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+            "cli.automa_cli.chase_observation._pid_alive", return_value=pid_alive
+        ), patch(
+            "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
         ), patch("cli.automa_cli.streaming.time.time", return_value=NOW / 1000.0):
             return self._stream(CHASE, **kwargs)
 
@@ -118,6 +123,11 @@ class PerceptionStreamJsonTests(unittest.TestCase):
         self.assertEqual(live["status"], "live")
         self.assertEqual(live["endpoint"], "http://piracer.local:8887/autonomy/observation/latest")
         self.assertEqual(live["health"], "healthy")
+        self.assertEqual(live["processed_count"], 12)
+        self.assertEqual(live["skipped_count"], 40)
+        self.assertEqual(live["mode"], "user")
+        self.assertNotIn("drive_mode", live)
+        self.assertNotIn("frames_processed", live)
         self.assertEqual(live["frame_id"], "donkey_frame_000011")
         # The Pi reports the result age on its own clock.
         self.assertEqual(live["age_ms"], 120)
@@ -157,7 +167,11 @@ class PerceptionStreamJsonTests(unittest.TestCase):
         self.assertEqual(live["provider"], "chase-sim")
         self.assertEqual(live["run_id"], "run-7")
         self.assertEqual(live["worker_status"], "running")
-        self.assertEqual(live["frames_processed"], 8)
+        self.assertEqual(live["processed_count"], 8)
+        self.assertEqual(live["skipped_count"], 2)
+        self.assertEqual(live["mode"], "observe_only")
+        self.assertNotIn("frames_processed", live)
+        self.assertNotIn("drive_mode", live)
         self.assertEqual(live["activation"], "lightweight_observer")
         self.assertEqual(live["plugin_ids"], ["lightweight_observer"])
         self.assertEqual(live["plugin_report"]["applied_plugin_ids"], ["lightweight_observer"])
@@ -209,10 +223,13 @@ class PerceptionStreamJsonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             automation_dir = Path(tmp) / "automation"
             self._write_chase(automation_dir, state=stale, record=_chase_record())
-            with patch.object(streaming, "_automation_dir", return_value=automation_dir), patch(
-                "cli.automa_cli.automation._pid_alive", return_value=True
+            with patch.object(streaming, "chase_automation_dir", return_value=automation_dir), patch(
+                "cli.automa_cli.chase_observation.chase_automation_dir",
+                return_value=automation_dir,
             ), patch(
-                "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+                "cli.automa_cli.chase_observation._pid_alive", return_value=True
+            ), patch(
+                "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
             ), patch("cli.automa_cli.streaming.time.time", return_value=NOW / 1000.0):
                 perception = probe_live_perception(vehicle_id="chase-sim-chaser", vehicle=CHASE)
                 memory = probe_live_memory(vehicle_id="chase-sim-chaser", vehicle=CHASE)

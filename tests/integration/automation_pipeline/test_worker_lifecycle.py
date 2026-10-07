@@ -65,7 +65,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                             "status": "running",
                             "pid": _RunningProcess.pid,
                             "frames_captured": 1,
-                            "frames_processed": 1,
+                            "processed_count": 1,
                             "last_capture": {
                                 "frame_id": "frame_000000",
                                 "capture_duration_ms": 4,

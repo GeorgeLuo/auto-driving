@@ -219,8 +219,8 @@ def _onboard_runtime_status(
             "status": worker_status,
             "run_id": None,
             "frames_captured": observation.get("camera_frame_count", 0),
-            "frames_processed": observation.get("processed_count", 0),
-            "frames_dropped": observation.get("skipped_count", 0),
+            "processed_count": observation.get("processed_count", 0),
+            "skipped_count": observation.get("skipped_count", 0),
             "max_frames": None,
             "interval_s": observation.get("min_interval_s"),
             "recording": False,
@@ -473,8 +473,8 @@ def run_vehicle_automation(
         "started_at_ms": _timestamp_ms(),
         "updated_at_ms": _timestamp_ms(),
         "frames_captured": 0,
-        "frames_processed": 0,
-        "frames_dropped": 0,
+        "processed_count": 0,
+        "skipped_count": 0,
         "max_frames": None if max_frames == 0 else max_frames,
         "interval_s": max(0.0, float(interval_s)),
         "pipeline": "latest_frame_async_perception",
@@ -863,7 +863,7 @@ def run_vehicle_automation(
         latest_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")
 
         with state_lock:
-            state["frames_processed"] = int(state["frames_processed"]) + 1
+            state["processed_count"] = int(state["processed_count"]) + 1
             state["last_frame"] = {
                 "frame_id": context.frame_id,
                 "frame_index": context.frame_index,
@@ -928,7 +928,7 @@ def run_vehicle_automation(
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
 
-        processed_count = int(state["frames_processed"])
+        processed_count = int(state["processed_count"])
         if verbose or processed_count == 1 or processed_count % 10 == 0:
             _emit(
                 output,
@@ -980,7 +980,7 @@ def run_vehicle_automation(
                     view_server.perception.release_frame(dropped.context.frame_id)
                 pending_frames.task_done()
                 with state_lock:
-                    state["frames_dropped"] = int(state["frames_dropped"]) + 1
+                    state["skipped_count"] = int(state["skipped_count"]) + 1
 
     def stop_perception_worker(*, process_latest: bool) -> None:
         if not process_latest:
@@ -994,7 +994,7 @@ def run_vehicle_automation(
                 if not record:
                     dropped.front_path.unlink(missing_ok=True)
                 with state_lock:
-                    state["frames_dropped"] = int(state["frames_dropped"]) + 1
+                    state["skipped_count"] = int(state["skipped_count"]) + 1
                 pending_frames.task_done()
         pending_frames.put(worker_sentinel)
         worker_thread.join()
@@ -1327,8 +1327,8 @@ def run_vehicle_automation(
             [
                 f"Automation completed: {vehicle_id}",
                 f"Frames captured: {state['frames_captured']}",
-                f"Frames processed: {state['frames_processed']}",
-                f"Frames skipped by perception: {state['frames_dropped']}",
+                f"Frames processed: {state['processed_count']}",
+                f"Frames skipped by perception: {state['skipped_count']}",
                 f"Control source: {state['control_source']}",
                 f"Action policy: {state['action_policy']}",
                 f"Recording: {'on' if record else 'off'}",
@@ -1716,8 +1716,8 @@ def _initialize_automation_startup(
             "started_at_ms": started_at_ms,
             "updated_at_ms": started_at_ms,
             "frames_captured": 0,
-            "frames_processed": 0,
-            "frames_dropped": 0,
+            "processed_count": 0,
+            "skipped_count": 0,
             "max_frames": None if max(0, int(frames)) == 0 else max(0, int(frames)),
             "interval_s": max(0.0, float(interval_s)),
             "pipeline": "latest_frame_async_perception",
@@ -1774,7 +1774,7 @@ def _wait_for_automation_startup(
             else {}
         )
         frames_captured = state.get("frames_captured")
-        frames_processed = state.get("frames_processed")
+        processed_count = state.get("processed_count")
         last_capture = (
             state.get("last_capture")
             if isinstance(state.get("last_capture"), dict)
@@ -1790,8 +1790,8 @@ def _wait_for_automation_startup(
             status == "running"
             and isinstance(frames_captured, int)
             and frames_captured > 0
-            and isinstance(frames_processed, int)
-            and frames_processed > 0
+            and isinstance(processed_count, int)
+            and processed_count > 0
             and last_capture.get("frame_id") == last_frame.get("frame_id")
         ):
             expected_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
@@ -1885,7 +1885,7 @@ def _wait_for_automation_startup(
                     },
                     "perception": {
                         "status": "complete"
-                        if isinstance(frames_processed, int) and frames_processed > 0
+                        if isinstance(processed_count, int) and processed_count > 0
                         else "incomplete",
                     },
                     "view": {
@@ -2345,8 +2345,8 @@ def _collect_automation_status(
                     "run_id": state.get("run_id"),
                     "pipeline": state.get("pipeline"),
                     "frames_captured": state.get("frames_captured", 0),
-                    "frames_processed": state.get("frames_processed", 0),
-                    "frames_dropped": state.get("frames_dropped", 0),
+                    "processed_count": state.get("processed_count", 0),
+                    "skipped_count": state.get("skipped_count", 0),
                     "max_frames": state.get("max_frames"),
                     "interval_s": state.get("interval_s"),
                     "recording": state.get("recording"),
@@ -2534,8 +2534,8 @@ def _run_label(state: dict[str, Any]) -> str:
     parts = [
         f"id={state.get('run_id', 'none')}",
         f"captured={state.get('frames_captured', 0)}/{max_text}",
-        f"processed={state.get('frames_processed', 0)}",
-        f"skipped={state.get('frames_dropped', 0)}",
+        f"processed={state.get('processed_count', 0)}",
+        f"skipped={state.get('skipped_count', 0)}",
         f"capture_interval_s={state.get('interval_s', 'unknown')}",
         f"recording={state.get('recording', 'unknown')}",
         f"control={state.get('control_source', 'unknown')}",

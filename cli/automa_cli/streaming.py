@@ -465,7 +465,9 @@ def _probe_chase_perception(*, vehicle_id: str) -> dict[str, Any]:
         worker_pid=liveness.get("pid"),
         worker_updated_at_ms=liveness.get("updated_at_ms"),
         run_id=state.get("run_id"),
-        frames_processed=state.get("frames_processed"),
+        processed_count=state.get("processed_count"),
+        skipped_count=state.get("skipped_count"),
+        mode=state.get("action_policy"),
     )
     if not liveness["live"]:
         return {
@@ -537,7 +539,7 @@ def _probe_picar_perception(
     probe.update(
         health=health,
         preset=publication.get("preset"),
-        drive_mode=publication.get("mode") or publication.get("drive_mode"),
+        mode=publication.get("mode") or publication.get("drive_mode"),
         min_interval_s=publication.get("min_interval_s"),
         processed_count=publication.get("processed_count"),
         skipped_count=publication.get("skipped_count"),
@@ -685,8 +687,8 @@ def _chase_perception_screen(
         mode=state.get("action_policy"),
         cadence={
             "interval_s": state.get("interval_s"),
-            "processed": state.get("frames_processed"),
-            "skipped": state.get("frames_dropped"),
+            "processed": state.get("processed_count"),
+            "skipped": state.get("skipped_count"),
             "cycle_ms": record.get("cycle_duration_ms"),
             "age_ms": None if completed_at is None else max(0, _timestamp_ms() - completed_at),
         },

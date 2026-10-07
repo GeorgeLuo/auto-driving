@@ -185,9 +185,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertEqual(state["control_source"], "builtin")
             self.assertEqual(state["action_policy"], "observe_only")
             self.assertEqual(state["control_application"], "not_applied")
-            self.assertLess(state["frames_processed"], state["frames_captured"])
+            self.assertLess(state["processed_count"], state["frames_captured"])
             self.assertEqual(
-                state["frames_processed"] + state["frames_dropped"],
+                state["processed_count"] + state["skipped_count"],
                 state["frames_captured"],
             )
             self.assertEqual(mapper.frame_ids[-1], "chase_frame_000107")
@@ -281,7 +281,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             self.assertEqual(state["status"], "completed")
             self.assertEqual(state["frames_captured"], 1)
-            self.assertEqual(state["frames_processed"], 1)
+            self.assertEqual(state["processed_count"], 1)
             latest = json.loads(
                 (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
             )

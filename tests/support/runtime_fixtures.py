@@ -68,7 +68,7 @@ def write_runtime_fixture(
             "run_id": "test-run",
             "status": "running",
             "pid": pid,
-            "frames_processed": 3,
+            "processed_count": 3,
             "max_frames": None,
             "interval_s": 1.0,
             "recording": False,

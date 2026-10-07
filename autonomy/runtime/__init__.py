@@ -1,5 +1,6 @@
-"""Onboard hosting of the decision cycle for vehicle loops.
+"""Shared decision hosting and vehicle control execution.
 
-``control.AutonomyControl`` is the pilot output; ``cycle_host.AutonomyCycleHost``
-runs the cycle on a vehicle loop.
+AutonomyCycleHost starts/stops a RunConfiguration and runs sensor contexts.
+ControlExecution owns mode, freshness, delivery, and command expiry.
+ControlTarget implementations only bridge a vehicle's command transport.
 """

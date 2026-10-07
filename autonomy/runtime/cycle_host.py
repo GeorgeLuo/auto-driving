@@ -1,7 +1,8 @@
 """Host one decision cycle on a vehicle loop.
 
 ``AutonomyCycleHost`` owns the host map every step's plugins share, runs the
-cycle once per frame, and keeps the last result. ``set_step`` swaps one step's
+cycle once per frame, applies its output through ControlExecution, and keeps
+the last result. A target-less host only computes decisions. ``set_step`` swaps one step's
 runner between frames (for example after its activation changes), and
 ``status`` reports each step runner's status. ``watch_selection`` and
 ``sync_selection`` let every vehicle host apply a selection restaged into a

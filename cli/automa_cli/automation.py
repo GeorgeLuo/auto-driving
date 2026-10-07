@@ -28,7 +28,6 @@ from implementations.runtime.chase_sim import create_host
 from implementations.vehicle.chase_sim import (
     ChaseCaptureValidationError,
     ChasePassiveCaptureError,
-    ChaseSimCar,
 )
 from implementations.vehicle.chase_sim.frame_identity import (
     format_chase_frame_id,
@@ -40,6 +39,7 @@ from implementations.vehicle.chase_sim.metrics_ws import (
     compare_chase_session_fingerprints,
 )
 
+from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
 from .chase_observation import (
@@ -130,13 +130,6 @@ class _PendingAutomationFrame:
     chaser_reference: dict[str, Any] | None = None
 
 
-def _staged_onboard_provider(vehicle_id: str) -> str | None:
-    """The provider of a non-Chase vehicle known from staging or discovery."""
-
-    vehicle = _staged_onboard_vehicle(vehicle_id)
-    return None if vehicle is None else vehicle["provider"]
-
-
 def _staged_onboard_vehicle(vehicle_id: str) -> dict[str, Any] | None:
     if is_chase_vehicle_id(vehicle_id):
         return None
@@ -176,7 +169,8 @@ def _onboard_runtime_status(
     completed_at_ms = _int_or_none(latest.get("completed_at_ms"))
     if error is None and not autonomy:
         error = "Donkey runtime is up but reports no onboard host"
-    worker_status = "running" if error is None else "error"
+    session = autonomy.get("session") or {}
+    worker_status = str(session.get("status") or "stopped") if error is None else "error"
     view = picar_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
     if not view.get("available"):
         view = {
@@ -186,7 +180,7 @@ def _onboard_runtime_status(
     return {
         "process": {
             "pid": None,
-            "running": error is None,
+            "running": worker_status == "running",
             "pid_state": f"onboard {base_url or 'no endpoint'}",
             "status": worker_status,
             "generation_matches": True,
@@ -245,9 +239,12 @@ def run_vehicle_automation(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    configuration = RunConfiguration(
-        mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames
-    )
+    try:
+        configuration = RunConfiguration(
+            mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames
+        )
+    except (TypeError, ValueError) as exc:
+        return CommandResult(2, str(exc))
     onboard = _staged_onboard_vehicle(vehicle_id)
     if onboard is not None:
         from .onboard_automation import monitor_onboard_runtime
@@ -354,9 +351,7 @@ def run_vehicle_automation(
     # A decision frame is published only when proposals are staged.
     decision_published = identity["steps"]["proposal"] is not None
 
-    connection = vehicle.get("connection") if isinstance(vehicle.get("connection"), dict) else {}
-    ws_url = connection.get("ws_url") if isinstance(connection.get("ws_url"), str) else None
-    car = ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
+    car = create_vehicle_access(vehicle, timeout_s=timeout_s).car
     try:
         perception_step = load_staged_runner(perception_activation)
     except Exception as exc:
@@ -997,7 +992,11 @@ def run_vehicle_automation(
                 with state_lock:
                     state["skipped_count"] = int(state["skipped_count"]) + 1
                 pending_frames.task_done()
-        pending_frames.put(worker_sentinel)
+        try:
+            pending_frames.put(worker_sentinel, timeout=1.0)
+        except queue.Full:
+            cycle_host.close()
+            raise TimeoutError("decision queue did not accept shutdown")
         worker_thread.join(timeout=5.0)
         if worker_thread.is_alive():
             cycle_host.close()
@@ -1360,6 +1359,10 @@ def start_vehicle_automation_background(
     open_view: bool = False,
     startup_wait_s: float = 20.0,
 ) -> CommandResult:
+    try:
+        RunConfiguration(mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames)
+    except (TypeError, ValueError) as exc:
+        return CommandResult(2, str(exc))
     automation_dir = chase_automation_dir(vehicle_id)
     automation_dir.mkdir(parents=True, exist_ok=True)
     process_path = automation_dir / "process.json"
@@ -2097,10 +2100,9 @@ def stop_vehicle_automation(
             )
         time.sleep(0.1)
 
-    if onboard is None and _read_json(state_path).get("action_policy") == "autonomy":
+    if onboard is None and (_read_json(state_path) or {}).get("action_policy") == "autonomy":
         # A killed process cannot run its watchdog or finally blocks. Stop the
         # transport before terminating a worker whose plugin did not return.
-        from .vehicle_access import create_vehicle_access
         discovery = discover_active_vehicles(timeout_s=max(1.0, wait_s), include_inactive=True)
         vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
         if vehicle is None or error:

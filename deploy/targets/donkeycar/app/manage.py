@@ -450,7 +450,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     #
     # Optional decision cycle. Each step loads its activation from
     # runtime/<step>/active.json; the cycle writes the standard Donkey pilot
-    # outputs so existing user/local_angle/local mode switching still applies.
+    # diagnostics; shared execution alone selects autonomous movement.
     #
     # The host telemetry publisher is optional and diagnostic. It is attached
     # to the same final DriveMode seam as the vehicle output, but never enters
@@ -567,7 +567,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 )
             # Always-on observation: run independently of run_pilot so
             # manual user mode still executes the shared cycle at a
-            # bounded cadence. DriveMode remains movement authority.
+            # bounded cadence. Shared execution owns movement authority.
             observation_interval_s = float(
                 getattr(
                     cfg,
@@ -616,9 +616,6 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
           inputs=['user/mode', 'user/angle', 'user/throttle',
                   'pilot/angle', 'pilot/throttle'],
           outputs=['steering', 'throttle'])
-
-
-
 
     # Ai Recording
     recording_control = ToggleRecording(cfg.AUTO_RECORD_ON_THROTTLE, cfg.RECORD_DURING_AI)

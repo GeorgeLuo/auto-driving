@@ -30,7 +30,7 @@ from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
 from .paths import ROOT, display_path, safe_path_part
 from .picar_observation import picar_base_url, post_memory_reset
-from .streaming import _live_plugins, _probe_chase_memory, probe_live_memory
+from .streaming import _live_plugins, _probe_chase_step, probe_live_memory
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 from .workbench_frames import run_frame
 from .workbench_source import (
@@ -441,7 +441,7 @@ def _reset_chase_memory(
         # This is already the Chase file protocol. Avoid general vehicle
         # discovery here: it can outlast the acknowledgement deadline and
         # hide a result the worker has already written.
-        live = _probe_chase_memory(vehicle_id=vehicle_id)
+        live = _probe_chase_step("memory", vehicle_id=vehicle_id)
         if _probe_shows_reset(before, live):
             try:
                 request_path.unlink(missing_ok=True)

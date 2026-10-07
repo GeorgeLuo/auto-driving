@@ -85,7 +85,7 @@ def discover_active_vehicles(
     if include_picar:
         candidates.extend(_picar_candidates(picar_urls))
     if include_chase_sim:
-        candidates.extend(_chase_sim_candidates(chase_ws_urls))
+        candidates.extend(_chase_candidates(chase_ws_urls))
 
     results = [_probe_candidate(candidate, timeout_s=timeout) for candidate in candidates]
     active = [result.vehicle for result in results if result.active and result.vehicle is not None]
@@ -203,7 +203,7 @@ def get_vehicle_status(
     display_url = chase_operator_url(endpoint)
     started = time.monotonic()
     candidate = Candidate("chase-sim", endpoint, "cli")
-    probe = _probe_chase_sim(candidate, timeout_s=operation_timeout)
+    probe = _probe_chase(candidate, timeout_s=operation_timeout)
     discovery = {
         "schema": "automa_vehicle_discovery_v0",
         "checked_at_ms": int(time.time() * 1000),
@@ -995,7 +995,7 @@ def _probe_candidate(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     if candidate.provider == "picar":
         return _probe_picar(candidate, timeout_s=timeout_s)
     if candidate.provider == "chase-sim":
-        return _probe_chase_sim(candidate, timeout_s=timeout_s)
+        return _probe_chase(candidate, timeout_s=timeout_s)
     return ProbeResult(
         active=False,
         candidate=candidate,
@@ -1018,7 +1018,7 @@ def _picar_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
     return _dedupe_candidates(candidates)
 
 
-def _chase_sim_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
+def _chase_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
     candidates: list[Candidate] = []
     env_url = os.environ.get(CHASE_UI_WS_URL_ENV)
     if env_url:
@@ -1154,7 +1154,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     )
 
 
-def _probe_chase_sim(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     car = ChaseSimCar(ws_url=candidate.url, timeout_s=timeout_s)
     diagnostics: dict[str, Any] = {
         "ws_server": False,

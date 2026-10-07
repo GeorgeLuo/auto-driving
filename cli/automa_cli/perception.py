@@ -180,7 +180,7 @@ def get_vehicle_perception_info(
         if error is not None:
             return CommandResult(2, error)
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
-        published_view, automation_status = _perception_view_with_automation_status(
+        published_view, automation_status = _chase_automation_info(
             automation_dir
         )
         payload.update(
@@ -875,7 +875,7 @@ def _live_picar_observation_info(
     return result
 
 
-def _perception_view_with_automation_status(
+def _chase_automation_info(
     automation_dir: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     state = _read_json_file(automation_dir / "state.json")

@@ -1095,10 +1095,6 @@ def _probe_picar_step(
     }
 
 
-def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
-    return _probe_chase_step("memory", vehicle_id=vehicle_id)
-
-
 def _probe_chase_step(step: str, *, vehicle_id: str) -> dict[str, Any]:
     probed_at_ms = int(time.time() * 1000)
     try:

@@ -178,11 +178,12 @@ class AutonomyCycleHost:
         return self.execution.set_mode(mode)
 
     def close(self) -> None:
-        if self.execution is not None and self.execution.status()["closed"]:
-            return
-        try:
-            self.stop()
-        finally:
+        """End the run and release control without raising on a failed stop."""
+        with self._session_lock:
+            if self.execution is not None and self.execution.status()["closed"]:
+                return
+            self._run_generation += 1
+            self.run_state = "stopped"
             if self.execution is not None:
                 self.execution.close()
 

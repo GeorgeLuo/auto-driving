@@ -226,11 +226,14 @@ class ControlExecution:
             return manual or AutonomyControl(reason=self._mode)
 
     def close(self) -> None:
+        """Stop and release the target; a failed stop is recorded, not raised."""
         with self._lock:
             if self._closed:
                 return
             try:
                 self.set_mode("manual")
+            except Exception:
+                pass  # _fail recorded the error in last_application
             finally:
                 self._closed = True
                 self._generation += 1

@@ -35,6 +35,7 @@ from .decision_view import (
     unavailable_host_telemetry_panel,
 )
 from .picar_observation import (
+    fetch_autonomy_status,
     fetch_decision_publication,
     fetch_observation_frame,
     frame_id_from_headers,
@@ -107,7 +108,7 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
+def _frame_record(normalized: dict[str, Any], *, action_policy: str | None) -> dict[str, Any]:
     cycle = normalized["decision"]["cycle"]
     proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
     source = proposal.get("source") if isinstance(proposal, dict) else None
@@ -196,9 +197,11 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
             if isinstance(observation_value, dict)
             else None
         ),
-        "action_policy": "observe_only",
+        "action_policy": action_policy,
         "control_source": "onboard",
-        "control_application": "shared_execution",
+        "control_application": (
+            "shared_execution" if action_policy == "autonomy" else "not_applied"
+        ),
     }
 
 
@@ -255,11 +258,14 @@ class PicarDecisionViewAdapter:
         base_url: str,
         view_server: RuntimeViewServer,
         timeout_s: float,
+        action_policy: str | None = None,
     ) -> None:
         self.vehicle_id = vehicle_id
         self.base_url = base_url
         self.view_server = view_server
         self.timeout_s = timeout_s
+        # The execution mode of the run publishing these frames; None when unknown.
+        self.action_policy = action_policy
 
     def publish_frame(
         self,
@@ -267,7 +273,7 @@ class PicarDecisionViewAdapter:
         image: tuple[bytes, str],
     ) -> bool:
         self.view_server.decision.adopt_provider(_provider_identity(normalized))
-        frame_record = _frame_record(normalized)
+        frame_record = _frame_record(normalized, action_policy=self.action_policy)
         stream_frame = picar_decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,
@@ -333,6 +339,18 @@ def run_live_decision_monitor(
     )
 
 
+def _picar_action_policy(base_url: str, timeout_s: float) -> str | None:
+    """The onboard host's execution mode, or None when it reports none."""
+
+    try:
+        autonomy = fetch_autonomy_status(base_url, timeout_s=timeout_s).get("autonomy")
+    except ConnectionError:
+        return None
+    execution = autonomy.get("execution") if isinstance(autonomy, dict) else None
+    mode = execution.get("mode") if isinstance(execution, dict) else None
+    return mode if isinstance(mode, str) else None
+
+
 def _picar_decision_view(
     vehicle_id: str,
     *,
@@ -373,6 +391,7 @@ def _picar_decision_view(
             base_url=resolved.base_url,
             view_server=server,
             timeout_s=max(0.1, float(timeout_s)),
+            action_policy=_picar_action_policy(resolved.base_url, timeout_s),
         )
         if not adapter.publish_frame(normalized, image):
             return CommandResult(2, "PiCar decision transaction was rejected")
@@ -391,6 +410,7 @@ def _picar_decision_view(
         if open_browser and not webbrowser.open(view_url, new=2) and output is not None:
             print(f"Open the view manually: {view_url}", file=output, flush=True)
         while True:
+            adapter.action_policy = _picar_action_policy(resolved.base_url, timeout_s)
             try:
                 adapter.refresh()
             except Exception:  # noqa: BLE001 - every incomplete refresh fails closed

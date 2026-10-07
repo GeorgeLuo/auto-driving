@@ -2032,7 +2032,9 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "result_age_ms": publication.get("result_age_ms"),
         "action_policy": publication.get("mode"),
         "control_source": "onboard",
-        "control_application": "shared_execution",
+        "control_application": (
+            "shared_execution" if publication.get("mode") == "autonomy" else "not_applied"
+        ),
     }
 
 

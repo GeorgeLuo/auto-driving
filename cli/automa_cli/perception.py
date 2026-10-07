@@ -58,7 +58,7 @@ from .picar_observation import (
     picar_base_url,
 )
 from .vehicles import (
-    DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    DEFAULT_READINESS_TIMEOUT_S,
     READINESS_SCHEMA,
     discover_active_vehicles,
     find_vehicle_by_id,
@@ -232,7 +232,7 @@ def update_vehicle_perception(
     vehicle_id: str,
     preset: str | None = None,
     plugins: list[str] | None = None,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     restart: bool = False,
     dry_run: bool = False,
     json_output: bool = False,

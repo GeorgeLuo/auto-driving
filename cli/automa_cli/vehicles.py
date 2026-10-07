@@ -26,7 +26,7 @@ from implementations.vehicle.picar.defaults import (
     LOCAL_CAR_BASE_URL_ENV,
 )
 
-DEFAULT_CHASE_READINESS_TIMEOUT_S = 5.0
+DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_vehicle_status_v1"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 
@@ -67,7 +67,7 @@ class ProbeResult:
 
 def discover_active_vehicles(
     *,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     picar_urls: tuple[str, ...] = (),
     chase_ws_urls: tuple[str, ...] = (),
     include_picar: bool = True,
@@ -187,7 +187,7 @@ def get_vehicle_status(
     vehicle_id: str | None = None,
     chase_url: str | None = None,
     chase_ws_url: str | None = None,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Read aggregate simulator, vehicle, deployment, worker, and view state."""
 

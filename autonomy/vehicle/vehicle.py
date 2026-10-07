@@ -169,14 +169,6 @@ class CarInterface(Protocol):
     def capabilities(self) -> VehicleCapabilities:
         ...
 
-    def acquire_control(self) -> None:
-        """Acquire the external command transport, initially idle."""
-        ...
-
-    def release_control(self) -> None:
-        """Release a stopped external command transport."""
-        ...
-
     def stop(self) -> None:
         ...
 

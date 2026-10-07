@@ -1,15 +1,27 @@
-"""Normalized command mailbox consumed by the Donkey drivetrain loop."""
+"""Normalized command mailbox consumed by the Donkey drivetrain loop.
+
+``DRIVE_MODES`` is the one translation between execution modes and Donkey's
+drive modes. The shared runtime has no partial-autonomy mode, so every drive
+mode other than ``local`` asks for manual control.
+"""
 from __future__ import annotations
 
 from typing import Any
 
 from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import require_mode
+
+DRIVE_MODES = {"manual": "user", "observe_only": "user", "autonomy": "local"}
 
 
 def execution_mode(drive_mode: str) -> str:
-    """Translate Donkey's wire vocabulary only; no partial-autonomy modes."""
-    return {"user": "manual", "local": "autonomy", "autonomy": "autonomy",
-            "observe_only": "observe_only"}.get(drive_mode, "manual")
+    """The execution mode a Donkey drive mode asks for."""
+    return "autonomy" if drive_mode == DRIVE_MODES["autonomy"] else "manual"
+
+
+def drive_mode(mode: str) -> str:
+    """The Donkey drive mode shown while an execution mode runs."""
+    return DRIVE_MODES[require_mode(mode)]
 
 
 class DonkeyControlTarget:

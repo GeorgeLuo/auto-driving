@@ -16,7 +16,7 @@ from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from .control import DonkeyControlTarget, execution_mode
+from .control import drive_mode, execution_mode
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
 
 logger = logging.getLogger(__name__)
@@ -180,13 +180,18 @@ class AutonomyPilotPart:
         generation_id: str | None = None,
         run_id: str | None = None,
         host_telemetry: Any | None = None,
+        controller: Any | None = None,
     ) -> None:
         if min_interval_s < 0:
             raise ValueError("min_interval_s must be >= 0")
+        if getattr(host, "execution", None) is None:
+            raise ValueError("AutonomyPilotPart needs a host from create_host()")
         self.host = host
-        if host.execution is None:
-            host.attach_target(DonkeyControlTarget())
-        self._last_drive_mode = "manual"
+        # Donkey's web controller. Runs this part starts or ends set its drive
+        # mode; drive-mode changes the part did not make are the operator's.
+        self.controller = controller
+        self._drive_mode = drive_mode("manual")
+        self._observed_drive_mode: str | None = None
         self.min_interval_s = float(min_interval_s)
         self.preset = preset
         self._monotonic = monotonic or time.monotonic
@@ -404,12 +409,28 @@ class AutonomyPilotPart:
 
     def start(self, configuration: RunConfiguration) -> dict[str, Any]:
         self.min_interval_s = configuration.interval_s
-        self._last_drive_mode = "autonomy" if configuration.mode == "autonomy" else "manual"
-        return self.host.start(configuration)
+        status = self.host.start(configuration)
+        self._show_drive_mode(drive_mode(configuration.mode))
+        return status
 
     def stop(self) -> dict[str, Any]:
-        self._last_drive_mode = "manual"
-        return self.host.stop()
+        status = self.host.stop()
+        self._hand_back()
+        return status
+
+    def _hand_back(self) -> None:
+        """Return Donkey to the operator from rest."""
+        if self.controller is not None:
+            self.controller.angle = 0.0
+            self.controller.throttle = 0.0
+        self._show_drive_mode(drive_mode("manual"))
+
+    def _show_drive_mode(self, mode: str) -> None:
+        self._drive_mode = mode
+        if self.controller is not None:
+            # The latch outlasts the drive loop feeding user/mode back in.
+            self.controller.mode = mode
+            self.controller.mode_latch = mode
 
     def shutdown(self) -> None:
         self.host.close()
@@ -829,13 +850,19 @@ class AutonomyPilotPart:
         user_steering: float = 0.0,
         user_throttle: float = 0.0,
     ):
-        mode_name = execution_mode(mode or "user")
-        if mode_name != self._last_drive_mode:
-            self._last_drive_mode = mode_name
+        mode = mode or drive_mode("manual")
+        mode_name = execution_mode(mode)
+        operator_changed = mode != self._observed_drive_mode and mode != self._drive_mode
+        self._observed_drive_mode = mode
+        if operator_changed:
+            self._drive_mode = mode
             if mode_name == "autonomy":
                 self.host.start(RunConfiguration(interval_s=self.min_interval_s))
             else:
                 self.host.stop()
+        elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
+            # The host ended the run: bounded frames completed or a cycle failed.
+            self._hand_back()
         captured_at_ms = timestamp_ms()
         detached = detach_image(image_array)
         with self._lock:

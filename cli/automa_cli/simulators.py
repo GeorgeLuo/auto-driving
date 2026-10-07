@@ -230,14 +230,14 @@ def ensure_simulator(
     chase_gate_ready = False
     if configured_usable:
         from .vehicles import (
-            DEFAULT_CHASE_READINESS_TIMEOUT_S,
+            DEFAULT_READINESS_TIMEOUT_S,
             get_vehicle_status,
         )
 
         chase_status = get_vehicle_status(
             vehicle_id="chase-sim-chaser",
             chase_ws_url=get_default_chase_ui_ws_url(),
-            timeout_s=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+            timeout_s=DEFAULT_READINESS_TIMEOUT_S,
         )
         expected_layers = {
             "simulator_server": "reachable",

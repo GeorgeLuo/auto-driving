@@ -11,7 +11,6 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.cycle_host import AutonomyCycleHost
 from cli.automa_cli.decision_live import PicarDecisionViewAdapter, _provider_identity
 from cli.automa_cli.decision_records import activations_from_payloads
 from cli.automa_cli.memory_report import plugin_states
@@ -20,7 +19,7 @@ from cli.automa_cli.decision import (
     picar_decision_view_frame,
 )
 from cli.automa_cli.runtime_view import RuntimeViewServer
-from implementations.runtime.donkeycar import AutonomyPilotPart
+from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
@@ -202,7 +201,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         vehicle_id = "piracer-fixture"
         steps = packaged_decision_steps()
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=decision_steps(activations_from_payloads(steps))),
+            host=create_host(steps=decision_steps(activations_from_payloads(steps))),
             min_interval_s=5.0,
             vehicle_id=vehicle_id,
             source_id=f"donkeycar:{vehicle_id}",

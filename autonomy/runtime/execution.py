@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Protocol
 
 from autonomy.runtime.control import AutonomyControl
@@ -97,6 +97,7 @@ class ControlExecution:
             self._generation += 1
             self._deadline = None
             self._mode = "manual"
+            delivered = self._owned
             if self._owned:
                 try:
                     self._write_idle("mode-changed")
@@ -109,6 +110,7 @@ class ControlExecution:
                 # Mark ownership before acquisition: partial acquisition must
                 # still attempt a stop when a transport raises.
                 self._owned = True
+                delivered = True
                 try:
                     self.target.acquire()
                     self._write_idle("awaiting-fresh-decision")
@@ -122,10 +124,13 @@ class ControlExecution:
                     self._watchdog.start()
             self._mode = mode
             self._entered_at_ms = int(time.time() * 1000)
-            self.last_application = ControlApplication(
-                None, mode, False, "awaiting-fresh-decision" if mode == "autonomy" else mode,
-                AutonomyControl(reason=mode),
-            )
+            if delivered:
+                # Keep the idle write's receipt: it is what the target received.
+                self.last_application = replace(self.last_application, mode=mode)
+            else:
+                self.last_application = ControlApplication(
+                    None, mode, False, mode, AutonomyControl(reason=mode)
+                )
             return self.status()
 
     def apply(self, result: Any, ticket: ExecutionTicket) -> ControlApplication:
@@ -221,11 +226,14 @@ class ControlExecution:
             return manual or AutonomyControl(reason=self._mode)
 
     def close(self) -> None:
+        """Stop and release the target; a failed stop is recorded, not raised."""
         with self._lock:
             if self._closed:
                 return
             try:
                 self.set_mode("manual")
+            except Exception:
+                pass  # _fail recorded the error in last_application
             finally:
                 self._closed = True
                 self._generation += 1

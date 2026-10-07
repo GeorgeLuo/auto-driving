@@ -12,11 +12,10 @@ from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEviden
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from implementations.runtime.donkeycar import AutonomyPilotPart
+from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
 
 
 def _records(
@@ -200,7 +199,7 @@ class ModeActionTests(unittest.TestCase):
             return {"schema": "memory_report_v1", "plugins": []}
 
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=replace(_steps("mode"), memory=remember)),
+            host=create_host(steps=replace(_steps("mode"), memory=remember)),
             min_interval_s=0.0,
         )
         part.run(image_array=object(), mode="local")

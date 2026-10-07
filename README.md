@@ -723,16 +723,17 @@ layers before using the shared commands on PiCar:
 
 `AutonomyCycleHost` runs the six steps, then passes their result to
 `ControlExecution`. A `ControlTarget` provides only `acquire`, `write`, and
-`release`. Chase uses `CarControlTarget` over its vehicle API; Donkey exposes the
-same runtime output to its drivetrain loop. Vehicle code cannot introduce a
-second launch command, partial-autonomy mode, or throttle multiplier.
+`release`. Chase's `ChaseControlTarget` pushes each command to the simulator;
+Donkey's `DonkeyControlTarget` leaves it for the drivetrain loop to pull. Vehicle
+code cannot introduce a second launch command, partial-autonomy mode, or
+throttle multiplier.
 
 The local host and `OnboardRuntimeClient` accept the same `RunConfiguration`
 through `start(configuration)` and expose `stop()`. The CLI supplies these
 operations for either hosting location. Implementers using the vehicle boundary
 can use `implementations.vehicle.access.create_vehicle_access(vehicle, timeout_s=...)`
 with the discovered vehicle descriptor; transport preparation belongs to
-`CarControlTarget`, not plugin code.
+`ChaseControlTarget`, not plugin code.
 
 The shared runtime rejects results from before a mode transition or from an
 invalidated in-flight cycle. Commands expire two seconds after their source

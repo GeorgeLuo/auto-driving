@@ -221,23 +221,10 @@ index 64581bc..bf5f54d 100755
          }
  
 diff --git a/donkeycar/parts/web_controller/web.py b/donkeycar/parts/web_controller/web.py
-index 8af4669..232d5df 100644
+index 8af4669..9262f69 100644
 --- a/donkeycar/parts/web_controller/web.py
 +++ b/donkeycar/parts/web_controller/web.py
-@@ -28,6 +28,12 @@ from ... import utils
- logger = logging.getLogger(__name__)
- 
- 
-+AUTONOMY_MODE_TO_DRIVE_MODE = {
-+    "manual": "user",
-+    "autonomy": "local",
-+}
-+
-+
- class RemoteWebServer():
-     '''
-     A controller that repeatedly polls a remote webserver and expects
-@@ -101,7 +107,7 @@ class RemoteWebServer():
+@@ -101,7 +101,7 @@ class RemoteWebServer():
  
  class LocalWebController(tornado.web.Application):
  
@@ -246,7 +233,7 @@ index 8af4669..232d5df 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +129,34 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +123,34 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
@@ -281,7 +268,7 @@ index 8af4669..232d5df 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +270,473 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +264,463 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -297,13 +284,14 @@ index 8af4669..232d5df 100644
 +        return tornado.escape.json_decode(self.request.body)
 +
 +    def status_payload(self) -> dict:
++        from implementations.runtime.donkeycar.control import DRIVE_MODES
 +        host = getattr(self.application, "autonomy_host", None)
 +        autonomy_status = None if host is None else host.status()
 +        return {
 +            "ok": host is not None,
 +            "drive_mode": getattr(self.application, "mode", None),
-+            "autonomy_modes": sorted(AUTONOMY_MODE_TO_DRIVE_MODE.keys()),
-+            "drive_mode_map": AUTONOMY_MODE_TO_DRIVE_MODE,
++            "autonomy_modes": sorted(DRIVE_MODES),
++            "drive_mode_map": DRIVE_MODES,
 +            "autonomy": autonomy_status,
 +        }
 +
@@ -518,19 +506,13 @@ index 8af4669..232d5df 100644
 +        data = self.read_json_body()
 +        command = data.get("command")
 +        try:
++            # The publisher sets Donkey's drive mode for the runs it starts and stops.
 +            if command == "run":
-+                configuration = RunConfiguration(**data.get("configuration", {}))
-+                publisher.start(configuration)
-+                drive_mode = "local" if configuration.mode == "autonomy" else "user"
++                publisher.start(RunConfiguration(**data.get("configuration", {})))
 +            elif command in {"stop", "restart"}:
 +                publisher.stop()
-+                drive_mode = "user"
-+                self.application.angle = 0.0
-+                self.application.throttle = 0.0
 +            else:
 +                raise ValueError(f"unknown runtime command {command!r}")
-+            self.application.mode = drive_mode
-+            self.application.mode_latch = drive_mode
 +            self.get()
 +            if command == "restart":
 +                # The deployed systemd service restarts this host. SIGINT runs
@@ -558,13 +540,8 @@ index 8af4669..232d5df 100644
 +            mode = data.get("mode")
 +            if mode == "manual":
 +                publisher.stop()
-+                self.application.angle = 0.0
-+                self.application.throttle = 0.0
 +            else:
 +                publisher.start(RunConfiguration(mode=mode))
-+            drive_mode = "local" if mode == "autonomy" else "user"
-+            self.application.mode = drive_mode
-+            self.application.mode_latch = drive_mode
 +            self.get()
 +        except (TypeError, ValueError, RuntimeError) as exc:
 +            self.write_json({"ok": False, "error": str(exc)}, status=400)
@@ -755,7 +732,7 @@ index 8af4669..232d5df 100644
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +883,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +867,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -808,7 +785,7 @@ index 8af4669..232d5df 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +978,3 @@ class WebFpv(Application):
+@@ -440,5 +962,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

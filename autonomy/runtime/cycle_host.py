@@ -55,10 +55,10 @@ class AutonomyCycleHost:
         self._watched: dict[str, tuple[Path, StepActivation]] = {}
 
     @classmethod
-    def from_runtime(cls, runtime_root: Path) -> "AutonomyCycleHost":
+    def from_runtime(cls, runtime_root: Path, *, target: ControlTarget | None = None) -> "AutonomyCycleHost":
         """Load every step from ``runtime_root/<step>/active.json``."""
 
-        return cls(steps=load_decision_steps(runtime_root))
+        return cls(steps=load_decision_steps(runtime_root), target=target)
 
     @property
     def steps(self) -> DecisionSteps:
@@ -119,6 +119,11 @@ class AutonomyCycleHost:
             self.last_error = None
             self.last_result = result
             return result
+
+    def attach_target(self, target: ControlTarget) -> None:
+        if self.execution is not None or self.cycle_count:
+            raise RuntimeError("attach a control target before running the host")
+        self.execution = ControlExecution(target)
 
     def set_mode(self, mode: str) -> dict[str, Any]:
         if self.execution is None:

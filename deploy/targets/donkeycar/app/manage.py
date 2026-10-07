@@ -456,6 +456,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     # to the same final DriveMode seam as the vehicle output, but never enters
     # command selection or performs I/O in the drive loop.
     host_telemetry_publisher = None
+    autonomy_execution = None
     if getattr(cfg, "AUTONOMY_ENABLED", True):
         autonomy_controller = getattr(V, "web_controller", None)
         runtime_root = Path(__file__).resolve().parent / "runtime"
@@ -585,6 +586,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
             )
+            autonomy_execution = host.execution
             if telemetry_store is not None:
                 host.register_status_provider("host_telemetry", telemetry_store.status)
                 if autonomy_controller is not None:
@@ -623,7 +625,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     # Decide what inputs should change the car's steering and throttle
     # based on the choice of user or autopilot drive mode
     #
-    V.add(DriveMode(cfg.AI_THROTTLE_MULT, host_telemetry=host_telemetry_publisher),
+    V.add(DriveMode(cfg.AI_THROTTLE_MULT, host_telemetry=host_telemetry_publisher, execution=autonomy_execution),
           inputs=['user/mode', 'user/angle', 'user/throttle',
                   'pilot/angle', 'pilot/throttle'],
           outputs=['steering', 'throttle'])
@@ -811,10 +813,11 @@ class ToggleRecording:
 
 
 class DriveMode:
-    def __init__(self, ai_throttle_mult=1.0, host_telemetry=None):
+    def __init__(self, ai_throttle_mult=1.0, host_telemetry=None, execution=None):
         """
         :param ai_throttle_mult: scale throttle in autopilot mode
         """
+        self.execution = execution
         self.ai_throttle_mult = ai_throttle_mult
         self.host_telemetry = host_telemetry
 
@@ -831,7 +834,18 @@ class DriveMode:
         :return: tuple of (steering, throttle) where throttle is
                  scaled by ai_throttle_mult in autopilot mode
         """
-        if mode == 'user':
+        if self.execution is not None:
+            # The runtime is the sole autonomy authority. Read its mailbox at
+            # the final boundary so launch/partial-mode/throttle-multiplier
+            # parts cannot replace an authorized command or revive an expiry.
+            if self.execution.mode == "autonomy":
+                command = self.execution.target.read()
+                selected = (command.steering, command.throttle)
+            elif mode == "user":
+                selected = (user_steering, user_throttle)
+            else:
+                selected = (0.0, 0.0)
+        elif mode == 'user':
             selected = (user_steering, user_throttle)
         elif mode == 'local_angle':
             selected = (pilot_steering if pilot_steering else 0.0, user_throttle)

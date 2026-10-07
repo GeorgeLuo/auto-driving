@@ -81,6 +81,12 @@ class PiCar(CarInterface):
             return action.steering, normalized_throttle
         return action.steering, 0.0
 
+    def acquire_control(self) -> None:
+        self.client.stop()
+
+    def release_control(self) -> None:
+        pass
+
     def stop(self) -> None:
         self.client.stop()
 
@@ -99,6 +105,7 @@ class PiCar(CarInterface):
             recording=recording,
         )
         return {
+            "boundary": "donkey_http_input",
             "action": action.to_dict(),
             "angle": angle,
             "throttle": signed_throttle,

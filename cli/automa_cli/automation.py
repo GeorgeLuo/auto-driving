@@ -23,6 +23,7 @@ from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS, AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
+from implementations.runtime.chase_sim import create_host
 from implementations.vehicle.chase_sim import (
     ChaseCaptureValidationError,
     ChasePassiveCaptureError,
@@ -411,8 +412,8 @@ def run_vehicle_automation(
         )
     except Exception as exc:
         return CommandResult(2, f"Could not load decision steps for {vehicle_id}: {type(exc).__name__}: {exc}")
-    cycle_host = AutonomyCycleHost(
-        steps=replace(
+    cycle_host = create_host(
+        car, steps=replace(
             steps, perception=perception_step, memory=memory_step, proposal=proposal_step
         ),
     )
@@ -479,8 +480,9 @@ def run_vehicle_automation(
         "interval_s": max(0.0, float(interval_s)),
         "pipeline": "latest_frame_async_perception",
         "control_source": "external_ws" if take_control else "preserved_current",
-        "action_policy": "cycle_idle" if take_control else "observe_only",
-        "control_application": "stop_only_safety_gate" if take_control else "not_applied",
+        "action_policy": "autonomy" if take_control else "observe_only",
+        "control_application": "shared_execution" if take_control else "not_applied",
+        "execution": cycle_host.execution.status(),
         "steps": _step_status(cycle_host),
         "recording": bool(record),
         "perception": {
@@ -761,9 +763,8 @@ def run_vehicle_automation(
 
         control_record = {
             **cycle_result.control.to_dict(),
-            # The current Chase worker never applies decision output to the car.
-            # In observe-only mode it also performs no control handoff or stop command.
-            "applied": False,
+            "applied": cycle_result.application.applied,
+            "application": cycle_result.application.to_dict(),
         }
         simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
         simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
@@ -925,6 +926,7 @@ def run_vehicle_automation(
             perception_state = state.get("perception")
             if isinstance(perception_state, dict):
                 perception_state["plugin_report"] = copy.deepcopy(perception_plugin_report)
+            state["execution"] = cycle_host.execution.status()
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
 
@@ -948,6 +950,7 @@ def run_vehicle_automation(
                 if not worker_failed.is_set():
                     process_frame(item)
             except BaseException as exc:
+                cycle_host.close()
                 if not worker_failed.is_set():
                     worker_errors.append(exc)
                     worker_failed.set()
@@ -984,6 +987,8 @@ def run_vehicle_automation(
 
     def stop_perception_worker(*, process_latest: bool) -> None:
         if not process_latest:
+            cycle_host.close()
+        if not process_latest:
             try:
                 dropped = pending_frames.get_nowait()
             except queue.Empty:
@@ -1000,11 +1005,7 @@ def run_vehicle_automation(
         worker_thread.join()
 
     try:
-        if take_control:
-            _emit(output, "Taking simulator control...")
-            car.prepare_for_external_control()
-            car.stop()
-
+        cycle_host.set_mode("autonomy" if take_control else "observe_only")
         worker_thread.start()
         capture_sequence = 0
         next_capture_at = time.monotonic()
@@ -1193,7 +1194,7 @@ def run_vehicle_automation(
                     "perception_output_dir": (
                         str(perception_output_dir) if perception_output_dir is not None else None
                     ),
-                    "control_application": "stop_only_safety_gate" if take_control else "not_applied",
+                    "control_application": "shared_execution" if take_control else "not_applied",
                 },
             )
             if view_server is not None:
@@ -1231,6 +1232,7 @@ def run_vehicle_automation(
             raise worker_errors[0]
 
     except KeyboardInterrupt:
+        cycle_host.close()
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
         state["status"] = "stopped"
@@ -1251,6 +1253,7 @@ def run_vehicle_automation(
             ),
         )
     except (MetricsUiWebSocketError, ChaseCaptureValidationError, ChasePassiveCaptureError) as exc:
+        cycle_host.close()
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
         state["status"] = "error"
@@ -1287,6 +1290,7 @@ def run_vehicle_automation(
             ),
         )
     except Exception as exc:
+        cycle_host.close()
         if worker_thread.is_alive():
             stop_perception_worker(process_latest=False)
         state["status"] = "error"
@@ -1315,6 +1319,7 @@ def run_vehicle_automation(
             ),
         )
 
+    cycle_host.close()
     state["status"] = "completed"
     state["completed_at_ms"] = _timestamp_ms()
     state["updated_at_ms"] = state["completed_at_ms"]
@@ -1410,9 +1415,9 @@ def start_vehicle_automation_background(
                 ),
             )
         expected_authority = {
-            "action_policy": "cycle_idle" if take_control else "observe_only",
+            "action_policy": "autonomy" if take_control else "observe_only",
             "control_application": (
-                "stop_only_safety_gate" if take_control else "not_applied"
+                "shared_execution" if take_control else "not_applied"
             ),
         }
         actual_authority = {
@@ -1722,8 +1727,8 @@ def _initialize_automation_startup(
             "interval_s": max(0.0, float(interval_s)),
             "pipeline": "latest_frame_async_perception",
             "control_source": "external_ws" if take_control else "preserved_current",
-            "action_policy": "cycle_idle" if take_control else "observe_only",
-            "control_application": "stop_only_safety_gate" if take_control else "not_applied",
+            "action_policy": "autonomy" if take_control else "observe_only",
+            "control_application": "shared_execution" if take_control else "not_applied",
             "recording": bool(record),
             "latest": {
                 "front_camera": display_path(

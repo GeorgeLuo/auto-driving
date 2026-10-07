@@ -16,6 +16,7 @@ from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from .control import DonkeyControlTarget, execution_mode
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +155,8 @@ class AutonomyPilotPart:
     Every drive-loop tick publishes the newest camera sample. A perception cycle
     runs in the background at ``min_interval_s`` and does not stall that loop.
     Samples that arrive while a cycle is running stay available as camera frames
-    and are not given their own perception result. Manual ``user`` mode remains
-    the movement authority: this part emits zero pilot outputs while mode is
-    manual, regardless of the action step's output.
+    and are not given their own perception result. The shared runtime owns movement authority, freshness, and stopping;
+    this part translates the camera and Donkey mode vocabulary.
 
     The decision publication is identified by the proposal, plan, and action
     activations the host runs (``decision_activations``) and the generation ID
@@ -183,6 +183,9 @@ class AutonomyPilotPart:
         if min_interval_s < 0:
             raise ValueError("min_interval_s must be >= 0")
         self.host = host
+        if host.execution is None:
+            host.attach_target(DonkeyControlTarget())
+        self.control_target = host.execution.target
         self.min_interval_s = float(min_interval_s)
         self.preset = preset
         self._monotonic = monotonic or time.monotonic
@@ -208,8 +211,6 @@ class AutonomyPilotPart:
         # A restaged proposal activation waiting for its runner to apply it.
         self._requested_proposal: Any | None = None
         self.latest_camera_frame: LatestCameraFrame | None = None
-        self._last_pilot_steering = 0.0
-        self._last_pilot_throttle = 0.0
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
         # Optional final-boundary observer.  It receives only detached source
         # identity from this runtime owner; DriveMode remains responsible for
@@ -398,21 +399,10 @@ class AutonomyPilotPart:
         self, mode: str = "user"
     ) -> tuple[float, float, dict[str, Any], Any, dict[str, Any] | None]:
         """Return the pilot tuple from the last finished cycle, under the given mode."""
-        with self._lock:
-            steering, throttle = self._pilot_outputs(
-                mode,
-                AutonomyControl(
-                    steering=self._last_pilot_steering,
-                    throttle=self._last_pilot_throttle,
-                ),
-            )
-            return (
-                steering,
-                throttle,
-                deepcopy(self._last_control),
-                self.generation_id,
-                None if self._last_cycle is None else deepcopy(self._last_cycle),
-            )
+        return self._held_outputs(mode)
+
+    def shutdown(self) -> None:
+        self.host.close()
 
     def _camera_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         camera = self.latest_camera_frame
@@ -829,7 +819,8 @@ class AutonomyPilotPart:
         user_steering: float = 0.0,
         user_throttle: float = 0.0,
     ):
-        mode_name = mode or "user"
+        mode_name = execution_mode(mode or "user")
+        self.host.set_mode(mode_name)
         captured_at_ms = timestamp_ms()
         detached = detach_image(image_array)
         with self._lock:
@@ -904,7 +895,7 @@ class AutonomyPilotPart:
                         user_throttle=float(user_throttle or 0.0),
                         metadata={
                             "runtime": "donkeycar",
-                            "control_application": "donkey_drive_mode",
+                            "control_application": "shared_execution",
                             "observation_cadence_s": self.min_interval_s,
                         },
                     )
@@ -924,8 +915,6 @@ class AutonomyPilotPart:
                 if isinstance(exc, MemoryUpdateError):
                     with self._lock:
                         self._memory_update_halted = True
-                        self._last_pilot_steering = 0.0
-                        self._last_pilot_throttle = 0.0
                         self._last_control = control.to_dict()
                         self._last_cycle = None
                 cycle_dict = None
@@ -942,8 +931,10 @@ class AutonomyPilotPart:
                 status=status,
             )
 
-            pilot_steering, pilot_throttle = self._pilot_outputs(mode_name, control)
-            control_dict = control.to_dict()
+            control_dict = {
+                **control.to_dict(),
+                "application": self.host.execution.status()["application"],
+            }
             latest = LatestObservationState(
                 frame_id=frame_id,
                 frame_index=frame_index,
@@ -962,8 +953,6 @@ class AutonomyPilotPart:
                 decision_error=decision_error,
             )
             with self._lock:
-                self._last_pilot_steering = pilot_steering
-                self._last_pilot_throttle = pilot_throttle
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict
                 self.latest_state = latest
@@ -979,14 +968,6 @@ class AutonomyPilotPart:
                     self._cycle_thread = None
         self._publish_host_source_frame()
         self.last_status = self.status()
-
-    def _pilot_outputs(self, mode_name: str, control: AutonomyControl) -> tuple[float, float]:
-        # Manual mode keeps movement authority. Pilot memory stays zero so a
-        # mode flip cannot inherit a stale non-zero autonomy command from an
-        # observation-only cycle.
-        if mode_name == "user":
-            return 0.0, 0.0
-        return float(control.steering), float(control.throttle)
 
     def _publish_host_source_frame(self) -> None:
         """Hand off the latest completed source frame to the final observer.
@@ -1020,14 +1001,9 @@ class AutonomyPilotPart:
             return
 
     def _held_outputs(self, mode_name: str):
+        output = self.control_target.read()
         with self._lock:
-            if mode_name == "user":
-                steering = 0.0
-                throttle = 0.0
-            else:
-                steering = self._last_pilot_steering
-                throttle = self._last_pilot_throttle
             control = deepcopy(self._last_control)
             generation_id = self.generation_id
             cycle = None if self._last_cycle is None else deepcopy(self._last_cycle)
-        return (steering, throttle, control, generation_id, cycle)
+        return (output.steering, output.throttle, control, generation_id, cycle)

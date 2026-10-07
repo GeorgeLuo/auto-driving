@@ -31,6 +31,7 @@ from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
 
 
 DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v1"
@@ -65,7 +66,7 @@ class DecisionSteps:
 
 @dataclass(frozen=True)
 class DecisionCycleResult:
-    """One cycle's records, one per step, and the control applied.
+    """One cycle's records, one per step, and the authorized control.
 
     ``memory`` is the memory step's report of plugin state, for diagnostics;
     plugins read what memory published in the host map.
@@ -81,6 +82,7 @@ class DecisionCycleResult:
     control: AutonomyControl
     started_at_ms: int
     completed_at_ms: int
+    application: ControlApplication | None = None
     schema: str = DECISION_CYCLE_RESULT_SCHEMA
 
     @property
@@ -101,6 +103,7 @@ class DecisionCycleResult:
             "plan": _record(self.plan),
             "action": _record(self.action),
             "control": self.control.to_dict(),
+            "application": self.application.to_dict() if self.application is not None else None,
         }
 
 

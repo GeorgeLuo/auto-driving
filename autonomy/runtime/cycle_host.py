@@ -30,6 +30,7 @@ from autonomy.decision_cycle.cycle import (
 )
 from autonomy.decision_cycle.steps import decision_steps, load_decision_steps
 from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlExecution, ControlTarget
 from autonomy.shared_memory import SharedMemory
 
 IDLE_REASON = "cycle-idle"
@@ -41,8 +42,9 @@ LIVE_SELECTION_STEPS = ("perception", "memory", "proposal")
 class AutonomyCycleHost:
     """Run the decision cycle around the host map."""
 
-    def __init__(self, *, steps: DecisionSteps | None = None) -> None:
+    def __init__(self, *, steps: DecisionSteps | None = None, target: ControlTarget | None = None) -> None:
         self._lock = threading.RLock()
+        self.execution = ControlExecution(target) if target is not None else None
         self.cycle = DecisionCycle(steps or decision_steps(), idle_reason=IDLE_REASON)
         self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
@@ -93,6 +95,9 @@ class AutonomyCycleHost:
             return requested
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
+        ticket = self.execution.ticket() if self.execution is not None else None
+        if ticket is not None:
+            context = replace(context, mode=ticket.mode)
         with self._lock:
             if context.shared_memory is None:
                 context = replace(context, shared_memory=self.shared_memory)
@@ -100,7 +105,11 @@ class AutonomyCycleHost:
                 self.shared_memory = context.shared_memory
             try:
                 result = self.cycle.run(context)
+                if self.execution is not None:
+                    result = replace(result, application=self.execution.apply(result, ticket))
             except Exception as exc:
+                if self.execution is not None:
+                    self.execution.cycle_failed(ticket)
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc)
@@ -110,6 +119,15 @@ class AutonomyCycleHost:
             self.last_error = None
             self.last_result = result
             return result
+
+    def set_mode(self, mode: str) -> dict[str, Any]:
+        if self.execution is None:
+            raise RuntimeError("host has no control target")
+        return self.execution.set_mode(mode)
+
+    def close(self) -> None:
+        if self.execution is not None:
+            self.execution.close()
 
     def register_status_provider(
         self, component_id: str, provider: Callable[[], dict[str, Any]]
@@ -151,6 +169,7 @@ class AutonomyCycleHost:
                         "error": f"{type(exc).__name__}: {exc}",
                     }
             return {
+                "execution": self.execution.status() if self.execution is not None else None,
                 "steps": steps,
                 "components": components,
                 "cycle_count": self.cycle_count,

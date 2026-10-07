@@ -233,7 +233,7 @@ def reset_vehicle_memory(
     wait_s: float = 5.0,
     json_output: bool = False,
 ) -> CommandResult:
-    """Reset live memory on Chase automation or PiCar Donkey runtime.
+    """Reset live memory on the Chase automation worker or the PiCar onboard host.
 
     The reset is confirmed when the live probe afterwards shows every applied
     plugin's ledger empty (``ledger_is_empty``); ``nonempty_plugin_ids`` names

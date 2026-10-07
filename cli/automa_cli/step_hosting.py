@@ -6,7 +6,7 @@ and every runner call runs inside the bundle's import context, so the worker
 runs the staged code rather than the workspace. ``plugin_report`` copies a
 hosted runner's plugin report for the worker's and the workbench's
 publications. Live selection changes are the cycle host's
-(``AutonomyCycleHost.sync_selection``), shared with the Donkey host.
+(``AutonomyCycleHost.sync_selection``), shared with the onboard host.
 """
 
 from __future__ import annotations

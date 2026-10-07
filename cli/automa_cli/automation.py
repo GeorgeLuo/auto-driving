@@ -165,7 +165,7 @@ def _onboard_runtime_status(
     *,
     timeout_s: float,
 ) -> dict[str, Any]:
-    """An onboard runtime's ``/autonomy/status`` in the worker status rows.
+    """An onboard host's ``/autonomy/status`` in the worker status rows.
 
     The Chase worker reports these rows from its local state files; a PiCar
     reports the same cycle counters from its observation status provider.
@@ -189,7 +189,7 @@ def _onboard_runtime_status(
     latest = observation.get("latest") if isinstance(observation.get("latest"), dict) else {}
     completed_at_ms = _int_or_none(latest.get("completed_at_ms"))
     if error is None and not autonomy:
-        error = "onboard runtime is up but reports no autonomy host"
+        error = "Donkey runtime is up but reports no onboard host"
     worker_status = "running" if error is None else "error"
     view = picar_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
     if not view.get("available"):
@@ -416,7 +416,7 @@ def run_vehicle_automation(
             steps, perception=perception_step, memory=memory_step, proposal=proposal_step
         ),
     )
-    # Restaged selections apply between frames, as on the Donkey host.
+    # Restaged selections apply between frames, as on the onboard host.
     for step, activation in (
         ("perception", perception_activation),
         ("memory", memory_activation),

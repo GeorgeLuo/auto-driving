@@ -720,7 +720,7 @@ def _picar_perception_screen(
     return _render_perception_screen(
         vehicle_id=vehicle_id,
         live=live,
-        source=f"picar onboard autonomy  endpoint: {base_url}",
+        source=f"picar onboard host  endpoint: {base_url}",
         record=publication_to_frame_record(publication),
         preset=publication.get("preset"),
         mode=publication.get("mode") or publication.get("drive_mode"),

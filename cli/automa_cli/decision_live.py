@@ -382,7 +382,7 @@ def _picar_decision_view(
         if output is not None:
             print(
                 f"Live decision view: {view_url}\n"
-                f"Vehicle: {resolved.vehicle_id} ({resolved.base_url})\n"
+                f"Vehicle: {resolved.vehicle_id} (picar onboard host {resolved.base_url})\n"
                 "Read-only decision view; no vehicle commands are sent. Ctrl-C stops it.",
                 file=output,
                 flush=True,

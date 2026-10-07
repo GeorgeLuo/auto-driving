@@ -1,4 +1,4 @@
-"""What a PiCar's onboard autonomy host publishes, read over HTTP.
+"""What a PiCar's onboard host publishes, read over HTTP.
 
 Its autonomy status, observation and decision publications, frames and host
 telemetry. ``chase_observation`` reads the Chase worker's counterparts from
@@ -233,7 +233,7 @@ def fetch_decision_publication(
     *,
     timeout_s: float = 3.0,
 ) -> dict[str, Any]:
-    """GET the read-only current decision publication from a PiCar runtime."""
+    """GET the read-only current decision publication from the PiCar onboard host."""
 
     url = f"{base_url.rstrip('/')}{DECISION_LATEST_PATH}"
     try:

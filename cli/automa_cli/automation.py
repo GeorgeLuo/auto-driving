@@ -1177,6 +1177,8 @@ def run_vehicle_automation(
         stop_reason = cycle_host.run_state
         cycle_host.close()
         finish_run(state, view_server, status="completed", stop_reason=stop_reason)
+    # Every exit closed the host: its release is the run's last application.
+    state["execution"] = cycle_host.execution.status()
     _write_json(state_path, state)
     return CommandResult(*run_result(state, state_path=state_path))
 

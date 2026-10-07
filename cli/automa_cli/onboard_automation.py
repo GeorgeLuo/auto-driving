@@ -191,20 +191,20 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
                 break
             time.sleep(max(0.02, configuration.interval_s))
     except KeyboardInterrupt:
-        stop_error = _stop(client)
+        stop_error = _stop(client, state)
         if stop_error is None:
             finish_run(state, server, status="stopped", stop_reason="keyboard_interrupt")
         else:
             finish_run(state, server, status="error", error=stop_error)
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
-        stop_error = _stop(client)
+        stop_error = _stop(client, state)
         finish_run(state, server, status="error",
                    error=error if stop_error is None else f"{error}; {stop_error}")
     else:
         # The host ended the run: its stop reason is how the run ended.
         reason = session["status"]
-        stop_error = _stop(client)
+        stop_error = _stop(client, state)
         if reason == "error":
             finish_run(state, server, status="error", stop_reason=reason,
                        error=host.get("last_error") or "onboard cycle failed")
@@ -217,11 +217,12 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
     return run_result(state, state_path=state_path)
 
 
-def _stop(client: OnboardRuntimeClient) -> str | None:
-    """Stop the onboard run; the reason it could not, if it could not."""
+def _stop(client: OnboardRuntimeClient, state: dict[str, Any]) -> str | None:
+    """Stop the onboard run and record its release; the reason it could not, if it could not."""
 
     try:
-        client.stop()
+        # The host answers a stop with its session, released to manual.
+        state["execution"] = client.stop()["session"]["execution"]
     except Exception as exc:  # noqa: BLE001 - recorded as the run's error
         return f"Could not stop onboard runtime: {type(exc).__name__}: {exc}"
     return None

@@ -42,7 +42,8 @@ class _FakeClient:
 
     def stop(self) -> dict:
         self.stopped = True
-        return {"ok": True}
+        released = {**_session("stopped", 0), "execution": {"mode": "manual", "closed": False}}
+        return {"ok": True, "host_run_id": "host-1", "session": released}
 
 
 class _FakeDecisionView:
@@ -180,6 +181,7 @@ class OnboardMonitorTests(unittest.TestCase):
         )
         self.assertEqual(state["readiness"]["ready_for"], "inspect stopped deployment")
         self.assertEqual(state["control_application"], "shared_execution")
+        self.assertEqual(state["execution"]["mode"], "manual")
         self.assertEqual(state["steps"]["memory"], {"plugin_ids": ["recent"], "last_error": None})
         self.assertEqual(state["proposal"]["status"], "absent")
         self.assertEqual(state["last_frame"]["frame_id"], "donkey_frame_000001")

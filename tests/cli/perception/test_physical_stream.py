@@ -62,7 +62,7 @@ class PhysicalObservationAdapterTests(unittest.TestCase):
         self.assertEqual(record["frame_id"], "donkey_frame_000011")
         self.assertEqual(record["perception"]["things"][0]["thing_id"], "boundary-1")
         self.assertEqual(record["control"]["steering"], 0.0)
-        self.assertEqual(record["control_source"], "physical_onboard")
+        self.assertEqual(record["control_source"], "onboard")
         self.assertEqual(record["action_policy"], "observe_only")
 
     def test_perception_text_prefers_lines(self) -> None:
@@ -99,8 +99,8 @@ class PhysicalStreamCommandTests(unittest.TestCase):
                 "fetch_observation_frame",
                 return_value=(jpeg, {"content-type": "image/jpeg", "x-frame-id": "donkey_frame_000011"}),
             ), patch(
-                "cli.automa_cli.streaming.physical_observation_dir",
-                return_value=runtime_root / "piracer" / "physical_observation",
+                "cli.automa_cli.streaming.picar_observation_dir",
+                return_value=runtime_root / "piracer" / "picar_observation",
             ):
                 buffer = io.StringIO()
                 result = streaming.stream_vehicle_perception(
@@ -135,8 +135,8 @@ class PhysicalStreamCommandTests(unittest.TestCase):
                 "fetch_observation_publication",
                 side_effect=ConnectionError("GET failed: connection refused"),
             ), patch(
-                "cli.automa_cli.streaming.physical_observation_dir",
-                return_value=runtime_root / "piracer" / "physical_observation",
+                "cli.automa_cli.streaming.picar_observation_dir",
+                return_value=runtime_root / "piracer" / "picar_observation",
             ):
                 buffer = io.StringIO()
                 result = streaming.stream_vehicle_perception(

@@ -291,7 +291,7 @@ def reset_vehicle_memory(
 
     try:
         if provider == "picar":
-            reset_payload = _reset_physical_memory(
+            reset_payload = _reset_picar_memory(
                 vehicle_id=vehicle_id,
                 vehicle=vehicle,
                 timeout_s=timeout_s,
@@ -373,7 +373,7 @@ def reset_vehicle_memory(
     return CommandResult(0, "\n".join(lines))
 
 
-def _reset_physical_memory(
+def _reset_picar_memory(
     *,
     vehicle_id: str,
     vehicle: dict[str, Any],
@@ -381,7 +381,7 @@ def _reset_physical_memory(
 ) -> dict[str, Any]:
     base_url = picar_base_url(vehicle)
     if not base_url:
-        raise ValueError(f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+        raise ValueError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
     payload = post_memory_reset(base_url, timeout_s=timeout_s)
     if payload.get("ok") is True:
         return payload

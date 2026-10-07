@@ -39,7 +39,7 @@ STATUS_JSON_PATH = "/autonomy/status"
 MEMORY_RESET_PATH = "/autonomy/memory/reset"
 HOST_TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
 HOST_TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
-PHYSICAL_RUNTIME_DIRNAME = "physical_observation"
+PICAR_RUNTIME_DIRNAME = "picar_observation"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records_v0"
@@ -78,8 +78,8 @@ HOST_TELEMETRY_REASONS = frozenset(
 )
 
 
-class PhysicalDecisionPublicationError(ValueError):
-    """A physical decision publication is absent or fails normalization."""
+class PicarDecisionPublicationError(ValueError):
+    """A PiCar decision publication is absent or fails normalization."""
 
     def __init__(
         self,
@@ -110,19 +110,14 @@ class HostTelemetryError(ValueError):
         self.details = details or {}
 
 
-# Keep a descriptive alias available to callers that use the physical route
-# terminology.  Both names carry the same stable ``reason`` contract.
-PhysicalHostTelemetryError = HostTelemetryError
+def picar_observation_dir(vehicle_id: str) -> Path:
+    return RUNTIME_ROOT / safe_path_part(vehicle_id) / PICAR_RUNTIME_DIRNAME
 
 
-def physical_observation_dir(vehicle_id: str) -> Path:
-    return RUNTIME_ROOT / safe_path_part(vehicle_id) / PHYSICAL_RUNTIME_DIRNAME
-
-
-def physical_view_status(vehicle_id: str, *, timeout_s: float = 0.25) -> dict[str, Any]:
-    """Return local loopback view status for a physical observation stream."""
+def picar_view_status(vehicle_id: str, *, timeout_s: float = 0.25) -> dict[str, Any]:
+    """Return local loopback view status for a PiCar observation stream."""
     return get_perception_view_status(
-        physical_observation_dir(vehicle_id),
+        picar_observation_dir(vehicle_id),
         timeout_s=timeout_s,
     )
 
@@ -132,7 +127,7 @@ def fetch_autonomy_status(
     *,
     timeout_s: float = 3.0,
 ) -> dict[str, Any]:
-    """GET /autonomy/status from a physical Donkey runtime."""
+    """GET /autonomy/status from a PiCar's Donkey runtime."""
 
     url = f"{base_url.rstrip('/')}{STATUS_JSON_PATH}"
     try:
@@ -166,7 +161,7 @@ def post_memory_reset(
     *,
     timeout_s: float = 3.0,
 ) -> dict[str, Any]:
-    """POST /autonomy/memory/reset on a physical Donkey runtime."""
+    """POST /autonomy/memory/reset on a PiCar's Donkey runtime."""
 
     url = f"{base_url.rstrip('/')}{MEMORY_RESET_PATH}"
     request = urllib.request.Request(
@@ -388,19 +383,19 @@ def fetch_host_telemetry_records(
     return _fetch_host_telemetry_json(url, timeout_s=timeout_s, query_route=True)
 
 
-def _physical_decision_error(
+def _picar_decision_error(
     reason: str,
     message: str,
     *,
     field: str | None = None,
-) -> PhysicalDecisionPublicationError:
+) -> PicarDecisionPublicationError:
     details: dict[str, Any] = {}
     if field is not None:
         details["field"] = field
-    return PhysicalDecisionPublicationError(reason, message, details=details)
+    return PicarDecisionPublicationError(reason, message, details=details)
 
 
-def _physical_required_int(
+def _picar_required_int(
     value: object,
     *,
     field: str,
@@ -411,30 +406,30 @@ def _physical_required_int(
     except ValueError as exc:
         if allow_negative and type(value) is int:
             return int(value)
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            f"Physical decision publication {field} must be a non-bool int.",
+            f"PiCar decision publication {field} must be a non-bool int.",
             field=field,
         ) from exc
     return number
 
 
-def _physical_required_id(value: object, *, field: str) -> str:
+def _picar_required_id(value: object, *, field: str) -> str:
     try:
         return require_ascii_id(value, field_name=field)
     except ValueError as exc:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            f"Physical decision publication {field} is not a valid identity.",
+            f"PiCar decision publication {field} is not a valid identity.",
             field=field,
         ) from exc
 
 
-def _physical_require_mapping(value: object, *, field: str) -> dict[str, Any]:
+def _picar_require_mapping(value: object, *, field: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            f"Physical decision publication {field} must be an object.",
+            f"PiCar decision publication {field} must be an object.",
             field=field,
         )
     return value
@@ -1328,36 +1323,36 @@ def _decision_source_frame(decision: dict[str, Any]) -> dict[str, Any]:
             except HostTelemetryError as exc:
                 raise _host_telemetry_error(
                     "identity_mismatch",
-                    "Physical decision source-frame identity is invalid.",
+                    "PiCar decision source-frame identity is invalid.",
                     details=exc.details,
                 ) from exc
             if frame["captured_at_ms"] > frame["completed_at_ms"]:
                 raise _host_telemetry_error(
                     "identity_mismatch",
-                    "Physical decision source-frame timestamps are invalid.",
+                    "PiCar decision source-frame timestamps are invalid.",
                 )
             return frame
     raise _host_telemetry_error(
         "identity_mismatch",
-        "Physical decision publication cannot expose the complete source-frame identity.",
+        "PiCar decision publication cannot expose the complete source-frame identity.",
         field="decision.source_frame",
     )
 
 
-def physical_decision_identity(normalized_decision: dict[str, Any]) -> dict[str, Any]:
+def picar_decision_identity(normalized_decision: dict[str, Any]) -> dict[str, Any]:
     """Extract the exact composite identity needed for a telemetry join."""
 
     decision = normalized_decision.get("decision")
     if not isinstance(decision, dict):
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Physical decision publication has no decision object.",
+            "PiCar decision publication has no decision object.",
         )
     activation = decision.get("activation")
     if not isinstance(activation, dict):
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Physical decision publication cannot expose activation identity.",
+            "PiCar decision publication cannot expose activation identity.",
         )
     try:
         vehicle_id = _host_require_id(decision.get("vehicle_id"), field="decision.vehicle_id")
@@ -1375,28 +1370,28 @@ def physical_decision_identity(normalized_decision: dict[str, Any]) -> dict[str,
             raise
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Physical decision publication cannot expose exact telemetry identity.",
+            "PiCar decision publication cannot expose exact telemetry identity.",
             details=exc.details,
         ) from exc
     if activation_generation_id != generation_id:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Physical decision activation generation does not match its envelope.",
+            "PiCar decision activation generation does not match its envelope.",
         )
     if decision.get("frame_id") != source_frame["frame_id"]:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Physical decision frame_id does not match its source-frame identity.",
+            "PiCar decision frame_id does not match its source-frame identity.",
         )
     if decision.get("frame_index") != source_frame["frame_index"]:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Physical decision frame_index does not match its source-frame identity.",
+            "PiCar decision frame_index does not match its source-frame identity.",
         )
     if decision.get("timestamp_ms") != source_frame["captured_at_ms"]:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Physical decision timestamp does not match its source-frame identity.",
+            "PiCar decision timestamp does not match its source-frame identity.",
         )
     return {
         "vehicle_id": vehicle_id,
@@ -1444,7 +1439,7 @@ def join_host_telemetry_to_decision(
     now_ms: int | None = None,
     vehicle_id: str | None = None,
 ) -> dict[str, Any]:
-    """Join a normalized/latest telemetry point to a physical decision exactly."""
+    """Join a normalized/latest telemetry point to a PiCar decision exactly."""
 
     if isinstance(telemetry, dict) and telemetry.get("schema") == HOST_TELEMETRY_SCHEMA:
         if now_ms is None:
@@ -1465,12 +1460,12 @@ def join_host_telemetry_to_decision(
             reason if reason in HOST_TELEMETRY_REASONS else "field_invalid",
             "Host telemetry point is not healthy enough to join.",
         )
-    decision_identity = physical_decision_identity(normalized_decision)
+    decision_identity = picar_decision_identity(normalized_decision)
     telemetry_identity = telemetry.get("identity")
     if not isinstance(telemetry_identity, dict) or telemetry_identity != decision_identity:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Host telemetry identity does not exactly match the physical decision.",
+            "Host telemetry identity does not exactly match the PiCar decision.",
             details={
                 "decision_identity": decision_identity,
                 "telemetry_identity": deepcopy(telemetry_identity),
@@ -1614,7 +1609,7 @@ normalize_host_boundary_telemetry = normalize_host_telemetry_record
 join_host_boundary_telemetry = join_host_telemetry_to_decision
 
 
-def normalize_physical_decision_publication(
+def normalize_picar_decision_publication(
     publication: object,
     *,
     vehicle_id: str,
@@ -1629,19 +1624,19 @@ def normalize_physical_decision_publication(
     """
 
     if publication is None:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "missing",
-            "Physical decision publication is missing.",
+            "PiCar decision publication is missing.",
         )
     if not isinstance(publication, dict):
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            "Physical decision publication must be a JSON object.",
+            "PiCar decision publication must be a JSON object.",
         )
     if publication.get("schema") != DECISION_PUBLICATION_SCHEMA:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            f"Physical decision publication schema must be {DECISION_PUBLICATION_SCHEMA!r}.",
+            f"PiCar decision publication schema must be {DECISION_PUBLICATION_SCHEMA!r}.",
             field="schema",
         )
     try:
@@ -1649,9 +1644,9 @@ def normalize_physical_decision_publication(
     except ValueError as exc:
         raise ValueError("vehicle_id must be a valid identity") from exc
     if "status" not in publication or "ok" not in publication:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            "Physical decision publication must include status and ok.",
+            "PiCar decision publication must include status and ok.",
         )
     status = publication.get("status")
     ok = publication.get("ok")
@@ -1677,21 +1672,21 @@ def normalize_physical_decision_publication(
         }
         if reason not in allowed:
             reason = "unavailable"
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             reason,
-            f"Physical decision publication is unavailable: {reason}.",
+            f"PiCar decision publication is unavailable: {reason}.",
         )
     if publication.get("reason") != "":
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            "Ready physical decision publication must have an empty reason.",
+            "Ready PiCar decision publication must have an empty reason.",
             field="reason",
         )
 
-    read_at_ms = _physical_required_int(
+    read_at_ms = _picar_required_int(
         publication.get("read_at_ms"), field="read_at_ms", allow_negative=True
     )
-    result_age_ms = _physical_required_int(
+    result_age_ms = _picar_required_int(
         publication.get("result_age_ms"),
         field="result_age_ms",
         allow_negative=True,
@@ -1699,9 +1694,9 @@ def normalize_physical_decision_publication(
     advertised_ceiling = publication.get("stale_after_ms")
     if max_age_ms is None:
         if type(advertised_ceiling) is not int or advertised_ceiling <= 0:
-            raise _physical_decision_error(
+            raise _picar_decision_error(
                 "incomplete",
-                "Physical decision publication stale_after_ms must be positive.",
+                "PiCar decision publication stale_after_ms must be positive.",
                 field="stale_after_ms",
             )
         ceiling = int(advertised_ceiling)
@@ -1710,7 +1705,7 @@ def normalize_physical_decision_publication(
             raise ValueError("max_age_ms must be a positive non-bool int")
         ceiling = int(max_age_ms)
 
-    decision = _physical_require_mapping(publication.get("decision"), field="decision")
+    decision = _picar_require_mapping(publication.get("decision"), field="decision")
     required_decision_fields = (
         "vehicle_id",
         "source_id",
@@ -1725,78 +1720,78 @@ def normalize_physical_decision_publication(
     )
     for field in required_decision_fields:
         if field not in decision:
-            raise _physical_decision_error(
+            raise _picar_decision_error(
                 "incomplete",
-                f"Physical decision publication decision.{field} is missing.",
+                f"PiCar decision publication decision.{field} is missing.",
                 field=f"decision.{field}",
             )
 
-    decision_vehicle_id = _physical_required_id(
+    decision_vehicle_id = _picar_required_id(
         decision.get("vehicle_id"), field="decision.vehicle_id"
     )
     if decision_vehicle_id != vehicle_id:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "mismatched",
-            "Physical decision publication vehicle_id does not match the requested vehicle.",
+            "PiCar decision publication vehicle_id does not match the requested vehicle.",
             field="decision.vehicle_id",
         )
-    source_id = _physical_required_id(decision.get("source_id"), field="decision.source_id")
-    run_id = _physical_required_id(decision.get("run_id"), field="decision.run_id")
-    generation_id = _physical_required_id(
+    source_id = _picar_required_id(decision.get("source_id"), field="decision.source_id")
+    run_id = _picar_required_id(decision.get("run_id"), field="decision.run_id")
+    generation_id = _picar_required_id(
         decision.get("generation_id"), field="decision.generation_id"
     )
-    frame_id = _physical_required_id(decision.get("frame_id"), field="decision.frame_id")
-    frame_index = _physical_required_int(decision.get("frame_index"), field="decision.frame_index")
-    timestamp_value = _physical_required_int(
+    frame_id = _picar_required_id(decision.get("frame_id"), field="decision.frame_id")
+    frame_index = _picar_required_int(decision.get("frame_index"), field="decision.frame_index")
+    timestamp_value = _picar_required_int(
         decision.get("timestamp_ms"), field="decision.timestamp_ms"
     )
-    published_at_ms = _physical_required_int(
+    published_at_ms = _picar_required_int(
         decision.get("published_at_ms"), field="decision.published_at_ms", allow_negative=True
     )
 
-    activation = _physical_require_mapping(decision.get("activation"), field="decision.activation")
+    activation = _picar_require_mapping(decision.get("activation"), field="decision.activation")
     for field in ("generation_id", "steps"):
         if field not in activation:
-            raise _physical_decision_error(
+            raise _picar_decision_error(
                 "incomplete",
-                f"Physical decision publication decision.activation.{field} is missing.",
+                f"PiCar decision publication decision.activation.{field} is missing.",
                 field=f"decision.activation.{field}",
             )
     if activation.get("generation_id") != generation_id:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "mismatched",
             "Decision activation generation does not match its outer identity.",
             field="decision.activation.generation_id",
         )
     if not isinstance(activation.get("steps"), dict):
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            "Physical decision activation steps must be an object.",
+            "PiCar decision activation steps must be an object.",
             field="decision.activation.steps",
         )
 
-    cycle = _physical_require_mapping(decision.get("cycle"), field="decision.cycle")
-    proposal = _physical_require_mapping(cycle.get("proposal"), field="decision.cycle.proposal")
-    action = _physical_require_mapping(cycle.get("action"), field="decision.cycle.action")
+    cycle = _picar_require_mapping(decision.get("cycle"), field="decision.cycle")
+    proposal = _picar_require_mapping(cycle.get("proposal"), field="decision.cycle.proposal")
+    action = _picar_require_mapping(cycle.get("action"), field="decision.cycle.action")
     if (
         proposal.get("schema") != PROPOSAL_RESULT_SCHEMA
         or proposal.get("status") != "ok"
         or action.get("schema") != ACTION_RESULT_SCHEMA
         or action.get("status") != "ok"
     ):
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "incomplete",
-            "Physical decision cycle is not a successful proposal and action.",
+            "PiCar decision cycle is not a successful proposal and action.",
             field="decision.cycle",
         )
     for field, record in (("proposal", proposal), ("action", action)):
         if record.get("frame_id") != frame_id:
-            raise _physical_decision_error(
+            raise _picar_decision_error(
                 "mismatched",
-                f"Physical decision {field} frame_id does not match its outer identity.",
+                f"PiCar decision {field} frame_id does not match its outer identity.",
                 field=f"decision.cycle.{field}.frame_id",
             )
-    source = _physical_require_mapping(
+    source = _picar_require_mapping(
         proposal.get("source"), field="decision.cycle.proposal.source"
     )
     for field, expected in (
@@ -1805,24 +1800,24 @@ def normalize_physical_decision_publication(
         ("timestamp_ms", timestamp_value),
     ):
         if source.get(field) != expected:
-            raise _physical_decision_error(
+            raise _picar_decision_error(
                 "mismatched",
-                f"Physical decision source {field} does not match its outer identity.",
+                f"PiCar decision source {field} does not match its outer identity.",
                 field=f"decision.cycle.proposal.source.{field}",
             )
     if type(now_ms) is not int:
         raise ValueError("now_ms must be a non-bool int")
     age_ms = int(now_ms) - published_at_ms
     if age_ms < 0:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "future_dated",
-            f"Physical decision publication is future-dated by {-age_ms} ms.",
+            f"PiCar decision publication is future-dated by {-age_ms} ms.",
             field="decision.published_at_ms",
         )
     if age_ms > ceiling:
-        raise _physical_decision_error(
+        raise _picar_decision_error(
             "expired",
-            f"Physical decision publication age {age_ms} ms exceeds {ceiling} ms.",
+            f"PiCar decision publication age {age_ms} ms exceeds {ceiling} ms.",
             field="decision.published_at_ms",
         )
 
@@ -2036,7 +2031,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "health": publication.get("health"),
         "result_age_ms": publication.get("result_age_ms"),
         "action_policy": "observe_only",
-        "control_source": "physical_onboard",
+        "control_source": "onboard",
         "control_application": "donkey_drive_mode",
     }
 

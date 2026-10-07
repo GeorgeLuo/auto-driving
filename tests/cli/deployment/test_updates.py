@@ -8,7 +8,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.deploy import _resolve_physical_target
+from cli.automa_cli.deploy import _resolve_picar_target
 from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
 )
@@ -223,7 +223,7 @@ class DeploymentUpdateTests(unittest.TestCase):
             "cli.automa_cli.deploy.discover_active_vehicles",
             return_value={"vehicles": []},
         ) as discover:
-            target, error = _resolve_physical_target(
+            target, error = _resolve_picar_target(
                 vehicle_id="piracer",
                 timeout_s=0.1,
                 ssh_target=None,

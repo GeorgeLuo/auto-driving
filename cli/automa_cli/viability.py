@@ -104,7 +104,7 @@ def _resolve_viability_vehicle(
     if provider == "picar" and not picar_base_url(vehicle):
         return failure(
             "missing_connection",
-            f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+            f"Vehicle {vehicle_id!r} has no PiCar base URL.",
         )
     return vehicle, None
 

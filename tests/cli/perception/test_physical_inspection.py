@@ -47,7 +47,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ) as discover, patch.object(
                 perception,
-                "physical_view_status",
+                "picar_view_status",
                 return_value={"available": True, "url": "http://127.0.0.1:9100"},
             ) as view_status, patch.object(
                 perception,
@@ -130,7 +130,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
                 perception,
-                "physical_view_status",
+                "picar_view_status",
                 return_value={"available": False, "reason": "view not started"},
             ), patch.object(
                 perception,
@@ -217,7 +217,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "discover_active_vehicles",
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
-                perception, "physical_view_status"
+                perception, "picar_view_status"
             ) as view_status, patch.object(
                 perception, "fetch_observation_publication"
             ) as fetch:
@@ -255,7 +255,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
                 perception,
-                "physical_view_status",
+                "picar_view_status",
                 return_value={"available": False, "reason": "view not started"},
             ), patch.object(
                 perception,
@@ -346,7 +346,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
                 perception,
-                "physical_view_status",
+                "picar_view_status",
                 return_value={"available": False, "reason": "view not started"},
             ), patch.object(
                 perception,

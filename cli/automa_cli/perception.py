@@ -53,8 +53,8 @@ from .picar_observation import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_observation_publication,
-    physical_observation_dir,
-    physical_view_status,
+    picar_observation_dir,
+    picar_view_status,
     picar_base_url,
 )
 from .vehicles import (
@@ -160,7 +160,7 @@ def get_vehicle_perception_info(
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     has_local_activation = manifest_path.exists()
     # Discovery is an enrichment read for staged inspection, not a gate.  It
-    # must still run when active.json exists so a reachable PiRacer cannot be
+    # must still run when active.json exists so a reachable PiCar cannot be
     # silently hidden behind the local activation record.
     live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
     live_vehicle: dict[str, Any] | None = None
@@ -174,7 +174,7 @@ def get_vehicle_perception_info(
         "vehicle_id": vehicle_id,
     }
 
-    # A PiRacer reached live can be reported without a local staged activation.
+    # A PiCar reached live can be reported without a local staged activation.
     if has_local_activation or live_provider != "picar":
         staged, error = staged_step_info(bundle, vehicle_id, "perception")
         if error is not None:
@@ -200,19 +200,19 @@ def get_vehicle_perception_info(
                 "published_view": {
                     "available": False,
                     "status": "unavailable",
-                    "reason": "no local staged activation; physical live view uses stream",
+                    "reason": "no local staged activation; PiCar live view uses stream",
                 },
                 "automation": {"status": "not_started", "running": False},
             }
         )
 
     if live_provider == "picar" and live_vehicle is not None:
-        payload["live_observation"] = _live_physical_observation_info(
+        payload["live_observation"] = _live_picar_observation_info(
             vehicle_id=vehicle_id,
             vehicle=live_vehicle,
             timeout_s=timeout_s,
         )
-        # Prefer the physical stream view when it is running.
+        # Prefer the PiCar stream view when it is running.
         live_view = payload["live_observation"].get("published_view")
         if isinstance(live_view, dict) and live_view.get("available"):
             payload["published_view"] = live_view
@@ -727,7 +727,7 @@ def _format_published_view(value: Any) -> str:
 def _format_live_observation(live: dict[str, Any]) -> str:
     view = live.get("published_view") if isinstance(live.get("published_view"), dict) else {}
     if not live.get("available"):
-        error = live.get("error") or live.get("reason") or "physical observation is unavailable"
+        error = live.get("error") or live.get("reason") or "PiCar observation is unavailable"
         lines = [f"Live onboard observation: unavailable ({error})"]
         if view:
             lines.append(_format_live_view(view))
@@ -754,7 +754,7 @@ def _format_live_observation(live: dict[str, Any]) -> str:
 def _format_live_view(view: dict[str, Any]) -> str:
     if view.get("available") and view.get("url"):
         return f"- local view: {view['url']}"
-    reason = view.get("reason") or "physical perception view is unavailable"
+    reason = view.get("reason") or "PiCar perception view is unavailable"
     return (
         f"- local view: unavailable ({reason}); "
         "`./cli/automa vehicles stream perception --id <vehicle_id>` starts it"
@@ -772,7 +772,7 @@ def _unavailable_live_observation(
     reason = live.get("error")
     if not isinstance(reason, str) or not reason:
         if provider is not None:
-            reason = f"discovered provider {provider!r} is not a PiRacer"
+            reason = f"discovered provider {provider!r} is not a PiCar"
         else:
             reason = "vehicle is not currently reachable"
     result: dict[str, Any] = {
@@ -801,7 +801,7 @@ def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any
     return {"vehicle": vehicle, "error": None}
 
 
-def _live_physical_observation_info(
+def _live_picar_observation_info(
     *,
     vehicle_id: str,
     vehicle: dict[str, Any],
@@ -812,7 +812,7 @@ def _live_physical_observation_info(
         return {
             "available": False,
             "provider": "picar",
-            "error": f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+            "error": f"Vehicle {vehicle_id!r} has no PiCar base URL.",
         }
     try:
         parsed_base_url = urlparse(base_url)
@@ -827,9 +827,9 @@ def _live_physical_observation_info(
             "available": False,
             "provider": "picar",
             "base_url": base_url,
-            "error": f"Vehicle {vehicle_id!r} has an invalid picar base_url connection.",
+            "error": f"Vehicle {vehicle_id!r} has an invalid PiCar base URL.",
         }
-    view = physical_view_status(vehicle_id)
+    view = picar_view_status(vehicle_id)
     try:
         publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
     except ConnectionError as exc:
@@ -839,7 +839,7 @@ def _live_physical_observation_info(
             "base_url": base_url,
             "error": str(exc),
             "published_view": view,
-            "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
+            "runtime_dir": display_path(picar_observation_dir(vehicle_id)),
         }
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
     result = {
@@ -860,7 +860,7 @@ def _live_physical_observation_info(
         "latest_json_path": LATEST_JSON_PATH,
         "latest_frame_path": LATEST_FRAME_PATH,
         "published_view": view,
-        "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
+        "runtime_dir": display_path(picar_observation_dir(vehicle_id)),
     }
     if publication.get("health") not in {"healthy", "stale"}:
         error = publication.get("error")
@@ -868,7 +868,7 @@ def _live_physical_observation_info(
         result["reason"] = (
             error
             if isinstance(error, str) and error.strip()
-            else f"physical observation health is {publication.get('health')!r}"
+            else f"PiCar observation health is {publication.get('health')!r}"
         )
         if isinstance(error, str) and error.strip():
             result["error"] = error

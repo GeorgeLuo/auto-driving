@@ -180,7 +180,7 @@ class CommandResult:
 
 
 @dataclass(frozen=True)
-class PhysicalTarget:
+class PicarTarget:
     vehicle_id: str
     vehicle: dict[str, object]
     provider: str
@@ -205,7 +205,7 @@ def update_vehicle_core(
     stream = output
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    target, error = _resolve_physical_target(
+    target, error = _resolve_picar_target(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
         ssh_target=ssh_target,
@@ -278,7 +278,7 @@ def update_vehicle_core(
         _emit(stream, "Donkey runtime service restarted.")
         readiness = {
             "ok": True,
-            "status_url": f"{_physical_base_url(target)}/autonomy/status",
+            "status_url": f"{_target_base_url(target)}/autonomy/status",
             "drive_mode": "user",
         }
     else:
@@ -343,7 +343,7 @@ def update_vehicle_autonomy(
 ) -> CommandResult:
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    target, error = _resolve_physical_target(
+    target, error = _resolve_picar_target(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
         ssh_target=ssh_target,
@@ -461,7 +461,7 @@ def update_vehicle_autonomy(
     )
     if restart:
         try:
-            runtime_verification = _verify_physical_autonomy_runtime(
+            runtime_verification = _verify_picar_autonomy_runtime(
                 target=target,
                 expected_steps=deployed_steps,
                 timeout_s=max(3.0, timeout_s),
@@ -524,7 +524,7 @@ def update_vehicle_autonomy(
     )
 
 
-def _resolve_physical_target(
+def _resolve_picar_target(
     *,
     vehicle_id: str,
     timeout_s: float,
@@ -534,7 +534,7 @@ def _resolve_physical_target(
     output: TextIO | None,
     operation: str,
     allow_offline_default: bool = False,
-) -> tuple[PhysicalTarget | None, CommandResult | None]:
+) -> tuple[PicarTarget | None, CommandResult | None]:
     vehicle: dict[str, object] = {
         "vehicle_id": vehicle_id,
         "vehicle_kind": "picar",
@@ -567,7 +567,7 @@ def _resolve_physical_target(
                 _emit(
                     output,
                     (
-                        "Donkey HTTP readiness is unavailable; using the configured physical "
+                        "Donkey HTTP readiness is unavailable; using the configured PiCar "
                         f"target {default_base_url}. SSH will determine deploy reachability."
                     ),
                 )
@@ -582,7 +582,7 @@ def _resolve_physical_target(
     if provider != "picar":
         return None, CommandResult(
             2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; {operation} is only supported for physical PiCar targets.",
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; {operation} is only supported for PiCar targets.",
         )
 
     resolved_home = pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME
@@ -594,7 +594,7 @@ def _resolve_physical_target(
         )
 
     return (
-        PhysicalTarget(
+        PicarTarget(
             vehicle_id=vehicle_id,
             vehicle=vehicle,
             provider=provider,
@@ -607,7 +607,7 @@ def _resolve_physical_target(
 
 def _write_remote_activation_files(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     vehicle_runtime_dir: Path,
     release: dict[str, Any],
     release_id: str,
@@ -684,7 +684,7 @@ def _write_remote_activation_files(
 
 def _autonomy_sync_commands(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     release_id: str,
     archive_path: Path,
     archive_sha256: str,
@@ -740,7 +740,7 @@ def _autonomy_sync_commands(
 
 def _autonomy_update_payload(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     dry_run: bool,
     source_summary: dict[str, Any],
     release: dict[str, Any] | None,
@@ -800,7 +800,7 @@ def _autonomy_update_payload(
 
 def _core_update_payload(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     dry_run: bool,
     vendor_manifest: dict[str, Any],
     vendor_source_dir: Path,
@@ -937,7 +937,7 @@ def _display_deploy_command(label: str, command: list[str]) -> str:
     return shlex.join(command)
 
 
-def _display_restart_command(target: PhysicalTarget, drive_args: str | None) -> str:
+def _display_restart_command(target: PicarTarget, drive_args: str | None) -> str:
     remote_command = _donkey_service_control_command(
         pi_home=target.pi_home,
         action="restart",
@@ -948,7 +948,7 @@ def _display_restart_command(target: PhysicalTarget, drive_args: str | None) -> 
 
 def _restart_drive_service(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     drive_args: str | None,
     verbose: bool,
     output: TextIO | None,
@@ -979,14 +979,14 @@ def _restart_drive_service(
     return 0
 
 
-def _verify_physical_autonomy_runtime(
+def _verify_picar_autonomy_runtime(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     expected_steps: dict[str, list[str]],
     timeout_s: float,
 ) -> dict[str, Any]:
-    verification = inspect_physical_autonomy_runtime(
-        base_url=_physical_base_url(target),
+    verification = inspect_picar_autonomy_runtime(
+        base_url=_target_base_url(target),
         timeout_s=timeout_s,
     )
     status_url = str(verification["status_url"])
@@ -1021,7 +1021,7 @@ def _step_lines(steps: dict[str, list[str]]) -> list[str]:
     ]
 
 
-def inspect_physical_autonomy_runtime(
+def inspect_picar_autonomy_runtime(
     *,
     base_url: str,
     timeout_s: float,
@@ -1029,7 +1029,7 @@ def inspect_physical_autonomy_runtime(
     """Read the deployed autonomy status without changing vehicle state."""
     normalized_url = str(base_url).strip().rstrip("/")
     if not normalized_url:
-        raise RuntimeError("Pi base URL is required for runtime inspection")
+        raise RuntimeError("PiCar base URL is required for runtime inspection")
     status_url = f"{normalized_url}/autonomy/status"
     try:
         with urllib_request.urlopen(status_url, timeout=max(0.1, float(timeout_s))) as response:
@@ -1073,10 +1073,10 @@ def inspect_physical_autonomy_runtime(
 
 def _wait_for_donkey_readiness(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     timeout_s: float,
 ) -> dict[str, Any]:
-    base_url = _physical_base_url(target)
+    base_url = _target_base_url(target)
     status_url = f"{base_url.rstrip('/')}/autonomy/status"
     deadline = time.monotonic() + max(0.1, float(timeout_s))
     last_error = "no response"
@@ -1107,7 +1107,7 @@ def _wait_for_donkey_readiness(
     raise RuntimeError(f"GET {status_url} was not ready within {timeout_s:g}s ({last_error})")
 
 
-def _physical_base_url(target: PhysicalTarget) -> str:
+def _target_base_url(target: PicarTarget) -> str:
     connection = target.vehicle.get("connection")
     base_url = connection.get("base_url") if isinstance(connection, dict) else None
     if isinstance(base_url, str) and base_url.strip():

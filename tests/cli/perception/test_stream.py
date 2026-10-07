@@ -103,7 +103,7 @@ class PerceptionStreamJsonTests(unittest.TestCase):
         with patch.object(streaming, "fetch_observation_publication", return_value=_publication()), patch.object(
             streaming, "RuntimeViewServer", side_effect=AssertionError("json mode serves no page")
         ), patch.object(
-            streaming, "physical_observation_dir", side_effect=AssertionError("json mode writes no frame")
+            streaming, "picar_observation_dir", side_effect=AssertionError("json mode writes no frame")
         ):
             result, out = self._stream(PICAR, json_output=True)
 
@@ -271,8 +271,8 @@ class PerceptionStreamJsonTests(unittest.TestCase):
                     return_value=_publication(health=health),
                 ),
                 patch.object(streaming, "RuntimeViewServer"),
-                patch.object(streaming, "physical_observation_dir"),
-                patch.object(streaming, "_publish_physical_view"),
+                patch.object(streaming, "picar_observation_dir"),
+                patch.object(streaming, "_publish_picar_view"),
             ):
                 machine, json_text = self._stream(PICAR, json_output=True)
                 terminal, screen = self._stream(PICAR, no_clear=True)

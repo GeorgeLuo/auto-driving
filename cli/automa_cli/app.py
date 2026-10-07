@@ -1166,7 +1166,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Sync the Donkey harness and install its boot-enabled runtime service.",
         description=(
             "Sync the DonkeyCar core harness and install its supervised, boot-enabled "
-            "runtime service on a physical PiCar."
+            "runtime service on a PiCar."
         ),
     )
     core.add_argument(
@@ -1225,9 +1225,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     autonomy = update_commands.add_parser(
         "autonomy",
-        help="Deploy a versioned autonomy controller release to a physical PiCar.",
+        help="Deploy a versioned autonomy controller release to a PiCar.",
         description=(
-            "Deploy a versioned autonomy controller release to a physical PiCar. "
+            "Deploy a versioned autonomy controller release to a PiCar. "
             "With --restart, verifies every deployed step runs its staged plugins. "
             "Memory activation ships here; manage.py load path ships with core—if "
             "verification reports no memory step, update core then re-run autonomy."
@@ -1514,7 +1514,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
         "\n".join(
             [
                 "Automa is the control desk for the vehicles and simulators in this workspace.",
-                "It helps you find what is reachable, stage controller choices locally, and deploy code to a physical vehicle.",
+                "It helps you find what is reachable, stage controller choices locally, and deploy code to a PiCar.",
                 "It can start and stop automation runs without making you remember where the runtime files live.",
                 "It also gives you one place to inspect the latest perception output and the controller behavior staged for each vehicle.",
                 "Use it when you want to move from editing local code to running that code against a real or simulated vehicle.",
@@ -1625,8 +1625,8 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles update commands",
                 "",
-                "- core         deploy physical DonkeyCar harness code",
-                "- autonomy     deploy physical autonomy controller release",
+                "- core         deploy the DonkeyCar harness to a PiCar",
+                "- autonomy     deploy an autonomy controller release to a PiCar",
                 "- perception   stage local vehicle perception code",
                 "- observation  stage observation plugins",
                 "- memory       stage memory plugins",

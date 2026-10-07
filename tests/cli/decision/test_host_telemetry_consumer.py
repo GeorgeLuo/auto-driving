@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from cli.automa_cli.decision_live import (
-    PhysicalDecisionViewAdapter,
+    PicarDecisionViewAdapter,
     _accepted_pair,
     read_host_telemetry_panel,
 )
@@ -24,8 +24,8 @@ from cli.automa_cli.picar_observation import (
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    normalize_physical_decision_publication,
-    physical_decision_identity,
+    normalize_picar_decision_publication,
+    picar_decision_identity,
 )
 
 
@@ -138,7 +138,7 @@ def _physical_publication() -> dict:
 
 class HostTelemetryConsumerTests(unittest.TestCase):
     def test_physical_decision_adapter_preserves_provider_identity(self) -> None:
-        normalized = normalize_physical_decision_publication(
+        normalized = normalize_picar_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -147,12 +147,12 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(normalized["frame_id"], "frame-1")
         self.assertEqual(normalized["result_age_ms"], 500)
         self.assertEqual(
-            physical_decision_identity(normalized)["source_frame"]["frame_id"],
+            picar_decision_identity(normalized)["source_frame"]["frame_id"],
             "frame-1",
         )
 
     def test_live_view_adapter_joins_against_physical_publication(self) -> None:
-        normalized = normalize_physical_decision_publication(
+        normalized = normalize_picar_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -189,7 +189,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                 "cli.automa_cli.decision_live.read_host_telemetry_panel",
                 return_value=joined,
             ) as read_panel:
-                adapter = PhysicalDecisionViewAdapter(
+                adapter = PicarDecisionViewAdapter(
                     vehicle_id="piracer",
                     base_url="http://piracer.local:8887",
                     view_server=view,
@@ -206,7 +206,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     def test_live_view_uses_matching_history_when_latest_frame_has_advanced(
         self,
     ) -> None:
-        normalized = normalize_physical_decision_publication(
+        normalized = normalize_picar_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -243,7 +243,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(records.call_args.kwargs["after_sequence"], 0)
 
     def test_live_view_exposes_contiguous_history_coverage_separately(self) -> None:
-        normalized = normalize_physical_decision_publication(
+        normalized = normalize_picar_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -288,7 +288,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(records.call_args.kwargs["after_sequence"], 0)
 
     def test_live_view_retries_history_when_latest_point_has_not_arrived(self) -> None:
-        normalized = normalize_physical_decision_publication(
+        normalized = normalize_picar_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -327,7 +327,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
     def test_live_view_retries_a_small_provider_clock_skew(self) -> None:
         future_error = DecisionSurfaceError(
-            "physical_decision_unavailable",
+            "picar_decision_unavailable",
             "future",
             details={"reason": "future_dated"},
         )
@@ -342,7 +342,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             "cli.automa_cli.decision_live.fetch_decision_publication",
             side_effect=[{}, {}],
         ), patch(
-            "cli.automa_cli.decision_live.accept_physical_decision_publication",
+            "cli.automa_cli.decision_live.accept_picar_decision_publication",
             side_effect=[future_error, normalized],
         ), patch(
             "cli.automa_cli.decision_live.time.time",
@@ -390,7 +390,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         self.assertTrue(joined["joined"])
         self.assertEqual(joined["status"], "healthy")
-        self.assertEqual(joined["identity"], physical_decision_identity(_decision()))
+        self.assertEqual(joined["identity"], picar_decision_identity(_decision()))
         self.assertNotIn("authority", joined)
         self.assertNotIn("host_application", joined)
 

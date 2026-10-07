@@ -31,7 +31,7 @@ from .picar_observation import (
     fetch_observation_frame,
     fetch_observation_publication,
     perception_text_from_publication,
-    physical_observation_dir,
+    picar_observation_dir,
     picar_base_url,
     publication_to_frame_record,
 )
@@ -44,7 +44,7 @@ MEMORY_LIVE_SCHEMA = "vehicle_memory_live_v1"
 PROPOSAL_LIVE_SCHEMA = "vehicle_proposal_live_v1"
 LIVE_STEP_SCHEMAS = {"memory": MEMORY_LIVE_SCHEMA, "proposal": PROPOSAL_LIVE_SCHEMA}
 # Onboard publication health -> probe status; "healthy" is the only live one.
-_PHYSICAL_PERCEPTION_STATUS = {
+_PICAR_PERCEPTION_STATUS = {
     "warming": "absent",
     "absent": "absent",
     "stale": "stale",
@@ -123,7 +123,7 @@ def stream_vehicle_perception(
             output=output,
         )
     if provider == "picar":
-        return _stream_physical_perception(
+        return _stream_picar_perception(
             vehicle_id=vehicle_id,
             vehicle=vehicle,
             refresh_s=refresh_s,
@@ -173,8 +173,8 @@ def probe_live_perception(
     provider = vehicle.get("provider")
     if provider == "picar":
         base_url = picar_base_url(vehicle)
-        publication, fetch_error = _read_physical_publication(base_url, timeout_s=timeout_s)
-        return _probe_physical_perception(
+        publication, fetch_error = _read_picar_publication(base_url, timeout_s=timeout_s)
+        return _probe_picar_perception(
             vehicle_id=vehicle_id,
             base_url=base_url,
             publication=publication,
@@ -283,7 +283,7 @@ def _poll_stream(
         return CommandResult(130, "")
 
 
-class _PhysicalViewFeed:
+class _PicarViewFeed:
     """A loopback runtime view a stream feeds from the PiCar publication.
 
     The Chase worker serves its own view (``published_view`` in its state);
@@ -291,7 +291,7 @@ class _PhysicalViewFeed:
     """
 
     def __init__(self, vehicle_id: str) -> None:
-        runtime_dir = physical_observation_dir(vehicle_id)
+        runtime_dir = picar_observation_dir(vehicle_id)
         runtime_dir.mkdir(parents=True, exist_ok=True)
         self.frame_path = runtime_dir / "latest_frame.jpg"
         self.server: RuntimeViewServer | None = None
@@ -318,7 +318,7 @@ class _PhysicalViewFeed:
         if publication is None or self.server is None:
             return
         try:
-            _publish_physical_view(
+            _publish_picar_view(
                 view_server=self.server,
                 base_url=base_url,
                 publication=publication,
@@ -387,7 +387,7 @@ def _stream_chase_perception(
     )
 
 
-def _stream_physical_perception(
+def _stream_picar_perception(
     *,
     vehicle_id: str,
     vehicle: dict[str, Any],
@@ -400,13 +400,13 @@ def _stream_physical_perception(
 ) -> CommandResult:
     base_url = picar_base_url(vehicle)
     if not json_output and not base_url:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+        return CommandResult(2, f"Vehicle {vehicle_id!r} has no PiCar base URL.")
     # JSON output prints the probe alone; only the terminal view feeds a view.
-    view = None if json_output else _PhysicalViewFeed(vehicle_id)
+    view = None if json_output else _PicarViewFeed(vehicle_id)
 
     def probe() -> tuple[dict[str, Any], Any]:
-        publication, fetch_error = _read_physical_publication(base_url, timeout_s=timeout_s)
-        live = _probe_physical_perception(
+        publication, fetch_error = _read_picar_publication(base_url, timeout_s=timeout_s)
+        live = _probe_picar_perception(
             vehicle_id=vehicle_id,
             base_url=base_url,
             publication=publication,
@@ -417,7 +417,7 @@ def _stream_physical_perception(
     def render(live: dict[str, Any], publication: Any) -> str:
         assert view is not None and base_url
         view.publish(base_url=base_url, publication=publication, timeout_s=timeout_s)
-        return _physical_perception_screen(
+        return _picar_perception_screen(
             vehicle_id=vehicle_id,
             live=live,
             base_url=base_url,
@@ -497,7 +497,7 @@ def _probe_chase_perception(*, vehicle_id: str) -> dict[str, Any]:
     )
 
 
-def _read_physical_publication(
+def _read_picar_publication(
     base_url: str | None,
     *,
     timeout_s: float,
@@ -510,7 +510,7 @@ def _read_physical_publication(
         return None, str(exc)
 
 
-def _probe_physical_perception(
+def _probe_picar_perception(
     *,
     vehicle_id: str,
     base_url: str | None,
@@ -527,7 +527,7 @@ def _probe_physical_perception(
         return {
             **probe,
             "status": "unavailable",
-            "error": f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+            "error": f"Vehicle {vehicle_id!r} has no PiCar base URL.",
         }
     probe["endpoint"] = f"{base_url}{LATEST_JSON_PATH}"
     if fetch_error is not None or publication is None:
@@ -545,7 +545,7 @@ def _probe_physical_perception(
     if health != "healthy":
         return {
             **probe,
-            "status": _PHYSICAL_PERCEPTION_STATUS.get(health, "error"),
+            "status": _PICAR_PERCEPTION_STATUS.get(health, "error"),
             "error": publication.get("error")
             or f"Onboard perception publication health is {health!r}.",
         }
@@ -593,7 +593,7 @@ def _probe_latest_perception(
     }
 
 
-def _publish_physical_view(
+def _publish_picar_view(
     *,
     view_server: RuntimeViewServer,
     base_url: str,
@@ -706,13 +706,13 @@ def _chase_perception_screen(
     )
 
 
-def _physical_perception_screen(
+def _picar_perception_screen(
     *,
     vehicle_id: str,
     live: dict[str, Any],
     base_url: str,
     publication: dict[str, Any] | None,
-    view: _PhysicalViewFeed,
+    view: _PicarViewFeed,
 ) -> str:
     publication = publication if isinstance(publication, dict) else {}
     return _render_perception_screen(
@@ -840,13 +840,13 @@ def stream_vehicle_memory(
     provider = vehicle.get("provider")
     base_url = picar_base_url(vehicle) if provider == "picar" else None
     if provider == "picar" and not json_output and not base_url:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+        return CommandResult(2, f"Vehicle {vehicle_id!r} has no PiCar base URL.")
     # JSON output prints the probe alone; only the terminal view feeds a view.
-    view = _PhysicalViewFeed(vehicle_id) if base_url and not json_output else None
+    view = _PicarViewFeed(vehicle_id) if base_url and not json_output else None
 
     def render(live: dict[str, Any], _source: Any) -> str:
         if view is not None and base_url:
-            publication, fetch_error = _read_physical_publication(base_url, timeout_s=timeout_s)
+            publication, fetch_error = _read_picar_publication(base_url, timeout_s=timeout_s)
             view.publish(base_url=base_url, publication=publication, timeout_s=timeout_s)
             view_url, view_error = view.url, view.error
         else:
@@ -955,7 +955,7 @@ def probe_live_step(
 
     provider = vehicle.get("provider")
     if provider == "picar":
-        return _probe_physical_step(step, vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
+        return _probe_picar_step(step, vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
     if provider == "chase-sim":
         return _probe_chase_step(step, vehicle_id=vehicle_id)
     return {
@@ -1025,7 +1025,7 @@ def _live_plugins(live: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _probe_physical_step(
+def _probe_picar_step(
     step: str,
     *,
     vehicle_id: str,
@@ -1040,7 +1040,7 @@ def _probe_physical_step(
             "vehicle_id": vehicle_id,
             "provider": "picar",
             "status": "unavailable",
-            "error": f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+            "error": f"Vehicle {vehicle_id!r} has no PiCar base URL.",
             "probed_at_ms": probed_at_ms,
         }
     try:

@@ -76,9 +76,9 @@ from .step_activations import (
 )
 from .paths import ROOT, display_path, safe_path_part
 from .picar_observation import (
-    PhysicalDecisionPublicationError,
+    PicarDecisionPublicationError,
     fetch_decision_publication,
-    normalize_physical_decision_publication,
+    normalize_picar_decision_publication,
     picar_base_url,
 )
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, is_chase_vehicle_id
@@ -777,7 +777,7 @@ def _accept_provider_neutral_decision_cycle(
 ) -> None:
     """Apply shared typed-cycle gates without Chase worker assumptions.
 
-    A PiCar publication carries its source-owned identity in the physical wire
+    A PiCar publication carries its source-owned identity in the PiCar's wire
     envelope. It must not be relabeled as a Chase worker frame merely to reuse
     local ``state.json`` or PID checks. The decision records remain subject to
     the same exact reconstruction and step-activation checks.
@@ -787,7 +787,7 @@ def _accept_provider_neutral_decision_cycle(
     if not isinstance(cycle, dict):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "Physical decision cycle must be an object.",
+            "PiCar decision cycle must be an object.",
         )
     reconstructed_cycle = _require_exact_cycle_export(cycle)
     activation = decision.get("activation")
@@ -796,18 +796,18 @@ def _accept_provider_neutral_decision_cycle(
     if decision.get("generation_id") != activation.get("generation_id"):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "Physical decision activation generation does not match its envelope.",
+            "PiCar decision activation generation does not match its envelope.",
         )
     if reconstructed_cycle.frame_id != decision.get("frame_id"):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "Physical decision cycle frame_id does not match its envelope.",
+            "PiCar decision cycle frame_id does not match its envelope.",
         )
     source = reconstructed_cycle.source
     if source is None:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "Physical decision cycle has no source identity.",
+            "PiCar decision cycle has no source identity.",
         )
     if (
         source.frame_index != normalized["frame_index"]
@@ -815,37 +815,37 @@ def _accept_provider_neutral_decision_cycle(
     ):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "Physical decision source timing does not match its envelope.",
+            "PiCar decision source timing does not match its envelope.",
         )
 
 
-def accept_physical_decision_publication(
+def accept_picar_decision_publication(
     publication: object,
     *,
     vehicle_id: str,
     now_ms: int,
     max_age_ms: int | None = None,
 ) -> dict[str, Any]:
-    """Normalize and accept a physical decision without fabricating local state."""
+    """Normalize and accept a PiCar decision without fabricating local state."""
 
     try:
-        normalized = normalize_physical_decision_publication(
+        normalized = normalize_picar_decision_publication(
             publication,
             vehicle_id=vehicle_id,
             now_ms=now_ms,
             max_age_ms=max_age_ms,
         )
-    except PhysicalDecisionPublicationError as exc:
+    except PicarDecisionPublicationError as exc:
         raise DecisionSurfaceError(
-            "physical_decision_unavailable",
+            "picar_decision_unavailable",
             exc.message_text,
             vehicle_id=vehicle_id,
             details={"reason": exc.reason, **exc.details},
         ) from exc
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
-            "physical_decision_unavailable",
-            f"Physical decision publication is invalid: {exc}",
+            "picar_decision_unavailable",
+            f"PiCar decision publication is invalid: {exc}",
             vehicle_id=vehicle_id,
             details={"reason": "incomplete"},
         ) from exc
@@ -855,8 +855,8 @@ def accept_physical_decision_publication(
         _accept_provider_neutral_decision_cycle(decision, normalized=normalized)
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
-            "physical_decision_unavailable",
-            f"Physical decision publication is invalid: {exc.message_text}",
+            "picar_decision_unavailable",
+            f"PiCar decision publication is invalid: {exc.message_text}",
             vehicle_id=vehicle_id,
             details={"reason": "mismatched", "source_error": exc.error, **exc.details},
         ) from exc
@@ -1906,8 +1906,8 @@ def publish_decision_frame(
     return True
 
 
-def physical_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
-    """Adapt one accepted physical cycle to the provider-neutral decision view."""
+def picar_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Adapt one accepted PiCar cycle to the provider-neutral decision view."""
 
     decision = normalized["decision"]
     cycle = decision["cycle"]
@@ -1952,7 +1952,7 @@ def _decision_stream_output(
     }
 
 
-def _stream_physical_decision(
+def _stream_picar_decision(
     *,
     vehicle_id: str,
     vehicle: dict[str, Any],
@@ -1966,8 +1966,8 @@ def _stream_physical_decision(
     base_url = picar_base_url(vehicle)
     if base_url is None:
         exc = DecisionSurfaceError(
-            "physical_decision_unavailable",
-            f"Vehicle {vehicle_id!r} has no physical base URL.",
+            "picar_decision_unavailable",
+            f"Vehicle {vehicle_id!r} has no PiCar base URL.",
             vehicle_id=vehicle_id,
             details={"reason": "missing"},
         )
@@ -1978,12 +1978,12 @@ def _stream_physical_decision(
             publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
         except (ConnectionError, OSError) as exc:
             raise DecisionSurfaceError(
-                "physical_decision_unavailable",
-                f"Could not read physical decision publication: {exc}",
+                "picar_decision_unavailable",
+                f"Could not read PiCar decision publication: {exc}",
                 vehicle_id=vehicle_id,
                 details={"reason": "missing", "transport": str(exc)},
             ) from exc
-        normalized = accept_physical_decision_publication(
+        normalized = accept_picar_decision_publication(
             publication,
             vehicle_id=vehicle_id,
             now_ms=int(time.time() * 1000),
@@ -1991,7 +1991,7 @@ def _stream_physical_decision(
         decision = normalized["decision"]
         return _decision_stream_output(
             {
-                **physical_decision_view_frame(normalized),
+                **picar_decision_view_frame(normalized),
                 "generation_id": decision["generation_id"],
             },
             provider="picar",
@@ -2027,10 +2027,10 @@ def stream_vehicle_decision(
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
 
-    # Chase keeps its generation-scoped local state files. Physical targets are
+    # Chase keeps its generation-scoped local state files. A PiCar is
     # discovered through the existing read-only vehicle registry and consumed
-    # through their onboard publication endpoint; no local PID/run state is
-    # fabricated for them.
+    # through its onboard publication endpoint; no local PID/run state is
+    # fabricated for it.
     if not is_chase_vehicle_id(vehicle_id):
         try:
             discovery = discover_active_vehicles(
@@ -2042,7 +2042,7 @@ def stream_vehicle_decision(
         except (OSError, TypeError, ValueError):
             vehicle = None
         if isinstance(vehicle, dict) and vehicle.get("provider") == "picar":
-            return _stream_physical_decision(
+            return _stream_picar_decision(
                 vehicle_id=vehicle_id,
                 vehicle=vehicle,
                 refresh_s=refresh_s,

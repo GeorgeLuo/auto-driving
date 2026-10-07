@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.deploy import (
-    PhysicalTarget,
+    PicarTarget,
     _REMOTE_AUTONOMY_INSTALL_SCRIPT,
-    _verify_physical_autonomy_runtime,
+    _verify_picar_autonomy_runtime,
     _write_remote_activation_files,
 )
 from cli.automa_cli.memory import ensure_vehicle_memory_activation
@@ -25,7 +25,7 @@ from cli.automa_cli.step_activations import (
 )
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
-TARGET = PhysicalTarget(
+TARGET = PicarTarget(
     vehicle_id="piracer",
     vehicle={
         "vehicle_id": "piracer",
@@ -95,13 +95,13 @@ class PhysicalDeployTests(unittest.TestCase):
                 return_value=_status_response(drive_mode, reported),
             ):
                 if error is None:
-                    verification = _verify_physical_autonomy_runtime(
+                    verification = _verify_picar_autonomy_runtime(
                         target=TARGET, expected_steps=expected, timeout_s=3.0
                     )
                     self.assertEqual(verification["drive_mode"], "user")
                     continue
                 with self.assertRaisesRegex(RuntimeError, error):
-                    _verify_physical_autonomy_runtime(
+                    _verify_picar_autonomy_runtime(
                         target=TARGET, expected_steps=expected, timeout_s=3.0
                     )
 

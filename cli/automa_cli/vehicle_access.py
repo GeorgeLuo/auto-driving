@@ -31,7 +31,7 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
     if provider == "picar":
         base_url = connection.get("base_url") if isinstance(connection.get("base_url"), str) else None
         if not base_url:
-            raise ValueError(f"Vehicle {vehicle_id!r} has no Donkey HTTP base URL.")
+            raise ValueError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
         return VehicleAccess(
             car=create_local_car(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id),
             image_extension="jpg",

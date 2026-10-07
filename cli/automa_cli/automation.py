@@ -51,7 +51,7 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .picar_observation import fetch_autonomy_status, physical_view_status, picar_base_url
+from .picar_observation import fetch_autonomy_status, picar_view_status, picar_base_url
 from .step_activations import (
     apply_staged,
     bundle_activation_path,
@@ -176,7 +176,7 @@ def _onboard_runtime_status(
     endpoint = f"{base_url}/autonomy/status" if base_url else None
     try:
         if not base_url:
-            raise ConnectionError(f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+            raise ConnectionError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
         status = fetch_autonomy_status(base_url, timeout_s=max(0.1, timeout_s))
         error = None
     except ConnectionError as exc:
@@ -191,7 +191,7 @@ def _onboard_runtime_status(
     if error is None and not autonomy:
         error = "onboard runtime is up but reports no autonomy host"
     worker_status = "running" if error is None else "error"
-    view = physical_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
+    view = picar_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
     if not view.get("available"):
         view = {
             **view,

@@ -70,6 +70,7 @@ class ControlExecution:
         self._entered_at_ms = 0
         self._deadline: float | None = None
         self._owned = False
+        self._output = AutonomyControl(reason="not-started")
         self._closed = False
         self._wake = threading.Event()
         self._watchdog: threading.Thread | None = None
@@ -91,15 +92,19 @@ class ControlExecution:
         with self._lock:
             if self._closed:
                 raise RuntimeError("execution is closed")
-            if mode == self._mode:
+            if mode == self._mode and not (mode == "manual" and self._owned):
                 return self.status()
             self._generation += 1
             self._deadline = None
             self._mode = "manual"
             if self._owned:
-                self._write_idle("mode-changed")
-                self.target.release()
-                self._owned = False
+                try:
+                    self._write_idle("mode-changed")
+                    self.target.release()
+                    self._owned = False
+                except Exception as exc:
+                    self._fail(exc)
+                    raise
             if mode == "autonomy":
                 # Mark ownership before acquisition: partial acquisition must
                 # still attempt a stop when a transport raises.
@@ -148,6 +153,7 @@ class ControlExecution:
                 control = AutonomyControl(reason="decision-unavailable")
             try:
                 receipt = self.target.write(control)
+                self._output = control
             except Exception as exc:
                 self._fail(exc, frame_id=result.context.frame_id)
                 raise
@@ -169,6 +175,7 @@ class ControlExecution:
     def _write_idle(self, reason: str) -> None:
         self._deadline = None
         control = AutonomyControl(reason=reason)
+        self._output = control
         receipt = self.target.write(control)
         self.last_application = ControlApplication(
             None, self._mode, True, reason, control, int(time.time() * 1000), receipt
@@ -178,6 +185,7 @@ class ControlExecution:
         self._generation += 1
         self._mode = "manual"
         self._deadline = None
+        self._output = AutonomyControl(reason="delivery-error")
         error = f"{type(exc).__name__}: {exc}"
         try:
             if self._owned:
@@ -199,6 +207,18 @@ class ControlExecution:
                         self._write_idle("decision-expired")
                     except Exception as exc:
                         self._fail(exc)
+
+    def output(self, manual: AutonomyControl | None = None) -> AutonomyControl:
+        """Select the host's final output without provider-specific mode policy.
+
+        Push transports receive writes immediately. Pull transports (Donkey's
+        drivetrain loop) read the same delivered command here. Manual input
+        belongs to the operator while automation has no authority.
+        """
+        with self._lock:
+            if self._mode == "autonomy" and not self._closed:
+                return self._output
+            return manual or AutonomyControl(reason=self._mode)
 
     def close(self) -> None:
         with self._lock:

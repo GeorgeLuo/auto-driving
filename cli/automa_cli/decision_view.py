@@ -418,6 +418,18 @@ class DecisionView:
             self._transactions.clear()
             self._latest_transaction_id = None
 
+    def adopt_provider(self, provider: dict[str, Any]) -> None:
+        """Adopt an accepted onboard generation using the same view lifecycle."""
+        identity = provider_decision_view_identity(**provider)
+        with self._lock:
+            if self.identity == identity:
+                return
+            self._provider_identity = _json_copy(provider)
+            self.identity = identity
+            self.generation_id = generation_id(identity)
+            self._transactions.clear()
+            self._latest_transaction_id = None
+
     def require_generation(self, generation: str) -> None:
         if self.generation_id is None or self.identity is None:
             raise DecisionViewError(503, "decision_unavailable", "decision view is not configured")

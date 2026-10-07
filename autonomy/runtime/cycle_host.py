@@ -116,8 +116,13 @@ class AutonomyCycleHost:
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))
             except Exception as exc:
-                if self.execution is not None:
-                    self.execution.cycle_failed(ticket)
+                try:
+                    if self.execution is not None:
+                        self.execution.cycle_failed(ticket)
+                finally:
+                    with self._session_lock:
+                        if run_generation == self._run_generation:
+                            self.stop(reason="error")
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc)
@@ -148,7 +153,7 @@ class AutonomyCycleHost:
         with self._session_lock:
             self._run_generation += 1
             self.run_state = reason
-            if self.execution is not None:
+            if self.execution is not None and not self.execution.status()["closed"]:
                 self.set_mode("manual")
             return self.session_status()
 
@@ -172,9 +177,13 @@ class AutonomyCycleHost:
         return self.execution.set_mode(mode)
 
     def close(self) -> None:
-        self.stop()
-        if self.execution is not None:
-            self.execution.close()
+        if self.execution is not None and self.execution.status()["closed"]:
+            return
+        try:
+            self.stop()
+        finally:
+            if self.execution is not None:
+                self.execution.close()
 
     def register_status_provider(
         self, component_id: str, provider: Callable[[], dict[str, Any]]

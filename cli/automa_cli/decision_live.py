@@ -198,7 +198,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         ),
         "action_policy": "observe_only",
         "control_source": "onboard",
-        "control_application": "donkey_drive_mode",
+        "control_application": "shared_execution",
     }
 
 
@@ -266,6 +266,7 @@ class PicarDecisionViewAdapter:
         normalized: dict[str, Any],
         image: tuple[bytes, str],
     ) -> bool:
+        self.view_server.decision.adopt_provider(_provider_identity(normalized))
         frame_record = _frame_record(normalized)
         stream_frame = picar_decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(

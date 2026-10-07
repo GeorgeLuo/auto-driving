@@ -186,7 +186,6 @@ class AutonomyPilotPart:
         self.host = host
         if host.execution is None:
             host.attach_target(DonkeyControlTarget())
-        self.control_target = host.execution.target
         self._last_drive_mode = "manual"
         self.min_interval_s = float(min_interval_s)
         self.preset = preset
@@ -947,10 +946,12 @@ class AutonomyPilotPart:
                 status=status,
             )
 
-            control_dict = {
-                **control.to_dict(),
-                "application": self.host.execution.status()["application"],
-            }
+            control_dict = (
+                cycle_result.control_record() if cycle_dict is not None else {
+                    **control.to_dict(), "applied": False,
+                    "application": self.host.execution.status()["application"],
+                }
+            )
             latest = LatestObservationState(
                 frame_id=frame_id,
                 frame_index=frame_index,
@@ -1017,7 +1018,7 @@ class AutonomyPilotPart:
             return
 
     def _held_outputs(self, mode_name: str):
-        output = self.control_target.read()
+        output = self.host.execution.output()
         with self._lock:
             control = deepcopy(self._last_control)
             generation_id = self.generation_id

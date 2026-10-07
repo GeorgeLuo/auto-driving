@@ -760,11 +760,7 @@ def run_vehicle_automation(
         memory_plugin_report = plugin_report(memory_step)
         proposal_plugin_report = plugin_report(proposal_step)
 
-        control_record = {
-            **cycle_result.control.to_dict(),
-            "applied": cycle_result.application.applied,
-            "application": cycle_result.application.to_dict(),
-        }
+        control_record = cycle_result.control_record()
         simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
         simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
         if simulator_frame_index is None or simulation_epoch is None:
@@ -1002,7 +998,10 @@ def run_vehicle_automation(
                     state["skipped_count"] = int(state["skipped_count"]) + 1
                 pending_frames.task_done()
         pending_frames.put(worker_sentinel)
-        worker_thread.join()
+        worker_thread.join(timeout=5.0)
+        if worker_thread.is_alive():
+            cycle_host.close()
+            raise TimeoutError("decision worker did not stop within five seconds")
 
     try:
         cycle_host.start(RunConfiguration(
@@ -2098,6 +2097,18 @@ def stop_vehicle_automation(
             )
         time.sleep(0.1)
 
+    if onboard is None and _read_json(state_path).get("action_policy") == "autonomy":
+        # A killed process cannot run its watchdog or finally blocks. Stop the
+        # transport before terminating a worker whose plugin did not return.
+        from .vehicle_access import create_vehicle_access
+        discovery = discover_active_vehicles(timeout_s=max(1.0, wait_s), include_inactive=True)
+        vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
+        if vehicle is None or error:
+            return CommandResult(2, f"Could not resolve {vehicle_id} for forced stop: {error}")
+        try:
+            create_vehicle_access(vehicle, timeout_s=max(1.0, wait_s)).car.stop()
+        except Exception as exc:
+            return CommandResult(2, f"Could not deliver stop to {vehicle_id}: {exc}")
     _terminate_pid(pid, signal.SIGKILL)
     forced_deadline = time.monotonic() + 1.0
     while time.monotonic() < forced_deadline:

@@ -89,6 +89,14 @@ class DecisionCycleResult:
     def duration_ms(self) -> int:
         return self.completed_at_ms - self.started_at_ms
 
+    def control_record(self) -> dict[str, Any]:
+        """Authorized output and its actual runtime delivery, on every host."""
+        return {
+            **self.control.to_dict(),
+            "applied": self.application.applied if self.application is not None else False,
+            "application": self.application.to_dict() if self.application is not None else None,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,

@@ -609,31 +609,15 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             logger.exception("Unable to start the decision cycle from %s", runtime_root)
 
     #
-    # to give the car a boost when starting ai mode in a race.
-    # This will also override the stop sign detector so that
-    # you can start at a stop sign using launch mode, but
-    # will stop when it comes to the stop sign the next time.
-    #
-    # NOTE: when launch throttle is in effect, pilot speed is set to None
-    #
-    aiLauncher = AiLaunch(cfg.AI_LAUNCH_DURATION, cfg.AI_LAUNCH_THROTTLE, cfg.AI_LAUNCH_KEEP_ENABLED)
-    V.add(aiLauncher,
-          inputs=['user/mode', 'pilot/throttle'],
-          outputs=['pilot/throttle'])
-
-    #
     # Decide what inputs should change the car's steering and throttle
     # based on the choice of user or autopilot drive mode
     #
-    V.add(DriveMode(cfg.AI_THROTTLE_MULT, host_telemetry=host_telemetry_publisher, execution=autonomy_execution),
+    V.add(DriveMode(host_telemetry=host_telemetry_publisher, execution=autonomy_execution),
           inputs=['user/mode', 'user/angle', 'user/throttle',
                   'pilot/angle', 'pilot/throttle'],
           outputs=['steering', 'throttle'])
 
 
-    if (cfg.CONTROLLER_TYPE != "pigpio_rc") and (cfg.CONTROLLER_TYPE != "MM1"):
-        if isinstance(ctr, JoystickController):
-            ctr.set_button_down_trigger(cfg.AI_LAUNCH_ENABLE_BUTTON, aiLauncher.enable_ai_launch)
 
 
     # Ai Recording
@@ -813,47 +797,25 @@ class ToggleRecording:
 
 
 class DriveMode:
-    def __init__(self, ai_throttle_mult=1.0, host_telemetry=None, execution=None):
-        """
-        :param ai_throttle_mult: scale throttle in autopilot mode
-        """
+    def __init__(self, host_telemetry=None, execution=None):
         self.execution = execution
-        self.ai_throttle_mult = ai_throttle_mult
         self.host_telemetry = host_telemetry
 
     def run(self, mode,
             user_steering, user_throttle,
             pilot_steering, pilot_throttle):
-        """
-        Main final steering and throttle values based on user mode
-        :param mode: 'user'|'local_angle'|'local_pilot'
-        :param user_steering: steering value in user (manual) mode
-        :param user_throttle: throttle value in user (manual) mode
-        :param pilot_steering: steering value in autopilot mode
-        :param pilot_throttle: throttle value in autopilot mode
-        :return: tuple of (steering, throttle) where throttle is
-                 scaled by ai_throttle_mult in autopilot mode
-        """
+        """Deliver shared runtime output, or manual input without a runtime."""
         if self.execution is not None:
-            # The runtime is the sole autonomy authority. Read its mailbox at
-            # the final boundary so launch/partial-mode/throttle-multiplier
-            # parts cannot replace an authorized command or revive an expiry.
-            if self.execution.mode == "autonomy":
-                command = self.execution.target.read()
-                selected = (command.steering, command.throttle)
-            elif mode == "user":
-                selected = (user_steering, user_throttle)
-            else:
-                selected = (0.0, 0.0)
+            from autonomy.runtime.control import AutonomyControl
+            command = self.execution.output(AutonomyControl(
+                steering=user_steering or 0.0, throttle=user_throttle or 0.0,
+                reason="manual-input",
+            ))
+            selected = (command.steering, command.throttle)
         elif mode == 'user':
             selected = (user_steering, user_throttle)
-        elif mode == 'local_angle':
-            selected = (pilot_steering if pilot_steering else 0.0, user_throttle)
         else:
-            selected = (
-                pilot_steering if pilot_steering else 0.0,
-                pilot_throttle * self.ai_throttle_mult if pilot_throttle else 0.0,
-            )
+            selected = (0.0, 0.0)
 
         observer = self.host_telemetry
         begin_tick = getattr(observer, "begin_tick", None)

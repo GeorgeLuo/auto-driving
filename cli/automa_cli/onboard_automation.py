@@ -18,6 +18,7 @@ from .picar_observation import (
     publication_to_frame_record, perception_text_from_publication,
 )
 from .runtime_view import RuntimeViewServer
+from .decision_live import PicarDecisionViewAdapter
 from .staged_bundle import write_json_atomically
 
 
@@ -47,6 +48,9 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
             vehicle_id=vehicle_id, automation_dir=automation_dir,
             run_id=state["run_id"], worker_pid=os.getpid(),
         ).start()
+        decision_view = PicarDecisionViewAdapter(
+            vehicle_id=vehicle_id, base_url=base_url, view_server=server, timeout_s=timeout_s
+        )
         state["published_view"] = server.describe()
         write_json_atomically(state_path, state)
         frames_dir = automation_dir / "runs" / str(state["run_id"]) if record else automation_dir / "latest"
@@ -62,6 +66,12 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
             state["processed_count"] = session["processed_frames"]
             # Onboard capture has its own cadence; the monitor never executes
             # a decision or chooses a vehicle command.
+            try:
+                decision_view.refresh()
+            except Exception:
+                # A vehicle without proposals still has perception; decision
+                # publication availability does not grant or revoke authority.
+                server.decision.invalidate_latest()
             publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
             frame = publication_to_frame_record(publication)
             frame_id = frame.get("frame_id")

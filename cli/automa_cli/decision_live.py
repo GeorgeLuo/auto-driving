@@ -34,7 +34,7 @@ from .decision_view import (
     project_decision_with_host_telemetry,
     unavailable_host_telemetry_panel,
 )
-from .physical_observation import (
+from .picar_observation import (
     fetch_decision_publication,
     fetch_observation_frame,
     frame_id_from_headers,

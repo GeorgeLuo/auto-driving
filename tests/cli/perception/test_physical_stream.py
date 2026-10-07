@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli import streaming
-from cli.automa_cli.physical_observation import (
+from cli.automa_cli.picar_observation import (
     perception_text_from_publication,
     publication_to_frame_record,
 )

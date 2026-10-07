@@ -52,7 +52,7 @@ from .perception_runs import (
 from .workbench import run_workbench_replay
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
-from .physical_viability import (
+from .viability import (
     run_memory_viability_measurement,
     run_perception_viability_measurement,
 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 from cli.automa_cli.memory_report import evidence_publisher, plugin_states
-from cli.automa_cli.physical_observation import publication_to_frame_record
+from cli.automa_cli.picar_observation import publication_to_frame_record
 from cli.automa_cli.perception_view import (
     PUBLICATION_SCHEMA,
     _publication_payload,

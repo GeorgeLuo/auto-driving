@@ -21,7 +21,7 @@ from autonomy.decision_cycle.memory.interface import (
     RECORD_COUNT,
 )
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
-from .physical_observation import (
+from .picar_observation import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_autonomy_status,

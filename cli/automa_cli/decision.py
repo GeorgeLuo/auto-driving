@@ -75,7 +75,7 @@ from .step_activations import (
     proposal_plugin_ids,
 )
 from .paths import ROOT, display_path, safe_path_part
-from .physical_observation import (
+from .picar_observation import (
     PhysicalDecisionPublicationError,
     fetch_decision_publication,
     normalize_physical_decision_publication,

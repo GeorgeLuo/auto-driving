@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.physical_viability import run_memory_viability_measurement
+from cli.automa_cli.viability import run_memory_viability_measurement
 
 PICAR = {
     "vehicle_id": "piracer",
@@ -46,19 +46,19 @@ class MemoryViabilityTests(unittest.TestCase):
             clock["t"] += float(seconds)
 
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "cli.automa_cli.physical_viability.discover_active_vehicles",
+            "cli.automa_cli.viability.discover_active_vehicles",
             return_value={"active": [vehicle], "inactive": []},
         ), patch(
-            "cli.automa_cli.physical_viability.find_vehicle_by_id",
+            "cli.automa_cli.viability.find_vehicle_by_id",
             return_value=(vehicle, None),
         ), patch(
-            "cli.automa_cli.physical_viability.MEMORY_VIABILITY_OUTPUT_ROOT",
+            "cli.automa_cli.viability.MEMORY_VIABILITY_OUTPUT_ROOT",
             Path(tmp),
         ), patch(
-            "cli.automa_cli.physical_viability.time.monotonic",
+            "cli.automa_cli.viability.time.monotonic",
             side_effect=lambda: clock["t"],
         ), patch(
-            "cli.automa_cli.physical_viability.time.sleep",
+            "cli.automa_cli.viability.time.sleep",
             side_effect=fake_sleep,
         ):
             result = run_memory_viability_measurement(

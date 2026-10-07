@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from cli.automa_cli.physical_observation import (
+from cli.automa_cli.picar_observation import (
     fetch_matched_observation_pair,
     frame_id_from_headers,
     frame_id_from_publication,
@@ -26,10 +26,10 @@ class FramePairHelpersTests(unittest.TestCase):
             "frame": {"frame_id": "frame_7", "has_image": True},
         }
         with mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_publication",
+            "cli.automa_cli.picar_observation.fetch_observation_publication",
             return_value=publication,
         ), mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_frame",
+            "cli.automa_cli.picar_observation.fetch_observation_frame",
             return_value=(b"jpeg", {"x-frame-id": "frame_7"}),
         ):
             pair = fetch_matched_observation_pair(
@@ -52,13 +52,13 @@ class FramePairHelpersTests(unittest.TestCase):
             (b"b", {"x-frame-id": "new"}),
         ]
         with mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_publication",
+            "cli.automa_cli.picar_observation.fetch_observation_publication",
             side_effect=pubs,
         ), mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_frame",
+            "cli.automa_cli.picar_observation.fetch_observation_frame",
             side_effect=frames,
         ), mock.patch(
-            "cli.automa_cli.physical_observation.time.sleep",
+            "cli.automa_cli.picar_observation.time.sleep",
             return_value=None,
         ):
             pair = fetch_matched_observation_pair(
@@ -79,13 +79,13 @@ class FramePairHelpersTests(unittest.TestCase):
             {"frame": {"frame_id": "new", "has_image": True}},
         ]
         with mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_publication",
+            "cli.automa_cli.picar_observation.fetch_observation_publication",
             side_effect=pubs,
         ), mock.patch(
-            "cli.automa_cli.physical_observation.fetch_observation_frame",
+            "cli.automa_cli.picar_observation.fetch_observation_frame",
             return_value=(b"c", {"x-frame-id": "new"}),
         ), mock.patch(
-            "cli.automa_cli.physical_observation.time.sleep",
+            "cli.automa_cli.picar_observation.time.sleep",
             return_value=None,
         ):
             pair = fetch_matched_observation_pair(

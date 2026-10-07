@@ -11,7 +11,7 @@ from typing import Any, Callable, TextIO
 
 from .automation import _automation_dir
 from .paths import ROOT, display_path
-from .physical_observation import (
+from .picar_observation import (
     fetch_observation_publication,
     picar_base_url,
 )

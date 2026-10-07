@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli import physical_viability as viability
+from cli.automa_cli import viability
 from tests.cli.perception.test_physical_stream import _publication
 from tests.support.cli_runner import run_automa
 

@@ -29,7 +29,7 @@ from .inspection_runs import recorded_selection, selection_record
 from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
 from .paths import ROOT, display_path, safe_path_part
-from .physical_observation import picar_base_url, post_memory_reset
+from .picar_observation import picar_base_url, post_memory_reset
 from .streaming import _live_plugins, _probe_chase_memory, probe_live_memory
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 from .workbench_frames import run_frame

@@ -10,7 +10,7 @@ from cli.automa_cli.decision_view import (
     build_decision_host_telemetry_capture,
     project_host_telemetry_panel,
 )
-from cli.automa_cli.physical_observation import HOST_TELEMETRY_PANEL_SCHEMA
+from cli.automa_cli.picar_observation import HOST_TELEMETRY_PANEL_SCHEMA
 
 
 def _panel() -> dict:

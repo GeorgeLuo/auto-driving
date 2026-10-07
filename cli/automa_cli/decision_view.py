@@ -24,7 +24,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .decision import DECISION_STREAM_MAX_AGE_MS, accept_decision_stream_frame
 from .perception_view import VIEW_RECORD_NAME
-from .physical_observation import (
+from .picar_observation import (
     HOST_TELEMETRY_PANEL_SCHEMA,
     build_host_telemetry_capture,
     host_telemetry_failure,

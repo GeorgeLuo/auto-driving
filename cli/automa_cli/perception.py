@@ -49,7 +49,7 @@ from .step_hosting import load_staged_runner
 from .step_schema import format_staged_step, staged_step_info
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
-from .physical_observation import (
+from .picar_observation import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_observation_publication,

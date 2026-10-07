@@ -46,7 +46,7 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .physical_observation import fetch_autonomy_status, physical_view_status, picar_base_url
+from .picar_observation import fetch_autonomy_status, physical_view_status, picar_base_url
 from .step_activations import (
     apply_staged,
     bundle_activation_path,

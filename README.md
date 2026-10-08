@@ -764,9 +764,11 @@ do not imply equal simulated and physical speed.
 ## Bounded Startup Check
 
 The startup check captures a frame before and after each basic action
-combination and scores whether the command produced a visible change. It sends
-movement pulses unless `--dry-run` is provided, so raise the vehicle or clear
-its path first.
+combination and scores whether the command produced a visible change. A live
+check acquires that vehicle's control target and sends movement pulses, so
+raise the vehicle or clear its path first. `--dry-run` only captures frames:
+it does not acquire control or send pulses, and it does not switch simulator
+playback.
 
 ```sh
 ./cli/automa vehicles operation startup-check --id piracer

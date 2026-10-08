@@ -28,7 +28,8 @@ class DonkeyControlTarget:
     """In-process delivery; the drivetrain pulls ControlExecution.output()."""
 
     def acquire(self) -> None:
-        pass
+        # The drivetrain already pulls delivered output. Nothing to switch.
+        return None
 
     def write(self, control: AutonomyControl) -> dict[str, Any]:
         return {"boundary": "donkey_runtime_output", "transport": "in_process"}

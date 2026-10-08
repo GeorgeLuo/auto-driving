@@ -15,6 +15,7 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
+from implementations.runtime.chase_sim.control import ChaseControlTarget
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
@@ -613,7 +614,7 @@ def _restart_and_sample_sim_controller(
             "load the Chase example first."
         )
 
-    preparation = car.prepare_for_external_control()
+    preparation = ChaseControlTarget(car).acquire()
     if verbose:
         _emit(output, json.dumps(preparation, indent=2, sort_keys=True))
 

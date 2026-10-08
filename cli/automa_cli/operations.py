@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from autonomy.runtime.execution import ControlTarget
 from implementations.operations import (
     build_basic_startup_action_check_plan,
     run_startup_action_check,
@@ -62,7 +63,6 @@ def run_vehicle_startup_check(
     if vehicle is None:
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
 
-    provider = vehicle.get("provider")
     preparation: dict[str, Any] | None = None
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
@@ -70,11 +70,15 @@ def run_vehicle_startup_check(
         return CommandResult(2, str(exc))
     car = access.car
     image_extension = access.image_extension
-    if provider == "chase-sim":
+    # Dry runs stay passive: capture frames, but do not acquire control.
+    # A live check acquires through the vehicle's control target, then releases.
+    acquired = False
+    if not dry_run:
         try:
-            preparation = car.prepare_for_external_control()
+            preparation = _acquire_control(access.control, vehicle_id)
+            acquired = True
         except Exception as exc:
-            return CommandResult(2, f"Could not prepare simulator vehicle {vehicle_id!r}: {exc}")
+            return CommandResult(2, f"Could not prepare vehicle {vehicle_id!r}: {exc}")
 
     run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = OPERATION_OUTPUT_ROOT / run_id
@@ -96,13 +100,42 @@ def run_vehicle_startup_check(
             car.stop()
         except Exception:
             pass
+        if acquired:
+            try:
+                _release_control(access.control)
+            except Exception:
+                pass
         return CommandResult(2, f"Startup action check failed before completion: {exc}")
+    if acquired:
+        try:
+            _release_control(access.control)
+        except Exception as exc:
+            return CommandResult(2, f"Could not release vehicle {vehicle_id!r}: {exc}")
 
     payload = _compact_startup_report(report, out_dir, preparation)
     exit_code = 0 if report["passed"] else 1
     if json_output:
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(exit_code, _format_startup_report(payload))
+
+
+def _acquire_control(control: ControlTarget | None, vehicle_id: str) -> dict[str, Any] | None:
+    if control is None:
+        raise RuntimeError("no control target")
+    receipt = control.acquire()
+    if receipt is None:
+        return None
+    if not isinstance(receipt, dict):
+        raise RuntimeError(
+            f"control target for {vehicle_id!r} returned {type(receipt).__name__}, expected a receipt"
+        )
+    return receipt
+
+
+def _release_control(control: ControlTarget | None) -> None:
+    if control is None:
+        return
+    control.release()
 
 
 def _compact_startup_report(

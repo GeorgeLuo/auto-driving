@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from autonomy.runtime.execution import ControlTarget
 from autonomy.vehicle import CarInterface
+from implementations.runtime.chase_sim.control import ChaseControlTarget
+from implementations.runtime.donkeycar.control import DonkeyControlTarget
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.picar import create_picar
 
@@ -13,6 +16,7 @@ class VehicleAccess:
     car: CarInterface
     image_extension: str
     front_camera_endpoint: str
+    control: ControlTarget | None = None
 
 
 def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> VehicleAccess:
@@ -23,10 +27,12 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
 
     if provider == "chase-sim":
         ws_url = connection.get("ws_url") if isinstance(connection.get("ws_url"), str) else None
+        car = ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
         return VehicleAccess(
-            car=ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, vehicle_id=vehicle_id),
+            car=car,
             image_extension="png",
             front_camera_endpoint="atomic-evaluation-capture",
+            control=ChaseControlTarget(car),
         )
     if provider == "picar":
         base_url = connection.get("base_url") if isinstance(connection.get("base_url"), str) else None
@@ -36,5 +42,6 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
             car=create_picar(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id),
             image_extension="jpg",
             front_camera_endpoint="/frame.jpg",
+            control=DonkeyControlTarget(),
         )
     raise ValueError(f"Vehicle {vehicle_id!r} has unsupported provider {provider!r}.")

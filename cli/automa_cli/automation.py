@@ -1857,7 +1857,7 @@ def stop_vehicle_automation(
 ) -> CommandResult:
     onboard = _staged_onboard_vehicle(vehicle_id)
     if onboard is not None:
-        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+        from implementations.runtime.picar.client import OnboardRuntimeClient
         try:
             OnboardRuntimeClient(picar_base_url(onboard), timeout_s=max(1.0, wait_s)).stop()
         except (RuntimeError, OSError, ValueError) as exc:
@@ -1996,7 +1996,7 @@ def restart_vehicle_automation(
 
     onboard = _staged_onboard_vehicle(vehicle_id)
     if onboard is not None:
-        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+        from implementations.runtime.picar.client import OnboardRuntimeClient
         try:
             OnboardRuntimeClient(picar_base_url(onboard), timeout_s=timeout_s).restart(
                 timeout_s=max(30.0, timeout_s)

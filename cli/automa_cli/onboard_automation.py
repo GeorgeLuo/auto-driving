@@ -13,7 +13,7 @@ from typing import Any, TextIO
 
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+from implementations.runtime.picar.client import OnboardRuntimeClient
 from .paths import display_path
 from .perception_view import perception_view_ready
 from .picar_observation import (

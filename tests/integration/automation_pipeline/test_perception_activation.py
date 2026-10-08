@@ -17,7 +17,7 @@ from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
-from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 
 
 class PerceptionActivationIntegrationTests(unittest.TestCase):

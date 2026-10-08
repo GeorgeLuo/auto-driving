@@ -29,7 +29,7 @@ from autonomy.decision_cycle.cycle import (
     DecisionFrameContext,
     DecisionSteps,
 )
-from autonomy.decision_cycle.steps import decision_steps, load_decision_steps
+from autonomy.decision_cycle.steps import decision_steps, load_decision_steps, snapshot_step_activations
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlExecution, ControlTarget
 from autonomy.runtime.session import RunConfiguration
@@ -50,6 +50,7 @@ class AutonomyCycleHost:
         self.cycle = DecisionCycle(steps or decision_steps(), idle_reason=IDLE_REASON)
         self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
+        self.last_context: DecisionFrameContext | None = None
         self._session_lock = threading.RLock()
         self.configuration = RunConfiguration(mode="manual")
         self.run_state = "stopped"
@@ -114,9 +115,11 @@ class AutonomyCycleHost:
                 self.shared_memory = context.shared_memory
             try:
                 result = self.cycle.run(context)
+                result = replace(result, context=self._record_frame_context(result.context))
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))
             except Exception as exc:
+                self._record_frame_context(context)
                 try:
                     if self.execution is not None:
                         self.execution.cycle_failed(ticket)
@@ -141,6 +144,13 @@ class AutonomyCycleHost:
                     ):
                         self.stop(reason="completed")
             return result
+
+    def _record_frame_context(self, context: DecisionFrameContext) -> DecisionFrameContext:
+        """Retain the applied selections even when a frame produces no cycle result."""
+        self.last_context = replace(context, metadata={
+            **context.metadata, "step_activations": snapshot_step_activations(self.steps),
+        })
+        return self.last_context
 
     def start(self, configuration: RunConfiguration | None = None) -> dict[str, Any]:
         configuration = configuration or RunConfiguration()

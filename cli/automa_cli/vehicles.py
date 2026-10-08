@@ -724,7 +724,7 @@ def _vehicle_next_action(
                 "worker_start_failed",
                 command=(
                     "./cli/automa vehicles automation run "
-                    f"--id {vehicle_id} --observe-only --frames 0 --open-view --log"
+                    f"--id {vehicle_id} --observe-only --num-decisions 0 --open-view --log"
                 ),
                 expected_state="automation_worker=running",
             ),
@@ -737,7 +737,7 @@ def _vehicle_next_action(
                 "worker_stopped",
                 command=(
                     "./cli/automa vehicles automation run "
-                    f"--id {vehicle_id} --observe-only --frames 0 --open-view"
+                    f"--id {vehicle_id} --observe-only --num-decisions 0 --open-view"
                 ),
                 expected_state="automation_worker=running, perception_view=available",
             ),
@@ -771,7 +771,7 @@ def _vehicle_next_action(
                 else "view_unavailable",
                 command=(
                     "./cli/automa vehicles automation restart "
-                    f"--id {vehicle_id} --observe-only --frames 0"
+                    f"--id {vehicle_id} --observe-only --num-decisions 0"
                 ),
                 expected_state="perception_view=available",
             ),

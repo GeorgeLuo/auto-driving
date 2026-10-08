@@ -1,6 +1,7 @@
 """One run configuration for local and onboard decision hosts.
 
 interval_s paces capture; decisions immediately consume the newest pending frame.
+num_decisions bounds completed decision cycles; zero keeps the run unbounded.
 """
 from __future__ import annotations
 
@@ -16,14 +17,14 @@ DEFAULT_INTERVAL_S = 0.25
 class RunConfiguration:
     mode: str = "autonomy"
     interval_s: float = DEFAULT_INTERVAL_S
-    frames: int = 0
+    num_decisions: int = 0
 
     def __post_init__(self) -> None:
         require_mode(self.mode)
         if not math.isfinite(self.interval_s) or self.interval_s < 0:
             raise ValueError("interval_s must be finite and nonnegative")
-        if type(self.frames) is not int or self.frames < 0:
-            raise ValueError("frames must be a nonnegative integer")
+        if type(self.num_decisions) is not int or self.num_decisions < 0:
+            raise ValueError("num_decisions must be a nonnegative integer")
 
     def to_dict(self) -> dict:
         return asdict(self)

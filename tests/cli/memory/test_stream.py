@@ -23,7 +23,7 @@ from tests.support.memory_fixtures import TWO_PLUGIN_IDS, two_plugin_runner
 # Mirrors start_automation launcher argv: ... automation run --id <vehicle_id> ...
 AUTOMATION_COMMAND = (
     "/usr/bin/python3 /repo/cli/automa vehicles automation run "
-    "--id chase-sim-chaser --timeout-s 0 --interval-s 0.1 --frames 0 --foreground "
+    "--id chase-sim-chaser --timeout-s 0 --interval-s 0.1 --num-decisions 0 --foreground "
     "--observe-only"
 )
 
@@ -440,7 +440,7 @@ class MemoryStreamTests(unittest.TestCase):
         now = 1_700_000_000_000
         longer_id_command = (
             "/usr/bin/python3 /repo/cli/automa vehicles automation run "
-            "--id chase-sim-chaser-2 --timeout-s 0 --interval-s 0.1 --frames 0 "
+            "--id chase-sim-chaser-2 --timeout-s 0 --interval-s 0.1 --num-decisions 0 "
             "--foreground --observe-only"
         )
         state = {

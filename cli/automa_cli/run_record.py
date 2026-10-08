@@ -68,7 +68,7 @@ def new_run_state(
         "frames_captured": 0,
         "processed_count": 0,
         "skipped_count": 0,
-        "max_frames": configuration.frames or None,
+        "num_decisions": configuration.num_decisions,
         "interval_s": configuration.interval_s,
         "pipeline": "latest_frame_async_decision",
         "control_source": control_source,
@@ -211,7 +211,7 @@ def startup_lines(state: dict[str, Any]) -> list[str]:
             if view.get("available")
             else f"Runtime view: unavailable ({view.get('reason', 'startup failed')})"
         ),
-        f"Frames: {state['max_frames']}" if state["max_frames"] else "Frames: until Ctrl-C",
+        f"Decisions: {state['num_decisions']}" if state["num_decisions"] else "Decisions: unbounded",
     ]
 
 
@@ -300,7 +300,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
             [
                 f"Automation completed: {vehicle_id}",
                 f"Frames captured: {state['frames_captured']}",
-                f"Frames processed: {state['processed_count']}",
+                f"Decisions completed: {state['processed_count']}",
                 f"Frames superseded before decision: {state['skipped_count']}",
                 f"Control source: {state['control_source']}",
                 f"Action policy: {state['action_policy']}",

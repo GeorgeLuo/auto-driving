@@ -38,7 +38,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
             try:
                 run_automa(
                     "vehicles", "automation", "run", "--id", "chase-sim-chaser",
-                    "--observe-only", "--frames", "0", runtime_root=runtime_root, extra_env=env,
+                    "--observe-only", "--num-decisions", "0", runtime_root=runtime_root, extra_env=env,
                 )
                 stream_env = {
                     **os.environ, **env,
@@ -145,7 +145,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         "--id",
                         "chase-sim-chaser",
                         "--observe-only",
-                        "--frames",
+                        "--num-decisions",
                         "0",
                         "--open-view",
                         runtime_root=runtime_root,
@@ -170,7 +170,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     ).stdout)["vehicles"][0]["state"]["run_id"]
                     restarted = run_automa(
                         "vehicles", "automation", "restart", "--id", "chase-sim-chaser",
-                        "--observe-only", "--frames", "0", "--open-view",
+                        "--observe-only", "--num-decisions", "0", "--open-view",
                         runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn("Automation ready", restarted.stdout)

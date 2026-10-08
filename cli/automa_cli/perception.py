@@ -464,7 +464,7 @@ def _automation_run_readiness(
             "reason": "worker_stopped",
             "command": (
                 "./cli/automa vehicles automation run "
-                f"--id {vehicle_id} --observe-only --frames 0 --open-view"
+                f"--id {vehicle_id} --observe-only --num-decisions 0 --open-view"
             ),
             "external_change": None,
             "expected_state": "automation_worker=running, perception_view=available",

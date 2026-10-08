@@ -234,11 +234,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
     )
     automation_run.add_argument(
-        "--frames",
+        "--num-decisions",
         type=int,
         default=0,
         help=(
-            "Number of decision frames to process. 0 means an unbounded background "
+            "Number of decision cycles to complete. 0 means an unbounded background "
             "run; stop it with vehicles automation stop."
         ),
     )
@@ -347,11 +347,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
     )
     automation_restart.add_argument(
-        "--frames",
+        "--num-decisions",
         type=int,
         default=0,
         help=(
-            "Number of decision frames to process. 0 means an unbounded background "
+            "Number of decision cycles to complete. 0 means an unbounded background "
             "run; stop it with vehicles automation stop."
         ),
     )
@@ -1839,7 +1839,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
             vehicle_id=args.vehicle_id,
             timeout_s=args.timeout_s,
             interval_s=args.interval_s,
-            frames=args.frames,
+            num_decisions=args.num_decisions,
             take_control=not args.observe_only,
             record=args.record,
             verbose=args.verbose,
@@ -1850,7 +1850,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
             vehicle_id=args.vehicle_id,
             timeout_s=args.timeout_s,
             interval_s=args.interval_s,
-            frames=args.frames,
+            num_decisions=args.num_decisions,
             take_control=not args.observe_only,
             record=args.record,
             verbose=args.verbose,
@@ -1892,7 +1892,7 @@ def _handle_vehicles_automation_restart(args: argparse.Namespace) -> int:
         vehicle_id=args.vehicle_id,
         timeout_s=args.timeout_s,
         interval_s=args.interval_s,
-        frames=args.frames,
+        num_decisions=args.num_decisions,
         take_control=not args.observe_only,
         record=args.record,
         verbose=args.verbose,

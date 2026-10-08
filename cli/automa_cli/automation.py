@@ -200,7 +200,9 @@ def _onboard_runtime_status(
             "frames_captured": observation.get("frames_captured", 0),
             "processed_count": observation.get("processed_count", 0),
             "skipped_count": observation.get("skipped_count", 0),
-            "max_frames": None,
+            "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
+                "num_decisions", 0
+            ),
             "interval_s": observation.get("interval_s"),
             "recording": False,
             "control_source": "onboard",
@@ -232,7 +234,7 @@ def run_vehicle_automation(
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     interval_s: float = DEFAULT_INTERVAL_S,
-    frames: int = 0,
+    num_decisions: int = 0,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -240,7 +242,9 @@ def run_vehicle_automation(
 ) -> CommandResult:
     try:
         configuration = RunConfiguration(
-            mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames
+            mode="autonomy" if take_control else "observe_only",
+            interval_s=interval_s,
+            num_decisions=num_decisions,
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -1207,7 +1211,7 @@ def start_vehicle_automation_background(
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     interval_s: float = DEFAULT_INTERVAL_S,
-    frames: int = 0,
+    num_decisions: int = 0,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -1217,7 +1221,9 @@ def start_vehicle_automation_background(
 ) -> CommandResult:
     try:
         configuration = RunConfiguration(
-            mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames
+            mode="autonomy" if take_control else "observe_only",
+            interval_s=interval_s,
+            num_decisions=num_decisions,
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -1355,8 +1361,8 @@ def start_vehicle_automation_background(
         str(timeout_s),
         "--interval-s",
         str(interval_s),
-        "--frames",
-        str(max(0, int(frames))),
+        "--num-decisions",
+        str(configuration.num_decisions),
         "--foreground",
     ]
     if not take_control:
@@ -1965,7 +1971,7 @@ def restart_vehicle_automation(
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     interval_s: float = DEFAULT_INTERVAL_S,
-    frames: int = 0,
+    num_decisions: int = 0,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -1995,7 +2001,7 @@ def restart_vehicle_automation(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
         interval_s=interval_s,
-        frames=frames,
+        num_decisions=num_decisions,
         take_control=take_control,
         record=record,
         verbose=verbose,
@@ -2198,7 +2204,7 @@ def _collect_automation_status(
                     "frames_captured": state.get("frames_captured", 0),
                     "processed_count": state.get("processed_count", 0),
                     "skipped_count": state.get("skipped_count", 0),
-                    "max_frames": state.get("max_frames"),
+                    "num_decisions": state.get("num_decisions"),
                     "interval_s": state.get("interval_s"),
                     "recording": state.get("recording"),
                     "pid": state.get("pid"),
@@ -2382,12 +2388,12 @@ def _status_reason(value: Any, *, fallback: str) -> str:
 
 
 def _run_label(state: dict[str, Any]) -> str:
-    max_frames = state.get("max_frames")
-    max_text = "unbounded" if max_frames is None else str(max_frames)
+    num_decisions = state.get("num_decisions")
+    limit_text = str(num_decisions) if num_decisions else "unbounded"
     parts = [
         f"id={state.get('run_id', 'none')}",
-        f"captured={state.get('frames_captured', 0)}/{max_text}",
-        f"processed={state.get('processed_count', 0)}",
+        f"captured={state.get('frames_captured', 0)}",
+        f"decisions={state.get('processed_count', 0)}/{limit_text}",
         f"skipped={state.get('skipped_count', 0)}",
         f"capture_interval_s={state.get('interval_s', 'unknown')}",
         f"recording={state.get('recording', 'unknown')}",

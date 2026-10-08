@@ -257,10 +257,12 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part = AutonomyPilotPart(host=host, interval_s=0.0, controller=controller)
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
-        part.start(RunConfiguration(mode="autonomy", interval_s=0.0, frames=1))
+        part.start(RunConfiguration(mode="autonomy", interval_s=0.0, num_decisions=1))
         part.run(image_array=image, mode="local")
         part.wait_for_cycle()
         self.assertEqual(host.run_state, "completed")
+        self.assertEqual(host.session_status()["processed_decisions"], 1)
+        self.assertEqual(host.session_status()["configuration"]["num_decisions"], 1)
 
         # Donkey still reports local until the controller applies the latch.
         part.run(image_array=image, mode="local")
@@ -381,7 +383,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
                 host.run = blocked_run
                 part = AutonomyPilotPart(host=host, interval_s=0.0)
-                part.start(RunConfiguration(mode="observe_only", interval_s=0.0, frames=int(bounded)))
+                part.start(RunConfiguration(mode="observe_only", interval_s=0.0, num_decisions=int(bounded)))
                 image = np.zeros((2, 2, 3), dtype=np.uint8)
                 try:
                     part.run(image_array=image)

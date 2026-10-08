@@ -57,7 +57,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     for verb in ("run", "restart"):
                         result = run_automa(
                             "vehicles", "automation", verb, "--id", VEHICLE_ID,
-                            "--observe-only", "--frames", "0", "--open-view",
+                            "--observe-only", "--num-decisions", "0", "--open-view",
                             runtime_root=runtime_root, extra_env=env, check=False,
                         )
                         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)

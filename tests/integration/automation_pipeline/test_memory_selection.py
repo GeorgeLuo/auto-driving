@@ -103,7 +103,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 staged_runners(perception=_SlowMapper(), wrap=wrap_memory),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=vehicle_id, interval_s=0.4, frames=5, take_control=False,
+                    vehicle_id=vehicle_id, interval_s=0.4, num_decisions=5, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(

@@ -104,7 +104,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
             capture_count, skipped_count = _observation_counts(host)
             state.update(
                 session=session, execution=session["execution"],
-                processed_count=session["processed_frames"],
+                processed_count=session["processed_decisions"],
                 frames_captured=max(0, capture_count - capture_base),
                 skipped_count=max(0, skipped_count - skipped_base),
             )
@@ -114,7 +114,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
             publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
             frame = publication_to_frame_record(publication)
             frame_id = frame.get("frame_id")
-            if frame_id and frame_id != last_frame_id and session["processed_frames"]:
+            if frame_id and frame_id != last_frame_id and session["processed_decisions"]:
                 jpeg, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
                 if frame_id_from_headers(headers) == frame_id:
                     frame.update(

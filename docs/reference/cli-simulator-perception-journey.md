@@ -37,7 +37,7 @@ explicitly restaged using the recovery that status prints.
 ./cli/automa vehicles automation run \
   --id chase-sim-chaser \
   --observe-only \
-  --frames 0 \
+  --num-decisions 0 \
   --open-view
 
 ./cli/automa vehicles status --id chase-sim-chaser
@@ -70,13 +70,13 @@ perception result for that frame, and the loopback view health all agree on the
 same live worker generation. `--open-view` is explicit. A browser-launch
 failure leaves the healthy worker running and prints the URL for manual use.
 
-`--frames 0` starts an unbounded background worker; the launch command returns
+`--num-decisions 0` starts an unbounded background worker; the launch command returns
 once the correlated view is ready. Use `automation stop` to stop the worker.
 Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
 ```sh
-./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --frames 0 --open-view
+./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 Stopping the worker keeps its local deployment staged and makes its previous

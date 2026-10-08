@@ -53,7 +53,7 @@ class AutonomyCycleHost:
         self._session_lock = threading.RLock()
         self.configuration = RunConfiguration(mode="manual")
         self.run_state = "stopped"
-        self.run_frames = 0
+        self.run_decisions = 0
         self._run_generation = 0
         self.cycle_count = 0
         self.error_count = 0
@@ -134,8 +134,11 @@ class AutonomyCycleHost:
             self.last_result = result
             with self._session_lock:
                 if self.run_state == "running" and run_generation == self._run_generation:
-                    self.run_frames += 1
-                    if self.configuration.frames and self.run_frames >= self.configuration.frames:
+                    self.run_decisions += 1
+                    if (
+                        self.configuration.num_decisions
+                        and self.run_decisions >= self.configuration.num_decisions
+                    ):
                         self.stop(reason="completed")
             return result
 
@@ -144,7 +147,7 @@ class AutonomyCycleHost:
         with self._session_lock:
             self.stop()
             self.configuration = configuration
-            self.run_frames = 0
+            self.run_decisions = 0
             self.set_mode(configuration.mode)
             self._run_generation += 1
             self.run_state = "running"
@@ -163,7 +166,7 @@ class AutonomyCycleHost:
             return {
                 "status": self.run_state,
                 "configuration": self.configuration.to_dict(),
-                "processed_frames": self.run_frames,
+                "processed_decisions": self.run_decisions,
                 "execution": self.execution.status() if self.execution is not None else None,
             }
 

@@ -705,7 +705,7 @@ def _chase_perception_screen(
                 f"pid: {live.get('worker_pid') or state.get('pid') or 'unknown'}  "
                 f"control_source: {_shown(state.get('control_source'))}  "
                 f"recording: {_shown(state.get('recording'))}  "
-                f"max_frames: {_shown(state.get('max_frames'), 'unbounded')}"
+                f"num_decisions: {_shown(state.get('num_decisions') or 'unbounded')}"
             ),
             f"state: {display_path(automation_dir / 'state.json')}",
             _log_line(process, automation_dir / "automation.log"),

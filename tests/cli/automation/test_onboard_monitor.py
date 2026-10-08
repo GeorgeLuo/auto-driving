@@ -57,7 +57,7 @@ class _FakeDecisionView:
 def _session(status: str, processed: int) -> dict:
     return {
         "status": status,
-        "processed_frames": processed,
+        "processed_decisions": processed,
         "execution": {"mode": "autonomy", "closed": status != "running"},
     }
 
@@ -129,7 +129,7 @@ class OnboardMonitorTests(unittest.TestCase):
                     "memory": automation_dir.parent / "memory" / "active.json",
                     "proposal": automation_dir.parent / "proposal" / "active.json",
                 },
-                configuration=RunConfiguration(mode="autonomy", interval_s=interval_s, frames=2),
+                configuration=RunConfiguration(mode="autonomy", interval_s=interval_s, num_decisions=2),
                 timeout_s=1.0,
                 record=False,
                 verbose=False,
@@ -149,6 +149,8 @@ class OnboardMonitorTests(unittest.TestCase):
 
         self.assertTrue(client.stopped)
         self.assertEqual(client.started_with.mode, "autonomy")
+        self.assertEqual(client.started_with.num_decisions, 2)
+        self.assertEqual(state["num_decisions"], 2)
         self.assertEqual(
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
@@ -158,7 +160,7 @@ class OnboardMonitorTests(unittest.TestCase):
                 "Control source: onboard Donkey host",
                 "Action policy: autonomy",
                 "Decision generation: gen-1",
-                "Frames: 2",
+                "Decisions: 2",
                 "donkey_frame_000000: signals=1 things=0 action=steer-left",
             ],
         )
@@ -169,7 +171,7 @@ class OnboardMonitorTests(unittest.TestCase):
             [
                 f"Automation completed: {VEHICLE_ID}",
                 "Frames captured: 3",
-                "Frames processed: 2",
+                "Decisions completed: 2",
                 "Frames superseded before decision: 1",
                 "Control source: onboard",
                 "Action policy: autonomy",

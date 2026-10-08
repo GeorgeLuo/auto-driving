@@ -230,7 +230,7 @@ operator's current simulator session:
 ./cli/automa vehicles automation run \
   --id chase-sim-chaser \
   --observe-only \
-  --frames 0 \
+  --num-decisions 0 \
   --open-view
 ./cli/automa vehicles status --id chase-sim-chaser
 ./cli/automa vehicles automation stop --id chase-sim-chaser
@@ -304,12 +304,13 @@ Stop or restart the worker:
 
 ```sh
 ./cli/automa vehicles automation stop --id chase-sim-chaser
-./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --frames 0 --open-view
+./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 Useful run options:
 
-- `--frames N` bounds the number of completed decision frames and stops movement afterward. `--frames 0` starts an unbounded
+- `--num-decisions N` bounds the number of completed decision cycles and stops
+  movement afterward. `--num-decisions 0` starts an unbounded
   background worker; the launch command returns after readiness. Use
   `vehicles automation stop` to stop it. Ctrl-C in a terminal stream stops
   that stream, not the worker.
@@ -329,7 +330,7 @@ restarting the worker:
 
 ```sh
 ./cli/automa vehicles update perception --id chase-sim-chaser --preset sim_debug
-./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --frames 0 --open-view
+./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 ### Perception Plugins
@@ -697,7 +698,7 @@ control both vehicles. Change only the vehicle ID:
 ```
 
 `automation restart --id <vehicle>` stops movement, recreates the host, and
-starts it with the requested options. `--observe-only`, `--frames`, and
+starts it with the requested options. `--observe-only`, `--num-decisions`, and
 `--interval-s` have the same control semantics on both vehicles. The simulator
 acquires WS input automatically; the onboard host acquires its drivetrain
 output automatically. A separate mode HTTP request is unnecessary.
@@ -718,6 +719,9 @@ command but cannot bypass runtime movement authority.
 Capture status uses `interval_s` and `frames_captured` on both vehicles. The PiCar
 startup setting is `AUTONOMY_CAPTURE_INTERVAL_S`; rename any custom
 `AUTONOMY_OBSERVATION_INTERVAL_S` override when updating.
+Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
+Run configuration and automation status use `num_decisions` (zero means
+unbounded); host session status reports `processed_decisions`.
 
 This change updates the physical harness and vendor HTTP API. Install both
 layers before using the shared commands on PiCar:

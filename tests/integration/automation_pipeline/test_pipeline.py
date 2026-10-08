@@ -110,7 +110,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
                     interval_s=0.4,
-                    frames=3,
+                    num_decisions=3,
                     take_control=False,
                 )
 
@@ -124,6 +124,8 @@ class AutomationLivePipelineTests(unittest.TestCase):
             state = json.loads(
                 (automation_dir / "state.json").read_text(encoding="utf-8")
             )
+            self.assertEqual(state["num_decisions"], 3)
+            self.assertEqual(state["session"]["processed_decisions"], 3)
             report = state["perception"]["plugin_report"]
             self.assertEqual(report["applied_plugin_ids"], ["floor_plane"])
             self.assertEqual(report["plugins"][0]["plugin_id"], "floor_plane")
@@ -176,7 +178,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
                     interval_s=0.005,
-                    frames=8,
+                    num_decisions=8,
                     take_control=False,
                 )
 
@@ -274,7 +276,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 staged_runners(perception=mapper),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=vehicle_id, interval_s=0.0, frames=2, take_control=False,
+                    vehicle_id=vehicle_id, interval_s=0.0, num_decisions=2, take_control=False,
                     verbose=True, output=output,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
@@ -341,7 +343,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
                     interval_s=10.0,
-                    frames=1,
+                    num_decisions=1,
                     take_control=False,
                 )
 
@@ -414,7 +416,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
                     interval_s=0.0,
-                    frames=1,
+                    num_decisions=1,
                     take_control=False,
                 )
 
@@ -490,7 +492,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
                     interval_s=0.0,
-                    frames=12,
+                    num_decisions=12,
                     take_control=False,
                 )
 

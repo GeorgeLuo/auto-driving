@@ -870,7 +870,7 @@ class AutonomyPilotPart:
             else:
                 self.host.stop()
         elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
-            # The host ended the run: bounded frames completed or a cycle failed.
+            # The host ended the run: bounded decisions completed or a cycle failed.
             self._hand_back()
         with self._lock:
             now = self._monotonic()

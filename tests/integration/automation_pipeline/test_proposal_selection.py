@@ -76,7 +76,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 staged_runners(perception=_SlowMapper(), wrap=wrap_proposal),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, interval_s=0.4, frames=4, take_control=False,
+                    vehicle_id=VEHICLE_ID, interval_s=0.4, num_decisions=4, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             automation_dir = Path(bundle["runtime_dir"]) / "automation"

@@ -23,11 +23,15 @@ To print the same artifacts as JSON instead of serving the page:
 Supply any saved `automa_decision_apply_sequence_v1` file or directory containing
 `sequence.json`. Use `--frame N` to select its zero-based frame position.
 Use `--id <vehicle>` to read the vehicle's staged proposal, plan, and action
-steps (the action must be `hold`). Plugins load from the controller bundle
+steps, including the default `selected` action. Plugins load from the controller bundle
 recorded by each activation, as step info and the worker's proposal runner do;
 that bundle must exist locally. Omit `--id` to use packaged defaults without
 staging a vehicle. `--port N` selects a preferred local port. Ctrl-C stops the
 inspector.
+
+Inspection and `vehicles decision apply` replay the chosen action and report its
+authorization. Host delivery is absent: offline replay does not send commands to
+a vehicle.
 
 Both scenarios reposition all supported image-relative obstruction records in a
 copy of the selected memory, clearing their original geometry. All other inputs,

@@ -257,6 +257,19 @@ def delivery_values(application: Any) -> dict[str, Any]:
     return values
 
 
+def diagnostic_ceiling(values: Mapping[str, Any] | None) -> int:
+    """Display age limit published on the report, in milliseconds.
+
+    Both vehicles write ``values.stale_after_ms`` and both viewers honor it.
+    Command expiry stays in control execution and is not this number.
+    """
+
+    raw = None if values is None else values.get("stale_after_ms")
+    if type(raw) is not int or raw <= 0:
+        raise ValueError("values.stale_after_ms must be a positive int")
+    return raw
+
+
 def _export_record(record: Any, *, field: str) -> dict[str, Any]:
     export = record.to_dict() if callable(getattr(record, "to_dict", None)) else record
     if not isinstance(export, Mapping):

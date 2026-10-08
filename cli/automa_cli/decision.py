@@ -68,6 +68,7 @@ from autonomy.runtime.report import (
     REPORT_SCHEMA,
     VehicleReport,
     delivery_values,
+    diagnostic_ceiling,
     report_from_host_result,
 )
 
@@ -1921,6 +1922,7 @@ def publish_decision_frame(
             values={
                 "worker_pid": int(worker_pid),
                 **delivery_values(application),
+                "stale_after_ms": DECISION_STREAM_MAX_AGE_MS,
             },
         )
     except (TypeError, ValueError):
@@ -2122,7 +2124,7 @@ def _stream_chase_decision(
         frame = _load_frame()
         state = _load_state()
         now_ms = int(time.time() * 1000)
-        accept_published_report(
+        report = accept_published_report(
             frame,
             vehicle_id=vehicle_id,
             activation=activation,
@@ -2134,8 +2136,8 @@ def _stream_chase_decision(
             frame,
             provider="chase-sim",
             steps=activation["steps"],
-            age_ms=now_ms - frame["published_at_ms"],
-            max_age_ms=DECISION_STREAM_MAX_AGE_MS,
+            age_ms=now_ms - report.published_at_ms,
+            max_age_ms=report.values.get("stale_after_ms"),
         )
 
     return _poll_decision(
@@ -2234,12 +2236,6 @@ def accept_published_report(
     file check; it accepts the same document from its HTTP publication.
     """
 
-    ceiling = DECISION_STREAM_MAX_AGE_MS if max_age_ms is None else int(max_age_ms)
-    if type(ceiling) is not int or ceiling <= 0:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Decision stream max age is not a positive int.",
-        )
     if not isinstance(frame, dict):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
@@ -2252,6 +2248,22 @@ def accept_published_report(
             "latest_frame_invalid",
             f"Latest decision frame is not a vehicle report: {exc}",
         ) from exc
+    if max_age_ms is None:
+        try:
+            ceiling = diagnostic_ceiling(report.values)
+        except ValueError as exc:
+            raise DecisionSurfaceError(
+                "latest_frame_stale",
+                str(exc),
+                details={"field": "values.stale_after_ms"},
+            ) from exc
+    elif type(max_age_ms) is not int or max_age_ms <= 0:
+        raise DecisionSurfaceError(
+            "latest_frame_stale",
+            "Decision stream max age is not a positive int.",
+        )
+    else:
+        ceiling = max_age_ms
     if report.vehicle_id != vehicle_id:
         raise DecisionSurfaceError(
             "latest_frame_invalid",

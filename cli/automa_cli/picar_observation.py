@@ -24,7 +24,7 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
-from autonomy.runtime.report import VehicleReport
+from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 
 from .paths import safe_path_part
 from .perception_view import get_perception_view_status
@@ -1696,18 +1696,12 @@ def normalize_picar_decision_publication(
         allow_negative=True,
     )
     advertised_ceiling = publication.get("stale_after_ms")
-    if max_age_ms is None:
-        if type(advertised_ceiling) is not int or advertised_ceiling <= 0:
-            raise _picar_decision_error(
-                "incomplete",
-                "PiCar decision publication stale_after_ms must be positive.",
-                field="stale_after_ms",
-            )
-        ceiling = int(advertised_ceiling)
-    else:
-        if type(max_age_ms) is not int or max_age_ms <= 0:
-            raise ValueError("max_age_ms must be a positive non-bool int")
-        ceiling = int(max_age_ms)
+    if type(advertised_ceiling) is not int or advertised_ceiling <= 0:
+        raise _picar_decision_error(
+            "incomplete",
+            "PiCar decision publication stale_after_ms must be positive.",
+            field="stale_after_ms",
+        )
 
     try:
         report = VehicleReport.from_dict(publication.get("decision"))
@@ -1717,6 +1711,26 @@ def normalize_picar_decision_publication(
             f"PiCar decision publication is not a vehicle report: {exc}",
             field="decision",
         ) from exc
+    try:
+        published_ceiling = diagnostic_ceiling(report.values)
+    except ValueError as exc:
+        raise _picar_decision_error(
+            "incomplete",
+            str(exc),
+            field="decision.values.stale_after_ms",
+        ) from exc
+    if advertised_ceiling != published_ceiling:
+        raise _picar_decision_error(
+            "incomplete",
+            "PiCar decision publication stale_after_ms does not match the report.",
+            field="stale_after_ms",
+        )
+    if max_age_ms is None:
+        ceiling = published_ceiling
+    else:
+        if type(max_age_ms) is not int or max_age_ms <= 0:
+            raise ValueError("max_age_ms must be a positive non-bool int")
+        ceiling = int(max_age_ms)
     decision = report.to_dict()
     values = report.values
 
@@ -1763,13 +1777,13 @@ def normalize_picar_decision_publication(
     action = _picar_require_mapping(cycle.get("action"), field="decision.cycle.action")
     if (
         proposal.get("schema") != PROPOSAL_RESULT_SCHEMA
-        or proposal.get("status") != "ok"
+        or proposal.get("status") not in {"ok", "error"}
         or action.get("schema") != ACTION_RESULT_SCHEMA
-        or action.get("status") != "ok"
+        or action.get("status") not in {"ok", "error"}
     ):
         raise _picar_decision_error(
             "incomplete",
-            "PiCar decision cycle is not a successful proposal and action.",
+            "PiCar decision cycle proposal and action must be ok or error.",
             field="decision.cycle",
         )
     for field, record in (("proposal", proposal), ("action", action)):

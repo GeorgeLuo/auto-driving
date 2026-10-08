@@ -718,7 +718,9 @@ class AutonomyPilotPart:
 
         The document is the same ``vehicle_report_v0`` Chase writes. PiCar-only
         identity (source, activation, drive mode, and the capture frame) goes
-        in ``values``. A failed cycle stays unpublished.
+        in ``values``, with the display freshness limit. A failed cycle that
+        still has its application is published; the failure stays in the cycle.
+        A cycle that never produced an application stays unpublished.
         """
 
         if status != "ok":
@@ -726,35 +728,31 @@ class AutonomyPilotPart:
         if self._decision_identity_error is not None:
             return None, self._decision_identity_error
         result = self._current_decision_result()
-        if result is None:
+        records = self._current_cycle
+        if result is None or records is None:
             if self._current_decision_failed():
                 return None, "failed_step"
             return None, "missing_result"
-        if getattr(result, "status", "ok") != "ok":
-            return None, "failed_step"
         result_frame_id = getattr(result, "frame_id", None)
         if result_frame_id != frame_id:
             return None, "mismatched_frame"
-        records = self._current_cycle
-        proposal = None if records is None else records.proposal
-        plan = None if records is None else records.plan
-        if proposal is None or plan is None or records.application is None:
-            return None, "incomplete_result"
-        if getattr(proposal, "status", None) != "ok" or getattr(result, "status", None) != "ok":
+        proposal = records.proposal
+        if proposal is None or records.application is None:
             return None, "incomplete_result"
         source = getattr(proposal, "source", None)
-        try:
-            source_export = source.to_dict() if source is not None else None
-        except Exception:
-            return None, "incomplete_result"
-        if not isinstance(source_export, dict):
-            return None, "incomplete_result"
-        if (
-            source_export.get("frame_id") != frame_id
-            or source_export.get("frame_index") != frame_index
-            or source_export.get("timestamp_ms") != timestamp_ms_value
-        ):
-            return None, "mismatched_frame"
+        if source is not None:
+            try:
+                source_export = source.to_dict()
+            except Exception:
+                return None, "incomplete_result"
+            if not isinstance(source_export, dict):
+                return None, "incomplete_result"
+            if (
+                source_export.get("frame_id") != frame_id
+                or source_export.get("frame_index") != frame_index
+                or source_export.get("timestamp_ms") != timestamp_ms_value
+            ):
+                return None, "mismatched_frame"
         try:
             report = report_from_host_result(
                 records,
@@ -776,6 +774,7 @@ class AutonomyPilotPart:
                         "completed_at_ms": published_at_ms,
                     },
                     **delivery_values(records.application),
+                    "stale_after_ms": stale_after_ms(self.interval_s),
                 },
             )
         except (TypeError, ValueError):
@@ -817,12 +816,8 @@ class AutonomyPilotPart:
         # Replacing a decision step retires its result. Never
         # replay the detached result retained by a prior sensor frame.
         current = self._current_decision_result()
-        if current is None or getattr(current, "status", "ok") != "ok":
-            reason = (
-                "failed_step"
-                if self._current_decision_failed() or current is not None
-                else "reset"
-            )
+        if current is None:
+            reason = "failed_step" if self._current_decision_failed() else "reset"
             return self._decision_unavailable(reason=reason, read_at_ms=read_at_ms)
         if getattr(current, "frame_id", None) != decision.get("frame_id"):
             return self._decision_unavailable(

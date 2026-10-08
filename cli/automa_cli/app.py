@@ -31,6 +31,7 @@ from .memory import (
 from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
+from autonomy.runtime.session import DEFAULT_INTERVAL_S
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 from implementations.decision_cycle.memory.presets import (
     DEFAULT_MEMORY_PRESET,
@@ -229,8 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run.add_argument(
         "--interval-s",
         type=float,
-        default=0.25,
-        help="Target delay between camera captures. Slow perception skips superseded frames.",
+        default=DEFAULT_INTERVAL_S,
+        help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
     )
     automation_run.add_argument(
         "--frames",
@@ -342,8 +343,8 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.add_argument(
         "--interval-s",
         type=float,
-        default=0.25,
-        help="Target delay between camera captures. Slow perception skips superseded frames.",
+        default=DEFAULT_INTERVAL_S,
+        help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
     )
     automation_restart.add_argument(
         "--frames",

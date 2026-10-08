@@ -21,11 +21,12 @@ def _publication(**overrides):
         "health": "healthy",
         "result_age_ms": 120,
         "duration_ms": 280,
-        "min_interval_s": 0.5,
+        "interval_s": 0.5,
         "processed_count": 12,
         "skipped_count": 40,
+        "skipped_since_previous": 4,
         "preset": "lightweight_observer",
-        "mode": "user",
+        "mode": "observe_only",
         "drive_mode": "user",
         "control": {
             "steering": 0.0,
@@ -60,6 +61,7 @@ class PhysicalObservationAdapterTests(unittest.TestCase):
     def test_publication_to_frame_record_pairs_findings(self) -> None:
         record = publication_to_frame_record(_publication())
         self.assertEqual(record["frame_id"], "donkey_frame_000011")
+        self.assertEqual(record["skipped_since_previous"], 4)
         self.assertEqual(record["perception"]["things"][0]["thing_id"], "boundary-1")
         self.assertEqual(record["control"]["steering"], 0.0)
         self.assertEqual(record["control_source"], "onboard")
@@ -111,8 +113,10 @@ class PhysicalStreamCommandTests(unittest.TestCase):
                 )
             self.assertEqual(result.exit_code, 0)
             text = buffer.getvalue()
-            self.assertIn("source: physical onboard", text)
+            self.assertIn("source: picar onboard host", text)
             self.assertIn("status: live", text)
+            self.assertIn("interval_s=0.5", text)
+            self.assertIn("skipped_since_previous=4", text)
             self.assertIn("publication: healthy", text)
             self.assertIn("donkey_frame_000011", text)
             self.assertIn("steering=0.0", text)
@@ -163,7 +167,7 @@ class PhysicalStreamCommandTests(unittest.TestCase):
             missing = Path(tmp) / "missing"
             with patch.object(streaming, "discover_active_vehicles", return_value=discovery), patch.object(
                 streaming, "find_vehicle_by_id", return_value=(vehicle, None)
-            ), patch.object(streaming, "_automation_dir", return_value=missing):
+            ), patch.object(streaming, "chase_automation_dir", return_value=missing):
                 result = streaming.stream_vehicle_perception(
                     vehicle_id="chase-sim",
                     once=True,

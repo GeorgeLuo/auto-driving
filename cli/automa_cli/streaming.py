@@ -465,6 +465,8 @@ def _probe_chase_perception(*, vehicle_id: str) -> dict[str, Any]:
         worker_pid=liveness.get("pid"),
         worker_updated_at_ms=liveness.get("updated_at_ms"),
         run_id=state.get("run_id"),
+        frames_captured=state.get("frames_captured"),
+        interval_s=state.get("interval_s"),
         processed_count=state.get("processed_count"),
         skipped_count=state.get("skipped_count"),
         mode=state.get("action_policy"),
@@ -540,7 +542,8 @@ def _probe_picar_perception(
         health=health,
         preset=publication.get("preset"),
         mode=publication.get("mode") or publication.get("drive_mode"),
-        min_interval_s=publication.get("min_interval_s"),
+        interval_s=publication.get("interval_s"),
+        frames_captured=publication.get("frames_captured"),
         processed_count=publication.get("processed_count"),
         skipped_count=publication.get("skipped_count"),
     )
@@ -573,6 +576,7 @@ def _probe_latest_perception(
         "captured_at_ms": record.get("captured_at_ms"),
         "perception_completed_at_ms": record.get("perception_completed_at_ms"),
         "perception_duration_ms": record.get("perception_duration_ms"),
+        "skipped_since_previous": record.get("skipped_since_previous"),
         "age_ms": age_ms,
     }
     perception = record.get("perception")
@@ -630,7 +634,8 @@ def _render_perception_screen(
 
     ``record`` is the latest frame record (the Chase worker's
     ``latest_perception.json``, or the PiCar publication adapted to one);
-    ``cadence`` names interval_s, processed, skipped, cycle_ms and age_ms.
+    ``cadence`` names capture interval, processed frames, superseded captures,
+    and timing. ``skipped_since_previous`` belongs to the latest decision frame.
     """
 
     perception = record.get("perception") if isinstance(record.get("perception"), dict) else {}
@@ -689,6 +694,7 @@ def _chase_perception_screen(
             "interval_s": state.get("interval_s"),
             "processed": state.get("processed_count"),
             "skipped": state.get("skipped_count"),
+            "skipped_since_previous": record.get("skipped_since_previous"),
             "cycle_ms": record.get("cycle_duration_ms"),
             "age_ms": None if completed_at is None else max(0, _timestamp_ms() - completed_at),
         },
@@ -725,9 +731,10 @@ def _picar_perception_screen(
         preset=publication.get("preset"),
         mode=publication.get("mode") or publication.get("drive_mode"),
         cadence={
-            "interval_s": publication.get("min_interval_s"),
+            "interval_s": publication.get("interval_s"),
             "processed": publication.get("processed_count"),
             "skipped": publication.get("skipped_count"),
+            "skipped_since_previous": publication.get("skipped_since_previous"),
             "cycle_ms": publication.get("duration_ms"),
             # The Pi computes the result age on its own clock.
             "age_ms": publication.get("result_age_ms"),
@@ -1224,4 +1231,3 @@ def _format_plugin_ledgers(ledgers: list[dict[str, Any]]) -> list[str]:
             )
         lines.append(line)
     return lines
-

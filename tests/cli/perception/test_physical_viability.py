@@ -28,7 +28,7 @@ class PhysicalViabilityTests(unittest.TestCase):
                 "preset": "lightweight_observer",
                 "processed_count": idx + 1,
                 "skipped_count": idx * 4,
-                "min_interval_s": 0.5,
+                "interval_s": 0.5,
                 "duration_ms": 280,
                 "result_age_ms": 120,
                 "control": {"steering": 0.0, "throttle": 0.0, "reason": "stable-idle-engine"},

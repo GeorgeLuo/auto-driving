@@ -255,7 +255,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.runtime.donkeycar", "CAMERA_PUBLICATION_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "CAMERA_PUBLICATION_SCHEMA"),
     ("implementations.runtime.donkeycar", "DECISION_LATEST_PATH", "implementations.runtime.donkeycar.donkey_part", "DECISION_LATEST_PATH"),
     ("implementations.runtime.donkeycar", "DECISION_PUBLICATION_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "DECISION_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.donkeycar", "DEFAULT_OBSERVATION_INTERVAL_S", "implementations.runtime.donkeycar.donkey_part", "DEFAULT_OBSERVATION_INTERVAL_S"),
+    ("implementations.runtime.donkeycar", "DEFAULT_INTERVAL_S", "autonomy.runtime.session", "DEFAULT_INTERVAL_S"),
     ("implementations.runtime.donkeycar", "LATEST_FRAME_PATH", "implementations.runtime.donkeycar.donkey_part", "LATEST_FRAME_PATH"),
     ("implementations.runtime.donkeycar", "LATEST_JSON_PATH", "implementations.runtime.donkeycar.donkey_part", "LATEST_JSON_PATH"),
     ("implementations.runtime.donkeycar", "LatestCameraFrame", "implementations.runtime.donkeycar.donkey_part", "LatestCameraFrame"),

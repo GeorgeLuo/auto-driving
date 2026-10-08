@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state_v0"
 OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
-DEFAULT_OBSERVATION_INTERVAL_S = DEFAULT_INTERVAL_S
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 CAMERA_LATEST_FRAME_PATH = "/autonomy/camera/latest/frame.jpg"
@@ -93,9 +92,9 @@ def encode_jpeg(image_array: Any) -> bytes:
         return encoded.tobytes()
 
 
-def stale_after_ms(min_interval_s: float) -> int:
+def stale_after_ms(interval_s: float) -> int:
     """Age beyond which a still-present result is marked stale at read time."""
-    return max(1000, int(round(float(min_interval_s) * 2000.0)))
+    return max(1000, int(round(float(interval_s) * 2000.0)))
 
 
 @dataclass
@@ -150,13 +149,22 @@ class LatestCameraFrame:
     image: Any
 
 
+@dataclass(frozen=True)
+class _PendingFrame:
+    camera: LatestCameraFrame
+    mode_name: str
+    user_steering: float
+    user_throttle: float
+
+
 class AutonomyPilotPart:
     """Adapt Donkey image memory to the shared cycle with always-on observation.
 
-    Every drive-loop tick publishes the newest camera sample. A perception cycle
-    runs in the background at ``min_interval_s`` and does not stall that loop.
-    Samples that arrive while a cycle is running stay available as camera frames
-    and are not given their own perception result. The shared runtime owns movement authority, freshness, and stopping;
+    Camera samples publish at ``interval_s`` without waiting for decisions.
+    The background worker immediately takes the newest pending sample after
+    each cycle. Superseded captures are counted between the samples the worker
+    takes; drive ticks outside the capture cadence are not skipped frames.
+    The shared runtime owns movement authority, freshness, and stopping;
     this part translates the camera and Donkey mode vocabulary.
 
     The decision publication is identified by the proposal, plan, and action
@@ -171,7 +179,7 @@ class AutonomyPilotPart:
         self,
         *,
         host: AutonomyCycleHost,
-        min_interval_s: float = DEFAULT_OBSERVATION_INTERVAL_S,
+        interval_s: float = DEFAULT_INTERVAL_S,
         monotonic: Callable[[], float] | None = None,
         preset: str | None = None,
         vehicle_id: str | None = None,
@@ -182,8 +190,7 @@ class AutonomyPilotPart:
         host_telemetry: Any | None = None,
         controller: Any | None = None,
     ) -> None:
-        if min_interval_s < 0:
-            raise ValueError("min_interval_s must be >= 0")
+        interval_s = RunConfiguration(interval_s=float(interval_s)).interval_s
         if getattr(host, "execution", None) is None:
             raise ValueError("AutonomyPilotPart needs a host from create_host()")
         self.host = host
@@ -192,21 +199,24 @@ class AutonomyPilotPart:
         self.controller = controller
         self._drive_mode = drive_mode("manual")
         self._observed_drive_mode: str | None = None
-        self.min_interval_s = float(min_interval_s)
+        self.interval_s = float(interval_s)
         self.preset = preset
         self._monotonic = monotonic or time.monotonic
         self._lock = threading.RLock()
         self.frame_index = 0
-        self._camera_index = 0
-        self.camera_frame_count = 0
+        self._capture_sequence = 0
+        self.frames_captured = 0
         self.processed_count = 0
         self.skipped_count = 0
-        self._skips_since_previous = 0
-        self._last_run_monotonic: float | None = None
-        self._cycle_inflight = False
+        self._last_capture_monotonic: float | None = None
+        self._last_decision_capture_sequence = -1
+        self._pending_frame: _PendingFrame | None = None
+        self._queue_generation = 0
+        self._shutdown = False
+        self._decision_inflight = False
         self._memory_update_halted = False
         self._inflight_frame_id: str | None = None
-        self._cycle_thread: threading.Thread | None = None
+        self._decision_thread: threading.Thread | None = None
         self.latest_state: LatestObservationState | None = None
         # The last cycle's result, the decision-step runners that produced it,
         # and whether that cycle failed. Replacing a decision step's runner
@@ -260,11 +270,11 @@ class AutonomyPilotPart:
             )
             camera = self.latest_camera_frame
             return {
-                "min_interval_s": self.min_interval_s,
+                "interval_s": self.interval_s,
                 "processed_count": self.processed_count,
                 "skipped_count": self.skipped_count,
-                "camera_frame_count": self.camera_frame_count,
-                "perception_inflight": self._cycle_inflight,
+                "frames_captured": self.frames_captured,
+                "perception_inflight": self._decision_inflight,
                 "memory_update_halted": self._memory_update_halted,
                 "preset": self.preset,
                 "latest": latest,
@@ -394,7 +404,7 @@ class AutonomyPilotPart:
     def wait_for_cycle(self, timeout_s: float = 5.0) -> None:
         """Block until the background perception cycle finishes, if one is running."""
         with self._lock:
-            thread = self._cycle_thread
+            thread = self._decision_thread
         if thread is None:
             return
         thread.join(timeout_s)
@@ -408,12 +418,17 @@ class AutonomyPilotPart:
         return self._held_outputs(mode)
 
     def start(self, configuration: RunConfiguration) -> dict[str, Any]:
-        self.min_interval_s = configuration.interval_s
+        with self._lock:
+            self.interval_s = configuration.interval_s
+            self._last_capture_monotonic = None
+            self._discard_pending_locked()
         status = self.host.start(configuration)
         self._show_drive_mode(drive_mode(configuration.mode))
         return status
 
     def stop(self) -> dict[str, Any]:
+        with self._lock:
+            self._discard_pending_locked()
         status = self.host.stop()
         self._hand_back()
         return status
@@ -433,16 +448,19 @@ class AutonomyPilotPart:
             self.controller.mode_latch = mode
 
     def shutdown(self) -> None:
+        with self._lock:
+            self._shutdown = True
+            self._discard_pending_locked()
         self.host.close()
 
     def _camera_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         camera = self.latest_camera_frame
-        threshold_ms = stale_after_ms(self.min_interval_s)
+        threshold_ms = stale_after_ms(self.interval_s)
         observation = self.latest_state
         perception_frame_id = None if observation is None else observation.frame_id
         if camera is None:
-            health = PUBLICATION_HEALTH_WARMING if self.camera_frame_count == 0 else PUBLICATION_HEALTH_ABSENT
-            perception_state = "pending" if self._cycle_inflight else "absent"
+            health = PUBLICATION_HEALTH_WARMING if self.frames_captured == 0 else PUBLICATION_HEALTH_ABSENT
+            perception_state = "pending" if self._decision_inflight else "absent"
             return {
                 "schema": CAMERA_PUBLICATION_SCHEMA,
                 "ok": False,
@@ -451,10 +469,10 @@ class AutonomyPilotPart:
                 "result_age_ms": None,
                 "stale_after_ms": threshold_ms,
                 "frame": None,
-                "camera_frame_count": self.camera_frame_count,
+                "frames_captured": self.frames_captured,
                 "perception_state": perception_state,
                 "perception_frame_id": perception_frame_id,
-                "perception_inflight": self._cycle_inflight,
+                "perception_inflight": self._decision_inflight,
                 "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
                 "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
             }
@@ -465,7 +483,7 @@ class AutonomyPilotPart:
             health = PUBLICATION_HEALTH_STALE
         else:
             health = PUBLICATION_HEALTH_HEALTHY
-        if self._cycle_inflight:
+        if self._decision_inflight:
             perception_state = "pending"
         elif perception_frame_id == camera.frame_id:
             perception_state = "matched"
@@ -487,54 +505,41 @@ class AutonomyPilotPart:
                 "has_image": camera.image is not None,
                 "frame_path": CAMERA_LATEST_FRAME_PATH,
             },
-            "camera_frame_count": self.camera_frame_count,
+            "frames_captured": self.frames_captured,
             "perception_state": perception_state,
             "perception_frame_id": perception_frame_id,
-            "perception_inflight": self._cycle_inflight,
+            "perception_inflight": self._decision_inflight,
             "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
             "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
         }
 
     def _store_camera_frame_locked(self, image: Any, captured_at_ms: int) -> LatestCameraFrame:
         frame = LatestCameraFrame(
-            frame_id=f"donkey_frame_{self._camera_index:06d}",
-            frame_index=self._camera_index,
+            frame_id=f"donkey_frame_{self._capture_sequence:06d}",
+            frame_index=self._capture_sequence,
             captured_at_ms=captured_at_ms,
             image=image,
         )
         self.latest_camera_frame = frame
-        self._camera_index += 1
-        self.camera_frame_count += 1
+        self._capture_sequence += 1
+        self.frames_captured += 1
         return frame
 
-    def _claim_cycle_locked(self) -> tuple[bool, str, int, int]:
-        now = self._monotonic()
-        if self._memory_update_halted:
-            return False, "", 0, 0
-        if self._cycle_inflight or (
-            self._last_run_monotonic is not None
-            and (now - self._last_run_monotonic) < self.min_interval_s
-        ):
-            self.skipped_count += 1
-            self._skips_since_previous += 1
-            return False, "", 0, 0
-        camera = self.latest_camera_frame
-        if camera is None:
-            return False, "", 0, 0
-        self._last_run_monotonic = now
-        self._cycle_inflight = True
-        self._inflight_frame_id = camera.frame_id
-        return True, camera.frame_id, camera.frame_index, self._skips_since_previous
+    def _discard_pending_locked(self) -> None:
+        # Stop/restart discards are not supersessions between decision frames.
+        self._pending_frame = None
+        self._last_decision_capture_sequence = self._capture_sequence - 1
+        self._queue_generation += 1
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         """Build a publication from the currently locked state and counters."""
         latest = self.latest_state
         processed_count = self.processed_count
         skipped_count = self.skipped_count
-        min_interval_s = self.min_interval_s
+        interval_s = self.interval_s
         preset = self.preset
         generation_id = self.generation_id
-        threshold_ms = stale_after_ms(min_interval_s)
+        threshold_ms = stale_after_ms(interval_s)
 
         if latest is None:
             health = (
@@ -549,7 +554,8 @@ class AutonomyPilotPart:
                 "read_at_ms": read_at_ms,
                 "result_age_ms": None,
                 "stale_after_ms": threshold_ms,
-                "min_interval_s": min_interval_s,
+                "interval_s": interval_s,
+                "frames_captured": self.frames_captured,
                 "processed_count": processed_count,
                 "skipped_count": skipped_count,
                 "preset": preset,
@@ -588,7 +594,8 @@ class AutonomyPilotPart:
             "read_at_ms": read_at_ms,
             "result_age_ms": age_ms,
             "stale_after_ms": threshold_ms,
-            "min_interval_s": min_interval_s,
+            "interval_s": interval_s,
+            "frames_captured": self.frames_captured,
             "processed_count": processed_count,
             "skipped_count": skipped_count,
             "preset": preset or latest.preset,
@@ -773,7 +780,7 @@ class AutonomyPilotPart:
         read_at_ms: int,
         result_age_ms: int | None = None,
     ) -> dict[str, Any]:
-        threshold_ms = stale_after_ms(self.min_interval_s)
+        threshold_ms = stale_after_ms(self.interval_s)
         return {
             "schema": DECISION_PUBLICATION_SCHEMA,
             "ok": False,
@@ -789,7 +796,7 @@ class AutonomyPilotPart:
         """Build the physical decision wire payload, fail-closed at read time."""
 
         latest = self.latest_state
-        threshold_ms = stale_after_ms(self.min_interval_s)
+        threshold_ms = stale_after_ms(self.interval_s)
         if latest is None:
             return self._decision_unavailable(reason="missing", read_at_ms=read_at_ms)
         decision = latest.decision_publication
@@ -856,45 +863,85 @@ class AutonomyPilotPart:
         self._observed_drive_mode = mode
         if operator_changed:
             self._drive_mode = mode
+            with self._lock:
+                self._discard_pending_locked()
             if mode_name == "autonomy":
-                self.host.start(RunConfiguration(interval_s=self.min_interval_s))
+                self.host.start(RunConfiguration(interval_s=self.interval_s))
             else:
                 self.host.stop()
         elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
             # The host ended the run: bounded frames completed or a cycle failed.
             self._hand_back()
-        captured_at_ms = timestamp_ms()
-        detached = detach_image(image_array)
         with self._lock:
-            self._store_camera_frame_locked(detached, captured_at_ms)
-            start, frame_id, frame_index, skips = self._claim_cycle_locked()
-        if not start:
-            self._publish_host_source_frame()
-            self.last_status = self.status()
-            return self._held_outputs(mode_name)
-
-        thread = threading.Thread(
-            target=self._cycle_job,
-            kwargs={
-                "image": detached,
-                "mode_name": mode_name,
-                "user_steering": float(user_steering or 0.0),
-                "user_throttle": float(user_throttle or 0.0),
-                "captured_at_ms": captured_at_ms,
-                "frame_id": frame_id,
-                "frame_index": frame_index,
-                "skips_at_start": skips,
-            },
-            name="autonomy-observation-cycle",
-            daemon=True,
-        )
-        with self._lock:
-            self._cycle_thread = thread
-        thread.start()
+            now = self._monotonic()
+            if not self._shutdown and (
+                self._last_capture_monotonic is None
+                or now - self._last_capture_monotonic >= self.interval_s
+            ):
+                self._last_capture_monotonic = now
+                camera = self._store_camera_frame_locked(
+                    detach_image(image_array), timestamp_ms()
+                )
+                self._pending_frame = _PendingFrame(
+                    camera, mode_name, float(user_steering or 0.0), float(user_throttle or 0.0)
+                )
+                if not self._decision_inflight and not self._memory_update_halted:
+                    self._decision_inflight = True
+                    self._inflight_frame_id = camera.frame_id
+                    thread = threading.Thread(
+                        target=self._decision_worker, name="automa-decision-worker", daemon=True
+                    )
+                    self._decision_thread = thread
+                    thread.start()
+        self._publish_host_source_frame()
         self.last_status = self.status()
         return self._held_outputs(mode_name)
 
-    def _cycle_job(
+    def _decision_worker(self) -> None:
+        try:
+            while True:
+                with self._lock:
+                    pending = self._pending_frame
+                    if pending is None or self._memory_update_halted or self._shutdown:
+                        # Release ownership atomically with checking the slot,
+                        # so a concurrent capture can start another worker.
+                        self._decision_inflight = False
+                        self._inflight_frame_id = None
+                        self._decision_thread = None
+                        return
+                    self._pending_frame = None
+                    camera = pending.camera
+                    skipped_since_previous = (
+                        camera.frame_index - self._last_decision_capture_sequence - 1
+                    )
+                    self._last_decision_capture_sequence = camera.frame_index
+                    self.skipped_count += skipped_since_previous
+                    self._inflight_frame_id = camera.frame_id
+                    generation = self._queue_generation
+                    was_running = getattr(self.host, "run_state", None) == "running"
+                succeeded = self._process_frame(
+                    image=camera.image,
+                    mode_name=pending.mode_name,
+                    user_steering=pending.user_steering,
+                    user_throttle=pending.user_throttle,
+                    captured_at_ms=camera.captured_at_ms,
+                    frame_id=camera.frame_id,
+                    frame_index=camera.frame_index,
+                    skipped_since_previous=skipped_since_previous,
+                )
+                with self._lock:
+                    ended = was_running and self.host.run_state != "running"
+                    if generation == self._queue_generation and (not succeeded or ended):
+                        self._discard_pending_locked()
+        finally:
+            with self._lock:
+                if self._decision_thread is threading.current_thread():
+                    self._decision_inflight = False
+                    self._inflight_frame_id = None
+                    self._decision_thread = None
+            self.last_status = self.status()
+
+    def _process_frame(
         self,
         *,
         image: Any,
@@ -904,8 +951,8 @@ class AutonomyPilotPart:
         captured_at_ms: int,
         frame_id: str,
         frame_index: int,
-        skips_at_start: int,
-    ) -> None:
+        skipped_since_previous: int,
+    ) -> bool:
         detached = image
         sensor_frame = SensorFrame(
             read_id=frame_id,
@@ -938,7 +985,9 @@ class AutonomyPilotPart:
                         metadata={
                             "runtime": "donkeycar",
                             "control_application": "shared_execution",
-                            "observation_cadence_s": self.min_interval_s,
+                            "capture_interval_s": self.interval_s,
+                            "capture_sequence": frame_index,
+                            "skipped_since_previous": skipped_since_previous,
                         },
                     )
                 )
@@ -991,7 +1040,7 @@ class AutonomyPilotPart:
                 cycle=cycle_dict,
                 error=error,
                 duration_ms=duration_ms,
-                skipped_since_previous=skips_at_start,
+                skipped_since_previous=skipped_since_previous,
                 preset=self.preset,
                 decision_publication=decision_publication,
                 decision_error=decision_error,
@@ -1000,18 +1049,12 @@ class AutonomyPilotPart:
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict
                 self.latest_state = latest
-                self._skips_since_previous = max(0, self._skips_since_previous - skips_at_start)
                 self.frame_index = frame_index + 1
                 self.processed_count += 1
         finally:
-            with self._lock:
-                if self._inflight_frame_id == frame_id:
-                    self._cycle_inflight = False
-                    self._inflight_frame_id = None
-                if self._cycle_thread is threading.current_thread():
-                    self._cycle_thread = None
-        self._publish_host_source_frame()
+            self._publish_host_source_frame()
         self.last_status = self.status()
+        return status == "ok"
 
     def _publish_host_source_frame(self) -> None:
         """Hand off the latest completed source frame to the final observer.

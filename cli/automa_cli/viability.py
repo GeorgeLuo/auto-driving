@@ -292,7 +292,7 @@ def _chase_worker_publication(vehicle_id: str) -> dict[str, Any]:
         "frame": {"frame_id": probe.get("frame_id")},
         "processed_count": state.get("processed_count"),
         "skipped_count": state.get("skipped_count"),
-        "min_interval_s": state.get("interval_s"),
+        "interval_s": state.get("interval_s"),
         "duration_ms": record.get("cycle_duration_ms"),
         "result_age_ms": probe.get("age_ms"),
         "control": record.get("control"),
@@ -319,7 +319,7 @@ def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mon
         "frame_id": frame.get("frame_id"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),
-        "min_interval_s": publication.get("min_interval_s"),
+        "interval_s": publication.get("interval_s"),
         "duration_ms": publication.get("duration_ms"),
         "result_age_ms": publication.get("result_age_ms"),
         "control_steering": control.get("steering"),
@@ -393,13 +393,13 @@ def _compute_perception_metrics(
             "pid": next((s.get("pid") for s in host_samples if s.get("pid")), None),
             "errors": [s.get("error") for s in host_samples if s.get("error")][:5],
         },
-        "configured_min_interval_s": _first_number(
-            s.get("min_interval_s") for s in samples
+        "configured_interval_s": _first_number(
+            s.get("interval_s") for s in samples
         ),
         "dropped_frame_policy": {
             "description": (
-                "The runtime consumes the newest frame at min_interval cadence; "
-                "superseded camera frames are counted in skipped_count."
+                "Capture runs at interval_s cadence; decisions consume the newest pending frame immediately. "
+                "Captures superseded between decision frames are counted in skipped_count."
             ),
             "skipped_count_delta": skipped_delta,
         },
@@ -408,10 +408,10 @@ def _compute_perception_metrics(
 
 def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     fresh_hz = float(metrics.get("fresh_results_per_s") or 0.0)
-    min_interval = metrics.get("configured_min_interval_s")
+    interval_s = metrics.get("configured_interval_s")
     configured_hz = (
-        (1.0 / float(min_interval))
-        if _is_number(min_interval) and float(min_interval) > 0
+        (1.0 / float(interval_s))
+        if _is_number(interval_s) and float(interval_s) > 0
         else REQUIRED_MIN_FRESH_HZ
     )
     # Design target is >=2 Hz, but a configured 0.5s interval caps theoretical rate at 2.0.

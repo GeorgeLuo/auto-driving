@@ -202,7 +202,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         steps = packaged_decision_steps()
         part = AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations_from_payloads(steps))),
-            min_interval_s=5.0,
+            interval_s=5.0,
             vehicle_id=vehicle_id,
             source_id=f"donkeycar:{vehicle_id}",
             decision_activations=steps,
@@ -210,6 +210,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             run_id="donkey-run-http-fixture",
         )
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
         assert part.latest_state is not None
         # CLI subprocess wall-clock now_ms is independent of this fixture. Stamp
         # published_at_ms at request time so current acceptance does not depend

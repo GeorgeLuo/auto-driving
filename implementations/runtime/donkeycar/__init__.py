@@ -1,6 +1,7 @@
 """DonkeyCar runtime host implementation."""
 
 from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.session import DEFAULT_INTERVAL_S
 from autonomy.decision_cycle.cycle import DecisionSteps
 
 from .control import DonkeyControlTarget
@@ -8,7 +9,6 @@ from .donkey_part import (
     CAMERA_LATEST_FRAME_PATH,
     CAMERA_LATEST_JSON_PATH,
     CAMERA_PUBLICATION_SCHEMA,
-    DEFAULT_OBSERVATION_INTERVAL_S,
     DECISION_LATEST_PATH,
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
@@ -25,7 +25,7 @@ __all__ = [
     "CAMERA_LATEST_FRAME_PATH",
     "CAMERA_LATEST_JSON_PATH",
     "CAMERA_PUBLICATION_SCHEMA",
-    "DEFAULT_OBSERVATION_INTERVAL_S",
+    "DEFAULT_INTERVAL_S",
     "DECISION_LATEST_PATH",
     "DECISION_PUBLICATION_SCHEMA",
     "LATEST_FRAME_PATH",

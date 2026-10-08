@@ -2022,6 +2022,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "perception_completed_at_ms": completed_at_ms,
         "perception_duration_ms": duration_ms,
         "cycle_duration_ms": duration_ms,
+        "skipped_since_previous": publication.get("skipped_since_previous"),
         "perception": perception if isinstance(perception, dict) else None,
         "observation": observation if isinstance(observation, dict) else None,
         "memory": memory if isinstance(memory, dict) else None,

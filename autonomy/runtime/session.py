@@ -1,4 +1,7 @@
-"""One run configuration for local and onboard decision hosts."""
+"""One run configuration for local and onboard decision hosts.
+
+interval_s paces capture; decisions immediately consume the newest pending frame.
+"""
 from __future__ import annotations
 
 import math

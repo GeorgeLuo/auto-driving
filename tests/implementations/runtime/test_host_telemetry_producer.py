@@ -422,7 +422,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         ):
             part = AutonomyPilotPart(
                 host=create_host(steps=decision_steps()),
-                min_interval_s=0.0,
+                interval_s=0.0,
                 host_telemetry=adapter,
             )
             part.run(image_array=object(), mode="user")
@@ -463,7 +463,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         ):
             part = AutonomyPilotPart(
                 host=create_host(steps=decision_steps()),
-                min_interval_s=0.5,
+                interval_s=0.5,
                 monotonic=lambda: monotonic.now_ms / 1000.0,
                 host_telemetry=adapter,
             )

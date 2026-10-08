@@ -475,7 +475,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             )
             from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
             from implementations.runtime.donkeycar import (
-                DEFAULT_OBSERVATION_INTERVAL_S,
+                DEFAULT_INTERVAL_S,
                 AutonomyPilotPart,
                 create_host,
             )
@@ -563,19 +563,19 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     "Host telemetry unavailable; runtime identity is incomplete: %s",
                     exc,
                 )
-            # Always-on observation: run independently of run_pilot so
-            # manual user mode still executes the shared cycle at a
-            # bounded cadence. Shared execution owns movement authority.
-            observation_interval_s = float(
+            # Capture runs independently of decisions and run_pilot. The
+            # decision worker consumes the newest pending sample immediately;
+            # shared execution owns movement authority in every drive mode.
+            capture_interval_s = float(
                 getattr(
                     cfg,
-                    "AUTONOMY_OBSERVATION_INTERVAL_S",
-                    DEFAULT_OBSERVATION_INTERVAL_S,
+                    "AUTONOMY_CAPTURE_INTERVAL_S",
+                    DEFAULT_INTERVAL_S,
                 )
             )
             autonomy_part = AutonomyPilotPart(
                 host=host,
-                min_interval_s=observation_interval_s,
+                interval_s=capture_interval_s,
                 preset=perception_preset,
                 vehicle_id=vehicle_id,
                 source_id=source_id if telemetry_store is not None else None,

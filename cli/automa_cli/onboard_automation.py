@@ -28,13 +28,18 @@ from .runtime_view import RuntimeViewServer
 from .decision_live import PicarDecisionViewAdapter
 from .staged_bundle import write_json_atomically
 
+MONITOR_POLL_INTERVAL_S = 0.1
+
 
 def _observation_counts(host: dict[str, Any]) -> tuple[int, int]:
     """The onboard host's cumulative camera and skipped frame counters."""
 
     components = host.get("components") if isinstance(host.get("components"), dict) else {}
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    return int(observation.get("camera_frame_count") or 0), int(observation.get("skipped_count") or 0)
+    counts = tuple(observation.get(key) for key in ("frames_captured", "skipped_count"))
+    if any(type(count) is not int or count < 0 for count in counts):
+        raise RuntimeError("Onboard host does not report capture and skipped-frame counters; update core and autonomy.")
+    return counts
 
 
 def _host_status(base_url: str, timeout_s: float) -> dict[str, Any]:
@@ -65,7 +70,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
     )
     state.update(perception=perception, decision=decision)
     try:
-        camera_base, skipped_base = _observation_counts(_host_status(base_url, timeout_s))
+        capture_base, skipped_base = _observation_counts(_host_status(base_url, timeout_s))
         response = client.start(configuration)
         run_id = str(response["host_run_id"])
         run_dir = automation_dir / "runs" / run_id if record else None
@@ -96,11 +101,11 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
                 raise RuntimeError("onboard host restarted during this run")
             session = runtime["session"]
             host = _host_status(base_url, timeout_s)
-            camera_count, skipped_count = _observation_counts(host)
+            capture_count, skipped_count = _observation_counts(host)
             state.update(
                 session=session, execution=session["execution"],
                 processed_count=session["processed_frames"],
-                frames_captured=max(0, camera_count - camera_base),
+                frames_captured=max(0, capture_count - capture_base),
                 skipped_count=max(0, skipped_count - skipped_base),
             )
             record_host_status(state, host, activations=step_activations)
@@ -174,13 +179,17 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
                         "things": things,
                         "signals": signals,
                         "control": frame.get("control"),
+                        "skipped_since_previous": frame.get("skipped_since_previous"),
                         "generation_id": frame.get("generation_id"),
                     }
                     last_frame_id = frame_id
                     frames_seen += 1
                     if output is not None and reports_frame(frames_seen, verbose=verbose):
                         action = (frame.get("control") or {}).get("reason")
-                        line = frame_line(frame_id, signals=signals, things=things, action=action)
+                        line = frame_line(
+                            frame_id, signals=signals, things=things, action=action,
+                            skipped_since_previous=frame.get("skipped_since_previous"),
+                        )
                         print(line, file=output, flush=True)
             state["published_view"] = server.health_payload()
             if last_frame_id is not None:
@@ -189,7 +198,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
             write_json_atomically(state_path, state)
             if session["status"] != "running":
                 break
-            time.sleep(max(0.02, configuration.interval_s))
+            time.sleep(MONITOR_POLL_INTERVAL_S)
     except KeyboardInterrupt:
         stop_error = _stop(client, state)
         if stop_error is None:

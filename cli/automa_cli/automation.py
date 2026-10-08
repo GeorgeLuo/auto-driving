@@ -22,7 +22,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
-from autonomy.runtime.session import RunConfiguration
+from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.runtime.chase_sim import create_host
 from implementations.vehicle.chase_sim import (
@@ -122,7 +122,7 @@ class CommandResult:
 
 
 @dataclass(frozen=True)
-class _PendingAutomationFrame:
+class _PendingFrame:
     context: DecisionFrameContext
     front_path: Path
     # Evaluator-only chaser reference; never fed into the decision cycle.
@@ -197,11 +197,11 @@ def _onboard_runtime_status(
         "state": {
             "status": worker_status,
             "run_id": None,
-            "frames_captured": observation.get("camera_frame_count", 0),
+            "frames_captured": observation.get("frames_captured", 0),
             "processed_count": observation.get("processed_count", 0),
             "skipped_count": observation.get("skipped_count", 0),
             "max_frames": None,
-            "interval_s": observation.get("min_interval_s"),
+            "interval_s": observation.get("interval_s"),
             "recording": False,
             "control_source": "onboard",
             "action_policy": (autonomy.get("execution") or {}).get("mode"),
@@ -231,7 +231,7 @@ def run_vehicle_automation(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = 0.25,
+    interval_s: float = DEFAULT_INTERVAL_S,
     frames: int = 0,
     take_control: bool = True,
     record: bool = False,
@@ -494,9 +494,10 @@ def run_vehicle_automation(
     for line in startup_lines(state):
         _emit(output, line)
 
-    pending_frames: queue.Queue[_PendingAutomationFrame | object] = queue.Queue(maxsize=1)
+    pending_frames: queue.Queue[_PendingFrame | object] = queue.Queue(maxsize=1)
     worker_sentinel = object()
     worker_failed = threading.Event()
+    capture_wake = threading.Event()
     worker_errors: list[BaseException] = []
     state_lock = threading.Lock()
 
@@ -619,15 +620,26 @@ def run_vehicle_automation(
             view_server.decision.adopt(staged)
         _emit(output, f"Decision generation: {staged['generation_id']} (restaged)")
 
-    def process_frame(pending: _PendingAutomationFrame) -> None:
+    last_decision_capture_sequence = -1
+
+    def process_frame(pending: _PendingFrame) -> None:
+        nonlocal last_decision_capture_sequence
         apply_memory_reset_if_requested()
         context = pending.context
+        capture_sequence = int(context.metadata["capture_sequence"])
+        skipped_since_previous = capture_sequence - last_decision_capture_sequence - 1
+        last_decision_capture_sequence = capture_sequence
+        context = replace(context, metadata={
+            **context.metadata, "skipped_since_previous": skipped_since_previous,
+        })
         sensor_frame = context.sensor_frame
         if sensor_frame is None:
             raise ValueError(f"{context.frame_id} has no sensor frame")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
         cycle_host.sync_selection()
+        with state_lock:
+            state["skipped_count"] = int(state["skipped_count"]) + skipped_since_previous
         cycle_result = cycle_host.run(context)
         if proposal_step is not None:
             adopt_staged_decision()
@@ -712,6 +724,7 @@ def run_vehicle_automation(
             "cycle_started_at_ms": cycle_started_at_ms,
             "cycle_completed_at_ms": perception_completed_at_ms,
             "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
+            "skipped_since_previous": skipped_since_previous,
             "perception_started_at_ms": perception_started_at_ms,
             "perception_completed_at_ms": perception_completed_at_ms,
             "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
@@ -803,6 +816,7 @@ def run_vehicle_automation(
                 "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
                 "capture_to_perception_ms": perception_completed_at_ms - sensor_frame.completed_at_ms,
                 "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
+                "skipped_since_previous": skipped_since_previous,
                 "perception_json": display_path(frame_json_path)
                 if frame_json_path is not None
                 else display_path(latest_json_path),
@@ -843,17 +857,18 @@ def run_vehicle_automation(
                     signals=len(perception.signals) if perception is not None else 0,
                     things=len(perception.things) if perception is not None else 0,
                     action=cycle_result.control.reason,
+                    skipped_since_previous=skipped_since_previous,
                 ),
             )
 
-    def perception_worker() -> None:
+    def decision_worker() -> None:
         while True:
             item = pending_frames.get()
             try:
                 if item is worker_sentinel:
                     return
-                if not isinstance(item, _PendingAutomationFrame):
-                    raise TypeError("perception queue received an invalid frame")
+                if not isinstance(item, _PendingFrame):
+                    raise TypeError("decision queue received an invalid frame")
                 if not worker_failed.is_set() and cycle_host.run_state == "running":
                     process_frame(item)
             except BaseException as exc:
@@ -862,19 +877,21 @@ def run_vehicle_automation(
                     worker_errors.append(exc)
                     worker_failed.set()
             finally:
-                if isinstance(item, _PendingAutomationFrame) and view_server is not None:
+                if isinstance(item, _PendingFrame) and view_server is not None:
                     view_server.perception.release_frame(item.context.frame_id)
-                if isinstance(item, _PendingAutomationFrame) and not record:
+                if isinstance(item, _PendingFrame) and not record:
                     item.front_path.unlink(missing_ok=True)
                 pending_frames.task_done()
+                if cycle_host.run_state != "running":
+                    capture_wake.set()
 
     worker_thread = threading.Thread(
-        target=perception_worker,
-        name=f"automa-perception-worker-{vehicle_id}",
+        target=decision_worker,
+        name=f"automa-decision-worker-{vehicle_id}",
         daemon=True,
     )
 
-    def enqueue_latest(pending: _PendingAutomationFrame) -> None:
+    def enqueue_latest(pending: _PendingFrame) -> None:
         while True:
             try:
                 pending_frames.put_nowait(pending)
@@ -884,15 +901,13 @@ def run_vehicle_automation(
                     dropped = pending_frames.get_nowait()
                 except queue.Empty:
                     continue
-                if isinstance(dropped, _PendingAutomationFrame) and not record:
+                if isinstance(dropped, _PendingFrame) and not record:
                     dropped.front_path.unlink(missing_ok=True)
-                if isinstance(dropped, _PendingAutomationFrame) and view_server is not None:
+                if isinstance(dropped, _PendingFrame) and view_server is not None:
                     view_server.perception.release_frame(dropped.context.frame_id)
                 pending_frames.task_done()
-                with state_lock:
-                    state["skipped_count"] = int(state["skipped_count"]) + 1
 
-    def stop_perception_worker(*, process_latest: bool) -> None:
+    def stop_decision_worker(*, process_latest: bool) -> None:
         if not process_latest:
             cycle_host.close()
         if not process_latest:
@@ -900,13 +915,11 @@ def run_vehicle_automation(
                 dropped = pending_frames.get_nowait()
             except queue.Empty:
                 dropped = None
-            if isinstance(dropped, _PendingAutomationFrame):
+            if isinstance(dropped, _PendingFrame):
                 if view_server is not None:
                     view_server.perception.release_frame(dropped.context.frame_id)
                 if not record:
                     dropped.front_path.unlink(missing_ok=True)
-                with state_lock:
-                    state["skipped_count"] = int(state["skipped_count"]) + 1
                 pending_frames.task_done()
         try:
             pending_frames.put(worker_sentinel, timeout=1.0)
@@ -923,18 +936,23 @@ def run_vehicle_automation(
         worker_thread.start()
         capture_sequence = 0
         next_capture_at = time.monotonic()
-        capture_interval_s = max(0.0, float(interval_s))
+        capture_interval_s = configuration.interval_s
         while cycle_host.run_state == "running":
             if worker_failed.is_set():
                 raise worker_errors[0]
             apply_memory_reset_if_requested()
             if capture_sequence > 0 and capture_interval_s > 0:
-                next_capture_at += capture_interval_s
                 delay_s = max(0.0, next_capture_at - time.monotonic())
-                if worker_failed.wait(delay_s):
+                capture_wake.wait(delay_s)
+                if worker_failed.is_set():
                     raise worker_errors[0]
                 apply_memory_reset_if_requested()
+            if cycle_host.run_state != "running":
+                break
 
+            # Pace actual capture starts, without bursting to catch up after a
+            # delayed request. The decision worker never waits on this timer.
+            next_capture_at = time.monotonic() + capture_interval_s
             captured_started_at_ms = _timestamp_ms()
             # Provisional id for the sensor request path; rewritten from simulator
             # frame identity once the capture returns.
@@ -1105,6 +1123,7 @@ def run_vehicle_automation(
                     "simulator_frame_index": frame_index,
                     "simulation_epoch": simulation_epoch,
                     "capture_sequence": capture_sequence,
+                    "capture_interval_s": configuration.interval_s,
                     "perception_output_dir": (
                         str(perception_output_dir) if perception_output_dir is not None else None
                     ),
@@ -1114,7 +1133,7 @@ def run_vehicle_automation(
             if view_server is not None:
                 view_server.perception.retain_frame(frame_id)
             enqueue_latest(
-                _PendingAutomationFrame(
+                _PendingFrame(
                     context=context,
                     front_path=front_path,
                     chaser_reference=chaser_reference if isinstance(chaser_reference, dict) else None,
@@ -1141,19 +1160,19 @@ def run_vehicle_automation(
 
             capture_sequence += 1
 
-        stop_perception_worker(process_latest=True)
+        stop_decision_worker(process_latest=True)
         if worker_failed.is_set():
             raise worker_errors[0]
 
     except KeyboardInterrupt:
         cycle_host.close()
         if worker_thread.is_alive():
-            stop_perception_worker(process_latest=False)
+            stop_decision_worker(process_latest=False)
         finish_run(state, view_server, status="stopped", stop_reason="keyboard_interrupt")
     except (MetricsUiWebSocketError, ChaseCaptureValidationError, ChasePassiveCaptureError) as exc:
         cycle_host.close()
         if worker_thread.is_alive():
-            stop_perception_worker(process_latest=False)
+            stop_decision_worker(process_latest=False)
         finish_run(
             state,
             view_server,
@@ -1170,7 +1189,7 @@ def run_vehicle_automation(
     except Exception as exc:
         cycle_host.close()
         if worker_thread.is_alive():
-            stop_perception_worker(process_latest=False)
+            stop_decision_worker(process_latest=False)
         finish_run(state, view_server, status="error", error=f"{type(exc).__name__}: {exc}")
     else:
         # The host ended the run: its stop reason is how the run ended.
@@ -1187,7 +1206,7 @@ def start_vehicle_automation_background(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = 0.25,
+    interval_s: float = DEFAULT_INTERVAL_S,
     frames: int = 0,
     take_control: bool = True,
     record: bool = False,
@@ -1945,7 +1964,7 @@ def restart_vehicle_automation(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = 0.25,
+    interval_s: float = DEFAULT_INTERVAL_S,
     frames: int = 0,
     take_control: bool = True,
     record: bool = False,

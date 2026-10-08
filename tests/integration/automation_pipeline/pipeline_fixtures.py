@@ -22,8 +22,10 @@ class _SlowMapper:
 
     def __init__(self) -> None:
         self.frame_ids: list[str] = []
+        self.contexts: list = []
 
     def __call__(self, context):
+        self.contexts.append(context)
         return self.perceive(build_perception_request(context.sensor_frame))
 
     def reset(self, shared_memory=None) -> None:

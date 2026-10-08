@@ -4,8 +4,8 @@
 activation. A controller bundle imports ``implementations`` from that bundle;
 otherwise the runner comes from the installed package. ``plugin_report`` copies
 a hosted runner's plugin report for the worker's and the workbench's
-publications. Live selection changes are the cycle host's
-(``AutonomyCycleHost.sync_selection``), shared with the onboard host.
+publications. A running host applies live selections in ``run`` and
+exposes the applied identity from ``applied_decision``.
 """
 
 from __future__ import annotations

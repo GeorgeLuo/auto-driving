@@ -60,7 +60,6 @@ from .step_activations import (
     apply_staged,
     bundle_activation_path,
     bundle_activation_problems,
-    decision_generation_id,
     decision_identity,
     format_activation_problems,
     read_bundle_activation,
@@ -395,15 +394,13 @@ def run_vehicle_automation(
                 ]
             ),
         )
-    perception_step = steps.perception
-    memory_step = steps.memory
-    proposal_step = steps.proposal
     cycle_host = create_host(car, steps=steps)
     # Restaged selections apply between frames. Changed specs or configs need a restart.
     for step in LIVE_SELECTION_STEPS:
         activation = activations.get(step)
         if activation is not None:
             cycle_host.watch_selection(step, bundle_activation_path(bundle, step), activation)
+    cycle_host.use_applied_decision(identity)
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
     run_id = _now_id("automation")
@@ -458,7 +455,7 @@ def run_vehicle_automation(
     )
     state["perception"] = {
         **perception_record(manifest_path, perception_activation),
-        "plugin_report": plugin_report(perception_step),
+        "plugin_report": plugin_report(cycle_host.step("perception")),
     }
     state["decision"] = decision_record(identity)
     state["execution"] = cycle_host.execution.status()
@@ -525,6 +522,7 @@ def run_vehicle_automation(
         if not isinstance(request, dict):
             request = {}
         token = request.get("token")
+        memory_step = cycle_host.step("memory")
         if memory_step is None:
             result = {
                 "schema": "automa_memory_reset_result_v0",
@@ -543,7 +541,7 @@ def run_vehicle_automation(
                     "status": "reset",
                     "token": token,
                     "report": report,
-                    "memory": memory_step.status(),
+                    "memory": cycle_host.status()["steps"]["memory"],
                     "completed_at_ms": _timestamp_ms(),
                 }
             except Exception as exc:  # noqa: BLE001 - worker control boundary
@@ -560,7 +558,7 @@ def run_vehicle_automation(
             if memory_step is not None:
                 state["memory"] = {
                     "activation": display_path(memory_activation_path),
-                    "status": memory_step.status(),
+                    "status": cycle_host.status()["steps"]["memory"],
                 }
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
@@ -569,42 +567,10 @@ def run_vehicle_automation(
         except OSError:
             pass
 
-    def adopt_staged_decision() -> None:
-        """Publish under the staged decision generation once this worker runs it.
-
-        The proposal runner applies a changed plugin list during the cycle.
-        Adopt only after its applied IDs match the staged generation: a load
-        or reset failure can leave the requested selection unapplied.
-        Restaged proposal configs, plan, or action wait for a restart.
-        """
-
-        nonlocal identity
-        try:
-            staged = decision_identity(bundle)
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            return
-        applied_ids = getattr(proposal_step, "plugin_ids", None)
-        if staged == identity or applied_ids is None:
-            return
-        running = {
-            **identity["steps"],
-            "proposal": {**identity["steps"]["proposal"], "plugins": list(applied_ids)},
-        }
-        if decision_generation_id(running) != staged["generation_id"]:
-            return
-        identity = staged
-        with state_lock:
-            state["decision"].update(
-                generation_id=staged["generation_id"], steps=staged["steps"]
-            )
-        if view_server is not None:
-            view_server.decision.adopt(staged)
-        _emit(output, f"Decision generation: {staged['generation_id']} (restaged)")
-
     last_decision_capture_sequence = -1
 
     def process_frame(pending: _PendingFrame) -> None:
-        nonlocal last_decision_capture_sequence
+        nonlocal last_decision_capture_sequence, identity
         apply_memory_reset_if_requested()
         context = pending.context
         capture_sequence = int(context.metadata["capture_sequence"])
@@ -618,12 +584,22 @@ def run_vehicle_automation(
             raise ValueError(f"{context.frame_id} has no sensor frame")
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
-        cycle_host.sync_selection()
         with state_lock:
             state["skipped_count"] = int(state["skipped_count"]) + skipped_since_previous
         cycle_result = cycle_host.run(context)
-        if proposal_step is not None:
-            adopt_staged_decision()
+        applied = cycle_host.applied_decision()
+        if (
+            isinstance(applied, dict)
+            and applied.get("generation_id") != identity.get("generation_id")
+        ):
+            identity = applied
+            with state_lock:
+                state["decision"].update(
+                    generation_id=applied["generation_id"], steps=applied["steps"]
+                )
+            if view_server is not None:
+                view_server.decision.adopt(applied)
+            _emit(output, f"Decision generation: {applied['generation_id']} (restaged)")
         # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False
@@ -681,9 +657,9 @@ def run_vehicle_automation(
         else:
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
-        perception_plugin_report = plugin_report(perception_step)
-        memory_plugin_report = plugin_report(memory_step)
-        proposal_plugin_report = plugin_report(proposal_step)
+        perception_plugin_report = plugin_report(cycle_host.step("perception"))
+        memory_plugin_report = plugin_report(cycle_host.step("memory"))
+        proposal_plugin_report = plugin_report(cycle_host.step("proposal"))
 
         control_record = cycle_result.control_record()
         host_status = cycle_host.status()

@@ -533,6 +533,10 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             vehicle_id = None
             source_id = None
             generation_id = activation_generation_id(decision_activations, prefix="decision")
+            host.use_applied_decision({
+                "generation_id": generation_id,
+                "steps": decision_activations,
+            })
             run_id = None
             try:
                 identity = (

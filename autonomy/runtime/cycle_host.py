@@ -2,24 +2,29 @@
 
 ``AutonomyCycleHost`` owns the host map every step's plugins share, runs the
 cycle once per frame, applies its output through ControlExecution, and keeps
-the last result. A target-less host only computes decisions. ``set_step`` swaps one step's
-runner between frames (for example after its activation changes), and
-``status`` reports each step runner's status. ``watch_selection`` and
-``sync_selection`` let every vehicle host apply a selection restaged into a
-step's ``active.json`` between frames; changed specs or configs need a restart.
+the last result. A target-less host only computes decisions. ``set_step`` swaps
+one step's runner between frames, and ``status`` reports each step runner's
+status plus the applied decision identity. ``watch_selection`` records the
+activation files a running host follows. ``run`` synchronizes those selections
+before the cycle and records the applied decision identity afterward. Changed
+specs or configs need a restart.
 """
 
 from __future__ import annotations
 
 import threading
 import traceback
+from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import (
+    DECISION_STEPS,
     STEPS,
     StepActivation,
+    activation_generation_id,
     read_step_activation,
     require_step,
 )
@@ -63,6 +68,7 @@ class AutonomyCycleHost:
         self.last_error: str | None = None
         self._status_providers: dict[str, Callable[[], dict[str, Any]]] = {}
         self._watched: dict[str, tuple[Path, StepActivation]] = {}
+        self._applied_decision: dict[str, Any] | None = None
 
     @classmethod
     def from_runtime(cls, runtime_root: Path, *, target: ControlTarget | None = None) -> "AutonomyCycleHost":
@@ -104,6 +110,52 @@ class AutonomyCycleHost:
                     requested[step] = live
             return requested
 
+    def use_applied_decision(self, identity: Mapping[str, Any]) -> None:
+        """Seed the decision identity published until a restaged selection applies."""
+
+        generation_id = identity.get("generation_id") if isinstance(identity, Mapping) else None
+        steps = identity.get("steps") if isinstance(identity, Mapping) else None
+        if not isinstance(generation_id, str) or not isinstance(steps, Mapping):
+            raise ValueError("applied decision identity needs a generation_id and steps")
+        with self._lock:
+            self._applied_decision = {
+                "generation_id": generation_id,
+                "steps": deepcopy(dict(steps)),
+            }
+
+    def applied_decision(self) -> dict[str, Any] | None:
+        """The proposal, plan, and action identity this host is running."""
+
+        with self._lock:
+            if self._applied_decision is None:
+                return None
+            return deepcopy(self._applied_decision)
+
+    def _record_applied_decision(self, requested: Mapping[str, StepActivation]) -> None:
+        """Keep the previous identity unless a requested decision step applied."""
+
+        applied = self._applied_decision
+        if applied is None or not requested:
+            return
+        steps = dict(applied["steps"])
+        changed = False
+        for step, live in requested.items():
+            if step not in DECISION_STEPS:
+                continue
+            runner = self.step(step)
+            applied_ids = tuple(getattr(runner, "plugin_ids", ()) or ())
+            if applied_ids != tuple(live.plugins):
+                continue
+            steps[step] = live.to_payload()
+            changed = True
+        if not changed:
+            return
+        try:
+            generation_id = activation_generation_id(steps, prefix="decision")
+        except (TypeError, ValueError):
+            return
+        self._applied_decision = {"generation_id": generation_id, "steps": steps}
+
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
         with self._session_lock:
             run_generation = self._run_generation
@@ -116,6 +168,7 @@ class AutonomyCycleHost:
             else:
                 self.shared_memory = context.shared_memory
             try:
+                requested = self.sync_selection()
                 result = self.cycle.run(context)
                 result = replace(result, context=self._record_frame_context(result.context))
                 if self.execution is not None:
@@ -133,6 +186,7 @@ class AutonomyCycleHost:
                 self.cycle_count += 1
                 self.last_error = None
                 self.last_result = result
+                self._record_applied_decision(requested)
             except Exception as exc:
                 self._record_frame_context(context)
                 try:
@@ -245,6 +299,7 @@ class AutonomyCycleHost:
                 "session": self.session_status(),
                 "execution": self.execution.status() if self.execution is not None else None,
                 "steps": steps,
+                "applied_decision": self.applied_decision(),
                 "components": components,
                 "cycle_count": self.cycle_count,
                 "error_count": self.error_count,

@@ -173,10 +173,9 @@ class AutonomyPilotPart:
 
     The decision publication is identified by the proposal, plan, and action
     activations the host runs (``decision_activations``) and the generation ID
-    derived from them. Each cycle first applies selections restaged on the Pi
-    (``AutonomyCycleHost.sync_selection``), as the Chase worker does, and a
-    restaged proposal selection becomes the publication's generation once it
-    runs.
+    derived from them. ``host.run`` applies selections restaged on the Pi and
+    records the applied identity. This part copies that identity into the
+    publication, as the Chase worker copies it into its state and view.
     """
 
     def __init__(
@@ -230,8 +229,6 @@ class AutonomyPilotPart:
         self._current_cycle: Any | None = None
         self._current_decision_runners: tuple[Any, ...] | None = None
         self._last_cycle_failed = False
-        # A restaged proposal activation waiting for its runner to apply it.
-        self._requested_proposal: Any | None = None
         self.latest_camera_frame: LatestCameraFrame | None = None
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
         # Optional final-boundary observer.  It receives only detached source
@@ -354,7 +351,7 @@ class AutonomyPilotPart:
                 cycle = dict(self.latest_state.cycle)
                 cycle["memory"] = deepcopy(report)
                 self.latest_state = replace(self.latest_state, cycle=cycle)
-            step = self.host.cycle.steps.memory
+            step = self.host.step("memory")
             step_status = step.status() if step is not None and callable(getattr(step, "status", None)) else None
             return {
                 "ok": True,
@@ -667,33 +664,16 @@ class AutonomyPilotPart:
             return "decision_identity_invalid"
         return None
 
-    def _sync_selection(self) -> None:
-        sync = getattr(self.host, "sync_selection", None)
-        if not callable(sync):
-            return
-        requested = sync().get("proposal")
-        if requested is not None:
-            self._requested_proposal = requested
+    def _write_applied_decision(self, applied: dict[str, Any]) -> None:
+        """Copy the host's applied identity into this part's publication."""
 
-    def _adopt_requested_proposal(self) -> None:
-        """Publish under the restaged proposal's generation once its runner applies it."""
-
-        requested = self._requested_proposal
-        steps = getattr(getattr(self.host, "cycle", None), "steps", None)
-        runner = getattr(steps, "proposal", None)
-        if requested is None or runner is None or self.decision_activations is None:
-            return
-        if tuple(getattr(runner, "plugin_ids", ())) != tuple(requested.plugins):
-            return
-        activations = {**self.decision_activations, "proposal": requested.to_payload()}
-        try:
-            generation_id = activation_generation_id(activations, prefix="decision")
-        except (TypeError, ValueError):
+        generation_id = applied.get("generation_id")
+        steps = applied.get("steps")
+        if not isinstance(generation_id, str) or not isinstance(steps, dict):
             return
         with self._lock:
-            self.decision_activations = activations
+            self.decision_activations = deepcopy(steps)
             self.generation_id = generation_id
-            self._requested_proposal = None
             self._decision_identity_error = self._validate_decision_identity()
         store = getattr(self.host_telemetry, "store", None)
         if store is not None:
@@ -999,7 +979,6 @@ class AutonomyPilotPart:
 
         try:
             try:
-                self._sync_selection()
                 cycle_result = self.host.run(
                     DecisionFrameContext(
                         frame_id=frame_id,
@@ -1021,7 +1000,12 @@ class AutonomyPilotPart:
                 control = cycle_result.control
                 cycle_dict = cycle_result.to_dict()
                 self._record_current_cycle(cycle_result, failed=False)
-                self._adopt_requested_proposal()
+                applied = self.host.applied_decision()
+                if (
+                    isinstance(applied, dict)
+                    and applied.get("generation_id") != self.generation_id
+                ):
+                    self._write_applied_decision(applied)
                 completed_at_ms = cycle_result.completed_at_ms
                 duration_ms = cycle_result.duration_ms
                 status = "ok"

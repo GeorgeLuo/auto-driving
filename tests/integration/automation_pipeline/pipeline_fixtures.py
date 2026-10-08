@@ -10,7 +10,6 @@ from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
-from cli.automa_cli import automation as automation_module
 from implementations.decision_cycle.catalog import packaged_activation, preset_activation
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
@@ -161,16 +160,16 @@ def _write_activations(
 def staged_runners(*, perception=None, wrap=None):
     """Patch the worker's step loading: substitute ``perception`` and/or ``wrap`` loaded runners."""
 
-    load = automation_module.load_staged_runner
+    from autonomy.runtime.plugin_loader import load_runner as load_installed_or_bundle
 
-    def load_runner(activation):
+    def load_runner(activation, *, source=None):
         if activation.step == "perception" and perception is not None:
             perception.activation = activation
             perception.plugin_ids = tuple(activation.plugins)
             return perception
-        runner = load(activation)
+        runner = load_installed_or_bundle(activation, source=source)
         if wrap is not None:
             wrap(activation.step, getattr(runner, "runner", runner))
         return runner
 
-    return patch("cli.automa_cli.automation.load_staged_runner", side_effect=load_runner)
+    return patch("autonomy.decision_cycle.steps.load_runner", side_effect=load_runner)

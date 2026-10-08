@@ -17,11 +17,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.activation import read_step_activation
+from autonomy.decision_cycle.activation import STEPS, read_step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
+from autonomy.runtime.plugin_loader import CodeSource
 from autonomy.runtime.recording import RunRecording, cycle_frame
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
@@ -65,7 +66,7 @@ from .step_activations import (
     read_bundle_activation,
     staging_vehicle,
 )
-from .step_hosting import load_staged_runner, plugin_report
+from .step_hosting import plugin_report
 from .run_record import (
     control_application,
     control_source,
@@ -360,84 +361,48 @@ def run_vehicle_automation(
             )
 
     try:
-        memory_activation = read_bundle_activation(bundle, "memory")
-        proposal_activation = read_bundle_activation(bundle, "proposal")
         activations = {
-            step: read_bundle_activation(bundle, step)
-            for step in ("observation", "plan", "action")
+            step: read_bundle_activation(bundle, step) for step in STEPS if step != "perception"
         }
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
-    perception_plugins = ", ".join(perception_activation.plugins) or "(none)"
+    activations["perception"] = perception_activation
+    memory_activation_path = bundle_activation_path(bundle, "memory")
+    proposal_activation_path = bundle_activation_path(bundle, "proposal")
     decision_published = decision_record(identity)["published"]
 
     car = create_vehicle_access(vehicle, timeout_s=timeout_s).car
+    # Same startup as the onboard host. The code source differs because this
+    # worker is not the staged bundle.
+    source = CodeSource(bundle_root=Path(bundle["root_dir"]))
     try:
-        perception_step = load_staged_runner(perception_activation)
+        steps = decision_steps(
+            {step: activation for step, activation in activations.items() if activation is not None},
+            source=source,
+        )
     except Exception as exc:
+        failed_step = str(exc).removeprefix("could not load ").split(":", 1)[0]
+        activation_path = (
+            bundle_activation_path(bundle, failed_step) if failed_step in STEPS else None
+        )
         return CommandResult(
             2,
             "\n".join(
                 [
-                    f"Could not load perception for {vehicle_id}.",
-                    f"Plugins: {perception_plugins}",
-                    f"Reason: {type(exc).__name__}: {exc}",
+                    f"Could not load decision steps for {vehicle_id}.",
+                    *([f"Activation: {display_path(activation_path)}"] if activation_path else []),
+                    f"Reason: {exc}",
                 ]
             ),
         )
-
-    memory_activation_path = bundle_activation_path(bundle, "memory")
-    memory_step = None
-    if memory_activation is not None:
-        try:
-            memory_step = load_staged_runner(memory_activation)
-        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not load memory activation for {vehicle_id}.",
-                        f"Activation: {display_path(memory_activation_path)}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-    # Proposals load from the bundle, as memory does; without a staged
-    # activation the vehicle proposes nothing and holds.
-    proposal_activation_path = bundle_activation_path(bundle, "proposal")
-    proposal_step = None
-    if proposal_activation is not None:
-        try:
-            proposal_step = load_staged_runner(proposal_activation)
-        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not load proposal activation for {vehicle_id}.",
-                        f"Activation: {display_path(proposal_activation_path)}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-    try:
-        steps = decision_steps(
-            {step: activation for step, activation in activations.items() if activation}
-        )
-    except Exception as exc:
-        return CommandResult(2, f"Could not load decision steps for {vehicle_id}: {type(exc).__name__}: {exc}")
-    cycle_host = create_host(
-        car, steps=replace(
-            steps, perception=perception_step, memory=memory_step, proposal=proposal_step
-        ),
-    )
-    # Restaged selections apply between frames, as on the onboard host.
-    for step, activation in (
-        ("perception", perception_activation),
-        ("memory", memory_activation),
-        ("proposal", proposal_activation),
-    ):
-        if step in LIVE_SELECTION_STEPS and activation is not None:
+    perception_step = steps.perception
+    memory_step = steps.memory
+    proposal_step = steps.proposal
+    cycle_host = create_host(car, steps=steps)
+    # Restaged selections apply between frames. Changed specs or configs need a restart.
+    for step in LIVE_SELECTION_STEPS:
+        activation = activations.get(step)
+        if activation is not None:
             cycle_host.watch_selection(step, bundle_activation_path(bundle, step), activation)
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"

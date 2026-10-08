@@ -113,7 +113,12 @@ def decision_steps(
         activation = activations[step] if step in activations else builtin_activation(step)
         if activation is not None and activation.step != step:
             raise ValueError(f"activation for {activation.step!r} given as {step!r}")
-        runners[step] = load_runner(activation, source=source) if activation is not None else None
+        try:
+            runners[step] = (
+                load_runner(activation, source=source) if activation is not None else None
+            )
+        except Exception as exc:
+            raise RuntimeError(f"could not load {step}: {type(exc).__name__}: {exc}") from exc
     return DecisionSteps(**runners)
 
 

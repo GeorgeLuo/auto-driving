@@ -510,9 +510,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             host = create_host(
                 steps=decision_steps(activations, source=INSTALLED_PACKAGE)
             )
-            # Selections restaged with `vehicles update autonomy` apply between
-            # frames, as in the Chase worker; changed specs or configs need
-            # --restart.
+            # Restaged selections apply between frames. Changed specs or configs need a restart.
             for step in LIVE_SELECTION_STEPS:
                 if step in activations:
                     host.watch_selection(

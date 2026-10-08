@@ -322,7 +322,12 @@ Useful run options:
   outside the capture cadence and pending frames discarded on stop are not skips.
 - `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
 - `--open-view` opens the browser only after the correlated view is healthy.
-- `--record` keeps timestamped frame and perception artifacts.
+- `--record` keeps every completed decision and its exact camera image, capture
+  time, and applied step configurations. Both vehicles commit these artifacts
+  before counting the decision. PiCar recordings are copied from the onboard
+  run in order and drained on completion or stop; later manual observations
+  stay outside the recording. A successful recorded run reports matching
+  `Decisions recorded` and `Decisions completed` counts.
 - `--log` persists worker output to `automation.log`.
 
 After changing perception or shared autonomy code, stage a fresh bundle before

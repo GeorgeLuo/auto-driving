@@ -119,11 +119,24 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
         class RuntimeClient:
             polls = 0
 
-            def start(self, configuration):
-                part.start(configuration)
+            def start(self, configuration, *, record=False):
+                if record:
+                    part.recording_root = root / "host-runs"
+                    part.vehicle_id = "picar-test"
+                    part.recording_root.mkdir(parents=True, exist_ok=True)
+                # Frame 3 is the third decision. A bound of 3 would end the
+                # session inside that poll, and a recorded terminal session is
+                # drained before the monitor reads the live publication.
+                status = part.start(replace(configuration, num_decisions=0), record=record)
                 part.run(image_array=image, mode="user")
                 part.wait_for_cycle()
-                return {"ok": True, "host_run_id": part.run_id}
+                return {"ok": True, "host_run_id": part.run_id, "session": status}
+
+            def read_recording(self, run_id, *, after):
+                return part.host.recording.read(run_id=run_id, after=after)
+
+            def stop(self):
+                return {"ok": True, "session": part.stop()}
 
             def status(self):
                 self.polls += 1
@@ -136,10 +149,9 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                         part.run(image_array=np.full_like(image, value), mode="user")
                     perception.release[1].set()
                     part.wait_for_cycle()
+                elif self.polls >= 3 and part.host.run_state == "running":
+                    part.host.stop(reason="completed")
                 return {"ok": True, "host_run_id": part.run_id, "session": part.host.session_status()}
-
-            def stop(self):
-                return {"ok": True, "session": part.stop()}
 
         def frame(*_args, **_kwargs):
             jpeg, publication = part.publish_latest_frame_jpeg()
@@ -182,11 +194,13 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 self.assertEqual(state["num_decisions"], 3)
                 self.assertEqual(state["session"]["configuration"]["interval_s"], 10.0)
                 self.assertEqual(state["last_frame"]["skipped_since_previous"], 1)
-                records = [json.loads(p.read_text()) for p in (root / "runs" / part.run_id).glob("perception/*/perception.json")]
+                recording_id = state["session"]["recording"]["run_id"]
+                records = [json.loads(p.read_text()) for p in (root / "runs" / recording_id).glob("perception/*/perception.json")]
                 records.sort(key=lambda record: record["frame_index"])
-                # The monitor missed a completed decision, not a dropped capture.
-                self.assertEqual([record["frame_index"] for record in records], [0, 3])
-                self.assertEqual([record["skipped_since_previous"] for record in records], [0, 1])
+                # Live samples are the latest publication at each poll, so frame 1
+                # is absent from `seen`. The recording keeps that completed decision.
+                self.assertEqual([record["frame_index"] for record in records], [0, 1, 3])
+                self.assertEqual([record["skipped_since_previous"] for record in records], [0, 0, 1])
                 self.assertIn("skipped_since_previous=1", output.getvalue())
                 self.assertIn("Frames superseded before decision: 1", message)
             finally:

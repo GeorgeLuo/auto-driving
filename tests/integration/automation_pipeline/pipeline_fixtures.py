@@ -165,6 +165,8 @@ def staged_runners(*, perception=None, wrap=None):
 
     def load_runner(activation):
         if activation.step == "perception" and perception is not None:
+            perception.activation = activation
+            perception.plugin_ids = tuple(activation.plugins)
             return perception
         runner = load(activation)
         if wrap is not None:

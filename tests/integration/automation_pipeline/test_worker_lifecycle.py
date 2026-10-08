@@ -24,6 +24,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch(
                     "cli.automa_cli.automation.subprocess.Popen",
                     return_value=_ExitedProcess(),
@@ -82,6 +83,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                                 "has_perception": True,
                                 "latest_frame_id": "frame_000000",
                                 "latest_perception_frame_id": "frame_000000",
+                                "perception_frame_buffered": True,
                             },
                         }
                     )
@@ -92,6 +94,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation.subprocess.Popen", side_effect=launch),
                 patch(
                     "cli.automa_cli.automation.get_perception_view_status",
@@ -103,6 +106,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         "has_perception": True,
                         "latest_frame_id": "frame_000000",
                         "latest_perception_frame_id": "frame_000000",
+                        "perception_frame_buffered": True,
                     },
                 ),
                 patch(
@@ -149,8 +153,8 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         "status": "running",
                         "pid": 45454,
                         "run_id": "run-current",
-                        "action_policy": "cycle_idle",
-                        "control_application": "stop_only_safety_gate",
+                        "action_policy": "autonomy",
+                        "control_application": "shared_execution",
                     }
                 ),
                 encoding="utf-8",
@@ -163,10 +167,12 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 "has_perception": True,
                 "latest_frame_id": "frame_000001",
                 "latest_perception_frame_id": "frame_000001",
+                "perception_frame_buffered": True,
             }
 
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation._pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.automation.get_perception_view_status",
@@ -224,6 +230,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation._pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.automation.get_perception_view_status",
@@ -255,7 +262,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root):
+            with (
+                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
+            ):
                 result = stop_vehicle_automation(vehicle_id="chase-sim-chaser")
 
             state = json.loads(
@@ -281,7 +291,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 json.dumps({"status": "starting", "pid": None}),
                 encoding="utf-8",
             )
-            with patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root):
+            with (
+                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
+            ):
                 record_vehicle_automation_terminal_result(
                     vehicle_id="chase-sim-chaser",
                     result=CommandResult(2, "No active Chase frontend was found."),

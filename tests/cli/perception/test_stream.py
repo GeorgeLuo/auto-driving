@@ -108,7 +108,7 @@ class PerceptionStreamJsonTests(unittest.TestCase):
         with patch.object(streaming, "fetch_observation_publication", return_value=_publication()), patch.object(
             streaming, "RuntimeViewServer", side_effect=AssertionError("json mode serves no page")
         ), patch.object(
-            streaming, "picar_observation_dir", side_effect=AssertionError("json mode writes no frame")
+            streaming, "runtime_view_dir", side_effect=AssertionError("json mode writes no frame")
         ):
             result, out = self._stream(PICAR, json_output=True)
 
@@ -281,26 +281,28 @@ class PerceptionStreamJsonTests(unittest.TestCase):
     def test_physical_terminal_shows_the_probe_status_and_publication_health(
         self,
     ) -> None:
-        for health in ("healthy", "warming", "stale", "error"):
-            with (
-                self.subTest(health=health),
-                patch.object(
-                    streaming,
-                    "fetch_observation_publication",
-                    return_value=_publication(health=health),
-                ),
-                patch.object(streaming, "RuntimeViewServer"),
-                patch.object(streaming, "picar_observation_dir"),
-                patch.object(streaming, "_publish_picar_view"),
-            ):
-                machine, json_text = self._stream(PICAR, json_output=True)
-                terminal, screen = self._stream(PICAR, no_clear=True)
-                probe = json.loads(json_text)
-                self.assertEqual(terminal.exit_code, machine.exit_code)
-                self.assertIn(f"status: {probe['status']}", screen)
-                self.assertIn(f"publication: {health}", screen)
-                if probe.get("error"):
-                    self.assertIn(probe["error"], screen)
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime_dir = Path(temporary) / "piracer"
+            for health in ("healthy", "warming", "stale", "error"):
+                with (
+                    self.subTest(health=health),
+                    patch.object(
+                        streaming,
+                        "fetch_observation_publication",
+                        return_value=_publication(health=health),
+                    ),
+                    patch.object(streaming, "RuntimeViewServer"),
+                    patch.object(streaming, "runtime_view_dir", return_value=runtime_dir),
+                    patch.object(streaming, "_publish_picar_view"),
+                ):
+                    machine, json_text = self._stream(PICAR, json_output=True)
+                    terminal, screen = self._stream(PICAR, no_clear=True)
+                    probe = json.loads(json_text)
+                    self.assertEqual(terminal.exit_code, machine.exit_code)
+                    self.assertIn(f"status: {probe['status']}", screen)
+                    self.assertIn(f"publication: {health}", screen)
+                    if probe.get("error"):
+                        self.assertIn(probe["error"], screen)
 
     def test_cli_stream_perception_help_lists_json(self) -> None:
         result = run_automa("vehicles", "stream", "perception", "--help", check=False)

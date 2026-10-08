@@ -281,16 +281,13 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 extra_env=env,
             )
             payload = json.loads(json_result.stdout)
-            self.assertEqual(
-                payload["schema"], "automa_physical_decision_publication_v0"
-            )
-            self.assertTrue(payload["accepted"])
+            self.assertEqual(payload["schema"], "vehicle_report_v0")
             self.assertEqual(payload["provider"], "picar")
             self.assertEqual(
-                payload["decision"]["source_id"], f"donkeycar:{vehicle_id}"
+                payload["values"]["source_id"], f"donkeycar:{vehicle_id}"
             )
-            self.assertEqual(payload["decision"]["run_id"], "donkey-run-http-fixture")
-            authority = payload["decision"]["cycle"]["action"]["authority"]
+            self.assertEqual(payload["run_id"], "donkey-run-http-fixture")
+            authority = payload["cycle"]["action"]["authority"]
             self.assertFalse(authority["proposed_applied"])
             self.assertEqual(authority["authorized_output"]["steering"], 0.0)
             self.assertEqual(authority["authorized_output"]["throttle"], 0.0)
@@ -305,7 +302,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 runtime_root=self.runtime_root,
                 extra_env=env,
             )
-            self.assertIn(f"Source: donkeycar:{vehicle_id}", text_result.stdout)
+            self.assertIn(f"source=donkeycar:{vehicle_id}", text_result.stdout)
             self.assertIn("proposed_applied=false", text_result.stdout)
 
             fixture_state["force_expired"] = True

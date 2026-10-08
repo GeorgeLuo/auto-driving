@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
@@ -11,14 +12,16 @@ from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
 from cli.automa_cli import decision as decision_module
 from cli.automa_cli import proposal as proposal_module
 from cli.automa_cli.decision import (
-    build_decision_stream_frame,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
-from tests.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
+from tests.cli.decision.decision_surfaces_fixtures import (
+    packaged_decision_steps,
+    vehicle_report_for_records,
+)
 
 
 SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
@@ -79,7 +82,7 @@ class LiveRuntimeDecisionViewFixture:
             raw = json.loads(
                 (ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8")
             )["frames"][0]
-        cycle = DecisionRunners.from_payloads(packaged_decision_steps()).run(
+        records = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
@@ -87,12 +90,16 @@ class LiveRuntimeDecisionViewFixture:
             shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
             host_application=host_application,
         )
-        return build_decision_stream_frame(
-            cycle,
+        return vehicle_report_for_records(
+            records,
             vehicle_id="chase-sim-chaser",
             run_id=run_id,
-            worker_pid=os.getpid(),
             generation_id=self.activation["generation_id"],
+            frame_id=raw["frame_id"],
+            frame_index=raw["frame_index"],
+            timestamp_ms=raw["timestamp_ms"],
+            published_at_ms=int(time.time() * 1000),
+            values={"worker_pid": os.getpid()},
         )
 
     def _accepted_frame_with_evidence(self, mutate=None) -> dict:
@@ -160,7 +167,7 @@ class LiveRuntimeDecisionViewFixture:
         self.assertIsNotNone(exact_image)
         self.assertTrue(
             target.decision.publish(
-                stream_frame=stream_frame,
+                report=stream_frame,
                 frame_record=frame_record,
                 image=exact_image,
             )

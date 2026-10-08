@@ -175,12 +175,20 @@ class MemoryViabilityTests(unittest.TestCase):
                 self.assertEqual(result.exit_code, 1)
                 self.assertFalse(self._gate(report, gate_id))
 
-    def test_simulator_passes_with_a_stub_and_unknown_providers_are_refused(self) -> None:
-        results = {}
-        for provider in ("chase-sim", "other"):
-            vehicle = {"vehicle_id": "v", "provider": provider, "connection": {}}
-            results[provider] = self._run(vehicle, record=False)
-        self.assertEqual(results["chase-sim"][0].exit_code, 0)
-        self.assertTrue(results["chase-sim"][1]["stub"])
-        self.assertEqual(results["other"][0].exit_code, 2)
-        self.assertIn("memory viability measures picar vehicles", results["other"][0].message)
+    def test_simulator_is_measured_and_unknown_providers_are_refused(self) -> None:
+        chase = {"vehicle_id": "v", "provider": "chase-sim", "connection": {}}
+        counter = {"n": 0}
+
+        def probe(_vehicle: dict) -> dict:
+            counter["n"] += 1
+            return _live(counter["n"])
+
+        result, report = self._run(chase, probe, record=False)
+        self.assertEqual(result.exit_code, 0, result.message)
+        self.assertTrue(report["passed"])
+        self.assertNotIn("stub", report)
+
+        other = {"vehicle_id": "v", "provider": "other", "connection": {}}
+        refused, _report = self._run(other, record=False)
+        self.assertEqual(refused.exit_code, 2)
+        self.assertIn("picar and chase-sim", refused.message)

@@ -81,24 +81,65 @@ class PhysicalViabilityTests(unittest.TestCase):
             self.assertGreaterEqual(report["metrics"]["fresh_results_per_s"], 2.0)
             self.assertTrue((Path(report["out_dir"]) / "report.json").exists())
 
-    def test_simulator_passes_with_a_stub_and_unknown_providers_are_refused(self) -> None:
-        results = {}
-        for provider in ("chase-sim", "other"):
-            vehicle = {"vehicle_id": "v", "provider": provider, "connection": {}}
-            with patch(
-                "cli.automa_cli.viability.discover_active_vehicles",
-                return_value={"active": [vehicle], "inactive": []},
-            ), patch(
-                "cli.automa_cli.viability.find_vehicle_by_id",
-                return_value=(vehicle, None),
-            ):
-                results[provider] = run_perception_viability_measurement(
-                    vehicle_id="v", duration_s=1.0, record=False, json_output=True
-                )
-        self.assertEqual(results["chase-sim"].exit_code, 0)
-        self.assertTrue(json.loads(results["chase-sim"].message)["stub"])
-        self.assertEqual(results["other"].exit_code, 2)
-        self.assertIn("perception viability measures picar vehicles", results["other"].message)
+    def test_simulator_is_measured_and_unknown_providers_are_refused(self) -> None:
+        vehicle = {"vehicle_id": "v", "provider": "chase-sim", "connection": {}}
+        state = {"n": 0}
+
+        def fake_pub(_url: str) -> dict:
+            idx = state["n"]
+            state["n"] += 1
+            return {
+                "health": "healthy",
+                "mode": "observe_only",
+                "processed_count": idx + 1,
+                "skipped_count": 0,
+                "interval_s": 0.5,
+                "duration_ms": 280,
+                "result_age_ms": 120,
+                "control": {"steering": 0.0, "throttle": 0.0},
+                "frame": {"frame_id": f"frame_{idx:06d}"},
+            }
+
+        mono = {"t": 0.0}
+        with patch(
+            "cli.automa_cli.viability.discover_active_vehicles",
+            return_value={"active": [vehicle], "inactive": []},
+        ), patch(
+            "cli.automa_cli.viability.find_vehicle_by_id",
+            return_value=(vehicle, None),
+        ), patch(
+            "cli.automa_cli.viability.time.monotonic",
+            side_effect=lambda: mono["t"],
+        ), patch(
+            "cli.automa_cli.viability.time.sleep",
+            side_effect=lambda seconds: mono.__setitem__("t", mono["t"] + float(seconds)),
+        ):
+            measured = run_perception_viability_measurement(
+                vehicle_id="v",
+                duration_s=1.0,
+                sample_period_s=0.125,
+                record=False,
+                json_output=True,
+                fetch_publication=fake_pub,
+            )
+        self.assertEqual(measured.exit_code, 0, measured.message)
+        report = json.loads(measured.message)
+        self.assertTrue(report["passed"])
+        self.assertNotIn("stub", report)
+
+        other = {"vehicle_id": "v", "provider": "other", "connection": {}}
+        with patch(
+            "cli.automa_cli.viability.discover_active_vehicles",
+            return_value={"active": [other], "inactive": []},
+        ), patch(
+            "cli.automa_cli.viability.find_vehicle_by_id",
+            return_value=(other, None),
+        ):
+            refused = run_perception_viability_measurement(
+                vehicle_id="v", duration_s=1.0, record=False, json_output=True
+            )
+        self.assertEqual(refused.exit_code, 2)
+        self.assertIn("picar and chase-sim", refused.message)
 
 
 if __name__ == "__main__":

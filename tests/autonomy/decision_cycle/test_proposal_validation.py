@@ -75,7 +75,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertIsNone(result.plan)
         self.assertEqual(
-            result.authority.authorized_output["reason"], "hold-idle"
+            result.authority.authorized_output["reason"], "action_proposal_matrix_violated"
         )
         self.assertEqual(control.steering, 0.0)
 
@@ -95,7 +95,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.reason, "action_plan_invariant_violated")
         self.assertIsNone(result.plan)
         self.assertEqual(
-            result.authority.authorized_output["reason"], "hold-idle"
+            result.authority.authorized_output["reason"], "action_plan_invariant_violated"
         )
         self.assertEqual(control.steering, 0.0)
 
@@ -174,5 +174,5 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(
             result.authority.proposed.to_dict(), selected.command.to_dict()
         )
-        self.assertEqual(control.steering, 0.0)
-        self.assertFalse(result.authority.proposed_applied)
+        self.assertEqual(control.steering, 0.35)
+        self.assertTrue(result.authority.proposed_applied)

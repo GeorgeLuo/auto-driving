@@ -118,8 +118,7 @@ class InspectionSourceTests(unittest.TestCase):
         self.assertEqual(dropout["status"], "unavailable")
         self.assertEqual(dropout["plugin_runs"], [])
         self.assertEqual(perception["summary"]["failed_frames"], 1)
-        self.assertEqual(memory["frames"][1]["observation"]["things"], 0)
-        self.assertEqual(memory["frames"][1]["observation"]["signals"], 0)
+        self.assertIsNone(memory["frames"][1]["observation"])
         temporal = self.inspect(
             "perception",
             self.source,

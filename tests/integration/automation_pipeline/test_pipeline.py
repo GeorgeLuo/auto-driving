@@ -300,7 +300,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             def accepted_frame(_path, **identity):
                 return {"frame_id": identity["frame_id"]}
 
-            def publish_view(*, stream_frame, frame_record, image):
+            def publish_view(*, report, frame_record, image):
                 publications.append((frame_record["frame_id"], image))
                 return True
 

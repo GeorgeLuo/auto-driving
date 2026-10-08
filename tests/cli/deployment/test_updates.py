@@ -163,7 +163,7 @@ class DeploymentUpdateTests(unittest.TestCase):
             payload["activation"]["perception_preset"],
             DEFAULT_PERCEPTION_PRESET,
         )
-        self.assertEqual(payload["activation"]["steps"]["action"], ["hold"])
+        self.assertEqual(payload["activation"]["steps"]["action"], ["selected"])
         self.assertEqual(payload["activation"]["steps"]["memory"], ["bounded_evidence"])
         self.assertTrue(payload["restart_requested"])
         self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey runtime service")

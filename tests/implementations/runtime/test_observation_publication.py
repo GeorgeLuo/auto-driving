@@ -205,6 +205,7 @@ class ObservationPublicationTests(unittest.TestCase):
 
         class Boom:
             execution = ControlExecution(DonkeyControlTarget())
+            last_context = None
 
             def status(self):
                 return {"steps": {}}
@@ -245,17 +246,19 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(decision["reason"], "")
         published = decision["decision"]
         assert isinstance(published, dict)
+        self.assertEqual(published["schema"], "vehicle_report_v0")
         self.assertEqual(published["vehicle_id"], "piracer")
-        self.assertEqual(published["source_id"], "donkeycar:piracer")
+        values = published["values"]
+        self.assertEqual(values["source_id"], "donkeycar:piracer")
         self.assertEqual(published["run_id"], "donkey-run-fixture")
         expected_generation = activation_generation_id(
             {step: packaged_activation(step) for step in DECISION_STEPS}, prefix="decision"
         )
         self.assertEqual(published["generation_id"], expected_generation)
-        self.assertEqual(published["activation"]["generation_id"], expected_generation)
-        self.assertEqual(sorted(published["activation"]["steps"]), sorted(DECISION_STEPS))
+        self.assertEqual(values["activation"]["generation_id"], expected_generation)
+        self.assertEqual(sorted(values["activation"]["steps"]), sorted(DECISION_STEPS))
         self.assertEqual(
-            published["activation"]["steps"]["proposal"]["plugins"],
+            values["activation"]["steps"]["proposal"]["plugins"],
             ["avoid_recent_obstruction"],
         )
         self.assertNotIn("producer_pid", published)
@@ -263,7 +266,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["frame_index"], part.latest_state.frame_index)
         self.assertEqual(published["timestamp_ms"], part.latest_state.captured_at_ms)
         self.assertEqual(
-            published["source_frame"],
+            values["source_frame"],
             {
                 "frame_id": part.latest_state.frame_id,
                 "frame_index": part.latest_state.frame_index,

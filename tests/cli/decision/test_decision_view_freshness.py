@@ -32,7 +32,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         rejected_frame = {**stream_frame, "cycle": None}
         self.assertFalse(
             self.server.decision.publish(
-                stream_frame=rejected_frame,
+                report=rejected_frame,
                 frame_record=frame_record,
                 image=self.server.perception.frame(stream_frame["frame_id"]),
             )

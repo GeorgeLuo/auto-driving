@@ -16,7 +16,10 @@ from cli.automa_cli.decision import (
     strict_decode_apply_observation,
 )
 from cli.automa_cli.decision_records import DecisionRunners
-from tests.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
+from tests.cli.decision.decision_surfaces_fixtures import (
+    host_result_for_records,
+    packaged_decision_steps,
+)
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
     ACTIVE_RUN,
     LiveRuntimeDecisionViewFixture,
@@ -129,14 +132,19 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))[
             "frames"
         ][0]
-        cycle = DecisionRunners.from_payloads(packaged_decision_steps()).run(
+        records = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
             observation=strict_decode_apply_observation(raw["observation"]),
             shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
         )
-        _control = cycle.control
+        cycle = host_result_for_records(
+            records,
+            frame_id=raw["frame_id"],
+            frame_index=raw["frame_index"],
+            timestamp_ms=raw["timestamp_ms"],
+        )
         self.assertTrue(
             publish_decision_frame(
                 cycle_result=cycle,
@@ -174,7 +182,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         )
         self.assertTrue(
             self.server.decision.publish(
-                stream_frame=latest,
+                report=latest,
                 frame_record=frame_record,
                 image=self.server.perception.frame(latest["frame_id"]),
             )

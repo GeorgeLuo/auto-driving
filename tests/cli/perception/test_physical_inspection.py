@@ -47,7 +47,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ) as discover, patch.object(
                 perception,
-                "picar_view_status",
+                "discover_runtime_view",
                 return_value={"available": True, "url": "http://127.0.0.1:9100"},
             ) as view_status, patch.object(
                 perception,
@@ -130,7 +130,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
                 perception,
-                "picar_view_status",
+                "discover_runtime_view",
                 return_value={"available": False, "reason": "view not started"},
             ), patch.object(
                 perception,
@@ -199,7 +199,7 @@ class PerceptionCommandTests(unittest.TestCase):
         live = json.loads(result.message)["live_observation"]
         self.assertFalse(live["available"])
         self.assertEqual(live["provider"], "chase-sim")
-        self.assertIn("not a PiRacer", live["reason"])
+        self.assertIn("is not a PiCar", live["reason"])
 
     def test_staged_inspection_bounds_unusable_picar_base_url(self) -> None:
         vehicle = {
@@ -217,7 +217,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "discover_active_vehicles",
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
-                perception, "picar_view_status"
+                perception, "discover_runtime_view"
             ) as view_status, patch.object(
                 perception, "fetch_observation_publication"
             ) as fetch:
@@ -228,7 +228,7 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         live = json.loads(result.message)["live_observation"]
         self.assertFalse(live["available"])
-        self.assertIn("invalid picar base_url", live["error"])
+        self.assertIn("invalid PiCar base URL", live["error"])
         view_status.assert_not_called()
         fetch.assert_not_called()
 
@@ -255,7 +255,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
                 perception,
-                "picar_view_status",
+                "discover_runtime_view",
                 return_value={"available": False, "reason": "view not started"},
             ), patch.object(
                 perception,
@@ -346,7 +346,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 return_value={"vehicles": [vehicle]},
             ), patch.object(
                 perception,
-                "picar_view_status",
+                "discover_runtime_view",
                 return_value={"available": False, "reason": "view not started"},
             ), patch.object(
                 perception,

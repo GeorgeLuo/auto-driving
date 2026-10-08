@@ -11,7 +11,7 @@ from unittest.mock import patch
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.steps import decision_steps, step_runner
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from cli.automa_cli.automation import (
+from cli.automa_cli.chase_observation import (
     _automation_command_matches_vehicle,
     assess_chase_worker_liveness,
 )
@@ -126,7 +126,7 @@ class MemoryStreamTests(unittest.TestCase):
         ):
             live = probe_live_memory(vehicle_id="piracer", vehicle=vehicle)
         self.assertEqual(live["status"], "absent")
-        self.assertIn("update core", live["error"])
+        self.assertIn("update memory", live["error"])
 
     def test_probe_reads_what_the_cycle_host_publishes(self) -> None:
         # The Pi serves ``host.status()`` as ``autonomy``; read it from a real host
@@ -355,7 +355,7 @@ class MemoryStreamTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch("cli.automa_cli.memory.RUNTIME_ROOT", runtime_root), patch(
-                "cli.automa_cli.streaming._automation_dir",
+                "cli.automa_cli.chase_observation.chase_automation_dir",
                 return_value=state_path.parent,
             ), patch("cli.automa_cli.streaming.time.time", return_value=now / 1000.0):
                 live = probe_live_memory(
@@ -373,7 +373,7 @@ class MemoryStreamTests(unittest.TestCase):
             "updated_at_ms": now,
             "memory": {"status": {**WORKER_MEMORY_STATUS, "update_count": 4}},
         }
-        with patch("cli.automa_cli.automation._pid_alive", return_value=False):
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=False):
             verdict = assess_chase_worker_liveness(
                 state=state,
                 step="memory",
@@ -395,8 +395,8 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": WORKER_MEMORY_STATUS,
             },
         }
-        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
         ):
             verdict = assess_chase_worker_liveness(
                 state=state,
@@ -419,8 +419,8 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": WORKER_MEMORY_STATUS,
             },
         }
-        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-            "cli.automa_cli.automation._process_command",
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.chase_observation._process_command",
             return_value="python -m other_service --worker",
         ):
             verdict = assess_chase_worker_liveness(
@@ -457,8 +457,8 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertFalse(
             _automation_command_matches_vehicle(longer_id_command, "chase-sim-chaser")
         )
-        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-            "cli.automa_cli.automation._process_command", return_value=longer_id_command
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.chase_observation._process_command", return_value=longer_id_command
         ):
             verdict = assess_chase_worker_liveness(
                 state=state,
@@ -505,8 +505,8 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": WORKER_MEMORY_STATUS,
             },
         }
-        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-            "cli.automa_cli.automation._process_command", return_value=None
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.chase_observation._process_command", return_value=None
         ):
             verdict = assess_chase_worker_liveness(
                 state=state,
@@ -529,8 +529,8 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": WORKER_MEMORY_STATUS,
             },
         }
-        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
         ):
             verdict = assess_chase_worker_liveness(
                 state=state,
@@ -553,8 +553,8 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": WORKER_MEMORY_STATUS,
             },
         }
-        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
         ):
             verdict = assess_chase_worker_liveness(
                 state=state,
@@ -579,8 +579,8 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": WORKER_MEMORY_STATUS,
             },
         }
-        with patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-            "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+        with patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+            "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
         ):
             verdict = assess_chase_worker_liveness(
                 state=state,
@@ -638,10 +638,10 @@ class MemoryStreamTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch("cli.automa_cli.memory.RUNTIME_ROOT", runtime_root), patch(
-                "cli.automa_cli.streaming._automation_dir",
+                "cli.automa_cli.chase_observation.chase_automation_dir",
                 return_value=state_path.parent,
-            ), patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-                "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+            ), patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+                "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
             ), patch(
                 "cli.automa_cli.streaming.time.time", return_value=now / 1000.0
             ):
@@ -692,9 +692,9 @@ class MemoryStreamTests(unittest.TestCase):
             with patch(
                 "cli.automa_cli.streaming.discover_active_vehicles", return_value=discovery
             ), patch(
-                "cli.automa_cli.streaming._automation_dir", return_value=state_path.parent
-            ), patch("cli.automa_cli.automation._pid_alive", return_value=True), patch(
-                "cli.automa_cli.automation._process_command", return_value=AUTOMATION_COMMAND
+                "cli.automa_cli.chase_observation.chase_automation_dir", return_value=state_path.parent
+            ), patch("cli.automa_cli.chase_observation._pid_alive", return_value=True), patch(
+                "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
             ), patch(
                 "cli.automa_cli.streaming.time.time", return_value=now / 1000.0
             ), patch(

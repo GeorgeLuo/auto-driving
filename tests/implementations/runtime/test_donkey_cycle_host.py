@@ -36,6 +36,7 @@ def _pushy_host(**steps) -> AutonomyCycleHost:
 
 class _ExplodingHost:
     execution = ControlExecution(DonkeyControlTarget())
+    last_context = None
 
     def status(self) -> dict:
         return {"steps": {}, "last_cycle": None}

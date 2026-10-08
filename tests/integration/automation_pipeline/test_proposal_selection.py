@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli.automation import run_vehicle_automation
+from implementations.vehicle.access import VehicleAccess
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, stage_activation
@@ -71,7 +72,14 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
                 patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
-                patch("cli.automa_cli.automation.ChaseSimCar", _FakeCar),
+                patch(
+                    "cli.automa_cli.automation.create_vehicle_access",
+                    lambda vehicle, *, timeout_s: VehicleAccess(
+                        car=_FakeCar(),
+                        image_extension="png",
+                        front_camera_endpoint="atomic-evaluation-capture",
+                    ),
+                ),
                 patch("cli.automa_cli.automation.RuntimeViewServer", side_effect=record_server),
                 staged_runners(perception=_SlowMapper(), wrap=wrap_proposal),
             ):

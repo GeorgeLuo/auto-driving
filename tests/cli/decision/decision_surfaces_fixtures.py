@@ -5,10 +5,17 @@ import tempfile
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
+
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
+from autonomy.runtime.report import report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
 from cli.automa_cli.decision import (
+    DECISION_STREAM_MAX_AGE_MS,
     strict_decode_apply_evidence,
     strict_decode_apply_observation,
 )
@@ -46,6 +53,71 @@ def packaged_identity(action: str = "hold") -> dict:
     }
 
 
+def host_result_for_records(
+    records: DecisionRecords,
+    *,
+    frame_id: str,
+    frame_index: int,
+    timestamp_ms: int,
+    mode: str = "observe_only",
+) -> SimpleNamespace:
+    """A host cycle result whose application the shared report can publish."""
+
+    control = records.control or AutonomyControl()
+    return SimpleNamespace(
+        context=DecisionFrameContext(
+            frame_id=frame_id,
+            frame_index=frame_index,
+            timestamp_ms=timestamp_ms,
+            mode=mode,
+        ),
+        proposal=records.proposal,
+        plan=records.plan,
+        action=records.action,
+        application=ControlApplication(
+            frame_id=frame_id,
+            mode=mode,
+            applied=False,
+            reason=control.reason or "not-applied",
+            control=control,
+        ),
+    )
+
+
+def vehicle_report_for_records(
+    records: DecisionRecords,
+    *,
+    vehicle_id: str,
+    run_id: str,
+    generation_id: str,
+    frame_id: str,
+    frame_index: int,
+    timestamp_ms: int,
+    published_at_ms: int | None = None,
+    mode: str = "observe_only",
+    values: dict | None = None,
+) -> dict:
+    """The ``vehicle_report_v0`` both viewers accept for these decision records."""
+
+    report_values = {"stale_after_ms": DECISION_STREAM_MAX_AGE_MS}
+    if values:
+        report_values.update(values)
+    return report_from_host_result(
+        host_result_for_records(
+            records,
+            frame_id=frame_id,
+            frame_index=frame_index,
+            timestamp_ms=timestamp_ms,
+            mode=mode,
+        ),
+        vehicle_id=vehicle_id,
+        run_id=run_id,
+        generation_id=generation_id,
+        published_at_ms=timestamp_ms if published_at_ms is None else published_at_ms,
+        values=report_values,
+    ).to_dict()
+
+
 def sample_records(action: str = "hold") -> DecisionRecords:
     """One frame of the packaged decision steps over the recorded left evidence."""
 
@@ -70,17 +142,22 @@ class DecisionSurfaceFixture:
         )
         self._env_patch.start()
         # decision module reads RUNTIME_ROOT at import time; rebind for tests.
+        import cli.automa_cli.chase_observation as chase_observation_mod
         import cli.automa_cli.decision as decision_mod
         import cli.automa_cli.proposal as proposal_mod
 
         self._decision_mod = decision_mod
         self._old_runtime = decision_mod.RUNTIME_ROOT
         decision_mod.RUNTIME_ROOT = self.runtime_root
+        self._chase_observation_mod = chase_observation_mod
+        self._old_chase_runtime = chase_observation_mod.RUNTIME_ROOT
+        chase_observation_mod.RUNTIME_ROOT = self.runtime_root
         self._proposal_root_patch = patch.object(proposal_mod, "RUNTIME_ROOT", self.runtime_root)
         self._proposal_root_patch.start()
 
     def tearDown(self) -> None:
         self._proposal_root_patch.stop()
+        self._chase_observation_mod.RUNTIME_ROOT = self._old_chase_runtime
         self._decision_mod.RUNTIME_ROOT = self._old_runtime
         self._env_patch.stop()
         self._tmp.cleanup()
@@ -123,8 +200,29 @@ class DecisionSurfaceFixture:
         published_at_ms: int = 2_000,
         action: str = "hold",
     ) -> dict:
-        cycle = self._sample_cycle(action).to_dict()
+        records = self._sample_cycle(action)
         identity = packaged_identity(action)
+        report = vehicle_report_for_records(
+            records,
+            vehicle_id="piracer",
+            run_id="donkey-run-fixture",
+            generation_id=identity["generation_id"],
+            frame_id="frame_001",
+            frame_index=1,
+            timestamp_ms=1_000,
+            published_at_ms=published_at_ms,
+            values={
+                "source_id": "donkeycar:piracer",
+                "activation": identity,
+                "source_frame": {
+                    "frame_id": "frame_001",
+                    "frame_index": 1,
+                    "captured_at_ms": 1_000,
+                    "completed_at_ms": published_at_ms,
+                },
+                "stale_after_ms": 1_000,
+            },
+        )
         return {
             "schema": "automa_physical_decision_publication_v0",
             "ok": True,
@@ -133,16 +231,5 @@ class DecisionSurfaceFixture:
             "read_at_ms": published_at_ms,
             "result_age_ms": 0,
             "stale_after_ms": 1_000,
-            "decision": {
-                "vehicle_id": "piracer",
-                "source_id": "donkeycar:piracer",
-                "run_id": "donkey-run-fixture",
-                "generation_id": identity["generation_id"],
-                "frame_id": "frame_001",
-                "frame_index": 1,
-                "timestamp_ms": 1_000,
-                "published_at_ms": published_at_ms,
-                "activation": identity,
-                "cycle": cycle,
-            },
+            "decision": report,
         }

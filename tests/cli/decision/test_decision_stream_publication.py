@@ -23,15 +23,23 @@ from tests.cli.decision.decision_surfaces_fixtures import (
     ACTIVE_RUN,
     NO_MEM_RUN,
     DecisionSurfaceFixture,
+    host_result_for_records,
     packaged_decision_steps,
     packaged_identity,
+    vehicle_report_for_records,
 )
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_publish_and_stream_once_cli(self) -> None:
         activation = self._stage()
-        cycle = self._sample_cycle()
+        records = self._sample_cycle()
+        cycle = host_result_for_records(
+            records,
+            frame_id=records.frame_id,
+            frame_index=1,
+            timestamp_ms=1000,
+        )
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         published = publish_decision_frame(
             cycle_result=cycle,
@@ -48,20 +56,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             vehicle_runtime / "bundle" / "runtime" / "automation" / "state.json"
         )
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        # rewrite frame with published_at now and pid
-        frame_path = (
-            vehicle_runtime
-            / "bundle"
-            / "runtime"
-            / "automation"
-            / "latest_decision.json"
-        )
-        frame = json.loads(frame_path.read_text())
-        now_ms = int(__import__("time").time() * 1000)
-        frame["published_at_ms"] = now_ms
-        frame["run_id"] = "run-live"
-        frame["worker_pid"] = os.getpid()
-        write_latest_decision_frame(frame_path, frame)
         state_path.write_text(
             json.dumps(
                 {
@@ -87,20 +81,23 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual(cli.returncode, 0, cli.stderr + cli.stdout)
         stream_payload = json.loads(cli.stdout)
-        self.assertEqual(stream_payload["schema"], "vehicle_decision_stream_frame_v0")
+        self.assertEqual(stream_payload["schema"], "vehicle_report_v0")
         self.assertNotIn("applied_control", stream_payload)
 
     def test_continuous_json_emits_one_object_per_refresh_line(self) -> None:
         activation = self._stage()
-        cycle = self._sample_cycle()
+        records = self._sample_cycle()
         now_ms = int(__import__("time").time() * 1000)
-        frame = build_decision_stream_frame(
-            cycle,
+        frame = vehicle_report_for_records(
+            records,
             vehicle_id="chase-sim-chaser",
             run_id="run-lines",
-            worker_pid=os.getpid(),
             generation_id=activation["generation_id"],
+            frame_id=records.frame_id,
+            frame_index=1,
+            timestamp_ms=1000,
             published_at_ms=now_ms,
+            values={"worker_pid": os.getpid()},
         )
         vehicle_runtime_dir = self.runtime_root / "chase-sim-chaser"
         write_latest_decision_frame(latest_decision_path(vehicle_runtime_dir), frame)
@@ -135,7 +132,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         for line in lines:
             self.assertEqual(
                 json.loads(line)["schema"],
-                "vehicle_decision_stream_frame_v0",
+                "vehicle_report_v0",
             )
 
         latest_decision_path(vehicle_runtime_dir).unlink()
@@ -289,7 +286,13 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         """Restage while a worker is 'running' must not republish an old generation."""
 
         activation_a = self._stage()
-        cycle = self._sample_cycle()
+        records = self._sample_cycle()
+        cycle = host_result_for_records(
+            records,
+            frame_id=records.frame_id,
+            frame_index=1,
+            timestamp_ms=1000,
+        )
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
 
         def publish(activation: dict, cycle_result=cycle, run_id: str = "run-a") -> bool:
@@ -320,7 +323,19 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertFalse(frame_path.exists())
         self.assertFalse(publish(activation_a, run_id="run-b"))
         # Only a worker that reloads with generation B may publish under B.
-        self.assertTrue(publish(activation_b, self._sample_cycle("mode"), run_id="run-b"))
+        mode_records = self._sample_cycle("mode")
+        self.assertTrue(
+            publish(
+                activation_b,
+                host_result_for_records(
+                    mode_records,
+                    frame_id=mode_records.frame_id,
+                    frame_index=1,
+                    timestamp_ms=1000,
+                ),
+                run_id="run-b",
+            )
+        )
         second = json.loads(frame_path.read_text())
         self.assertEqual(second["generation_id"], activation_b["generation_id"])
 
@@ -341,9 +356,15 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual(first.control.reason, HOLD_IDLE_REASON)
         vehicle_runtime = self.runtime_root / "chase-sim-chaser"
+        published_cycle = host_result_for_records(
+            first,
+            frame_id=first.frame_id,
+            frame_index=1,
+            timestamp_ms=1000,
+        )
         self.assertTrue(
             publish_decision_frame(
-                cycle_result=first,
+                cycle_result=published_cycle,
                 context_frame_id="frame_001",
                 vehicle_id="chase-sim-chaser",
                 vehicle_runtime_dir=vehicle_runtime,

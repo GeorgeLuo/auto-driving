@@ -4,7 +4,8 @@ from copy import deepcopy
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.activation import step_activation_from_payload
 from cli.automa_cli.decision import (
-    accept_decision_stream_frame,
+    DecisionSurfaceError,
+    accept_published_report,
     build_decision_stream_frame,
 )
 from cli.automa_cli.step_activations import decision_generation_id
@@ -12,6 +13,7 @@ from tests.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
     packaged_decision_steps,
     packaged_identity,
+    vehicle_report_for_records,
 )
 
 
@@ -54,21 +56,25 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertTrue(selected["source_refs"])
 
     def test_stream_acceptance_production_predicate(self) -> None:
-        cycle = self._sample_cycle()
-        frame = build_decision_stream_frame(
-            cycle,
+        records = self._sample_cycle()
+        identity = packaged_identity()
+        report = vehicle_report_for_records(
+            records,
             vehicle_id="chase-sim-chaser",
             run_id="run-1",
-            worker_pid=42,
-            generation_id=packaged_identity()["generation_id"],
+            generation_id=identity["generation_id"],
+            frame_id=records.frame_id,
+            frame_index=1,
+            timestamp_ms=1000,
             published_at_ms=5000,
+            values={"worker_pid": 42},
         )
-        activation = packaged_identity()
         state = {"run_id": "run-1", "status": "running", "pid": 42}
 
-        accept_decision_stream_frame(
-            frame,
-            activation=activation,
+        accept_published_report(
+            report,
+            vehicle_id="chase-sim-chaser",
+            activation=identity,
             automation_state=state,
             now_ms=6000,
             is_pid_alive=lambda pid: True,
@@ -77,9 +83,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         # generation mismatch (restaged with a different proposal config)
         restaged = deepcopy(packaged_decision_steps())
         restaged["proposal"]["plugin_configs"]["avoid_recent_obstruction"]["steer_magnitude"] = 0.5
-        with self.assertRaises(Exception) as ctx:
-            accept_decision_stream_frame(
-                frame,
+        with self.assertRaises(DecisionSurfaceError) as ctx:
+            accept_published_report(
+                report,
+                vehicle_id="chase-sim-chaser",
                 activation=_identity(restaged),
                 automation_state=state,
                 now_ms=6000,

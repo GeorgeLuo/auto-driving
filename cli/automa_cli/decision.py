@@ -697,7 +697,6 @@ def accept_decision_stream_frame(
             "latest_frame_stale",
             "Latest decision frame does not match the currently staged decision generation.",
         )
-    _require_report_cycle_alignment(report.to_dict(), activation)
 
     if not isinstance(automation_state, dict):
         raise DecisionSurfaceError(

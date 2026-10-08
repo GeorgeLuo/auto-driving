@@ -17,9 +17,10 @@ class ViabilityCommandTests(unittest.TestCase):
             with self.subTest(step=step):
                 result = run_automa("vehicles", step, "viability", "--help")
                 text = " ".join(result.stdout.split())
-                self.assertIn("Chase returns a stub pass", text)
-                self.assertIn("PiCar measurement or Chase stub", text)
-                self.assertIn("PiCar reports are also saved unless --no-record", text)
+                self.assertIn("running Chase", text)
+                self.assertIn("PiCar", text)
+                self.assertIn("unless --no-record", text)
+                self.assertNotIn("stub", text)
                 self.assertNotIn("picar only", text)
 
     def test_public_json_discovery_failures_are_parseable_and_record_nothing(
@@ -94,37 +95,6 @@ class ViabilityCommandTests(unittest.TestCase):
                     self.assertEqual(error["error"], error_code)
                     self.assertEqual(error["message"], human.message)
                     self.assertEqual(list(Path(temporary).iterdir()), [])
-
-    def test_chase_stub_returns_without_sampling_or_recording(self) -> None:
-        vehicle = {"vehicle_id": "chase-sim-chaser", "provider": "chase-sim"}
-        for step in ("perception", "memory"):
-            with (
-                self.subTest(step=step),
-                tempfile.TemporaryDirectory() as temporary,
-                patch.object(
-                    viability,
-                    "discover_active_vehicles",
-                    return_value={"vehicles": [vehicle]},
-                ),
-                patch.object(
-                    viability, f"{step.upper()}_VIABILITY_OUTPUT_ROOT", Path(temporary)
-                ),
-            ):
-                run = getattr(viability, f"run_{step}_viability_measurement")
-                kwargs = {
-                    "fetch_publication"
-                    if step == "perception"
-                    else "probe": lambda _: self.fail("stub must not sample")
-                }
-                result = run(
-                    vehicle_id=vehicle["vehicle_id"], json_output=True, **kwargs
-                )
-                report = json.loads(result.message)
-                self.assertEqual(result.exit_code, 0)
-                self.assertTrue(report["passed"])
-                self.assertTrue(report["stub"])
-                self.assertEqual(report["provider"], "chase-sim")
-                self.assertEqual(list(Path(temporary).iterdir()), [])
 
     def test_picar_json_reports_obey_the_record_option(self) -> None:
         vehicle = {

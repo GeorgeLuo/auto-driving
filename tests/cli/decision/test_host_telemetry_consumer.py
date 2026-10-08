@@ -9,14 +9,20 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+import json
+
 from cli.automa_cli.decision_live import (
     PicarDecisionViewAdapter,
     _accepted_pair,
     read_host_telemetry_panel,
 )
-from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
-from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
-from cli.automa_cli.decision import DecisionSurfaceError
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from cli.automa_cli.decision import (
+    DecisionSurfaceError,
+    strict_decode_apply_evidence,
+    strict_decode_apply_observation,
+)
+from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.picar_observation import (
     DECISION_PUBLICATION_SCHEMA,
     HOST_TELEMETRY_SCHEMA,
@@ -27,10 +33,17 @@ from cli.automa_cli.picar_observation import (
     normalize_picar_decision_publication,
     picar_decision_identity,
 )
+from tests.cli.decision.decision_surfaces_fixtures import (
+    ACTIVE_RUN,
+    packaged_decision_steps,
+    packaged_identity,
+    vehicle_report_for_records,
+)
 
 
 NOW_MS = 10_000
-GENERATION_ID = "decision:0123456789abcdef"
+_PACKAGED_IDENTITY = packaged_identity("hold")
+GENERATION_ID = _PACKAGED_IDENTITY["generation_id"]
 
 
 def _record(
@@ -91,39 +104,43 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         "captured_at_ms": 8_000,
         "completed_at_ms": 8_500,
     }
-
-    return {
-        "decision": {
-            "vehicle_id": "piracer",
+    recorded = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
+    records = DecisionRunners.from_payloads(packaged_decision_steps("hold")).run(
+        frame_id=frame["frame_id"],
+        frame_index=frame["frame_index"],
+        timestamp_ms=frame["captured_at_ms"],
+        observation=strict_decode_apply_observation(recorded["observation"]),
+        shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(recorded["evidence"])},
+    )
+    report = vehicle_report_for_records(
+        records,
+        vehicle_id="piracer",
+        run_id="run-1",
+        generation_id=GENERATION_ID,
+        frame_id=frame["frame_id"],
+        frame_index=frame["frame_index"],
+        timestamp_ms=frame["captured_at_ms"],
+        published_at_ms=9_500,
+        values={
             "source_id": "donkeycar:piracer",
-            "run_id": "run-1",
-            "generation_id": GENERATION_ID,
-            "frame_id": frame["frame_id"],
-            "frame_index": frame["frame_index"],
-            "timestamp_ms": frame["captured_at_ms"],
-            "published_at_ms": 9_500,
-            "activation": {"generation_id": GENERATION_ID, "steps": {}},
-            "source_frame": copy.deepcopy(frame),
-            "cycle": {"proposal": {"source": {"source_frame": copy.deepcopy(frame)}}},
-        }
-    }
+            "activation": {
+                "generation_id": GENERATION_ID,
+                "steps": _PACKAGED_IDENTITY["steps"],
+            },
+            "source_frame": {
+                "frame_id": frame["frame_id"],
+                "frame_index": frame["frame_index"],
+                "captured_at_ms": frame["captured_at_ms"],
+                "completed_at_ms": frame["completed_at_ms"],
+            },
+            "stale_after_ms": 1_500,
+        },
+    )
+    return {"decision": report}
 
 
 def _physical_publication() -> dict:
     decision = _decision()["decision"]
-    decision["cycle"] = {
-        "proposal": {
-            "schema": PROPOSAL_RESULT_SCHEMA,
-            "status": "ok",
-            "frame_id": "frame-1",
-            "source": {
-                "frame_id": "frame-1",
-                "frame_index": 1,
-                "timestamp_ms": 8_000,
-            },
-        },
-        "action": {"schema": ACTION_RESULT_SCHEMA, "status": "ok", "frame_id": "frame-1"},
-    }
     return {
         "schema": DECISION_PUBLICATION_SCHEMA,
         "status": "ready",
@@ -131,7 +148,7 @@ def _physical_publication() -> dict:
         "reason": "",
         "read_at_ms": 9_500,
         "result_age_ms": 500,
-        "stale_after_ms": 1_500,
+        "stale_after_ms": decision["values"]["stale_after_ms"],
         "decision": decision,
     }
 
@@ -161,8 +178,16 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         class FakeDecisionView:
             def __init__(self) -> None:
                 self.kwargs = None
+                self.provider = None
+
+            def adopt_provider(self, identity) -> None:
+                self.provider = identity
 
             def publish_provider_transaction(self, **kwargs):
+                self.kwargs = kwargs
+                return True
+
+            def publish(self, **kwargs):
                 self.kwargs = kwargs
                 return True
 

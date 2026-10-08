@@ -171,7 +171,7 @@ class PhysicalDeployTests(unittest.TestCase):
             self.assertEqual((app_root / "autonomy").resolve(), (release_root / "autonomy").resolve())
             runtime = app_root / "runtime"
             action = read_step_activation(runtime / "action" / "active.json", "action")
-            self.assertEqual(action.plugins, ("hold",))
+            self.assertEqual(action.plugins, ("selected",))
             memory = read_step_activation(runtime / "memory" / "active.json", "memory")
             self.assertEqual(memory.plugins, ("bounded_evidence",))
             self.assertEqual(

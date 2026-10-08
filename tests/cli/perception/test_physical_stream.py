@@ -101,7 +101,7 @@ class PhysicalStreamCommandTests(unittest.TestCase):
                 "fetch_observation_frame",
                 return_value=(jpeg, {"content-type": "image/jpeg", "x-frame-id": "donkey_frame_000011"}),
             ), patch(
-                "cli.automa_cli.streaming.picar_observation_dir",
+                "cli.automa_cli.streaming.runtime_view_dir",
                 return_value=runtime_root / "piracer" / "picar_observation",
             ):
                 buffer = io.StringIO()
@@ -139,7 +139,7 @@ class PhysicalStreamCommandTests(unittest.TestCase):
                 "fetch_observation_publication",
                 side_effect=ConnectionError("GET failed: connection refused"),
             ), patch(
-                "cli.automa_cli.streaming.picar_observation_dir",
+                "cli.automa_cli.streaming.runtime_view_dir",
                 return_value=runtime_root / "piracer" / "picar_observation",
             ):
                 buffer = io.StringIO()

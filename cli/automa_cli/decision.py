@@ -2650,16 +2650,6 @@ def _apply_vehicle_decision_body(
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
     identity = _read_surface_identity(bundle, vehicle_id=vehicle_id)
     steps = identity["steps"]
-    action_plugins = (steps.get("action") or {}).get("plugins") or []
-    if action_plugins != [HoldAction.plugin_id]:
-        raise DecisionSurfaceError(
-            "wrong_action",
-            f"decision apply replays the {HoldAction.plugin_id!r} action only; "
-            f"the staged action plugins are {action_plugins!r}. "
-            f"Run: ./cli/automa vehicles update action --id <vehicle> --plugin {HoldAction.plugin_id}",
-            vehicle_id=vehicle_id,
-        )
-
     normalized_frames = _normalize_apply_frames(frames, vehicle_id=vehicle_id)
 
     digest_a = _run_apply_pass(steps, normalized_frames)
@@ -2960,6 +2950,7 @@ def _write_apply_record(
                     "frame_id": frame_id,
                     "html": f"frames/{html_name}",
                     "source_image": manifest_image_rel,
+                    "proposed_applied": cycle_result.authority.proposed_applied,
                 }
             )
 
@@ -2973,12 +2964,13 @@ def _write_apply_record(
             "vehicle_id": vehicle_id,
             "frame_count": len(frame_entries),
             "frames": frame_entries,
-            "proposed_applied": False,
+            "proposed_applied": any(entry["proposed_applied"] for entry in frame_entries),
+            "host_delivery": "absent",
             "bounds": {
                 "max_frames": DECISION_APPLY_MAX_FRAMES,
                 "max_record_bytes": DECISION_APPLY_MAX_RECORD_BYTES,
             },
-            "note": "proposed_applied=false; the hold gate authorizes idle output",
+            "note": "proposed_applied is true when any frame authorizes its proposed command; host delivery is absent",
         }
         (partial_dir / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True),
@@ -3178,7 +3170,7 @@ def render_decision_exact_frame_html(
     <h2>Authority</h2>
     <p>proposed={esc(authority.get('proposed'))}</p>
     <p>authorized_output={esc(authority.get('authorized_output'))}</p>
-    <p class="emph">proposed_applied={esc(authority.get('proposed_applied') is True)}</p>
+    <p class="emph">proposed_applied={esc(str(authority.get('proposed_applied') is True).lower())}</p>
     <p>Host delivery: absent</p>
   </section>{host_telemetry_block}
   <section id="non-claims">

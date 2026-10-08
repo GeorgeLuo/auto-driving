@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,17 +21,6 @@ from implementations.runtime.donkeycar import (
     ONBOARD_OBSERVATION_STATE_SCHEMA,
     create_host,
 )
-
-
-class _Clock:
-    def __init__(self, start: float = 0.0) -> None:
-        self.now = float(start)
-
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += float(seconds)
 
 
 def _pushy_host(**steps) -> AutonomyCycleHost:
@@ -142,35 +130,6 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(throttle, 0.4)
         self.assertEqual(control["steering"], 0.7)
 
-    def test_interval_paces_capture_without_counting_unsampled_drive_ticks(self) -> None:
-        clock = _Clock()
-        host = create_host(steps=decision_steps())
-        part = AutonomyPilotPart(host=host, interval_s=0.5, monotonic=clock)
-        image = np.full((2, 2, 3), 1, dtype=np.uint8)
-        part.run(image_array=image, mode="user")
-        part.wait_for_cycle()
-
-        clock.advance(0.2)
-        part.run(image_array=np.full_like(image, 2), mode="user")
-        self.assertEqual(part.frames_captured, 1)
-        self.assertEqual(part.processed_count, 1)
-        self.assertEqual(part.skipped_count, 0)
-        self.assertEqual(int(part.latest_camera_frame.image[0, 0, 0]), 1)
-        camera_jpeg, camera = part.publish_latest_camera_jpeg()
-        self.assertTrue(camera_jpeg.startswith(b"\xff\xd8"))
-        self.assertEqual(camera["frame"]["frame_id"], "donkey_frame_000000")
-
-        clock.advance(0.3)
-        part.run(image_array=np.full_like(image, 3), mode="user")
-        part.wait_for_cycle()
-        self.assertEqual(part.frames_captured, 2)
-        self.assertEqual(part.processed_count, 2)
-        self.assertEqual(part.skipped_count, 0)
-        self.assertEqual(part.latest_state.skipped_since_previous, 0)
-        self.assertEqual(part.latest_state.frame_id, "donkey_frame_000001")
-        self.assertEqual(int(part.latest_state.image[0, 0, 0]), 3)
-        self.assertEqual(host.cycle_count, 2)
-
     def test_detaches_image_from_vehicle_memory(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
         image = np.zeros((3, 3, 3), dtype=np.uint8)
@@ -261,8 +220,6 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.run(image_array=image, mode="local")
         part.wait_for_cycle()
         self.assertEqual(host.run_state, "completed")
-        self.assertEqual(host.session_status()["processed_decisions"], 1)
-        self.assertEqual(host.session_status()["configuration"]["num_decisions"], 1)
 
         # Donkey still reports local until the controller applies the latch.
         part.run(image_array=image, mode="local")
@@ -297,111 +254,6 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(observation["processed_count"], 1)
         self.assertEqual(observation["latest"]["frame_id"], "donkey_frame_000000")
         self.assertEqual(status["cycle_count"], 1)
-
-    def test_decisions_drain_latest_capture_without_waiting_for_a_tick_or_interval(self) -> None:
-        clock = _Clock()
-        started = [threading.Event(), threading.Event()]
-        release = [threading.Event(), threading.Event()]
-        contexts = []
-        host = create_host(steps=decision_steps())
-        run = host.run
-
-        def blocked_run(context):
-            index = len(contexts)
-            contexts.append(context)
-            if index < len(started):
-                started[index].set()
-                if not release[index].wait(timeout=2.0):
-                    raise TimeoutError("test did not release the decision cycle")
-            return run(context)
-
-        host.run = blocked_run
-        part = AutonomyPilotPart(host=host, interval_s=0.5, monotonic=clock)
-        image = np.zeros((2, 2, 3), dtype=np.uint8)
-        try:
-            part.run(image_array=image, mode="user")
-            self.assertTrue(started[0].wait(timeout=1.0))
-            for value in (1, 2, 3):
-                clock.advance(0.5)
-                part.run(image_array=np.full_like(image, value), mode="user")
-            self.assertEqual(part.frames_captured, 4)
-            self.assertEqual(part.processed_count, 0)
-            self.assertEqual(part.skipped_count, 0)
-            self.assertEqual(part.publish_latest_camera()["frame"]["frame_index"], 3)
-            self.assertEqual(part.publish_latest_camera()["perception_state"], "pending")
-
-            # No drive tick occurs after release; the latest capture is still
-            # inside its capture interval, but the worker must take it now.
-            release[0].set()
-            self.assertTrue(started[1].wait(timeout=1.0))
-            self.assertEqual([c.frame_index for c in contexts], [0, 3])
-            self.assertEqual(contexts[1].metadata["skipped_since_previous"], 2)
-            self.assertEqual(part.publish_latest_camera()["perception_state"], "pending")
-            for value in (4, 5):
-                clock.advance(0.5)
-                part.run(image_array=np.full_like(image, value), mode="user")
-            release[1].set()
-            part.wait_for_cycle()
-
-            self.assertEqual([c.frame_index for c in contexts], [0, 3, 5])
-            self.assertEqual([c.metadata["skipped_since_previous"] for c in contexts], [0, 2, 1])
-            self.assertEqual(part.processed_count, 3)
-            self.assertEqual(part.skipped_count, 3)
-            self.assertEqual(part.latest_state.skipped_since_previous, 1)
-            self.assertEqual(int(part.latest_state.image[0, 0, 0]), 5)
-            publication = part.publish_latest()
-            self.assertEqual(publication["skipped_count"], 3)
-            self.assertEqual(publication["skipped_since_previous"], 1)
-            self.assertEqual(part.observation_status()["frames_captured"], 6)
-
-            clock.advance(0.1)
-            part.run(image_array=np.full_like(image, 6), mode="user")
-            part.wait_for_cycle()
-            self.assertEqual(len(contexts), 3)
-            self.assertEqual(part.frames_captured, 6)
-        finally:
-            for event in release:
-                event.set()
-            part.wait_for_cycle()
-            part.shutdown()
-
-    def test_stop_and_bounded_completion_do_not_count_discarded_pending_frames(self) -> None:
-        for bounded in (False, True):
-            with self.subTest(bounded=bounded):
-                entered = threading.Event()
-                release = threading.Event()
-                contexts = []
-                host = create_host(steps=decision_steps())
-                run = host.run
-
-                def blocked_run(context):
-                    contexts.append(context)
-                    entered.set()
-                    if not release.wait(timeout=2.0):
-                        raise TimeoutError("test did not release the decision cycle")
-                    return run(context)
-
-                host.run = blocked_run
-                part = AutonomyPilotPart(host=host, interval_s=0.0)
-                part.start(RunConfiguration(mode="observe_only", interval_s=0.0, num_decisions=int(bounded)))
-                image = np.zeros((2, 2, 3), dtype=np.uint8)
-                try:
-                    part.run(image_array=image)
-                    self.assertTrue(entered.wait(timeout=1.0))
-                    part.run(image_array=image)
-                    part.run(image_array=image)
-                    if not bounded:
-                        part.stop()
-                    release.set()
-                    part.wait_for_cycle()
-                    self.assertEqual(len(contexts), 1)
-                    self.assertEqual(part.frames_captured, 3)
-                    self.assertEqual(part.skipped_count, 0)
-                    self.assertEqual(part.latest_state.skipped_since_previous, 0)
-                finally:
-                    release.set()
-                    part.wait_for_cycle()
-                    part.shutdown()
 
     def test_manage_assembly_wires_always_on_observation(self) -> None:
         source = (

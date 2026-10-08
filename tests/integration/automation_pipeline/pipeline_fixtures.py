@@ -22,10 +22,8 @@ class _SlowMapper:
 
     def __init__(self) -> None:
         self.frame_ids: list[str] = []
-        self.contexts: list = []
 
     def __call__(self, context):
-        self.contexts.append(context)
         return self.perceive(build_perception_request(context.sensor_frame))
 
     def reset(self, shared_memory=None) -> None:
@@ -48,8 +46,9 @@ class _SlowMapper:
 
 
 class _FakeCar:
-    def __init__(self, **_kwargs) -> None:
+    def __init__(self, *, simulator_frame_stride: int = 1, **_kwargs) -> None:
         self.capture_count = 0
+        self.simulator_frame_stride = simulator_frame_stride
         self.last_capture_chaser_reference: dict | None = None
         self.last_passive_capture: dict | None = None
         self.last_simulator_frame_index: int | None = None
@@ -65,7 +64,7 @@ class _FakeCar:
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         # Simulate advancing Chase play_debug frameIndex values.
-        simulator_frame_index = 100 + self.capture_count
+        simulator_frame_index = 100 + self.simulator_frame_stride * self.capture_count
         Image.new("RGB", (64, 48), (self.capture_count % 256, 40, 60)).save(path)
         self.capture_count += 1
         self.last_simulator_frame_index = simulator_frame_index

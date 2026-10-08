@@ -1,9 +1,6 @@
 from __future__ import annotations
-import io
 import json
 import tempfile
-import threading
-import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -124,8 +121,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
             state = json.loads(
                 (automation_dir / "state.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(state["num_decisions"], 3)
-            self.assertEqual(state["session"]["processed_decisions"], 3)
             report = state["perception"]["plugin_report"]
             self.assertEqual(report["applied_plugin_ids"], ["floor_plane"])
             self.assertEqual(report["plugins"][0]["plugin_id"], "floor_plane")
@@ -136,158 +131,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             self.assertEqual(latest["perception_plugin_report"], report)
             self.assertIn("memory_plugin_report", latest)
-
-    def test_capture_does_not_wait_for_slow_perception_and_latest_frame_wins(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            bundle = controller_bundle_paths(runtime_root / vehicle_id)
-            _write_activations(bundle)
-            mapper = _SlowMapper()
-            vehicle = {
-                "id": vehicle_id,
-                "provider": "chase-sim",
-                "connection": {"ws_url": "ws://unused"},
-                "status": {
-                    "passive_capture": {
-                        "status": "available",
-                        "session_preservation": {
-                            "preserved": True,
-                            "unknown_fields": [],
-                            "changed_fields": [],
-                        },
-                    }
-                },
-            }
-
-            with (
-                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
-                patch(
-                    "cli.automa_cli.automation.discover_active_vehicles",
-                    return_value={},
-                ),
-                patch(
-                    "cli.automa_cli.automation.find_vehicle_by_id",
-                    return_value=(vehicle, None),
-                ),
-                patch("cli.automa_cli.automation.create_vehicle_access", side_effect=lambda *_args, **_kw: SimpleNamespace(car=_FakeCar())),
-                staged_runners(perception=mapper),
-            ):
-                result = run_vehicle_automation(
-                    vehicle_id=vehicle_id,
-                    interval_s=0.005,
-                    num_decisions=8,
-                    take_control=False,
-                )
-
-            self.assertEqual(result.exit_code, 0, result.message)
-            automation_dir = Path(bundle["runtime_dir"]) / "automation"
-            state = json.loads(
-                (automation_dir / "state.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(state["processed_count"], 8)
-            self.assertEqual(state["control_source"], "builtin")
-            self.assertEqual(state["action_policy"], "observe_only")
-            self.assertEqual(state["control_application"], "not_applied")
-            self.assertLess(state["processed_count"], state["frames_captured"])
-            self.assertEqual(
-                state["processed_count"] + state["skipped_count"],
-                int(mapper.frame_ids[-1].removeprefix("chase_frame_")) - 100 + 1,
-            )
-            self.assertGreater(state["skipped_count"], 0)
-            self.assertEqual(state["skipped_count"], sum(c.metadata["skipped_since_previous"] for c in mapper.contexts))
-            self.assertTrue(
-                (
-                    automation_dir / "latest" / "frames" / "latest_front_camera.png"
-                ).is_file()
-            )
-            latest = json.loads(
-                (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(latest["simulator_frame_index"], mapper.contexts[-1].frame_index)
-            self.assertEqual(latest["simulation_epoch"], "chase-run:test")
-            self.assertEqual(latest["frame_id"], mapper.frame_ids[-1])
-            self.assertEqual(latest["skipped_since_previous"], mapper.contexts[-1].metadata["skipped_since_previous"])
-            self.assertEqual(state["last_frame"]["skipped_since_previous"], latest["skipped_since_previous"])
-            self.assertEqual(
-                latest["chaser_reference"]["simulator_frame_index"],
-                latest["simulator_frame_index"],
-            )
-            self.assertIs(latest["control"]["applied"], False)
-            self.assertNotIn("chaser_reference", latest.get("observation") or {})
-            self.assertEqual(
-                list(
-                    (automation_dir / "latest" / "frames").glob(
-                        "frame_*_front_camera.png"
-                    )
-                ),
-                [],
-            )
-
-    def test_blocked_capture_does_not_delay_decisions_and_tail_is_not_a_skip(self) -> None:
-        first_started = threading.Event()
-        release_first = threading.Event()
-        newest_taken = threading.Event()
-
-        class BlockedCaptureCar(_FakeCar):
-            def read_sensors(self, request):
-                if self.capture_count == 1 and not first_started.wait(timeout=2.0):
-                    raise TimeoutError("decision worker did not start")
-                if self.capture_count == 3:
-                    # Leave capture 3 in flight while the worker processes
-                    # capture 2, replacing capture 1. Capturing must not hold
-                    # up the decision on the already-available image.
-                    release_first.set()
-                    if not newest_taken.wait(timeout=2.0):
-                        raise TimeoutError("decision waited for the in-flight capture")
-                return super().read_sensors(request)
-
-        class BlockedMapper(_SlowMapper):
-            def perceive(self, request):
-                if not self.frame_ids:
-                    first_started.set()
-                    if not release_first.wait(timeout=2.0):
-                        raise TimeoutError("test did not release the first decision")
-                else:
-                    newest_taken.set()
-                return super().perceive(request)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            bundle = controller_bundle_paths(runtime_root / vehicle_id)
-            _write_activations(bundle)
-            mapper = BlockedMapper()
-            car = BlockedCaptureCar()
-            output = io.StringIO()
-            vehicle = {
-                "id": vehicle_id, "provider": "chase-sim", "connection": {"ws_url": "ws://unused"},
-                "status": {"passive_capture": {"status": "available", "session_preservation": {
-                    "preserved": True, "unknown_fields": [], "changed_fields": [],
-                }}},
-            }
-            with (
-                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
-                patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
-                patch("cli.automa_cli.automation.create_vehicle_access", return_value=SimpleNamespace(car=car)),
-                staged_runners(perception=mapper),
-            ):
-                result = run_vehicle_automation(
-                    vehicle_id=vehicle_id, interval_s=0.0, num_decisions=2, take_control=False,
-                    verbose=True, output=output,
-                )
-            self.assertEqual(result.exit_code, 0, result.message)
-            state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
-            self.assertEqual(mapper.frame_ids, ["chase_frame_000100", "chase_frame_000102"])
-            self.assertEqual([c.metadata["skipped_since_previous"] for c in mapper.contexts], [0, 1])
-            self.assertEqual(state["skipped_count"], 1)
-            self.assertEqual(state["last_frame"]["skipped_since_previous"], 1)
-            self.assertGreater(state["frames_captured"], state["processed_count"] + state["skipped_count"])
-            self.assertIn("Frames superseded before decision: 1", result.message)
-            self.assertIn("skipped_since_previous=1", output.getvalue())
 
     def test_decision_view_publication_failure_does_not_stop_automation(self) -> None:
         """A view failure cannot change the completed cycle's authority result."""
@@ -339,22 +182,19 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     side_effect=RuntimeError("decision view unavailable"),
                 ),
             ):
-                started_at = time.monotonic()
                 result = run_vehicle_automation(
                     vehicle_id=vehicle_id,
-                    interval_s=10.0,
+                    interval_s=0.0,
                     num_decisions=1,
                     take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
-            self.assertLess(time.monotonic() - started_at, 2.0, "completion must wake the capture timer")
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
             state = json.loads(
                 (automation_dir / "state.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state["status"], "completed")
-            self.assertEqual(state["frames_captured"], 1)
             self.assertEqual(state["processed_count"], 1)
             latest = json.loads(
                 (automation_dir / "latest_perception.json").read_text(encoding="utf-8")

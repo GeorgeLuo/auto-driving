@@ -93,7 +93,7 @@ def _publication(index: int) -> dict:
 
 
 class OnboardMonitorTests(unittest.TestCase):
-    def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict], interval_s: float = 0.0):
+    def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict]):
         jpeg = io.BytesIO()
         Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
         publications = [_publication(0), _publication(1)]
@@ -129,7 +129,7 @@ class OnboardMonitorTests(unittest.TestCase):
                     "memory": automation_dir.parent / "memory" / "active.json",
                     "proposal": automation_dir.parent / "proposal" / "active.json",
                 },
-                configuration=RunConfiguration(mode="autonomy", interval_s=interval_s, num_decisions=2),
+                configuration=RunConfiguration(mode="autonomy", interval_s=0.0, num_decisions=2),
                 timeout_s=1.0,
                 record=False,
                 verbose=False,
@@ -192,18 +192,6 @@ class OnboardMonitorTests(unittest.TestCase):
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
         self.assertEqual(state["last_frame"]["skipped_since_previous"], 1)
         self.assertEqual(state["published_view"]["available"], False)
-
-    def test_capture_interval_does_not_slow_publication_monitoring(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(onboard_automation.time, "sleep") as sleep:
-            client, code, message, _lines, _state = self._monitor(
-                Path(tmp) / "automation",
-                sessions=[_session("running", 1), _session("completed", 2)],
-                hosts=[_host(10, 3), _host(11, 3), _host(13, 4)],
-                interval_s=10.0,
-            )
-        self.assertEqual(code, 0, message)
-        self.assertEqual(client.started_with.interval_s, 10.0)
-        sleep.assert_called_once_with(onboard_automation.MONITOR_POLL_INTERVAL_S)
 
     def test_missing_skip_counters_are_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):

@@ -23,7 +23,7 @@ VEHICLE_ID = "chase-sim-chaser"
 
 
 class AutomationProposalSelectionTests(unittest.TestCase):
-    def run_with_restage(self, restaged, *, reject_reset=False):
+    def run_with_restage(self, restaged=None, *, reject_reset=False, startup_restage=None):
         """Run four frames, staging ``restaged`` with the CLI's writer during the first.
 
         The restage lands mid-frame, so the first frame's publish is refused.
@@ -45,6 +45,11 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             applied = []
             servers = []
 
+            def resolve_vehicle(*args, **kwargs):
+                if startup_restage is not None:
+                    stage_activation(bundle, startup_restage, vehicle_id=VEHICLE_ID)
+                return vehicle, None
+
             def record_server(**kwargs):
                 servers.append(RuntimeViewServer(**kwargs))
                 return servers[-1]
@@ -62,7 +67,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 def run_with_cli_restage(**kwargs):
                     result = run(**kwargs)
                     applied.append(step.plugin_ids)
-                    if len(applied) == 1:
+                    if len(applied) == 1 and restaged is not None:
                         stage_activation(bundle, restaged, vehicle_id=VEHICLE_ID)
                     return result
 
@@ -71,7 +76,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
-                patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
+                patch("cli.automa_cli.automation.find_vehicle_by_id", side_effect=resolve_vehicle),
                 patch(
                     "cli.automa_cli.automation.create_vehicle_access",
                     lambda vehicle, *, timeout_s: VehicleAccess(
@@ -93,6 +98,32 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             latest = json.loads(latest_path.read_text()) if latest_path.exists() else None
             view = servers[0].decision.health_payload()
             return startup, decision_identity(bundle), applied, state, latest, view
+
+    def test_startup_restage_publishes_the_identity_loaded_by_the_worker(self):
+        for replacement in (
+            packaged_activation("proposal", []),
+            packaged_activation(
+                "proposal",
+                config_overrides={"avoid_recent_obstruction": {"steer_magnitude": 0.5}},
+            ),
+        ):
+            # Exercise the worker and view projection without opening a socket.
+            with (
+                self.subTest(plugins=replacement.plugins),
+                patch.object(RuntimeViewServer, "start", lambda server: server),
+            ):
+                startup, staged, applied, state, latest, view = self.run_with_restage(
+                    startup_restage=replacement,
+                )
+                self.assertNotEqual(staged["generation_id"], startup)
+                self.assertEqual(applied, [replacement.plugins] * 4)
+                self.assertEqual(state["decision"]["generation_id"], staged["generation_id"])
+                self.assertEqual(state["decision"]["latest_frame_publish_skips"], 0)
+                self.assertIsNotNone(latest)
+                self.assertEqual(latest["generation_id"], staged["generation_id"])
+                self.assertEqual(
+                    view["identity"]["activation_generation_id"], staged["generation_id"]
+                )
 
     def test_a_restaged_plugin_list_runs_and_publishes_from_the_next_frame(self):
         startup, staged, applied, state, latest, view = self.run_with_restage(

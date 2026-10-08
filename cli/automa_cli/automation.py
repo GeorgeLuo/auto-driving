@@ -508,6 +508,10 @@ def run_vehicle_automation(
     def update_view_state(payload: dict[str, Any]) -> None:
         with state_lock:
             state["published_view"] = payload
+            # Later captures keep the completed result ready while its image
+            # remains buffered. Capture lag stays on the view payload.
+            if payload.get("has_perception"):
+                state["readiness"] = frame_readiness(perception_view_ready(payload))
 
     memory_reset_lock = threading.Lock()
     passive_session_initial: dict[str, Any] | None = None
@@ -1465,8 +1469,11 @@ def start_vehicle_automation_background(
                 "view=current-generation correlated"
             ),
             f"Runtime view: {startup.get('view_url')}",
-            "Ready for: inspect perception and stop automation",
         ]
+        capture_lag = startup.get("capture_lag")
+        if isinstance(capture_lag, int) and capture_lag > 0:
+            lines.append(f"Capture lag: {capture_lag} frames")
+        lines.append("Ready for: inspect perception and stop automation")
         if open_view:
             lines.append(_open_view_message(str(startup.get("view_url"))))
         exit_code = 0
@@ -1630,48 +1637,48 @@ def _wait_for_automation_startup(
             and frames_captured > 0
             and isinstance(processed_count, int)
             and processed_count > 0
-            and last_capture.get("frame_id") == last_frame.get("frame_id")
         ):
             expected_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
             expected_run_id = (
                 state.get("run_id") if isinstance(state.get("run_id"), str) else None
             )
             remaining = deadline - time.monotonic()
-            if remaining < 0.05:
-                continue
-            view = get_perception_view_status(
-                automation_dir,
-                timeout_s=min(0.25, remaining),
-                expected_run_id=expected_run_id,
-                expected_worker_pid=expected_pid,
-            )
-            if (
-                _view_ready_for_inspection(view)
-                and view.get("latest_frame_id") == last_frame.get("frame_id")
-                and view.get("latest_perception_frame_id") == last_frame.get("frame_id")
-            ):
-                return {
-                    "status": "ready",
-                    "frame_id": last_frame.get("frame_id"),
-                    "view_url": view.get("url"),
-                    "phases": {
-                        "capture": {
-                            "status": "complete",
-                            "duration_ms": last_capture.get("capture_duration_ms"),
+            if remaining >= 0.05:
+                view = get_perception_view_status(
+                    automation_dir,
+                    timeout_s=min(0.25, remaining),
+                    expected_run_id=expected_run_id,
+                    expected_worker_pid=expected_pid,
+                )
+                if (
+                    _view_ready_for_inspection(view)
+                    and view.get("latest_perception_frame_id")
+                    == last_frame.get("frame_id")
+                ):
+                    return {
+                        "status": "ready",
+                        "frame_id": last_frame.get("frame_id"),
+                        "view_url": view.get("url"),
+                        "capture_lag": view.get("capture_lag"),
+                        "capture_lag_ms": view.get("capture_lag_ms"),
+                        "phases": {
+                            "capture": {
+                                "status": "complete",
+                                "duration_ms": last_capture.get("capture_duration_ms"),
+                            },
+                            "perception": {
+                                "status": "complete",
+                                "duration_ms": last_frame.get("perception_duration_ms"),
+                            },
+                            "view": {
+                                "status": "complete",
+                                "duration_ms": 0,
+                                "run_id": expected_run_id,
+                                "worker_pid": expected_pid,
+                            },
                         },
-                        "perception": {
-                            "status": "complete",
-                            "duration_ms": last_frame.get("perception_duration_ms"),
-                        },
-                        "view": {
-                            "status": "complete",
-                            "duration_ms": 0,
-                            "run_id": expected_run_id,
-                            "worker_pid": expected_pid,
-                        },
-                    },
-                    "state": state,
-                }
+                        "state": state,
+                    }
         if status == "completed":
             return {"status": "completed", "state": state}
         if status in {"error", "stopped"}:
@@ -2104,10 +2111,9 @@ def _collect_automation_status(
                 pid=pid,
                 state=state,
             )
-            # Live workers publish camera then perception asynchronously. Status
-            # must not fail the frontier gate by sampling the gap between those
-            # publishes; poll briefly for a correlated current view — always
-            # capped by the remaining command budget.
+            # The first capture is published before its perception result.
+            # Status waits out that gap, within the command budget. A later
+            # capture does not withdraw a completed result whose image remains.
             if (
                 worker_status == "running"
                 and pid_alive
@@ -2419,7 +2425,14 @@ def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> s
 
 def _published_view_label(published_view: dict[str, Any]) -> str:
     if published_view.get("available") and published_view.get("url"):
-        return str(published_view["url"])
+        label = str(published_view["url"])
+        lag = published_view.get("capture_lag")
+        if isinstance(lag, int) and lag > 0:
+            lag_ms = published_view.get("capture_lag_ms")
+            if isinstance(lag_ms, int):
+                return f"{label}  capture_lag={lag} ({lag_ms}ms)"
+            return f"{label}  capture_lag={lag}"
+        return label
     return f"unavailable ({published_view.get('reason', 'automation view is not running')})"
 
 

@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
@@ -24,13 +22,6 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 
-from .paths import safe_path_part
-from .perception_view import get_perception_view_status
-
-
-ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
-
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 DECISION_LATEST_PATH = "/autonomy/decision/latest"
@@ -38,7 +29,6 @@ STATUS_JSON_PATH = "/autonomy/status"
 MEMORY_RESET_PATH = "/autonomy/memory/reset"
 HOST_TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
 HOST_TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
-PICAR_RUNTIME_DIRNAME = "picar_observation"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records_v0"
@@ -107,18 +97,6 @@ class HostTelemetryError(ValueError):
         self.reason = reason
         self.message_text = message
         self.details = details or {}
-
-
-def picar_observation_dir(vehicle_id: str) -> Path:
-    return RUNTIME_ROOT / safe_path_part(vehicle_id) / PICAR_RUNTIME_DIRNAME
-
-
-def picar_view_status(vehicle_id: str, *, timeout_s: float = 0.25) -> dict[str, Any]:
-    """Return local loopback view status for a PiCar observation stream."""
-    return get_perception_view_status(
-        picar_observation_dir(vehicle_id),
-        timeout_s=timeout_s,
-    )
 
 
 def fetch_autonomy_status(
@@ -1995,6 +1973,8 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "memory": memory if isinstance(memory, dict) else None,
         "control": control if isinstance(control, dict) else None,
         "generation_id": publication.get("generation_id"),
+        "step_activations": deepcopy(publication.get("step_activations")),
+        "context": deepcopy(publication.get("context")),
         "preset": publication.get("preset"),
         "health": publication.get("health"),
         "result_age_ms": publication.get("result_age_ms"),

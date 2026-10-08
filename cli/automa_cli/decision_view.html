@@ -45,6 +45,7 @@
         <h2>Black-box decision</h2>
         <p class="decision-direction"></p>
         <p class="decision-context"></p>
+        <p id="decision-host"></p>
       </section>
       <div id="preview-output" hidden>
         <details data-disclosure-key="selected-proposal-artifact">
@@ -82,9 +83,14 @@
         document.querySelector(".decision-direction").textContent = scenario.steering_direction;
         document.querySelector(".decision-context").textContent = scenario.context || "";
         const selected = cycle.plan?.candidates?.find(candidate => candidate.proposal_id === cycle.plan.selected_proposal_id);
+        const authority = cycle.action?.authority || {};
+        const displayedAuthority = {...authority};
+        delete displayedAuthority.host_application;
         document.querySelector("#decision-reason").textContent = selected?.reason || cycle.action?.reason || cycle.plan?.status || "";
+        document.querySelector("#decision-host").textContent =
+          "Host delivery: absent. proposed_applied=" + (authority.proposed_applied === true ? "true" : "false");
         document.querySelector("#decision-input").textContent = JSON.stringify(cycle.proposal?.source, null, 2);
-        document.querySelector("#decision-output").textContent = JSON.stringify({plan: cycle.plan, authority: cycle.action?.authority}, null, 2);
+        document.querySelector("#decision-output").textContent = JSON.stringify({plan: cycle.plan, authority: displayedAuthority}, null, 2);
         document.querySelector("#inspection-source").textContent = JSON.stringify({
           selected_scenario: selectedScenario,
           saved_input: inspection.input,
@@ -102,7 +108,7 @@
           if (!response.ok) throw new Error("Could not load inspection (" + response.status + ").");
           inspection = await response.json();
           const names = Object.keys(inspection.scenarios || {});
-          if (inspection.schema !== "automa_decision_inspection_v1" || names.length === 0) {
+          if (inspection.schema !== "automa_decision_inspection_v2" || names.length === 0) {
             throw new Error("Invalid inspection artifact.");
           }
           select.replaceChildren(...names.map((name) => {

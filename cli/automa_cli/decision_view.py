@@ -695,7 +695,12 @@ def get_decision_view_status(
     activation: dict[str, Any],
     timeout_s: float = 0.25,
 ) -> dict[str, Any]:
-    """Boundedly probe the already-running local producer without starting it."""
+    """Boundedly probe an already-running decision view without starting it.
+
+    Chase and PiCar both match on vehicle, run, and generation. A local view's
+    generation is its staged activation. An onboard view's generation is its
+    producer generation. A worker pid is not required.
+    """
 
     record_path = Path(automation_dir) / VIEW_RECORD_NAME
     try:
@@ -705,31 +710,15 @@ def get_decision_view_status(
     if not isinstance(record, dict):
         return _unavailable_status("runtime view record is invalid")
     url = record.get("url")
-    run_id = record.get("run_id")
-    worker_pid = record.get("worker_pid")
     parsed = urlparse(url) if isinstance(url, str) else None
     if (
         parsed is None
         or parsed.scheme != "http"
         or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
         or parsed.port is None
-        or type(run_id) is not str
-        or type(worker_pid) is not int
     ):
         return _unavailable_status("runtime view record has no valid loopback producer")
-    try:
-        identity = decision_view_identity(
-            vehicle_id=vehicle_id,
-            run_id=run_id,
-            worker_pid=worker_pid,
-            activation=activation,
-        )
-        generation = generation_id(identity)
-    except (TypeError, ValueError):
-        return _unavailable_status("decision activation cannot identify a live view")
     health_url = urljoin(url, "api/health")
-    api_url = f"{urljoin(url, 'api/decision/latest')}?{urlencode({'generation': generation})}"
-    page_url = f"{urljoin(url, 'decision')}?{urlencode({'generation': generation})}"
     try:
         opener = build_opener(_NoRedirect())
         with opener.open(Request(health_url, method="GET"), timeout=max(0.05, timeout_s)) as response:
@@ -740,16 +729,53 @@ def get_decision_view_status(
     except (HTTPError, URLError, OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
         return _unavailable_status("decision view producer is unavailable")
     decision = payload.get("decision") if isinstance(payload, dict) else None
+    identity = decision.get("identity") if isinstance(decision, dict) else None
+    if not isinstance(payload, dict) or not isinstance(decision, dict) or not isinstance(identity, dict):
+        return _unavailable_status("decision view producer returned a mismatched response")
+    try:
+        generation = generation_id(identity)
+    except (TypeError, ValueError):
+        return _unavailable_status("decision view producer returned a mismatched response")
     if (
-        not isinstance(payload, dict)
-        or not isinstance(decision, dict)
-        or payload.get("run_id") != run_id
-        or payload.get("worker_pid") != worker_pid
-        or decision.get("generation_id") != generation
-        or decision.get("identity") != identity
+        decision.get("generation_id") != generation
         or decision.get("status") not in {"warming", "running"}
+        or identity.get("vehicle_id") != vehicle_id
+        or type(identity.get("run_id")) is not str
+        or not identity.get("run_id")
     ):
         return _unavailable_status("decision view producer returned a mismatched response")
+    record_run_id = record.get("run_id")
+    if record_run_id is not None and record_run_id != identity.get("run_id"):
+        return _unavailable_status("decision view producer returned a mismatched response")
+    if payload.get("run_id") not in {None, identity.get("run_id")}:
+        return _unavailable_status("decision view producer returned a mismatched response")
+    try:
+        if "producer_generation_id" in identity:
+            if (
+                identity.get("producer_generation_id") != activation.get("generation_id")
+                or type(identity.get("source_id")) is not str
+                or not identity.get("source_id")
+            ):
+                return _unavailable_status("decision view producer returned a mismatched response")
+        else:
+            expected = _activation_identity(activation)
+            if (
+                identity.get("activation_generation_id") != expected["activation_generation_id"]
+                or identity.get("activation_sha256") != expected["activation_sha256"]
+            ):
+                return _unavailable_status("decision view producer returned a mismatched response")
+            identity_pid = identity.get("worker_pid")
+            record_pid = record.get("worker_pid")
+            if (
+                type(identity_pid) is int
+                and type(record_pid) is int
+                and identity_pid != record_pid
+            ):
+                return _unavailable_status("decision view producer returned a mismatched response")
+    except (TypeError, ValueError):
+        return _unavailable_status("decision activation cannot identify a live view")
+    api_url = f"{urljoin(url, 'api/decision/latest')}?{urlencode({'generation': generation})}"
+    page_url = f"{urljoin(url, 'decision')}?{urlencode({'generation': generation})}"
     return {
         "available": True,
         "status": "current" if decision.get("status") == "running" else "warming",

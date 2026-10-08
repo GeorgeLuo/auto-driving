@@ -10,7 +10,6 @@ from typing import Any
 
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import require_mode
-from implementations.vehicle.picar import PiCar
 
 DRIVE_MODES = {"manual": "user", "observe_only": "user", "autonomy": "local"}
 
@@ -28,15 +27,9 @@ def drive_mode(mode: str) -> str:
 class DonkeyControlTarget:
     """In-process delivery; the drivetrain pulls ControlExecution.output()."""
 
-    def __init__(self, car: PiCar | None = None) -> None:
-        # The onboard host is the drivetrain, so it has no HTTP car.
-        # Startup passes the car and uses the same acquire call as Chase.
-        self.car = car
-
-    def acquire(self) -> dict[str, Any] | None:
-        if self.car is None:
-            return None
-        return self.car.prepare_for_external_control()
+    def acquire(self) -> None:
+        # The onboard host is the drivetrain; no external input is acquired.
+        pass
 
     def write(self, control: AutonomyControl) -> dict[str, Any]:
         return {"boundary": "donkey_runtime_output", "transport": "in_process"}

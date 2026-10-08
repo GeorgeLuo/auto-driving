@@ -51,7 +51,7 @@ def _exact_keys(payload: Mapping[str, Any], expected: frozenset[str], *, field: 
 
 
 def _json_copy(value: object, *, field: str) -> Any:
-    """A detached JSON value. Objects and arrays stay dicts and lists."""
+    """A detached JSON value, including tuple arrays from typed cycle exports."""
 
     if value is None or type(value) is str:
         return value
@@ -63,7 +63,7 @@ def _json_copy(value: object, *, field: str) -> Any:
         if not math.isfinite(value):
             raise ValueError(f"{field} must be finite")
         return value
-    if type(value) is list:
+    if type(value) in (list, tuple):
         return [_json_copy(item, field=field) for item in value]
     if type(value) is dict:
         copied: dict[str, Any] = {}

@@ -3178,8 +3178,8 @@ def render_decision_exact_frame_html(
     <h2>Authority</h2>
     <p>proposed={esc(authority.get('proposed'))}</p>
     <p>authorized_output={esc(authority.get('authorized_output'))}</p>
-    <p class="emph">proposed_applied=false</p>
-    <p>host_application={esc(authority.get('host_application'))}</p>
+    <p class="emph">proposed_applied={esc(authority.get('proposed_applied') is True)}</p>
+    <p>Host delivery: absent</p>
   </section>{host_telemetry_block}
   <section id="non-claims">
     <h2>Non-claims</h2>

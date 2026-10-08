@@ -70,6 +70,17 @@ def run_vehicle_startup_check(
         return CommandResult(2, str(exc))
     car = access.car
     image_extension = access.image_extension
+    run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
+    out_dir = OPERATION_OUTPUT_ROOT / run_id
+    try:
+        plan = build_basic_startup_action_check_plan(
+            throttle=throttle,
+            duration_s=duration_s,
+            settle_s=settle_s,
+        )
+    except (TypeError, ValueError) as exc:
+        return CommandResult(2, f"Invalid startup action check plan: {exc}")
+
     # Dry runs stay passive: capture frames, but do not acquire control.
     # A live check acquires through the vehicle's control target, then releases.
     acquired = False
@@ -80,13 +91,7 @@ def run_vehicle_startup_check(
         except Exception as exc:
             return CommandResult(2, f"Could not prepare vehicle {vehicle_id!r}: {exc}")
 
-    run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
-    out_dir = OPERATION_OUTPUT_ROOT / run_id
-    plan = build_basic_startup_action_check_plan(
-        throttle=throttle,
-        duration_s=duration_s,
-        settle_s=settle_s,
-    )
+    release_error: Exception | None = None
     try:
         report = run_startup_action_check(
             car=car,
@@ -95,22 +100,23 @@ def run_vehicle_startup_check(
             image_extension=image_extension,
             dry_run=dry_run,
         )
-    except Exception as exc:
-        try:
-            car.stop()
-        except Exception:
-            pass
+    except BaseException as exc:
+        if acquired:
+            try:
+                car.stop()
+            except Exception:
+                pass
+        if isinstance(exc, Exception):
+            return CommandResult(2, f"Startup action check failed before completion: {exc}")
+        raise
+    finally:
         if acquired:
             try:
                 _release_control(access.control)
-            except Exception:
-                pass
-        return CommandResult(2, f"Startup action check failed before completion: {exc}")
-    if acquired:
-        try:
-            _release_control(access.control)
-        except Exception as exc:
-            return CommandResult(2, f"Could not release vehicle {vehicle_id!r}: {exc}")
+            except Exception as exc:
+                release_error = exc
+    if release_error is not None:
+        return CommandResult(2, f"Could not release vehicle {vehicle_id!r}: {release_error}")
 
     payload = _compact_startup_report(report, out_dir, preparation)
     exit_code = 0 if report["passed"] else 1

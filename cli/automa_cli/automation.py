@@ -66,6 +66,7 @@ from .step_activations import (
 )
 from .step_hosting import load_staged_runner, plugin_report
 from .run_record import (
+    append_recording_frame,
     control_application,
     control_source,
     decision_record,
@@ -816,6 +817,19 @@ def run_vehicle_automation(
             frame_text_path = perception_dir / context.frame_id / "perception.txt"
             _write_json(frame_json_path, frame_record)
             frame_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")
+            if run_dir is not None:
+                append_recording_frame(
+                    run_dir,
+                    vehicle_id=vehicle_id,
+                    run_id=str(state.get("run_id") or run_id),
+                    generation_id=identity["generation_id"],
+                    frame_id=context.frame_id,
+                    frame_index=context.frame_index,
+                    timestamp_ms=sensor_frame.completed_at_ms,
+                    image_path=pending.front_path,
+                    steps=cycle_result.context.metadata["step_activations"],
+                    context=cycle_result.context.to_dict(),
+                )
         _write_json(latest_json_path, frame_record)
         latest_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")
 

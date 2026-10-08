@@ -56,10 +56,10 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
 
 
 def workbench_decision_steps() -> dict[str, Any]:
-    """The built-in plan and hold action the workbench replays after the selected proposals."""
+    """The same built-in observation, plan, and action used by a vehicle host."""
 
     steps = decision_steps()
-    return {"plan": steps.plan, "action": steps.action}
+    return {"observation": steps.observation, "plan": steps.plan, "action": steps.action}
 
 
 def decision_view(result: Any) -> dict[str, Any] | None:
@@ -102,12 +102,15 @@ def run_frame(
     perception_step = steps["perception"]
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
+    recorded_context = frame.metadata.get("context", {})
     context = DecisionFrameContext(
         frame_id=frame.frame_id,
         frame_index=frame.frame_index,
         timestamp_ms=frame.timestamp_ms,
         sensor_frame=sensor_frame,
-        mode="workbench_replay",
+        mode=recorded_context.get("mode", "workbench_replay"),
+        user_steering=recorded_context.get("user_steering", 0.0),
+        user_throttle=recorded_context.get("user_throttle", 0.0),
         shared_memory=shared_memory,
         metadata={
             "source": WORKBENCH_SEQUENCE_ID,
@@ -117,6 +120,8 @@ def run_frame(
     )
 
     def perceive(current: DecisionFrameContext) -> PerceptionText | None:
+        if perception_step is None:
+            return None
         if frame.absent or current.sensor_frame is None:
             perception_step.reset(current.shared_memory)
             return None
@@ -151,7 +156,7 @@ def run_frame(
     result = DecisionCycle(
         DecisionSteps(
             perception=perceive,
-            observation=observe,
+            observation=steps.get("observation", observe),
             memory=steps.get("memory"),
             proposal=steps.get("proposal"),
             plan=steps.get("plan"),

@@ -154,24 +154,21 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
                         frame_json_path.parent.mkdir(parents=True, exist_ok=True)
                         write_json_atomically(frame_json_path, frame)
                         frame_text_path.write_text(perception_text, encoding="utf-8")
-                        decision = state.get("decision") if isinstance(state.get("decision"), dict) else {}
                         generation_id = frame.get("generation_id")
-                        if type(generation_id) is not str or not generation_id:
-                            generation_id = decision.get("generation_id")
-                        selections = decision.get("steps") if isinstance(decision.get("steps"), dict) else {}
+                        selections = frame.get("step_activations")
                         frame_index = frame.get("frame_index")
-                        if type(generation_id) is str and generation_id and type(captured_at_ms) is int:
-                            append_recording_frame(
-                                run_dir,
-                                vehicle_id=vehicle_id,
-                                run_id=run_id,
-                                generation_id=generation_id,
-                                frame_id=str(frame_id),
-                                frame_index=frame_index if type(frame_index) is int else None,
-                                timestamp_ms=captured_at_ms,
-                                image_path=frame_path,
-                                steps=selections,
-                            )
+                        append_recording_frame(
+                            run_dir,
+                            vehicle_id=vehicle_id,
+                            run_id=run_id,
+                            generation_id=generation_id,
+                            frame_id=str(frame_id),
+                            frame_index=frame_index if type(frame_index) is int else None,
+                            timestamp_ms=captured_at_ms,
+                            image_path=frame_path,
+                            steps=selections,
+                            context=frame.get("context"),
+                        )
                     found = frame["perception"] or {}
                     signals, things = len(found.get("signals") or []), len(found.get("things") or [])
                     completed_at_ms = frame.get("perception_completed_at_ms")

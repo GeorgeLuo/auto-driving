@@ -827,7 +827,8 @@ def run_vehicle_automation(
                     frame_index=context.frame_index,
                     timestamp_ms=sensor_frame.completed_at_ms,
                     image_path=pending.front_path,
-                    steps=identity["steps"],
+                    steps=cycle_result.context.metadata["step_activations"],
+                    context=cycle_result.context.to_dict(),
                 )
         _write_json(latest_json_path, frame_record)
         latest_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")

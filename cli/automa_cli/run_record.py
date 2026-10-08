@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.runtime.session import RunConfiguration
+from autonomy.decision_cycle.activation import STEPS
 
+from .inspection_runs import recorded_selections
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
 from .staged_bundle import write_json_atomically
@@ -53,12 +55,13 @@ def append_recording_frame(
     image_path: Path,
     steps: dict[str, Any],
     frame_index: int | None = None,
+    context: dict[str, Any] | None = None,
 ) -> None:
     """Append one recorded frame to the run directory's manifest.
 
     Chase and PiCar both call this. The image path is stored relative to the
     run directory, which is the directory replay loads. The frame keeps the
-    report identity, the original capture time, and the staged step selections.
+    report identity, original capture time, applied step selections, and inputs.
     """
 
     vehicle_id = _recording_text(vehicle_id, "vehicle_id")
@@ -69,13 +72,17 @@ def append_recording_frame(
         raise ValueError("timestamp_ms must be a nonnegative int")
     if type(steps) is not dict:
         raise ValueError("steps must be the staged step selections")
+    if set(steps) != set(STEPS):
+        raise ValueError("recording requires the applied selections of every cycle step")
+    recorded_selections({"steps": steps, "generation_id": generation_id})
     if frame_index is not None and (type(frame_index) is not int or frame_index < 0):
         raise ValueError("frame_index must be a nonnegative int")
     root = Path(run_dir)
     root.mkdir(parents=True, exist_ok=True)
     candidate = Path(image_path)
     if not candidate.is_absolute():
-        candidate = root / candidate
+        resolved = candidate.resolve()
+        candidate = resolved if resolved.is_relative_to(root.resolve()) else root / candidate
     try:
         relative_image = candidate.resolve().relative_to(root.resolve()).as_posix()
     except ValueError as exc:
@@ -91,6 +98,11 @@ def append_recording_frame(
     }
     if frame_index is not None:
         entry["frame_index"] = frame_index
+    if context is not None:
+        entry["context"] = {
+            key: copy.deepcopy(context[key])
+            for key in ("mode", "user_steering", "user_throttle") if key in context
+        }
     manifest_path = root / RECORDING_MANIFEST_NAME
     payload: dict[str, Any] = {
         "schema": RECORDING_MANIFEST_SCHEMA,

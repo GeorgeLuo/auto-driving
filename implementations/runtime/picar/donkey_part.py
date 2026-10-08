@@ -117,6 +117,7 @@ class LatestObservationState:
     preset: str | None = None
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
+    context: dict[str, Any] | None = None
 
     def to_status_dict(self) -> dict[str, Any]:
         """Bounded status view without the raw image or full perception payload."""
@@ -588,6 +589,14 @@ class AutonomyPilotPart:
         observation = None if latest.cycle is None else deepcopy(latest.cycle.get("observation"))
         # Republish the memory report through the cycle publication.
         memory = None if latest.cycle is None else deepcopy(latest.cycle.get("memory"))
+        context = latest.context or (latest.cycle or {}).get("context") or {}
+        selections = (context.get("metadata") or {}).get("step_activations")
+        if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
+            generation_id = activation_generation_id(
+                {step: selections[step] for step in DECISION_STEPS}, prefix="decision",
+            )
+        else:
+            generation_id = None
         return {
             "schema": OBSERVATION_PUBLICATION_SCHEMA,
             "ok": health in {PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE},
@@ -601,6 +610,11 @@ class AutonomyPilotPart:
             "skipped_count": skipped_count,
             "preset": preset or latest.preset,
             "generation_id": generation_id,
+            "step_activations": deepcopy(selections),
+            "context": {
+                key: context[key] for key in ("mode", "user_steering", "user_throttle")
+                if key in context
+            },
             "frame": {
                 "frame_id": latest.frame_id,
                 "frame_index": latest.frame_index,
@@ -1048,6 +1062,11 @@ class AutonomyPilotPart:
                 preset=self.preset,
                 decision_publication=decision_publication,
                 decision_error=decision_error,
+                context=(
+                    self.host.last_context.to_dict()
+                    if self.host.last_context is not None
+                    and self.host.last_context.frame_id == frame_id else None
+                ),
             )
             with self._lock:
                 self._last_control = control_dict

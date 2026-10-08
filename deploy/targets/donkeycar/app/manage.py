@@ -584,6 +584,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
                 controller=autonomy_controller,
+                recording_root=runtime_root / "automation" / "runs",
             )
             autonomy_execution = host.execution
             if telemetry_store is not None:

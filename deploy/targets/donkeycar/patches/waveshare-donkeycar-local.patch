@@ -268,7 +268,7 @@ index 8af4669..5d27cc5 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +264,463 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +264,469 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -508,7 +508,13 @@ index 8af4669..5d27cc5 100644
 +        try:
 +            # The publisher sets Donkey's drive mode for the runs it starts and stops.
 +            if command == "run":
-+                publisher.start(RunConfiguration(**data.get("configuration", {})))
++                publisher.start(RunConfiguration(**data.get("configuration", {})), record=data.get("record", False))
++            elif command == "read_recording":
++                recording = publisher.host.recording
++                if recording is None:
++                    raise ValueError("no recorded run is available")
++                self.write_json({"ok": True, "recording": recording.read(run_id=data.get("run_id"), after=data.get("after"))})
++                return
 +            elif command in {"stop", "restart"}:
 +                publisher.stop()
 +            else:

@@ -7,6 +7,7 @@ import threading
 import time
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
@@ -14,6 +15,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.report import delivery_values, diagnostic_ceiling, report_from_host_result
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
@@ -191,11 +193,13 @@ class AutonomyPilotPart:
         run_id: str | None = None,
         host_telemetry: Any | None = None,
         controller: Any | None = None,
+        recording_root: Path | None = None,
     ) -> None:
         interval_s = RunConfiguration(interval_s=float(interval_s)).interval_s
         if getattr(host, "execution", None) is None:
             raise ValueError("AutonomyPilotPart needs a host from create_host()")
         self.host = host
+        self.recording_root = recording_root
         # Donkey's web controller. Runs this part starts or ends set its drive
         # mode; drive-mode changes the part did not make are the operator's.
         self.controller = controller
@@ -419,12 +423,17 @@ class AutonomyPilotPart:
         """Return the pilot tuple from the last finished cycle, under the given mode."""
         return self._held_outputs(mode)
 
-    def start(self, configuration: RunConfiguration) -> dict[str, Any]:
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+        if record and (self.recording_root is None or self.vehicle_id is None):
+            raise RuntimeError("onboard recording requires a runtime directory and vehicle identity")
+        recording = RunRecording(
+            self.recording_root, vehicle_id=self.vehicle_id, encode_image=encode_jpeg,
+        ) if record else None
         with self._lock:
             self.interval_s = configuration.interval_s
             self._last_capture_monotonic = None
             self._discard_pending_locked()
-        status = self.host.start(configuration)
+        status = self.host.start(configuration, recording=recording)
         self._show_drive_mode(drive_mode(configuration.mode))
         return status
 

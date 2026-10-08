@@ -10,33 +10,10 @@ from __future__ import annotations
 from typing import Any
 
 from autonomy.decision_cycle.activation import (
-    DECISION_STEPS, StepActivation, activation_generation_id, require_step,
-    step_activation, step_activation_from_payload,
+    StepActivation, step_activation,
 )
 from autonomy.decision_cycle.steps import step_runner
-
-
-def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | None]:
-    """Read a frame's executable selections, preserving disabled steps."""
-    if "steps" not in record:
-        return {}
-    payloads = record["steps"]
-    if not isinstance(payloads, dict):
-        raise ValueError("recorded steps must be an object")
-    activations = {
-        require_step(step): None if payload is None else step_activation_from_payload(payload, step=step)
-        for step, payload in payloads.items()
-    }
-    generation = record.get("generation_id")
-    if generation is not None:
-        if not all(step in activations for step in DECISION_STEPS):
-            raise ValueError("recorded generation requires proposal, plan, and action selections")
-        expected = activation_generation_id(
-            {step: activations[step] for step in DECISION_STEPS}, prefix="decision",
-        )
-        if generation != expected:
-            raise ValueError("recorded generation does not match its step selections")
-    return activations
+from autonomy.runtime.recording import recorded_selections
 
 
 def replay_step(runner: Any, activation: StepActivation | None, shared_memory: dict[str, Any]) -> Any:

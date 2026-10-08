@@ -29,6 +29,7 @@ from autonomy.decision_cycle.observation.runner import ObservationRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from autonomy.runtime.plugin_loader import CodeSource, load_runner
 
 STEP_RUNNERS: dict[str, Any] = {
     "perception": PerceptionRunner,
@@ -63,6 +64,8 @@ def builtin_activation(step: str) -> StepActivation | None:
 
 
 def step_runner(activation: StepActivation) -> Any:
+    """Construct the runner from the process's already-imported package."""
+
     return STEP_RUNNERS[activation.step].from_activation(activation)
 
 
@@ -95,8 +98,14 @@ def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
 
 def decision_steps(
     activations: dict[str, StepActivation | None] | None = None,
+    *,
+    source: CodeSource | None = None,
 ) -> DecisionSteps:
-    """Runners for the given activations; unlisted steps use their built-ins."""
+    """Runners for the given activations; unlisted steps use their built-ins.
+
+    ``source`` is the installed package when omitted. A host that staged the
+    activations passes the bundle code source instead.
+    """
 
     activations = dict(activations or {})
     runners: dict[str, Any] = {}
@@ -104,7 +113,7 @@ def decision_steps(
         activation = activations[step] if step in activations else builtin_activation(step)
         if activation is not None and activation.step != step:
             raise ValueError(f"activation for {activation.step!r} given as {step!r}")
-        runners[step] = step_runner(activation) if activation is not None else None
+        runners[step] = load_runner(activation, source=source) if activation is not None else None
     return DecisionSteps(**runners)
 
 

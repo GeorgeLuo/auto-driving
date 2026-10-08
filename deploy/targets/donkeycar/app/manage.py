@@ -474,6 +474,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 decision_steps,
             )
             from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
+            from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE
             from implementations.runtime.picar import (
                 DEFAULT_INTERVAL_S,
                 AutonomyPilotPart,
@@ -506,7 +507,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         if builtin_activation(step) is not None
                         else "stays empty",
                     )
-            host = create_host(steps=decision_steps(activations))
+            host = create_host(
+                steps=decision_steps(activations, source=INSTALLED_PACKAGE)
+            )
             # Selections restaged with `vehicles update autonomy` apply between
             # frames, as in the Chase worker; changed specs or configs need
             # --restart.

@@ -1,10 +1,7 @@
-"""Shared staged-bundle import swaps and activation writes.
+"""Activation writes, and the staged-bundle import swap the shared loader owns.
 
-CLI hosts replace process-global plugin modules while a staged controller
-bundle is active. Step info, worker, and decision replay callers share one
-lock because they edit the same ``sys.modules`` table. Each caller names the
-top-level modules that come from the bundle; every other module keeps the
-host process's classes.
+``StagedBundleImport`` lives in ``autonomy.runtime.plugin_loader``. This module
+re-exports it for callers that already import it with the JSON writer.
 """
 
 from __future__ import annotations
@@ -12,63 +9,13 @@ from __future__ import annotations
 import json
 import os
 import stat
-import sys
 import tempfile
-import threading
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from autonomy.runtime.plugin_loader import StagedBundleImport
 
-_IMPORT_LOCK = threading.RLock()
-
-
-class StagedBundleImport:
-    """Swap one bundle's modules into the process, then restore the host's."""
-
-    def __init__(self, bundle_root: Path, prefixes: tuple[str, ...]) -> None:
-        self.bundle_root = str(bundle_root)
-        self.prefixes = prefixes
-        self.modules: dict[str, Any] = {}
-
-    @contextmanager
-    def activate(self) -> Iterator[None]:
-        with _IMPORT_LOCK:
-            cached = {
-                name: module
-                for name, module in list(sys.modules.items())
-                if self._is_bundle_module(name)
-            }
-            for name in cached:
-                sys.modules.pop(name, None)
-            sys.modules.update(self.modules)
-            previous_dont_write_bytecode = sys.dont_write_bytecode
-            sys.dont_write_bytecode = True
-            sys.path.insert(0, self.bundle_root)
-            try:
-                yield
-            finally:
-                self.modules = {
-                    name: module
-                    for name, module in list(sys.modules.items())
-                    if self._is_bundle_module(name)
-                }
-                for name in list(sys.modules):
-                    if self._is_bundle_module(name):
-                        sys.modules.pop(name, None)
-                sys.modules.update(cached)
-                try:
-                    sys.path.remove(self.bundle_root)
-                except ValueError:
-                    pass
-                sys.dont_write_bytecode = previous_dont_write_bytecode
-
-    def _is_bundle_module(self, name: str) -> bool:
-        return any(
-            name == prefix or name.startswith(f"{prefix}.")
-            for prefix in self.prefixes
-        )
+__all__ = ["StagedBundleImport", "write_json_atomically"]
 
 
 def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:

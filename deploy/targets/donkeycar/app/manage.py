@@ -474,12 +474,12 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 decision_steps,
             )
             from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
-            from implementations.runtime.donkeycar import (
+            from implementations.runtime.picar import (
                 DEFAULT_INTERVAL_S,
                 AutonomyPilotPart,
                 create_host,
             )
-            from implementations.runtime.donkeycar.host_telemetry import (
+            from implementations.runtime.picar.host_telemetry import (
                 DriveModeTelemetryAdapter,
                 HostTelemetryStore,
             )
@@ -803,7 +803,7 @@ class DriveMode:
         """Deliver shared runtime output, or manual input without a runtime."""
         if self.execution is not None:
             from autonomy.runtime.control import AutonomyControl
-            from implementations.runtime.donkeycar.control import execution_mode
+            from implementations.runtime.picar.control import execution_mode
             manual = AutonomyControl(
                 steering=user_steering or 0.0, throttle=user_throttle or 0.0,
                 reason="manual-input",

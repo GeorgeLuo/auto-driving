@@ -313,61 +313,17 @@
       return `steer ${command.steering} / throttle ${command.throttle}`;
     }
 
-    function serializedHostValue(value) {
-      try {
-        const serialized = JSON.stringify(value);
-        return serialized === undefined ? "—" : serialized;
-      } catch (_error) {
-        return "—";
+    function decisionPlan() {
+      const decision = latest?.decision || {};
+      if (decision.plan_summary && typeof decision.plan_summary === "object") {
+        return decision.plan_summary;
       }
-    }
-
-    function hostApplicationView(envelope, decisionFrameId) {
-      const unavailable = (reason, value = "—") => ({
-        status: "unavailable",
-        reason,
-        value,
-        frame: decisionFrameId ? `${decisionFrameId} (decision cycle)` : "unknown",
-      });
-      if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-        return unavailable("host_observation_malformed");
-      }
-      const status = envelope.status;
-      if (!["ready", "unavailable", "error"].includes(status)) {
-        return unavailable("host_observation_malformed");
-      }
-      if (status !== "ready") {
-        if (envelope.value !== null || typeof envelope.reason !== "string" || !envelope.reason) {
-          return unavailable("host_observation_malformed");
-        }
-        return {
-          status,
-          reason: envelope.reason,
-          value: "—",
-          frame: decisionFrameId ? `${decisionFrameId} (decision cycle)` : "unknown",
-        };
-      }
-      const observed = serializedHostValue(envelope.value);
-      if (envelope.value == null || envelope.reason !== "" || observed === "—") {
-        return unavailable("host_observation_malformed", observed);
-      }
-      let frame = decisionFrameId ? `${decisionFrameId} (decision cycle)` : "unknown";
-      if (typeof envelope.value === "object" && !Array.isArray(envelope.value) &&
-          Object.hasOwn(envelope.value, "frame_id")) {
-        const reportedFrame = envelope.value.frame_id;
-        if (typeof reportedFrame !== "string" || !reportedFrame) {
-          return unavailable("host_observation_malformed", observed);
-        }
-        if (decisionFrameId && reportedFrame !== decisionFrameId) {
-          return unavailable("host_frame_mismatch", observed);
-        }
-        frame = `${reportedFrame} (host reported)`;
-      }
-      return { status: "ready", reason: "—", value: observed, frame };
+      const plan = decision.cycle?.plan;
+      return plan && typeof plan === "object" ? plan : {};
     }
 
     function selectedCandidate() {
-      const plan = latest?.decision?.plan_summary || {};
+      const plan = decisionPlan();
       const selected = plan.selected_proposal_id;
       const candidates = Array.isArray(plan.candidates) ? plan.candidates : [];
       return candidates.find((candidate) => candidate.proposal_id === selected) || candidates[0] || null;
@@ -441,8 +397,9 @@
       const identity = latest.identity || {};
       const decision = latest.decision || {};
       const cycle = decision.cycle || {};
-      const plan = decision.plan_summary || {};
+      const plan = decisionPlan();
       const authority = latest.authority || {};
+      const application = decision.application || {};
       const hostTelemetry = latest.host_telemetry || null;
       const candidate = selectedCandidate();
       const primary = primaryRecordIds();
@@ -462,14 +419,15 @@
       appendMetric(authorityMetrics, "Proposed", commandText(authority.proposed || candidate?.command));
       appendMetric(authorityMetrics, "Authorized", commandText(authority.authorized_output));
       appendMetric(authorityMetrics, "Applied", authority.proposed_applied ? "true" : "false");
-      const host = hostApplicationView(
-        authority.host_application,
-        latest.current_image?.frame_id,
+      const hostFrame = decision.frame_id || latest.current_image?.frame_id;
+      appendMetric(
+        authorityMetrics,
+        "Host status",
+        application.applied === true ? "applied" : application.applied === false ? "not applied" : "unavailable",
       );
-      appendMetric(authorityMetrics, "Host status", host.status);
-      appendMetric(authorityMetrics, "Host reason", host.reason);
-      appendMetric(authorityMetrics, "Host frame", host.frame);
-      appendMetric(authorityMetrics, "Host observed", host.value);
+      appendMetric(authorityMetrics, "Host reason", application.reason || "—");
+      appendMetric(authorityMetrics, "Host frame", hostFrame ? `${hostFrame} (host reported)` : "unknown");
+      appendMetric(authorityMetrics, "Host observed", commandText(application.applied == null ? null : application));
 
       document.getElementById("hostTelemetryStatus").textContent = hostTelemetry
         ? `${hostTelemetry.status || "unavailable"} · ${hostTelemetry.reason || ""}`

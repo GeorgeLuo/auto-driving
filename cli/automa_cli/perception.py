@@ -15,6 +15,7 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
+from implementations.runtime.chase_sim.control import ChaseControlTarget
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
@@ -49,12 +50,11 @@ from .step_hosting import load_staged_runner
 from .step_schema import format_staged_step, staged_step_info
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
+from .view_discovery import discover_runtime_view, runtime_view_dir
 from .picar_observation import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_observation_publication,
-    picar_observation_dir,
-    picar_view_status,
     picar_base_url,
 )
 from .vehicles import (
@@ -613,7 +613,7 @@ def _restart_and_sample_sim_controller(
             "load the Chase example first."
         )
 
-    preparation = car.prepare_for_external_control()
+    preparation = ChaseControlTarget(car).acquire()
     if verbose:
         _emit(output, json.dumps(preparation, indent=2, sort_keys=True))
 
@@ -829,7 +829,7 @@ def _live_picar_observation_info(
             "base_url": base_url,
             "error": f"Vehicle {vehicle_id!r} has an invalid PiCar base URL.",
         }
-    view = picar_view_status(vehicle_id)
+    view = discover_runtime_view(vehicle_id, get_perception_view_status, runtime_root=RUNTIME_ROOT)
     try:
         publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
     except ConnectionError as exc:
@@ -839,7 +839,7 @@ def _live_picar_observation_info(
             "base_url": base_url,
             "error": str(exc),
             "published_view": view,
-            "runtime_dir": display_path(picar_observation_dir(vehicle_id)),
+            "runtime_dir": display_path(runtime_view_dir(vehicle_id, runtime_root=RUNTIME_ROOT)),
         }
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
     result = {
@@ -862,7 +862,7 @@ def _live_picar_observation_info(
         "latest_json_path": LATEST_JSON_PATH,
         "latest_frame_path": LATEST_FRAME_PATH,
         "published_view": view,
-        "runtime_dir": display_path(picar_observation_dir(vehicle_id)),
+        "runtime_dir": display_path(runtime_view_dir(vehicle_id, runtime_root=RUNTIME_ROOT)),
     }
     if publication.get("health") not in {"healthy", "stale"}:
         error = publication.get("error")

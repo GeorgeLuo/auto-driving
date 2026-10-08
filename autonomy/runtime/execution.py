@@ -26,9 +26,13 @@ def require_mode(mode: str) -> str:
 
 
 class ControlTarget(Protocol):
-    """Transport operations; implementations must not add decision policy."""
+    """Transport operations; implementations must not add decision policy.
 
-    def acquire(self) -> None: ...
+    ``acquire`` returns the vehicle's preparation receipt. ``None`` means
+    acquisition changed nothing. Callers that do not need the receipt ignore it.
+    """
+
+    def acquire(self) -> dict[str, Any] | None: ...
     def write(self, control: AutonomyControl) -> dict[str, Any]: ...
     def release(self) -> None: ...
 

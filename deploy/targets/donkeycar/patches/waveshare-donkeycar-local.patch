@@ -221,7 +221,7 @@ index 64581bc..bf5f54d 100755
          }
  
 diff --git a/donkeycar/parts/web_controller/web.py b/donkeycar/parts/web_controller/web.py
-index 8af4669..9262f69 100644
+index 8af4669..5d27cc5 100644
 --- a/donkeycar/parts/web_controller/web.py
 +++ b/donkeycar/parts/web_controller/web.py
 @@ -101,7 +101,7 @@ class RemoteWebServer():
@@ -284,7 +284,7 @@ index 8af4669..9262f69 100644
 +        return tornado.escape.json_decode(self.request.body)
 +
 +    def status_payload(self) -> dict:
-+        from implementations.runtime.donkeycar.control import DRIVE_MODES
++        from implementations.runtime.picar.control import DRIVE_MODES
 +        host = getattr(self.application, "autonomy_host", None)
 +        autonomy_status = None if host is None else host.status()
 +        return {

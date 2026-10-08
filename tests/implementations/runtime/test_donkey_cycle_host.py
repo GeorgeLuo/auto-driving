@@ -14,7 +14,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.session import RunConfiguration
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from implementations.runtime.donkeycar import (
+from implementations.runtime.picar import (
     DEFAULT_INTERVAL_S,
     AutonomyPilotPart,
     DonkeyControlTarget,

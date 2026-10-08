@@ -440,7 +440,7 @@ def build_parser() -> argparse.ArgumentParser:
     startup_check.add_argument(
         "--dry-run",
         action="store_true",
-        help="Capture every comparison without sending movement pulses.",
+        help="Capture every comparison without acquiring control or sending movement pulses.",
     )
     startup_check.add_argument(
         "--json",

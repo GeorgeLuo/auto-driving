@@ -1,17 +1,17 @@
-"""Normalized commands pushed to the Chase simulator's chaser input."""
+"""Normalized commands delivered to a remote PiCar through Donkey HTTP."""
 from __future__ import annotations
 
 from typing import Any
 
 from autonomy.runtime.control import AutonomyControl
 from autonomy.vehicle import VehicleAction
-from implementations.vehicle.chase_sim import ChaseSimCar
+from implementations.vehicle.picar import PiCar
 
 
-class ChaseControlTarget:
-    """WebSocket delivery; each write sets the chaser input immediately."""
+class PiCarHttpControlTarget:
+    """HTTP delivery; each write sets the car's external drive input."""
 
-    def __init__(self, car: ChaseSimCar) -> None:
+    def __init__(self, car: PiCar) -> None:
         self.car = car
 
     def acquire(self) -> dict[str, Any]:
@@ -28,6 +28,5 @@ class ChaseControlTarget:
         )
 
     def release(self) -> None:
-        # Keep the stopped WS input selected; handing control to the built-in
-        # chaser would resume movement after an operator stop.
+        # HTTP requests hold no transport resource; the caller owns stop policy.
         pass

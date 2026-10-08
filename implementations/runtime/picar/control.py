@@ -28,6 +28,7 @@ class DonkeyControlTarget:
     """In-process delivery; the drivetrain pulls ControlExecution.output()."""
 
     def acquire(self) -> None:
+        # The onboard host is the drivetrain; no external input is acquired.
         pass
 
     def write(self, control: AutonomyControl) -> dict[str, Any]:

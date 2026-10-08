@@ -20,6 +20,7 @@ from autonomy.vehicle import (
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
+    run_vehicle_pulse,
 )
 
 
@@ -81,6 +82,16 @@ class PiCar(CarInterface):
             return action.steering, normalized_throttle
         return action.steering, 0.0
 
+    def prepare_for_external_control(self) -> dict[str, Any]:
+        """The Donkey HTTP drive is already the external input."""
+        now_ms = int(time.time() * 1000)
+        return {
+            "boundary": "donkey_http_input",
+            "switched_control_source": False,
+            "started_at_ms": now_ms,
+            "completed_at_ms": now_ms,
+        }
+
     def stop(self) -> None:
         self.client.stop()
 
@@ -108,27 +119,7 @@ class PiCar(CarInterface):
         }
 
     def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
-        started_ms = int(time.time() * 1000)
-        try:
-            command = self.execute_action(
-                pulse.action,
-                throttle=pulse.throttle,
-                recording=pulse.recording,
-            )
-            time.sleep(pulse.duration_s)
-        finally:
-            self.stop()
-
-        if pulse.settle_s > 0:
-            time.sleep(pulse.settle_s)
-
-        return {
-            "label": pulse.label,
-            "pulse": pulse.to_dict(),
-            "command": command,
-            "started_at_ms": started_ms,
-            "completed_at_ms": int(time.time() * 1000),
-        }
+        return run_vehicle_pulse(self, pulse)
 
     def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         _reject_unsupported_sensors(request)

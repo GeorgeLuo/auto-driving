@@ -23,9 +23,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from autonomy.runtime.report import VehicleReport
-
-from .decision import DECISION_STREAM_MAX_AGE_MS
+from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 from .perception_view import VIEW_RECORD_NAME
 from .picar_observation import (
     HOST_TELEMETRY_PANEL_SCHEMA,
@@ -468,6 +466,7 @@ class DecisionView:
             return False
         try:
             parsed = VehicleReport.from_dict(report)
+            diagnostic_ceiling(parsed.values)
             identity = self.identity
             expected_generation = identity.get(
                 "producer_generation_id", identity.get("activation_generation_id")
@@ -581,7 +580,8 @@ class DecisionView:
         published_at_ms = transaction.report["published_at_ms"]
         captured_at_ms = transaction.frame_record.get("captured_at_ms")
         age_ms = served_at_ms - published_at_ms
-        if not 0 <= age_ms <= DECISION_STREAM_MAX_AGE_MS:
+        max_age_ms = diagnostic_ceiling(transaction.report["values"])
+        if not 0 <= age_ms <= max_age_ms:
             raise DecisionViewError(503, "decision_stale", "accepted decision cycle has expired")
         capture_age_ms = (
             served_at_ms - captured_at_ms if type(captured_at_ms) is int else None
@@ -617,8 +617,8 @@ class DecisionView:
                 "capture_age_ms": capture_age_ms,
                 "published_at_ms": published_at_ms,
                 "age_ms": age_ms,
-                "max_age_ms": DECISION_STREAM_MAX_AGE_MS,
-                "expires_at_ms": published_at_ms + DECISION_STREAM_MAX_AGE_MS,
+                "max_age_ms": max_age_ms,
+                "expires_at_ms": published_at_ms + max_age_ms,
             },
             "decision": _json_copy(transaction.report),
             "current_image": {

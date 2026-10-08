@@ -15,7 +15,7 @@ from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
-from autonomy.runtime.report import delivery_values, report_from_host_result
+from autonomy.runtime.report import delivery_values, diagnostic_ceiling, report_from_host_result
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from .control import drive_mode, execution_mode
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -804,7 +804,6 @@ class AutonomyPilotPart:
         """Build the physical decision wire payload, fail-closed at read time."""
 
         latest = self.latest_state
-        threshold_ms = stale_after_ms(self.interval_s)
         if latest is None:
             return self._decision_unavailable(reason="missing", read_at_ms=read_at_ms)
         decision = latest.decision_publication
@@ -813,6 +812,7 @@ class AutonomyPilotPart:
                 reason=latest.decision_error or "unavailable",
                 read_at_ms=read_at_ms,
             )
+        threshold_ms = diagnostic_ceiling(decision["values"])
         # Replacing a decision step retires its result. Never
         # replay the detached result retained by a prior sensor frame.
         current = self._current_decision_result()

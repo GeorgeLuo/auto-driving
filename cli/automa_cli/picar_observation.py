@@ -22,8 +22,6 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
-from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
-from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
 from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 
 from .paths import safe_path_part
@@ -1772,41 +1770,8 @@ def normalize_picar_decision_publication(
             field="decision.values.activation.steps",
         )
 
-    cycle = _picar_require_mapping(decision.get("cycle"), field="decision.cycle")
-    proposal = _picar_require_mapping(cycle.get("proposal"), field="decision.cycle.proposal")
-    action = _picar_require_mapping(cycle.get("action"), field="decision.cycle.action")
-    if (
-        proposal.get("schema") != PROPOSAL_RESULT_SCHEMA
-        or proposal.get("status") not in {"ok", "error"}
-        or action.get("schema") != ACTION_RESULT_SCHEMA
-        or action.get("status") not in {"ok", "error"}
-    ):
-        raise _picar_decision_error(
-            "incomplete",
-            "PiCar decision cycle proposal and action must be ok or error.",
-            field="decision.cycle",
-        )
-    for field, record in (("proposal", proposal), ("action", action)):
-        if record.get("frame_id") != frame_id:
-            raise _picar_decision_error(
-                "mismatched",
-                f"PiCar decision {field} frame_id does not match its outer identity.",
-                field=f"decision.cycle.{field}.frame_id",
-            )
-    source = _picar_require_mapping(
-        proposal.get("source"), field="decision.cycle.proposal.source"
-    )
-    for field, expected in (
-        ("frame_id", frame_id),
-        ("frame_index", frame_index),
-        ("timestamp_ms", timestamp_value),
-    ):
-        if source.get(field) != expected:
-            raise _picar_decision_error(
-                "mismatched",
-                f"PiCar decision source {field} does not match its outer identity.",
-                field=f"decision.cycle.proposal.source.{field}",
-            )
+    # Cycle reconstruction and frame/activation alignment belong to the
+    # shared report reader. This adapter owns only the HTTP envelope.
     if type(now_ms) is not int:
         raise ValueError("now_ms must be a non-bool int")
     age_ms = int(now_ms) - published_at_ms

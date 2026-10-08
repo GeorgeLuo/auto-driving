@@ -697,6 +697,7 @@ def accept_decision_stream_frame(
             "latest_frame_stale",
             "Latest decision frame does not match the currently staged decision generation.",
         )
+    _require_report_cycle_alignment(report.to_dict(), activation)
 
     if not isinstance(automation_state, dict):
         raise DecisionSurfaceError(
@@ -778,54 +779,20 @@ def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
     return steps
 
 
-def _accept_provider_neutral_decision_cycle(
-    decision: dict[str, Any],
-    *,
-    normalized: dict[str, Any],
+def _require_report_cycle_alignment(
+    report: dict[str, Any],
+    activation: dict[str, Any],
 ) -> None:
-    """Apply shared typed-cycle gates without Chase worker assumptions.
+    """The same typed cycle and staged-step checks for every report transport."""
 
-    A PiCar publication carries its source-owned identity in the PiCar's wire
-    envelope. It must not be relabeled as a Chase worker frame merely to reuse
-    local ``state.json`` or PID checks. The decision records remain subject to
-    the same exact reconstruction and step-activation checks.
-    """
-
-    cycle = decision.get("cycle")
-    if not isinstance(cycle, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "PiCar decision cycle must be an object.",
-        )
-    reconstructed_cycle = _require_exact_cycle_export(cycle)
-    values = decision.get("values") if isinstance(decision.get("values"), dict) else {}
-    activation = values.get("activation") if isinstance(values.get("activation"), dict) else None
     steps = _require_identity_steps(activation, error="latest_frame_invalid")
-    _require_runner_plan_alignment(reconstructed_cycle, steps)
-    _require_aggregate_cycle_alignment(decision, reconstructed_cycle)
-    if decision.get("generation_id") != activation.get("generation_id"):
+    cycle = _require_exact_cycle_export(report["cycle"])
+    _require_runner_plan_alignment(cycle, steps)
+    _require_aggregate_cycle_alignment(report, cycle)
+    if report["generation_id"] != activation["generation_id"]:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "PiCar decision activation generation does not match its envelope.",
-        )
-    if reconstructed_cycle.frame_id != decision.get("frame_id"):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "PiCar decision cycle frame_id does not match its envelope.",
-        )
-    source = reconstructed_cycle.source
-    if source is None:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "PiCar decision cycle has no source identity.",
-        )
-    if (
-        source.frame_index != normalized["frame_index"]
-        or source.timestamp_ms != normalized["timestamp_ms"]
-    ):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "PiCar decision source timing does not match its envelope.",
+            "Report generation does not match its step activations.",
         )
 
 
@@ -862,7 +829,7 @@ def accept_picar_decision_publication(
 
     decision = normalized["decision"]
     try:
-        _accept_provider_neutral_decision_cycle(decision, normalized=normalized)
+        _require_report_cycle_alignment(decision, decision["values"]["activation"])
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
             "picar_decision_unavailable",
@@ -1565,7 +1532,7 @@ def _require_aggregate_cycle_alignment(
     - proposal / plan / action / authority / source share one frame_id
     - the plan is over exactly the proposal step's candidates
     - plan/source timestamps agree when both present
-    - stream envelope frame_index/timestamp_ms come from the cycle source
+    - report timing agrees with the cycle source when source construction succeeds
     - authority.proposed is the selected plan command (or null for idle/error)
     """
 
@@ -1625,29 +1592,26 @@ def _require_aggregate_cycle_alignment(
                 details={"field": "cycle.plan.timestamp_ms"},
             )
 
-    # Stream envelope timing identity is derived from the cycle source.
-    expected_index = source.frame_index if source is not None else 0
-    expected_ts = source.timestamp_ms if source is not None else 0
-    if frame.get("frame_index") != expected_index:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "stream frame_index must match cycle source frame_index.",
-            details={
-                "field": "frame_index",
-                "expected": expected_index,
-                "got": frame.get("frame_index"),
-            },
-        )
-    if frame.get("timestamp_ms") != expected_ts:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "stream timestamp_ms must match cycle source timestamp_ms.",
-            details={
-                "field": "timestamp_ms",
-                "expected": expected_ts,
-                "got": frame.get("timestamp_ms"),
-            },
-        )
+    # A failed source construction has no nested timing identity. The report
+    # still names the host frame that failed; never replace it with zeroes.
+    if source is None:
+        if cycle.proposal.status != "error" or plan is not None or cycle.proposal.candidates:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "A missing source requires a failed proposal with no candidates or plan.",
+                details={"field": "cycle.proposal.source"},
+            )
+    else:
+        for field, expected in (
+            ("frame_index", source.frame_index),
+            ("timestamp_ms", source.timestamp_ms),
+        ):
+            if frame.get(field) != expected:
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"Report {field} must match cycle source {field}.",
+                    details={"field": field, "expected": expected, "got": frame.get(field)},
+                )
 
     # authority.proposed must be the selected plan command (detached equal value).
     proposed = cycle.authority.proposed
@@ -2270,10 +2234,7 @@ def accept_published_report(
             "Latest decision frame vehicle_id does not match the requested vehicle.",
             details={"field": "vehicle_id"},
         )
-    steps = _require_identity_steps(activation, error="activation_missing")
-    reconstructed = _require_exact_cycle_export(report.cycle)
-    _require_runner_plan_alignment(reconstructed, steps)
-    _require_aggregate_cycle_alignment(report.to_dict(), reconstructed)
+    _require_identity_steps(activation, error="activation_missing")
     if not isinstance(activation, dict) or report.generation_id != activation.get("generation_id"):
         raise DecisionSurfaceError(
             "latest_frame_stale",

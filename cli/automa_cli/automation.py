@@ -53,7 +53,7 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .picar_observation import fetch_autonomy_status, picar_view_status, picar_base_url
+from .picar_observation import fetch_autonomy_status, picar_base_url
 from .step_activations import (
     apply_staged,
     bundle_activation_path,
@@ -83,6 +83,7 @@ from .run_record import (
     stopped_readiness,
 )
 from .runtime_view import RuntimeViewServer
+from .view_discovery import discover_runtime_view
 from .perception_view import (
     get_perception_view_status,
     perception_view_ready,
@@ -170,7 +171,13 @@ def _onboard_runtime_status(
         error = "Donkey runtime is up but reports no onboard host"
     session = autonomy.get("session") or {}
     worker_status = str(session.get("status") or "stopped") if error is None else "error"
-    view = picar_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
+    view = discover_runtime_view(
+        vehicle_id,
+        lambda directory: get_perception_view_status(
+            directory, timeout_s=min(0.25, max(0.0, timeout_s)),
+        ),
+        runtime_root=RUNTIME_ROOT,
+    )
     if not view.get("available"):
         view = {
             **view,

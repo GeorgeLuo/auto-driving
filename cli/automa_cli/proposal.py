@@ -44,32 +44,15 @@ def get_vehicle_proposal_info(
     action_plugins = (steps.get("action") or {}).get("plugins") or []
 
     from .decision_view import get_decision_view_status
-    from .vehicles import is_chase_vehicle_id
+    from .view_discovery import discover_runtime_view
 
-    # A short, read-only loopback probe; it never starts a worker.
-    # Chase publishes in the automation directory. PiCar publishes there while
-    # the onboard monitor runs, and in its observation directory for a
-    # standalone view. The first live match wins.
-    directories = [Path(bundle["runtime_dir"]) / "automation"]
-    if not is_chase_vehicle_id(vehicle_id):
-        from .picar_observation import picar_observation_dir
-
-        directories.append(picar_observation_dir(vehicle_id))
-    view = get_decision_view_status(
-        automation_dir=directories[0],
-        vehicle_id=vehicle_id,
-        activation=identity,
+    view = discover_runtime_view(
+        vehicle_id,
+        lambda directory: get_decision_view_status(
+            automation_dir=directory, vehicle_id=vehicle_id, activation=identity,
+        ),
+        runtime_root=RUNTIME_ROOT,
     )
-    for automation_dir in directories[1:]:
-        if view.get("available"):
-            break
-        candidate = get_decision_view_status(
-            automation_dir=automation_dir,
-            vehicle_id=vehicle_id,
-            activation=identity,
-        )
-        if candidate.get("available"):
-            view = candidate
     payload: dict[str, Any] = {
         "schema": "vehicle_proposal_info_v1",
         "vehicle_id": vehicle_id,

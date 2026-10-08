@@ -467,6 +467,13 @@ def _build_frame(
     metadata = {"manifest_position": position, **image_metadata}
     if "annotation" in entry:
         metadata["annotation"] = copy.deepcopy(entry["annotation"])
+    # A recording manifest keeps the report identity and staged step selections.
+    for key in ("vehicle_id", "run_id", "generation_id"):
+        value = entry.get(key)
+        if isinstance(value, str) and value:
+            metadata[key] = value
+    if isinstance(entry.get("steps"), dict):
+        metadata["steps"] = copy.deepcopy(entry["steps"])
     return ReplayFrame(
         source_id=source_id,
         frame_id=frame_id,

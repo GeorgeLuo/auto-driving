@@ -21,8 +21,9 @@ from .picar_observation import (
     frame_id_from_headers, publication_to_frame_record, perception_text_from_publication,
 )
 from .run_record import (
-    control_source, finish_run, frame_line, frame_readiness, new_run_state,
-    record_host_status, reports_frame, run_result, startup_lines, timestamp_ms,
+    append_recording_frame, control_source, finish_run, frame_line, frame_readiness,
+    new_run_state, record_host_status, reports_frame, run_result, startup_lines,
+    timestamp_ms,
 )
 from .runtime_view import RuntimeViewServer
 from .decision_live import PicarDecisionViewAdapter
@@ -146,15 +147,33 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
                     perception_text = perception_text_from_publication(publication) + "\n"
                     latest_text_path.write_text(perception_text, encoding="utf-8")
                     frame_json_path, frame_text_path = latest_json_path, latest_text_path
+                    captured_at_ms = frame.get("captured_at_ms")
                     if run_dir is not None:
                         frame_json_path = perception_dir / frame_id / "perception.json"
                         frame_text_path = frame_json_path.with_name("perception.txt")
                         frame_json_path.parent.mkdir(parents=True, exist_ok=True)
                         write_json_atomically(frame_json_path, frame)
                         frame_text_path.write_text(perception_text, encoding="utf-8")
+                        decision = state.get("decision") if isinstance(state.get("decision"), dict) else {}
+                        generation_id = frame.get("generation_id")
+                        if type(generation_id) is not str or not generation_id:
+                            generation_id = decision.get("generation_id")
+                        selections = decision.get("steps") if isinstance(decision.get("steps"), dict) else {}
+                        frame_index = frame.get("frame_index")
+                        if type(generation_id) is str and generation_id and type(captured_at_ms) is int:
+                            append_recording_frame(
+                                run_dir,
+                                vehicle_id=vehicle_id,
+                                run_id=run_id,
+                                generation_id=generation_id,
+                                frame_id=str(frame_id),
+                                frame_index=frame_index if type(frame_index) is int else None,
+                                timestamp_ms=captured_at_ms,
+                                image_path=frame_path,
+                                steps=selections,
+                            )
                     found = frame["perception"] or {}
                     signals, things = len(found.get("signals") or []), len(found.get("things") or [])
-                    captured_at_ms = frame.get("captured_at_ms")
                     completed_at_ms = frame.get("perception_completed_at_ms")
                     state["last_capture"] = {
                         "frame_id": frame_id,

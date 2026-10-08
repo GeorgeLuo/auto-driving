@@ -2,10 +2,12 @@
 
 A Chase run hosts the decision cycle in the CLI worker; a PiCar run hosts it
 onboard while the CLI monitors it. Both write this ``state.json`` record and
-print these lines, so a run reads the same on either vehicle.
+print these lines, so a run reads the same on either vehicle. A recording also
+appends the same ``manifest.json``, which replay loads.
 """
 from __future__ import annotations
 
+import copy
 import json
 import time
 from pathlib import Path
@@ -15,8 +17,11 @@ from autonomy.runtime.session import RunConfiguration
 
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
+from .staged_bundle import write_json_atomically
 
 RUN_STATE_SCHEMA = "automa_automation_run_state_v0"
+RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest_v0"
+RECORDING_MANIFEST_NAME = "manifest.json"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 # Where wheel commands come from during a run: Chase's WebSocket input, the
 # simulator's own source while observing, or the PiCar's onboard host.
@@ -29,6 +34,89 @@ CONTROL_SOURCE_LABELS = {
 
 def timestamp_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _recording_text(value: Any, label: str) -> str:
+    if type(value) is not str or not value or any(char.isspace() for char in value):
+        raise ValueError(f"{label} must be a nonempty string")
+    return value
+
+
+def append_recording_frame(
+    run_dir: Path,
+    *,
+    vehicle_id: str,
+    run_id: str,
+    generation_id: str,
+    frame_id: str,
+    timestamp_ms: int,
+    image_path: Path,
+    steps: dict[str, Any],
+    frame_index: int | None = None,
+) -> None:
+    """Append one recorded frame to the run directory's manifest.
+
+    Chase and PiCar both call this. The image path is stored relative to the
+    run directory, which is the directory replay loads. The frame keeps the
+    report identity, the original capture time, and the staged step selections.
+    """
+
+    vehicle_id = _recording_text(vehicle_id, "vehicle_id")
+    run_id = _recording_text(run_id, "run_id")
+    generation_id = _recording_text(generation_id, "generation_id")
+    frame_id = _recording_text(frame_id, "frame_id")
+    if type(timestamp_ms) is not int or timestamp_ms < 0:
+        raise ValueError("timestamp_ms must be a nonnegative int")
+    if type(steps) is not dict:
+        raise ValueError("steps must be the staged step selections")
+    if frame_index is not None and (type(frame_index) is not int or frame_index < 0):
+        raise ValueError("frame_index must be a nonnegative int")
+    root = Path(run_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    candidate = Path(image_path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    try:
+        relative_image = candidate.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError("recorded image must stay inside the run directory") from exc
+    entry: dict[str, Any] = {
+        "vehicle_id": vehicle_id,
+        "run_id": run_id,
+        "generation_id": generation_id,
+        "frame_id": frame_id,
+        "timestamp_ms": timestamp_ms,
+        "image_path": relative_image,
+        "steps": copy.deepcopy(steps),
+    }
+    if frame_index is not None:
+        entry["frame_index"] = frame_index
+    manifest_path = root / RECORDING_MANIFEST_NAME
+    payload: dict[str, Any] = {
+        "schema": RECORDING_MANIFEST_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "run_id": run_id,
+        "frames": [],
+    }
+    if manifest_path.is_file():
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError("recording manifest must be a JSON object")
+        payload = loaded
+    frames = payload.get("frames")
+    if not isinstance(frames, list):
+        frames = []
+    for index, item in enumerate(frames):
+        if isinstance(item, dict) and item.get("frame_id") == frame_id:
+            frames[index] = entry
+            break
+    else:
+        frames.append(entry)
+    payload["schema"] = RECORDING_MANIFEST_SCHEMA
+    payload["vehicle_id"] = vehicle_id
+    payload["run_id"] = run_id
+    payload["frames"] = frames
+    write_json_atomically(manifest_path, payload)
 
 
 def control_source(configuration: RunConfiguration, *, onboard: bool) -> str:

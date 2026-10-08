@@ -275,6 +275,46 @@ class SharedSelectionTests(unittest.TestCase):
                 self.assertEqual(applied["generation_id"], startup)
                 self.assertEqual(sink["generation_id"], startup)
 
+    def test_recovered_selection_adopts_its_pending_identity(self) -> None:
+        for vehicle in VEHICLES:
+            for failure in ("load", "reset"):
+                with self.subTest(vehicle=vehicle, failure=failure):
+                    host, path = self._watched_proposal(vehicle)
+                    runner = host.step("proposal")
+                    if failure == "load":
+                        write_step_activation(path, packaged_activation("proposal", []))
+                        _frame(host, 0)
+                        replacement = packaged_activation("proposal")
+                        owner, method = runner, "load_plugin"
+                    else:
+                        replacement = packaged_activation("proposal", [])
+                        owner = runner.plugins["avoid_recent_obstruction"]
+                        method = "reset"
+                    original = getattr(owner, method, lambda *args, **kwargs: None)
+                    attempts = 0
+
+                    def fail_once(*args, **kwargs):
+                        nonlocal attempts
+                        attempts += 1
+                        if attempts == 1:
+                            raise RuntimeError(f"transient proposal {failure} failure")
+                        return original(*args, **kwargs)
+
+                    previous = host.applied_decision()
+                    write_step_activation(path, replacement)
+                    # An explicit sync must retain the request for run(), too.
+                    host.sync_selection()
+                    with patch.object(owner, method, side_effect=fail_once, create=True):
+                        _frame(host, 1)
+                        self.assertEqual(host.applied_decision(), previous)
+                        self.assertEqual(runner.plugin_manager.selected_ids, replacement.plugins)
+                        self.assertNotEqual(runner.plugin_ids, replacement.plugins)
+                        _frame(host, 2)
+                    self.assertEqual(attempts, 2)
+                    self.assertEqual(runner.plugin_ids, replacement.plugins)
+                    self.assertEqual(host.applied_decision(), _identity(replacement))
+                    self.assertEqual(host.status()["applied_decision"], _identity(replacement))
+
     def test_status_reset_and_publication_use_the_host(self) -> None:
         for vehicle in VEHICLES:
             with self.subTest(vehicle=vehicle):

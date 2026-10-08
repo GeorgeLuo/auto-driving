@@ -68,6 +68,7 @@ class AutonomyCycleHost:
         self.last_error: str | None = None
         self._status_providers: dict[str, Callable[[], dict[str, Any]]] = {}
         self._watched: dict[str, tuple[Path, StepActivation]] = {}
+        self._pending_decision: dict[str, StepActivation] = {}
         self._applied_decision: dict[str, Any] | None = None
 
     @classmethod
@@ -108,6 +109,8 @@ class AutonomyCycleHost:
                 live = sync_live_selection(self.step(step), path, loaded)
                 if live is not None:
                     requested[step] = live
+                    if step in DECISION_STEPS:
+                        self._pending_decision[step] = live
             return requested
 
     def use_applied_decision(self, identity: Mapping[str, Any]) -> None:
@@ -131,30 +134,30 @@ class AutonomyCycleHost:
                 return None
             return deepcopy(self._applied_decision)
 
-    def _record_applied_decision(self, requested: Mapping[str, StepActivation]) -> None:
-        """Keep the previous identity unless a requested decision step applied."""
+    def _record_applied_decision(self) -> None:
+        """Retain pending activations until their decision steps apply them."""
 
         applied = self._applied_decision
-        if applied is None or not requested:
+        if applied is None or not self._pending_decision:
             return
         steps = dict(applied["steps"])
-        changed = False
-        for step, live in requested.items():
-            if step not in DECISION_STEPS:
-                continue
+        adopted = []
+        for step, live in self._pending_decision.items():
             runner = self.step(step)
             applied_ids = tuple(getattr(runner, "plugin_ids", ()) or ())
             if applied_ids != tuple(live.plugins):
                 continue
             steps[step] = live.to_payload()
-            changed = True
-        if not changed:
+            adopted.append(step)
+        if not adopted:
             return
         try:
             generation_id = activation_generation_id(steps, prefix="decision")
         except (TypeError, ValueError):
             return
         self._applied_decision = {"generation_id": generation_id, "steps": steps}
+        for step in adopted:
+            del self._pending_decision[step]
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
         with self._session_lock:
@@ -168,7 +171,7 @@ class AutonomyCycleHost:
             else:
                 self.shared_memory = context.shared_memory
             try:
-                requested = self.sync_selection()
+                self.sync_selection()
                 result = self.cycle.run(context)
                 result = replace(result, context=self._record_frame_context(result.context))
                 if self.execution is not None:
@@ -186,7 +189,7 @@ class AutonomyCycleHost:
                 self.cycle_count += 1
                 self.last_error = None
                 self.last_result = result
-                self._record_applied_decision(requested)
+                self._record_applied_decision()
             except Exception as exc:
                 self._record_frame_context(context)
                 try:

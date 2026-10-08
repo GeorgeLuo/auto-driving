@@ -30,7 +30,7 @@ function renderDecision() {
     ? "steering=" + text(proposed.steering, "—") + " throttle=" + text(proposed.throttle, "—")
     : "none");
   setText("decisionAuthority", typeof authority.proposed_applied === "boolean"
-    ? text(authority.gate_id, "gate") + " · applied=" + authority.proposed_applied : "unavailable");
+    ? text(authority.gate_id, "gate") + " · proposed_applied=" + authority.proposed_applied + " · Host delivery: absent" : "unavailable");
   setText("decisionReason", cycle.reason || (plan.reason || "—"));
   var sourceRefs = [];
   candidates.forEach(function (candidate) {

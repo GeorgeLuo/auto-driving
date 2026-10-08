@@ -2,8 +2,9 @@
 
 ``vehicle_report_v0`` replaces ``vehicle_decision_stream_frame_v0`` and
 ``provider_decision_stream_frame_v0``. Every named field is required. Detail
-that only one vehicle has goes in ``values``. This module defines the document.
-It does not publish it or adapt either vehicle.
+that only one vehicle has goes in ``values``. ``report_from_host_result``
+builds that document from a completed host cycle and the control application
+recorded after the cycle. Each vehicle transports the document itself.
 
 ``cycle`` is the proposal, plan, and action records. ``plan`` is null when
 planning did not produce a record, which is how a failed cycle is represented.
@@ -14,6 +15,7 @@ typed cycle check can still reconstruct them.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -228,3 +230,101 @@ class VehicleReport:
             application=ReportApplication.from_dict(payload["application"]),
             values=payload["values"],
         )
+
+
+def delivery_values(application: Any) -> dict[str, Any]:
+    """Delivery detail that is not one of the named application fields.
+
+    Both vehicles put this under ``values``. A receipt that is not JSON is
+    omitted so the named application still publishes.
+    """
+
+    values: dict[str, Any] = {}
+    delivered_at_ms = getattr(application, "delivered_at_ms", None)
+    if type(delivered_at_ms) is int:
+        values["delivered_at_ms"] = delivered_at_ms
+    error = getattr(application, "error", None)
+    if type(error) is str and error:
+        values["delivery_error"] = error
+    receipt = getattr(application, "receipt", None)
+    if type(receipt) is dict:
+        try:
+            copied = _json_copy(receipt, field="values.receipt")
+        except ValueError:
+            copied = None
+        if type(copied) is dict:
+            values["receipt"] = copied
+    return values
+
+
+def diagnostic_ceiling(values: Mapping[str, Any] | None) -> int:
+    """Display age limit published on the report, in milliseconds.
+
+    Both vehicles write ``values.stale_after_ms`` and both viewers honor it.
+    Command expiry stays in control execution and is not this number.
+    """
+
+    raw = None if values is None else values.get("stale_after_ms")
+    if type(raw) is not int or raw <= 0:
+        raise ValueError("values.stale_after_ms must be a positive int")
+    return raw
+
+
+def _export_record(record: Any, *, field: str) -> dict[str, Any]:
+    export = record.to_dict() if callable(getattr(record, "to_dict", None)) else record
+    if not isinstance(export, Mapping):
+        raise TypeError(f"{field} must be an object")
+    return dict(export)
+
+
+def report_from_host_result(
+    result: Any,
+    *,
+    vehicle_id: str,
+    run_id: str,
+    generation_id: str,
+    published_at_ms: int | None = None,
+    values: Mapping[str, Any] | None = None,
+) -> VehicleReport:
+    """The viewer document for one completed host cycle.
+
+    ``result`` is the host's cycle result: its frame context, proposal, plan,
+    and action, plus the ``ControlApplication`` recorded after the cycle.
+    The application is the host's write, not the action step's earlier
+    authority envelope.
+    """
+
+    context = getattr(result, "context", None)
+    proposal = getattr(result, "proposal", None)
+    action = getattr(result, "action", None)
+    application = getattr(result, "application", None)
+    if context is None or proposal is None or action is None:
+        raise TypeError("host result must include a frame, proposal, and action")
+    if application is None or getattr(application, "control", None) is None:
+        raise TypeError("host result must include its control application")
+    plan = getattr(result, "plan", None)
+    control = application.control
+    return VehicleReport(
+        vehicle_id=vehicle_id,
+        run_id=run_id,
+        generation_id=generation_id,
+        frame_id=context.frame_id,
+        frame_index=context.frame_index,
+        timestamp_ms=context.timestamp_ms,
+        published_at_ms=(
+            int(time.time() * 1000) if published_at_ms is None else int(published_at_ms)
+        ),
+        cycle={
+            "proposal": _export_record(proposal, field="cycle.proposal"),
+            "plan": None if plan is None else _export_record(plan, field="cycle.plan"),
+            "action": _export_record(action, field="cycle.action"),
+        },
+        application=ReportApplication(
+            applied=application.applied,
+            mode=application.mode,
+            reason=application.reason,
+            steering=control.steering,
+            throttle=control.throttle,
+        ),
+        values={} if values is None else dict(values),
+    )

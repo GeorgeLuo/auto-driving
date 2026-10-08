@@ -19,7 +19,6 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryReport,
 )
 from .bundles import controller_bundle_paths
-from .chase_observation import chase_automation_dir
 from .decision import (
     RUNTIME_ROOT,
     CommandResult,
@@ -47,11 +46,11 @@ from .picar_observation import (
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
     picar_decision_identity,
-    picar_observation_dir,
     picar_base_url,
 )
 from .paths import safe_path_part
 from .runtime_view import RuntimeViewServer
+from .view_discovery import discover_runtime_view, runtime_view_dir
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
@@ -274,15 +273,15 @@ class PicarDecisionViewAdapter:
     ) -> bool:
         self.view_server.decision.adopt_provider(_provider_identity(normalized))
         frame_record = _frame_record(normalized, action_policy=self.action_policy)
-        stream_frame = picar_decision_view_frame(normalized)
+        report = picar_decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,
             normalized_decision=normalized,
             vehicle_id=self.vehicle_id,
             timeout_s=self.timeout_s,
         )
-        published = self.view_server.decision.publish_provider_transaction(
-            stream_frame=stream_frame,
+        published = self.view_server.decision.publish(
+            report=report,
             frame_record=frame_record,
             image=image,
         )
@@ -381,7 +380,7 @@ def _picar_decision_view(
         )
         server = RuntimeViewServer(
             vehicle_id=resolved.vehicle_id,
-            automation_dir=picar_observation_dir(vehicle_id),
+            automation_dir=runtime_view_dir(vehicle_id, runtime_root=RUNTIME_ROOT),
             port=port,
             run_id=normalized["run_id"],
             decision_provider_identity=_provider_identity(normalized),
@@ -433,10 +432,12 @@ def _chase_decision_view(vehicle_id: str, *, open_browser: bool) -> CommandResul
         identity = load_decision_identity(bundle)
     except DecisionSurfaceError as exc:
         return CommandResult(exc.exit_code, exc.message_text)
-    view = get_decision_view_status(
-        automation_dir=chase_automation_dir(vehicle_id),
-        vehicle_id=vehicle_id,
-        activation=identity,
+    view = discover_runtime_view(
+        vehicle_id,
+        lambda directory: get_decision_view_status(
+            automation_dir=directory, vehicle_id=vehicle_id, activation=identity,
+        ),
+        runtime_root=RUNTIME_ROOT,
     )
     if not view.get("available"):
         return CommandResult(

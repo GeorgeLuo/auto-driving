@@ -10,8 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import decision_steps
-from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
-from implementations.runtime.donkeycar.host_telemetry import (
+from implementations.runtime.picar import AutonomyPilotPart, create_host
+from implementations.runtime.picar.host_telemetry import (
     HOST_TELEMETRY_BOUNDARY,
     HOST_TELEMETRY_LIMITS,
     HOST_TELEMETRY_SCHEMA,
@@ -412,7 +412,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         with (
             patch.object(
                 __import__(
-                    "implementations.runtime.donkeycar.donkey_part",
+                    "implementations.runtime.picar.donkey_part",
                     fromlist=["timestamp_ms"],
                 ),
                 "timestamp_ms",
@@ -454,7 +454,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         store = _store()
         adapter = DriveModeTelemetryAdapter(store)
         module = __import__(
-            "implementations.runtime.donkeycar.donkey_part",
+            "implementations.runtime.picar.donkey_part",
             fromlist=["timestamp_ms"],
         )
         with (
@@ -528,7 +528,7 @@ class VendorRouteShapeTests(unittest.TestCase):
         ]
         self.assertEqual(methods, ["get", "head", "get", "head"])
         self.assertNotRegex(handlers, r"^\+\s+def\s+(post|put|patch|delete|options)\(")
-        self.assertIn("parse_records_query", Path(ROOT / "implementations/runtime/donkeycar/host_telemetry.py").read_text(encoding="utf-8"))
+        self.assertIn("parse_records_query", Path(ROOT / "implementations/runtime/picar/host_telemetry.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

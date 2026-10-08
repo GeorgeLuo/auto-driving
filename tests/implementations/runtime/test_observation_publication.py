@@ -10,7 +10,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, activation_genera
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.runtime.donkeycar import (
+from implementations.runtime.picar import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,

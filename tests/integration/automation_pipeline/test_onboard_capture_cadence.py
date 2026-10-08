@@ -14,7 +14,7 @@ import numpy as np
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli import onboard_automation
-from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.integration.automation_pipeline.cadence_fixtures import CaptureClock, GatedPerception
 
 

@@ -1,4 +1,4 @@
-"""DonkeyCar runtime host implementation."""
+"""PiCar runtime host implemented through DonkeyCar."""
 
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.session import DEFAULT_INTERVAL_S

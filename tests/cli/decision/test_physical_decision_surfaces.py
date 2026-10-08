@@ -19,7 +19,7 @@ from cli.automa_cli.decision import (
     picar_decision_view_frame,
 )
 from cli.automa_cli.runtime_view import RuntimeViewServer
-from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,

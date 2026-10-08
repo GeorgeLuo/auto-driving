@@ -15,6 +15,11 @@ Use the CLI for deployment:
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
+The controller host package is `implementations.runtime.picar`. When upgrading
+an already-running Pi from the previous package name, update core without
+`--restart`, then update autonomy with `--restart`, so the harness, vendor patch,
+and controller release use the same package at restart.
+
 Core update installs the systemd service, starts it when inactive, and waits for
 the read-only autonomy status endpoint in manual mode. Once installed, powering
 on the Pi is sufficient to start the Donkey runtime. The service restarts an

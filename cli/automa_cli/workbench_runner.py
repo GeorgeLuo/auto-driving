@@ -12,12 +12,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.activation import DECISION_STEPS, StepActivation
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
+from autonomy.decision_cycle.steps import step_runner
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, STEP_PRESETS
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
+from .inspection_runs import recorded_selections, replay_step
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -142,6 +144,8 @@ class ImageReplayRunner:
             step: packaged_plugin_catalog(step) for step in SELECTABLE_STEPS
         }
         self._activations = self._initial_activations(activations)
+        self._default_activations = dict(self._activations)
+        self._selection_overrides = set(activations or {}) | set(self.step_factories)
         self._state = self._initial_state()
 
     @property
@@ -343,7 +347,7 @@ class ImageReplayRunner:
                         max_frames=self.max_frames,
                         max_image_bytes=self.max_image_bytes,
                     )
-                    steps = self._build_steps()
+                    steps = self._build_steps(image_source.frames[0])
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "startup"),
@@ -555,6 +559,7 @@ class ImageReplayRunner:
             # (see below). The same plugins again keep the step's activation,
             # configs included.
             catch_up: list[ReplayFrame] = []
+            self._selection_overrides.add(step)
             if normalized != self._activations[step].plugins:
                 activation = catalog.activation(normalized)
                 if active_phase:
@@ -632,7 +637,7 @@ class ImageReplayRunner:
         selection that fails to build leaves the replay as it was.
         """
 
-        steps = self._build_steps()
+        steps = self._build_steps(self._image_source.frames[0] if self._image_source else None)
         self._cleanup_locked()
         self._steps = steps
         self._shared_memory = {}
@@ -648,11 +653,20 @@ class ImageReplayRunner:
             round((position / total) * 100.0, 2) if total else 0.0
         )
 
-    def _build_steps(self) -> dict[str, Any]:
-        """Every step's runner: selectable steps from their selections, the rest built in."""
-
+    def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, Any]:
+        """Restore the first frame's selections before constructing any selectable step."""
+        recorded = recorded_selections(first_frame.metadata) if first_frame else {}
         steps = workbench_decision_steps()
-        steps.update({step: self._build_step(step) for step in SELECTABLE_STEPS})
+        for step in STEPS:
+            if step in recorded and step not in self._selection_overrides:
+                activation = recorded[step]
+                steps[step] = step_runner(activation) if activation is not None else None
+                if step in SELECTABLE_STEPS:
+                    self._activations[step] = activation or self._catalogs[step].activation([])
+            elif step in SELECTABLE_STEPS:
+                if step not in self._selection_overrides:
+                    self._activations[step] = self._default_activations[step]
+                steps[step] = self._build_step(step)
         return steps
 
     def _build_step(self, step: str) -> Any:
@@ -780,6 +794,9 @@ class ImageReplayRunner:
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
         self._set_steps_locked(copy.deepcopy(cached["steps"]))
+        self._state.update(copy.deepcopy(cached.get("configuration", {})))
+        if "pipeline" in cached:
+            self._state["machine_detail"]["pipeline"] = copy.deepcopy(cached["pipeline"])
         completed = frame.position + 1
         total = len(self._image_source.frames) if self._image_source is not None else completed
         self._state["progress"]["completed"] = completed
@@ -912,6 +929,14 @@ class ImageReplayRunner:
                     raise RuntimeError("replay frame would skip uncached source frames")
                 steps = self._steps
             try:
+                with self._condition:
+                    for step, activation in recorded_selections(frame.metadata).items():
+                        if step in self._selection_overrides:
+                            continue
+                        steps[step] = replay_step(steps.get(step), activation, self._shared_memory)
+                        if step in SELECTABLE_STEPS:
+                            self._activations[step] = activation or self._catalogs[step].activation([])
+                    self._apply_plugin_configuration_locked()
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
                 decision_payload = outcome.decision
@@ -961,7 +986,9 @@ class ImageReplayRunner:
                     )
                     detail.update(plugin_reports)
                     pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                    pipeline.update(copy.deepcopy(plugin_reports))
+                    pipeline.update(self._step_reports())
+                    detail["configuration"] = self._plugin_configuration()
+                    detail["pipeline"] = copy.deepcopy(pipeline)
                     detail["summary"] = copy.deepcopy(self._state["summary"])
                     detail["steps"]["decision"] = copy.deepcopy(decision_payload)
                     self._history[frame.frame_id] = detail
@@ -1021,9 +1048,9 @@ class ImageReplayRunner:
         self._state["controls"] = self._controls()
 
     def _cleanup_locked(self) -> dict[str, Any]:
-        """Reset each selectable step's runner and drop every runner.
+        """Reset every step's runner and drop every runner.
 
-        The cleanup record names each selectable step's outcome: ``reset``,
+        The cleanup record names each step's outcome: ``reset``,
         ``not_created``, or the reset error.
         """
 
@@ -1031,7 +1058,7 @@ class ImageReplayRunner:
             "completed_at_ms": _now_ms(),
             **{
                 step: _reset_status(self._steps.get(step), self._shared_memory)
-                for step in SELECTABLE_STEPS
+                for step in STEPS
             },
             "source_read_only": True,
             "worker_started": False,
@@ -1279,7 +1306,7 @@ class ImageReplayRunner:
             "plan": plugins["plan"],
             "action": plugins["action"],
             "gate_id": plugins["action"][0] if plugins["action"] else None,
-            "proposed_applied": False,
+            "host_delivery": "absent",
         }
 
     @staticmethod

@@ -53,7 +53,7 @@ from .decision import (
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
-from .picar_observation import fetch_autonomy_status, picar_view_status, picar_base_url
+from .picar_observation import fetch_autonomy_status, picar_base_url
 from .step_activations import (
     apply_staged,
     bundle_activation_path,
@@ -66,6 +66,7 @@ from .step_activations import (
 )
 from .step_hosting import load_staged_runner, plugin_report
 from .run_record import (
+    append_recording_frame,
     control_application,
     control_source,
     decision_record,
@@ -83,6 +84,7 @@ from .run_record import (
     stopped_readiness,
 )
 from .runtime_view import RuntimeViewServer
+from .view_discovery import discover_runtime_view
 from .perception_view import (
     get_perception_view_status,
     perception_view_ready,
@@ -170,7 +172,13 @@ def _onboard_runtime_status(
         error = "Donkey runtime is up but reports no onboard host"
     session = autonomy.get("session") or {}
     worker_status = str(session.get("status") or "stopped") if error is None else "error"
-    view = picar_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
+    view = discover_runtime_view(
+        vehicle_id,
+        lambda directory: get_perception_view_status(
+            directory, timeout_s=min(0.25, max(0.0, timeout_s)),
+        ),
+        runtime_root=RUNTIME_ROOT,
+    )
     if not view.get("available"):
         view = {
             **view,
@@ -781,7 +789,7 @@ def run_vehicle_automation(
                         decision_view_skip = True
                     else:
                         decision_view_skip = not view_server.decision.publish(
-                            stream_frame=latest_decision,
+                            report=latest_decision,
                             frame_record=frame_record,
                             image=view_server.perception.frame(context.frame_id),
                         )
@@ -809,6 +817,19 @@ def run_vehicle_automation(
             frame_text_path = perception_dir / context.frame_id / "perception.txt"
             _write_json(frame_json_path, frame_record)
             frame_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")
+            if run_dir is not None:
+                append_recording_frame(
+                    run_dir,
+                    vehicle_id=vehicle_id,
+                    run_id=str(state.get("run_id") or run_id),
+                    generation_id=identity["generation_id"],
+                    frame_id=context.frame_id,
+                    frame_index=context.frame_index,
+                    timestamp_ms=sensor_frame.completed_at_ms,
+                    image_path=pending.front_path,
+                    steps=cycle_result.context.metadata["step_activations"],
+                    context=cycle_result.context.to_dict(),
+                )
         _write_json(latest_json_path, frame_record)
         latest_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")
 
@@ -1857,7 +1878,7 @@ def stop_vehicle_automation(
 ) -> CommandResult:
     onboard = _staged_onboard_vehicle(vehicle_id)
     if onboard is not None:
-        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+        from implementations.runtime.picar.client import OnboardRuntimeClient
         try:
             OnboardRuntimeClient(picar_base_url(onboard), timeout_s=max(1.0, wait_s)).stop()
         except (RuntimeError, OSError, ValueError) as exc:
@@ -1996,7 +2017,7 @@ def restart_vehicle_automation(
 
     onboard = _staged_onboard_vehicle(vehicle_id)
     if onboard is not None:
-        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+        from implementations.runtime.picar.client import OnboardRuntimeClient
         try:
             OnboardRuntimeClient(picar_base_url(onboard), timeout_s=timeout_s).restart(
                 timeout_s=max(30.0, timeout_s)
@@ -2547,10 +2568,12 @@ def _read_latest_decision_frame_for_view(
         return None
     if not isinstance(frame, dict):
         return None
+    values = frame.get("values") if isinstance(frame.get("values"), dict) else {}
     if (
-        frame.get("frame_id") != frame_id
+        frame.get("schema") != "vehicle_report_v0"
+        or frame.get("frame_id") != frame_id
         or frame.get("run_id") != run_id
-        or frame.get("worker_pid") != worker_pid
+        or values.get("worker_pid") != worker_pid
         or frame.get("generation_id") != generation_id
     ):
         return None

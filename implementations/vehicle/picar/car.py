@@ -20,6 +20,7 @@ from autonomy.vehicle import (
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
+    run_vehicle_pulse,
 )
 
 
@@ -118,27 +119,7 @@ class PiCar(CarInterface):
         }
 
     def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
-        started_ms = int(time.time() * 1000)
-        try:
-            command = self.execute_action(
-                pulse.action,
-                throttle=pulse.throttle,
-                recording=pulse.recording,
-            )
-            time.sleep(pulse.duration_s)
-        finally:
-            self.stop()
-
-        if pulse.settle_s > 0:
-            time.sleep(pulse.settle_s)
-
-        return {
-            "label": pulse.label,
-            "pulse": pulse.to_dict(),
-            "command": command,
-            "started_at_ms": started_ms,
-            "completed_at_ms": int(time.time() * 1000),
-        }
+        return run_vehicle_pulse(self, pulse)
 
     def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         _reject_unsupported_sensors(request)

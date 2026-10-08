@@ -10,6 +10,7 @@ default and stay empty. ``load_decision_steps`` reads
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,33 @@ def builtin_activation(step: str) -> StepActivation | None:
 
 def step_runner(activation: StepActivation) -> Any:
     return STEP_RUNNERS[activation.step].from_activation(activation)
+
+
+def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
+    """Detached executable selections actually applied by the frame's runners.
+
+    A pending selection is not a running selection. Preserve the loaded specs
+    and configs, but take plugin IDs from the applied instances. Unconfigured
+    callables have no executable activation and are omitted.
+    """
+    snapshot: dict[str, Any] = {}
+    for step in STEPS:
+        runner = getattr(steps, step)
+        if runner is None:
+            snapshot[step] = None
+            continue
+        activation = getattr(runner, "activation", None)
+        if activation is not None:
+            snapshot[step] = replace(activation, plugins=tuple(runner.plugin_ids)).to_payload()
+        elif hasattr(runner, "applied"):
+            definitions = [definition for definition, _ in runner.applied]
+            snapshot[step] = step_activation(
+                step,
+                [item.plugin_id for item in definitions],
+                {item.plugin_id: item.entrypoint for item in definitions},
+                {item.plugin_id: item.config for item in definitions},
+            ).to_payload()
+    return snapshot
 
 
 def decision_steps(

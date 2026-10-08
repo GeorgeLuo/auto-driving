@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction
+from autonomy.decision_cycle.action.selected import SelectedAction
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
 
 from .bundles import controller_bundle_paths
@@ -44,12 +45,14 @@ def get_vehicle_proposal_info(
     action_plugins = (steps.get("action") or {}).get("plugins") or []
 
     from .decision_view import get_decision_view_status
+    from .view_discovery import discover_runtime_view
 
-    # A short, read-only loopback probe; it never starts a worker.
-    view = get_decision_view_status(
-        automation_dir=Path(bundle["runtime_dir"]) / "automation",
-        vehicle_id=vehicle_id,
-        activation=identity,
+    view = discover_runtime_view(
+        vehicle_id,
+        lambda directory: get_decision_view_status(
+            automation_dir=directory, vehicle_id=vehicle_id, activation=identity,
+        ),
+        runtime_root=RUNTIME_ROOT,
     )
     payload: dict[str, Any] = {
         "schema": "vehicle_proposal_info_v1",
@@ -89,6 +92,12 @@ def _action_authority_description(plugin_id: str | None) -> dict[str, Any]:
             "gate_id": HoldAction.plugin_id,
             "proposed_applied": False,
             "authorized_idle_reason": HOLD_IDLE_REASON,
+        }
+    if plugin_id == SelectedAction.plugin_id:
+        return {
+            "gate_id": SelectedAction.plugin_id,
+            "proposed_applied": "when a plan candidate is selected",
+            "authorized_idle_reason": None,
         }
     if plugin_id == ModeAction.plugin_id:
         return {

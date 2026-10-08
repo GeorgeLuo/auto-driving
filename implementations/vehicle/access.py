@@ -6,7 +6,7 @@ from typing import Any
 from autonomy.runtime.execution import ControlTarget
 from autonomy.vehicle import CarInterface
 from implementations.runtime.chase_sim.control import ChaseControlTarget
-from implementations.runtime.donkeycar.control import DonkeyControlTarget
+from implementations.runtime.donkeycar.http_control import PiCarHttpControlTarget
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.picar import create_picar
 
@@ -43,6 +43,6 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
             car=car,
             image_extension="jpg",
             front_camera_endpoint="/frame.jpg",
-            control=DonkeyControlTarget(car),
+            control=PiCarHttpControlTarget(car),
         )
     raise ValueError(f"Vehicle {vehicle_id!r} has unsupported provider {provider!r}.")

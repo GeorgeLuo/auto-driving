@@ -781,7 +781,7 @@ def run_vehicle_automation(
                         decision_view_skip = True
                     else:
                         decision_view_skip = not view_server.decision.publish(
-                            stream_frame=latest_decision,
+                            report=latest_decision,
                             frame_record=frame_record,
                             image=view_server.perception.frame(context.frame_id),
                         )
@@ -2547,10 +2547,12 @@ def _read_latest_decision_frame_for_view(
         return None
     if not isinstance(frame, dict):
         return None
+    values = frame.get("values") if isinstance(frame.get("values"), dict) else {}
     if (
-        frame.get("frame_id") != frame_id
+        frame.get("schema") != "vehicle_report_v0"
+        or frame.get("frame_id") != frame_id
         or frame.get("run_id") != run_id
-        or frame.get("worker_pid") != worker_pid
+        or values.get("worker_pid") != worker_pid
         or frame.get("generation_id") != generation_id
     ):
         return None

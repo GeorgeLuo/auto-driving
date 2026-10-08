@@ -15,6 +15,7 @@ from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.report import delivery_values, report_from_host_result
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from .control import drive_mode, execution_mode
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -713,7 +714,12 @@ class AutonomyPilotPart:
         published_at_ms: int,
         status: str,
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """Capture the cycle's detached, identity-decorated decision records."""
+        """Capture the shared report for this completed host cycle.
+
+        The document is the same ``vehicle_report_v0`` Chase writes. PiCar-only
+        identity (source, activation, drive mode, and the capture frame) goes
+        in ``values``. A failed cycle stays unpublished.
+        """
 
         if status != "ok":
             return None, "failed_step"
@@ -730,48 +736,51 @@ class AutonomyPilotPart:
         if result_frame_id != frame_id:
             return None, "mismatched_frame"
         records = self._current_cycle
-        if records.proposal is None or records.plan is None:
+        proposal = None if records is None else records.proposal
+        plan = None if records is None else records.plan
+        if proposal is None or plan is None or records.application is None:
             return None, "incomplete_result"
+        if getattr(proposal, "status", None) != "ok" or getattr(result, "status", None) != "ok":
+            return None, "incomplete_result"
+        source = getattr(proposal, "source", None)
         try:
-            cycle = {
-                "proposal": records.proposal.to_dict(),
-                "plan": records.plan.to_dict(),
-                "action": result.to_dict(),
-            }
+            source_export = source.to_dict() if source is not None else None
         except Exception:
             return None, "incomplete_result"
-        if cycle["proposal"].get("status") != "ok" or cycle["action"].get("status") != "ok":
-            return None, "incomplete_result"
-        source = cycle["proposal"].get("source")
-        if not isinstance(source, dict):
+        if not isinstance(source_export, dict):
             return None, "incomplete_result"
         if (
-            source.get("frame_id") != frame_id
-            or source.get("frame_index") != frame_index
-            or source.get("timestamp_ms") != timestamp_ms_value
+            source_export.get("frame_id") != frame_id
+            or source_export.get("frame_index") != frame_index
+            or source_export.get("timestamp_ms") != timestamp_ms_value
         ):
             return None, "mismatched_frame"
-        return {
-            "vehicle_id": self.vehicle_id,
-            "source_id": self.source_id,
-            "run_id": self.run_id,
-            "generation_id": self.generation_id,
-            "frame_id": frame_id,
-            "frame_index": frame_index,
-            "timestamp_ms": timestamp_ms_value,
-            "published_at_ms": published_at_ms,
-            "source_frame": {
-                "frame_id": frame_id,
-                "frame_index": frame_index,
-                "captured_at_ms": timestamp_ms_value,
-                "completed_at_ms": published_at_ms,
-            },
-            "activation": {
-                "generation_id": self.generation_id,
-                "steps": deepcopy(self.decision_activations),
-            },
-            "cycle": cycle,
-        }, None
+        try:
+            report = report_from_host_result(
+                records,
+                vehicle_id=self.vehicle_id,
+                run_id=self.run_id,
+                generation_id=self.generation_id,
+                published_at_ms=published_at_ms,
+                values={
+                    "source_id": self.source_id,
+                    "drive_mode": self._drive_mode,
+                    "activation": {
+                        "generation_id": self.generation_id,
+                        "steps": deepcopy(self.decision_activations),
+                    },
+                    "source_frame": {
+                        "frame_id": frame_id,
+                        "frame_index": frame_index,
+                        "captured_at_ms": timestamp_ms_value,
+                        "completed_at_ms": published_at_ms,
+                    },
+                    **delivery_values(records.application),
+                },
+            )
+        except (TypeError, ValueError):
+            return None, "incomplete_result"
+        return report.to_dict(), None
 
     def _decision_unavailable(
         self,

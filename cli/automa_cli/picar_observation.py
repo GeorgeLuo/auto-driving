@@ -24,6 +24,7 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
+from autonomy.runtime.report import VehicleReport
 
 from .paths import safe_path_part
 from .perception_view import get_perception_view_status
@@ -1297,7 +1298,9 @@ def _decision_source_frame(decision: dict[str, Any]) -> dict[str, Any]:
     cycle = decision.get("cycle") if isinstance(decision.get("cycle"), dict) else {}
     proposal = cycle.get("proposal") if isinstance(cycle.get("proposal"), dict) else {}
     source = proposal.get("source") if isinstance(proposal.get("source"), dict) else {}
+    values = decision.get("values") if isinstance(decision.get("values"), dict) else {}
     candidates = (
+        values.get("source_frame"),
         decision.get("source_frame"),
         source.get("source_frame"),
         source,
@@ -1348,7 +1351,8 @@ def picar_decision_identity(normalized_decision: dict[str, Any]) -> dict[str, An
             "identity_mismatch",
             "PiCar decision publication has no decision object.",
         )
-    activation = decision.get("activation")
+    values = decision.get("values") if isinstance(decision.get("values"), dict) else {}
+    activation = values.get("activation") if isinstance(values.get("activation"), dict) else None
     if not isinstance(activation, dict):
         raise _host_telemetry_error(
             "identity_mismatch",
@@ -1356,13 +1360,13 @@ def picar_decision_identity(normalized_decision: dict[str, Any]) -> dict[str, An
         )
     try:
         vehicle_id = _host_require_id(decision.get("vehicle_id"), field="decision.vehicle_id")
-        source_id = _host_require_id(decision.get("source_id"), field="decision.source_id")
+        source_id = _host_require_id(values.get("source_id"), field="decision.values.source_id")
         run_id = _host_require_id(decision.get("run_id"), field="decision.run_id")
         generation_id = _host_require_id(
             decision.get("generation_id"), field="decision.generation_id"
         )
         activation_generation_id = _host_require_id(
-            activation.get("generation_id"), field="decision.activation.generation_id"
+            activation.get("generation_id"), field="decision.values.activation.generation_id"
         )
         source_frame = _decision_source_frame(decision)
     except HostTelemetryError as exc:
@@ -1705,69 +1709,53 @@ def normalize_picar_decision_publication(
             raise ValueError("max_age_ms must be a positive non-bool int")
         ceiling = int(max_age_ms)
 
-    decision = _picar_require_mapping(publication.get("decision"), field="decision")
-    required_decision_fields = (
-        "vehicle_id",
-        "source_id",
-        "run_id",
-        "generation_id",
-        "frame_id",
-        "frame_index",
-        "timestamp_ms",
-        "published_at_ms",
-        "activation",
-        "cycle",
-    )
-    for field in required_decision_fields:
-        if field not in decision:
-            raise _picar_decision_error(
-                "incomplete",
-                f"PiCar decision publication decision.{field} is missing.",
-                field=f"decision.{field}",
-            )
+    try:
+        report = VehicleReport.from_dict(publication.get("decision"))
+    except (TypeError, ValueError) as exc:
+        raise _picar_decision_error(
+            "incomplete",
+            f"PiCar decision publication is not a vehicle report: {exc}",
+            field="decision",
+        ) from exc
+    decision = report.to_dict()
+    values = report.values
 
-    decision_vehicle_id = _picar_required_id(
-        decision.get("vehicle_id"), field="decision.vehicle_id"
-    )
+    decision_vehicle_id = report.vehicle_id
     if decision_vehicle_id != vehicle_id:
         raise _picar_decision_error(
             "mismatched",
             "PiCar decision publication vehicle_id does not match the requested vehicle.",
             field="decision.vehicle_id",
         )
-    source_id = _picar_required_id(decision.get("source_id"), field="decision.source_id")
-    run_id = _picar_required_id(decision.get("run_id"), field="decision.run_id")
-    generation_id = _picar_required_id(
-        decision.get("generation_id"), field="decision.generation_id"
-    )
-    frame_id = _picar_required_id(decision.get("frame_id"), field="decision.frame_id")
-    frame_index = _picar_required_int(decision.get("frame_index"), field="decision.frame_index")
-    timestamp_value = _picar_required_int(
-        decision.get("timestamp_ms"), field="decision.timestamp_ms"
-    )
-    published_at_ms = _picar_required_int(
-        decision.get("published_at_ms"), field="decision.published_at_ms", allow_negative=True
-    )
+    source_id = _picar_required_id(values.get("source_id"), field="decision.values.source_id")
+    run_id = report.run_id
+    generation_id = report.generation_id
+    frame_id = report.frame_id
+    frame_index = report.frame_index
+    timestamp_value = report.timestamp_ms
+    published_at_ms = report.published_at_ms
 
-    activation = _picar_require_mapping(decision.get("activation"), field="decision.activation")
+    activation = _picar_require_mapping(
+        values.get("activation"), field="decision.values.activation"
+    )
     for field in ("generation_id", "steps"):
         if field not in activation:
             raise _picar_decision_error(
                 "incomplete",
-                f"PiCar decision publication decision.activation.{field} is missing.",
-                field=f"decision.activation.{field}",
+                f"PiCar decision publication decision.values.activation.{field} is missing.",
+                field=f"decision.values.activation.{field}",
             )
     if activation.get("generation_id") != generation_id:
         raise _picar_decision_error(
             "mismatched",
             "Decision activation generation does not match its outer identity.",
-            field="decision.activation.generation_id",
+            field="decision.values.activation.generation_id",
         )
     if not isinstance(activation.get("steps"), dict):
         raise _picar_decision_error(
             "incomplete",
             "PiCar decision activation steps must be an object.",
-            field="decision.activation.steps",
+            field="decision.values.activation.steps",
         )
 
     cycle = _picar_require_mapping(decision.get("cycle"), field="decision.cycle")

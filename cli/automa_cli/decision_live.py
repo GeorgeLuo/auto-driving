@@ -274,15 +274,15 @@ class PicarDecisionViewAdapter:
     ) -> bool:
         self.view_server.decision.adopt_provider(_provider_identity(normalized))
         frame_record = _frame_record(normalized, action_policy=self.action_policy)
-        stream_frame = picar_decision_view_frame(normalized)
+        report = picar_decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,
             normalized_decision=normalized,
             vehicle_id=self.vehicle_id,
             timeout_s=self.timeout_s,
         )
-        published = self.view_server.decision.publish_provider_transaction(
-            stream_frame=stream_frame,
+        published = self.view_server.decision.publish(
+            report=report,
             frame_record=frame_record,
             image=image,
         )

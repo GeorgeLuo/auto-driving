@@ -1,9 +1,10 @@
-"""Read-only live projection of accepted decision cycles.
+"""Read-only live projection of accepted vehicle reports.
 
-The runtime server owns this short-lived view.  It receives an accepted
-``vehicle_decision_stream_frame_v0`` and the already-published capture bytes
-for that frame, retaining a small number of immutable transactions.  It never
-runs a decision step, reads an image path, or follows a URL supplied by a client.
+The runtime server owns this short-lived view. It receives one
+``vehicle_report_v0`` and the already-published capture bytes for that frame,
+retaining a small number of immutable transactions. Chase and PiCar use this
+same intake. It never runs a decision step, reads an image path, or follows a
+URL supplied by a client.
 """
 
 from __future__ import annotations
@@ -22,7 +23,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from .decision import DECISION_STREAM_MAX_AGE_MS, accept_decision_stream_frame
+from autonomy.runtime.report import VehicleReport
+
+from .decision import DECISION_STREAM_MAX_AGE_MS
 from .perception_view import VIEW_RECORD_NAME
 from .picar_observation import (
     HOST_TELEMETRY_PANEL_SCHEMA,
@@ -50,7 +53,7 @@ class DecisionViewError(Exception):
 @dataclass(frozen=True)
 class _Transaction:
     transaction_id: str
-    stream_frame: dict[str, Any]
+    report: dict[str, Any]
     frame_record: dict[str, Any]
     image_bytes: bytes
     content_type: str
@@ -447,41 +450,48 @@ class DecisionView:
     def publish(
         self,
         *,
-        stream_frame: dict[str, Any],
+        report: dict[str, Any],
         frame_record: dict[str, Any],
         image: tuple[bytes, str] | None,
     ) -> bool:
-        """Store one exact transaction only after all local identities agree."""
+        """Store one report when the vehicle, run, generation, and frame agree.
 
-        if self.identity is None or self._activation is None or image is None:
+        Chase identifies its worker pid in ``values``. PiCar identifies its
+        source there. The named report fields are the same for both.
+        """
+
+        if self.identity is None or image is None:
+            self.invalidate_latest()
+            return False
+        if self._provider_identity is None and self._activation is None:
             self.invalidate_latest()
             return False
         try:
-            accept_decision_stream_frame(
-                stream_frame,
-                activation=self._activation,
-                automation_state={
-                    "run_id": self.identity["run_id"],
-                    "status": "running",
-                    "pid": self.identity["worker_pid"],
-                },
-                now_ms=stream_frame.get("published_at_ms"),
-                is_pid_alive=lambda _pid: True,
+            parsed = VehicleReport.from_dict(report)
+            identity = self.identity
+            expected_generation = identity.get(
+                "producer_generation_id", identity.get("activation_generation_id")
             )
-            if any(
-                stream_frame.get(key) != self.identity[key]
-                for key in ("vehicle_id", "run_id", "worker_pid")
-            ) or stream_frame.get("generation_id") != self.identity["activation_generation_id"]:
+            if (
+                parsed.vehicle_id != identity["vehicle_id"]
+                or parsed.run_id != identity["run_id"]
+                or parsed.generation_id != expected_generation
+            ):
                 self.invalidate_latest()
                 return False
-            frame_id = stream_frame.get("frame_id")
-            if frame_record.get("frame_id") != frame_id:
+            if (
+                "worker_pid" in identity
+                and parsed.values.get("worker_pid") != identity["worker_pid"]
+            ):
                 self.invalidate_latest()
                 return False
-            if frame_record.get("run_id") != self.identity["run_id"]:
+            if "source_id" in identity and parsed.values.get("source_id") != identity["source_id"]:
                 self.invalidate_latest()
                 return False
-            if frame_record.get("worker_pid") != self.identity["worker_pid"]:
+            if (
+                frame_record.get("frame_id") != parsed.frame_id
+                or frame_record.get("run_id") != parsed.run_id
+            ):
                 self.invalidate_latest()
                 return False
             image_bytes, content_type = image
@@ -489,20 +499,18 @@ class DecisionView:
                 type(image_bytes) is not bytes
                 or not image_bytes
                 or content_type not in {"image/png", "image/jpeg"}
-                or not self._activation_matches()
+                or (self._provider_identity is None and not self._activation_matches())
             ):
                 self.invalidate_latest()
                 return False
-            copied_stream = _json_copy(stream_frame)
+            copied_report = parsed.to_dict()
             copied_record = _json_copy(frame_record)
         except Exception:  # noqa: BLE001 - publication must not affect the worker cycle
-            # DecisionSurfaceError is intentionally not imported: this owner is
-            # fail-closed for every bad publication shape.
             self.invalidate_latest()
             return False
 
         return self._store_transaction(
-            stream_frame=copied_stream,
+            report=copied_report,
             frame_record=copied_record,
             image_bytes=image_bytes,
             content_type=content_type,
@@ -515,66 +523,14 @@ class DecisionView:
         frame_record: dict[str, Any],
         image: tuple[bytes, str] | None,
     ) -> bool:
-        """Store one already-accepted provider transaction without local PID state."""
+        """Store one onboard report through the same intake as ``publish``."""
 
-        if self.identity is None or self._provider_identity is None or image is None:
-            self.invalidate_latest()
-            return False
-        try:
-            if (
-                not isinstance(stream_frame, dict)
-                or not isinstance(frame_record, dict)
-                or not isinstance(image, tuple)
-                or len(image) != 2
-            ):
-                raise ValueError("provider transaction shape is invalid")
-            expected = {
-                "vehicle_id": stream_frame.get("vehicle_id"),
-                "source_id": stream_frame.get("source_id"),
-                "run_id": stream_frame.get("run_id"),
-                "producer_generation_id": stream_frame.get("producer_generation_id"),
-            }
-            cycle = stream_frame.get("cycle")
-            frame_id = stream_frame.get("frame_id")
-            image_bytes, content_type = image
-            if expected != self.identity:
-                raise ValueError("provider identity changed")
-            if (
-                type(frame_id) is not str
-                or not frame_id
-                or type(stream_frame.get("published_at_ms")) is not int
-            ):
-                raise ValueError("provider frame identity is invalid")
-            action = cycle.get("action") if isinstance(cycle, dict) else None
-            if not isinstance(action, dict) or action.get("frame_id") != frame_id:
-                raise ValueError("provider cycle frame does not match")
-            if frame_record.get("frame_id") != frame_id:
-                raise ValueError("provider image frame does not match")
-            if frame_record.get("run_id") != self.identity["run_id"]:
-                raise ValueError("provider image run does not match")
-            if (
-                type(image_bytes) is not bytes
-                or not image_bytes
-                or content_type not in {"image/png", "image/jpeg"}
-            ):
-                raise ValueError("provider image is invalid")
-            copied_stream = _json_copy(stream_frame)
-            copied_record = _json_copy(frame_record)
-        except Exception:  # noqa: BLE001 - publication must fail closed
-            self.invalidate_latest()
-            return False
-
-        return self._store_transaction(
-            stream_frame=copied_stream,
-            frame_record=copied_record,
-            image_bytes=image_bytes,
-            content_type=content_type,
-        )
+        return self.publish(report=stream_frame, frame_record=frame_record, image=image)
 
     def _store_transaction(
         self,
         *,
-        stream_frame: dict[str, Any],
+        report: dict[str, Any],
         frame_record: dict[str, Any],
         image_bytes: bytes,
         content_type: str,
@@ -582,14 +538,14 @@ class DecisionView:
         transaction_id = _sha256_json(
             {
                 "generation": self.generation_id,
-                "frame_id": stream_frame["frame_id"],
-                "published_at_ms": stream_frame["published_at_ms"],
+                "frame_id": report["frame_id"],
+                "published_at_ms": report["published_at_ms"],
                 "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
             }
         )
         transaction = _Transaction(
             transaction_id=transaction_id,
-            stream_frame=stream_frame,
+            report=report,
             frame_record=frame_record,
             image_bytes=bytes(image_bytes),
             content_type=content_type,
@@ -622,7 +578,7 @@ class DecisionView:
         if transaction is None:
             raise DecisionViewError(503, "decision_warming", "no accepted decision cycle is available")
         served_at_ms = _now_ms() if now_ms is None else now_ms
-        published_at_ms = transaction.stream_frame["published_at_ms"]
+        published_at_ms = transaction.report["published_at_ms"]
         captured_at_ms = transaction.frame_record.get("captured_at_ms")
         age_ms = served_at_ms - published_at_ms
         if not 0 <= age_ms <= DECISION_STREAM_MAX_AGE_MS:
@@ -634,10 +590,11 @@ class DecisionView:
         image_url = "/api/decision/image?" + urlencode(
             {"generation": generation, "id": transaction.transaction_id}
         )
-        cycle = transaction.stream_frame["cycle"]
+        cycle = transaction.report["cycle"]
         proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
         source = proposal.get("source") if isinstance(proposal, dict) else None
-        authority = transaction.stream_frame.get("authority_summary")
+        action = cycle.get("action") if isinstance(cycle, dict) else None
+        authority = action.get("authority") if isinstance(action, dict) else None
         observation = source.get("observation") if isinstance(source, dict) else None
         # The audit copy of the retained evidence the proposals read.
         evidence_input = source.get("evidence") if isinstance(source, dict) else None
@@ -663,7 +620,7 @@ class DecisionView:
                 "max_age_ms": DECISION_STREAM_MAX_AGE_MS,
                 "expires_at_ms": published_at_ms + DECISION_STREAM_MAX_AGE_MS,
             },
-            "decision": _json_copy(transaction.stream_frame),
+            "decision": _json_copy(transaction.report),
             "current_image": {
                 "status": "available",
                 "frame_id": transaction.frame_record["frame_id"],

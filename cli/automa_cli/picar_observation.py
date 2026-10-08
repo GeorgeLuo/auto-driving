@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
@@ -22,16 +20,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
-from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
-from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
-from autonomy.runtime.report import VehicleReport
-
-from .paths import safe_path_part
-from .perception_view import get_perception_view_status
-
-
-ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
+from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
@@ -40,7 +29,6 @@ STATUS_JSON_PATH = "/autonomy/status"
 MEMORY_RESET_PATH = "/autonomy/memory/reset"
 HOST_TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
 HOST_TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
-PICAR_RUNTIME_DIRNAME = "picar_observation"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records_v0"
@@ -109,18 +97,6 @@ class HostTelemetryError(ValueError):
         self.reason = reason
         self.message_text = message
         self.details = details or {}
-
-
-def picar_observation_dir(vehicle_id: str) -> Path:
-    return RUNTIME_ROOT / safe_path_part(vehicle_id) / PICAR_RUNTIME_DIRNAME
-
-
-def picar_view_status(vehicle_id: str, *, timeout_s: float = 0.25) -> dict[str, Any]:
-    """Return local loopback view status for a PiCar observation stream."""
-    return get_perception_view_status(
-        picar_observation_dir(vehicle_id),
-        timeout_s=timeout_s,
-    )
 
 
 def fetch_autonomy_status(
@@ -1696,18 +1672,12 @@ def normalize_picar_decision_publication(
         allow_negative=True,
     )
     advertised_ceiling = publication.get("stale_after_ms")
-    if max_age_ms is None:
-        if type(advertised_ceiling) is not int or advertised_ceiling <= 0:
-            raise _picar_decision_error(
-                "incomplete",
-                "PiCar decision publication stale_after_ms must be positive.",
-                field="stale_after_ms",
-            )
-        ceiling = int(advertised_ceiling)
-    else:
-        if type(max_age_ms) is not int or max_age_ms <= 0:
-            raise ValueError("max_age_ms must be a positive non-bool int")
-        ceiling = int(max_age_ms)
+    if type(advertised_ceiling) is not int or advertised_ceiling <= 0:
+        raise _picar_decision_error(
+            "incomplete",
+            "PiCar decision publication stale_after_ms must be positive.",
+            field="stale_after_ms",
+        )
 
     try:
         report = VehicleReport.from_dict(publication.get("decision"))
@@ -1717,6 +1687,26 @@ def normalize_picar_decision_publication(
             f"PiCar decision publication is not a vehicle report: {exc}",
             field="decision",
         ) from exc
+    try:
+        published_ceiling = diagnostic_ceiling(report.values)
+    except ValueError as exc:
+        raise _picar_decision_error(
+            "incomplete",
+            str(exc),
+            field="decision.values.stale_after_ms",
+        ) from exc
+    if advertised_ceiling != published_ceiling:
+        raise _picar_decision_error(
+            "incomplete",
+            "PiCar decision publication stale_after_ms does not match the report.",
+            field="stale_after_ms",
+        )
+    if max_age_ms is None:
+        ceiling = published_ceiling
+    else:
+        if type(max_age_ms) is not int or max_age_ms <= 0:
+            raise ValueError("max_age_ms must be a positive non-bool int")
+        ceiling = int(max_age_ms)
     decision = report.to_dict()
     values = report.values
 
@@ -1758,41 +1748,8 @@ def normalize_picar_decision_publication(
             field="decision.values.activation.steps",
         )
 
-    cycle = _picar_require_mapping(decision.get("cycle"), field="decision.cycle")
-    proposal = _picar_require_mapping(cycle.get("proposal"), field="decision.cycle.proposal")
-    action = _picar_require_mapping(cycle.get("action"), field="decision.cycle.action")
-    if (
-        proposal.get("schema") != PROPOSAL_RESULT_SCHEMA
-        or proposal.get("status") != "ok"
-        or action.get("schema") != ACTION_RESULT_SCHEMA
-        or action.get("status") != "ok"
-    ):
-        raise _picar_decision_error(
-            "incomplete",
-            "PiCar decision cycle is not a successful proposal and action.",
-            field="decision.cycle",
-        )
-    for field, record in (("proposal", proposal), ("action", action)):
-        if record.get("frame_id") != frame_id:
-            raise _picar_decision_error(
-                "mismatched",
-                f"PiCar decision {field} frame_id does not match its outer identity.",
-                field=f"decision.cycle.{field}.frame_id",
-            )
-    source = _picar_require_mapping(
-        proposal.get("source"), field="decision.cycle.proposal.source"
-    )
-    for field, expected in (
-        ("frame_id", frame_id),
-        ("frame_index", frame_index),
-        ("timestamp_ms", timestamp_value),
-    ):
-        if source.get(field) != expected:
-            raise _picar_decision_error(
-                "mismatched",
-                f"PiCar decision source {field} does not match its outer identity.",
-                field=f"decision.cycle.proposal.source.{field}",
-            )
+    # Cycle reconstruction and frame/activation alignment belong to the
+    # shared report reader. This adapter owns only the HTTP envelope.
     if type(now_ms) is not int:
         raise ValueError("now_ms must be a non-bool int")
     age_ms = int(now_ms) - published_at_ms
@@ -2016,6 +1973,8 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "memory": memory if isinstance(memory, dict) else None,
         "control": control if isinstance(control, dict) else None,
         "generation_id": publication.get("generation_id"),
+        "step_activations": deepcopy(publication.get("step_activations")),
+        "context": deepcopy(publication.get("context")),
         "preset": publication.get("preset"),
         "health": publication.get("health"),
         "result_age_ms": publication.get("result_age_ms"),

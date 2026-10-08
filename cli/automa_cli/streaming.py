@@ -16,6 +16,7 @@ from .chase_observation import (
 )
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
+from .view_discovery import runtime_view_dir
 from .step_activations import absent_step_error
 from autonomy.decision_cycle.memory.interface import (
     BOUNDS,
@@ -31,7 +32,6 @@ from .picar_observation import (
     fetch_observation_frame,
     fetch_observation_publication,
     perception_text_from_publication,
-    picar_observation_dir,
     picar_base_url,
     publication_to_frame_record,
 )
@@ -291,7 +291,7 @@ class _PicarViewFeed:
     """
 
     def __init__(self, vehicle_id: str) -> None:
-        runtime_dir = picar_observation_dir(vehicle_id)
+        runtime_dir = runtime_view_dir(vehicle_id)
         runtime_dir.mkdir(parents=True, exist_ok=True)
         self.frame_path = runtime_dir / "latest_frame.jpg"
         self.server: RuntimeViewServer | None = None

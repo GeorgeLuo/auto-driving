@@ -19,7 +19,6 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryReport,
 )
 from .bundles import controller_bundle_paths
-from .chase_observation import chase_automation_dir
 from .decision import (
     RUNTIME_ROOT,
     CommandResult,
@@ -47,11 +46,11 @@ from .picar_observation import (
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
     picar_decision_identity,
-    picar_observation_dir,
     picar_base_url,
 )
 from .paths import safe_path_part
 from .runtime_view import RuntimeViewServer
+from .view_discovery import discover_runtime_view, runtime_view_dir
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
@@ -381,7 +380,7 @@ def _picar_decision_view(
         )
         server = RuntimeViewServer(
             vehicle_id=resolved.vehicle_id,
-            automation_dir=picar_observation_dir(vehicle_id),
+            automation_dir=runtime_view_dir(vehicle_id, runtime_root=RUNTIME_ROOT),
             port=port,
             run_id=normalized["run_id"],
             decision_provider_identity=_provider_identity(normalized),
@@ -433,10 +432,12 @@ def _chase_decision_view(vehicle_id: str, *, open_browser: bool) -> CommandResul
         identity = load_decision_identity(bundle)
     except DecisionSurfaceError as exc:
         return CommandResult(exc.exit_code, exc.message_text)
-    view = get_decision_view_status(
-        automation_dir=chase_automation_dir(vehicle_id),
-        vehicle_id=vehicle_id,
-        activation=identity,
+    view = discover_runtime_view(
+        vehicle_id,
+        lambda directory: get_decision_view_status(
+            automation_dir=directory, vehicle_id=vehicle_id, activation=identity,
+        ),
+        runtime_root=RUNTIME_ROOT,
     )
     if not view.get("available"):
         return CommandResult(

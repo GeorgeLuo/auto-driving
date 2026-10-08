@@ -62,25 +62,22 @@ def run_workbench_replay(
 ) -> CommandResult:
     """Run one CLI replay, optionally keeping the loopback workbench alive.
 
-    Perception and memory each start from a packaged preset or an ordered
-    plugin list, as the inspect and update commands take them; with neither,
-    the step's default preset. A preset keeps its plugin configs. Proposal has
-    no presets: it starts from an ordered plugin list, as ``vehicles update
-    proposal`` takes it, or its default plugins. Page checkboxes retain
-    selected plugins' order and append newly checked plugins. Changing a step's
-    ordered selection uses catalog default configs for that step; the other
-    steps keep their selections and configs. Submitting the same ordered list
-    keeps the current configs and pass.
+    Recorded frames restore their executable step selections. Explicit CLI
+    selections override the named steps; an unrecorded step uses its packaged
+    default. Page selections override that step for the replay pass, retaining
+    configs when the selected IDs are unchanged. Offline replay computes the
+    action's authorization without host delivery.
     """
 
     try:
-        activations = {
-            "perception": step_selection(
-                "perception", preset=perception_preset, plugins=perception_plugins
-            ),
-            "memory": step_selection("memory", preset=memory_preset, plugins=memory_plugins),
-            "proposal": step_selection("proposal", plugins=proposal_plugins),
-        }
+        activations = {}
+        for step, preset, plugins in (
+            ("perception", perception_preset, perception_plugins),
+            ("memory", memory_preset, memory_plugins),
+            ("proposal", None, proposal_plugins),
+        ):
+            if preset is not None or plugins is not None:
+                activations[step] = step_selection(step, preset=preset, plugins=plugins)
     except ValueError as exc:
         return CommandResult(2, f"Workbench replay failed: {exc}")
     if open_browser:

@@ -15,7 +15,7 @@ from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
-from autonomy.runtime.report import delivery_values, report_from_host_result
+from autonomy.runtime.report import delivery_values, diagnostic_ceiling, report_from_host_result
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from .control import drive_mode, execution_mode
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -117,6 +117,7 @@ class LatestObservationState:
     preset: str | None = None
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
+    context: dict[str, Any] | None = None
 
     def to_status_dict(self) -> dict[str, Any]:
         """Bounded status view without the raw image or full perception payload."""
@@ -588,6 +589,14 @@ class AutonomyPilotPart:
         observation = None if latest.cycle is None else deepcopy(latest.cycle.get("observation"))
         # Republish the memory report through the cycle publication.
         memory = None if latest.cycle is None else deepcopy(latest.cycle.get("memory"))
+        context = latest.context or (latest.cycle or {}).get("context") or {}
+        selections = (context.get("metadata") or {}).get("step_activations")
+        if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
+            generation_id = activation_generation_id(
+                {step: selections[step] for step in DECISION_STEPS}, prefix="decision",
+            )
+        else:
+            generation_id = None
         return {
             "schema": OBSERVATION_PUBLICATION_SCHEMA,
             "ok": health in {PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE},
@@ -601,6 +610,11 @@ class AutonomyPilotPart:
             "skipped_count": skipped_count,
             "preset": preset or latest.preset,
             "generation_id": generation_id,
+            "step_activations": deepcopy(selections),
+            "context": {
+                key: context[key] for key in ("mode", "user_steering", "user_throttle")
+                if key in context
+            },
             "frame": {
                 "frame_id": latest.frame_id,
                 "frame_index": latest.frame_index,
@@ -718,7 +732,9 @@ class AutonomyPilotPart:
 
         The document is the same ``vehicle_report_v0`` Chase writes. PiCar-only
         identity (source, activation, drive mode, and the capture frame) goes
-        in ``values``. A failed cycle stays unpublished.
+        in ``values``, with the display freshness limit. A failed cycle that
+        still has its application is published; the failure stays in the cycle.
+        A cycle that never produced an application stays unpublished.
         """
 
         if status != "ok":
@@ -726,35 +742,31 @@ class AutonomyPilotPart:
         if self._decision_identity_error is not None:
             return None, self._decision_identity_error
         result = self._current_decision_result()
-        if result is None:
+        records = self._current_cycle
+        if result is None or records is None:
             if self._current_decision_failed():
                 return None, "failed_step"
             return None, "missing_result"
-        if getattr(result, "status", "ok") != "ok":
-            return None, "failed_step"
         result_frame_id = getattr(result, "frame_id", None)
         if result_frame_id != frame_id:
             return None, "mismatched_frame"
-        records = self._current_cycle
-        proposal = None if records is None else records.proposal
-        plan = None if records is None else records.plan
-        if proposal is None or plan is None or records.application is None:
-            return None, "incomplete_result"
-        if getattr(proposal, "status", None) != "ok" or getattr(result, "status", None) != "ok":
+        proposal = records.proposal
+        if proposal is None or records.application is None:
             return None, "incomplete_result"
         source = getattr(proposal, "source", None)
-        try:
-            source_export = source.to_dict() if source is not None else None
-        except Exception:
-            return None, "incomplete_result"
-        if not isinstance(source_export, dict):
-            return None, "incomplete_result"
-        if (
-            source_export.get("frame_id") != frame_id
-            or source_export.get("frame_index") != frame_index
-            or source_export.get("timestamp_ms") != timestamp_ms_value
-        ):
-            return None, "mismatched_frame"
+        if source is not None:
+            try:
+                source_export = source.to_dict()
+            except Exception:
+                return None, "incomplete_result"
+            if not isinstance(source_export, dict):
+                return None, "incomplete_result"
+            if (
+                source_export.get("frame_id") != frame_id
+                or source_export.get("frame_index") != frame_index
+                or source_export.get("timestamp_ms") != timestamp_ms_value
+            ):
+                return None, "mismatched_frame"
         try:
             report = report_from_host_result(
                 records,
@@ -776,6 +788,7 @@ class AutonomyPilotPart:
                         "completed_at_ms": published_at_ms,
                     },
                     **delivery_values(records.application),
+                    "stale_after_ms": stale_after_ms(self.interval_s),
                 },
             )
         except (TypeError, ValueError):
@@ -805,7 +818,6 @@ class AutonomyPilotPart:
         """Build the physical decision wire payload, fail-closed at read time."""
 
         latest = self.latest_state
-        threshold_ms = stale_after_ms(self.interval_s)
         if latest is None:
             return self._decision_unavailable(reason="missing", read_at_ms=read_at_ms)
         decision = latest.decision_publication
@@ -814,15 +826,12 @@ class AutonomyPilotPart:
                 reason=latest.decision_error or "unavailable",
                 read_at_ms=read_at_ms,
             )
+        threshold_ms = diagnostic_ceiling(decision["values"])
         # Replacing a decision step retires its result. Never
         # replay the detached result retained by a prior sensor frame.
         current = self._current_decision_result()
-        if current is None or getattr(current, "status", "ok") != "ok":
-            reason = (
-                "failed_step"
-                if self._current_decision_failed() or current is not None
-                else "reset"
-            )
+        if current is None:
+            reason = "failed_step" if self._current_decision_failed() else "reset"
             return self._decision_unavailable(reason=reason, read_at_ms=read_at_ms)
         if getattr(current, "frame_id", None) != decision.get("frame_id"):
             return self._decision_unavailable(
@@ -1053,6 +1062,11 @@ class AutonomyPilotPart:
                 preset=self.preset,
                 decision_publication=decision_publication,
                 decision_error=decision_error,
+                context=(
+                    self.host.last_context.to_dict()
+                    if self.host.last_context is not None
+                    and self.host.last_context.frame_id == frame_id else None
+                ),
             )
             with self._lock:
                 self._last_control = control_dict

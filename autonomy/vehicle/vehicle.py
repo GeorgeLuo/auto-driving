@@ -169,6 +169,10 @@ class CarInterface(Protocol):
     def capabilities(self) -> VehicleCapabilities:
         ...
 
+    def prepare_for_external_control(self) -> dict[str, Any]:
+        """Take the vehicle's external control input. Return the preparation receipt."""
+        ...
+
     def stop(self) -> None:
         ...
 

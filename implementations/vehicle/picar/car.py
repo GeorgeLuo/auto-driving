@@ -81,6 +81,16 @@ class PiCar(CarInterface):
             return action.steering, normalized_throttle
         return action.steering, 0.0
 
+    def prepare_for_external_control(self) -> dict[str, Any]:
+        """The Donkey HTTP drive is already the external input."""
+        now_ms = int(time.time() * 1000)
+        return {
+            "boundary": "donkey_http_input",
+            "switched_control_source": False,
+            "started_at_ms": now_ms,
+            "completed_at_ms": now_ms,
+        }
+
     def stop(self) -> None:
         self.client.stop()
 

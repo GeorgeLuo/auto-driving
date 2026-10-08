@@ -38,10 +38,11 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
         base_url = connection.get("base_url") if isinstance(connection.get("base_url"), str) else None
         if not base_url:
             raise ValueError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
+        car = create_picar(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
         return VehicleAccess(
-            car=create_picar(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id),
+            car=car,
             image_extension="jpg",
             front_camera_endpoint="/frame.jpg",
-            control=DonkeyControlTarget(),
+            control=DonkeyControlTarget(car),
         )
     raise ValueError(f"Vehicle {vehicle_id!r} has unsupported provider {provider!r}.")

@@ -14,13 +14,9 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.session import RunConfiguration
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from implementations.runtime.picar import (
-    DEFAULT_INTERVAL_S,
-    AutonomyPilotPart,
-    DonkeyControlTarget,
-    ONBOARD_OBSERVATION_STATE_SCHEMA,
-    create_host,
-)
+from autonomy.runtime.frame_loop import ONBOARD_OBSERVATION_STATE_SCHEMA
+from autonomy.runtime.session import DEFAULT_INTERVAL_S
+from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
 
 
 def _pushy_host(**steps) -> AutonomyCycleHost:

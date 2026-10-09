@@ -351,10 +351,12 @@ class AutonomyCycleHost:
             self.run_state = "running"
             return self.session_status()
 
-    def stop(self, *, reason: str = "stopped") -> dict[str, Any]:
+    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
         with self._session_lock:
             self._run_generation += 1
             self.run_state = reason
+            if error is not None:
+                self.last_error = error
             if self.execution is not None and not self.execution.status()["closed"]:
                 self.set_mode("manual")
             return self.session_status()

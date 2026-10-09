@@ -412,7 +412,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         with (
             patch.object(
                 __import__(
-                    "implementations.runtime.picar.donkey_part",
+                    "autonomy.runtime.frame_loop",
                     fromlist=["timestamp_ms"],
                 ),
                 "timestamp_ms",
@@ -454,7 +454,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
         store = _store()
         adapter = DriveModeTelemetryAdapter(store)
         module = __import__(
-            "implementations.runtime.picar.donkey_part",
+            "autonomy.runtime.frame_loop",
             fromlist=["timestamp_ms"],
         )
         with (

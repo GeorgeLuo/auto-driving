@@ -147,7 +147,6 @@ h3, .kicker {
   gap: 8px;
   min-width: 0;
 }
-.plugin-section > .kicker { align-self: flex-end; }
 .sidebar-fill { flex: 1; gap: 6px; min-height: 0; }
 .sidebar .plugin-catalog {
   flex: none;
@@ -375,6 +374,7 @@ h3, .kicker {
 .workspace-tools {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   flex: 0 0 auto;
   min-height: 24px;

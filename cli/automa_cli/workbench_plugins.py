@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.steps import step_runner
-from autonomy.plugins import PluginDefinition
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     STEP_PRESETS,
@@ -85,8 +85,30 @@ class PluginCatalog:
     """One step's packaged catalog, in display order, and its digest."""
 
     step: str
-    plugins: tuple[PluginDescriptor, ...]
-    digest: str
+    resolver: LocalPluginCatalog
+    defaults: tuple[str, ...]
+
+    @property
+    def plugins(self) -> tuple[PluginDescriptor, ...]:
+        definitions = {item.plugin_id: item for item in self.resolver.list(self.step)}
+        ids = list(dict.fromkeys([*self.defaults, *sorted(definitions)]))
+        return tuple(
+            PluginDescriptor(
+                plugin_id=item.plugin_id,
+                description=str(item.metadata.get("description") or ""),
+                entrypoint=item.entrypoint,
+                config=dict(item.config),
+                default=item.plugin_id in self.defaults,
+            )
+            for plugin_id in ids if (item := definitions.get(plugin_id)) is not None
+        )
+
+    @property
+    def digest(self) -> str:
+        payload = [item.to_dict() for item in self.plugins]
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
 
     @property
     def ids(self) -> tuple[str, ...]:
@@ -124,7 +146,13 @@ class PluginCatalog:
         """The CLI's activation for these ids; unknown ids are a catalog error."""
 
         try:
-            return step_selection(self.step, plugins=list(active_ids))
+            definitions = self.resolver.list(self.step)
+            return replace(
+                step_selection(self.step, plugins=[]),
+                plugins=tuple(active_ids),
+                plugin_specs={item.plugin_id: item.entrypoint for item in definitions},
+                plugin_configs={item.plugin_id: dict(item.config) for item in definitions},
+            )
         except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc
 
@@ -147,23 +175,11 @@ def packaged_plugin_catalog(step: str) -> PluginCatalog:
         item.plugin_id: item
         for item in packaged_activation(step, []).plugin_manager().available
     }
-    # Defaults keep their execution order and lead the list.
-    plugin_ids = list(dict.fromkeys([*default_ids, *sorted(definitions)]))
-    descriptors = tuple(
-        PluginDescriptor(
-            plugin_id=plugin_id,
-            description=str(entries[plugin_id].get("description") or ""),
-            entrypoint=definitions[plugin_id].entrypoint,
-            config=dict(definitions[plugin_id].config),
-            default=plugin_id in default_ids,
-        )
-        for plugin_id in plugin_ids
+    resolver = LocalPluginCatalog(
+        replace(item, metadata={"description": str(entries[item.plugin_id].get("description") or "")})
+        for item in definitions.values()
     )
-    payload = [item.to_dict() for item in descriptors]
-    digest = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    return PluginCatalog(step=step, plugins=descriptors, digest=digest)
+    return PluginCatalog(step=step, resolver=resolver, defaults=tuple(default_ids))
 
 
 def _json_safe(value: Any) -> Any:

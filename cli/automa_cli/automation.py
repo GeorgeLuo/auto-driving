@@ -20,13 +20,11 @@ from typing import Any, TextIO
 from autonomy.decision_cycle.activation import (
     DECISION_STEPS,
     STEPS,
-    activation_generation_id,
     read_step_activation,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-from autonomy.decision_cycle.steps import decision_steps, snapshot_step_activations
-from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_loader import CodeSource
 from autonomy.runtime.recording import RunRecording, cycle_frame
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -398,22 +396,13 @@ def run_vehicle_automation(
                 ]
             ),
         )
-    # Discovery and loading may outlive a restage. Seed publication from the
-    # runners we constructed, rather than the earlier disk identity.
-    loaded = snapshot_step_activations(steps)
-    decision_activations = {step: loaded[step] for step in DECISION_STEPS}
-    identity = {
-        "generation_id": activation_generation_id(decision_activations, prefix="decision"),
-        "steps": decision_activations,
-    }
-    decision_published = decision_record(identity)["published"]
     cycle_host = create_host(car, steps=steps)
-    # Restaged selections apply between frames. Changed specs or configs need a restart.
-    for step in LIVE_SELECTION_STEPS:
-        activation = activations.get(step)
-        if activation is not None:
-            cycle_host.watch_selection(step, bundle_activation_path(bundle, step), activation)
-    cycle_host.use_applied_decision(identity)
+    cycle_host.follow_activations(
+        {step: activation for step, activation in activations.items() if activation is not None},
+        Path(bundle["runtime_dir"]),
+    )
+    identity = cycle_host.applied_decision()
+    decision_published = decision_record(identity)["published"]
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
     run_id = _now_id("automation")

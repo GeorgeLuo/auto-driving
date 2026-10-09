@@ -18,6 +18,7 @@ from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
 )
 from autonomy.decision_cycle.activation import STEPS
+from autonomy.runtime.layout import RuntimeLayout
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 from implementations.vehicle.picar.defaults import (
     get_default_picar_base_url,
@@ -625,13 +626,8 @@ def _write_remote_activation_files(
     remote_release["manifest"] = f"{remote_release_root}/bundle-manifest.json"
 
     # Same controller_bundle keys staging_metadata records locally, with the Pi's paths.
-    remote_values = {
-        "root_dir": remote_app_root,
-        "autonomy_dir": f"{remote_app_root}/autonomy",
-        "implementations_dir": f"{remote_app_root}/implementations",
-        "runtime_dir": f"{remote_app_root}/runtime",
-        "release": remote_release,
-    }
+    remote_values = RuntimeLayout(Path(remote_app_root)).bundle_paths()
+    remote_values["release"] = remote_release
     remote_bundle = {key: remote_values[key] for key in CONTROLLER_BUNDLE_KEYS}
 
     written: dict[str, Path] = {}

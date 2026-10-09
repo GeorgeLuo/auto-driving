@@ -96,6 +96,21 @@ class AutonomyCycleHost:
         with self._lock:
             self._watched[require_step(step)] = (Path(path), loaded)
 
+    def follow_activations(self, activations: Mapping[str, StepActivation], runtime_root: Path) -> None:
+        """Watch staged selections and seed identity from the runners actually loaded."""
+
+        from autonomy.decision_cycle.activation import step_activation_path
+
+        for step in LIVE_SELECTION_STEPS:
+            if step in activations:
+                self.watch_selection(step, step_activation_path(runtime_root, step), activations[step])
+        loaded = snapshot_step_activations(self.steps)
+        decision = {step: loaded[step] for step in DECISION_STEPS}
+        self.use_applied_decision({
+            "generation_id": activation_generation_id(decision, prefix="decision"),
+            "steps": decision,
+        })
+
     def sync_selection(self) -> dict[str, StepActivation]:
         """Select each watched step's restaged plugin IDs before the next frame.
 

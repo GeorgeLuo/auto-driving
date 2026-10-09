@@ -95,7 +95,7 @@
 
     span.nav, span.nav.unavailable { cursor: default; color: #6a6a6a; }
 
-    button:focus-visible, a.nav:focus-visible, label.toggle:focus-within, .kind-toggle:focus-within {
+    button:focus-visible, a.nav:focus-visible, label.toggle:focus-within {
       outline: 1px solid rgba(255, 255, 255, 0.45);
       outline-offset: 1px;
     }
@@ -172,7 +172,7 @@
 
     .toggle-grid { display: grid; gap: 6px; }
 
-    label.toggle, .kind-toggle {
+    label.toggle {
       position: relative;
       min-height: 24px;
       display: flex;
@@ -188,18 +188,18 @@
       cursor: pointer;
     }
 
-    label.toggle:hover, .kind-toggle:hover {
+    label.toggle:hover {
       background: rgba(255, 255, 255, 0.04);
       color: var(--fg);
     }
 
-    label.toggle:has(input:checked), .kind-toggle:has(input:checked) {
+    label.toggle:has(input:checked) {
       border-color: rgba(255, 255, 255, 0.3);
       background: rgba(255, 255, 255, 0.06);
       color: var(--fg);
     }
 
-    label.toggle input, .kind-toggle input {
+    label.toggle input {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -277,11 +277,11 @@
     }
     .thing.marked > div { grid-column: 2; }
     .run > div:first-of-type, .thing > div:first-of-type { color: var(--fg); font-size: 12px; }
-    .run.ok::before, .run.active::before { background: var(--green); }
-    .run.ok, .run.active {
-      border-color: rgba(255, 255, 255, 0.28);
-      background: rgba(255, 255, 255, 0.05);
+    .run.selected, .thing.selected {
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.06);
     }
+    .run.ok::before, .run.active::before { background: var(--green); }
     .run.error::before, .run.unavailable::before { background: var(--red); }
     .run.inactive::before, .run.missing_input::before, .run.incompatible::before, .run.stale::before {
       background: var(--amber);
@@ -510,7 +510,7 @@
       kindToggles.replaceChildren();
       for (const kind of kinds) {
         const label = document.createElement("label");
-        label.className = "kind-toggle";
+        label.className = "toggle";
         const input = document.createElement("input");
         input.type = "checkbox";
         input.checked = kindState.get(kind) !== false;

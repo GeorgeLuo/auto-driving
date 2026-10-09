@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Automa Memory Map</title>
+  <title>Automa Memory</title>
   <style>
     :root {
       color-scheme: dark;
@@ -85,13 +85,13 @@
       display: grid;
       grid-template-columns: minmax(260px, 22rem) minmax(0, 1fr);
     }
-    .keys-panel, .value-panel {
+    .panel {
       min-height: 0;
       overflow: auto;
       padding: 10px 12px;
       background: var(--bg);
     }
-    .keys-panel { border-right: 1px solid var(--line); }
+    .panel:first-child { border-right: 1px solid var(--line); }
     h2 {
       margin: 16px 0 8px;
       font-size: 10px;
@@ -100,16 +100,16 @@
       letter-spacing: 0.08em;
       color: rgba(140, 140, 140, 0.9);
     }
-    .keys-panel h2:first-child, .value-panel h2:first-child { margin-top: 0; }
-    .metrics, .value-grid {
+    .panel h2:first-child { margin-top: 0; }
+    .metrics {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
       gap: 5px 16px;
       margin: 0 0 4px;
       font-size: 12px;
     }
-    .metrics dt, .value-grid dt { color: var(--muted); }
-    .metrics dd, .value-grid dd {
+    .metrics dt { color: var(--muted); }
+    .metrics dd {
       margin: 0;
       color: var(--fg);
       font-family: var(--mono);
@@ -123,28 +123,6 @@
       gap: 6px;
       margin-bottom: 4px;
     }
-    .kind-chip {
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: transparent;
-      color: var(--muted);
-    }
-    .kind-chip button {
-      all: unset;
-      display: block;
-      cursor: pointer;
-      padding: 3px 8px;
-      font: inherit;
-      font-size: 11px;
-      line-height: 1.35;
-    }
-    .kind-chip button:hover { background: transparent; color: inherit; }
-    .kind-chip:hover { color: var(--fg); }
-    .kind-chip.active {
-      border-color: rgba(255, 255, 255, 0.3);
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--fg);
-    }
     .key-list, .plugin-list { display: grid; gap: 6px; }
     .plugin-list { margin-bottom: 4px; }
     button.key-row {
@@ -157,7 +135,7 @@
       justify-items: start;
     }
     button.key-row:hover { color: var(--fg); }
-    button.key-row.selected {
+    button.selected {
       border-color: rgba(255, 255, 255, 0.3);
       background: rgba(255, 255, 255, 0.06);
       color: var(--fg);
@@ -175,7 +153,7 @@
       font-weight: 450;
       color: inherit;
     }
-    .key-meta { color: var(--muted); font-size: 11px; }
+    .secondary { color: var(--muted); font-size: 11px; }
     .empty { color: var(--muted); font-size: 12px; padding: 8px 0; }
     .value-header {
       display: flex;
@@ -218,7 +196,7 @@
       header { align-items: flex-start; }
       .runtime-status { flex-wrap: wrap; justify-content: flex-end; }
       main { grid-template-columns: 1fr; height: auto; }
-      .keys-panel { border-right: 0; border-bottom: 1px solid var(--line); max-height: 45vh; }
+      .panel:first-child { border-right: 0; border-bottom: 1px solid var(--line); max-height: 45vh; }
     }
   </style>
 </head>
@@ -239,7 +217,7 @@
   </header>
 
   <main>
-    <section class="keys-panel" aria-label="Memory keys">
+    <section class="panel" aria-label="Memory keys">
       <h2>Plugins</h2>
       <div class="plugin-list" id="pluginList"></div>
       <h2>Ledger</h2>
@@ -249,7 +227,7 @@
       <h2>Keys</h2>
       <div class="key-list" id="keyList"></div>
     </section>
-    <section class="value-panel" aria-label="Mapped memory value">
+    <section class="panel" aria-label="Mapped memory value">
       <h2>Value</h2>
       <div id="valueEmpty" class="empty"></div>
       <div id="valueBody" hidden>
@@ -259,7 +237,7 @@
           <span class="value-arrow">→</span>
           <span class="value-kind" id="valueKind">value</span>
         </div>
-        <dl class="value-grid" id="valueSummary"></dl>
+        <dl class="metrics" id="valueSummary"></dl>
         <pre id="valueJson"></pre>
       </div>
     </section>
@@ -440,7 +418,7 @@
           id.className = "key-id";
           id.textContent = entry.plugin_id;
           const meta = document.createElement("div");
-          meta.className = "key-meta";
+          meta.className = "secondary";
           button.append(label, id, meta);
           pluginList.append(button);
           if (entry.plugin_id === focusedPlugin) button.focus();
@@ -449,7 +427,7 @@
       const byId = new Map(plugins.map((entry) => [entry.plugin_id, entry]));
       for (const button of pluginList.querySelectorAll(".plugin-row")) {
         const entry = byId.get(button.dataset.plugin || "");
-        const meta = button.querySelector(".key-meta");
+        const meta = button.querySelector(".secondary");
         if (entry && meta) meta.textContent = pluginMetaText(entry);
       }
     }
@@ -483,7 +461,7 @@
       for (const button of keyList.querySelectorAll(".key-row")) {
         const record = byKey.get(button.dataset.key || "");
         if (!record) continue;
-        const meta = button.querySelector(".key-meta");
+        const meta = button.querySelector(".secondary");
         if (meta) meta.textContent = keyMetaText(record);
       }
     }
@@ -496,23 +474,21 @@
       lastKindsFingerprint = fingerprint;
 
       kindMap.replaceChildren();
-      const allChip = document.createElement("span");
-      allChip.className = `kind-chip ${kindFilter == null ? "active" : ""}`;
       const allBtn = document.createElement("button");
       allBtn.type = "button";
+      allBtn.className = kindFilter == null ? "toggle selected" : "toggle";
       allBtn.dataset.kind = "";
+      allBtn.setAttribute("aria-pressed", kindFilter == null ? "true" : "false");
       allBtn.textContent = `all (${records().length})`;
-      allChip.append(allBtn);
-      kindMap.append(allChip);
+      kindMap.append(allBtn);
       for (const [kind, count] of counts) {
-        const chip = document.createElement("span");
-        chip.className = `kind-chip ${kindFilter === kind ? "active" : ""}`;
         const btn = document.createElement("button");
         btn.type = "button";
+        btn.className = kindFilter === kind ? "toggle selected" : "toggle";
         btn.dataset.kind = kind;
+        btn.setAttribute("aria-pressed", kindFilter === kind ? "true" : "false");
         btn.textContent = `${kind} (${count})`;
-        chip.append(btn);
-        kindMap.append(chip);
+        kindMap.append(btn);
       }
     }
 
@@ -604,7 +580,7 @@
         id.className = "key-id";
         id.textContent = key;
         const meta = document.createElement("div");
-        meta.className = "key-meta";
+        meta.className = "secondary";
         meta.textContent = keyMetaText(record);
         button.append(label, id, meta);
         keyList.append(button);

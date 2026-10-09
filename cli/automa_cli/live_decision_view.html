@@ -95,7 +95,7 @@
 
     span.nav, span.nav.unavailable { cursor: default; color: #6a6a6a; }
 
-    button:focus-visible, a.nav:focus-visible, label.toggle:focus-within, .kind-toggle:focus-within {
+    button:focus-visible, a.nav:focus-visible {
       outline: 1px solid rgba(255, 255, 255, 0.45);
       outline-offset: 1px;
     }
@@ -170,50 +170,6 @@
       color: rgba(140, 140, 140, 0.9);
     }
 
-    .toggle-grid { display: grid; gap: 6px; }
-
-    label.toggle, .kind-toggle {
-      position: relative;
-      min-height: 24px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 4px 8px;
-      background: transparent;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.35;
-      cursor: pointer;
-    }
-
-    label.toggle:hover, .kind-toggle:hover {
-      background: rgba(255, 255, 255, 0.04);
-      color: var(--fg);
-    }
-
-    label.toggle:has(input:checked), .kind-toggle:has(input:checked) {
-      border-color: rgba(255, 255, 255, 0.3);
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--fg);
-    }
-
-    label.toggle input, .kind-toggle input {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      margin: 0;
-      opacity: 0;
-    }
-
-    .swatch {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      flex: 0 0 auto;
-    }
-
     .metrics {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
@@ -276,16 +232,12 @@
       grid-row: 1 / span 2;
     }
     .thing.marked > div { grid-column: 2; }
-    .thing.selected {
-      border-color: rgba(255, 255, 255, 0.28);
-      background: rgba(255, 255, 255, 0.05);
+    .run.selected, .thing.selected {
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.06);
     }
     .run > div:first-of-type, .thing > div:first-of-type { color: var(--fg); font-size: 12px; }
     .run.ok::before, .run.active::before { background: var(--green); }
-    .run.ok, .run.active {
-      border-color: rgba(255, 255, 255, 0.28);
-      background: rgba(255, 255, 255, 0.05);
-    }
     .run.error::before, .run.unavailable::before { background: var(--red); }
     .run.inactive::before, .run.missing_input::before, .run.incompatible::before, .run.stale::before {
       background: var(--amber);
@@ -365,7 +317,7 @@
         <dl class="metrics" id="authorityMetrics"></dl>
       </section>
 
-      <section class="panel" id="host_telemetry" aria-label="Host telemetry separate observation">
+      <section class="panel" id="hostTelemetry" aria-label="Host telemetry separate observation">
         <h2>Telemetry</h2>
         <div class="secondary" id="hostTelemetryStatus">unavailable</div>
         <pre id="hostTelemetryData"></pre>
@@ -561,7 +513,7 @@
       for (const rowCandidate of plan.candidates || []) {
         const row = document.createElement("div");
         const selected = rowCandidate.proposal_id === plan.selected_proposal_id;
-        row.className = `run ${selected ? "ok" : (rowCandidate.lifecycle || "")}`;
+        row.className = ["run", rowCandidate.lifecycle || "", selected ? "selected" : ""].filter(Boolean).join(" ");
         const name = document.createElement("div");
         name.textContent = rowCandidate.reason || rowCandidate.plugin_id || "unknown plugin";
         const detail = document.createElement("div");

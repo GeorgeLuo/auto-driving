@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
-from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
+from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, catalog_write_error
 
 
 class PluginCatalogClient:
@@ -38,6 +39,23 @@ class PluginCatalogClient:
 def serve_plugin_catalog(handler: Any, api: Callable | None, *, include_body: bool = True) -> None:
     """Thin HTTP adapter shared by the runtime viewer and replay workbench."""
 
+    if handler.command == "POST":
+        from .loopback_http import LOOPBACK_HOSTS
+
+        authority = handler.headers.get("Host", "")
+        try:
+            address = urlsplit(f"http://{authority}")
+            local = (address.hostname in LOOPBACK_HOSTS
+                     and address.port == handler.server.server_port
+                     and address.username is None and address.password is None
+                     and not address.path and not address.query and not address.fragment)
+        except ValueError:
+            local = False
+        error = (catalog_write_error(handler.headers, origin=f"http://{authority}") if local else
+                 (403, {"ok": False, "status": "failed", "error": "catalog writes require a loopback host"}))
+        if error is not None:
+            handler._send_json(*error, include_body=include_body)
+            return
     if api is None:
         handler._send_json(503, {"ok": False, "error": "catalog unavailable"}, include_body=include_body)
         return

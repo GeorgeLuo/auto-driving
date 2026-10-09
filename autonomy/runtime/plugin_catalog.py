@@ -11,6 +11,18 @@ PLUGIN_CATALOG_PATH = "/api/plugins"
 ARMING_STEPS = ("perception", "memory", "proposal")
 
 
+def catalog_write_error(headers: Mapping[str, str], *, origin: str) -> tuple[int, dict[str, Any]] | None:
+    """Allow JSON CLI writes and same-origin browser writes before reading a body."""
+
+    supplied = headers.get("Origin")
+    if (supplied is not None and supplied != origin
+            or headers.get("Sec-Fetch-Site") == "cross-site"):
+        return 403, {"ok": False, "status": "failed", "error": "catalog writes require the same origin"}
+    if headers.get("Content-Type", "").partition(";")[0].strip().lower() != "application/json":
+        return 415, {"ok": False, "status": "failed", "error": "catalog writes require application/json"}
+    return None
+
+
 def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
     return {
         "step": definition.step, "id": definition.plugin_id,

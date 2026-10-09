@@ -16,6 +16,8 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActiva
 from autonomy.decision_cycle.steps import step_runner
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, STEP_PRESETS
+from autonomy.plugins import LocalPluginCatalog
+from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
@@ -143,6 +145,15 @@ class ImageReplayRunner:
         self._catalogs: dict[str, PluginCatalog] = {
             step: packaged_plugin_catalog(step) for step in SELECTABLE_STEPS
         }
+        self.catalog = LocalPluginCatalog(
+            definition for step, catalog in self._catalogs.items()
+            for definition in catalog.resolver.list(step)
+        )
+        self._catalogs = {
+            step: PluginCatalog(step, self.catalog, catalog.defaults)
+            for step, catalog in self._catalogs.items()
+        }
+        self.plugin_catalog = PluginCatalogAPI(self.catalog)
         self._activations = self._initial_activations(activations)
         self._default_activations = dict(self._activations)
         self._selection_overrides = set(activations or {}) | set(self.step_factories)
@@ -154,6 +165,7 @@ class ImageReplayRunner:
 
     def state(self) -> dict[str, Any]:
         with self._lock:
+            self._apply_plugin_configuration_locked()
             return copy.deepcopy(self._state)
 
     @staticmethod

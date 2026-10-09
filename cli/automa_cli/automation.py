@@ -20,13 +20,11 @@ from typing import Any, TextIO
 from autonomy.decision_cycle.activation import (
     DECISION_STEPS,
     STEPS,
-    activation_generation_id,
     read_step_activation,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-from autonomy.decision_cycle.steps import decision_steps, snapshot_step_activations
-from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_loader import CodeSource
 from autonomy.runtime.recording import RunRecording, cycle_frame
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -57,6 +55,7 @@ from .chase_observation import (
 )
 from .decision import (
     invalidate_latest_decision_frame,
+    load_live_decision_activation,
     publish_decision_frame,
 )
 from .paths import display_path, safe_path_part
@@ -398,22 +397,13 @@ def run_vehicle_automation(
                 ]
             ),
         )
-    # Discovery and loading may outlive a restage. Seed publication from the
-    # runners we constructed, rather than the earlier disk identity.
-    loaded = snapshot_step_activations(steps)
-    decision_activations = {step: loaded[step] for step in DECISION_STEPS}
-    identity = {
-        "generation_id": activation_generation_id(decision_activations, prefix="decision"),
-        "steps": decision_activations,
-    }
-    decision_published = decision_record(identity)["published"]
     cycle_host = create_host(car, steps=steps)
-    # Restaged selections apply between frames. Changed specs or configs need a restart.
-    for step in LIVE_SELECTION_STEPS:
-        activation = activations.get(step)
-        if activation is not None:
-            cycle_host.watch_selection(step, bundle_activation_path(bundle, step), activation)
-    cycle_host.use_applied_decision(identity)
+    cycle_host.follow_activations(
+        {step: activation for step, activation in activations.items() if activation is not None},
+        Path(bundle["runtime_dir"]),
+    )
+    identity = cycle_host.applied_decision()
+    decision_published = decision_record(identity)["published"]
 
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
     run_id = _now_id("automation")
@@ -443,6 +433,7 @@ def run_vehicle_automation(
             worker_pid=os.getpid(),
             decision_activation=identity if decision_published else None,
             decision_activation_path=Path(bundle["runtime_dir"]),
+            plugin_catalog=cycle_host.plugin_catalog,
         ).start()
         published_view = view_server.describe()
     except (OSError, RuntimeError, ValueError) as exc:
@@ -583,7 +574,7 @@ def run_vehicle_automation(
     last_decision_capture_sequence = -1
 
     def process_frame(pending: _PendingFrame) -> None:
-        nonlocal last_decision_capture_sequence, identity
+        nonlocal last_decision_capture_sequence, identity, decision_published
         apply_memory_reset_if_requested()
         context = pending.context
         capture_sequence = int(context.metadata["capture_sequence"])
@@ -608,11 +599,19 @@ def run_vehicle_automation(
             identity = applied
             with state_lock:
                 state["decision"].update(
-                    generation_id=applied["generation_id"], steps=applied["steps"]
+                    generation_id=applied["generation_id"], steps=applied["steps"],
+                    published=applied["steps"]["proposal"] is not None,
                 )
+            decision_published = applied["steps"]["proposal"] is not None
             if view_server is not None:
                 view_server.decision.adopt(applied)
-            _emit(output, f"Decision generation: {applied['generation_id']} (restaged)")
+            _emit(output, f"Decision generation: {applied['generation_id']} (adopted)")
+        with state_lock:
+            state["arming"] = cycle_host.selection_status()
+            if state["arming"]["request_id"]:
+                # Publication readers use the applied runtime identity once a
+                # catalog selection exists; staged files describe deployment.
+                _write_json(state_path, state)
         # Publish the accepted decision frame first. The server-owned decision
         # transaction is joined only after the full frame record exists below.
         published = False
@@ -2126,7 +2125,7 @@ def _collect_automation_status(
 
         # Unstaged decision steps run their built-ins, so a readable identity is deployed.
         try:
-            identity = decision_identity(bundle)
+            identity = load_live_decision_activation(vehicle_runtime_dir) or decision_identity(bundle)
         except (OSError, TypeError, ValueError):
             identity = None
         decision: dict[str, Any] = {"deployed": identity is not None}
@@ -2184,6 +2183,7 @@ def _collect_automation_status(
                     "control_source": state.get("control_source"),
                     "action_policy": state.get("action_policy"),
                     "execution": state.get("execution"),
+                    "arming": state.get("arming"),
                     "session": state.get("session"),
                     "control_application": state.get("control_application"),
                     "passive_capture": state.get("passive_capture")
@@ -2279,6 +2279,11 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
                 f"  log: {_status_log_label(process)}",
             ]
         )
+        arming = state.get("arming")
+        if isinstance(arming, dict) and arming.get("request_id"):
+            lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
+            if arming.get("error"):
+                lines.append(f"  problem: {arming['error']}")
         problems = item.get("activation_problems")
         if isinstance(problems, list) and problems:
             lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())

@@ -51,6 +51,9 @@ from .perception_runs import (
     inspect_perception,
 )
 from .workbench import run_workbench_replay
+from .plugin_catalog import arm_plugins, list_plugins, upload_plugin
+from autonomy.runtime.plugin_catalog import ARMING_STEPS
+from autonomy.decision_cycle.activation import STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .viability import (
@@ -92,6 +95,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show vehicle-level commands.",
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
+
+    plugins = vehicle_commands.add_parser("plugins", help="Upload, arm and inspect plugins in a live catalog.")
+    plugins.set_defaults(handler=_handle_plugins_help)
+    plugin_commands = plugins.add_subparsers(dest="plugin_command")
+    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming and catalog inspection usage.")
+    plugins_help.set_defaults(handler=_handle_plugins_help)
+    listing = plugin_commands.add_parser("status", aliases=["list"], help="Show live catalog availability and plugin revisions (list is an alias).")
+    listing_target = listing.add_mutually_exclusive_group(required=True)
+    listing_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose live catalog to read.")
+    listing_target.add_argument("--url", help="Runtime or workbench URL; bypass vehicle discovery.")
+    listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
+    listing.add_argument("--json", dest="json_output", action="store_true", help="Print the catalog snapshot as JSON.")
+    listing.set_defaults(handler=_handle_plugin_status)
+    upload = plugin_commands.add_parser(
+        "upload", help="Register a plugin file; optionally arm it on a runtime host.",
+        description="Store a file in an existing live catalog. Upload success means available; selection stays unchanged unless --arm requests adoption before a subsequent cycle.",
+        epilog="Verify registration with: ./cli/automa vehicles plugins status --id <vehicle> --step <step>. Use --url for an existing workbench catalog.",
+    )
+    target = upload.add_mutually_exclusive_group(required=True)
+    target.add_argument("--id", dest="vehicle_id", help="Vehicle whose catalog receives the upload.")
+    target.add_argument("--url", help="Runtime or workbench URL; bypass vehicle discovery.")
+    upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; code is not imported during registration.")
+    upload.add_argument("--step", choices=STEPS, required=True, help="Cycle step whose catalog receives the file.")
+    upload.add_argument("--plugin-id", required=True, help="Plugin ID within the step; repeat an ID to make a new revision available.")
+    upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved only when loaded downstream.")
+    upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
+    upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
+    upload.set_defaults(handler=_handle_plugin_upload)
+
+    arm = plugin_commands.add_parser(
+        "arm", help="Add/update uploaded or packaged plugins without restarting automation.",
+        description="Request the latest catalog definitions together. New IDs append; existing IDs update in place. Loading occurs before a subsequent cycle, and status distinguishes requested from applied revisions.",
+        epilog="With --selection, use a JSON map such as {\"perception\": [\"prototype\"], \"memory\": [\"helper\"]}. Arming never starts automation or changes its control mode.",
+    )
+    arm_target = arm.add_mutually_exclusive_group(required=True)
+    arm_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose runtime host receives the request.")
+    arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
+    arm_input = arm.add_mutually_exclusive_group(required=True)
+    arm_input.add_argument("--step", choices=ARMING_STEPS, help="Step receiving the ordered --plugin IDs.")
+    arm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to ordered plugin-ID lists; arm the group together.")
+    arm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to add/update; repeat in the desired append order with --step.")
+    arm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
+    arm.set_defaults(handler=_handle_plugin_arm)
 
     active = vehicle_commands.add_parser(
         "active",
@@ -1508,6 +1554,57 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handle_plugins_help(args: argparse.Namespace) -> int:
+    print("\n".join([
+        "automa vehicles plugins commands", "",
+        "- upload  store a file and register an available plugin revision",
+        "- arm     add/update named plugins together on a runtime host",
+        "- status  show live catalog availability and plugin revisions (list is an alias)",
+        "- help    show this summary", "",
+        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; neither upload nor arm starts automation.",
+        "Use ./cli/automa vehicles status --id <vehicle> for the next startup action when no host is running.",
+        "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
+        "Example:",
+        "  ./cli/automa vehicles plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
+        "  ./cli/automa vehicles plugins status --id chase-sim-chaser --step perception", "",
+        "Upload succeeds after storage and registration; imports and dependencies can fail downstream.",
+        "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.", "",
+        "Use upload --arm for one-command registration and arming; it calls the same operation as arm.",
+        "Arming supports perception, memory and proposal. New IDs append; existing IDs update in place.",
+        "Other plugins retain their definitions/configs. A request applies before a subsequent cycle.",
+        "Status distinguishes available, requested and applied revisions, including loading failures.",
+        "Arming does not start automation or change control mode. Workbench catalogs support upload only.", "",
+        "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
+        "Detailed help: ./cli/automa vehicles plugins <command> --help",
+    ]))
+    return 0
+
+
+def _handle_plugin_status(args: argparse.Namespace) -> int:
+    result = list_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step, json_output=args.json_output)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugin_upload(args: argparse.Namespace) -> int:
+    result = upload_plugin(
+        url=args.url, vehicle_id=args.vehicle_id, file=args.file, step=args.step,
+        plugin_id=args.plugin_id, entrypoint=args.entrypoint, arm=args.arm, json_output=args.json_output,
+    )
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugin_arm(args: argparse.Namespace) -> int:
+    if (args.step and not args.plugins) or (args.selection and args.plugins):
+        print("Use --step with one or more --plugin IDs, or --selection without --plugin.")
+        return 2
+    result = arm_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step,
+                         plugins=args.plugins, selection=args.selection, json_output=args.json_output)
+    print(result.message)
+    return result.exit_code
+
+
 def _handle_top_level_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
@@ -1559,6 +1656,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- active       discover vehicle endpoints (not worker/deployment state)",
                 "- status       inspect simulator, deployment, worker, and view layers",
                 "- update       stage controller selections or deploy vehicle code",
+                "- plugins      upload, arm and inspect plugins in a live catalog",
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plugin catalog · Automa</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111820; color: #e5edf5; }
+  main { max-width: 960px; margin: 40px auto; padding: 24px; }
+  a { color: inherit; } table { width: 100%; text-align: left; border-collapse: collapse; }
+  td, th { padding: 12px; border-bottom: 1px solid #405165; overflow-wrap: anywhere; }
+  p { color: #aab9c8; }
+</style>
+<main>
+  <a href="/">Runtime views</a>
+  <h1>Plugin catalog</h1>
+  <p>Uploading changes available revisions. Arming requests their adoption before a subsequent cycle.</p>
+  <p id="status" role="status">Loading catalog…</p>
+  <table><thead><tr><th>Step</th><th>Plugin</th><th>Available revision</th><th>Requested revision</th><th>Applied revision</th><th>Source</th></tr></thead>
+    <tbody id="plugins"></tbody></table>
+</main>
+<script>
+  async function refresh() {
+    try {
+      const response = await fetch('/api/plugins');
+      const catalog = await response.json();
+      if (!catalog.ok) throw new Error(catalog.error);
+      const arming = catalog.arming;
+      document.getElementById('status').textContent = 'Catalog ' + catalog.catalog_version +
+        (arming ? ' · Arming: ' + arming.status + (arming.error ? ' · ' + arming.error : '') : '');
+      function selectedRevision(name, plugin) {
+        const selected = arming?.[name]?.[plugin.step]?.find(item => item.id === plugin.id);
+        return selected ? selected.metadata.revision || 'packaged' : '—';
+      }
+      const rows = catalog.plugins.map(plugin => {
+        const row = document.createElement('tr');
+        const metadata = plugin.metadata || {};
+        [plugin.step, plugin.id, metadata.revision || 'packaged', selectedRevision('requested', plugin),
+          selectedRevision('applied', plugin), metadata.filename || plugin.entrypoint].forEach(value => {
+          const cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell);
+        });
+        return row;
+      });
+      document.getElementById('plugins').replaceChildren(...rows);
+    } catch (error) { document.getElementById('status').textContent = error.message; }
+    setTimeout(refresh, 500);
+  }
+  refresh();
+</script>
+</html>

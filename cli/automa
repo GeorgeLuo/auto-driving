@@ -11,7 +11,17 @@ for path in (ROOT / "cli", ROOT):
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
-from automa_cli.app import main
+try:
+    from automa_cli.app import main
+except ModuleNotFoundError as exc:
+    print(
+        f"Automa cannot start: Python module {exc.name!r} is missing.\n"
+        "Run with the project's Python environment (activate .venv first),\n"
+        "or invoke <environment>/bin/python cli/automa.\n"
+        "Environment setup: README.md#setup",
+        file=sys.stderr,
+    )
+    raise SystemExit(2) from None
 
 
 if __name__ == "__main__":

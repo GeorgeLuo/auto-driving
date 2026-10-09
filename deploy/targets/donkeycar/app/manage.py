@@ -459,21 +459,18 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     autonomy_execution = None
     if getattr(cfg, "AUTONOMY_ENABLED", True):
         autonomy_controller = getattr(V, "web_controller", None)
-        runtime_root = Path(__file__).resolve().parent / "runtime"
-        identity_path = runtime_root / "identity.json"
         try:
+            from autonomy.runtime.layout import RuntimeLayout
+            runtime_root = RuntimeLayout(Path(__file__).resolve().parent).runtime
+            identity_path = runtime_root / "identity.json"
             from autonomy.decision_cycle.activation import (
-                DECISION_STEPS,
                 STEPS,
-                activation_generation_id,
                 read_step_activation,
                 step_activation_path,
             )
             from autonomy.decision_cycle.steps import (
-                builtin_activation,
                 decision_steps,
             )
-            from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
             from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE
             from implementations.runtime.picar import (
                 DEFAULT_INTERVAL_S,
@@ -510,20 +507,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             host = create_host(
                 steps=decision_steps(activations, source=INSTALLED_PACKAGE)
             )
-            # Restaged selections apply between frames. Changed specs or configs need a restart.
-            for step in LIVE_SELECTION_STEPS:
-                if step in activations:
-                    host.watch_selection(
-                        step, step_activation_path(runtime_root, step), activations[step]
-                    )
-            # A decision step with neither an activation nor a built-in (no
-            # proposal plugins staged) is recorded as None in the identity.
-            decision_activations = {}
-            for step in DECISION_STEPS:
-                activation = activations.get(step) or builtin_activation(step)
-                decision_activations[step] = (
-                    activation.to_payload() if activation is not None else None
-                )
+            host.follow_activations(activations, runtime_root)
+            applied = host.applied_decision()
+            decision_activations = applied["steps"]
             perception = activations.get("perception")
             perception_preset = (
                 perception.metadata.get("preset") if perception is not None else None
@@ -532,11 +518,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             telemetry_store = None
             vehicle_id = None
             source_id = None
-            generation_id = activation_generation_id(decision_activations, prefix="decision")
-            host.use_applied_decision({
-                "generation_id": generation_id,
-                "steps": decision_activations,
-            })
+            generation_id = applied["generation_id"]
             run_id = None
             try:
                 identity = (

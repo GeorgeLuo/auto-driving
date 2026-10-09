@@ -140,6 +140,14 @@ h3, .kicker {
   padding: 0 8px 8px;
   min-width: 0;
 }
+.plugin-sections { gap: 32px; }
+.plugin-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.plugin-section > .kicker { align-self: flex-end; }
 .sidebar-fill { flex: 1; gap: 6px; min-height: 0; }
 .sidebar .plugin-catalog {
   flex: none;

@@ -34,22 +34,28 @@
             <span>Plugins</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </summary>
-          <div class="sidebar-group-body">
-            <span class="kicker">perception</span>
-            <span id="perceptionPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
-            <span id="perceptionPluginOrder" class="plugin-order muted help"></span>
-            <div id="perceptionPluginCatalog" class="plugin-catalog"></div>
-            <div id="perceptionPluginDigest" class="digest muted"></div>
-            <span class="kicker">memory</span>
-            <span id="memoryPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
-            <span id="memoryPluginOrder" class="plugin-order muted help"></span>
-            <div id="memoryPluginCatalog" class="plugin-catalog"></div>
-            <div id="memoryPluginDigest" class="digest muted"></div>
-            <span class="kicker">proposal</span>
-            <span id="proposalPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
-            <span id="proposalPluginOrder" class="plugin-order muted help"></span>
-            <div id="proposalPluginCatalog" class="plugin-catalog"></div>
-            <div id="proposalPluginDigest" class="digest muted"></div>
+          <div class="sidebar-group-body plugin-sections">
+            <section class="plugin-section">
+              <span class="kicker">perception</span>
+              <span id="perceptionPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+              <span id="perceptionPluginOrder" class="plugin-order muted help"></span>
+              <div id="perceptionPluginCatalog" class="plugin-catalog"></div>
+              <div id="perceptionPluginDigest" class="digest muted"></div>
+            </section>
+            <section class="plugin-section">
+              <span class="kicker">memory</span>
+              <span id="memoryPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+              <span id="memoryPluginOrder" class="plugin-order muted help"></span>
+              <div id="memoryPluginCatalog" class="plugin-catalog"></div>
+              <div id="memoryPluginDigest" class="digest muted"></div>
+            </section>
+            <section class="plugin-section">
+              <span class="kicker">proposal</span>
+              <span id="proposalPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+              <span id="proposalPluginOrder" class="plugin-order muted help"></span>
+              <div id="proposalPluginCatalog" class="plugin-catalog"></div>
+              <div id="proposalPluginDigest" class="digest muted"></div>
+            </section>
           </div>
         </details>
       </div>
@@ -98,6 +104,8 @@
             </button>
           </div>
           <div class="playback-meta">
+            <button type="button" id="loopToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle loop playback">loop</button>
+            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
             <select id="cadence" class="cadence-select" aria-label="Replay cadence">
               <option value="0">as fast as possible</option>
               <option value="100">100 ms</option>
@@ -106,8 +114,6 @@
               <option value="1000">1 second</option>
               <option value="realtime">realtime</option>
             </select>
-            <button type="button" id="loopToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle loop playback">loop</button>
-            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
             <span id="progressText" class="muted">0 / 0</span>
           </div>
         </div>

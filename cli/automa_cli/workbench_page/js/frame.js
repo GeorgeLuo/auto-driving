@@ -391,7 +391,6 @@ syncRecall();
 elements.overlayToggle.addEventListener("click", function () {
   var next = elements.overlayToggle.value === "off" ? "on" : "off";
   elements.overlayToggle.value = next;
-  elements.overlayToggle.textContent = next === "on" ? "overlays" : "image";
   elements.overlayToggle.setAttribute("aria-pressed", next === "on" ? "true" : "false");
   drawOverlay();
 });

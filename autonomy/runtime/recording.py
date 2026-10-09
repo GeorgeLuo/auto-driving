@@ -60,11 +60,16 @@ def recorded_selections(record: dict[str, Any], *, source_root: Path | None = No
             original: str(recorded_source_path(source_root, relative))
             for original, relative in record["plugin_sources"].items()
         }
-        activations = {
-            step: replace(activation, metadata={**activation.metadata, "plugin_sources": sources})
-            if activation is not None else None
-            for step, activation in activations.items()
-        }
+        for step, activation in activations.items():
+            if activation is not None:
+                referenced = {
+                    path: sources[path] for spec in activation.plugin_specs.values()
+                    if (path := spec.partition(":")[0]) in sources
+                }
+                if referenced:
+                    activations[step] = replace(
+                        activation, metadata={**activation.metadata, "plugin_sources": referenced},
+                    )
     return activations
 
 

@@ -94,10 +94,16 @@ from selecting it:
   --step perception \
   --plugin-id prototype \
   --entrypoint prototype:Prototype
+
+./cli/automa vehicles plugins list --id chase-sim-chaser --step perception
 ```
 
 The command reports success after the source is stored and its revision is
-registered. Open **Plugins** in the runtime viewer to see the available
+registered, and prints the verification command. `plugins list` reads the
+live catalog and reports its version, plugin IDs, filenames, and revisions;
+use `--json` for the complete receipt or catalog snapshot. `plugins help`
+describes the file identity arguments and the existing-host precondition.
+Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. The file is
 not imported, constructed, or checked for dependencies during upload; invalid
 code can be registered and fail when loaded downstream.

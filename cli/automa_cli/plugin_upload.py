@@ -93,7 +93,38 @@ def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: 
         message = json.dumps(result, indent=2, sort_keys=True)
     elif result.get("ok"):
         revision = result["plugin"]["metadata"]["revision"]
-        message = f"Uploaded {step}/{plugin_id} revision {revision}; catalog {result['catalog_version']}. Available; selection unchanged."
+        import shlex
+        target = f"--url {shlex.quote(url)}" if url else f"--id {shlex.quote(vehicle_id)}"
+        message = (
+            f"Uploaded {step}/{plugin_id} revision {revision}; catalog {result['catalog_version']}. Available; selection unchanged.\n"
+            f"Verify: automa vehicles plugins list {target} --step {step}"
+        )
     else:
         message = f"Upload failed: {result.get('error', 'catalog rejected upload')}"
+    return CommandResult(0 if result.get("ok") else 1, message)
+
+
+def list_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = None,
+                 json_output: bool = False) -> CommandResult:
+    try:
+        result = PluginCatalogClient(url or catalog_url(vehicle_id))()
+        if result.get("ok") and step is not None:
+            result["plugins"] = [plugin for plugin in result["plugins"] if plugin["step"] == step]
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+        result = {"ok": False, "status": "failed", "error": str(exc)}
+    if json_output:
+        message = json.dumps(result, indent=2, sort_keys=True)
+    elif result.get("ok"):
+        entries = []
+        for plugin in result["plugins"]:
+            metadata = plugin.get("metadata", {})
+            revision = metadata.get("revision")
+            source = f"revision {revision} ({metadata.get('filename', 'uploaded')})" if revision else "packaged"
+            entries.append(f"- {plugin['step']}/{plugin['id']}: {source}")
+        message = "\n".join([
+            f"Plugin catalog: {vehicle_id or url}", f"Catalog version: {result['catalog_version']}",
+            "Available plugins:", *(entries or ["(none)"]),
+        ])
+    else:
+        message = f"Catalog unavailable: {result.get('error', 'request failed')}"
     return CommandResult(0 if result.get("ok") else 1, message)

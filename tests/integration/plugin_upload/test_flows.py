@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -23,7 +25,7 @@ from tests.cli.workbench_fixtures import (
     ImageReplayRunner, _wait_until, image_source, perception_activations,
     post_action, serve_workbench,
 )
-from tests.support.cli_runner import run_automa
+from tests.support.cli_runner import AUTOMA_PATH, run_automa
 
 
 def get_json(base: str, route: str) -> dict:
@@ -54,11 +56,26 @@ def prototype(file: Path, marker: Path, revision: int) -> None:
 
 
 class PluginUploadFlows(unittest.TestCase):
+    def test_missing_python_environment_has_actionable_cli_signal(self):
+        result = subprocess.run(
+            [sys.executable, "-S", str(AUTOMA_PATH), "help"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Python module", result.stderr)
+        self.assertIn("<environment>/bin/python cli/automa", result.stderr)
+        self.assertIn("README.md#setup", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_sequential_dependency_uploads_in_every_workbench_phase(self):
         with image_source(2) as root:
             runner = ImageReplayRunner(root, activations=perception_activations("frame"),
                                        cadence_ms=30000, loop=True)
             base = serve_workbench(self, runner)
+            guidance = run_automa("vehicles", "plugins", "help").stdout
+            self.assertIn("list", guidance)
+            self.assertIn("existing host or workbench catalog", guidance)
+            self.assertIn("module", run_automa("vehicles", "plugins", "upload", "--help").stdout)
             file = root / "prototype.py"
             # Neither an unavailable dependency nor invalid Python is an upload gate.
             sources = [b"from not_uploaded_yet import Helper\n", b"not valid Python !!!\n"]
@@ -82,7 +99,10 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertEqual(receipt["status"], "uploaded")
                     self.assertGreater(receipt["catalog_version"], previous)
                     previous = receipt["catalog_version"]
-                    listing = get_json(base, "/api/plugins")
+                    listing = json.loads(run_automa(
+                        "vehicles", "plugins", "list", "--url", base, "--step", "perception", "--json",
+                    ).stdout)
+                    self.assertTrue(all(plugin["step"] == "perception" for plugin in listing["plugins"]))
                     registered = next(p for p in listing["plugins"] if p["id"] == plugin_id)
                     self.assertEqual(registered, receipt["plugin"])
                     self.assertEqual(Path(registered["metadata"]["source_path"]).read_bytes(), source)
@@ -209,9 +229,17 @@ class PluginUploadFlows(unittest.TestCase):
             file.write_text("dependency can arrive later")
             result = run_automa("vehicles", "plugins", "upload", "--id", "chase-sim-chaser",
                                 "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
-                                "--entrypoint", "prototype:Prototype", "--json", runtime_root=runtime_root)
-            receipt = json.loads(result.stdout)
-            self.assertTrue(receipt["ok"])
+                                "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
+            self.assertIn("Uploaded memory/prototype revision", result.stdout)
+            self.assertIn("Verify: automa vehicles plugins list --id chase-sim-chaser --step memory", result.stdout)
+            listed = json.loads(run_automa(
+                "vehicles", "plugins", "list", "--id", "chase-sim-chaser", "--step", "memory", "--json",
+                runtime_root=runtime_root,
+            ).stdout)
+            self.assertTrue(listed["ok"])
+            self.assertEqual(len(listed["plugins"]), 1)
+            self.assertEqual(listed["plugins"][0]["id"], "prototype")
+            self.assertIn(listed["plugins"][0]["metadata"]["revision"], result.stdout)
             self.assertEqual(get_json(viewer.url, "/api/plugins"), get_json(onboard.url, "/api/plugins"))
             self.assertEqual(host.catalog.resolve("memory", "prototype").metadata["revision"],
-                             receipt["plugin"]["metadata"]["revision"])
+                             listed["plugins"][0]["metadata"]["revision"])

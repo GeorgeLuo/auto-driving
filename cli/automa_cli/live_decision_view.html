@@ -229,7 +229,7 @@
       font-family: var(--mono);
       font-size: 12px;
       text-align: right;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
 
     .run-list, .thing-list { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
@@ -260,6 +260,26 @@
     }
 
     .run > div { grid-column: 2; }
+    .thing.marked {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr);
+      column-gap: 8px;
+      align-items: start;
+    }
+    .thing.marked::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: var(--mark, #3a3a3a);
+      grid-row: 1 / span 2;
+    }
+    .thing.marked > div { grid-column: 2; }
+    .thing.selected {
+      border-color: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.05);
+    }
     .run > div:first-of-type, .thing > div:first-of-type { color: var(--fg); font-size: 12px; }
     .run.ok::before, .run.active::before { background: var(--green); }
     .run.ok, .run.active {
@@ -570,8 +590,8 @@
         const record = item.record;
         const row = document.createElement("div");
         const isPrimary = primary.has(String(record.record_id || ""));
-        row.className = "thing";
-        row.style.borderColor = isPrimary ? "#ffb000" : colorFor(String(record.kind || "unknown"));
+        row.className = isPrimary ? "thing marked selected" : "thing marked";
+        row.style.setProperty("--mark", isPrimary ? "#ffb000" : colorFor(String(record.kind || "unknown")));
         const name = document.createElement("div");
         name.textContent = `${isPrimary ? "selected · " : ""}${record.label || record.kind || "evidence"}`;
         const detail = document.createElement("div");

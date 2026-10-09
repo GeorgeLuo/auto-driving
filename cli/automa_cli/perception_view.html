@@ -229,7 +229,7 @@
       font-family: var(--mono);
       font-size: 12px;
       text-align: right;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
 
     .run-list, .thing-list { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
@@ -260,6 +260,22 @@
     }
 
     .run > div { grid-column: 2; }
+    .thing.marked {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr);
+      column-gap: 8px;
+      align-items: start;
+    }
+    .thing.marked::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: var(--mark, #3a3a3a);
+      grid-row: 1 / span 2;
+    }
+    .thing.marked > div { grid-column: 2; }
     .run > div:first-of-type, .thing > div:first-of-type { color: var(--fg); font-size: 12px; }
     .run.ok::before, .run.active::before { background: var(--green); }
     .run.ok, .run.active {
@@ -651,8 +667,8 @@
       things.replaceChildren();
       for (const thing of latest.perception?.things || []) {
         const row = document.createElement("div");
-        row.className = "thing";
-        row.style.borderColor = colorFor(String(thing.kind || "unknown"));
+        row.className = "thing marked";
+        row.style.setProperty("--mark", colorFor(String(thing.kind || "unknown")));
         const name = document.createElement("div");
         name.textContent = thing.label || thing.thing_id || "unnamed finding";
         const detail = document.createElement("div");

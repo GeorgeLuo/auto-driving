@@ -6,8 +6,8 @@ the last result. A target-less host only computes decisions. ``set_step`` swaps
 one step's runner between frames, and ``status`` reports each step runner's
 status plus the applied decision identity. ``watch_selection`` records the
 activation files a running host follows. ``run`` synchronizes those selections
-before the cycle and records the applied decision identity afterward. Changed
-specs or configs need a restart.
+before the cycle. Explicit arming adopts uploaded definitions as a group;
+staged files retain their selection-only behavior.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import threading
 import traceback
 from collections.abc import Mapping
 from copy import deepcopy
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
@@ -34,18 +35,22 @@ from autonomy.decision_cycle.cycle import (
     DecisionFrameContext,
     DecisionSteps,
 )
-from autonomy.decision_cycle.steps import decision_steps, load_decision_steps, snapshot_step_activations
+from autonomy.decision_cycle.steps import (
+    STEP_RUNNERS, decision_steps, load_decision_steps, snapshot_step_activations,
+)
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlExecution, ControlTarget
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import RunRecording
-from autonomy.plugins import LocalPluginCatalog
+from autonomy.plugins import LocalPluginCatalog, PluginManager
+from autonomy.runtime.plugin_catalog import ARMING_STEPS, PluginCatalogAPI, describe_plugin
 from autonomy.shared_memory import SharedMemory
 
 IDLE_REASON = "cycle-idle"
 # Steps whose restaged plugin selection a running host applies between frames.
 # Other steps, and changed specs or configs, take effect on a restart.
-LIVE_SELECTION_STEPS = ("perception", "memory", "proposal")
+LIVE_SELECTION_STEPS = ARMING_STEPS
 
 
 class AutonomyCycleHost:
@@ -72,8 +77,16 @@ class AutonomyCycleHost:
         self.last_error: str | None = None
         self._status_providers: dict[str, Callable[[], dict[str, Any]]] = {}
         self._watched: dict[str, tuple[Path, StepActivation]] = {}
-        self._pending_decision: dict[str, StepActivation] = {}
+        self._last_staged_ids: dict[str, tuple[str, ...]] = {}
+        self._pending_activations: dict[str, StepActivation] = {}
+        self._armed_steps: set[str] = set()
+        self._selection_error: str | None = None
+        self._arm_request_id = 0
         self._applied_decision: dict[str, Any] | None = None
+        self.plugin_catalog = PluginCatalogAPI(
+            self.catalog, arm=self.arm, selection_status=self.selection_status,
+            applied_decision=self.applied_decision,
+        )
 
     @classmethod
     def from_runtime(cls, runtime_root: Path, *, target: ControlTarget | None = None) -> "AutonomyCycleHost":
@@ -106,6 +119,7 @@ class AutonomyCycleHost:
 
         with self._lock:
             self._watched[require_step(step)] = (Path(path), loaded)
+            self._last_staged_ids[step] = tuple(loaded.plugins)
 
     def follow_activations(self, activations: Mapping[str, StepActivation], runtime_root: Path) -> None:
         """Watch staged selections and seed identity from the runners actually loaded."""
@@ -132,12 +146,99 @@ class AutonomyCycleHost:
         with self._lock:
             requested = {}
             for step, (path, loaded) in self._watched.items():
-                live = sync_live_selection(self.step(step), path, loaded)
+                live = sync_live_selection(self.step(step), path, loaded,
+                                           previous_ids=self._last_staged_ids[step])
                 if live is not None:
                     requested[step] = live
-                    if step in DECISION_STEPS:
-                        self._pending_decision[step] = live
+                    self._last_staged_ids[step] = tuple(live.plugins)
+                    self._pending_activations[step] = live
+                    self._armed_steps.discard(step)
             return requested
+
+    def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
+        """Add/update named definitions from one catalog snapshot, without loading."""
+
+        if not isinstance(selections, Mapping) or not selections:
+            raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
+        with self._lock:
+            _, available = self.catalog.snapshot()
+            definitions = {(item.step, item.plugin_id): item for item in available}
+            requested = {}
+            for step, ids in selections.items():
+                if step not in LIVE_SELECTION_STEPS:
+                    raise ValueError(f"arming supports {', '.join(LIVE_SELECTION_STEPS)}, not {step!r}")
+                if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
+                    raise ValueError(f"{step} selection must be an ordered list of plugin IDs")
+                runner = self.step(step)
+                manager = getattr(runner, "plugin_manager", None)
+                if runner is not None and manager is None:
+                    raise ValueError(f"{step} runner does not support catalog arming")
+                current = {item.plugin_id: item for item in manager.selected} if manager else {}
+                for plugin_id in ids:
+                    definition = definitions.get((step, plugin_id))
+                    if definition is None:
+                        raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
+                    current[plugin_id] = definition
+                requested[step] = tuple(current.values())
+            for step, selected in requested.items():
+                if self.step(step) is None:
+                    self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
+                self.step(step).plugin_manager.select(selected)
+                self._pending_activations.pop(step, None)
+                self._armed_steps.add(step)
+            self._selection_error = None
+            self._arm_request_id += 1
+            state = self.selection_status()
+            return {"ok": True, "status": state["status"], "arming": state}
+
+    def selection_status(self) -> dict[str, Any]:
+        with self._lock:
+            requested, applied = {}, {}
+            pending = False
+            for step in LIVE_SELECTION_STEPS:
+                runner = self.step(step)
+                manager = getattr(runner, "plugin_manager", None)
+                selected = manager.selected if manager else ()
+                loaded = tuple(item for item, _ in runner.applied) if manager else ()
+                requested[step] = [describe_plugin(item) for item in selected]
+                applied[step] = [describe_plugin(item) for item in loaded]
+                pending |= selected != loaded
+            return {"status": "failed" if self._selection_error else "requested" if pending else "applied",
+                    "request_id": self._arm_request_id, "error": self._selection_error,
+                    "requested": requested, "applied": applied}
+
+    def _adopt_selection(self) -> None:
+        """Prepare the whole requested group before any step publishes it."""
+
+        changed = [step for step in LIVE_SELECTION_STEPS if hasattr(self.step(step), "plugin_manager")
+                   and self.step(step).plugin_manager.selected != tuple(item for item, _ in self.step(step).applied)]
+        if not changed:
+            return
+        phase = "prepare"
+        try:
+            for step in changed:
+                self.step(step).prepare_selection()
+            phase = "commit"
+            for step in changed:
+                self.step(step).commit_selection(self.shared_memory)
+                self._armed_steps.discard(step)
+                activation = self._pending_activations.pop(step, None)
+                if activation is not None:
+                    self.step(step).adopt_activation(activation)
+            self._selection_error = None
+        except Exception as exc:  # noqa: BLE001 - downstream plugin loading/reset
+            self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
+            for item in changed:
+                self.step(item).discard_selection()
+            # Preserve the existing staged perception/memory stop policy and
+            # do not execute a cycle after a partially committed reset failure.
+            armed = step in self._armed_steps
+            if (phase == "commit" and armed) or (not armed and step in ("perception", "memory")):
+                if step == "memory":
+                    raise MemoryUpdateError(f"{type(exc).__name__}: {exc}") from exc
+                raise
+        finally:
+            self._record_applied_decision()
 
     def use_applied_decision(self, identity: Mapping[str, Any]) -> None:
         """Seed the decision identity published until a restaged selection applies."""
@@ -161,29 +262,21 @@ class AutonomyCycleHost:
             return deepcopy(self._applied_decision)
 
     def _record_applied_decision(self) -> None:
-        """Retain pending activations until their decision steps apply them."""
+        """Derive identity from applied definitions, including uploaded revisions."""
 
         applied = self._applied_decision
-        if applied is None or not self._pending_decision:
+        if applied is None:
             return
         steps = dict(applied["steps"])
-        adopted = []
-        for step, live in self._pending_decision.items():
-            runner = self.step(step)
-            applied_ids = tuple(getattr(runner, "plugin_ids", ()) or ())
-            if applied_ids != tuple(live.plugins):
-                continue
-            steps[step] = live.to_payload()
-            adopted.append(step)
-        if not adopted:
-            return
+        snapshot = snapshot_step_activations(self.steps)
+        for step in DECISION_STEPS:
+            if step in snapshot:
+                steps[step] = snapshot[step]
         try:
             generation_id = activation_generation_id(steps, prefix="decision")
         except (TypeError, ValueError):
             return
         self._applied_decision = {"generation_id": generation_id, "steps": steps}
-        for step in adopted:
-            del self._pending_decision[step]
 
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
         with self._session_lock:
@@ -198,7 +291,13 @@ class AutonomyCycleHost:
                 self.shared_memory = context.shared_memory
             try:
                 self.sync_selection()
-                result = self.cycle.run(context)
+                with ExitStack() as selections:
+                    for step in LIVE_SELECTION_STEPS:
+                        runner = self.step(step)
+                        if runner is not None and hasattr(runner, "hold_selection"):
+                            selections.enter_context(runner.hold_selection())
+                    self._adopt_selection()
+                    result = self.cycle.run(context)
                 result = replace(result, context=self._record_frame_context(result.context))
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))
@@ -329,6 +428,7 @@ class AutonomyCycleHost:
                 "execution": self.execution.status() if self.execution is not None else None,
                 "steps": steps,
                 "applied_decision": self.applied_decision(),
+                "arming": self.selection_status(),
                 "components": components,
                 "cycle_count": self.cycle_count,
                 "error_count": self.error_count,
@@ -363,7 +463,8 @@ class AutonomyCycleHost:
 
 
 def sync_live_selection(
-    runner: Any, activation_path: Path, loaded: StepActivation
+    runner: Any, activation_path: Path, loaded: StepActivation, *,
+    previous_ids: tuple[str, ...] | None = None,
 ) -> StepActivation | None:
     """Select the staged plugin IDs when only the selection changed since loading.
 
@@ -378,7 +479,8 @@ def sync_live_selection(
     if live.plugin_specs != loaded.plugin_specs or live.plugin_configs != loaded.plugin_configs:
         return None
     manager = getattr(runner, "plugin_manager", None)
-    if manager is None or tuple(live.plugins) == tuple(manager.selected_ids):
+    previous_ids = tuple(manager.selected_ids) if previous_ids is None and manager is not None else previous_ids
+    if manager is None or tuple(live.plugins) == previous_ids:
         return None
     try:
         manager.select(live.plugins)

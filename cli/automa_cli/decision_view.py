@@ -217,9 +217,10 @@ def _evidence_projection(
 
 
 def decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
+    from .decision import load_applied_decision_identity
     from .step_activations import decision_identity as staged_identity
 
-    return staged_identity(bundle)
+    return load_applied_decision_identity(Path(bundle["runtime_dir"])) or staged_identity(bundle)
 
 
 def _activation_identity(activation: dict[str, Any]) -> dict[str, Any]:
@@ -350,6 +351,7 @@ class DecisionView:
         activation_path: Path,
         provider_identity: dict[str, Any] | None = None,
     ) -> None:
+        self._vehicle_id, self._run_id, self._worker_pid = vehicle_id, run_id, worker_pid
         self._activation_path = Path(activation_path)
         self._activation = _json_copy(activation) if isinstance(activation, dict) else None
         self.identity: dict[str, Any] | None = None
@@ -404,12 +406,12 @@ class DecisionView:
         the new one, which it follows while the run and worker are the same.
         """
 
-        if self.identity is None or self._provider_identity is not None:
+        if self._run_id is None or self._worker_pid is None or self._provider_identity is not None:
             return
         identity = decision_view_identity(
-            vehicle_id=self.identity["vehicle_id"],
-            run_id=self.identity["run_id"],
-            worker_pid=self.identity["worker_pid"],
+            vehicle_id=self._vehicle_id,
+            run_id=self._run_id,
+            worker_pid=self._worker_pid,
             activation=activation,
         )
         with self._lock:
@@ -665,7 +667,7 @@ class DecisionView:
         if self._activation is None:
             return False
         try:
-            # The staged decision steps under the vehicle's runtime directory.
+            # Catalog-armed steps, or the compatible staged-file identity.
             staged = decision_identity({"runtime_dir": str(self._activation_path)})
             return _activation_identity(staged) == _activation_identity(self._activation)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):

@@ -1,13 +1,14 @@
-"""The same upload/list operation behind local and onboard catalog transports."""
+"""Shared upload, arming and status behind local and onboard transports."""
 
 from __future__ import annotations
 
 import base64
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 
 PLUGIN_CATALOG_PATH = "/api/plugins"
+ARMING_STEPS = ("perception", "memory", "proposal")
 
 
 def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
@@ -19,14 +20,22 @@ def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
 
 
 class PluginCatalogAPI:
-    def __init__(self, catalog: LocalPluginCatalog) -> None:
+    def __init__(self, catalog: LocalPluginCatalog, *, arm: Callable | None = None,
+                 selection_status: Callable | None = None, applied_decision: Callable | None = None) -> None:
         self.catalog = catalog
+        self.arm = arm
+        self.selection_status = selection_status
+        self.applied_decision = applied_decision
 
     def __call__(self, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        """Acknowledge registration, never executable compatibility or activation."""
+        """Acknowledge registration or requested selection; loading stays downstream."""
 
         try:
             if payload is not None:
+                if payload.get("operation") == "arm":
+                    if self.arm is None:
+                        raise ValueError("arming requires a vehicle runtime host; this catalog supports upload only")
+                    return self.arm(payload["selections"])
                 definition = self.catalog.upload(
                     step=payload["step"], plugin_id=payload["plugin_id"],
                     entrypoint=payload["entrypoint"],
@@ -36,10 +45,15 @@ class PluginCatalogAPI:
                 return {"ok": True, "status": "uploaded", "plugin": describe_plugin(definition),
                         "catalog_version": self.catalog.version}
             version, definitions = self.catalog.snapshot()
-            return {
+            result = {
                 "ok": True, "schema": "automa_plugin_catalog_v0",
                 "catalog_version": version,
                 "plugins": [describe_plugin(item) for item in definitions],
             }
+            if self.selection_status is not None:
+                result["arming"] = self.selection_status()
+            if self.applied_decision is not None:
+                result["applied_decision"] = self.applied_decision()
+            return result
         except (OSError, ValueError, TypeError, KeyError) as exc:
             return {"ok": False, "status": "failed", "error": str(exc)}

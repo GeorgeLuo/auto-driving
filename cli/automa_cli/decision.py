@@ -1823,13 +1823,33 @@ def invalidate_latest_decision_frame(vehicle_runtime_dir: Path | str) -> None:
 
 
 def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, Any] | None:
-    """The currently staged decision identity, or None if it is unusable."""
+    """Catalog-armed runtime identity, or the compatible staged-file identity."""
 
     try:
         bundle = controller_bundle_paths(Path(vehicle_runtime_dir))
-        return _read_surface_identity(bundle, vehicle_id=Path(vehicle_runtime_dir).name)
+        return load_applied_decision_identity(Path(bundle["runtime_dir"])) or _read_surface_identity(
+            bundle, vehicle_id=Path(vehicle_runtime_dir).name,
+        )
     except (OSError, json.JSONDecodeError, TypeError, ValueError, DecisionSurfaceError):
         return None
+
+
+def load_applied_decision_identity(runtime_dir: Path) -> dict[str, Any] | None:
+    """The armed identity used by publication, stream and viewer freshness gates."""
+
+    state_path = Path(runtime_dir) / "automation" / "state.json"
+    if not state_path.exists():
+        return None
+    state = json.loads(state_path.read_text())
+    if (not isinstance(state, dict) or not isinstance(state.get("arming"), dict)
+            or not state["arming"].get("request_id") or state.get("status") != "running"
+            or not is_pid_alive(state.get("pid", 0))):
+        return None
+    identity = state.get("decision")
+    if (not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict)
+            or activation_generation_id(identity["steps"], prefix="decision") != identity.get("generation_id")):
+        raise ValueError("armed runtime decision identity is invalid")
+    return {"generation_id": identity["generation_id"], "steps": identity["steps"]}
 
 
 def publish_decision_frame(
@@ -2050,7 +2070,10 @@ def _stream_chase_decision(
     frame_path = latest_decision_path(vehicle_runtime_dir)
 
     def _load_activation() -> dict[str, Any]:
-        return _read_surface_identity(bundle, vehicle_id=vehicle_id)
+        identity = load_live_decision_activation(vehicle_runtime_dir)
+        if identity is None:
+            return _read_surface_identity(bundle, vehicle_id=vehicle_id)
+        return identity
 
     def _load_state() -> dict[str, Any] | None:
         try:

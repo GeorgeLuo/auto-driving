@@ -121,6 +121,54 @@ Registrations belong to the live catalog; restoration after a host restart is
 not guaranteed. A Chase worker currently ends its catalog and viewer when the
 worker exits. Keeping that host alive between automation runs is separate work.
 
+## Arm on an Existing Runtime Host
+
+After uploading, request the available revision without restarting the worker:
+
+```sh
+./cli/automa vehicles plugins arm --id chase-sim-chaser --step perception --plugin prototype
+./cli/automa vehicles plugins status --id chase-sim-chaser --step perception
+./cli/automa vehicles stream perception --id chase-sim-chaser --once
+```
+
+The receipt reports `requested`; adoption happens before a subsequent frame.
+Status and the viewer's **Plugins** page distinguish available, requested and
+applied revisions. New IDs append in command order. An existing ID updates in
+place; other plugins retain their definitions and configurations. Uploading a
+newer revision does not change a pending or applied selection until another arm
+request names that ID. Re-arming an unchanged definition preserves its instance
+and history.
+
+For one-command registration and arming, add `--arm` to the upload command.
+It uses the same arm operation and reports upload and arming outcomes separately;
+the upload remains available if arming fails. Imports and construction still
+occur downstream, with their failures visible in catalog status.
+
+For dependent plugins, upload each file first, then arm the group with a JSON
+selection document:
+
+```json
+{"perception": ["prototype"], "memory": ["prototype-memory"], "proposal": ["prototype-proposal"]}
+```
+
+```sh
+./cli/automa vehicles plugins arm --id chase-sim-chaser --selection ./selection.json
+./cli/automa vehicles plugins status --id chase-sim-chaser
+```
+
+The host prepares every changed step before publishing any of the group. The
+next cycle sees the adopted perception, memory and proposal selections together.
+Observation, plan and action keep their existing deployment behavior. Arming
+neither starts automation nor changes its control mode. An idle or completed
+host can accept a request while its catalog exists; it stays pending until the
+next cycle. A Chase worker exiting ends that catalog and its uploaded selections.
+The replay workbench continues to use its existing selection controls and
+supports upload only through this command group.
+
+Uploads currently support self-contained plugin files using installed imports.
+Uploading Python modules that import other uploaded files needs a later loader
+extension; upload does not resolve or validate those dependencies.
+
 ## State Vocabulary
 
 The commands keep these layers separate:

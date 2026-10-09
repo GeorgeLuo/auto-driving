@@ -120,6 +120,9 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
+| `vehicles plugins upload` | Stores a local file in an existing live catalog; `--arm` also requests adoption through the same operation as `plugins arm`. |
+| `vehicles plugins arm` | Adds or updates perception, memory and proposal plugins before a subsequent cycle, without restarting automation. Repeat `--plugin` with `--step`, or use a JSON `--selection` map to request several steps together. |
+| `vehicles plugins status` | Reads available, requested and applied revisions, plus downstream loading failures. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `vehicles info perception\|memory\|proposal` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception and memory also show their preset. Each reports its view; memory and proposal include live runner status. Proposal also shows the decision generation, plan selector, and action authority. |
 | `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |

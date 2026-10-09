@@ -32,7 +32,7 @@ from .loopback_http import (
     stop_server_thread,
     validate_loopback_host,
 )
-from .plugin_upload import serve_plugin_catalog
+from .plugin_catalog import serve_plugin_catalog
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 

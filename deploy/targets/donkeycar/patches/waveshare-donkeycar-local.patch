@@ -269,7 +269,7 @@ index 8af4669..5d27cc5 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +265,488 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +265,487 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -488,12 +488,11 @@ index 8af4669..5d27cc5 100644
 +    """Transport only; every host uses the shared catalog registration code."""
 +
 +    def _catalog(self, payload=None):
-+        from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 +        host = getattr(self.application, "autonomy_host", None)
 +        if host is None:
 +            self.write_json({"ok": False, "error": "catalog unavailable"}, status=503)
 +            return
-+        result = PluginCatalogAPI(host.catalog)(payload)
++        result = host.plugin_catalog(payload)
 +        self.write_json(result, status=200 if result.get("ok") else 400)
 +
 +    def get(self):
@@ -758,7 +757,7 @@ index 8af4669..5d27cc5 100644
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +893,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +892,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -811,7 +810,7 @@ index 8af4669..5d27cc5 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +988,3 @@ class WebFpv(Application):
+@@ -440,5 +987,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

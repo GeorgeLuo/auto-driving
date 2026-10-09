@@ -69,12 +69,32 @@ def step_runner(activation: StepActivation) -> Any:
     return STEP_RUNNERS[activation.step].from_activation(activation)
 
 
+def snapshot_runner_activation(runner: Any, step: str) -> StepActivation | None:
+    """Preserve staged context while describing the definitions actually applied."""
+
+    loaded = getattr(runner, "activation", None)
+    if not hasattr(runner, "applied"):
+        return replace(loaded, plugins=tuple(runner.plugin_ids)) if loaded is not None else None
+    definitions = [definition for definition, _ in runner.applied]
+    if not definitions and loaded is None:
+        return None
+    loaded = loaded or step_activation(step, [], {})
+    specs, configs = dict(loaded.plugin_specs), dict(loaded.plugin_configs)
+    for item in definitions:
+        specs[item.plugin_id] = item.executable_entrypoint
+        if item.config:
+            configs[item.plugin_id] = dict(item.config)
+        else:
+            configs.pop(item.plugin_id, None)
+    return replace(loaded, plugins=tuple(item.plugin_id for item in definitions),
+                   plugin_specs=specs, plugin_configs=configs)
+
+
 def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
     """Detached executable selections actually applied by the frame's runners.
 
-    A pending selection is not a running selection. Preserve the loaded specs
-    and configs, but take plugin IDs from the applied instances. Unconfigured
-    callables have no executable activation and are omitted.
+    A pending selection is not a running selection. Unconfigured callables
+    have no executable activation and are omitted.
     """
     snapshot: dict[str, Any] = {}
     for step in STEPS:
@@ -82,17 +102,11 @@ def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
         if runner is None:
             snapshot[step] = None
             continue
-        activation = getattr(runner, "activation", None)
+        activation = snapshot_runner_activation(runner, step)
         if activation is not None:
-            snapshot[step] = replace(activation, plugins=tuple(runner.plugin_ids)).to_payload()
+            snapshot[step] = activation.to_payload()
         elif hasattr(runner, "applied"):
-            definitions = [definition for definition, _ in runner.applied]
-            snapshot[step] = step_activation(
-                step,
-                [item.plugin_id for item in definitions],
-                {item.plugin_id: item.entrypoint for item in definitions},
-                {item.plugin_id: item.config for item in definitions},
-            ).to_payload()
+            snapshot[step] = None
     return snapshot
 
 

@@ -27,7 +27,7 @@ from .workbench_contract import (
     WORKBENCH_SERVER_SCHEMA,
 )
 from .workbench_source import SourceValidationError
-from .plugin_upload import serve_plugin_catalog
+from .plugin_catalog import serve_plugin_catalog
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 

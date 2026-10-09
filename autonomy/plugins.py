@@ -396,6 +396,8 @@ def _import_entrypoint(entrypoint: str, *, reload_module: bool = False) -> Any:
         )
     importlib.invalidate_caches()
     if module_name.endswith(".py"):
+        # Uploaded files are self-contained for now. Imports between uploaded
+        # modules/packages are a future loader concern, not an upload gate.
         name = "_automa_uploaded_" + hashlib.sha256(module_name.encode()).hexdigest()
         if name not in sys.modules:
             spec = importlib.util.spec_from_file_location(name, module_name)

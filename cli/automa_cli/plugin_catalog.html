@@ -13,9 +13,9 @@
 <main>
   <a href="/">Runtime views</a>
   <h1>Plugin catalog</h1>
-  <p>Available plugins. Uploading a revision leaves the current selection unchanged.</p>
+  <p>Uploading changes available revisions. Arming requests their adoption before a subsequent cycle.</p>
   <p id="status" role="status">Loading catalog…</p>
-  <table><thead><tr><th>Step</th><th>Plugin</th><th>Revision</th><th>Source</th></tr></thead>
+  <table><thead><tr><th>Step</th><th>Plugin</th><th>Available revision</th><th>Requested revision</th><th>Applied revision</th><th>Source</th></tr></thead>
     <tbody id="plugins"></tbody></table>
 </main>
 <script>
@@ -24,11 +24,18 @@
       const response = await fetch('/api/plugins');
       const catalog = await response.json();
       if (!catalog.ok) throw new Error(catalog.error);
-      document.getElementById('status').textContent = 'Catalog ' + catalog.catalog_version;
+      const arming = catalog.arming;
+      document.getElementById('status').textContent = 'Catalog ' + catalog.catalog_version +
+        (arming ? ' · Arming: ' + arming.status + (arming.error ? ' · ' + arming.error : '') : '');
+      function selectedRevision(name, plugin) {
+        const selected = arming?.[name]?.[plugin.step]?.find(item => item.id === plugin.id);
+        return selected ? selected.metadata.revision || 'packaged' : '—';
+      }
       const rows = catalog.plugins.map(plugin => {
         const row = document.createElement('tr');
         const metadata = plugin.metadata || {};
-        [plugin.step, plugin.id, metadata.revision || 'packaged', metadata.filename || plugin.entrypoint].forEach(value => {
+        [plugin.step, plugin.id, metadata.revision || 'packaged', selectedRevision('requested', plugin),
+          selectedRevision('applied', plugin), metadata.filename || plugin.entrypoint].forEach(value => {
           const cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell);
         });
         return row;

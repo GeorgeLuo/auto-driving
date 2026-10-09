@@ -192,6 +192,8 @@ def record_host_status(
 
     steps = host_status.get("steps") if isinstance(host_status.get("steps"), dict) else {}
     state["steps"] = step_status(host_status)
+    if "arming" in host_status:
+        state["arming"] = host_status["arming"]
     recording = (host_status.get("session") or {}).get("recording")
     if recording is not None and state["control_source"] != "onboard":
         state["recorded_count"] = recording["recorded_count"]

@@ -18,7 +18,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.bundles import controller_bundle_paths
-from cli.automa_cli.plugin_upload import PluginCatalogClient
+from cli.automa_cli.plugin_catalog import PluginCatalogClient
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host

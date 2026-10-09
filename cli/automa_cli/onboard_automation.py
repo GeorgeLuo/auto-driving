@@ -30,7 +30,7 @@ from .run_record import (
 from .runtime_view import RuntimeViewServer
 from .decision_live import PicarDecisionViewAdapter
 from .staged_bundle import write_json_atomically
-from .plugin_upload import PluginCatalogClient
+from .plugin_catalog import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1
 

@@ -95,13 +95,14 @@ from selecting it:
   --plugin-id prototype \
   --entrypoint prototype:Prototype
 
-./cli/automa vehicles plugins list --id chase-sim-chaser --step perception
+./cli/automa vehicles plugins status --id chase-sim-chaser --step perception
 ```
 
 The command reports success after the source is stored and its revision is
-registered, and prints the verification command. `plugins list` reads the
+registered, and prints the next verification command. `plugins status` reads the
 live catalog and reports its version, plugin IDs, filenames, and revisions;
-use `--json` for the complete receipt or catalog snapshot. `plugins help`
+use `--json` for the complete receipt or catalog snapshot, including the target,
+outcome, and recovery action. `plugins list` remains an alias for `status`. `plugins help`
 describes the file identity arguments and the existing-host precondition.
 Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. The file is

@@ -9,9 +9,11 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.session import RunConfiguration
@@ -100,8 +102,10 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertGreater(receipt["catalog_version"], previous)
                     previous = receipt["catalog_version"]
                     listing = json.loads(run_automa(
-                        "vehicles", "plugins", "list", "--url", base, "--step", "perception", "--json",
+                        "vehicles", "plugins", "status", "--url", base, "--step", "perception", "--json",
                     ).stdout)
+                    self.assertEqual(listing["outcome"]["status"], "ok")
+                    self.assertEqual(listing["url"], base)
                     self.assertTrue(all(plugin["step"] == "perception" for plugin in listing["plugins"]))
                     registered = next(p for p in listing["plugins"] if p["id"] == plugin_id)
                     self.assertEqual(registered, receipt["plugin"])
@@ -128,12 +132,14 @@ class PluginUploadFlows(unittest.TestCase):
             _, first = upload(base, file, "prototype")
             self.assertFalse(first_marker.exists())
             post_action(base, {"action": "select_plugins", "step": "perception",
-                               "active_plugin_ids": ["prototype"]})
+                               "active_plugin_ids": ["prototype", "frame"]})
             post_action(base, {"action": "start"})
             _wait_until(lambda: runner.state()["current_frame"] is not None)
             self.assertTrue(first_marker.exists())
             post_action(base, {"action": "pause", "run_id": runner.state()["run_id"]})
             before = get_json(base, "/api/state")
+            self.assertEqual([item["plugin_id"] for item in before["steps"]["perception"]["plugin_runs"]],
+                             ["prototype", "frame"])
             prototype(file, next_marker, 2)
             _, second = upload(base, file, "prototype")
             self.assertNotEqual(first["plugin"]["metadata"]["revision"], second["plugin"]["metadata"]["revision"])
@@ -146,12 +152,82 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(registered["revision"], second["plugin"]["metadata"]["revision"])
             post_action(base, {"action": "step", "run_id": shown["run_id"]})
             self.assertFalse(next_marker.exists())
-            self.assertEqual(runner.state()["active_perception_plugin_ids"], ["prototype"])
+            self.assertEqual(runner.state()["active_perception_plugin_ids"], ["prototype", "frame"])
+
+    def test_catalog_updates_and_reselection_preserve_configs_and_report_matching_presets(self):
+        with image_source(3) as root:
+            staged = {}
+            for step, preset in (("perception", "obstruction_observer"), ("memory", "recency_ledger")):
+                staged[step] = json.loads(run_automa(
+                    "vehicles", "update", step, "--id", "chase-sim-chaser", "--preset", preset,
+                    "--dry-run", "--json", runtime_root=root / "vehicles",
+                ).stdout)["manifest"]
+            # A locally customized staged config must survive an unchanged selection.
+            staged["perception"]["plugin_configs"]["multi_obstruction_tracks"]["floor_cutoff_y"] = 0.88
+            runner = ImageReplayRunner(root, cadence_ms=30000, loop=True, activations={
+                step: step_activation_from_payload(manifest) for step, manifest in staged.items()
+            })
+            base = serve_workbench(self, runner)
+            catalog = json.loads(run_automa(
+                "vehicles", "plugins", "status", "--url", base, "--step", "perception", "--json",
+            ).stdout)
+            default_cutoff = next(item for item in catalog["plugins"] if item["id"] == "multi_obstruction_tracks")["config"]["floor_cutoff_y"]
+            file = root / "unselected.py"
+            file.write_text("not loaded during catalog registration")
+            upload(base, file, "unselected")
+            ids = staged["perception"]["plugins"]
+            post_action(base, {"action": "select_plugins", "step": "perception", "active_plugin_ids": ids})
+            post_action(base, {"action": "start"})
+            _wait_until(lambda: runner.state()["current_frame"] is not None)
+            before = post_action(base, {"action": "pause", "run_id": runner.state()["run_id"]})["state"]
+            run_id = before["run_id"]
+
+            def cutoff(state):
+                return state["steps"]["perception"]["measurements"]["multi_obstruction_tracks"]["floor_cutoff_y"]
+
+            self.assertEqual(cutoff(before), 0.88)
+            same = post_action(base, {"action": "select_plugins", "run_id": run_id,
+                                     "step": "perception", "active_plugin_ids": ids})["state"]
+            self.assertEqual(same["current_frame"], before["current_frame"])
+            self.assertEqual(same["steps"], before["steps"])
+            self.assertEqual(same["machine_detail"]["pipeline"]["perception_preset"], "obstruction_observer")
+            # A changed selection then restores catalog defaults, while preserving the displayed frame.
+            post_action(base, {"action": "select_plugins", "run_id": run_id,
+                               "step": "perception", "active_plugin_ids": ["frame"]})
+            restored = post_action(base, {"action": "select_plugins", "run_id": run_id,
+                                         "step": "perception", "active_plugin_ids": ids})["state"]
+            self.assertEqual(cutoff(restored), default_cutoff)
+            self.assertEqual(restored["current_frame"]["frame_id"], before["current_frame"]["frame_id"])
+            self.assertEqual([item["plugin_id"] for item in restored["steps"]["perception"]["plugin_runs"]], ids)
+            post_action(base, {"action": "select_plugins", "run_id": run_id,
+                               "step": "memory", "active_plugin_ids": []})
+            memory = post_action(base, {"action": "select_plugins", "run_id": run_id,
+                                       "step": "memory", "active_plugin_ids": staged["memory"]["plugins"]})["state"]
+            pipeline = memory["machine_detail"]["pipeline"]
+            self.assertEqual(pipeline["memory_preset"], staged["memory"]["metadata"]["preset"])
+            self.assertEqual(pipeline["memory_plugin_report"]["applied_plugin_ids"], staged["memory"]["plugins"])
+            self.assertEqual(memory["phase"], "paused")
+            self.assertEqual(memory["run_id"], run_id)
 
     def test_invalid_code_succeeds_at_upload_and_fails_when_replay_loads_it(self):
         with image_source(1) as root:
             runner = ImageReplayRunner(root)
             base = serve_workbench(self, runner)
+            before = get_json(base, "/api/state")
+            catalog = get_json(base, "/api/plugins")
+            for ids in (["missing"], ["frame", "frame"]):
+                with self.assertRaises(HTTPError) as rejected:
+                    post_action(base, {"action": "select_plugins", "step": "perception", "active_plugin_ids": ids})
+                with rejected.exception as response:
+                    self.assertEqual(response.code, 422)
+                    failure = json.load(response)
+                    self.assertFalse(failure["ok"])
+                    self.assertEqual(failure["boundary"], "plugin_catalog")
+                    self.assertTrue(failure["message"])
+                unchanged = get_json(base, "/api/state")
+                self.assertEqual(unchanged["active_perception_plugin_ids"], before["active_perception_plugin_ids"])
+                self.assertEqual(unchanged["steps"], before["steps"])
+                self.assertEqual(get_json(base, "/api/plugins"), catalog)
             file = root / "broken.py"
             file.write_text("invalid Python !!!")
             _, receipt = upload(base, file, "broken")
@@ -171,6 +247,7 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertFalse(receipt["ok"])
             self.assertEqual(receipt["status"], "failed")
             self.assertTrue(receipt["error"])
+            self.assertIn(str(root / "missing.py"), receipt["outcome"]["recovery"])
             self.assertEqual(get_json(base, "/api/plugins"), before)
             file = root / "prototype.py"
             file.write_text("not checked during upload")
@@ -216,6 +293,13 @@ class PluginUploadFlows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runtime_root = root / "vehicles"
+            unavailable = run_automa("vehicles", "plugins", "status", "--id", "chase-sim-chaser",
+                                     "--json", runtime_root=runtime_root, check=False)
+            missing = json.loads(unavailable.stdout)
+            self.assertNotEqual(unavailable.returncode, 0)
+            self.assertEqual(missing["vehicle_id"], "chase-sim-chaser")
+            self.assertEqual(missing["outcome"]["status"], "unavailable")
+            self.assertEqual(missing["outcome"]["recovery"], "./cli/automa vehicles status --id chase-sim-chaser")
             bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
             host = create_picar_host(steps=decision_steps())
             self.addCleanup(host.close)
@@ -230,13 +314,20 @@ class PluginUploadFlows(unittest.TestCase):
             result = run_automa("vehicles", "plugins", "upload", "--id", "chase-sim-chaser",
                                 "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
                                 "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
-            self.assertIn("Uploaded memory/prototype revision", result.stdout)
-            self.assertIn("Verify: automa vehicles plugins list --id chase-sim-chaser --step memory", result.stdout)
+            self.assertIn("Upload: uploaded", result.stdout)
+            self.assertIn("Plugin: prototype", result.stdout)
+            self.assertIn("Selection: unchanged", result.stdout)
+            self.assertIn("Next: ./cli/automa vehicles plugins status --id chase-sim-chaser --step memory", result.stdout)
             listed = json.loads(run_automa(
                 "vehicles", "plugins", "list", "--id", "chase-sim-chaser", "--step", "memory", "--json",
                 runtime_root=runtime_root,
             ).stdout)
             self.assertTrue(listed["ok"])
+            status = json.loads(run_automa(
+                "vehicles", "plugins", "status", "--id", "chase-sim-chaser", "--step", "memory", "--json",
+                runtime_root=runtime_root,
+            ).stdout)
+            self.assertEqual(listed, status)
             self.assertEqual(len(listed["plugins"]), 1)
             self.assertEqual(listed["plugins"][0]["id"], "prototype")
             self.assertIn(listed["plugins"][0]["metadata"]["revision"], result.stdout)

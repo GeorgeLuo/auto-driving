@@ -23,6 +23,7 @@ from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     STEP_PRESETS,
     packaged_activation,
+    plugin_list_preset,
     selection_activation,
     step_plugins,
 )
@@ -158,7 +159,9 @@ class PluginCatalog:
                 step_selection(self.step, plugins=[]),
                 plugins=tuple(active_ids),
                 plugin_specs={item.plugin_id: item.executable_entrypoint for item in definitions},
-                plugin_configs={item.plugin_id: dict(item.config) for item in definitions},
+                plugin_configs={item.plugin_id: dict(item.config) for item in definitions if item.config},
+                metadata={"preset": plugin_list_preset(self.step, active_ids)}
+                if self.step in STEP_PRESETS else {},
             )
         except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc

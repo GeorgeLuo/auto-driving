@@ -13,7 +13,7 @@ import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,18 @@ class CodeSource:
 
     bundle_root: Path | None = None
     prefixes: tuple[str, ...] = BUNDLE_PREFIXES
+    plugin_sources: tuple[tuple[str, str], ...] = ()
+
+    def executable_activation(self, activation: StepActivation) -> StepActivation:
+        """Resolve source assets without changing the recorded activation's identity."""
+        if not self.plugin_sources:
+            return activation
+        sources = dict(self.plugin_sources)
+        specs = {}
+        for plugin_id, spec in activation.plugin_specs.items():
+            path, separator, name = spec.partition(":")
+            specs[plugin_id] = f"{sources.get(path, path)}{separator}{name}"
+        return replace(activation, plugin_specs=specs)
 
 
 INSTALLED_PACKAGE = CodeSource()
@@ -94,6 +106,14 @@ class StagedStep:
         with self.import_context.activate():
             return self.runner(*args, **kwargs)
 
+    @property
+    def activation(self) -> StepActivation:
+        return self.runner.activation
+
+    @activation.setter
+    def activation(self, activation: StepActivation) -> None:
+        self.runner.activation = activation
+
     def __getattr__(self, name: str) -> Any:
         value = getattr(self.runner, name)
         if not callable(value):
@@ -111,26 +131,32 @@ def code_source_from_activation(activation: StepActivation) -> CodeSource:
 
     controller_bundle = activation.metadata.get("controller_bundle")
     root = controller_bundle.get("root_dir") if isinstance(controller_bundle, dict) else None
-    if not isinstance(root, str) or not root:
-        return INSTALLED_PACKAGE
-    return CodeSource(bundle_root=Path(root))
+    sources = activation.metadata.get("plugin_sources", {})
+    return CodeSource(
+        bundle_root=Path(root) if isinstance(root, str) and root else None,
+        plugin_sources=tuple(sorted(sources.items())),
+    )
 
 
 def load_runner(activation: StepActivation, *, source: CodeSource | None = None) -> Any:
     """The activation's runner, imported from ``source``.
 
-    Omitting ``source`` uses the installed package. A host that staged this
-    activation passes ``code_source_from_activation(activation)``.
+    Omitting ``source`` uses the activation's recorded or staged code source.
+    An explicit source overrides it.
     """
 
-    source = INSTALLED_PACKAGE if source is None else source
+    source = code_source_from_activation(activation) if source is None else source
     from autonomy.decision_cycle.steps import step_runner
 
+    executable = source.executable_activation(activation)
     if source.bundle_root is None:
-        return step_runner(activation)
+        runner = step_runner(executable)
+        runner.activation = activation
+        return runner
     if not source.bundle_root.is_dir():
         raise FileNotFoundError(f"Controller bundle is missing: {source.bundle_root}")
     import_context = StagedBundleImport(source.bundle_root, source.prefixes)
     with import_context.activate():
-        runner = step_runner(activation)
+        runner = step_runner(executable)
+        runner.activation = activation
     return StagedStep(runner, import_context)

@@ -12,6 +12,7 @@ import json
 import secrets
 import threading
 from pathlib import Path
+from dataclasses import replace
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import (
@@ -34,7 +35,7 @@ def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | None]:
+def recorded_selections(record: dict[str, Any], *, source_root: Path | None = None) -> dict[str, StepActivation | None]:
     """Read a frame's executable selections, preserving disabled steps."""
     if "steps" not in record:
         return {}
@@ -54,6 +55,16 @@ def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | No
         )
         if generation != expected:
             raise ValueError("recorded generation does not match its step selections")
+    if source_root is not None and record.get("plugin_sources"):
+        sources = {
+            original: str(recorded_source_path(source_root, relative))
+            for original, relative in record["plugin_sources"].items()
+        }
+        activations = {
+            step: replace(activation, metadata={**activation.metadata, "plugin_sources": sources})
+            if activation is not None else None
+            for step, activation in activations.items()
+        }
     return activations
 
 

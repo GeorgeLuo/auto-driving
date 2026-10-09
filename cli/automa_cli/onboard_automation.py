@@ -247,6 +247,10 @@ def _sync_recording(client: OnboardRuntimeClient, state: dict[str, Any], *,
             write_recorded_frame(
                 run_dir, frame, base64.b64decode(item["image_base64"], validate=True),
                 item["image_extension"],
+                plugin_sources={
+                    original: base64.b64decode(source, validate=True)
+                    for original, source in item["plugin_sources"].items()
+                } if "plugin_sources" in item else None,
             )
             state["recorded_count"] += 1
         if state["recorded_count"] == batch["recorded_count"]:

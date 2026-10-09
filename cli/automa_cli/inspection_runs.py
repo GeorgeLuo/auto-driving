@@ -12,7 +12,7 @@ from typing import Any
 from autonomy.decision_cycle.activation import (
     StepActivation, step_activation,
 )
-from autonomy.decision_cycle.steps import step_runner
+from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.runtime.recording import recorded_selections
 
 
@@ -23,13 +23,14 @@ def replay_step(runner: Any, activation: StepActivation | None, shared_memory: d
         if (
             previous.plugin_specs == activation.plugin_specs
             and previous.plugin_configs == activation.plugin_configs
+            and code_source_from_activation(previous) == code_source_from_activation(activation)
         ):
             if tuple(runner.plugin_ids) != activation.plugins:
                 runner.plugin_manager.select(activation.plugins)
                 runner.apply_selection(shared_memory)
             runner.activation = activation
             return runner
-    replacement = step_runner(activation) if activation is not None else None
+    replacement = load_runner(activation) if activation is not None else None
     if runner is not None:
         runner.reset(shared_memory)
     return replacement

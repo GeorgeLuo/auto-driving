@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import secrets
 import threading
 from pathlib import Path
+from dataclasses import replace
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import (
@@ -33,7 +35,7 @@ def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | None]:
+def recorded_selections(record: dict[str, Any], *, source_root: Path | None = None) -> dict[str, StepActivation | None]:
     """Read a frame's executable selections, preserving disabled steps."""
     if "steps" not in record:
         return {}
@@ -53,6 +55,21 @@ def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | No
         )
         if generation != expected:
             raise ValueError("recorded generation does not match its step selections")
+    if source_root is not None and record.get("plugin_sources"):
+        sources = {
+            original: str(recorded_source_path(source_root, relative))
+            for original, relative in record["plugin_sources"].items()
+        }
+        for step, activation in activations.items():
+            if activation is not None:
+                referenced = {
+                    path: sources[path] for spec in activation.plugin_specs.values()
+                    if (path := spec.partition(":")[0]) in sources
+                }
+                if referenced:
+                    activations[step] = replace(
+                        activation, metadata={**activation.metadata, "plugin_sources": referenced},
+                    )
     return activations
 
 
@@ -74,6 +91,7 @@ def append_recording_frame(
     steps: dict[str, Any],
     frame_index: int | None = None,
     context: dict[str, Any] | None = None,
+    plugin_sources: dict[str, str] | None = None,
 ) -> None:
     """Append one recorded frame to the run directory's manifest.
 
@@ -121,6 +139,8 @@ def append_recording_frame(
             key: copy.deepcopy(context[key])
             for key in ("mode", "user_steering", "user_throttle") if key in context
         }
+    if plugin_sources:
+        entry["plugin_sources"] = dict(plugin_sources)
     manifest_path = root / RECORDING_MANIFEST_NAME
     payload: dict[str, Any] = {
         "schema": RECORDING_MANIFEST_SCHEMA,
@@ -149,13 +169,50 @@ def append_recording_frame(
     write_json_atomically(manifest_path, payload)
 
 
-def write_recorded_frame(run_dir: Path, frame: dict[str, Any], image: bytes, extension: str) -> None:
+def recorded_source_path(run_dir: Path, relative: str) -> Path:
+    """Resolve a source asset inside a recording, including after moving it."""
+    root = Path(run_dir).resolve()
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError("recorded plugin source must stay inside the run directory")
+    return path
+
+
+def _retain_plugin_sources(run_dir: Path, steps: dict[str, Any],
+                           sources: dict[str, bytes] | None) -> dict[str, str]:
+    references = {}
+    for activation in steps.values():
+        for spec in (activation or {}).get("plugin_specs", {}).values():
+            original = spec.partition(":")[0]
+            if not original.endswith(".py") or original in references:
+                continue
+            source = Path(original).read_bytes() if sources is None else sources[original]
+            relative = f"plugins/{hashlib.sha256(source).hexdigest()}.py"
+            asset = run_dir / relative
+            asset.parent.mkdir(parents=True, exist_ok=True)
+            if not asset.exists():
+                temporary = asset.with_suffix(f".{secrets.token_hex(8)}.tmp")
+                try:
+                    temporary.write_bytes(source)
+                    temporary.replace(asset)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            references[original] = relative
+    return references
+
+
+def write_recorded_frame(run_dir: Path, frame: dict[str, Any], image: bytes, extension: str,
+                         *, plugin_sources: dict[str, bytes] | None = None) -> None:
     """Commit the same replay artifacts locally or from an onboard transport."""
     frame_id = frame["frame_id"]
     if not frame_id or Path(frame_id).name != frame_id or frame_id in {".", ".."}:
         raise ValueError("recorded frame_id must be a filename")
     if extension not in {".jpg", ".jpeg", ".png"} or not image:
         raise ValueError("recorded camera image is missing or has an unsupported extension")
+    sources = _retain_plugin_sources(run_dir, frame["step_activations"], plugin_sources)
+    frame = copy.deepcopy(frame)
+    if sources:
+        frame["plugin_sources"] = sources
     image_path = run_dir / "frames" / f"{frame_id}_{FRONT_CAMERA_SENSOR_ID}{extension}"
     perception_path = run_dir / "perception" / frame_id / "perception.json"
     image_path.parent.mkdir(parents=True, exist_ok=True)
@@ -170,6 +227,7 @@ def write_recorded_frame(run_dir: Path, frame: dict[str, Any], image: bytes, ext
         generation_id=frame["generation_id"], frame_id=frame_id,
         frame_index=frame["frame_index"], timestamp_ms=frame["captured_at_ms"],
         image_path=image_path, steps=frame["step_activations"], context=frame["context"],
+        plugin_sources=sources,
     )
 
 
@@ -248,9 +306,15 @@ class RunRecording:
             for entry in entries[after:after + 8]:
                 frame_id = entry["frame_id"]
                 image_path = self.root / entry["image_path"]
-                frames.append({
+                item = {
                     "frame": json.loads((self.root / "perception" / frame_id / "perception.json").read_text()),
                     "image_base64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
                     "image_extension": image_path.suffix,
-                })
+                }
+                if entry.get("plugin_sources"):
+                    item["plugin_sources"] = {
+                        original: base64.b64encode(recorded_source_path(self.root, relative).read_bytes()).decode("ascii")
+                        for original, relative in entry["plugin_sources"].items()
+                    }
+                frames.append(item)
             return {**self.status(), "after": after, "frames": frames}

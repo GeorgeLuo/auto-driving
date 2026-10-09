@@ -269,7 +269,7 @@ index 8af4669..5d27cc5 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +265,487 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +265,495 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -499,6 +499,14 @@ index 8af4669..5d27cc5 100644
 +        self._catalog()
 +
 +    def post(self):
++        from autonomy.runtime.plugin_catalog import catalog_write_error
++        error = catalog_write_error(
++            self.request.headers, origin=f"{self.request.protocol}://{self.request.host}",
++        )
++        if error is not None:
++            status, payload = error
++            self.write_json(payload, status=status)
++            return
 +        self._catalog(self.read_json_body())
 +
 +

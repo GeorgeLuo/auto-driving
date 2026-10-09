@@ -6,203 +6,217 @@
   <title>Automa Memory Map</title>
   <style>
     :root {
-      color-scheme: light;
+      color-scheme: dark;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 14px;
-      --ink: #17191c;
-      --muted: #62676f;
-      --line: #d9dde2;
-      --panel: #f6f7f8;
-      --paper: #ffffff;
-      --green: #177245;
-      --amber: #a35b00;
-      --red: #a52a2a;
-      --blue: #176b87;
-      --select: #e7f3f8;
+      font-size: 13px;
+      letter-spacing: -0.01em;
+      --bg: #0a0a0a;
+      --fg: #ededed;
+      --muted: #8c8c8c;
+      --line: rgba(255, 255, 255, 0.14);
+      --green: #3ecf8e;
+      --amber: #e6b325;
+      --red: #ef6b6b;
       --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-width: 320px; background: var(--paper); color: var(--ink); }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+    }
     header {
-      min-height: 52px;
-      padding: 8px 14px;
+      min-height: 40px;
+      padding: 8px 12px;
       border-bottom: 1px solid var(--line);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 14px;
+      gap: 12px;
     }
-    .identity, .runtime-status { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .product { font-weight: 700; white-space: nowrap; }
-    .vehicle { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .identity, .runtime-status { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .product { font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .vehicle, #statusText {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .vehicle { font-family: var(--mono); }
     .status-dot {
-      width: 9px; height: 9px; border-radius: 50%;
+      width: 6px; height: 6px; border-radius: 50%;
       background: var(--amber); flex: 0 0 auto;
     }
     .status-dot.live { background: var(--green); }
     .status-dot.stale { background: var(--amber); }
     .status-dot.error { background: var(--red); }
-    a.nav {
-      color: var(--blue);
-      text-decoration: none;
-      font-weight: 600;
+    button, a.nav, span.nav {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
       border: 1px solid var(--line);
-      border-radius: 4px;
-      padding: 6px 10px;
-    }
-    a.nav:hover { background: var(--panel); }
-    button {
-      min-height: 32px;
-      border: 1px solid #aeb4bb;
-      border-radius: 4px;
-      padding: 5px 10px;
-      background: var(--paper);
-      color: var(--ink);
+      border-radius: 6px;
+      padding: 3px 8px;
+      background: transparent;
+      color: var(--muted);
       cursor: pointer;
       font: inherit;
+      font-size: 11px;
+      line-height: 1.35;
+      text-decoration: none;
     }
-    button:hover { background: #eceff1; }
+    button:hover, a.nav:hover, a.nav:focus-visible {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--fg);
+    }
+    span.nav, span.nav.unavailable { cursor: default; color: #6a6a6a; }
+    button:focus-visible, a.nav:focus-visible {
+      outline: 1px solid rgba(255, 255, 255, 0.45);
+      outline-offset: 1px;
+    }
     main {
-      height: calc(100vh - 53px);
-      display: grid;
-      grid-template-columns: minmax(260px, 34%) 1fr;
+      flex: 1;
       min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(260px, 22rem) minmax(0, 1fr);
     }
     .keys-panel, .value-panel {
       min-height: 0;
       overflow: auto;
-      padding: 12px 14px;
-    }
-    .keys-panel { border-right: 1px solid var(--line); background: var(--panel); }
-    h2 {
-      margin: 0 0 8px;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--muted);
-    }
-    .map-legend {
-      margin: 0 0 14px;
       padding: 10px 12px;
-      border: 1px dashed var(--line);
-      border-radius: 6px;
-      background: var(--paper);
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.45;
+      background: var(--bg);
     }
-    .map-legend code {
-      font-family: var(--mono);
-      color: var(--ink);
-      font-size: 11px;
+    .keys-panel { border-right: 1px solid var(--line); }
+    h2 {
+      margin: 16px 0 8px;
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(140, 140, 140, 0.9);
     }
-    .metrics {
+    .keys-panel h2:first-child, .value-panel h2:first-child { margin-top: 0; }
+    .metrics, .value-grid {
       display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 4px 10px;
-      margin: 0 0 14px;
-      font-size: 13px;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 5px 16px;
+      margin: 0 0 4px;
+      font-size: 12px;
     }
-    .metrics dt { color: var(--muted); }
-    .metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .metrics dt, .value-grid dt { color: var(--muted); }
+    .metrics dd, .value-grid dd {
+      margin: 0;
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
     .kind-map {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      margin-bottom: 12px;
+      margin-bottom: 4px;
     }
     .kind-chip {
       border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 3px 8px;
-      background: var(--paper);
-      font-size: 12px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
     }
     .kind-chip button {
       all: unset;
+      display: block;
       cursor: pointer;
+      padding: 3px 8px;
       font: inherit;
+      font-size: 11px;
+      line-height: 1.35;
     }
-    .kind-chip.active { border-color: var(--blue); background: var(--select); }
-    .key-list { display: grid; gap: 4px; }
-    .key-row {
+    .kind-chip button:hover { background: transparent; color: inherit; }
+    .kind-chip:hover { color: var(--fg); }
+    .kind-chip.active {
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--fg);
+    }
+    .key-list, .plugin-list { display: grid; gap: 6px; }
+    .plugin-list { margin-bottom: 4px; }
+    button.key-row {
       display: grid;
       gap: 2px;
-      text-align: left;
       width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 8px 10px;
-      background: var(--paper);
-      cursor: pointer;
-      font: inherit;
-      color: inherit;
+      min-height: 0;
+      padding: 6px 8px;
+      text-align: left;
+      justify-items: start;
     }
-    .key-row:hover { border-color: #b7c0c8; }
-    .key-row.selected { border-color: var(--blue); background: var(--select); }
+    button.key-row:hover { color: var(--fg); }
+    button.key-row.selected {
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--fg);
+    }
     .key-label {
       font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
       color: var(--muted);
     }
-    .key-id { font-family: var(--mono); font-size: 12px; word-break: break-all; font-weight: 600; }
-    .key-meta { color: var(--muted); font-size: 12px; }
-    .plugin-list { display: grid; gap: 4px; margin-bottom: 14px; }
-    .empty { color: var(--muted); padding: 16px 0; }
+    .key-id {
+      font-family: var(--mono);
+      font-size: 12px;
+      word-break: break-all;
+      font-weight: 450;
+      color: inherit;
+    }
+    .key-meta { color: var(--muted); font-size: 11px; }
+    .empty { color: var(--muted); font-size: 12px; padding: 8px 0; }
     .value-header {
       display: flex;
       flex-wrap: wrap;
       align-items: baseline;
-      gap: 8px 12px;
+      gap: 8px 10px;
       margin: 0 0 12px;
     }
-    .value-arrow {
-      color: var(--muted);
-      font-weight: 600;
-    }
+    .value-arrow { color: var(--muted); }
     .value-title {
       font-family: var(--mono);
-      font-size: 15px;
-      font-weight: 700;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg);
       word-break: break-all;
     }
     .value-kind {
       border: 1px solid var(--line);
-      border-radius: 999px;
+      border-radius: 6px;
       padding: 2px 8px;
-      font-size: 12px;
+      font-size: 11px;
       color: var(--muted);
-      background: var(--panel);
-    }
-    .value-grid {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 6px 12px;
-      margin-bottom: 14px;
-    }
-    .value-grid dt { color: var(--muted); }
-    .value-grid dd { margin: 0; word-break: break-word; }
-    .json-label {
-      margin: 0 0 6px;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--muted);
+      background: transparent;
     }
     pre {
-      margin: 0;
-      padding: 12px;
+      margin: 12px 0 0;
+      padding: 8px;
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 6px;
-      background: #0f1418;
-      color: #e7eef5;
-      font-size: 12px;
-      line-height: 1.45;
+      background: #111111;
+      color: var(--fg);
+      font: 11px/1.45 var(--mono);
       max-height: calc(100vh - 280px);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     @media (max-width: 820px) {
+      body { height: auto; display: block; }
+      header { align-items: flex-start; }
+      .runtime-status { flex-wrap: wrap; justify-content: flex-end; }
       main { grid-template-columns: 1fr; height: auto; }
       .keys-panel { border-right: 0; border-bottom: 1px solid var(--line); max-height: 45vh; }
     }
@@ -211,38 +225,33 @@
 <body>
   <header>
     <div class="identity">
-      <span class="product">Memory map</span>
+      <span class="product">Memory</span>
       <span class="vehicle" id="vehicle">waiting</span>
     </div>
     <div class="runtime-status">
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Connecting</span>
       <a class="nav" href="/">Automa</a>
-      <a class="nav" href="/perception">Perception view</a>
+      <a class="nav" href="/perception">Perception</a>
       __DECISION_NAV__
-      <button type="button" id="pauseButton">Pause updates</button>
+      <button type="button" id="pauseButton">Pause</button>
     </div>
   </header>
 
   <main>
     <section class="keys-panel" aria-label="Memory keys">
-      <p class="map-legend">
-        Each memory plugin keeps a <strong>key → value</strong> map:
-        pick a plugin, then click a <code>record_id</code> key on the left to inspect the mapped retained-evidence value on the right.
-        The evidence publisher is the plugin whose records the decision reads.
-      </p>
       <h2>Plugins</h2>
       <div class="plugin-list" id="pluginList"></div>
       <h2>Ledger</h2>
       <dl class="metrics" id="ledgerMetrics"></dl>
-      <h2>Filter by kind</h2>
+      <h2>Kind</h2>
       <div class="kind-map" id="kindMap"></div>
       <h2>Keys</h2>
       <div class="key-list" id="keyList"></div>
     </section>
     <section class="value-panel" aria-label="Mapped memory value">
-      <h2>Mapped value</h2>
-      <div id="valueEmpty" class="empty">Click a key on the left to inspect its mapped value.</div>
+      <h2>Value</h2>
+      <div id="valueEmpty" class="empty"></div>
       <div id="valueBody" hidden>
         <div class="value-header">
           <span class="key-label">key</span>
@@ -251,7 +260,6 @@
           <span class="value-kind" id="valueKind">value</span>
         </div>
         <dl class="value-grid" id="valueSummary"></dl>
-        <div class="json-label">Full mapped value (JSON)</div>
         <pre id="valueJson"></pre>
       </div>
     </section>
@@ -611,9 +619,7 @@
           lastValueFingerprint = "empty";
           valueEmpty.hidden = false;
           valueBody.hidden = true;
-          valueEmpty.textContent = latest?.memory
-            ? "Click a key on the left to inspect its mapped value."
-            : "Waiting for a memory report.";
+          valueEmpty.textContent = latest?.memory ? "" : "Waiting";
         }
         return;
       }
@@ -717,7 +723,7 @@
 
     pauseButton.addEventListener("click", () => {
       paused = !paused;
-      pauseButton.textContent = paused ? "Resume updates" : "Pause updates";
+      pauseButton.textContent = paused ? "Resume" : "Pause";
       setStatus(paused ? "Paused" : "Live", paused ? "" : "live");
       if (!paused) refresh();
     });

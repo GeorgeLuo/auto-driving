@@ -146,25 +146,13 @@ class RuntimeViewServer:
         page_url = self.decision.page_url()
         if page_url is not None:
             if compact:
-                return (
-                    f'<a class="nav" href="{page_url}" '
-                    'style="color:inherit;text-decoration:none;border:1px solid var(--line);'
-                    'border-radius:4px;padding:6px 10px;font-weight:600;">Decision view</a>'
-                )
-            return (
-                f'<a href="{page_url}">Decision'
-                '<span>View the exact image and authority facts for the current accepted cycle.</span></a>'
-            )
+                return f'<a class="nav" href="{page_url}">Decision</a>'
+            return f'<a href="{page_url}">Decision</a>'
         if compact:
             return (
-                '<span class="nav" title="Start the live decision monitor for this vehicle." '
-                'style="color:#6b7280;border:1px solid var(--line);border-radius:4px;'
-                'padding:6px 10px;font-weight:600;">Decision view unavailable</span>'
+                '<span class="nav unavailable" title="Decision view unavailable">Decision</span>'
             )
-        return (
-            '<span class="decision-unavailable">Decision view unavailable'
-            '<span>Start `automa vehicles decision live --id &lt;vehicle&gt;` to publish this view.</span></span>'
-        )
+        return '<span class="decision-unavailable">Decision view unavailable</span>'
 
     def stop(self) -> None:
         httpd = self._httpd

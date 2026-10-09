@@ -39,6 +39,9 @@ jobs:
       - name: Install test dependencies
         run: python3 -m pip install -r requirements-test.txt -r docs/requirements.txt
 
+      - name: Install browser for viewer integration tests
+        run: python3 -m playwright install --with-deps chromium
+
       - name: Check generated documentation
         run: python3 docs/render_markdown.py --check
 

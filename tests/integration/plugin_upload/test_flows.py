@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import urlopen
+from playwright.sync_api import sync_playwright, expect
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import step_activation_from_payload
@@ -259,6 +260,10 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(get_json(base, "/api/plugins"), before)
 
     def test_vehicle_catalog_uploads_before_during_and_after_run_completion(self):
+        browser_runtime = sync_playwright().start()
+        self.addCleanup(browser_runtime.stop)
+        browser = browser_runtime.chromium.launch()
+        self.addCleanup(browser.close)
         for vehicle in ("chase", "picar"):
             with self.subTest(vehicle=vehicle), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -273,6 +278,8 @@ class PluginUploadFlows(unittest.TestCase):
                 self.addCleanup(view.stop)
                 file = root / "prototype.py"
                 file.write_text("raise RuntimeError('must not import on upload')")
+                page = browser.new_page()
+                page.goto(view.url + "plugins")
                 for index, phase in enumerate(("stopped", "running", "completed")):
                     if phase == "running":
                         host.start(RunConfiguration(mode="observe_only", num_decisions=1))
@@ -286,8 +293,9 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertEqual(host.status()["steps"], before_steps)
                     self.assertEqual(host.session_status()["status"], phase)
                     self.assertIn(f"prototype-{index}", [p["id"] for p in get_json(view.url, "/api/plugins")["plugins"]])
-                with urlopen(view.url + "plugins") as response:
-                    self.assertIn(b"Plugin catalog", response.read())
+                    row = page.locator("tbody tr").filter(has=page.get_by_role("cell", name=f"prototype-{index}", exact=True))
+                    expect(row).to_have_count(1)
+                    expect(row.get_by_role("cell", name=receipt["plugin"]["metadata"]["revision"], exact=True)).to_be_visible()
 
     def test_cli_vehicle_address_and_viewer_proxy_share_the_host_catalog(self):
         with tempfile.TemporaryDirectory() as directory:

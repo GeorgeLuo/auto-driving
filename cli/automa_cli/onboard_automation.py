@@ -30,6 +30,7 @@ from .run_record import (
 from .runtime_view import RuntimeViewServer
 from .decision_live import PicarDecisionViewAdapter
 from .staged_bundle import write_json_atomically
+from .plugin_upload import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1
 
@@ -88,6 +89,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
         server = RuntimeViewServer(
             vehicle_id=vehicle_id, automation_dir=automation_dir,
             run_id=run_id, worker_pid=os.getpid(),
+            plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
         ).start()
         decision_view = PicarDecisionViewAdapter(
             vehicle_id=vehicle_id, base_url=base_url, view_server=server, timeout_s=timeout_s,

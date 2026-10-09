@@ -82,6 +82,38 @@ restart, keep `--observe-only` explicit:
 Stopping the worker keeps its local deployment staged and makes its previous
 view unavailable or stale, never current.
 
+## Upload to an Existing Catalog
+
+With a Chase worker and its viewer open, upload a local plugin file separately
+from selecting it:
+
+```sh
+./cli/automa vehicles plugins upload \
+  --id chase-sim-chaser \
+  --file ./prototype.py \
+  --step perception \
+  --plugin-id prototype \
+  --entrypoint prototype:Prototype
+```
+
+The command reports success after the source is stored and its revision is
+registered. Open **Plugins** in the runtime viewer to see the available
+revision. Upload does not change the selected or running plugins. The file is
+not imported, constructed, or checked for dependencies during upload; invalid
+code can be registered and fail when loaded downstream.
+
+Use `--url <viewer-or-workbench-url>` instead of `--id` to address a catalog
+directly. The same command and `/api/plugins` endpoint apply to Chase, PiCar,
+and the replay workbench. Workbench plugin panels refresh their catalogs even
+before a replay starts or after it finishes. Dependent files can be uploaded
+in sequence without resolving each other during registration.
+
+Uploaded source lives outside `implementations`. Re-uploading an ID makes a
+new source revision available while previous selections retain their source.
+Registrations belong to the live catalog; restoration after a host restart is
+not guaranteed. A Chase worker currently ends its catalog and viewer when the
+worker exits. Keeping that host alive between automation runs is separate work.
+
 ## State Vocabulary
 
 The commands keep these layers separate:

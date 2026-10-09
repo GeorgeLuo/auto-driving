@@ -8,7 +8,7 @@ import threading
 import time
 import zlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from .perception_view import (
@@ -32,6 +32,8 @@ from .loopback_http import (
     stop_server_thread,
     validate_loopback_host,
 )
+from .plugin_upload import serve_plugin_catalog
+from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
@@ -55,9 +57,11 @@ class RuntimeViewServer:
         decision_activation: dict[str, Any] | None = None,
         decision_activation_path: Path | None = None,
         decision_provider_identity: dict[str, Any] | None = None,
+        plugin_catalog: Callable | None = None,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
         self.vehicle_id = vehicle_id
+        self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
         self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
@@ -188,6 +192,9 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._handle_request(include_body=False)
 
     def do_POST(self) -> None:
+        if urlparse(self.path).path == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
+            return
         self._reject_write_method()
 
     def do_PUT(self) -> None:
@@ -214,6 +221,13 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
+        if route == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
+            return
+        if route == "/plugins":
+            self._send(200, Path(__file__).with_name("plugin_catalog.html").read_bytes(),
+                       "text/html; charset=utf-8", include_body=include_body)
+            return
         if route == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)
             return

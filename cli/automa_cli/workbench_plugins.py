@@ -1,4 +1,4 @@
-"""Packaged plugin listing and selection for the replay workbench.
+"""Live catalog listing and selection for the replay workbench.
 
 The workbench offers every packaged plugin of the steps whose selection the
 operator can change: perception, memory and proposal. A selection is checked
@@ -60,16 +60,18 @@ class PluginCatalogError(ValueError):
 
 @dataclass(frozen=True)
 class PluginDescriptor:
-    """Presentation metadata for one packaged plugin."""
+    """Presentation metadata for one available plugin."""
 
     plugin_id: str
     description: str
     entrypoint: str
     config: dict[str, Any]
     default: bool = False
+    revision: str | None = None
+    filename: str | None = None
 
     def to_dict(self, *, active_ids: Sequence[str] = ()) -> dict[str, Any]:
-        return {
+        payload = {
             "id": self.plugin_id,
             "name": self.plugin_id,
             "description": self.description,
@@ -78,11 +80,14 @@ class PluginDescriptor:
             "default": self.default,
             "active": self.plugin_id in active_ids,
         }
+        if self.revision is not None:
+            payload.update(revision=self.revision, filename=self.filename)
+        return payload
 
 
 @dataclass(frozen=True)
 class PluginCatalog:
-    """One step's packaged catalog, in display order, and its digest."""
+    """One step's live resolver, in display order, and its current digest."""
 
     step: str
     resolver: LocalPluginCatalog
@@ -99,6 +104,8 @@ class PluginCatalog:
                 entrypoint=item.entrypoint,
                 config=dict(item.config),
                 default=item.plugin_id in self.defaults,
+                revision=item.metadata.get("revision"),
+                filename=item.metadata.get("filename"),
             )
             for plugin_id in ids if (item := definitions.get(plugin_id)) is not None
         )
@@ -150,7 +157,7 @@ class PluginCatalog:
             return replace(
                 step_selection(self.step, plugins=[]),
                 plugins=tuple(active_ids),
-                plugin_specs={item.plugin_id: item.entrypoint for item in definitions},
+                plugin_specs={item.plugin_id: item.executable_entrypoint for item in definitions},
                 plugin_configs={item.plugin_id: dict(item.config) for item in definitions},
             )
         except ValueError as exc:

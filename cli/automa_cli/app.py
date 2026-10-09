@@ -51,6 +51,8 @@ from .perception_runs import (
     inspect_perception,
 )
 from .workbench import run_workbench_replay
+from .plugin_upload import upload_plugin
+from autonomy.decision_cycle.activation import STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .viability import (
@@ -92,6 +94,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show vehicle-level commands.",
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
+
+    plugins = vehicle_commands.add_parser("plugins", help="Upload files to a live host or workbench catalog.")
+    plugin_commands = plugins.add_subparsers(dest="plugin_command", required=True)
+    upload = plugin_commands.add_parser("upload", help="Register a plugin file without selecting or loading it.")
+    target = upload.add_mutually_exclusive_group(required=True)
+    target.add_argument("--id", dest="vehicle_id", help="Vehicle whose catalog receives the upload.")
+    target.add_argument("--url", help="Runtime or workbench URL; bypass vehicle discovery.")
+    upload.add_argument("--file", type=Path, required=True)
+    upload.add_argument("--step", choices=STEPS, required=True)
+    upload.add_argument("--plugin-id", required=True)
+    upload.add_argument("--entrypoint", required=True, help="Entrypoint to register; checked when loaded downstream.")
+    upload.add_argument("--json", dest="json_output", action="store_true")
+    upload.set_defaults(handler=_handle_plugin_upload)
 
     active = vehicle_commands.add_parser(
         "active",
@@ -1508,6 +1523,15 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handle_plugin_upload(args: argparse.Namespace) -> int:
+    result = upload_plugin(
+        url=args.url, vehicle_id=args.vehicle_id, file=args.file, step=args.step,
+        plugin_id=args.plugin_id, entrypoint=args.entrypoint, json_output=args.json_output,
+    )
+    print(result.message)
+    return result.exit_code
+
+
 def _handle_top_level_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
@@ -1559,6 +1583,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- active       discover vehicle endpoints (not worker/deployment state)",
                 "- status       inspect simulator, deployment, worker, and view layers",
                 "- update       stage controller selections or deploy vehicle code",
+                "- plugins      upload files to an existing live catalog",
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",

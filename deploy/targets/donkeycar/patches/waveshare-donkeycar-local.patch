@@ -233,7 +233,7 @@ index 8af4669..5d27cc5 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +123,34 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +123,35 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
@@ -251,6 +251,7 @@ index 8af4669..5d27cc5 100644
 +            (r"/autonomy/status", AutonomyStatusAPI),
 +            (r"/autonomy/mode", AutonomyModeAPI),
 +            (r"/autonomy/runtime", AutonomyRuntimeAPI),
++            (r"/api/plugins", AutonomyPluginCatalogAPI),
 +            (r"/autonomy/observation/latest", AutonomyObservationLatestAPI),
 +            (r"/autonomy/observation/latest/frame.jpg", AutonomyObservationLatestFrameAPI),
 +            (r"/autonomy/camera/latest", AutonomyCameraLatestAPI),
@@ -268,7 +269,7 @@ index 8af4669..5d27cc5 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +264,469 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +265,488 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -481,6 +482,25 @@ index 8af4669..5d27cc5 100644
 +
 +        payload = publisher.publish_decision_latest()
 +        self.write_json(payload, status=200 if payload.get("status") == "ready" else 503)
++
++
++class AutonomyPluginCatalogAPI(AutonomyAPIBase):
++    """Transport only; every host uses the shared catalog registration code."""
++
++    def _catalog(self, payload=None):
++        from autonomy.runtime.plugin_catalog import PluginCatalogAPI
++        host = getattr(self.application, "autonomy_host", None)
++        if host is None:
++            self.write_json({"ok": False, "error": "catalog unavailable"}, status=503)
++            return
++        result = PluginCatalogAPI(host.catalog)(payload)
++        self.write_json(result, status=200 if result.get("ok") else 400)
++
++    def get(self):
++        self._catalog()
++
++    def post(self):
++        self._catalog(self.read_json_body())
 +
 +
 +class AutonomyRuntimeAPI(AutonomyAPIBase):
@@ -738,7 +758,7 @@ index 8af4669..5d27cc5 100644
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +867,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +893,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -791,7 +811,7 @@ index 8af4669..5d27cc5 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +962,3 @@ class WebFpv(Application):
+@@ -440,5 +988,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

@@ -13,17 +13,28 @@ execution, reset, and validation of the behavior declared by those definitions.
 the next selection is loaded and validated before published instances are reset.
 ``plugin_report`` describes the catalog, the manager's requested selection, and
 the instances a step has published. Definitions may come from packaged entries
-or a future catalog implementing ``PluginResolver``.
+or a live catalog implementing ``PluginResolver``. Upload stores a source
+revision without selecting or importing it; existing selections retain their
+definitions until explicitly changed.
 ``instantiate_plugin`` constructs a definition's entrypoint with its config; a
 step checks the resulting instance against its own plugin protocol.
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import importlib.util
+import os
+import shutil
+import sys
+import tempfile
+import threading
+import weakref
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar
 
 
@@ -44,6 +55,15 @@ class PluginDefinition:
     entrypoint: str
     config: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def executable_entrypoint(self) -> str:
+        """An uploaded source is independent of the installed module namespace."""
+
+        source = self.metadata.get("source_path")
+        if source is not None:
+            return f"{source}:{self.entrypoint.partition(':')[2]}"
+        return self.entrypoint
 
     def __post_init__(self) -> None:
         for name in ("step", "plugin_id", "entrypoint"):
@@ -90,29 +110,82 @@ class LocalPluginCatalog:
 
     def __init__(self, definitions: Iterable[PluginDefinition] = ()) -> None:
         self._definitions: dict[tuple[str, str], PluginDefinition] = {}
+        self._lock = threading.RLock()
+        self.version = 0
+        self._sources: str | None = None
         for definition in definitions:
             self.register(definition)
 
     def register(self, definition: PluginDefinition) -> None:
-        key = (definition.step, definition.plugin_id)
-        existing = self._definitions.get(key)
-        if existing is not None:
-            raise DuplicatePluginIdError(
-                f"duplicate {definition.step} plugin id {definition.plugin_id!r}: "
-                f"declared by {existing.entrypoint} and {definition.entrypoint}"
-            )
-        self._definitions[key] = definition
+        with self._lock:
+            key = (definition.step, definition.plugin_id)
+            existing = self._definitions.get(key)
+            if existing is not None:
+                raise DuplicatePluginIdError(
+                    f"duplicate {definition.step} plugin id {definition.plugin_id!r}: "
+                    f"declared by {existing.entrypoint} and {definition.entrypoint}"
+                )
+            self._definitions[key] = definition
+            self.version += 1
+
+    def include(self, definitions: Iterable[PluginDefinition]) -> None:
+        """Seed missing entries without replacing an available uploaded revision."""
+
+        with self._lock:
+            for definition in definitions:
+                if (definition.step, definition.plugin_id) not in self._definitions:
+                    self.register(definition)
+
+    def upload(
+        self, *, step: str, plugin_id: str, entrypoint: str, source: bytes,
+        filename: str = "plugin.py", config: Mapping[str, Any] | None = None,
+    ) -> PluginDefinition:
+        """Store source and publish its definition; loading belongs to selection.
+
+        Sources live outside installed packages for this catalog's lifetime.
+        Every upload gets its own file, so an existing selection can retain its
+        definition and source even when this ID gains another available revision.
+        """
+
+        definition = PluginDefinition(step, plugin_id, entrypoint, config or {})
+        with self._lock:
+            if self._sources is None:
+                self._sources = tempfile.mkdtemp(prefix="automa-plugins-")
+                weakref.finalize(self, shutil.rmtree, self._sources, ignore_errors=True)
+            descriptor, path = tempfile.mkstemp(suffix=".py", dir=self._sources)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(source)
+                definition = PluginDefinition(
+                    step, plugin_id, entrypoint, definition.config,
+                    {"source_path": path, "revision": hashlib.sha256(source).hexdigest(),
+                     "filename": filename},
+                )
+                self._definitions[(step, plugin_id)] = definition
+                self.version += 1
+                return definition
+            except BaseException:
+                Path(path).unlink(missing_ok=True)
+                raise
 
     def list(self, step: str) -> tuple[PluginDefinition, ...]:
-        return tuple(
-            definition for (item_step, _), definition in sorted(self._definitions.items())
-            if item_step == step
-        )
+        with self._lock:
+            return tuple(
+                definition for (item_step, _), definition in sorted(self._definitions.items())
+                if item_step == step
+            )
+
+    def snapshot(self) -> tuple[int, tuple[PluginDefinition, ...]]:
+        """Read a catalog version and its definitions together."""
+
+        with self._lock:
+            return self.version, tuple(value for _, value in sorted(self._definitions.items()))
 
     def resolve(self, step: str, plugin_id: str) -> PluginDefinition:
         if not isinstance(plugin_id, str) or not plugin_id.strip():
             raise PluginManagementError("plugin id must be a non-empty string")
-        definition = self._definitions.get((step, plugin_id))
+        with self._lock:
+            definition = self._definitions.get((step, plugin_id))
         if definition is None:
             raise PluginManagementError(f"unknown plugin id {plugin_id!r} for step {step!r}")
         return definition
@@ -322,6 +395,18 @@ def _import_entrypoint(entrypoint: str, *, reload_module: bool = False) -> Any:
             f"plugin entrypoint must be 'module.path:Name', got {entrypoint!r}"
         )
     importlib.invalidate_caches()
+    if module_name.endswith(".py"):
+        name = "_automa_uploaded_" + hashlib.sha256(module_name.encode()).hexdigest()
+        if name not in sys.modules:
+            spec = importlib.util.spec_from_file_location(name, module_name)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            try:
+                spec.loader.exec_module(module)
+            except BaseException:
+                sys.modules.pop(name, None)
+                raise
+        return getattr(sys.modules[name], attribute)
     module = importlib.import_module(module_name)
     if reload_module:
         module = importlib.reload(module)
@@ -340,7 +425,7 @@ def declared_plugin_id(entrypoint: str) -> str:
 def instantiate_plugin(definition: PluginDefinition, *, reload_module: bool = False) -> Any:
     """Import ``definition.entrypoint`` and call it with a copy of its config."""
 
-    factory = _import_entrypoint(definition.entrypoint, reload_module=reload_module)
+    factory = _import_entrypoint(definition.executable_entrypoint, reload_module=reload_module)
     return factory(**deepcopy(dict(definition.config)))
 
 

@@ -39,6 +39,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlExecution, ControlTarget
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import RunRecording
+from autonomy.plugins import LocalPluginCatalog
 from autonomy.shared_memory import SharedMemory
 
 IDLE_REASON = "cycle-idle"
@@ -54,6 +55,9 @@ class AutonomyCycleHost:
         self._lock = threading.RLock()
         self.execution = ControlExecution(target) if target is not None else None
         self.cycle = DecisionCycle(steps or decision_steps(), idle_reason=IDLE_REASON)
+        self.catalog = LocalPluginCatalog()
+        for step in STEPS:
+            self._attach_catalog(self.step(step))
         self.shared_memory: SharedMemory = {}
         self.last_result: DecisionCycleResult | None = None
         self.last_context: DecisionFrameContext | None = None
@@ -88,7 +92,14 @@ class AutonomyCycleHost:
         """Replace one step's runner; the next frame uses it."""
 
         with self._lock:
+            self._attach_catalog(runner)
             self.cycle.steps = replace(self.cycle.steps, **{require_step(step): runner})
+
+    def _attach_catalog(self, runner: Any) -> None:
+        manager = getattr(runner, "plugin_manager", None)
+        if manager is not None:
+            self.catalog.include(manager.available)
+            manager.resolver = self.catalog
 
     def watch_selection(self, step: str, path: Path, loaded: StepActivation) -> None:
         """Follow ``path`` for selection changes to the runner loaded from ``loaded``."""

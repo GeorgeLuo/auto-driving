@@ -459,13 +459,12 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     autonomy_execution = None
     if getattr(cfg, "AUTONOMY_ENABLED", True):
         autonomy_controller = getattr(V, "web_controller", None)
-        runtime_root = Path(__file__).resolve().parent / "runtime"
-        identity_path = runtime_root / "identity.json"
         try:
+            from autonomy.runtime.layout import RuntimeLayout
+            runtime_root = RuntimeLayout(Path(__file__).resolve().parent).runtime
+            identity_path = runtime_root / "identity.json"
             from autonomy.decision_cycle.activation import (
-                DECISION_STEPS,
                 STEPS,
-                activation_generation_id,
                 read_step_activation,
                 step_activation_path,
             )

@@ -26,6 +26,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_loader import CodeSource
+from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import RunRecording, cycle_frame
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
@@ -432,6 +433,7 @@ def run_vehicle_automation(
             worker_pid=os.getpid(),
             decision_activation=identity if decision_published else None,
             decision_activation_path=Path(bundle["runtime_dir"]),
+            plugin_catalog=PluginCatalogAPI(cycle_host.catalog),
         ).start()
         published_view = view_server.describe()
     except (OSError, RuntimeError, ValueError) as exc:

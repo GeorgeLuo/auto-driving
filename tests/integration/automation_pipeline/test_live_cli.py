@@ -8,15 +8,19 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import time
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
+from unittest.mock import Mock, patch
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.bundles import controller_bundle_paths
-from cli.automa_cli.streaming import probe_live_memory
+from cli.automa_cli.streaming import _read_publication, _ViewFeed, probe_live_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.integration.automation_pipeline.pipeline_fixtures import (
     VEHICLE_ID,
@@ -24,7 +28,7 @@ from tests.integration.automation_pipeline.pipeline_fixtures import (
     chase_runtime,
     staged_runners,
 )
-from tests.support.cli_runner import run_automa
+from tests.support.cli_runner import run_automa, start_automa
 
 START_HOST = f"Run: ./cli/automa vehicles automation run --id {VEHICLE_ID} --observe-only"
 
@@ -83,6 +87,55 @@ class LiveCommandsTests(unittest.TestCase):
         terminal = self.automa("stream", "perception", "--once", "--no-clear")
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
+
+    def test_a_running_step_stream_hosts_the_decision_view(self) -> None:
+        # How each proposal arose is on the decision page: the host's latest
+        # decision beside its frame and the evidence its proposals read.
+        self.observe()
+        stream = start_automa(
+            "vehicles", "stream", "proposal", "--id", VEHICLE_ID, "--no-clear", runtime_root=self.runtime_root,
+        )
+        self.addCleanup(stream.stdout.close)
+        self.addCleanup(stream.wait, 10)
+        self.addCleanup(stream.terminate)
+        lines: list[str] = []
+
+        def collect() -> None:
+            for line in stream.stdout:
+                lines.append(line.rstrip("\n"))
+
+        threading.Thread(target=collect, daemon=True).start()
+        page = _wait(
+            lambda: next((line.split()[2] for line in lines if line.startswith("decision view: http")), None),
+            timeout_s=20, message="the proposal stream printed no decision view",
+        )
+        with urlopen(page, timeout=5) as response:
+            self.assertEqual(response.headers.get_content_type(), "text/html")
+        view_url, _, generation = page.partition("/decision?")
+
+        def latest():
+            try:
+                with urlopen(f"{view_url}/api/decision/latest?{generation}", timeout=5) as response:
+                    return json.load(response)
+            except HTTPError:  # warming, or the newest cycle expired between refreshes
+                return None
+
+        decision = _wait(latest, message="the decision view never served a current decision")
+        self.assertEqual(decision["decision"]["frame_id"], decision["current_image"]["frame_id"])
+        self.assertIsNotNone(decision["decision"]["cycle"]["proposal"])
+        self.assertIn("evidence", decision)
+
+    def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
+        self.observe()
+        with patch("cli.automa_cli.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):
+            feed = _ViewFeed(VEHICLE_ID, base_url=self.host.base_url, timeout_s=3.0)
+        self.addCleanup(feed.stop)
+        feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
+        publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
+        feed.publish(publication)
+        self.assertIn("ConnectionError: decision route down", feed.decision_line())
+        with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:
+            self.assertEqual(json.load(response)["frame"]["frame_id"], publication["frame"]["frame_id"])
 
     def test_perception_info_reports_the_hosts_latest_observation(self) -> None:
         self.observe()

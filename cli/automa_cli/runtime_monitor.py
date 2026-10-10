@@ -96,7 +96,6 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         ).start()
         decision_view = DecisionViewAdapter(
             vehicle_id=vehicle_id, base_url=base_url, view_server=server, timeout_s=timeout_s,
-            action_policy=configuration.mode,
         )
         state.update(
             run_id=run_id, status="running", published_view=server.describe(),

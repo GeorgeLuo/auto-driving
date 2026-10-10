@@ -18,6 +18,7 @@ from autonomy.decision_cycle.memory.interface import (
     HEALTH,
     RECORD_COUNT,
 )
+from .decision_live import DecisionViewAdapter
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .host_publications import (
     LATEST_FRAME_PATH,
@@ -220,9 +221,12 @@ def _poll_stream(
 
 
 class _ViewFeed:
-    """A loopback runtime view a terminal stream feeds from the host's publication.
+    """A loopback runtime view a terminal stream feeds from the host's publications.
 
-    It serves the host's plugin catalog, as the view of ``automation run`` does.
+    As the view of ``automation run`` does, its decision page aggregates the
+    host's latest decision with its matched frame, evidence and candidates, and
+    it serves the host's plugin catalog. The perception and memory pages publish
+    from the observation even while no matched decision is available.
     """
 
     def __init__(self, vehicle_id: str, *, base_url: str, timeout_s: float) -> None:
@@ -232,13 +236,18 @@ class _ViewFeed:
         self.timeout_s = timeout_s
         self.frame_path = runtime_dir / "latest_frame.jpg"
         self.server: RuntimeViewServer | None = None
+        self.decision: DecisionViewAdapter | None = None
         self.error: str | None = None
+        self.decision_error: str | None = None
         try:
             self.server = RuntimeViewServer(
                 vehicle_id=vehicle_id,
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
             ).start()
+            self.decision = DecisionViewAdapter(
+                vehicle_id=vehicle_id, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
+            )
         except OSError as exc:
             self.error = f"{type(exc).__name__}: {exc}"
 
@@ -246,8 +255,26 @@ class _ViewFeed:
     def url(self) -> str | None:
         return self.server.url if self.server is not None else None
 
+    def decision_line(self) -> str:
+        """The decision page's address, or why it has no decision to show."""
+
+        page = self.server.decision.page_url() if self.server is not None else None
+        if self.server is None or self.server.url is None or page is None:
+            return _view_line("decision view", None, self.error or self.decision_error or "no decision yet")
+        line = f"decision view: {self.server.url.rstrip('/')}{page}"
+        return f"{line}  (latest unavailable: {self.decision_error})" if self.decision_error else line
+
     def publish(self, publication: dict[str, Any] | None) -> None:
-        if publication is None or self.server is None:
+        if self.server is None or self.decision is None:
+            return
+        try:
+            published = self.decision.refresh()
+            self.decision_error = None if published else "the view rejected the host's decision"
+        except Exception as exc:  # noqa: BLE001 - the decision page is observational
+            self.server.decision.invalidate_latest()
+            self.decision_error = f"{type(exc).__name__}: {exc}"
+        # The observation publishes last, as the latest perception and memory.
+        if publication is None:
             return
         frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
         if frame is None or not frame.get("has_image"):
@@ -404,6 +431,7 @@ def _perception_screen(
             f"things={_shown(len(things) if isinstance(things, list) else None)}"
         ),
         _view_line("view", view.url, view.error),
+        view.decision_line(),
         (
             f"publication: {publication.get('health') or 'unavailable'}  "
             f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
@@ -467,6 +495,7 @@ def stream_vehicle_memory(
             live=live,
             view_url=view.url,
             view_error=view.error,
+            decision_line=view.decision_line(),
             report=publication.get("memory") if isinstance(publication, dict) else None,
             report_error=fetch_error,
         )
@@ -496,6 +525,7 @@ def _memory_screen(
     live: dict[str, Any],
     view_url: str | None,
     view_error: str | None,
+    decision_line: str,
     report: Any,
     report_error: str | None,
 ) -> str:
@@ -507,6 +537,7 @@ def _memory_screen(
         "",
         _view_line("memory map", view_url, view_error, "/memory"),
         _view_line("perception view", view_url, view_error, "/perception"),
+        decision_line,
     ]
     if report_error:
         lines.append(f"publication memory: {report_error}")

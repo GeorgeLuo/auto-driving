@@ -36,6 +36,7 @@ from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
 from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
 from .step_schema import format_staged_step, staged_step_info
+from .streaming import _read_publication, _view_line, _ViewFeed
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
 # Each decision step replays every step before it, from perception on.
@@ -178,7 +179,13 @@ def stream_vehicle_step(
             "runtime_unavailable", str(exc), vehicle_id=vehicle_id, details={"reason": "missing"},
         ), json_output=json_output)
 
+    # A running terminal stream hosts the runtime view; its decision page shows
+    # the evidence, candidates and selection behind each record.
+    view = None if json_output or once else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
+
     def accept() -> dict[str, Any]:
+        if view is not None:
+            view.publish(_read_publication(base_url, timeout_s=timeout_s)[0])
         try:
             publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
         except (ConnectionError, OSError) as exc:
@@ -205,16 +212,23 @@ def stream_vehicle_step(
             **({"application": report["application"]} if step == "action" else {}),
         }
 
-    return _poll(
-        vehicle_id=vehicle_id,
-        accept=accept,
-        render=lambda frame: _format_stream_frame(step, frame),
-        refresh_s=refresh_s,
-        once=once,
-        no_clear=no_clear,
-        json_output=json_output,
-        output=output,
-    )
+    try:
+        return _poll(
+            vehicle_id=vehicle_id,
+            accept=accept,
+            render=lambda frame: _format_stream_frame(step, frame),
+            footer=(lambda: [
+                view.decision_line(), _view_line("perception view", view.url, view.error, "/perception"),
+            ]) if view is not None else None,
+            refresh_s=refresh_s,
+            once=once,
+            no_clear=no_clear,
+            json_output=json_output,
+            output=output,
+        )
+    finally:
+        if view is not None:
+            view.stop()
 
 
 def _poll(
@@ -222,6 +236,7 @@ def _poll(
     vehicle_id: str,
     accept: Callable[[], dict[str, Any]],
     render: Callable[[dict[str, Any]], str],
+    footer: Callable[[], list[str]] | None = None,
     refresh_s: float,
     once: bool,
     no_clear: bool,
@@ -229,7 +244,8 @@ def _poll(
     output: TextIO | None,
 ) -> CommandResult:
     """``accept`` returns one stream frame or raises DecisionSurfaceError,
-    which the loop prints and keeps polling past; ``--once`` exits with it."""
+    which the loop prints and keeps polling past; ``--once`` exits with it.
+    ``footer`` lines follow each terminal frame, the error ones too."""
 
     if once:
         try:
@@ -252,6 +268,8 @@ def _poll(
                 text = json.dumps(decision_error_payload(
                     error=exc.error, message=exc.message_text, vehicle_id=vehicle_id, details=exc.details,
                 ), sort_keys=True) if json_output else last_error
+            if footer is not None and not json_output:
+                text = "\n".join([text, "", *footer()])
             if output is not None:
                 if not no_clear and not json_output:
                     output.write("\033[2J\033[H")

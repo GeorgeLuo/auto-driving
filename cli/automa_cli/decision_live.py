@@ -41,8 +41,10 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _frame_record(normalized: dict[str, Any], *, action_policy: str | None) -> dict[str, Any]:
+def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
     cycle = normalized["decision"]["cycle"]
+    # The mode the host ran this cycle under; it applies control only in autonomy.
+    mode = normalized["decision"]["application"]["mode"]
     proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
     source = proposal.get("source") if isinstance(proposal, dict) else None
     observation = source.get("observation") if isinstance(source, dict) else None
@@ -130,11 +132,9 @@ def _frame_record(normalized: dict[str, Any], *, action_policy: str | None) -> d
             if isinstance(observation_value, dict)
             else None
         ),
-        "action_policy": action_policy,
+        "action_policy": mode,
         "control_source": "runtime_host",
-        "control_application": (
-            "shared_execution" if action_policy == "autonomy" else "not_applied"
-        ),
+        "control_application": "shared_execution" if mode == "autonomy" else "not_applied",
     }
 
 
@@ -191,14 +191,11 @@ class DecisionViewAdapter:
         base_url: str,
         view_server: RuntimeViewServer,
         timeout_s: float,
-        action_policy: str | None = None,
     ) -> None:
         self.vehicle_id = vehicle_id
         self.base_url = base_url
         self.view_server = view_server
         self.timeout_s = timeout_s
-        # The execution mode of the run publishing these frames; None when unknown.
-        self.action_policy = action_policy
 
     def publish_frame(
         self,
@@ -206,7 +203,7 @@ class DecisionViewAdapter:
         image: tuple[bytes, str],
     ) -> bool:
         self.view_server.decision.adopt(_provider_identity(normalized))
-        frame_record = _frame_record(normalized, action_policy=self.action_policy)
+        frame_record = _frame_record(normalized)
         report = decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,

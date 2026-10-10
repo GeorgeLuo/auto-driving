@@ -54,7 +54,7 @@ class _FakeClient:
 
 class _FakeDecisionView:
     def __init__(self, **kwargs) -> None:
-        self.action_policy = kwargs["action_policy"]
+        pass
 
     def refresh(self) -> bool:
         return True

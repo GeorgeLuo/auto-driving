@@ -2,16 +2,16 @@
 
 The workbench is deliberately a thin presentation and lifecycle boundary. It
 normalizes one ordered image-directory source, feeds it through the existing
-perception, observation, memory, and shadow decision seams, and exposes the
+perception, observation, memory, and decision steps, and exposes the
 resulting state to both the CLI and a small loopback HTTP page.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import time
 import webbrowser
+from collections.abc import Sequence
 from typing import Any, TextIO
 
 from .perception_runs import CommandResult
@@ -20,26 +20,25 @@ from .workbench_contract import (
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
     WORKBENCH_DEFAULT_PACE,
-    WORKBENCH_ERROR_SCHEMA,
     WORKBENCH_HOST,
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
 )
 from .workbench_runner import ImageReplayRunner
 from .workbench_plugins import (
+    SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
-    build_plugin_catalog,
-    discover_plugin_catalog,
     packaged_plugin_catalog,
+    step_selection,
 )
 from .workbench_server import WorkbenchServer
 from .workbench_source import (
-    ImageFeed,
+    ImageSource,
     ReplayFrame,
     SourceValidationError,
     WORKBENCH_DEFAULT_MAX_FRAMES,
-    load_image_feed,
+    load_image_source,
     normalize_image_directory,
 )
 
@@ -47,8 +46,11 @@ from .workbench_source import (
 def run_workbench_replay(
     source_dir: str | os.PathLike[str],
     *,
-    plugin_dir: str | os.PathLike[str] | None = None,
-    active_plugin_ids: list[str] | tuple[str, ...] | None = None,
+    perception_preset: str | None = None,
+    perception_plugins: Sequence[str] | None = None,
+    memory_preset: str | None = None,
+    memory_plugins: Sequence[str] | None = None,
+    proposal_plugins: Sequence[str] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -56,13 +58,28 @@ def run_workbench_replay(
     port: int = 0,
     serve: bool = False,
     open_browser: bool = False,
-    json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Run one CLI replay, optionally keeping the loopback workbench alive."""
+    """Run one CLI replay, optionally keeping the loopback workbench alive.
 
-    if json_output and (serve or open_browser):
-        return CommandResult(2, "--json cannot be combined with --serve or --open")
+    Recorded frames restore their executable step selections. Explicit CLI
+    selections override the named steps; an unrecorded step uses its packaged
+    default. Page selections override that step for the replay pass, retaining
+    configs when the selected IDs are unchanged. Offline replay computes the
+    action's authorization without host delivery.
+    """
+
+    try:
+        activations = {}
+        for step, preset, plugins in (
+            ("perception", perception_preset, perception_plugins),
+            ("memory", memory_preset, memory_plugins),
+            ("proposal", None, proposal_plugins),
+        ):
+            if preset is not None or plugins is not None:
+                activations[step] = step_selection(step, preset=preset, plugins=plugins)
+    except ValueError as exc:
+        return CommandResult(2, f"Workbench replay failed: {exc}")
     if open_browser:
         serve = True
     runner: ImageReplayRunner | None = None
@@ -71,8 +88,7 @@ def run_workbench_replay(
     try:
         runner = ImageReplayRunner(
             source_dir,
-            plugin_dir=plugin_dir,
-            active_plugin_ids=active_plugin_ids,
+            activations=activations,
             cadence_ms=cadence_ms,
             pace=pace,
             max_frames=max_frames,
@@ -101,11 +117,6 @@ def run_workbench_replay(
                 return CommandResult(0, "workbench server stopped")
         state = runner.wait()
         exit_code = 0 if state.get("phase") == "completed" else 2
-        if json_output:
-            return CommandResult(
-                exit_code,
-                json.dumps(state, indent=2, sort_keys=True),
-            )
         return CommandResult(
             exit_code,
             _format_workbench_status(
@@ -115,17 +126,6 @@ def run_workbench_replay(
             ),
         )
     except (ReplayActionError, SourceValidationError) as exc:
-        state = runner.state() if runner is not None else None
-        if json_output:
-            payload = {
-                "schema": WORKBENCH_ERROR_SCHEMA,
-                "ok": False,
-                "boundary": getattr(exc, "boundary", "input"),
-                "message": str(exc),
-            }
-            if state is not None:
-                payload["state"] = state
-            return CommandResult(2, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(2, f"Workbench replay failed: {exc}")
     finally:
         if server is not None:
@@ -142,18 +142,20 @@ def _format_workbench_status(
 ) -> str:
     source = state.get("source") or {}
     progress = state.get("progress") or {}
-    active_plugins = state.get("run_active_plugin_ids") or state.get("active_plugin_ids") or []
-    active_plugins_text = ", ".join(str(item) for item in active_plugins) or "(none)"
+    pipeline = (state.get("machine_detail") or {}).get("pipeline") or {}
     lines = [
         "automa decision playback workbench",
         f"phase: {state.get('phase')}",
         f"sequence: {state.get('sequence_id')}",
         f"run_id: {state.get('run_id') or '(none)'}",
         f"source: {source.get('source_path') or source.get('path') or '(none)'}",
-        f"plugin_dir: {state.get('plugin_dir') or '(packaged default)'}",
-        f"active_plugins: {active_plugins_text}",
-        f"plugin_order: {active_plugins_text}",
-        f"catalog_digest: {state.get('run_catalog_digest') or state.get('catalog_digest') or '(none)'}",
+        *(
+            f"{step}: "
+            + _selection_text(
+                pipeline.get(f"{step}_preset"), state.get(f"active_{step}_plugin_ids")
+            )
+            for step in SELECTABLE_STEPS
+        ),
         f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
     ]
     if server_url:
@@ -168,21 +170,25 @@ def _format_workbench_status(
         lines.append(f"recovery: {recovery}")
     cleanup = state.get("cleanup")
     if isinstance(cleanup, dict):
+        fields = (*SELECTABLE_STEPS, "source_read_only", "movement_control")
         lines.append(
-            "cleanup: mapper={mapper}; memory={memory}; "
-            "source_read_only={source_read_only}; "
-            "movement_control={movement_control}".format(
-                mapper=cleanup.get("mapper"),
-                memory=cleanup.get("memory"),
-                source_read_only=cleanup.get("source_read_only"),
-                movement_control=cleanup.get("movement_control"),
-            )
+            "cleanup: " + "; ".join(f"{field}={cleanup.get(field)}" for field in fields)
         )
     return "\n".join(lines)
 
 
+def _selection_text(preset: Any, plugin_ids: Any) -> str:
+    """A step's selection as the inspect commands print it: preset (plugins).
+
+    A step without presets prints its plugins alone.
+    """
+
+    plugins = ", ".join(str(item) for item in plugin_ids or []) or "none"
+    return f"{preset} ({plugins})" if preset else plugins
+
+
 __all__ = [
-    "ImageFeed",
+    "ImageSource",
     "ImageReplayRunner",
     "PluginCatalog",
     "PluginCatalogError",
@@ -195,10 +201,8 @@ __all__ = [
     "WORKBENCH_DEFAULT_PACE",
     "WORKBENCH_PACES",
     "WORKBENCH_SEQUENCE_ID",
-    "load_image_feed",
+    "load_image_source",
     "normalize_image_directory",
     "run_workbench_replay",
-    "build_plugin_catalog",
-    "discover_plugin_catalog",
     "packaged_plugin_catalog",
 ]

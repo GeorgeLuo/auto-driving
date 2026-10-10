@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+import numpy as np
+
+from autonomy.decision_cycle.perception.inputs import build_perception_request
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from implementations.decision_cycle.catalog import step_plugins
+from implementations.decision_cycle.perception.feeds.camera import (
+    camera_feed_id,
+)
+from implementations.decision_cycle.perception.plugins.motion_tracks.plugin import (
+    MotionTracksPlugin,
+)
+
+
+_PERCEPTION_SPECS = {
+    plugin_id: entry["spec"] for plugin_id, entry in step_plugins("perception").items()
+}
+
+
+FRONT_CAMERA_FEED = camera_feed_id(FRONT_CAMERA_SENSOR_ID)
+
+
+def _mapper(plugin_id: str) -> PerceptionRunner:
+    return PerceptionRunner.from_selection(
+        plugins=[plugin_id],
+        plugin_specs=_PERCEPTION_SPECS,
+    )
+
+
+def _sensor_frame(reading: SensorReading, read_id: str = "test-frame") -> SensorFrame:
+    return SensorFrame(
+        read_id=read_id,
+        readings={reading.sensor_id: reading},
+        started_at_ms=reading.captured_at_ms,
+        completed_at_ms=reading.captured_at_ms,
+    )
+
+
+def _array_reading(
+    rgb: np.ndarray | None = None,
+    captured_at_ms: int = 10,
+) -> SensorReading:
+    return SensorReading(
+        sensor_id=FRONT_CAMERA_SENSOR_ID,
+        sensor_kind="camera",
+        captured_at_ms=captured_at_ms,
+        value=rgb if rgb is not None else np.zeros((8, 8, 3), dtype=np.uint8),
+        metadata={"color_space": "RGB"},
+    )
+
+
+class PerceptionPluginTests(unittest.TestCase):
+    def test_current_plugins_share_camera_feed_without_writing_diagnostics(self) -> None:
+        rgb = np.random.default_rng(3).integers(0, 256, (72, 96, 3), dtype=np.uint8)
+        request = build_perception_request(_sensor_frame(_array_reading(rgb)))
+        mapper = PerceptionRunner.from_selection(
+            plugins=["frame", "floor_plane"],
+            plugin_specs=_PERCEPTION_SPECS,
+        )
+
+        perception = mapper.perceive(request)
+
+        self.assertEqual(perception.status, "ok")
+        self.assertEqual(request.feed_summary()["available"], {FRONT_CAMERA_FEED: "CameraFrame"})
+        self.assertEqual(perception.artifacts, {})
+        frame = next(thing for thing in perception.things if thing.kind == "sensor_frame")
+        self.assertEqual(frame.properties["width_px"], 96)
+
+    def test_floor_plugin_emits_boundaries_without_claiming_objects(self) -> None:
+        rgb = np.zeros((120, 160, 3), dtype=np.uint8)
+        rgb[:70] = (40, 70, 110)
+        rgb[70:] = (145, 118, 92)
+
+        result = _mapper("floor_plane").perceive(
+            build_perception_request(_sensor_frame(_array_reading(rgb)))
+        )
+
+        boundaries = [thing for thing in result.things if thing.kind == "floor_boundary"]
+        self.assertTrue(boundaries)
+        self.assertFalse(any(thing.kind == "obstruction_evidence" for thing in result.things))
+        bbox = boundaries[0].location.bbox_xyxy_norm
+        self.assertIsNotNone(bbox)
+        self.assertGreater(bbox[1], 0.45)
+        self.assertLess(bbox[3], 0.75)
+
+    def test_windowed_plugin_warms_up_and_reset_discards_previous_frame(self) -> None:
+        rgb = np.random.default_rng(7).integers(0, 256, (72, 96, 3), dtype=np.uint8)
+        shifted = np.roll(rgb, 2, axis=1)
+        mapper = PerceptionRunner.from_selection(
+            plugins=["motion_tracks"],
+            plugin_specs=_PERCEPTION_SPECS,
+            plugin_configs={
+                "motion_tracks": {
+                    "max_features": 50,
+                    "search_radius": 8,
+                    "min_group_size": 4,
+                }
+            },
+        )
+
+        memory = {}
+        first = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(rgb), "first"), shared_memory=memory))
+        second = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(shifted), "second"), shared_memory=memory))
+        mapper.reset(memory)
+        after_reset = mapper.perceive(build_perception_request(_sensor_frame(_array_reading(rgb), "third"), shared_memory=memory))
+
+        self.assertEqual(first.status, "warming_up")
+        self.assertIn(second.status, {"ok", "empty"})
+        self.assertEqual(after_reset.status, "warming_up")
+        self.assertEqual(second.artifacts, {})
+
+    def test_windowed_tracks_keep_ids_and_expire_after_bounded_misses(self) -> None:
+        plugin = MotionTracksPlugin(max_track_misses=1)
+        plugin._initialize_history()  # Exercise one call-local association workspace.
+        first_candidate = {
+            "source_bbox": (0.1, 0.1, 0.3, 0.3),
+            "target_bbox": (0.12, 0.1, 0.32, 0.3),
+            "confidence": 0.8,
+            "kind_hint": "mostly_horizontal_motion",
+            "properties": {},
+        }
+        second_candidate = {
+            **first_candidate,
+            "source_bbox": first_candidate["target_bbox"],
+            "target_bbox": (0.14, 0.1, 0.34, 0.3),
+        }
+
+        self.assertEqual(plugin._update_tracks([first_candidate]), [])
+        self.assertEqual(plugin._update_tracks([second_candidate]), [])
+        self.assertEqual(plugin._tracks[1].support_frames, 2)
+        self.assertEqual(plugin._update_tracks([]), [])
+        self.assertEqual(plugin._update_tracks([]), [1])
+        self.assertEqual(plugin._tracks, {})
+
+    def test_framework_namespaces_declared_diagnostics(self) -> None:
+        rgb = np.random.default_rng(11).integers(0, 256, (72, 96, 3), dtype=np.uint8)
+        shifted = np.roll(rgb, 2, axis=1)
+        mapper = PerceptionRunner.from_selection(
+            plugins=["motion_tracks"],
+            plugin_specs=_PERCEPTION_SPECS,
+            plugin_configs={"motion_tracks": {"max_features": 50, "search_radius": 8}},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            memory = {}
+            mapper.perceive(
+                build_perception_request(_sensor_frame(_array_reading(rgb), "first"), output_dir=output_dir, shared_memory=memory)
+            )
+            result = mapper.perceive(
+                build_perception_request(
+                    _sensor_frame(_array_reading(shifted), "second"),
+                    output_dir=output_dir,
+                    shared_memory=memory,
+                )
+            )
+            key = "motion_tracks/scene_tracks"
+            self.assertIn(key, result.artifacts)
+            self.assertTrue(Path(result.artifacts[key]).is_file())
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

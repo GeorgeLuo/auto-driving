@@ -6,53 +6,63 @@
   <title>Automa Perception</title>
   <style>
     :root {
-      color-scheme: light;
+      color-scheme: dark;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 14px;
-      letter-spacing: 0;
-      --ink: #17191c;
-      --muted: #62676f;
-      --line: #d9dde2;
-      --panel: #f6f7f8;
-      --paper: #ffffff;
-      --stage: #111315;
-      --green: #177245;
-      --amber: #a35b00;
-      --red: #a52a2a;
+      font-size: 13px;
+      letter-spacing: -0.01em;
+      --bg: #0a0a0a;
+      --fg: #ededed;
+      --muted: #8c8c8c;
+      --line: rgba(255, 255, 255, 0.14);
+      --green: #3ecf8e;
+      --amber: #e6b325;
+      --red: #ef6b6b;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
     * { box-sizing: border-box; }
 
+    html, body { height: 100%; }
+
     body {
       margin: 0;
       min-width: 320px;
-      background: var(--paper);
-      color: var(--ink);
+      background: var(--bg);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
     }
 
     header {
-      min-height: 52px;
-      padding: 8px 14px;
+      min-height: 40px;
+      padding: 8px 12px;
       border-bottom: 1px solid var(--line);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 14px;
+      gap: 12px;
     }
 
     .identity, .runtime-status {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       min-width: 0;
     }
 
-    .product { font-weight: 700; white-space: nowrap; }
-    .vehicle { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .product { font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .vehicle, #statusText {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .vehicle { font-family: var(--mono); }
 
     .status-dot {
-      width: 9px;
-      height: 9px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: var(--amber);
       flex: 0 0 auto;
@@ -62,31 +72,48 @@
     .status-dot.stale { background: var(--amber); }
     .status-dot.error { background: var(--red); }
 
-    button {
-      min-height: 32px;
-      border: 1px solid #aeb4bb;
-      border-radius: 4px;
-      padding: 5px 10px;
-      background: var(--paper);
-      color: var(--ink);
+    button, a.nav, span.nav {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 3px 8px;
+      background: transparent;
+      color: var(--muted);
       cursor: pointer;
       font: inherit;
+      font-size: 11px;
+      line-height: 1.35;
+      text-decoration: none;
     }
 
-    button:hover { background: #eceff1; }
+    button:hover, a.nav:hover, a.nav:focus-visible {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--fg);
+    }
+
+    span.nav, span.nav.unavailable { cursor: default; color: #6a6a6a; }
+
+    button:focus-visible, a.nav:focus-visible, label.toggle:focus-within {
+      outline: 1px solid rgba(255, 255, 255, 0.45);
+      outline-offset: 1px;
+    }
 
     main {
-      height: calc(100vh - 53px);
+      flex: 1;
+      min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(300px, 370px);
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 22rem);
+      grid-template-rows: minmax(0, 1fr);
       overflow: hidden;
     }
 
     .visual {
       min-width: 0;
       min-height: 0;
-      padding: 16px;
-      background: var(--stage);
+      padding: 8px;
+      background: #050505;
       display: grid;
       place-items: center;
       overflow: hidden;
@@ -103,7 +130,7 @@
     .stage img {
       display: block;
       max-width: 100%;
-      max-height: calc(100vh - 85px);
+      max-height: min(100%, calc(100vh - 64px));
       width: auto;
       height: auto;
     }
@@ -117,8 +144,9 @@
     }
 
     .empty {
-      color: #c6c9cd;
-      line-height: 1.5;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
       text-align: center;
     }
 
@@ -127,89 +155,168 @@
       min-height: 0;
       overflow: auto;
       border-left: 1px solid var(--line);
-      background: var(--paper);
+      background: var(--bg);
     }
 
-    .panel {
-      padding: 14px;
-      border-bottom: 1px solid var(--line);
-    }
+    .panel { padding: 10px 12px; border-bottom: 1px solid var(--line); }
 
     h2 {
-      margin: 0 0 10px;
-      font-size: 13px;
+      margin: 0 0 8px;
+      font-size: 10px;
       line-height: 1.2;
       text-transform: uppercase;
-      font-weight: 700;
-      color: #454a50;
-      letter-spacing: 0;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      color: rgba(140, 140, 140, 0.9);
     }
 
-    .toggle-grid { display: grid; gap: 8px; }
+    .toggle-grid { display: grid; gap: 6px; }
 
-    label.toggle, .kind-toggle {
-      min-height: 28px;
+    label.toggle {
+      position: relative;
+      min-height: 24px;
       display: flex;
       align-items: center;
       gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 8px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
       cursor: pointer;
     }
 
-    input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+    label.toggle:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--fg);
+    }
+
+    label.toggle:has(input:checked) {
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--fg);
+    }
+
+    label.toggle input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      opacity: 0;
+    }
 
     .swatch {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
       flex: 0 0 auto;
     }
 
     .metrics {
       display: grid;
-      grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
-      gap: 6px 10px;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 5px 16px;
       margin: 0;
+      font-size: 12px;
     }
 
     .metrics dt { color: var(--muted); }
-    .metrics dd { margin: 0; overflow-wrap: anywhere; }
-
-    .run-list, .thing-list {
-      display: grid;
-      gap: 6px;
+    .metrics dd {
+      margin: 0;
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-align: right;
+      overflow-wrap: break-word;
     }
 
+    .run-list, .thing-list { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+
     .run, .thing {
-      border-left: 3px solid #9aa1a8;
+      border: 1px solid var(--line);
+      border-radius: 6px;
       padding: 6px 8px;
-      background: var(--panel);
+      background: transparent;
       overflow-wrap: anywhere;
     }
 
-    .run.ok { border-color: var(--green); }
-    .run.error, .run.unavailable { border-color: var(--red); }
-    .secondary { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .run {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr);
+      column-gap: 8px;
+      align-items: start;
+    }
 
-    details summary { cursor: pointer; font-weight: 600; }
+    .run::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: #3a3a3a;
+      grid-row: 1 / span 2;
+    }
+
+    .run > div { grid-column: 2; }
+    .thing.marked {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr);
+      column-gap: 8px;
+      align-items: start;
+    }
+    .thing.marked::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: var(--mark, #3a3a3a);
+      grid-row: 1 / span 2;
+    }
+    .thing.marked > div { grid-column: 2; }
+    .run > div:first-of-type, .thing > div:first-of-type { color: var(--fg); font-size: 12px; }
+    .run.selected, .thing.selected {
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .run.ok::before, .run.active::before { background: var(--green); }
+    .run.error::before, .run.unavailable::before { background: var(--red); }
+    .run.inactive::before, .run.missing_input::before, .run.incompatible::before, .run.stale::before {
+      background: var(--amber);
+    }
+    .secondary { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    details summary { cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 500; }
+    details summary:hover { color: var(--fg); }
 
     pre {
-      margin: 10px 0 0;
-      padding: 10px;
-      max-height: 320px;
+      margin: 8px 0 0;
+      padding: 8px;
+      max-height: 280px;
       overflow: auto;
       border: 1px solid var(--line);
-      border-radius: 4px;
-      background: #f2f3f4;
-      color: #24272b;
-      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border-radius: 6px;
+      background: #111111;
+      color: var(--fg);
+      font: 11px/1.45 var(--mono);
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
 
     @media (max-width: 820px) {
+      body { height: auto; display: block; }
       header { align-items: flex-start; }
       .runtime-status { flex-wrap: wrap; justify-content: flex-end; }
-      main { height: auto; min-height: calc(100vh - 53px); grid-template-columns: 1fr; overflow: visible; }
+      main {
+        height: auto;
+        min-height: calc(100vh - 48px);
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        overflow: visible;
+      }
       .visual { min-height: 52vh; }
       .stage img { max-height: 65vh; }
       aside { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
@@ -219,16 +326,16 @@
 <body>
   <header>
     <div class="identity">
-      <span class="product">Automa Perception</span>
+      <span class="product">Perception</span>
       <span class="vehicle" id="vehicle">waiting</span>
     </div>
     <div class="runtime-status">
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Connecting</span>
-      <a class="nav" href="/" style="color:inherit;">Automa</a>
-      <a class="nav" href="/memory" style="color:inherit;text-decoration:none;border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-weight:600;">Memory map</a>
+      <a class="nav" href="/">Automa</a>
+      <a class="nav" href="/memory">Memory</a>
       __DECISION_NAV__
-      <button type="button" id="pauseButton">Pause updates</button>
+      <button type="button" id="pauseButton">Pause</button>
     </div>
   </header>
 
@@ -403,7 +510,7 @@
       kindToggles.replaceChildren();
       for (const kind of kinds) {
         const label = document.createElement("label");
-        label.className = "kind-toggle";
+        label.className = "toggle";
         const input = document.createElement("input");
         input.type = "checkbox";
         input.checked = kindState.get(kind) !== false;
@@ -507,6 +614,20 @@
       };
     }
 
+    // Every memory plugin's key count by plugin_id; /memory shows each ledger.
+    function memoryKeysText(memory) {
+      if (!memory) return "open /memory";
+      const plugins = Array.isArray(memory.plugins)
+        ? memory.plugins.filter((entry) => entry && typeof entry.plugin_id === "string")
+        : [];
+      if (!plugins.length) return "no plugins";
+      return plugins.map((entry) => {
+        const state = entry.state || {};
+        const count = state.record_count ?? (Array.isArray(state.records) ? state.records.length : "?");
+        return `${entry.plugin_id} ${count}`;
+      }).join(", ");
+    }
+
     function renderData() {
       document.getElementById("vehicle").textContent = latest.vehicle_id || "unknown vehicle";
       const metrics = document.getElementById("frameMetrics");
@@ -520,7 +641,12 @@
       appendMetric(metrics, "Perception", `${latest.cycle?.perception_duration_ms ?? "?"} ms`);
       appendMetric(metrics, "Confidence", Number(latest.perception?.confidence || 0).toFixed(3));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");
-      appendMetric(metrics, "Memory keys", latest.memory?.record_count ?? latest.memory?.records?.length ?? "open /memory");
+      appendMetric(metrics, "Memory keys", memoryKeysText(latest.memory));
+      appendMetric(
+        metrics,
+        "Evidence publisher",
+        latest.memory ? latest.memory.evidence_publisher || "none" : "—"
+      );
 
       const runs = document.getElementById("pluginRuns");
       runs.replaceChildren();
@@ -541,8 +667,8 @@
       things.replaceChildren();
       for (const thing of latest.perception?.things || []) {
         const row = document.createElement("div");
-        row.className = "thing";
-        row.style.borderColor = colorFor(String(thing.kind || "unknown"));
+        row.className = "thing marked";
+        row.style.setProperty("--mark", colorFor(String(thing.kind || "unknown")));
         const name = document.createElement("div");
         name.textContent = thing.label || thing.thing_id || "unnamed finding";
         const detail = document.createElement("div");
@@ -602,7 +728,7 @@
     });
     pauseButton.addEventListener("click", () => {
       paused = !paused;
-      pauseButton.textContent = paused ? "Resume updates" : "Pause updates";
+      pauseButton.textContent = paused ? "Resume" : "Pause";
       setStatus(paused ? "Paused" : "Live", paused ? "" : "live");
       if (!paused) refresh();
     });

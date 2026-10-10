@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from autonomy.runtime.layout import RuntimeLayout
+
 from .paths import ROOT, display_path
 
 AUTONOMY_DIR = ROOT / "autonomy"
@@ -17,21 +19,7 @@ IMPLEMENTATIONS_DIR = ROOT / "implementations"
 
 
 def controller_bundle_paths(vehicle_runtime_dir: Path) -> dict[str, str]:
-    bundle_root = vehicle_runtime_dir / "bundle"
-    autonomy_dir = bundle_root / "autonomy"
-    implementations_dir = bundle_root / "implementations"
-    runtime_dir = bundle_root / "runtime"
-    return {
-        "root_dir": str(bundle_root),
-        "autonomy_dir": str(autonomy_dir),
-        "implementations_dir": str(implementations_dir),
-        "perception_dir": str(implementations_dir / "perception"),
-        "decision_dir": str(implementations_dir / "decision"),
-        "runtime_dir": str(runtime_dir),
-        "perception_runtime_dir": str(runtime_dir / "perception"),
-        "decision_runtime_dir": str(runtime_dir / "decision"),
-        "memory_runtime_dir": str(runtime_dir / "memory"),
-    }
+    return RuntimeLayout(vehicle_runtime_dir / "bundle").bundle_paths()
 
 
 def sync_controller_bundle(bundle: dict[str, str], *, output: TextIO | None) -> dict[str, Any]:

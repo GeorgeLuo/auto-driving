@@ -42,7 +42,7 @@ class ChaseCaptureValidationError(ValueError):
 def coerce_simulator_frame_index(value: Any) -> int | None:
     """Return a non-negative int frame index, or None when absent/invalid.
 
-    Tolerant helper for local/serialized metadata (snapshots, files, memory).
+    Tolerant helper for local/serialized metadata (sensor frames, files, memory).
     Untrusted Metrics UI wire fields must use require_protocol_frame_index.
     """
 
@@ -79,10 +79,10 @@ def format_chase_frame_id(frame_index: int) -> str:
     return f"chase_frame_{int(frame_index):06d}"
 
 
-def simulator_frame_index_from_snapshot(snapshot: Any) -> int | None:
-    """Extract simulator frame index from a SensorSnapshot or its dict form."""
+def simulator_frame_index_from_sensor_frame(sensor_frame: Any) -> int | None:
+    """Extract simulator frame index from a SensorFrame or its dict form."""
 
-    for metadata in _snapshot_metadata_records(snapshot):
+    for metadata in _sensor_frame_metadata_records(sensor_frame):
         for key in ("simulator_frame_index", "frame_index", "frameIndex"):
             index = coerce_simulator_frame_index(metadata.get(key))
             if index is not None:
@@ -90,10 +90,10 @@ def simulator_frame_index_from_snapshot(snapshot: Any) -> int | None:
     return None
 
 
-def simulator_epoch_from_snapshot(snapshot: Any) -> str | None:
-    """Extract the simulation-run epoch from a SensorSnapshot or dict form."""
+def simulator_epoch_from_sensor_frame(sensor_frame: Any) -> str | None:
+    """Extract the simulation-run epoch from a SensorFrame or dict form."""
 
-    for metadata in _snapshot_metadata_records(snapshot):
+    for metadata in _sensor_frame_metadata_records(sensor_frame):
         for key in ("simulation_epoch", "simulationEpoch"):
             value = metadata.get(key)
             if isinstance(value, str) and value.strip():
@@ -101,7 +101,7 @@ def simulator_epoch_from_snapshot(snapshot: Any) -> str | None:
     return None
 
 
-def build_chase_shadow_reference(
+def build_chaser_reference(
     capture: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     """Return the optional bounded evaluator reference when it is valid."""
@@ -326,7 +326,7 @@ def evaluate_chase_evaluator_reference(
         )
 
     bounded = {
-        "schema": "chase_shadow_reference_v1",
+        "schema": "chaser_reference_v1",
         "evaluator_only": True,
         "capture_id": sensor["capture_id"],
         "actor_id": sensor["actor_id"],
@@ -357,46 +357,46 @@ def frame_indices_strictly_increasing(indices: list[int]) -> bool:
     return all(indices[index] < indices[index + 1] for index in range(len(indices) - 1))
 
 
-def align_candidate_with_shadow(
+def align_candidate_with_reference(
     *,
     candidate_frame_index: int | None,
     candidate_simulation_epoch: str | None,
-    shadow_reference: dict[str, Any] | None,
+    chaser_reference: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Score candidate/reference alignment using full simulation-run identity."""
 
-    shadow_index = None
-    shadow_epoch = None
-    if isinstance(shadow_reference, dict):
-        shadow_index = coerce_simulator_frame_index(
-            shadow_reference.get("simulator_frame_index")
-            if shadow_reference.get("simulator_frame_index") is not None
-            else shadow_reference.get("frame_index")
+    reference_index = None
+    reference_epoch = None
+    if isinstance(chaser_reference, dict):
+        reference_index = coerce_simulator_frame_index(
+            chaser_reference.get("simulator_frame_index")
+            if chaser_reference.get("simulator_frame_index") is not None
+            else chaser_reference.get("frame_index")
         )
-        shadow_epoch = _nonempty_string(shadow_reference.get("simulation_epoch"))
+        reference_epoch = _nonempty_string(chaser_reference.get("simulation_epoch"))
     candidate_epoch = _nonempty_string(candidate_simulation_epoch)
     matched = (
         candidate_frame_index is not None
-        and shadow_index is not None
-        and int(candidate_frame_index) == int(shadow_index)
+        and reference_index is not None
+        and int(candidate_frame_index) == int(reference_index)
         and candidate_epoch is not None
-        and candidate_epoch == shadow_epoch
+        and candidate_epoch == reference_epoch
     )
     return {
         "aligned": matched,
         "candidate_frame_index": candidate_frame_index,
-        "shadow_frame_index": shadow_index,
+        "reference_frame_index": reference_index,
         "candidate_simulation_epoch": candidate_epoch,
-        "shadow_simulation_epoch": shadow_epoch,
+        "reference_simulation_epoch": reference_epoch,
         "reason": (
-            "candidate and shadow share simulation epoch and frame index"
+            "candidate and reference share simulation epoch and frame index"
             if matched
-            else "candidate/shadow simulation-run identity mismatch or missing"
+            else "candidate/reference simulation-run identity mismatch or missing"
         ),
     }
 
 
-def score_shadow_alignment_batch(
+def score_reference_alignment_batch(
     frames: list[dict[str, Any]],
     *,
     min_frames: int = 2,
@@ -409,7 +409,7 @@ def score_shadow_alignment_batch(
     scenarios: set[str] = set()
     epochs: set[str] = set()
     missing_identity = 0
-    missing_shadow = 0
+    missing_reference = 0
     missing_run_identity = 0
     mismatched = 0
     for frame in frames:
@@ -422,10 +422,10 @@ def score_shadow_alignment_batch(
             else frame.get("frame_index")
         )
         candidate_epoch = _nonempty_string(frame.get("simulation_epoch"))
-        shadow = frame.get("shadow_reference")
-        if not isinstance(shadow, dict):
-            shadow = None
-            missing_shadow += 1
+        reference = frame.get("chaser_reference")
+        if not isinstance(reference, dict):
+            reference = None
+            missing_reference += 1
         if index is None:
             missing_identity += 1
         else:
@@ -433,10 +433,10 @@ def score_shadow_alignment_batch(
         if candidate_epoch is None:
             missing_run_identity += 1
 
-        if shadow is not None:
-            game = _nonempty_string(shadow.get("game_id"))
-            scenario = _nonempty_string(shadow.get("scenario"))
-            epoch = _nonempty_string(shadow.get("simulation_epoch"))
+        if reference is not None:
+            game = _nonempty_string(reference.get("game_id"))
+            scenario = _nonempty_string(reference.get("scenario"))
+            epoch = _nonempty_string(reference.get("simulation_epoch"))
             if game is None or scenario is None or epoch is None:
                 missing_run_identity += 1
             else:
@@ -444,13 +444,13 @@ def score_shadow_alignment_batch(
                 scenarios.add(scenario)
                 epochs.add(epoch)
 
-        alignment = align_candidate_with_shadow(
+        alignment = align_candidate_with_reference(
             candidate_frame_index=index,
             candidate_simulation_epoch=candidate_epoch,
-            shadow_reference=shadow,
+            chaser_reference=reference,
         )
         alignments.append({"frame_id": frame.get("frame_id"), **alignment})
-        if index is not None and shadow is not None and not alignment["aligned"]:
+        if index is not None and reference is not None and not alignment["aligned"]:
             mismatched += 1
 
     advancing = frame_indices_strictly_increasing(indices)
@@ -464,7 +464,7 @@ def score_shadow_alignment_batch(
     passed = (
         len(alignments) >= min_frames
         and missing_identity == 0
-        and missing_shadow == 0
+        and missing_reference == 0
         and mismatched == 0
         and advancing
         and consistent_run_identity
@@ -478,12 +478,12 @@ def score_shadow_alignment_batch(
                 "error": "evaluator_reference_unavailable",
                 "layer": "capture",
                 "message": (
-                    "Shadow alignment requires a valid evaluator actor-control "
+                    "Reference alignment requires a valid evaluator actor-control "
                     "reference for every candidate frame; sensor perception remains usable."
                 ),
                 "details": {
-                    "required_procedure": "shadow_reference_alignment",
-                    "missing_reference_frames": missing_shadow,
+                    "required_procedure": "chaser_reference_alignment",
+                    "missing_reference_frames": missing_reference,
                 },
                 "recovery": (
                     "Use sensor-only perception, or rerun the reference-dependent "
@@ -491,13 +491,13 @@ def score_shadow_alignment_batch(
                 ),
                 "exit_code": 1,
             }
-            if missing_shadow
+            if missing_reference
             else None
         ),
         "frame_count": len(alignments),
         "aligned_count": aligned_count,
         "missing_identity": missing_identity,
-        "missing_shadow": missing_shadow,
+        "missing_reference": missing_reference,
         "missing_run_identity": missing_run_identity,
         "mismatched": mismatched,
         "advancing_simulator_frames": advancing,
@@ -519,17 +519,17 @@ def score_shadow_alignment_batch(
     }
 
 
-def _snapshot_metadata_records(snapshot: Any) -> list[dict[str, Any]]:
-    if snapshot is None:
+def _sensor_frame_metadata_records(sensor_frame: Any) -> list[dict[str, Any]]:
+    if sensor_frame is None:
         return []
     metadata: dict[str, Any] = {}
     readings: dict[str, Any] = {}
-    if isinstance(snapshot, dict):
-        maybe_metadata = snapshot.get("metadata")
-        maybe_readings = snapshot.get("readings")
+    if isinstance(sensor_frame, dict):
+        maybe_metadata = sensor_frame.get("metadata")
+        maybe_readings = sensor_frame.get("readings")
     else:
-        maybe_metadata = getattr(snapshot, "metadata", None)
-        maybe_readings = getattr(snapshot, "readings", None)
+        maybe_metadata = getattr(sensor_frame, "metadata", None)
+        maybe_readings = getattr(sensor_frame, "readings", None)
     if isinstance(maybe_metadata, dict):
         metadata = maybe_metadata
     if isinstance(maybe_readings, dict):

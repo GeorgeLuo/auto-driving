@@ -1,16 +1,14 @@
 from __future__ import annotations
 import json
-import os
 import threading
 import unittest
 from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
-from cli.automa_cli import decision as decision_module
-from cli.automa_cli.decision import get_vehicle_decision_info, update_vehicle_decision
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
+from tests.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
     LiveRuntimeDecisionViewFixture,
 )
@@ -26,12 +24,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             "frame_index": stream_frame["frame_index"],
             "captured_at_ms": stream_frame["timestamp_ms"],
             "run_id": "run-live",
-            "worker_pid": os.getpid(),
         }
         rejected_frame = {**stream_frame, "cycle": None}
         self.assertFalse(
             self.server.decision.publish(
-                stream_frame=rejected_frame,
+                report=rejected_frame,
                 frame_record=frame_record,
                 image=self.server.perception.frame(stream_frame["frame_id"]),
             )
@@ -150,19 +147,13 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertNotIn("error", reader_result)
         self.assertEqual(reader_result.get("body"), expected_image)
 
-    def test_info_reports_generation_url_while_warming(self) -> None:
+    def test_view_names_its_generation_page_while_warming(self) -> None:
         generation = self.server.decision.generation_id
         self.assertIsNotNone(generation)
-        info = get_vehicle_decision_info(
-            vehicle_id="chase-sim-chaser", json_output=True
-        )
-        self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["combined_view"]
-        self.assertTrue(combined["available"])
-        self.assertEqual(combined["status"], "warming")
-        self.assertEqual(
-            combined["url"], f"{self.server.url}decision?generation={generation}"
-        )
+        health = self.server.decision.health_payload()
+        self.assertTrue(health["available"])
+        self.assertEqual(health["status"], "warming")
+        self.assertEqual(self.server.decision.page_url(), f"/decision?generation={generation}")
 
     def test_stale_decision_is_unavailable_through_api(self) -> None:
         stream_frame, _expected_image = self._publish_exact_transaction()
@@ -170,7 +161,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertIsNotNone(generation)
         stale_now = (
             stream_frame["published_at_ms"]
-            + decision_module.DECISION_STREAM_MAX_AGE_MS
+            + STALE_AFTER_MS
             + 1
         )
         with patch("cli.automa_cli.decision_view._now_ms", return_value=stale_now):
@@ -183,43 +174,32 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         error = json.loads(caught.exception.read().decode("utf-8"))
         self.assertEqual(error["reason"], "decision_stale")
 
-    def test_old_session_is_unavailable_after_public_activation_restaging(self) -> None:
+    def test_adopted_generation_moves_the_view_and_names_it_to_old_sessions(self) -> None:
         self._publish_exact_transaction()
         old_generation = self.server.decision.generation_id
-        self.assertIsNotNone(old_generation)
-        old_latest_url = (
-            f"{self.server.url}api/decision/latest?generation={old_generation}"
-        )
-        with urlopen(old_latest_url, timeout=1.0) as response:
-            old_payload = json.loads(response.read().decode("utf-8"))
-        old_image_url = (
-            f"{self.server.url.rstrip('/')}{old_payload['current_image']['url']}"
-        )
+        # The host applies a new decision generation; the view follows it.
+        self.activation = {**self.activation, "generation_id": "f" * 64}
+        self.server.decision.adopt(self._producer())
+        new_generation = self.server.decision.generation_id
+        self.assertNotEqual(new_generation, old_generation)
 
-        # Use the public update command to replace the active decision
-        # generation while the old producer is still serving its URL.
-        restage = update_vehicle_decision(
-            vehicle_id="chase-sim-chaser",
-            engine_id="idle",
-            json_output=True,
-        )
-        self.assertEqual(restage.exit_code, 0, restage.message)
-        current_activation = json.loads(
-            self.activation_path.read_text(encoding="utf-8")
-        )
-        self.assertEqual(current_activation["decision"]["engine_id"], "idle")
-        self.assertNotEqual(current_activation, self.activation)
+        with self.assertRaises(HTTPError) as rejected:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={old_generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(rejected.exception.code, 409)
+        error = json.loads(rejected.exception.read().decode("utf-8"))
+        self.assertEqual(error["generation_id"], new_generation)
+        self.assertEqual(error["identity"]["run_id"], "run-live")
 
-        for old_url in (old_latest_url, old_image_url):
-            with self.subTest(old_url=old_url):
-                with self.assertRaises(HTTPError) as rejected:
-                    urlopen(old_url, timeout=1.0)
-                self.assertEqual(rejected.exception.code, 503)
-                error = json.loads(rejected.exception.read().decode("utf-8"))
-                self.assertEqual(error["status"], "unavailable")
-                self.assertEqual(error["reason"], "activation_mismatch")
-                self.assertNotIn("transaction_id", error)
-                self.assertNotIn("current_image", error)
+        self._publish_exact_transaction()
+        with urlopen(
+            f"{self.server.url}api/decision/latest?generation={new_generation}",
+            timeout=1.0,
+        ) as response:
+            self.assertEqual(json.loads(response.read().decode("utf-8"))["status"], "current")
+        self.assertEqual(self.server.decision.page_url(), f"/decision?generation={new_generation}")
 
     def test_old_session_cannot_attach_to_same_port_replacement(self) -> None:
         self._publish_exact_transaction()
@@ -240,9 +220,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             automation_dir=self.automation_dir,
             port=old_port,
             run_id="run-replacement",
-            worker_pid=os.getpid(),
-            decision_activation=self.activation,
-            decision_activation_path=self.activation_path,
+            decision_identity=self._producer("run-replacement"),
         ).start()
         self.addCleanup(replacement.stop)
         replacement_frame, replacement_image = self._publish_exact_transaction(

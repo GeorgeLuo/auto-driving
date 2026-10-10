@@ -5,10 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from implementations.perception.catalog import (
-    PERCEPTION_MAPPER_SPEC,
-    PERCEPTION_PLUGIN_SPECS,
-)
+from autonomy.decision_cycle.activation import step_activation
+from implementations.decision_cycle.catalog import preset_activation
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -19,7 +17,6 @@ AUTOMA_PATH = WORKSPACE_ROOT / "cli" / "automa"
 class RuntimeFixturePaths:
     bundle_root: Path
     perception_activation: Path
-    decision_activation: Path
     automation_process: Path
     automation_state: Path
 
@@ -35,45 +32,22 @@ def write_runtime_fixture(
     bundle_root = runtime_root / vehicle_id / "bundle"
     activation_bundle_root = manifest_bundle_root or bundle_root
     perception_activation = bundle_root / "runtime" / "perception" / "active.json"
-    decision_activation = bundle_root / "runtime" / "decision" / "active.json"
     automation_process = bundle_root / "runtime" / "automation" / "process.json"
     automation_state = bundle_root / "runtime" / "automation" / "state.json"
 
+    packaged = preset_activation("perception", "sim_debug")
     write_json(
         perception_activation,
-        {
-            "schema": "automa_perception_activation_v0",
-            "perception": {
-                "algorithm": "sim_debug",
-                "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                "mapper_config": {
-                    "plugins": ["frame", "sim_color_targets"],
-                    "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
-                },
+        step_activation(
+            "perception",
+            packaged.plugins,
+            packaged.plugin_specs,
+            packaged.plugin_configs,
+            metadata={
+                **packaged.metadata,
+                "controller_bundle": {"root_dir": str(activation_bundle_root)},
             },
-            "controller_bundle": {
-                "root_dir": str(activation_bundle_root),
-                "perception_source_dir": str(WORKSPACE_ROOT / "autonomy" / "perception"),
-            },
-        },
-    )
-    write_json(
-        decision_activation,
-        {
-            "schema": "automa_decision_activation_v0",
-            "decision": {
-                "engine_id": "idle",
-                "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
-                "engine_config": {},
-                "engine_schema": {
-                    "schema": "autonomy_engine_schema_v0",
-                    "engine_id": "idle",
-                },
-            },
-            "controller_bundle": {
-                "root_dir": str(activation_bundle_root),
-            },
-        },
+        ).to_payload(),
     )
     write_json(
         automation_process,
@@ -94,12 +68,12 @@ def write_runtime_fixture(
             "run_id": "test-run",
             "status": "running",
             "pid": pid,
-            "frames_processed": 3,
-            "max_frames": None,
+            "processed_count": 3,
+            "num_decisions": 0,
             "interval_s": 1.0,
             "recording": False,
             "control_source": "external_ws",
-            "action_policy": "engine_idle",
+            "action_policy": "cycle_idle",
             "last_frame": {
                 "frame_id": "frame_000002",
                 "things": 2,
@@ -113,7 +87,6 @@ def write_runtime_fixture(
     return RuntimeFixturePaths(
         bundle_root=bundle_root,
         perception_activation=perception_activation,
-        decision_activation=decision_activation,
         automation_process=automation_process,
         automation_state=automation_state,
     )

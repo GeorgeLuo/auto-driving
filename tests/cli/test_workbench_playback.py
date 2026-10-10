@@ -4,10 +4,16 @@ import unittest
 from functools import partial
 from urllib.parse import urlencode
 from urllib.request import urlopen
-from autonomy.perception import PerceptionEvidenceBatch, PerceptionPluginContract, PerceptionSignal
-from autonomy.perception.mappers import PluginPerceptionMapper
-from autonomy.decision.memory import MemorySnapshot
-from cli.automa_cli.workbench_runner import _default_memory_step
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceptionEvidenceBatch,
+    PerceptionSignal,
+)
+from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
+from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
     FixtureMapper,
@@ -28,12 +34,12 @@ class RecordingMapper(FixtureMapper):
 
     def perceive(self, request):
         self.legacy_handoff.append("prior_memory" in request.metadata)
-        self.priors.append(request.shared_memory.get("decision.snapshot"))
+        self.priors.append(request.shared_memory.get(LEDGER_KEY))
         return super().perceive(request)
 
 
 class SharedMemoryProbe:
-    plugin_id = "shared-memory-probe"
+    plugin_id = "probe"
     contract = PerceptionPluginContract()
 
     def __init__(self):
@@ -42,7 +48,7 @@ class SharedMemoryProbe:
     def perceive(self, inputs):
         shared_memory = inputs.shared_memory
         self.reads.append((
-            shared_memory.get("decision.snapshot"),
+            shared_memory.get(LEDGER_KEY),
             shared_memory.get("test.step"),
         ))
         shared_memory["test.perception"] = inputs.frame_id
@@ -51,44 +57,43 @@ class SharedMemoryProbe:
 
 class WorkbenchTests(unittest.TestCase):
     def test_shared_memory_connects_plugin_and_memory_step_across_frames(self):
-        mapper = PluginPerceptionMapper(
+        perception_step = PerceptionRunner.from_selection(
             plugins=["probe"],
             plugin_specs={"probe": f"{__name__}:SharedMemoryProbe"},
         )
         step_reads = []
-        snapshots = []
+        reports = []
         published = []
 
         def memory_factory():
-            step = _default_memory_step()
+            step = MemoryRunner.from_activation(selection_activation("memory"))
 
             class RecordingStep:
                 def __call__(self, context, observation):
                     step_reads.append(context.shared_memory["test.perception"])
                     context.shared_memory["test.step"] = context.frame_id
-                    snapshot = step(context, observation)
-                    snapshots.append(snapshot)
-                    published.append(context.shared_memory["decision.snapshot"])
-                    return snapshot
+                    report = step(context, observation)
+                    reports.append(report)
+                    published.append(context.shared_memory[LEDGER_KEY])
+                    return report
 
-                def reset(self):
-                    return step.reset()
+                def reset(self, shared_memory=None):
+                    return step.reset(shared_memory)
 
             return RecordingStep()
 
         with image_source(2) as root:
             runner = ImageReplayRunner(
-                root, cadence_ms=0, mapper_factory=lambda: mapper,
-                memory_step_factory=memory_factory,
+                root, cadence_ms=0, step_factories={"perception": lambda: perception_step, "memory": memory_factory},
             )
             runner.start()
             completed = runner.wait(5)
             self.assertEqual(completed["phase"], "completed")
-            reads = mapper.plugins[0].reads
+            reads = perception_step.plugins["probe"].reads
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["memory"], snapshots[-1].to_dict())
+            self.assertEqual(completed["steps"]["memory"], reports[-1])
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))
@@ -143,45 +148,45 @@ class WorkbenchTests(unittest.TestCase):
                     },
                 ]
             })
-            mapper = RecordingMapper()
+            perception_step = RecordingMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                step_factories={"perception": lambda: perception_step},
             )
 
             runner.start()
             completed = runner.wait(5)
 
         self.assertEqual(completed["phase"], "completed")
-        self.assertEqual(len(mapper.priors), 2)
-        self.assertIsNone(mapper.priors[0])
-        self.assertIsInstance(mapper.priors[1], MemorySnapshot)
-        self.assertEqual(mapper.legacy_handoff, [False, False])
+        self.assertEqual(len(perception_step.priors), 2)
+        self.assertIsNone(perception_step.priors[0])
+        self.assertIsInstance(perception_step.priors[1], EvidenceLedger)
+        self.assertEqual(perception_step.legacy_handoff, [False, False])
 
     def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
         with image_source(4) as root:
-            mapper = FixtureMapper()
+            perception_step = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=5000,
-                mapper_factory=lambda: mapper,
+                step_factories={"perception": lambda: perception_step},
             )
             started = runner.start()
             run_id = started["run_id"]
             _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
             paused = runner.dispatch("pause", run_id=run_id)
             first_id = paused["current_frame"]["frame_id"]
-            calls_after_first = len(mapper.calls)
+            calls_after_first = len(perception_step.calls)
             self.assertIn("seek", paused["controls"]["allowed_actions"])
 
             sought = runner.dispatch("seek", run_id=run_id, position=2)
             self.assertEqual(sought["phase"], "paused")
             self.assertEqual(sought["current_frame"]["position"], 2)
             self.assertEqual(sought["position"], 3)
-            self.assertEqual(len(mapper.calls), calls_after_first + 2)
+            self.assertEqual(len(perception_step.calls), calls_after_first + 2)
             self.assertEqual(
-                sought["decision"]["frame_id"],
+                sought["steps"]["decision"]["frame_id"],
                 sought["current_frame"]["frame_id"],
             )
             self.assertEqual(
@@ -193,41 +198,39 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["phase"], "paused")
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
-            self.assertEqual(cached["decision"]["frame_id"], first_id)
-            self.assertEqual(len(mapper.calls), calls_after_first + 2)
+            self.assertEqual(cached["steps"]["decision"]["frame_id"], first_id)
+            self.assertEqual(len(perception_step.calls), calls_after_first + 2)
             cached_next = runner.dispatch("step", run_id=run_id)
             self.assertEqual(cached_next["current_frame"]["position"], 1)
-            self.assertEqual(len(mapper.calls), calls_after_first + 2)
+            self.assertEqual(len(perception_step.calls), calls_after_first + 2)
 
             with self.assertRaises(ReplayActionError):
                 runner.dispatch("seek", run_id=run_id, position=99)
             with self.assertRaises(ReplayActionError):
                 runner.dispatch("seek", run_id=run_id)
-            runner.dispatch("cancel", run_id=run_id)
+            runner.dispatch("reset", run_id=run_id)
 
         idle = ImageReplayRunner()
         with self.assertRaises(ReplayActionError):
             idle.dispatch("seek", run_id="missing", position=0)
 
-    def test_loop_playback_rewinds_instead_of_completing(self) -> None:
+    def test_loop_playback_reprocesses_the_capture_each_pass(self) -> None:
         with image_source(2) as root:
-            mapper = FixtureMapper()
+            perception_step = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                step_factories={"perception": lambda: perception_step},
                 loop=True,
             )
             started = runner.start()
             run_id = started["run_id"]
             self.assertTrue(started["controls"]["loop"])
-            _wait_until(
-                lambda: runner.state()["machine_detail"]["last_transition"]["action"] == "loop"
-            )
+            # Each pass runs both frames through the pipelines again.
+            _wait_until(lambda: len(perception_step.calls) >= 4)
             live = runner.state()
             self.assertEqual(live["phase"], "running")
             self.assertLessEqual(len(live["timeline"]), 2)
-            self.assertEqual(len(mapper.calls), 2)
             runner.dispatch("set_loop", run_id=run_id, loop=False)
             finished = runner.wait(5)
             self.assertEqual(finished["phase"], "completed")
@@ -252,7 +255,7 @@ class WorkbenchTests(unittest.TestCase):
             frame = urlopen(base + "api/frame?" + query, timeout=2)
             self.assertEqual(frame.status, 200)
             self.assertTrue(frame.read())
-            post({"action": "cancel", "run_id": run_id})
+            post({"action": "reset", "run_id": run_id})
 
     def test_realtime_pace_honors_recorded_frame_timestamps(self) -> None:
         with image_source(3) as root:
@@ -280,7 +283,7 @@ class WorkbenchTests(unittest.TestCase):
                 root,
                 cadence_ms=0,
                 pace="realtime",
-                mapper_factory=FixtureMapper,
+                step_factories={"perception": FixtureMapper},
             )
             started = runner.start()
             self.assertEqual(started["controls"]["pace"], "realtime")

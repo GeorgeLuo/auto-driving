@@ -1,0 +1,276 @@
+"""Baseline paths for the decision-cycle module move.
+
+Legacy columns stay when an owner moves. Update the canonical module and
+attribute so the old spec, export, or import still resolves to that owner.
+Do not rebuild this list from the current tree: dropping a string from a
+catalog or ``__all__`` does not retire the path.
+
+A deliberate restructure may retire paths. Rewrite the legacy columns to the
+new paths in the same change; activations and manifests that stored the old
+paths are re-staged rather than kept loadable.
+
+Specs include production ``module:attribute`` paths: catalog plugin specs and
+the camera provider. Exports include ``__all__`` names plus workbench imports
+that are not on those lists.
+"""
+
+from __future__ import annotations
+
+# (legacy spec, canonical module, canonical attribute)
+LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
+    ("autonomy.decision_cycle.perception.runner:PerceptionRunner", "autonomy.decision_cycle.perception.runner", "PerceptionRunner"),
+    ("autonomy.decision_cycle.memory.runner:MemoryRunner", "autonomy.decision_cycle.memory.runner", "MemoryRunner"),
+    ("autonomy.decision_cycle.proposal.runner:ProposalRunner", "autonomy.decision_cycle.proposal.runner", "ProposalRunner"),
+    ("autonomy.decision_cycle.observation.perception_summary:PerceptionSummary", "autonomy.decision_cycle.observation.perception_summary", "PerceptionSummary"),
+    ("autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan", "autonomy.decision_cycle.plan.highest_confidence", "HighestConfidencePlan"),
+    ("autonomy.decision_cycle.action.hold:HoldAction", "autonomy.decision_cycle.action.hold", "HoldAction"),
+    ("autonomy.decision_cycle.action.selected:SelectedAction", "autonomy.decision_cycle.action.selected", "SelectedAction"),
+    ("implementations.decision_cycle.action.mode.plugin:ModeAction", "implementations.decision_cycle.action.mode.plugin", "ModeAction"),
+    ("implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger", "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger"),
+    ("implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:AvoidRecentObstruction", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin", "AvoidRecentObstruction"),
+    ("implementations.decision_cycle.perception.feeds.camera:provide_camera_frame", "implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame"),
+    ("implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin", "implementations.decision_cycle.perception.plugins.motion_tracks.plugin", "MotionTracksPlugin"),
+    ("implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin", "implementations.decision_cycle.perception.plugins.frame.plugin", "FrameObservationPlugin"),
+    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin"),
+    ("implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin", "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin"),
+    ("implementations.decision_cycle.perception.plugins.floor_plane.plugin:FloorPlanePlugin", "implementations.decision_cycle.perception.plugins.floor_plane.plugin", "FloorPlanePlugin"),
+    ("implementations.decision_cycle.perception.plugins.classical_regions.plugin:ClassicalRegionPlugin", "implementations.decision_cycle.perception.plugins.classical_regions.plugin", "ClassicalRegionPlugin"),
+    ("implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin:CompositeBoxFusionPlugin", "implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin", "CompositeBoxFusionPlugin"),
+    ("implementations.decision_cycle.perception.plugins.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin", "implementations.decision_cycle.perception.plugins.composite_box_fusion_object_separated.plugin", "CompositeBoxFusionPlugin"),
+    ("implementations.decision_cycle.perception.plugins.floor_continuity.plugin:FloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity.plugin", "FloorContinuityPlugin"),
+    ("implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin", "CaptureFloorContinuityPlugin"),
+    ("implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin", "implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin", "TemporalFloorContinuityPlugin"),
+    ("implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin", "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin", "MultiObstructionTracksPlugin"),
+)
+
+# (legacy module, canonical module). Both stay importable. They are not
+# required to be the same module object once a forwarding shim exists.
+LEGACY_MODULES: tuple[tuple[str, str], ...] = (
+    # Engine spec modules named by decision activations.
+    ("autonomy.decision_cycle.cycle", "autonomy.decision_cycle.cycle"),
+)
+
+# (legacy module, legacy attribute, canonical module, canonical attribute)
+LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
+    # Formerly exported by autonomy.decision
+    ("autonomy.decision_cycle.plan.values", "ACTION_PLAN_SCHEMA", "autonomy.decision_cycle.plan.values", "ACTION_PLAN_SCHEMA"),
+    ("autonomy.decision_cycle.proposal.values", "ACTION_PROPOSAL_SCHEMA", "autonomy.decision_cycle.proposal.values", "ACTION_PROPOSAL_SCHEMA"),
+    ("autonomy.decision_cycle.plan.values", "ActionPlan", "autonomy.decision_cycle.plan.values", "ActionPlan"),
+    ("autonomy.decision_cycle.proposal.values", "ActionProposal", "autonomy.decision_cycle.proposal.values", "ActionProposal"),
+    ("autonomy.decision_cycle.memory.runner", "MemoryRunner", "autonomy.decision_cycle.memory.runner", "MemoryRunner"),
+    ("autonomy.decision_cycle.proposal.inputs", "evidence_envelope", "autonomy.decision_cycle.proposal.inputs", "evidence_envelope"),
+    ("autonomy.decision_cycle.proposal.inputs", "ComponentEnvelope", "autonomy.decision_cycle.proposal.inputs", "ComponentEnvelope"),
+    ("autonomy.decision_cycle.cycle", "DECISION_CYCLE_RESULT_SCHEMA", "autonomy.decision_cycle.cycle", "DECISION_CYCLE_RESULT_SCHEMA"),
+    ("autonomy.decision_cycle.proposal.inputs", "DECISION_DATA_SOURCE_SCHEMA", "autonomy.decision_cycle.proposal.inputs", "DECISION_DATA_SOURCE_SCHEMA"),
+    ("autonomy.decision_cycle.cycle", "DecisionCycle", "autonomy.decision_cycle.cycle", "DecisionCycle"),
+    ("autonomy.decision_cycle.cycle", "DecisionCycleResult", "autonomy.decision_cycle.cycle", "DecisionCycleResult"),
+    ("autonomy.decision_cycle.proposal.inputs", "DecisionDataSource", "autonomy.decision_cycle.proposal.inputs", "DecisionDataSource"),
+    ("autonomy.decision_cycle.context", "DecisionFrameContext", "autonomy.decision_cycle.context", "DecisionFrameContext"),
+    ("autonomy.decision_cycle.cycle", "DecisionSteps", "autonomy.decision_cycle.cycle", "DecisionSteps"),
+    ("autonomy.decision_cycle.memory.plugin", "MemoryPlugin", "autonomy.decision_cycle.memory.plugin", "MemoryPlugin"),
+    ("autonomy.decision_cycle.memory.evidence", "MemoryOrigin", "autonomy.decision_cycle.memory.evidence", "MemoryOrigin"),
+    ("autonomy.decision_cycle.memory.errors", "MemoryUpdateError", "autonomy.decision_cycle.memory.errors", "MemoryUpdateError"),
+    ("autonomy.decision_cycle.observation.values", "OBSERVATION_SCHEMA", "autonomy.decision_cycle.observation.values", "OBSERVATION_SCHEMA"),
+    ("autonomy.decision_cycle.observation.values", "Observation", "autonomy.decision_cycle.observation.values", "Observation"),
+    ("autonomy.decision_cycle.proposal.values", "ProposedVehicleCommand", "autonomy.decision_cycle.proposal.values", "ProposedVehicleCommand"),
+    ("autonomy.decision_cycle.memory.evidence", "RetainedEvidence", "autonomy.decision_cycle.memory.evidence", "RetainedEvidence"),
+    ("autonomy.decision_cycle.plan.values", "SELECTOR_ID", "autonomy.decision_cycle.plan.values", "SELECTOR_ID"),
+    ("autonomy.decision_cycle.action.values", "AUTHORITY_RESULT_SCHEMA", "autonomy.decision_cycle.action.values", "AUTHORITY_RESULT_SCHEMA"),
+    ("autonomy.decision_cycle.action.result", "ACTION_RESULT_SCHEMA", "autonomy.decision_cycle.action.result", "ACTION_RESULT_SCHEMA"),
+    ("autonomy.decision_cycle.action.values", "AuthorityResult", "autonomy.decision_cycle.action.values", "AuthorityResult"),
+    ("autonomy.decision_cycle.action_identifiers", "ActionInputError", "autonomy.decision_cycle.action_identifiers", "ActionInputError"),
+    ("autonomy.decision_cycle.action.result", "ActionResult", "autonomy.decision_cycle.action.result", "ActionResult"),
+    ("autonomy.vehicle", "run_vehicle_pulse", "autonomy.vehicle", "run_vehicle_pulse"),
+    ("autonomy.decision_cycle.proposal.values", "SourceRef", "autonomy.decision_cycle.proposal.values", "SourceRef"),
+    ("autonomy.decision_cycle.proposal.inputs", "build_decision_data_source", "autonomy.decision_cycle.proposal.inputs", "build_decision_data_source"),
+    ("autonomy.serialization", "canonical_json_size_bytes", "autonomy.serialization", "canonical_json_size_bytes"),
+    ("autonomy.serialization", "canonical_json_utf8", "autonomy.serialization", "canonical_json_utf8"),
+    ("autonomy.serialization", "ensure_strict_json_value", "autonomy.serialization", "ensure_strict_json_value"),
+    ("autonomy.decision_cycle.observation.perception_summary", "observation_from_perception", "autonomy.decision_cycle.observation.perception_summary", "observation_from_perception"),
+    ("autonomy.decision_cycle.plan.highest_confidence", "select_highest_confidence_plan", "autonomy.decision_cycle.plan.highest_confidence", "select_highest_confidence_plan"),
+    ("autonomy.decision_cycle.plan.values", "MAX_PLAN_METADATA_BYTES", "autonomy.decision_cycle.plan.values", "MAX_PLAN_METADATA_BYTES"),
+    ("autonomy.decision_cycle.plan.values", "PlanContribution", "autonomy.decision_cycle.plan.values", "PlanContribution"),
+    ("autonomy.decision_cycle.proposal.values", "COMMAND_EPS", "autonomy.decision_cycle.proposal.values", "COMMAND_EPS"),
+    ("autonomy.decision_cycle.proposal.values", "FRESHNESS_VALUES", "autonomy.decision_cycle.proposal.values", "FRESHNESS_VALUES"),
+    ("autonomy.decision_cycle.proposal.values", "Freshness", "autonomy.decision_cycle.proposal.values", "Freshness"),
+    ("autonomy.decision_cycle.proposal.values", "LIFECYCLES", "autonomy.decision_cycle.proposal.values", "LIFECYCLES"),
+    ("autonomy.decision_cycle.proposal.values", "Lifecycle", "autonomy.decision_cycle.proposal.values", "Lifecycle"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_ASSUMPTION", "autonomy.decision_cycle.proposal.values", "MAX_ASSUMPTION"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_ASSUMPTIONS", "autonomy.decision_cycle.proposal.values", "MAX_ASSUMPTIONS"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_PROPOSAL_BYTES", "autonomy.decision_cycle.proposal.values", "MAX_PROPOSAL_BYTES"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_PROPOSAL_METADATA_BYTES", "autonomy.decision_cycle.proposal.values", "MAX_PROPOSAL_METADATA_BYTES"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_REASON", "autonomy.decision_cycle.proposal.values", "MAX_REASON"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REFS", "autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REFS"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REF_ID", "autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REF_ID"),
+    ("autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REF_NOTE", "autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REF_NOTE"),
+    ("autonomy.decision_cycle.proposal.values", "PROPOSED_VEHICLE_COMMAND_SCHEMA", "autonomy.decision_cycle.proposal.values", "PROPOSED_VEHICLE_COMMAND_SCHEMA"),
+    ("autonomy.decision_cycle.proposal.values", "synthetic_error_proposal", "autonomy.decision_cycle.proposal.values", "synthetic_error_proposal"),
+    ("autonomy.decision_cycle.proposal.inputs", "CAPABILITY_REQUIRED_KEYS", "autonomy.decision_cycle.proposal.inputs", "CAPABILITY_REQUIRED_KEYS"),
+    ("autonomy.decision_cycle.proposal.inputs", "COMPONENT_STATUSES", "autonomy.decision_cycle.proposal.inputs", "COMPONENT_STATUSES"),
+    ("autonomy.decision_cycle.proposal.inputs", "ComponentStatus", "autonomy.decision_cycle.proposal.inputs", "ComponentStatus"),
+    ("autonomy.decision_cycle.proposal.inputs", "FORBIDDEN_CHANNEL_ORIGINS", "autonomy.decision_cycle.proposal.inputs", "FORBIDDEN_CHANNEL_ORIGINS"),
+    ("autonomy.decision_cycle.proposal.inputs", "MAX_ENVELOPE_REASON", "autonomy.decision_cycle.proposal.inputs", "MAX_ENVELOPE_REASON"),
+    ("autonomy.decision_cycle.proposal.inputs", "MAX_SOURCE_METADATA_BYTES", "autonomy.decision_cycle.proposal.inputs", "MAX_SOURCE_METADATA_BYTES"),
+    ("autonomy.decision_cycle.proposal.inputs", "PRIOR_HOST_ALLOWED_KEYS", "autonomy.decision_cycle.proposal.inputs", "PRIOR_HOST_ALLOWED_KEYS"),
+    ("autonomy.decision_cycle.proposal.inputs", "default_capabilities", "autonomy.decision_cycle.proposal.inputs", "default_capabilities"),
+    ("autonomy.decision_cycle.proposal.inputs", "error_envelope", "autonomy.decision_cycle.proposal.inputs", "error_envelope"),
+    ("autonomy.decision_cycle.proposal.inputs", "observation_envelope_from_value", "autonomy.decision_cycle.proposal.inputs", "observation_envelope_from_value"),
+    ("autonomy.decision_cycle.proposal.inputs", "omit_forbidden_channel_keys", "autonomy.decision_cycle.proposal.inputs", "omit_forbidden_channel_keys"),
+    ("autonomy.decision_cycle.proposal.inputs", "ready_envelope", "autonomy.decision_cycle.proposal.inputs", "ready_envelope"),
+    ("autonomy.decision_cycle.proposal.inputs", "unavailable_envelope", "autonomy.decision_cycle.proposal.inputs", "unavailable_envelope"),
+    ("autonomy.decision_cycle.observation.perception_summary", "timestamp_ms", "autonomy.decision_cycle.observation.perception_summary", "timestamp_ms"),
+    ("autonomy.decision_cycle.action.hold", "HOLD_IDLE_REASON", "autonomy.decision_cycle.action.hold", "HOLD_IDLE_REASON"),
+    ("autonomy.decision_cycle.action.values", "COMMAND_EPS", "autonomy.decision_cycle.action.values", "COMMAND_EPS"),
+    ("autonomy.decision_cycle.errors", "CYCLE_ERROR_REASONS", "autonomy.decision_cycle.errors", "CYCLE_ERROR_REASONS"),
+    ("autonomy.decision_cycle.action.hold", "idle_control", "autonomy.decision_cycle.action.hold", "idle_control"),
+    ("autonomy.decision_cycle.action.hold", "idle_output", "autonomy.decision_cycle.action.hold", "idle_output"),
+    ("autonomy.decision_cycle.action.values", "build_authority", "autonomy.decision_cycle.action.values", "build_authority"),
+    ("autonomy.decision_cycle.action.values", "proposed_equals_authorized", "autonomy.decision_cycle.action.values", "proposed_equals_authorized"),
+    ("autonomy.decision_cycle.action_identifiers", "ActionProposalMatrixError", "autonomy.decision_cycle.action_identifiers", "ActionProposalMatrixError"),
+    ("autonomy.serialization", "FrozenJsonObject", "autonomy.serialization", "FrozenJsonObject"),
+    ("autonomy.decision_cycle.action_identifiers", "IDENTIFIER_PATTERN", "autonomy.decision_cycle.action_identifiers", "IDENTIFIER_PATTERN"),
+    ("autonomy.decision_cycle.action_identifiers", "MAX_ID_LEN", "autonomy.decision_cycle.action_identifiers", "MAX_ID_LEN"),
+    ("autonomy.decision_cycle.action_identifiers", "MAX_SAFE_INT", "autonomy.decision_cycle.action_identifiers", "MAX_SAFE_INT"),
+    ("autonomy.serialization", "deep_freeze", "autonomy.serialization", "deep_freeze"),
+    ("autonomy.serialization", "frozen_mapping_to_dict", "autonomy.serialization", "frozen_mapping_to_dict"),
+    ("autonomy.decision_cycle.action_identifiers", "plan_id_for", "autonomy.decision_cycle.action_identifiers", "plan_id_for"),
+    ("autonomy.decision_cycle.action_identifiers", "proposal_id_for", "autonomy.decision_cycle.action_identifiers", "proposal_id_for"),
+    ("autonomy.decision_cycle.action_identifiers", "require_ascii_id", "autonomy.decision_cycle.action_identifiers", "require_ascii_id"),
+    ("autonomy.decision_cycle.action_identifiers", "require_code_point_len", "autonomy.decision_cycle.action_identifiers", "require_code_point_len"),
+    ("autonomy.decision_cycle.action_identifiers", "require_safe_int", "autonomy.decision_cycle.action_identifiers", "require_safe_int"),
+
+    # Formerly exported by autonomy.memory
+    ("autonomy.shared_memory", "SharedMemory", "autonomy.shared_memory", "SharedMemory"),
+    ("autonomy.decision_cycle.memory.runner", "format_exception_safely", "autonomy.decision_cycle.memory.runner", "format_exception_safely"),
+
+    # autonomy.serialization
+    ("autonomy.serialization", "canonical_json_bytes", "autonomy.serialization", "canonical_json_size_bytes"),
+
+    # Formerly exported by autonomy.perception
+    ("autonomy.decision_cycle.perception.interface", "PERCEPTION_TEXT_SCHEMA", "autonomy.decision_cycle.perception.interface", "PERCEPTION_TEXT_SCHEMA"),
+    ("autonomy.decision_cycle.perception.evidence.values", "PerceivedThing", "autonomy.decision_cycle.perception.evidence.values", "PerceivedThing"),
+    ("autonomy.decision_cycle.perception.feeds.interface", "PerceptionFeedUnavailable", "autonomy.decision_cycle.perception.feeds.interface", "PerceptionFeedUnavailable"),
+    ("autonomy.decision_cycle.perception.diagnostics.sink", "PerceptionDiagnosticSink", "autonomy.decision_cycle.perception.diagnostics.sink", "PerceptionDiagnosticSink"),
+    ("autonomy.decision_cycle.perception.evidence.values", "PerceptionEvidenceBatch", "autonomy.decision_cycle.perception.evidence.values", "PerceptionEvidenceBatch"),
+    ("autonomy.decision_cycle.perception.interface", "PerceptionBackend", "autonomy.decision_cycle.perception.interface", "PerceptionBackend"),
+    ("autonomy.decision_cycle.perception.plugin", "PerceptionPlugin", "autonomy.decision_cycle.perception.plugin", "PerceptionPlugin"),
+    ("autonomy.decision_cycle.perception.plugin", "PerceptionPluginContract", "autonomy.decision_cycle.perception.plugin", "PerceptionPluginContract"),
+    ("autonomy.decision_cycle.perception.feeds.interface", "PerceptionPluginInput", "autonomy.decision_cycle.perception.feeds.interface", "PerceptionPluginInput"),
+    ("autonomy.decision_cycle.perception.plugin", "PerceptionPluginInputs", "autonomy.decision_cycle.perception.plugin", "PerceptionPluginInputs"),
+    ("autonomy.decision_cycle.perception.interface", "PerceptionPluginRun", "autonomy.decision_cycle.perception.interface", "PerceptionPluginRun"),
+    ("autonomy.decision_cycle.perception.plugin", "PerceptionPluginWarmingUp", "autonomy.decision_cycle.perception.plugin", "PerceptionPluginWarmingUp"),
+    ("autonomy.decision_cycle.perception.feeds.context", "PerceptionRequest", "autonomy.decision_cycle.perception.feeds.context", "PerceptionRequest"),
+    ("autonomy.decision_cycle.perception.evidence.values", "PerceptionSignal", "autonomy.decision_cycle.perception.evidence.values", "PerceptionSignal"),
+    ("autonomy.decision_cycle.perception.interface", "PerceptionText", "autonomy.decision_cycle.perception.interface", "PerceptionText"),
+    ("autonomy.decision_cycle.perception.evidence.values", "ViewLocation", "autonomy.decision_cycle.perception.evidence.values", "ViewLocation"),
+    ("autonomy.decision_cycle.perception.inputs", "build_perception_request", "autonomy.decision_cycle.perception.inputs", "build_perception_request"),
+    ("autonomy.decision_cycle.perception.feeds.context", "FeedT", "autonomy.decision_cycle.perception.feeds.context", "FeedT"),
+    ("autonomy.decision_cycle.perception.interface", "PLUGIN_RESULT_STATUSES", "autonomy.decision_cycle.perception.interface", "PLUGIN_RESULT_STATUSES"),
+    ("autonomy.decision_cycle.perception.interface", "PluginResultStatus", "autonomy.decision_cycle.perception.interface", "PluginResultStatus"),
+    ("autonomy.decision_cycle.perception.runner", "PerceptionRunner", "autonomy.decision_cycle.perception.runner", "PerceptionRunner"),
+    ("autonomy.decision_cycle.perception.plugin", "FeedT", "autonomy.decision_cycle.perception.plugin", "FeedT"),
+    ("autonomy.decision_cycle.perception.plugin", "PLUGIN_STATE_MODES", "autonomy.decision_cycle.perception.plugin", "PLUGIN_STATE_MODES"),
+    ("autonomy.decision_cycle.perception.plugin", "PluginStateMode", "autonomy.decision_cycle.perception.plugin", "PluginStateMode"),
+    ("autonomy.decision_cycle.perception.feeds.interface", "FeedProvider", "autonomy.decision_cycle.perception.feeds.interface", "FeedProvider"),
+    ("autonomy.decision_cycle.perception.evidence.rendering", "signal_line", "autonomy.decision_cycle.perception.evidence.rendering", "signal_line"),
+    ("autonomy.decision_cycle.perception.evidence.rendering", "thing_line", "autonomy.decision_cycle.perception.evidence.rendering", "thing_line"),
+
+    # autonomy.runtime
+
+    # autonomy.shared_memory
+
+    # autonomy.vehicle
+    ("autonomy.vehicle", "CarInterface", "autonomy.vehicle.vehicle", "CarInterface"),
+    ("autonomy.vehicle", "FRONT_CAMERA_SENSOR_ID", "autonomy.vehicle.vehicle", "FRONT_CAMERA_SENSOR_ID"),
+    ("autonomy.vehicle", "SensorReadRequest", "autonomy.vehicle.vehicle", "SensorReadRequest"),
+    ("autonomy.vehicle", "SensorReading", "autonomy.vehicle.vehicle", "SensorReading"),
+    ("autonomy.vehicle", "SensorFrame", "autonomy.vehicle.vehicle", "SensorFrame"),
+    ("autonomy.vehicle", "VEHICLE_ACTION_FIELDS", "autonomy.vehicle.vehicle", "VEHICLE_ACTION_FIELDS"),
+    ("autonomy.vehicle", "VehicleAction", "autonomy.vehicle.vehicle", "VehicleAction"),
+    ("autonomy.vehicle", "VehicleCapabilities", "autonomy.vehicle.vehicle", "VehicleCapabilities"),
+    ("autonomy.vehicle", "VehiclePulse", "autonomy.vehicle.vehicle", "VehiclePulse"),
+    ("autonomy.vehicle", "clamp_unit", "autonomy.vehicle.vehicle", "clamp_unit"),
+
+    # Formerly exported by implementations.memory
+    ("implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger", "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.reduction", "reduce_evidence", "implementations.decision_cycle.memory.shared.evidence_ledger.reduction", "reduce_evidence"),
+    ("autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY", "autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger"),
+    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger"),
+
+    # implementations.operations
+    ("implementations.operations", "CapturePulseStep", "implementations.operations.capture_pulse_sequence", "CapturePulseStep"),
+    ("implementations.operations", "StartupActionCheckInstruction", "implementations.operations.startup_action_check.types", "StartupActionCheckInstruction"),
+    ("implementations.operations", "StartupActionCheckPlan", "implementations.operations.startup_action_check.types", "StartupActionCheckPlan"),
+    ("implementations.operations", "build_basic_startup_action_check_plan", "implementations.operations.startup_action_check.plans", "build_basic_startup_action_check_plan"),
+    ("implementations.operations", "run_capture_pulse_sequence", "implementations.operations.capture_pulse_sequence", "run_capture_pulse_sequence"),
+    ("implementations.operations", "run_startup_action_check", "implementations.operations.startup_action_check.runner", "run_startup_action_check"),
+    ("implementations.operations.startup_action_check", "StartupActionCheckInstruction", "implementations.operations.startup_action_check.types", "StartupActionCheckInstruction"),
+    ("implementations.operations.startup_action_check", "StartupActionCheckPlan", "implementations.operations.startup_action_check.types", "StartupActionCheckPlan"),
+    ("implementations.operations.startup_action_check", "build_basic_startup_action_check_plan", "implementations.operations.startup_action_check.plans", "build_basic_startup_action_check_plan"),
+    ("implementations.operations.startup_action_check", "run_startup_action_check", "implementations.operations.startup_action_check.runner", "run_startup_action_check"),
+
+    # Formerly exported by implementations.perception
+    ("implementations.decision_cycle.perception.feeds.camera", "CameraFrame", "implementations.decision_cycle.perception.feeds.camera", "CameraFrame"),
+    ("implementations.decision_cycle.perception.feeds.camera", "FRONT_CAMERA_RGB_INPUT", "implementations.decision_cycle.perception.feeds.camera", "FRONT_CAMERA_RGB_INPUT"),
+    ("implementations.decision_cycle.perception.feeds.camera", "camera_feed_id", "implementations.decision_cycle.perception.feeds.camera", "camera_feed_id"),
+    ("implementations.decision_cycle.perception.feeds.camera", "camera_rgb_input", "implementations.decision_cycle.perception.feeds.camera", "camera_rgb_input"),
+    ("implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame", "implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureMatch", "implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureMatch"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureTrackingResult", "implementations.decision_cycle.perception.shared.features.feature_tracking", "FeatureTrackingResult"),
+    ("implementations.decision_cycle.perception.shared.features.feature_sequence", "PairTrackingSummary", "implementations.decision_cycle.perception.shared.features.feature_sequence", "PairTrackingSummary"),
+    ("implementations.decision_cycle.perception.shared.features.feature_sequence", "TrackedSequenceSummary", "implementations.decision_cycle.perception.shared.features.feature_sequence", "TrackedSequenceSummary"),
+    ("implementations.decision_cycle.perception.shared.features.feature_sequence", "analyze_tracked_sequence", "implementations.decision_cycle.perception.shared.features.feature_sequence", "analyze_tracked_sequence"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "detect_keypoints", "implementations.decision_cycle.perception.shared.features.feature_tracking", "detect_keypoints"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "grayscale", "implementations.decision_cycle.perception.shared.features.feature_tracking", "grayscale"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "match_keypoints", "implementations.decision_cycle.perception.shared.features.feature_tracking", "match_keypoints"),
+    ("implementations.decision_cycle.perception.shared.features.feature_tracking", "track_features", "implementations.decision_cycle.perception.shared.features.feature_tracking", "track_features"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkDistanceResult", "implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkDistanceResult"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkSelection", "implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkSelection"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkStepEstimate", "implementations.decision_cycle.perception.shared.landmarks.distance", "LandmarkStepEstimate"),
+    ("implementations.decision_cycle.perception.shared.landmarks.distance", "estimate_landmark_distance", "implementations.decision_cycle.perception.shared.landmarks.distance", "estimate_landmark_distance"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "MotionGroup", "implementations.decision_cycle.perception.shared.motion.scene_motion", "MotionGroup"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "SceneMotionResult", "implementations.decision_cycle.perception.shared.motion.scene_motion", "SceneMotionResult"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion", "implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion_images", "implementations.decision_cycle.perception.shared.motion.scene_motion", "analyze_scene_motion_images"),
+    ("implementations.decision_cycle.perception.shared.motion.scene_motion", "find_motion_groups", "implementations.decision_cycle.perception.shared.motion.scene_motion", "find_motion_groups"),
+    ("implementations.decision_cycle.perception.plugins.frame.plugin", "FrameObservationPlugin", "implementations.decision_cycle.perception.plugins.frame.plugin", "FrameObservationPlugin"),
+    ("implementations.decision_cycle.perception.shared.image.frame_analysis", "compare_frame_pair", "implementations.decision_cycle.perception.shared.image.frame_analysis", "compare_frame_pair"),
+    ("implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_frame", "implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_frame"),
+    ("implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_rgb_frame", "implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_rgb_frame"),
+    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepConfig", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepConfig"),
+    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin"),
+    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "prepare_vlm_artifacts", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "prepare_vlm_artifacts"),
+    ("implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin", "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin"),
+    ("implementations.decision_cycle.perception.plugins.floor_plane.model", "FloorPlaneConfig", "implementations.decision_cycle.perception.plugins.floor_plane.model", "FloorPlaneConfig"),
+    ("implementations.decision_cycle.perception.plugins.floor_plane.model", "StillProcessingResult", "implementations.decision_cycle.perception.plugins.floor_plane.model", "StillProcessingResult"),
+    ("implementations.decision_cycle.perception.plugins.floor_plane.model", "estimate_floor_mask", "implementations.decision_cycle.perception.plugins.floor_plane.model", "estimate_floor_mask"),
+    ("implementations.decision_cycle.perception.plugins.floor_plane.model", "process_still", "implementations.decision_cycle.perception.plugins.floor_plane.model", "process_still"),
+    ("implementations.decision_cycle.perception.plugins.floor_plane.model", "source_obstacle_hits", "implementations.decision_cycle.perception.plugins.floor_plane.model", "source_obstacle_hits"),
+
+    # implementations.runtime
+    ("implementations.runtime.picar", "create_host", "implementations.runtime.picar", "create_host"),
+    ("implementations.runtime.picar", "AutonomyPilotPart", "implementations.runtime.picar.donkey_part", "AutonomyPilotPart"),
+
+    # implementations.vehicle
+    ("implementations.vehicle", "ChaseSimCar", "implementations.vehicle.chase_sim.car", "ChaseSimCar"),
+    ("implementations.vehicle", "PiCar", "implementations.vehicle.picar.car", "PiCar"),
+    ("implementations.vehicle", "create_picar", "implementations.vehicle.picar.car", "create_picar"),
+    ("implementations.vehicle", "describe_picar", "implementations.vehicle.picar.car", "describe_picar"),
+    ("implementations.vehicle.chase_sim", "ChaseCaptureValidationError", "implementations.vehicle.chase_sim.frame_identity", "ChaseCaptureValidationError"),
+    ("implementations.vehicle.chase_sim", "ChasePassiveCaptureError", "implementations.vehicle.chase_sim.car", "ChasePassiveCaptureError"),
+    ("implementations.vehicle.chase_sim", "ChaseSimCar", "implementations.vehicle.chase_sim.car", "ChaseSimCar"),
+    ("implementations.vehicle.chase_sim", "align_candidate_with_reference", "implementations.vehicle.chase_sim.frame_identity", "align_candidate_with_reference"),
+    ("implementations.vehicle.chase_sim", "build_chaser_reference", "implementations.vehicle.chase_sim.frame_identity", "build_chaser_reference"),
+    ("implementations.vehicle.chase_sim", "evaluate_chase_evaluator_reference", "implementations.vehicle.chase_sim.frame_identity", "evaluate_chase_evaluator_reference"),
+    ("implementations.vehicle.chase_sim", "format_chase_frame_id", "implementations.vehicle.chase_sim.frame_identity", "format_chase_frame_id"),
+    ("implementations.vehicle.chase_sim", "score_reference_alignment_batch", "implementations.vehicle.chase_sim.frame_identity", "score_reference_alignment_batch"),
+    ("implementations.vehicle.chase_sim", "simulator_epoch_from_sensor_frame", "implementations.vehicle.chase_sim.frame_identity", "simulator_epoch_from_sensor_frame"),
+    ("implementations.vehicle.chase_sim", "simulator_frame_index_from_sensor_frame", "implementations.vehicle.chase_sim.frame_identity", "simulator_frame_index_from_sensor_frame"),
+    ("implementations.vehicle.chase_sim", "validate_chase_sensor_capture", "implementations.vehicle.chase_sim.frame_identity", "validate_chase_sensor_capture"),
+    ("implementations.vehicle.picar", "PiCar", "implementations.vehicle.picar.car", "PiCar"),
+    ("implementations.vehicle.picar", "create_picar", "implementations.vehicle.picar.car", "create_picar"),
+    ("implementations.vehicle.picar", "describe_picar", "implementations.vehicle.picar.car", "describe_picar"),
+)

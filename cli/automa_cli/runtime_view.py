@@ -8,7 +8,7 @@ import threading
 import time
 import zlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from .perception_view import (
@@ -32,6 +32,8 @@ from .loopback_http import (
     stop_server_thread,
     validate_loopback_host,
 )
+from .plugin_catalog import serve_plugin_catalog
+from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
@@ -52,37 +54,20 @@ class RuntimeViewServer:
         port: int | None = None,
         run_id: str | None = None,
         worker_pid: int | None = None,
-        decision_activation: dict[str, Any] | None = None,
-        decision_activation_path: Path | None = None,
-        decision_provider_identity: dict[str, Any] | None = None,
+        decision_identity: dict[str, Any] | None = None,
+        plugin_catalog: Callable | None = None,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
         self.vehicle_id = vehicle_id
+        self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
         self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
         self.run_id = run_id
-        self.worker_pid = (
-            int(worker_pid)
-            if isinstance(worker_pid, int)
-            else None
-            if decision_provider_identity is not None
-            else os.getpid()
-        )
+        self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
         self.record_path = automation_dir / VIEW_RECORD_NAME
         self.perception = PerceptionView(vehicle_id=vehicle_id)
-        self.decision = DecisionView(
-            vehicle_id=vehicle_id,
-            run_id=run_id,
-            worker_pid=self.worker_pid,
-            activation=decision_activation,
-            activation_path=(
-                decision_activation_path
-                if decision_activation_path is not None
-                else automation_dir.parent / "decision" / "active.json"
-            ),
-            provider_identity=decision_provider_identity,
-        )
+        self.decision = DecisionView(vehicle_id=vehicle_id, identity=decision_identity)
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None
@@ -142,25 +127,13 @@ class RuntimeViewServer:
         page_url = self.decision.page_url()
         if page_url is not None:
             if compact:
-                return (
-                    f'<a class="nav" href="{page_url}" '
-                    'style="color:inherit;text-decoration:none;border:1px solid var(--line);'
-                    'border-radius:4px;padding:6px 10px;font-weight:600;">Decision view</a>'
-                )
-            return (
-                f'<a href="{page_url}">Decision'
-                '<span>View the exact image and authority facts for the current accepted cycle.</span></a>'
-            )
+                return f'<a class="nav" href="{page_url}">Decision</a>'
+            return f'<a href="{page_url}">Decision</a>'
         if compact:
             return (
-                '<span class="nav" title="Start the live decision monitor for this vehicle." '
-                'style="color:#6b7280;border:1px solid var(--line);border-radius:4px;'
-                'padding:6px 10px;font-weight:600;">Decision view unavailable</span>'
+                '<span class="nav unavailable" title="Decision view unavailable">Decision</span>'
             )
-        return (
-            '<span class="decision-unavailable">Decision view unavailable'
-            '<span>Start `automa vehicles decision live --id &lt;vehicle&gt;` to publish this view.</span></span>'
-        )
+        return '<span class="decision-unavailable">Decision view unavailable</span>'
 
     def stop(self) -> None:
         httpd = self._httpd
@@ -188,6 +161,9 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._handle_request(include_body=False)
 
     def do_POST(self) -> None:
+        if urlparse(self.path).path == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
+            return
         self._reject_write_method()
 
     def do_PUT(self) -> None:
@@ -214,6 +190,13 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
+        if route == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
+            return
+        if route == "/plugins":
+            self._send(200, Path(__file__).with_name("plugin_catalog.html").read_bytes(),
+                       "text/html; charset=utf-8", include_body=include_body)
+            return
         if route == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)
             return

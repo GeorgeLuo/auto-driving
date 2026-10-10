@@ -1,21 +1,6 @@
-"""Runtime autonomy engine loading for onboard vehicle loops."""
+"""Shared decision hosting and vehicle control execution.
 
-from .activation import (
-    DECISION_ACTIVATION_SCHEMA,
-    DecisionActivation,
-    apply_decision_activation,
-    read_decision_activation,
-)
-from .engine import AutonomyControl, AutonomySnapshot, IdleAutonomyEngine
-from .manager import AutonomyManager
-
-__all__ = [
-    "AutonomyControl",
-    "DECISION_ACTIVATION_SCHEMA",
-    "DecisionActivation",
-    "IdleAutonomyEngine",
-    "AutonomyManager",
-    "AutonomySnapshot",
-    "apply_decision_activation",
-    "read_decision_activation",
-]
+AutonomyCycleHost starts/stops a RunConfiguration and runs sensor contexts.
+ControlExecution owns mode, freshness, delivery, and command expiry.
+ControlTarget implementations only bridge a vehicle's command transport.
+"""

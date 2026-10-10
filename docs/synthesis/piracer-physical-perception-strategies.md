@@ -8,7 +8,10 @@
 - **Source:** Independent research against the repository's physical-perception black-box brief
 - **Disposition:** Common-frame qualification returned `reject_keep_control`; keep packaged floor-plane / `lightweight_observer`. See milestone [004 closeout](../milestones/004-physical-perception-parity/closeout.md) and [qualification evidence](../milestones/004-physical-perception-parity/evidence/floor-continuity-physical-check-qualification.md).
 
-> `floor-continuity-v1` remains a lab hypothesis, not an accepted implementation.
+> `floor-continuity-v1` was not accepted. It is packaged as the non-default
+> perception plugin `floor_continuity` for comparison only. Plugins are no
+> longer staged from `lab/plugins/`: every plugin lives under
+> `implementations/` and declares its own `plugin_id`.
 > Labeled physical-check comparison matched overall pass rate but increased
 > clear-floor false-positive boundaries and did not improve two material
 > behavioral measures. Desktop speed alone was not a promotion gate.
@@ -16,7 +19,7 @@
 ## Implementation checkpoint: simulator and archived Pi frames
 
 The bounded candidate now exists under
-[`lab/plugins/perception/floor_continuity/`](../../lab/plugins/perception/floor_continuity/).
+[`implementations/decision_cycle/perception/plugins/floor_continuity/`](../../implementations/decision_cycle/perception/plugins/floor_continuity/).
 It uses the existing plugin contract, stays stateless, processes at 320x240, and
 writes diagnostics only for explicitly recorded runs. Focused synthetic tests
 cover clear floor, a similar-color interruption, current-frame clearing, and
@@ -39,21 +42,22 @@ semantic correctness, and visual review still shows carpet fragments.
 
 Physical application motivated two generic defaults rather than a second plugin: a
 minimum boundary confidence of 0.65 and minimum absolute edge strength of
-0.24. A 0.75 confidence floor removed useful distant box evidence. The CLI now
-accepts one image or a directory and repeatable candidate-only `--set
-NAME=VALUE` overrides, with the effective configuration retained by recorded
-runs.
+0.24. A 0.75 confidence floor removed useful distant box evidence. The prototype
+CLI accepted one image or a directory and repeatable `--set NAME=VALUE`
+overrides (since removed), with the effective configuration retained by
+recorded runs.
 
 This checkpoint proves implementation shape, current-frame behavior,
 simulator operability, and compatibility with archived Pi imagery. It does
 **not** establish labeled improvement, onboard Pi latency or memory cost,
 live publication, carpet generalization, or fitness for promotion. Reproduce
-the checks with the commands in the candidate README; retain generated run
+the checks with the commands in the plugin
+[README](../../implementations/decision_cycle/perception/plugins/floor_continuity/README.md); retain generated run
 artifacts outside source control.
 
 ## Executive recommendation
 
-Promote **one new classical candidate, “floor-continuity-v1,” into `lab/plugins/perception/`** and qualify it before changing the packaged implementation catalog. It should remain **stateless**, operate internally at **320×240**, and combine:
+Promote **one new classical candidate, “floor-continuity-v1,” as a non-default packaged plugin under `implementations/decision_cycle/perception/`** and qualify it before changing the default selection. It should remain **stateless**, operate internally at **320×240**, and combine:
 
 1. robust lower-center floor seeding;
 2. color/chroma, luminance, local texture, and gradient cues;
@@ -320,7 +324,7 @@ If introduced later, calibration belongs in a shared camera component, not hidde
 ### Location
 
 ```text
-lab/plugins/perception/floor_continuity/
+implementations/decision_cycle/perception/plugins/floor_continuity/
   __init__.py
   plugin.py
   model.py
@@ -338,7 +342,7 @@ lab/plugins/perception/floor_continuity/
 ### Contract declaration
 
 ```python
-plugin_id = "floor-continuity-v1"
+plugin_id = "floor_continuity"
 state_mode = "stateless"
 inputs = (FRONT_CAMERA_RGB_INPUT,)
 diagnostic_artifacts = (
@@ -493,7 +497,7 @@ Store the run in a dedicated temporary or externally chosen directory and make r
 
 ## Promotion decision
 
-Promote `floor-continuity-v1` from `lab/` only when:
+Make `floor-continuity-v1` a default selection only when:
 
 1. it passes the common application set without per-scene tuning;
 2. it beats `floor-plane-v0` on at least two material dimensions, especially clear-floor false positives and cross-surface object detection;
@@ -503,7 +507,7 @@ Promote `floor-continuity-v1` from `lab/` only when:
 6. diagnostics are exact-frame and opt-in;
 7. assumptions and limitations are recorded;
 8. tests are topically split;
-9. it is registered in the implementation catalog only after qualification.
+9. it joins the default perception selection only after qualification.
 
 Admit LiteDepth instead only if it materially outperforms the classical candidate and the model artifact, license, runtime installation, and Pi measurements are fully reproducible.
 

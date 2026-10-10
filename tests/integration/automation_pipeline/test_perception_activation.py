@@ -1,43 +1,37 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision import DecisionFrameContext, DecisionSteps
-from autonomy.perception import ActivatedPerceptionStep, read_perception_activation
-from autonomy.runtime import AutonomyManager
-from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
-from implementations.runtime.donkeycar import AutonomyPilotPart
+from autonomy.decision_cycle.activation import (
+    read_step_activation,
+    step_activation,
+    write_step_activation,
+)
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.decision_cycle.steps import decision_steps
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from implementations.decision_cycle.catalog import step_plugins
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 
 
 class PerceptionActivationIntegrationTests(unittest.TestCase):
     def test_perception_activation_runs_on_in_memory_camera_without_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activation_path = Path(tmp) / "active.json"
-            activation_path.write_text(
-                json.dumps(
-                    {
-                        "schema": "automa_perception_activation_v0",
-                        "perception": {
-                            "algorithm": "test-observer",
-                            "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                            "mapper_config": {
-                                "plugins": ["frame"],
-                                "plugin_specs": {"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
-                            },
-                        },
-                    }
-                ),
-                encoding="utf-8",
+            write_step_activation(
+                activation_path,
+                step_activation("perception", ["frame"], {"frame": step_plugins("perception")["frame"]["spec"]}),
             )
-            step = ActivatedPerceptionStep(read_perception_activation(activation_path))
-            snapshot = SensorSnapshot(
+            runner = PerceptionRunner.from_activation(
+                read_step_activation(activation_path, "perception")
+            )
+            sensor_frame = SensorFrame(
                 read_id="onboard-frame",
                 readings={
                     FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -51,45 +45,30 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
                 completed_at_ms=10,
             )
 
-            result = step(
+            result = runner(
                 DecisionFrameContext(
                     frame_id="onboard-frame",
                     frame_index=0,
                     timestamp_ms=10,
-                    sensor_snapshot=snapshot,
+                    sensor_frame=sensor_frame,
                 )
             )
 
         self.assertIsNotNone(result)
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.artifacts, {})
-        step_status = step.status()
-        self.assertEqual(step_status["algorithm"], "test-observer")
-        self.assertEqual(step_status["last_status"], "ok")
-        self.assertEqual(step_status["last_frame_index"], 0)
-        self.assertEqual(step_status["last_thing_count"], 1)
-        self.assertGreaterEqual(step_status["last_duration_ms"], 0.0)
-        self.assertEqual(
-            [run["plugin_id"] for run in step_status["last_plugin_runs"]],
-            ["frame-observation-v0"],
-        )
-
-        manager = AutonomyManager()
-        manager.register_status_provider("perception", step.status)
-        self.assertEqual(
-            manager.status()["components"]["perception"]["algorithm"],
-            "test-observer",
-        )
+        self.assertEqual(runner.status()["plugin_ids"], ["frame"])
+        self.assertEqual(runner.last_frame_index, 0)
 
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=DecisionSteps(perceive=step))
+            host=create_host(steps=replace(decision_steps(), perception=runner))
         )
         part.run(
             image_array=np.zeros((24, 32, 3), dtype=np.uint8),
             mode="local",
         )
         part.wait_for_cycle()
-        _steering, _throttle, _control, _engine, cycle = part.completed_outputs("local")
+        _steering, _throttle, _control, _generation, cycle = part.completed_outputs("local")
         self.assertEqual(cycle["perception"]["status"], "ok")
         self.assertEqual(cycle["observation"]["perception_schema"], "perception_text_v2")
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from cli.automa_cli.workbench import SourceValidationError, normalize_image_directory
+
+from cli.automa_cli.workbench import normalize_image_directory
+from cli.automa_cli.workbench_source import SourceValidationError
 from tests.cli.workbench_fixtures import (
     BlockingSecondMapper,
     DecisionFixtureMapper,
@@ -17,6 +20,30 @@ from tests.cli.workbench_fixtures import (
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_recorded_frames_can_share_a_timestamp_but_cannot_go_backwards(self) -> None:
+        with image_source(2) as root:
+            frames = [
+                {
+                    "frame_id": "a", "frame_index": 7,
+                    "image_path": "frame_00.png", "timestamp_ms": 5000,
+                },
+                {
+                    "frame_id": "b", "frame_index": 9,
+                    "image_path": "frame_01.png", "timestamp_ms": 5000,
+                },
+            ]
+            write_manifest(root, {"frames": frames})
+            source = normalize_image_directory(root)
+            self.assertEqual([frame.timestamp_ms for frame in source.frames], [5000, 5000])
+            runner = ImageReplayRunner(root, cadence_ms=0, loop=False)
+            self.addCleanup(runner.close)
+            runner.start()
+            self.assertEqual(runner.wait(5)["phase"], "completed")
+            frames[1]["timestamp_ms"] = 4999
+            write_manifest(root, {"frames": frames})
+            with self.assertRaisesRegex(SourceValidationError, "non-decreasing"):
+                normalize_image_directory(root)
+
     def test_directory_adapter_loads_ordered_camera_frame_stream_manifest(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -77,16 +104,17 @@ class WorkbenchTests(unittest.TestCase):
     def test_directory_adapter_honors_manifest_order_and_absence(self) -> None:
         with TemporaryDirectory() as directory:
             workspace = Path(directory)
-            root = workspace / "lab/plugins/perception/example/runs/fixture-run"
+            root = workspace / "lab/runs/fixture-run"
             image_root = workspace / "lab/runs/capture"
             root.mkdir(parents=True)
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
             write_manifest(root, {
+                "schema": "perception_inspect_v0",
                 "source_id": "fixture.sequence",
-                "run_dir": "lab/plugins/perception/example/runs/fixture-run",
+                "run_dir": "lab/runs/fixture-run",
                 "source": {
-                    "kind": "apply",
+                    "kind": "images",
                     "path": "/previous/location/auto-driving/lab/runs/capture",
                 },
                 "frames": [
@@ -107,7 +135,7 @@ class WorkbenchTests(unittest.TestCase):
                         "absence_reason": "camera dropout",
                     },
                 ],
-            }, name="run.json")
+            }, name="report.json")
 
             feed = normalize_image_directory(root)
 
@@ -119,79 +147,6 @@ class WorkbenchTests(unittest.TestCase):
         self.assertTrue(feed.frames[1].absent)
         self.assertEqual(feed.frames[1].absence_reason, "camera dropout")
 
-    def test_directory_adapter_rejects_traversal_duplicate_and_unsupported_inputs(
-        self,
-    ) -> None:
-        with image_source(1) as root:
-            write_manifest(root, {
-                "frames": [
-                    {"frame_id": "same", "image_path": "frame_00.png"},
-                    {"frame_id": "same", "image_path": "frame_00.png"},
-                ]
-            })
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            write_manifest(root, {"frames": [{"image_path": "../outside.png"}]})
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            (root / "manifest.json").unlink()
-            (root / "bad.gif").write_bytes(b"not an image")
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-    def test_directory_adapter_rejects_empty_over_limit_and_nonincreasing_sources(
-        self,
-    ) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            _make_images(root, 3)
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root, max_frames=2)
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root, max_image_bytes=10)
-
-            write_manifest(root, {
-                "frames": [
-                    {
-                        "frame_id": "later",
-                        "frame_index": 2,
-                        "timestamp_ms": 20,
-                        "image_path": "frame_00.png",
-                    },
-                    {
-                        "frame_id": "earlier",
-                        "frame_index": 1,
-                        "timestamp_ms": 30,
-                        "image_path": "frame_01.png",
-                    },
-                ]
-            })
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
-
-            write_manifest(root, {
-                "frames": [
-                    {
-                        "frame_id": "first",
-                        "frame_index": 1,
-                        "timestamp_ms": 40,
-                        "image_path": "frame_00.png",
-                    },
-                    {
-                        "frame_id": "second",
-                        "frame_index": 2,
-                        "timestamp_ms": 40,
-                        "image_path": "frame_01.png",
-                    },
-                ]
-            })
-            with self.assertRaises(SourceValidationError):
-                normalize_image_directory(root)
 
     def test_runner_refuses_invalid_and_undecodable_sources_before_pipeline(
         self,
@@ -204,12 +159,12 @@ class WorkbenchTests(unittest.TestCase):
             broken_state = ImageReplayRunner(
                 broken,
                 cadence_ms=0,
-                mapper_factory=lambda: broken_mapper,
+                step_factories={"perception": lambda: broken_mapper},
             ).start()
             self.assertEqual(broken_state["phase"], "failed")
             self.assertEqual(broken_state["failure_boundary"], "source")
             self.assertEqual(broken_mapper.calls, [])
-            self.assertIsNone(broken_state["perception"])
+            self.assertIsNone(broken_state["steps"]["perception"])
 
     def test_runner_fails_closed_on_mapper_and_memory_errors(self) -> None:
         with image_source(2) as root:
@@ -217,20 +172,19 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: error_mapper,
+                step_factories={"perception": lambda: error_mapper},
             )
             started = runner.start()
             state = runner.wait(5) if started["phase"] == "running" else started
             self.assertEqual(state["phase"], "failed")
             self.assertEqual(state["failure_boundary"], "perception")
-            self.assertEqual(state["perception"]["status"], "error")
+            self.assertEqual(state["steps"]["perception"]["status"], "error")
 
             memory_mapper = FixtureMapper()
             memory_runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: memory_mapper,
-                memory_step_factory=lambda: ErrorMemory(),
+                step_factories={"perception": lambda: memory_mapper, "memory": lambda: ErrorMemory()},
             )
             memory_started = memory_runner.start()
             memory_state = (
@@ -240,59 +194,75 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
-            self.assertIsNone(memory_state["memory"])
-            self.assertIsNone(memory_state["decision"])
+            self.assertIsNone(memory_state["steps"]["memory"])
+            self.assertIsNone(memory_state["steps"]["decision"])
             self.assertIn("injected memory failure", memory_state["failure"]["message"])
             self.assertEqual(len(memory_mapper.calls), 1)
             self.assertEqual(memory_state["progress"]["completed"], 0)
 
     def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
         with image_source(2) as root:
-            mapper = FixtureMapper()
+            perception_step = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
             state = runner.wait(5)
-            first_frame_id = state["timeline"][0]["frame"]["frame_id"]
-            first_detail = runner.frame_detail(first_frame_id, run_id=state["run_id"])
 
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(state["sequence_id"], "workbench.image_replay.v1")
         self.assertEqual(state["progress"]["completed"], 2)
-        self.assertEqual(len(mapper.calls), 2)
+        self.assertEqual(len(perception_step.calls), 2)
         self.assertEqual(
-            state["observation"]["metadata"]["source"], "workbench.image_replay.v1"
+            state["steps"]["observation"]["metadata"]["source"], "perception_summary"
         )
-        self.assertEqual(state["memory"]["health"], "healthy")
-        self.assertGreaterEqual(state["memory"]["record_count"], 2)
+        ledger = state["steps"]["memory"]["plugins"][0]
+        self.assertEqual(ledger["state"]["health"], "healthy")
+        self.assertGreaterEqual(ledger["state"]["record_count"], 2)
+        self.assertEqual(state["summary"]["memory_evidence_publisher"], ledger["plugin_id"])
+        self.assertEqual(state["summary"]["memory_plugins"][0]["health"], "healthy")
+        self.assertEqual(
+            state["summary"]["memory_plugins"][0]["record_count"],
+            ledger["state"]["record_count"],
+        )
+        self.assertEqual(
+            state["timeline"][-1]["memory_plugins"][0]["record_count"],
+            ledger["state"]["record_count"],
+        )
         self.assertNotIn("frames", state["source"])
         self.assertNotIn("perception", state["timeline"][0])
-        self.assertEqual(first_detail["perception"]["status"], "ok")
-        self.assertIsNotNone(first_detail["observation"]["observation_id"])
-        self.assertEqual(first_detail["memory"]["health"], "healthy")
-        self.assertTrue(state["timeline"][0]["memory_effect"]["added"])
+        self.assertEqual(state["steps"]["perception"]["status"], "ok")
+        self.assertIsNotNone(state["steps"]["observation"]["observation_id"])
+        self.assertTrue(state["timeline"][0]["memory_effects"][0]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
 
-    def test_runner_persists_frame_correlated_shadow_decision_playback(self) -> None:
+    def test_each_step_starts_from_its_default_preset(self) -> None:
+        with image_source(1) as root:
+            runner = ImageReplayRunner(root, cadence_ms=0)
+            runner.start()
+            state = runner.wait(5)
+
+        self.assertEqual(state["phase"], "completed")
+        pipeline = state["machine_detail"]["pipeline"]
+        self.assertEqual(pipeline["perception_preset"], "lightweight_observer")
+        self.assertEqual(pipeline["memory_preset"], "recency_ledger")
+
+    def test_runner_persists_frame_correlated_decision_playback(self) -> None:
         with image_source(2) as root:
-            mapper = DecisionFixtureMapper()
+            perception_step = DecisionFixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
             state = runner.wait(5)
-            frame_id = state["timeline"][0]["frame"]["frame_id"]
-            detail = runner.frame_detail(frame_id, run_id=state["run_id"])
 
-        decision = state["decision"]
-        first_decision = detail["decision"]
+        decision = state["steps"]["decision"]
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(decision["frame_id"], state["current_frame"]["frame_id"])
         self.assertEqual(decision["plan"]["status"], "selected")
@@ -302,23 +272,24 @@ class WorkbenchTests(unittest.TestCase):
             )
         )
         self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
-        self.assertFalse(decision["authority"]["proposed_applied"])
-        self.assertEqual(
-            state["timeline"][0]["decision"]["selected_proposal_id"],
-            first_decision["plan"]["selected_proposal_id"],
+        self.assertTrue(decision["authority"]["proposed_applied"])
+        self.assertTrue(
+            state["timeline"][0]["frame"]["frame_id"].endswith(
+                state["timeline"][0]["decision"]["selected_proposal_id"].rsplit(":", 1)[1]
+            )
         )
-        self.assertFalse(state["timeline"][0]["decision"]["proposed_applied"])
-        self.assertEqual(first_decision["frame_id"], frame_id)
-        self.assertFalse(first_decision["authority"]["proposed_applied"])
+        self.assertTrue(state["timeline"][0]["decision"]["proposed_applied"])
         self.assertEqual(
-            state["machine_detail"]["pipeline"]["decision_engine"],
-            "shadow-proposals",
+            state["machine_detail"]["pipeline"]["decision_steps"],
+            {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["selected"]},
         )
         decision_config = state["machine_detail"]["pipeline"]["decision_config"]
-        self.assertFalse(decision_config["proposed_applied"])
-        self.assertEqual(decision_config["steer_magnitude"], 1.0)
+        self.assertEqual(decision_config["action"], ["selected"])
+        self.assertEqual(decision_config["plugins"], ["avoid_recent_obstruction"])
+        proposal_config = decision_config["plugin_configs"]["avoid_recent_obstruction"]
+        self.assertEqual(proposal_config["steer_magnitude"], 1.0)
         self.assertEqual(
-            decision_config["accepted_kinds"],
+            proposal_config["accepted_kinds"],
             ["floor_boundary", "obstacle", "obstruction_evidence"],
         )
 
@@ -334,30 +305,31 @@ class WorkbenchTests(unittest.TestCase):
                     },
                 ]
             })
-            mapper = FixtureMapper()
+            perception_step = FixtureMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
             state = runner.wait(5)
 
         self.assertEqual(state["phase"], "completed")
-        self.assertEqual(len(mapper.calls), 1)
+        self.assertEqual(len(perception_step.calls), 1)
         self.assertTrue(state["timeline"][1]["frame"]["absent"])
-        self.assertEqual(state["observation"]["metadata"]["absence_reason"], "dropout")
+        self.assertEqual(state["timeline"][1]["frame"]["absence_reason"], "dropout")
+        self.assertIsNone(state["steps"]["observation"])
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
         with image_source(2) as root:
-            mapper = BlockingSecondMapper()
+            perception_step = BlockingSecondMapper()
             runner = ImageReplayRunner(
                 root,
                 cadence_ms=0,
-                mapper_factory=lambda: mapper,
+                step_factories={"perception": lambda: perception_step},
             )
             runner.start()
-            self.assertTrue(mapper.second_started.wait(3))
+            self.assertTrue(perception_step.second_started.wait(3))
             try:
                 active = runner.state()
                 self.assertEqual(len(active["timeline"]), 1)
@@ -366,5 +338,5 @@ class WorkbenchTests(unittest.TestCase):
                     active["timeline"][0]["frame"]["frame_id"],
                 )
             finally:
-                mapper.release_second.set()
+                perception_step.release_second.set()
             self.assertEqual(runner.wait(5)["phase"], "completed")

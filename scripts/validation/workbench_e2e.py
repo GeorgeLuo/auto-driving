@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""End-to-end workbench check over its HTTP API.
+
+Serves the workbench on the bright high-rate capture with packaged perception
+plugins that extract signals, and runs it to the end. Every frame is then
+shown by seeking, as the page does, and compared with
+``automa vehicles perception inspect`` over the same directory and plugins: the
+workbench must show the frame, status, and per-plugin signal and thing counts
+the CLI reports. Memory and decision state must be present for every frame.
+Both are given the ``multi_obstruction`` perception preset. A second pass
+changes the plugin selection through the API while paused, running, seeking,
+and looping. A third selects the plugins of memory presets and compares them
+with the activation ``automa vehicles update memory --preset --dry-run`` reports.
+
+    scripts/validation/workbench_e2e.py
+"""
+
+from __future__ import annotations
+
+import json
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+from contextlib import contextmanager
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121"
+PERCEPTION_PRESET = "multi_obstruction"
+MEMORY_PRESETS = ("recency_ledger",)
+RUN_KEYS = ("plugin_id", "status", "error", "signal_count", "thing_count")
+
+
+def automa(*args: str) -> list[str]:
+    return [sys.executable, str(ROOT / "cli/automa"), "vehicles", *args]
+
+
+def inspect_report() -> dict:
+    """The CLI's report for the same source, with the perception preset."""
+
+    completed = subprocess.run(
+        automa("perception", "inspect", str(SOURCE), "--preset", PERCEPTION_PRESET, "--json"),
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if completed.returncode != 0:
+        sys.stderr.write(completed.stderr)
+        raise SystemExit(f"perception inspect exited {completed.returncode}")
+    return json.loads(completed.stdout)
+
+
+class Workbench:
+    """A served workbench and the two calls the page makes."""
+
+    def __init__(self, base: str) -> None:
+        self.base = base
+
+    def state(self) -> dict:
+        return json.load(urllib.request.urlopen(self.base + "/api/state", timeout=5))
+
+    def act(self, **payload) -> dict:
+        request = urllib.request.Request(
+            self.base + "/api/action",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        return json.load(urllib.request.urlopen(request, timeout=60))["state"]
+
+    def wait_for(self, condition, timeout: float = 120.0) -> dict:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                current = self.state()
+                if condition(current):
+                    return current
+            except OSError:
+                pass
+            time.sleep(0.2)
+        raise TimeoutError("workbench did not reach the expected state")
+
+
+@contextmanager
+def serve():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    command = automa(
+        "workbench", "replay", str(SOURCE), "--serve", "--port", str(port), "--cadence-ms", "0",
+        "--perception-preset", PERCEPTION_PRESET,
+    )
+    server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        yield Workbench(f"http://127.0.0.1:{port}")
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+
+
+def runs(current: dict) -> list[str]:
+    perception = current["steps"]["perception"] or {}
+    return [run["plugin_id"] for run in perception.get("plugin_runs") or []]
+
+
+def check_parity() -> list[str]:
+    """Show every frame of a finished run and compare it with ``inspect``."""
+
+    report = inspect_report()
+    expected = report["frames"]
+    problems: list[str] = []
+    inspected = report["perception"]
+    try:
+        with serve() as workbench:
+            started = workbench.wait_for(lambda s: s["position"] >= 1)
+            run_id = started["run_id"]
+            served = started["machine_detail"]["pipeline"]["perception_preset"]
+            plugins = started["active_perception_plugin_ids"]
+            if (served, plugins) != (inspected["preset"], inspected["config"]["plugins"]):
+                problems.append(
+                    f"workbench runs {served} {plugins}, "
+                    f"inspect runs {inspected['preset']} {inspected['config']['plugins']}"
+                )
+            workbench.act(action="pause", run_id=run_id)
+            # Seeking ahead processes the unseen frames; chunks keep each request short.
+            for ahead in range(50, len(expected) + 49, 50):
+                done = workbench.act(action="seek", run_id=run_id, position=min(ahead, len(expected)) - 1)
+            if done.get("failure"):
+                problems.append(f"run failed: {done['failure']!r}")
+            if len(done["timeline"]) != len(expected):
+                problems.append(f"frames: inspect {len(expected)}, workbench {len(done['timeline'])}")
+            for index, want in enumerate(expected[: len(done["timeline"])]):
+                shown = workbench.act(action="seek", run_id=run_id, position=index)
+                label = f"frame {index}"
+                entry = shown["timeline"][index]
+                if shown["position"] != index + 1:
+                    problems.append(f"{label}: seek landed at {shown['position'] - 1}")
+                if entry.get("perception_status") != want["status"]:
+                    problems.append(
+                        f"{label}: status {entry.get('perception_status')!r}, inspect {want['status']!r}"
+                    )
+                got_runs = [
+                    {key: run.get(key) for key in RUN_KEYS}
+                    for run in (shown["steps"]["perception"] or {}).get("plugin_runs") or []
+                ]
+                want_runs = [{key: run.get(key) for key in RUN_KEYS} for run in want["plugin_runs"]]
+                if got_runs != want_runs:
+                    problems.append(f"{label}: plugin runs {got_runs}, inspect {want_runs}")
+                if not (entry.get("decision") or {}).get("status"):
+                    problems.append(f"{label}: no decision status")
+                plugins = entry.get("memory_plugins") or []
+                if not plugins or any(item.get("record_count") is None for item in plugins):
+                    problems.append(f"{label}: no memory record count")
+                if len(problems) > 20:
+                    break
+    except (TimeoutError, OSError, KeyError) as exc:
+        problems.append(f"parity check failed: {type(exc).__name__}: {exc}")
+    return problems
+
+
+def check_selector() -> list[str]:
+    """Change the selection the way the page does.
+
+    A paused selection starts the pass over and runs up to the displayed frame
+    again, seeking shows earlier frames with the current selection, seeking
+    past the recorded frames lands there, a running selection shows the new
+    selection when it returns, and a loop pass runs with the current selection.
+    """
+
+    problems: list[str] = []
+    try:
+        with serve() as workbench:
+            act = workbench.act
+            wait_for = workbench.wait_for
+            current = wait_for(lambda s: s["position"] >= 3)
+            run_id = current["run_id"]
+            paused = act(action="pause", run_id=run_id)
+            frame_id = paused["current_frame"]["frame_id"]
+            selected = act(
+                action="select_plugins", run_id=run_id, step="perception",
+                active_plugin_ids=["floor_continuity"],
+            )
+            if selected["current_frame"]["frame_id"] != frame_id or runs(selected) != ["floor_continuity"]:
+                problems.append(f"paused selection did not reprocess {frame_id}: {runs(selected)}")
+            if len(selected["timeline"]) != paused["position"]:
+                problems.append(f"timeline holds {len(selected['timeline'])} of {paused['position']} frames")
+            sought = act(action="seek", run_id=run_id, position=0)
+            if runs(sought) != ["floor_continuity"]:
+                problems.append(f"seek to a frame recorded earlier showed {runs(sought)}")
+            target = len(sought["timeline"]) + 10
+            ahead = act(action="seek", run_id=run_id, position=target)
+            if ahead["position"] != target + 1 or runs(ahead) != ["floor_continuity"]:
+                problems.append(f"seek past recorded frames to {target} landed at {ahead['position'] - 1}")
+            act(action="resume", run_id=run_id)
+            running = act(
+                action="select_plugins", run_id=run_id, step="perception",
+                active_plugin_ids=["classical_regions"],
+            )
+            if runs(running) != ["classical_regions"]:
+                problems.append(f"running selection returned {runs(running)}")
+            if running["phase"] != "running":
+                problems.append(f"running selection left phase {running['phase']}")
+            act(action="set_loop", run_id=run_id, loop=True)
+            wait_for(lambda s: s["position"] > len(s["timeline"]) - 1 and s["position"] > 200)
+            looped = wait_for(lambda s: 0 < s["position"] < 20)
+            if runs(looped) != ["classical_regions"] or len(looped["timeline"]) != looped["position"]:
+                problems.append(
+                    f"loop pass did not reprocess: position {looped['position']}, "
+                    f"timeline {len(looped['timeline'])}, runs {runs(looped)}"
+                )
+    except (TimeoutError, OSError, KeyError) as exc:
+        problems.append(f"selector check failed: {type(exc).__name__}: {exc}")
+    return problems
+
+
+def check_memory_selector() -> list[str]:
+    """Select memory plugins the way the page does and compare with ``update memory``.
+
+    Memory is built from the frames before the displayed one, so a selection
+    while paused rebuilds it over those frames and keeps the displayed frame.
+    """
+
+    problems: list[str] = []
+    try:
+        with serve() as workbench:
+            current = workbench.wait_for(lambda s: s["position"] >= 5)
+            run_id = current["run_id"]
+            paused = workbench.act(action="pause", run_id=run_id)
+            position, frame_id = paused["position"], paused["current_frame"]["frame_id"]
+            for preset in MEMORY_PRESETS:
+                label = preset
+                completed = subprocess.run(
+                    automa("update", "memory", "--id", "chase-sim-chaser", "--preset", preset, "--dry-run", "--json"),
+                    cwd=ROOT, capture_output=True, text=True, check=False,
+                )
+                if completed.returncode != 0:
+                    problems.append(f"{label}: update memory exited {completed.returncode}")
+                    continue
+                manifest = json.loads(completed.stdout)["manifest"]
+                expected = manifest["plugins"]
+                if manifest["metadata"]["preset"] != preset:
+                    problems.append(f"{label}: update memory recorded preset {manifest['metadata']['preset']}")
+                selected = workbench.act(
+                    action="select_plugins", run_id=run_id, step="memory", active_plugin_ids=expected,
+                )
+                applied = selected["machine_detail"]["pipeline"]["memory_plugin_report"]["applied_plugin_ids"]
+                if applied != expected or selected["active_memory_plugin_ids"] != expected:
+                    problems.append(f"{label}: workbench memory {applied}, update memory {expected}")
+                if selected["position"] != position or selected["current_frame"]["frame_id"] != frame_id:
+                    problems.append(f"{label}: displayed frame moved to {selected['current_frame']['frame_id']}")
+                if len(selected["timeline"]) != position:
+                    problems.append(f"{label}: timeline holds {len(selected['timeline'])} of {position} frames")
+                shown = [
+                    entry["plugin_id"]
+                    for entry in (selected["steps"]["memory"] or {}).get("plugins", [])
+                ]
+                if shown != expected:
+                    problems.append(f"{label}: memory step shows {shown}, expected {expected}")
+    except (TimeoutError, OSError, KeyError) as exc:
+        problems.append(f"memory selector check failed: {type(exc).__name__}: {exc}")
+    return problems
+
+
+def main() -> int:
+    problems = check_parity() + check_selector() + check_memory_selector()
+    if problems:
+        print(f"{len(problems)} problem(s):")
+        print("\n".join(problems[:40]))
+        return 1
+    print(
+        "workbench matches inspect frame by frame; plugin selection reprocesses frames; "
+        "memory selection matches update memory"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -16,19 +16,28 @@ Use `help` to descend through command groups and `--help` for the final command:
 
 ## Primary Journey
 
-Run these commands from the repository root:
+Run these commands from the repository root with the environment from
+[README Setup](../../README.md#setup) activated. This example selects packaged
+perception and memory presets. For an existing tuned deployment, stage your
+intended selections instead: each update replaces its named step's configs.
+`runtime/` persists across branch changes; incompatible activations must be
+explicitly restaged using the recovery that status prints.
 
 ```sh
 ./cli/automa vehicles status --chase-url http://localhost:5050
 
+./cli/automa vehicles update memory \
+  --id chase-sim-chaser \
+  --preset recency_ledger
+
 ./cli/automa vehicles update perception \
   --id chase-sim-chaser \
-  --algorithm lightweight_observer
+  --preset lightweight_observer
 
 ./cli/automa vehicles automation run \
   --id chase-sim-chaser \
   --observe-only \
-  --frames 0 \
+  --num-decisions 0 \
   --open-view
 
 ./cli/automa vehicles status --id chase-sim-chaser
@@ -44,10 +53,16 @@ Use either `--chase-url` or the compatibility option `--chase-ws-url`, not
 both. When neither is supplied, Automa uses `CHASE_UI_WS_URL` when set and
 otherwise connects to `http://localhost:5050`.
 
-`update perception` stages the packaged observer and safe idle decision
-activation. It does not start a worker or apply movement. For the primary Chase
-path it rechecks the same environment and passive-capture prerequisites used by
-automation, then reports whether the run command is ready.
+`update memory` stages the memory preset. Without it, an otherwise fresh cycle
+has no memory plugins. `update perception` stages the observer and fills absent
+observation, plan and action activations with their built-in plugins. Existing
+selections are preserved; proposals are staged separately. An incompatible
+existing observation, plan, action or proposal activation must be restaged
+before updating perception, which refreshes their release metadata.
+Neither update command starts a worker or applies movement. For the primary
+Chase path, the perception update rechecks the same environment and
+passive-capture prerequisites used by automation, then reports whether the run
+command is ready. Memory staging does not require a live simulator.
 
 `automation run --observe-only` preserves the current scenario, playback
 state, control source, and input. It succeeds only after one camera frame, the
@@ -55,9 +70,107 @@ perception result for that frame, and the loopback view health all agree on the
 same live worker generation. `--open-view` is explicit. A browser-launch
 failure leaves the healthy worker running and prints the URL for manual use.
 
-`--frames 0` runs until the explicit `automation stop` command. Stopping the
-worker keeps its local deployment staged and makes its previous view
-unavailable or stale, never current.
+`--num-decisions 0` starts an unbounded background worker; the launch command returns
+once the correlated view is ready and prints `automation stop`, which stops the worker.
+Only `--observe-only` runs unbounded: a run that applies control needs `--num-decisions N`.
+Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
+restart, keep `--observe-only` explicit:
+
+```sh
+./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
+```
+
+Stopping the worker keeps its local deployment staged and makes its previous
+view unavailable or stale, never current.
+
+## Upload to an Existing Catalog
+
+With a Chase worker and its viewer open, upload a local plugin file separately
+from selecting it:
+
+```sh
+./cli/automa vehicles plugins upload \
+  --id chase-sim-chaser \
+  --file ./prototype.py \
+  --step perception \
+  --plugin-id prototype \
+  --entrypoint prototype:Prototype
+
+./cli/automa vehicles plugins status --id chase-sim-chaser --step perception
+```
+
+The command reports success after the source is stored and its revision is
+registered, and prints the next verification command. `plugins status` reads the
+live catalog and reports its version, plugin IDs, filenames, and revisions;
+use `--json` for the complete receipt or catalog snapshot, including the target,
+outcome, and recovery action. `plugins list` remains an alias for `status`. `plugins help`
+describes the file identity arguments and the existing-host precondition.
+Open **Plugins** in the runtime viewer to see the available
+revision. Upload does not change the selected or running plugins. Source that
+does not compile is refused with its file and line. The file is not imported,
+constructed, or checked for dependencies during upload; arming loads it.
+
+Use `--url <viewer-or-workbench-url>` instead of `--id` to address a catalog
+directly. The same command and `/api/plugins` endpoint apply to Chase, PiCar,
+and the replay workbench. Workbench plugin panels refresh their catalogs even
+before a replay starts or after it finishes. Dependent files can be uploaded
+in sequence without resolving each other during registration.
+
+Uploaded source lives outside `implementations`. Re-uploading an ID makes a
+new source revision available while previous selections retain their source.
+Registrations belong to the live catalog; restoration after a host restart is
+not guaranteed. A Chase worker currently ends its catalog and viewer when the
+worker exits. Keeping that host alive between automation runs is separate work.
+
+## Arm on an Existing Runtime Host
+
+After uploading, request the available revision without restarting the worker:
+
+```sh
+./cli/automa vehicles plugins arm --id chase-sim-chaser --step perception --plugin prototype
+./cli/automa vehicles plugins status --id chase-sim-chaser --step perception
+./cli/automa vehicles stream perception --id chase-sim-chaser --once
+```
+
+The host imports and constructs the selection before answering. The receipt
+reports `requested`, and the host applies it at its next cycle. An import or
+construction error fails the arm with exit 2 and the error, keeps the previous
+selection, and `plugins status` exits 2 until an arm succeeds.
+Status and the viewer's **Plugins** page distinguish available, requested and
+applied revisions. New IDs append in command order. An existing ID updates in
+place; other plugins retain their definitions and configurations. Uploading a
+newer revision does not change a pending or applied selection until another arm
+request names that ID. Re-arming an unchanged definition preserves its instance
+and history.
+
+For one-command registration and arming, add `--arm` to the upload command.
+It uses the same arm operation and reports upload and arming outcomes separately;
+the upload remains available if arming fails.
+
+For dependent plugins, upload each file first, then arm the group with a JSON
+selection document:
+
+```json
+{"perception": ["prototype"], "memory": ["prototype-memory"], "proposal": ["prototype-proposal"]}
+```
+
+```sh
+./cli/automa vehicles plugins arm --id chase-sim-chaser --selection ./selection.json
+./cli/automa vehicles plugins status --id chase-sim-chaser
+```
+
+The host loads every changed step before publishing any of the group. The
+next cycle sees the adopted perception, memory and proposal selections together.
+Observation, plan and action keep their existing deployment behavior. Arming
+neither starts automation nor changes its control mode. An idle or completed
+host can accept a request while its catalog exists; it stays requested until the
+next cycle. A Chase worker exiting ends that catalog and its uploaded selections.
+The replay workbench continues to use its existing selection controls and
+supports upload only through this command group.
+
+Uploads currently support self-contained plugin files using installed imports.
+Uploading Python modules that import other uploaded files needs a later loader
+extension; upload does not resolve or validate those dependencies.
 
 ## State Vocabulary
 
@@ -123,7 +236,8 @@ blocked. Run the command as printed, or perform the named external change.
 | Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
-| Deployment absent | Run the printed `vehicles update perception` command |
+| Deployment absent | Run the printed `vehicles update perception` command; stage memory separately when you want its ledger |
+| Staged step invalid (including a retired schema) | Status, startup, `vehicles info`, and the perception and autonomy updates identify its step, activation path, and restage command. Run its `vehicles update <step>` command with your intended selection, then rerun status. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
 | Worker stopped | Run the printed observation-only `automation run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 

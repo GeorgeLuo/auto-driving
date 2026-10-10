@@ -13,7 +13,7 @@ from urllib.request import urlopen
 from PIL import Image
 
 VIEW_SCHEMA = "automa_perception_view_v1"
-PUBLICATION_SCHEMA = "automa_perception_publication_v1"
+PUBLICATION_SCHEMA = "automa_perception_publication_v2"
 VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MAX_BUFFERED_FRAMES = 8
@@ -81,11 +81,32 @@ class PerceptionView:
 
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
+            perception_id = self._latest_perception_frame_id
+            source = self._latest_perception_record or {}
+            latest = self._latest_frame or {}
+            has_perception = self._latest_perception_record is not None
             return {
                 "has_frame": self._frame_bytes is not None,
-                "has_perception": self._latest_perception_record is not None,
+                "has_perception": has_perception,
                 "latest_frame_id": self._latest_frame_id,
-                "latest_perception_frame_id": self._latest_perception_frame_id,
+                "latest_perception_frame_id": perception_id,
+                "perception_frame_buffered": (
+                    perception_id is not None and perception_id in self._frames
+                ),
+                "capture_lag": (
+                    _nonnegative_difference(
+                        latest.get("frame_index"), source.get("frame_index")
+                    )
+                    if has_perception
+                    else None
+                ),
+                "capture_lag_ms": (
+                    _nonnegative_difference(
+                        latest.get("captured_at_ms"), source.get("captured_at_ms")
+                    )
+                    if has_perception
+                    else None
+                ),
                 "frame_published_at_ms": self._frame_published_at_ms,
                 "perception_published_at_ms": self._perception_published_at_ms,
             }
@@ -195,14 +216,24 @@ def get_perception_view_status(
             "reason": generation_error,
         }
     if not perception_view_ready(health):
+        image_missing = (
+            health.get("has_perception")
+            and health.get("latest_perception_frame_id")
+            and not health.get("perception_frame_buffered")
+        )
         return {
             **record,
             **health,
             "available": False,
             "status": "warming",
             "reason": (
-                "perception view has not published one correlated camera and "
-                "perception frame"
+                "perception view completed a result whose camera image "
+                "is no longer buffered"
+                if image_missing
+                else (
+                    "perception view has not published one correlated camera and "
+                    "perception frame"
+                )
             ),
         }
     return {
@@ -215,16 +246,18 @@ def get_perception_view_status(
 
 
 def perception_view_ready(payload: dict[str, Any]) -> bool:
-    """True only for one current correlated camera/perception publication."""
+    """True when a completed result and its camera image are both available.
+
+    A newer capture does not withdraw readiness. Its distance from the
+    completed result is ``capture_lag`` on the view payload.
+    """
 
     return bool(
         payload.get("available")
         and payload.get("url")
-        and payload.get("has_frame")
         and payload.get("has_perception")
-        and payload.get("latest_frame_id")
-        and payload.get("latest_frame_id")
-        == payload.get("latest_perception_frame_id")
+        and payload.get("latest_perception_frame_id")
+        and payload.get("perception_frame_buffered")
     )
 
 
@@ -260,8 +293,8 @@ def _publication_payload(
     source = perception_record or {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
-    # Retained evidence from shared_memory["decision.snapshot"], carried on
-    # the frame record.
+    # The frame record's memory report: every plugin's state by plugin_id and
+    # the evidence publisher, as the memory step reported them.
     memory = source.get("memory")
     memory = memory if isinstance(memory, dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
@@ -280,7 +313,7 @@ def _publication_payload(
         },
         "perception": perception,
         "memory": memory,
-        "sensor_snapshot": source.get("sensor_snapshot"),
+        "sensor_frame": source.get("sensor_frame"),
         "observation": source.get("observation"),
         "control": source.get("control"),
         "engine": source.get("engine"),
@@ -360,9 +393,9 @@ def _image_dimensions(frame_path: Path) -> tuple[int, int]:
 
 
 def _frame_content_type(frame_path: Path, frame_record: dict[str, Any]) -> str:
-    snapshot = frame_record.get("sensor_snapshot")
-    if isinstance(snapshot, dict):
-        readings = snapshot.get("readings")
+    sensor_frame = frame_record.get("sensor_frame")
+    if isinstance(sensor_frame, dict):
+        readings = sensor_frame.get("readings")
         reading = readings.get("front_camera") if isinstance(readings, dict) else None
         metadata = reading.get("metadata") if isinstance(reading, dict) else None
         content_type = metadata.get("content_type") if isinstance(metadata, dict) else None

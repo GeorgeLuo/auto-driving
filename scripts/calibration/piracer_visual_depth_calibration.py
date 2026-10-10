@@ -22,8 +22,18 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from implementations.perception.features import FeatureMatch, detect_keypoints, grayscale, match_keypoints, track_features
-from implementations.perception.motion import SceneMotionResult, analyze_scene_motion, find_motion_groups
+from implementations.decision_cycle.perception.shared.features.feature_tracking import (
+    FeatureMatch,
+    detect_keypoints,
+    grayscale,
+    match_keypoints,
+    track_features,
+)
+from implementations.decision_cycle.perception.shared.motion.scene_motion import (
+    SceneMotionResult,
+    analyze_scene_motion,
+    find_motion_groups,
+)
 
 
 @dataclass

@@ -362,27 +362,27 @@
     <header>
       <h1>Onboard Autonomy Flow</h1>
       <p class="lead">
-        The automation engine treats each vehicle as a sensor-and-control
-        boundary. A shared, no-op-friendly cycle can perceive, observe, retain
-        state, and select an action without requiring every step to be
-        implemented. The default decision engine is deliberately idle, while
-        the explicit PiCar obstacle-avoidance engine provides the first bounded
-        live-control path.
+        The framework treats each vehicle as a sensor-and-control boundary. One
+        cycle of six peer steps (perception, observation, memory, proposal,
+        plan, action) runs per frame; every step runs the plugins its own
+        activation selects, and an empty step records nothing. The default
+        <code>hold</code> action is deliberately idle, while the explicit
+        <code>mode</code> action provides the first bounded live-control path.
       </p>
       <p class="source-line">
-        Source points: <code>autonomy/decision/cycle.py</code>,
+        Source points: <code>autonomy/decision_cycle/cycle.py</code>,
         <code>autonomy/runtime/cycle_host.py</code>,
         <code>cli/automa_cli/automation.py</code>, and
-        <code>implementations/runtime/donkeycar/donkey_part.py</code>
+        <code>implementations/runtime/picar/donkey_part.py</code>
       </p>
     </header>
 
     <section class="diagram-shell" aria-labelledby="main-flow-title">
       <h2 id="main-flow-title">Main Runtime Loop</h2>
-      <div class="runtime-grid" role="img" aria-label="A sensor snapshot flows through optional perception and state steps, into a loadable decision engine, then through an environment-specific control gate.">
+      <div class="runtime-grid" role="img" aria-label="A sensor frame flows through the perception, observation, and memory steps, then the proposal, plan, and action steps, then an environment-specific control gate.">
         <div class="node vehicle">
           <h3>Sensor Input</h3>
-          <p>Each tick starts with a generic <code>SensorSnapshot</code>.</p>
+          <p>Each tick starts with a generic <code>SensorFrame</code>.</p>
           <ul>
             <li>The current shared sensor is <code>front_camera</code>.</li>
             <li>Chase captures it through the WS/CLI adapter.</li>
@@ -394,10 +394,10 @@
 
         <div class="node perception">
           <h3>Optional Perception</h3>
-          <p>A configured mapper turns sensor readings into <code>PerceptionText</code> evidence.</p>
+          <p>The perception step's selected plugins turn sensor readings into <code>PerceptionText</code> evidence.</p>
           <ul>
             <li>The stable step is agnostic of sensor and evidence kinds.</li>
-            <li>Plugins declare and resolve their own input components.</li>
+            <li>Plugins declare and resolve their own input feeds.</li>
             <li>Plugins emit signals, things, artifacts, and limits.</li>
           </ul>
         </div>
@@ -406,9 +406,9 @@
 
         <div class="node memory">
           <h3>Observation And State</h3>
-          <p>Perception is adapted to the stable decision-facing <code>Observation</code> shape.</p>
+          <p>The observation step adapts perception to the stable decision-facing <code>Observation</code> shape.</p>
           <ul>
-            <li>The default observe step runs only when perception exists.</li>
+            <li>The built-in <code>perception_summary</code> plugin records an observation only when perception exists.</li>
             <li>Memory is an optional step; memory plugins own retained-evidence transformations.</li>
             <li>Without a configured memory plugin, the memory output is null.</li>
           </ul>
@@ -417,12 +417,12 @@
         <div class="arrow" aria-hidden="true"></div>
 
         <div class="node decision">
-          <h3>Loadable Engine</h3>
-          <p><code>AutonomyCycleHost</code> gives the cycle result to the engine selected by <code>AutonomyManager</code>.</p>
+          <h3>Proposal, Plan, Action</h3>
+          <p><code>AutonomyCycleHost</code> loads each step from <code>runtime/&lt;step&gt;/active.json</code>.</p>
           <ul>
-            <li>Selection comes from <code>runtime/decision/active.json</code>.</li>
-            <li>The current <code>idle</code> engine always returns zero control.</li>
-            <li>Engines receive evidence, never privileged simulator map state.</li>
+            <li>Proposal plugins each return one candidate; the plan step selects one; the action plugin authorizes the control and records whether the selected command was applied.</li>
+            <li>Without proposal plugins the plan is idle; <code>hold</code> always authorizes idle control.</li>
+            <li>Proposals read evidence from shared memory, never privileged simulator map state.</li>
           </ul>
         </div>
 
@@ -442,7 +442,7 @@
       <div class="feedback">
         <div class="node vehicle">
           <h3>On PiRacer</h3>
-          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest frame/result snapshot and publishes it on <code>/autonomy/observation/latest</code> (plus matching <code>frame.jpg</code>). Perception and decision activations select the plugins and engine; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
+          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest state (frame and result) and publishes it on <code>/autonomy/observation/latest</code> (plus matching <code>frame.jpg</code>). Each step's activation selects its plugins; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
         </div>
         <div class="node perception">
           <h3>In Simulation</h3>
@@ -469,13 +469,13 @@
         <div class="step">
           <div>
             <h3>Capture</h3>
-            <p>The runtime creates a <code>DecisionFrameContext</code> containing the current <code>SensorSnapshot</code> and frame metadata.</p>
+            <p>The runtime creates a <code>DecisionFrameContext</code> containing the current <code>SensorFrame</code> and frame metadata.</p>
           </div>
         </div>
         <div class="step">
           <div>
             <h3>Perceive</h3>
-            <p>The activated generic plugin-chain step passes a component context over the sensor snapshot. Each configured implementation resolves only the components it needs. The same step shape runs locally for Chase and on the Donkey host.</p>
+            <p>The activated generic plugin-chain step passes a feed context over the sensor frame. Each configured implementation resolves only the feeds it needs. The same step shape runs locally for Chase and on the Donkey host.</p>
           </div>
         </div>
         <div class="step">
@@ -487,19 +487,19 @@
         <div class="step">
           <div>
             <h3>Update Memory</h3>
-            <p>An activated memory plugin transforms observations into a <code>MemorySnapshot</code> for the decision engine. Without a configured memory step, the cycle carries <code>null</code>.</p>
+            <p>Activated memory plugins read each observation and write what they retain to plugin-owned <code>shared_memory</code> keys. The step returns a memory report of each plugin's state. Without a configured memory step, the cycle carries <code>null</code>.</p>
           </div>
         </div>
         <div class="step">
           <div>
-            <h3>Run Idle Engine</h3>
-            <p>The selected engine returns <code>AutonomyControl(steering=0, throttle=0)</code> with an inspectable reason and confidence.</p>
+            <h3>Propose, Plan, Hold</h3>
+            <p>The proposal step records each plugin's candidate, the plan step records the selection, and the <code>hold</code> action returns <code>AutonomyControl(steering=0, throttle=0)</code> with an inspectable reason and confidence.</p>
           </div>
         </div>
         <div class="step">
           <div>
-            <h3>Publish Latest Snapshot</h3>
-            <p>On DonkeyCar, the part detaches the exact processed frame and findings into one in-memory latest snapshot. Read-only HTTP endpoints expose JSON and JPEG with matching frame identity and read-time health. Default operation writes no perception history.</p>
+            <h3>Publish Latest State</h3>
+            <p>On DonkeyCar, the part detaches the exact processed frame and findings into one in-memory latest state. Read-only HTTP endpoints expose JSON and JPEG with matching frame identity and read-time health. Default operation writes no perception history.</p>
           </div>
         </div>
         <div class="step">
@@ -512,10 +512,10 @@
 
       <div class="callout">
         <strong>Memory plugins own memory transformations:</strong>
-        the shared cycle passes their <code>MemorySnapshot</code> directly to
-        the action step and exposes it in <code>DecisionCycleResult</code>.
-        Derived evidence belongs in that memory contract, so the harness does
-        not need separate pattern or projection steps.
+        proposal plugins read the same <code>shared_memory</code> keys that
+        memory plugins write, and <code>DecisionCycleResult</code> carries the
+        memory report. Derived evidence belongs in those keys, so the harness
+        does not need separate pattern or projection steps.
       </div>
     </section>
 
@@ -534,32 +534,44 @@
           <tr>
             <td>Vehicle</td>
             <td>Read request or bounded operation command.</td>
-            <td><code>SensorSnapshot</code>, pulse result, and stop.</td>
+            <td><code>SensorFrame</code>, pulse result, and stop.</td>
             <td><code>autonomy/vehicle/vehicle.py</code></td>
           </tr>
           <tr>
             <td>Perception</td>
-            <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query components from its snapshot.</td>
+            <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query feeds from its sensor frame.</td>
             <td><code>PerceptionText</code> containing evidence and limits.</td>
-            <td><code>autonomy/perception/</code>, <code>implementations/perception/</code></td>
+            <td><code>autonomy/decision_cycle/perception/</code>, <code>implementations/decision_cycle/perception/</code></td>
           </tr>
           <tr>
             <td>Observation</td>
-            <td>Current snapshot and optional perception.</td>
+            <td>Current sensor frame and optional perception.</td>
             <td>Stable decision-facing evidence record.</td>
-            <td><code>autonomy/decision/observation.py</code></td>
+            <td><code>autonomy/decision_cycle/observation/</code></td>
           </tr>
           <tr>
             <td>Memory Step</td>
             <td>Observation and frame context.</td>
             <td>Optional memory supplied by the activated memory plugin.</td>
-            <td><code>autonomy/decision/cycle.py</code></td>
+            <td><code>autonomy/decision_cycle/memory/</code></td>
           </tr>
           <tr>
-            <td>Decision</td>
-            <td><code>AutonomySnapshot</code> with all available step outputs.</td>
-            <td>Normalized <code>AutonomyControl</code>.</td>
-            <td><code>autonomy/runtime/engine.py</code>, <code>cycle_host.py</code></td>
+            <td>Proposal</td>
+            <td>Frame context, observation, and shared memory.</td>
+            <td><code>ProposalResult</code>: the detached source and one candidate per selected plugin.</td>
+            <td><code>autonomy/decision_cycle/proposal/</code>, <code>implementations/decision_cycle/proposal/</code></td>
+          </tr>
+          <tr>
+            <td>Plan</td>
+            <td>The proposal step's candidates.</td>
+            <td><code>ActionPlan</code>: the selected candidate, or idle.</td>
+            <td><code>autonomy/decision_cycle/plan/</code></td>
+          </tr>
+          <tr>
+            <td>Action</td>
+            <td>The plan (or the reason there is none) and the drive mode.</td>
+            <td><code>ActionResult</code>: the authority record and the <code>AutonomyControl</code> to apply.</td>
+            <td><code>autonomy/decision_cycle/action/</code>, <code>implementations/decision_cycle/action/</code>, <code>autonomy/runtime/cycle_host.py</code></td>
           </tr>
           <tr>
             <td>Operations</td>
@@ -578,13 +590,13 @@
           <h3>Live Controller</h3>
           <p>Inspect staged contracts and the latest local worker result.</p>
           <p><code>./cli/automa vehicles info perception --id chase-sim-chaser</code></p>
-          <p><code>./cli/automa vehicles info decision --id chase-sim-chaser</code></p>
+          <p><code>./cli/automa vehicles info proposal --id chase-sim-chaser</code></p>
           <p><code>./cli/automa vehicles stream perception --id chase-sim-chaser</code></p>
         </div>
         <div>
           <h3>Recorded Cycle</h3>
           <p>Opt into a bounded recording when the full perception, observation, control, and cycle result need inspection.</p>
-          <p><code>./cli/automa vehicles automation run --id chase-sim-chaser --frames 5 --record</code></p>
+          <p><code>./cli/automa vehicles automation run --id chase-sim-chaser --num-decisions 5 --record</code></p>
           <p>Recorded cycle JSON reflects the actual runtime; unimplemented state steps remain <code>null</code>.</p>
         </div>
       </div>

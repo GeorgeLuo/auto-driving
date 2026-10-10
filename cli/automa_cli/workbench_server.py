@@ -1,8 +1,9 @@
-"""Loopback HTTP boundary for the perception-memory workbench."""
+"""Loopback HTTP boundary for the decision playback workbench."""
 
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -26,9 +27,17 @@ from .workbench_contract import (
     WORKBENCH_SERVER_SCHEMA,
 )
 from .workbench_source import SourceValidationError
+from .plugin_catalog import serve_plugin_catalog
+from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
-WORKBENCH_HTML_PATH = Path(__file__).with_name("workbench.html")
+WORKBENCH_PAGE_DIR = Path(__file__).with_name("workbench_page")
+# The page's own files, served read-only under /static/; nothing else is reachable.
+WORKBENCH_STATIC_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+}
+WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|js/[a-z]+\.js)$")
 
 
 class ReplayRunner(Protocol):
@@ -43,14 +52,6 @@ class ReplayRunner(Protocol):
         ...
 
     def dispatch(self, action: str, **kwargs: Any) -> dict[str, Any]:
-        ...
-
-    def frame_detail(
-        self,
-        frame_id: str,
-        *,
-        run_id: str,
-    ) -> dict[str, Any] | None:
         ...
 
     def frame_bytes(
@@ -145,7 +146,7 @@ class WorkbenchServer:
             "source_dir",
             "cadence_ms",
             "pace",
-            "plugin_dir",
+            "step",
             "active_plugin_ids",
             "position",
             "loop",
@@ -194,10 +195,10 @@ class WorkbenchServer:
                 status_code=400,
                 boundary="input",
             )
-        plugin_dir = payload.get("plugin_dir")
-        if plugin_dir is not None and not isinstance(plugin_dir, str):
+        step = payload.get("step")
+        if step is not None and not isinstance(step, str):
             raise ReplayActionError(
-                "plugin_dir must be a path string",
+                "step must be a string",
                 status_code=400,
                 boundary="input",
             )
@@ -234,7 +235,7 @@ class WorkbenchServer:
                 source_dir=source_dir,
                 cadence_ms=cadence_ms,
                 pace=pace,
-                plugin_dir=plugin_dir,
+                step=step,
                 active_plugin_ids=active_plugin_ids,
                 position=position,
                 loop=loop,
@@ -262,7 +263,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
     server: _WorkbenchHTTPServer
     content_security_policy = (
         "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
-        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+        "style-src 'self' 'unsafe-inline'; script-src 'self'"
     )
 
     def do_GET(self) -> None:
@@ -272,9 +273,16 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         self._handle_get(include_body=False)
 
     def _handle_get(self, *, include_body: bool) -> None:
+        if urlparse(self.path).path == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, getattr(self.server.workbench.runner, "plugin_catalog", None),
+                                 include_body=include_body)
+            return
         request = urlparse(self.path)
         if request.path in {"/", "/index.html"}:
             self._serve_html(include_body=include_body)
+            return
+        if WORKBENCH_STATIC_PATTERN.match(request.path):
+            self._serve_file(request.path.removeprefix("/static/"), include_body=include_body)
             return
         if request.path == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)
@@ -287,8 +295,8 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
             )
             self._send_json(200, payload, include_body=include_body)
             return
-        if request.path in {"/api/frame", "/api/frame-detail"}:
-            self._serve_frame(request.path, request.query, include_body=include_body)
+        if request.path == "/api/frame":
+            self._serve_frame(request.query, include_body=include_body)
             return
         self._send_json(
             404,
@@ -296,9 +304,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
             include_body=include_body,
         )
 
-    def _serve_frame(
-        self, route: str, query_string: str, *, include_body: bool
-    ) -> None:
+    def _serve_frame(self, query_string: str, *, include_body: bool) -> None:
         query = parse_qs(query_string, keep_blank_values=True)
         frame_id = _query_one(query, "frame_id")
         run_id = _query_one(query, "run_id")
@@ -330,28 +336,11 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
             )
             return
         try:
-            if route == "/api/frame-detail":
-                if not frame_id:
-                    self._send_json(
-                        400,
-                        _error_payload(
-                            "input",
-                            "run_id and frame_id are required",
-                            self.server.workbench.state_payload(),
-                        ),
-                        include_body=include_body,
-                    )
-                    return
-                detail = self.server.workbench.runner.frame_detail(
-                    frame_id,
-                    run_id=run_id,
-                )
-            else:
-                frame = self.server.workbench.runner.frame_bytes(
-                    frame_id,
-                    run_id=run_id,
-                    position=position,
-                )
+            frame = self.server.workbench.runner.frame_bytes(
+                frame_id,
+                run_id=run_id,
+                position=position,
+            )
         except ReplayActionError as exc:
             self._send_json(
                 exc.status_code,
@@ -362,20 +351,6 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
                 ),
                 include_body=include_body,
             )
-            return
-        if route == "/api/frame-detail":
-            if detail is None:
-                self._send_json(
-                    404,
-                    _error_payload(
-                        "frame",
-                        "processed frame detail is unavailable",
-                        self.server.workbench.state_payload(),
-                    ),
-                    include_body=include_body,
-                )
-                return
-            self._send_json(200, detail, include_body=include_body)
             return
         if frame is None:
             self._send_json(
@@ -393,6 +368,9 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request = urlparse(self.path)
+        if request.path == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, getattr(self.server.workbench.runner, "plugin_catalog", None))
+            return
         if request.path != "/api/action":
             self._send_json(
                 404,
@@ -434,8 +412,19 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         self._send_json(200, result)
 
     def _serve_html(self, *, include_body: bool) -> None:
+        self._serve_file("index.html", include_body=include_body)
+
+    def _serve_file(self, relative: str, *, include_body: bool) -> None:
+        path = WORKBENCH_PAGE_DIR / relative
         try:
-            body = WORKBENCH_HTML_PATH.read_bytes()
+            body = path.read_bytes()
+        except FileNotFoundError:
+            self._send_json(
+                404,
+                _error_payload("route", f"unknown route: /static/{relative}", None),
+                include_body=include_body,
+            )
+            return
         except OSError as exc:
             self._send_json(
                 500,
@@ -446,7 +435,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         self._send(
             200,
             body,
-            "text/html; charset=utf-8",
+            WORKBENCH_STATIC_TYPES.get(path.suffix, "text/html; charset=utf-8"),
             include_body=include_body,
         )
 

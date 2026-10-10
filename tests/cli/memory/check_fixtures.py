@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.memory_fixtures import memory_report
+
 
 def _always_on_things_signals(*, with_boundary: bool) -> tuple[list[dict], list[dict]]:
     """Camera/floor evidence that remains present even after object removal."""
@@ -33,7 +35,7 @@ def _always_on_things_signals(*, with_boundary: bool) -> tuple[list[dict], list[
                     "zone": "center",
                     "bbox_xyxy_norm": [0.3, 0.4, 0.7, 0.95],
                 },
-                "source_plugin_id": "floor-plane-v0",
+                "source_plugin_id": "floor_plane",
             }
         )
     signals = [
@@ -51,10 +53,10 @@ def _memory_record(
         "kind": kind,
         "label": kind,
         "confidence": 0.9,
-        "provenance": {
+        "origin": {
             "frame_id": frame_id,
             "observation_id": f"obs_{frame_id}",
-            "evidence_id": record_id.split(":", 1)[-1],
+            "observed_id": record_id.split(":", 1)[-1],
         },
         "location": {"frame": "image", "zone": "center"},
     }
@@ -117,21 +119,21 @@ def _live_publication(
         "observation": {
             "observation_id": f"obs_{frame_id}",
             "created_at_ms": 1_000 + frame_index * 100,
-            "sensor_snapshot": {},
+            "sensor_frame": {},
             "perception_plugin_id": "lightweight_observer",
             "things": things,
             "signals": signals,
         },
-        "memory": {
+        "memory": memory_report({
             "health": memory_health,
             "record_count": len(memory_records),
             "records": memory_records,
             "epoch_id": epoch_id,
-            "implementation_id": "bounded_evidence",
+            "plugin_id": "bounded_evidence",
             "bounds": {
                 "max_records": 32,
                 "max_age_ms": max_age_ms,
                 "eviction_policy": "oldest_first",
             },
-        },
+        }),
     }

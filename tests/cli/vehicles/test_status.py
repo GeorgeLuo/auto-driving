@@ -91,7 +91,7 @@ class VehicleStatusTests(unittest.TestCase):
                 {"CHASE_UI_WS_URL": endpoint},
             ),
             patch(
-                "cli.automa_cli.vehicles._probe_chase_sim",
+                "cli.automa_cli.vehicles._probe_chase",
                 return_value=probe_result,
             ) as probe,
             patch(
@@ -125,7 +125,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         )
         with patch(
-            "cli.automa_cli.vehicles._probe_chase_sim",
+            "cli.automa_cli.vehicles._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",
@@ -174,7 +174,7 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertEqual(
             payload["next_action"]["command"],
             "./cli/automa vehicles update perception "
-            "--id chase-sim-chaser --algorithm lightweight_observer",
+            "--id chase-sim-chaser --preset lightweight_observer",
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 
@@ -248,7 +248,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         }
         with patch(
-            "cli.automa_cli.vehicles._probe_chase_sim",
+            "cli.automa_cli.vehicles._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",
@@ -298,7 +298,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         ]
         with patch(
-            "cli.automa_cli.vehicles._probe_chase_sim",
+            "cli.automa_cli.vehicles._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",
@@ -343,7 +343,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         )
         with patch(
-            "cli.automa_cli.vehicles._probe_chase_sim",
+            "cli.automa_cli.vehicles._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",
@@ -394,9 +394,9 @@ class VehicleStatusTests(unittest.TestCase):
             "cli.automa_cli.vehicles.ChaseSimCar.inspect_passive_capture",
             side_effect=_raise_frontend_unresponsive,
         ):
-            from cli.automa_cli.vehicles import _probe_chase_sim
+            from cli.automa_cli.vehicles import _probe_chase
 
-            probe = _probe_chase_sim(candidate, timeout_s=1.0)
+            probe = _probe_chase(candidate, timeout_s=1.0)
 
         self.assertFalse(probe.active)
         self.assertFalse(probe.diagnostics["frontend_connected"])
@@ -405,7 +405,7 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertNotIn("atomic-evaluation-capture", probe.error or "")
 
         with patch(
-            "cli.automa_cli.vehicles._probe_chase_sim",
+            "cli.automa_cli.vehicles._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",

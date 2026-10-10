@@ -8,14 +8,33 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from implementations.perception.catalog import (
-    DEFAULT_PERCEPTION_ALGORITHM,
-    PERCEPTION_ALGORITHMS,
-    PERCEPTION_MAPPER_SPEC,
-    PERCEPTION_PLUGIN_SPECS,
-)
+from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS
+from implementations.decision_cycle.catalog import CUSTOM_PRESET, preset_activation
+from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.support.cli_runner import run_automa
 from tests.support.runtime_fixtures import write_json
+
+
+def _activation(
+    bundle: dict,
+    preset: str = "lightweight_observer",
+    *,
+    plugins: list[str] | None = None,
+    **metadata,
+) -> dict:
+    """A staged perception activation for ``preset`` (optionally reselected)."""
+
+    payload = preset_activation("perception", preset).to_payload()
+    if plugins is not None:
+        payload["plugins"] = plugins
+    payload["metadata"] = {
+        **payload["metadata"],
+        "controller_bundle": {
+            key: bundle[key] for key in CONTROLLER_BUNDLE_KEYS if key in bundle
+        },
+        **metadata,
+    }
+    return payload
 
 
 class PerceptionCommandTests(unittest.TestCase):
@@ -46,34 +65,23 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             for relative in (
-                "implementations/perception/traversability/plugin.py",
-                "implementations/perception/preparation/vlm.py",
-                "implementations/perception/motion/tracks.py",
-                "autonomy/perception/mappers/plugin_runner.py",
+                "implementations/decision_cycle/perception/plugins/floor_plane/plugin.py",
+                "implementations/decision_cycle/perception/plugins/vlm_prep/plugin.py",
+                "implementations/decision_cycle/perception/plugins/motion_tracks/plugin.py",
+                "autonomy/decision_cycle/perception/runner.py",
                 "bundle-manifest.json",
             ):
                 self.assertTrue((bundle_root / relative).exists(), relative)
 
-            perception_dir = bundle_root / "runtime" / "perception"
-            algorithm_config = PERCEPTION_ALGORITHMS["visual_observer"]
             write_json(
-                perception_dir / "active.json",
-                {
-                    "schema": "automa_perception_activation_v0",
-                    "vehicle_id": vehicle_id,
-                    "vehicle_kind": "chase-sim-ws",
-                    "provider": "chase-sim",
-                    "controller_bundle": {
-                        **bundle,
-                        "release": release_activation_summary(release),
-                    },
-                    "perception": {
-                        "algorithm": "visual_observer",
-                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                        "mapper_config": dict(algorithm_config["mapper_config"]),
-                        "source_dir": bundle["perception_dir"],
-                    },
-                },
+                bundle_root / "runtime" / "perception" / "active.json",
+                _activation(
+                    {**bundle, "release": release_activation_summary(release)},
+                    "visual_observer",
+                    vehicle_id=vehicle_id,
+                    vehicle_kind="chase-sim-ws",
+                    provider="chase-sim",
+                ),
             )
 
             json_result = run_automa(
@@ -95,22 +103,31 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
         payload = json.loads(json_result.stdout)
-        self.assertEqual(payload["activation"]["algorithm"], "visual_observer")
+        self.assertEqual(payload["activation"]["preset"], "visual_observer")
         self.assertEqual(
             payload["controller_bundle"]["release"]["tree_sha256"],
             release_manifest["tree_sha256"],
         )
+        self.assertEqual(set(payload["controller_bundle"]), set(CONTROLLER_BUNDLE_KEYS))
         self.assertEqual(
-            payload["activation"]["mapper_config"]["plugins"],
+            payload["activation"]["plugins"],
             ["frame", "floor_plane", "motion_tracks"],
         )
-        chain = payload["algorithm_schema"]["plugins"]
+        chain = payload["perception_schema"]["plugins"]
         self.assertEqual(
             [plugin["plugin_id"] for plugin in chain],
             [
-                "frame-observation-v0",
-                "floor-plane-v0",
-                "motion-tracks-v0",
+                "frame",
+                "floor_plane",
+                "motion_tracks",
+            ],
+        )
+        self.assertEqual(
+            [plugin["plugin_id"] for plugin in chain],
+            [
+                "frame",
+                "floor_plane",
+                "motion_tracks",
             ],
         )
         self.assertIn(
@@ -118,7 +135,7 @@ class PerceptionCommandTests(unittest.TestCase):
         )
         self.assertIn("Plugins:", text_result.stdout)
         self.assertIn(
-            "frame-observation-v0 [stateless] components=camera.rgb:front_camera",
+            "  contract: stateless feeds=camera.rgb:front_camera",
             text_result.stdout,
         )
 
@@ -142,151 +159,12 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_perception_update_v0")
         self.assertTrue(payload["dry_run"])
         self.assertEqual(payload["vehicle_id"], "chase-sim-chaser")
-        self.assertEqual(payload["algorithm"], DEFAULT_PERCEPTION_ALGORITHM)
-        self.assertEqual(payload["manifest"]["provider"], "chase-sim")
+        self.assertEqual(payload["preset"], DEFAULT_PERCEPTION_PRESET)
+        self.assertEqual(payload["manifest"]["metadata"]["provider"], "chase-sim")
         self.assertTrue(
             payload["would_write"]["bundle_root"].endswith(
                 "vehicles/chase-sim-chaser/bundle"
             )
-        )
-
-    def test_ready_lab_candidate_can_be_staged_and_inspected_locally(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            runtime_root = root / "vehicles"
-            candidate_root = root / "candidates"
-            candidate_dir = candidate_root / "fixture"
-            write_json(
-                candidate_dir / "plugin.json",
-                {
-                    "schema": "automa_lab_perception_plugin_v0",
-                    "id": "fixture",
-                    "name": "Fixture regions",
-                    "description": "Test-only isolated candidate.",
-                    "plugin": {
-                        "entrypoint": (
-                            "implementations.perception.observation.plugin:"
-                            "FrameObservationPlugin"
-                        ),
-                        "config": {},
-                    },
-                    "runtime": {"python": "core"},
-                    "output": {
-                        "schema": "perception_text_v2",
-                        "kind": "sensor_frame",
-                        "semantic_labels": False,
-                        "depth": False,
-                    },
-                },
-            )
-            env = {"AUTOMA_LAB_PERCEPTION_ROOT": str(candidate_root)}
-
-            update = run_automa(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--candidate",
-                "fixture",
-                "--json",
-                runtime_root=runtime_root,
-                extra_env=env,
-            )
-            info = run_automa(
-                "vehicles",
-                "info",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--json",
-                runtime_root=runtime_root,
-                extra_env=env,
-            )
-            text_info = run_automa(
-                "vehicles",
-                "info",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                runtime_root=runtime_root,
-                extra_env=env,
-            )
-
-        update_payload = json.loads(update.stdout)
-        info_payload = json.loads(info.stdout)
-        self.assertEqual(update_payload["algorithm"], "candidate:fixture")
-        self.assertEqual(
-            update_payload["manifest"]["perception"]["mapper_spec"],
-            "cli.automa_cli.lab_plugins:LabPerceptionMapper",
-        )
-        self.assertEqual(
-            update_payload["manifest"]["perception"]["mapper_config"]["candidate_id"],
-            "fixture",
-        )
-        self.assertTrue(
-            update_payload["manifest"]["perception"]["candidate"]["source_tree_sha256"]
-        )
-        self.assertEqual(info_payload["activation"]["algorithm"], "candidate:fixture")
-        self.assertEqual(info_payload["algorithm_schema"]["candidate"]["id"], "fixture")
-        self.assertIn("Candidate: fixture (isolated local runtime)", text_info.stdout)
-        self.assertNotIn("Enabled plugins: none", text_info.stdout)
-
-    def test_lab_candidate_cannot_be_staged_for_physical_vehicle(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            runtime_root = root / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / "piracer")
-            write_json(
-                Path(bundle["perception_runtime_dir"]) / "active.json",
-                {
-                    "schema": "automa_perception_activation_v0",
-                    "vehicle_id": "piracer",
-                    "vehicle_kind": "picar",
-                    "provider": "picar",
-                    "runtime": {"kind": "onboard_controller", "connection": {}},
-                    "controller_bundle": bundle,
-                    "perception": {
-                        "algorithm": "lightweight_observer",
-                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                        "mapper_config": {},
-                    },
-                },
-            )
-            candidate_root = root / "candidates"
-            write_json(
-                candidate_root / "fixture" / "plugin.json",
-                {
-                    "schema": "automa_lab_perception_plugin_v0",
-                    "id": "fixture",
-                    "plugin": {
-                        "entrypoint": (
-                            "implementations.perception.observation.plugin:"
-                            "FrameObservationPlugin"
-                        ),
-                        "config": {},
-                    },
-                    "runtime": {"python": "core"},
-                    "output": {"schema": "perception_text_v2"},
-                },
-            )
-
-            result = run_automa(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "piracer",
-                "--candidate",
-                "fixture",
-                runtime_root=runtime_root,
-                extra_env={"AUTOMA_LAB_PERCEPTION_ROOT": str(candidate_root)},
-                check=False,
-            )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn(
-            "can only be activated for a Chase simulator vehicle", result.stdout
         )
 
     def test_physical_perception_staging_reuses_local_metadata_while_offline(
@@ -298,23 +176,13 @@ class PerceptionCommandTests(unittest.TestCase):
             sync_controller_bundle(bundle, output=None)
             write_json(
                 Path(bundle["perception_runtime_dir"]) / "active.json",
-                {
-                    "schema": "automa_perception_activation_v0",
-                    "vehicle_id": "piracer",
-                    "vehicle_kind": "picar",
-                    "provider": "picar",
-                    "runtime": {"kind": "onboard_controller", "connection": {}},
-                    "controller_bundle": bundle,
-                    "perception": {
-                        "algorithm": "lightweight_observer",
-                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                        "mapper_config": dict(
-                            PERCEPTION_ALGORITHMS["lightweight_observer"][
-                                "mapper_config"
-                            ]
-                        ),
-                    },
-                },
+                _activation(
+                    bundle,
+                    vehicle_id="piracer",
+                    vehicle_kind="picar",
+                    provider="picar",
+                    runtime={"kind": "onboard_controller", "connection": {}},
+                ),
             )
 
             result = run_automa(
@@ -323,7 +191,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "perception",
                 "--id",
                 "piracer",
-                "--algorithm",
+                "--preset",
                 "visual_observer",
                 "--json",
                 runtime_root=runtime_root,
@@ -331,78 +199,121 @@ class PerceptionCommandTests(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["vehicle_id"], "piracer")
-        self.assertEqual(payload["algorithm"], "visual_observer")
-        self.assertEqual(payload["manifest"]["provider"], "picar")
+        self.assertEqual(payload["preset"], "visual_observer")
+        self.assertEqual(payload["manifest"]["metadata"]["provider"], "picar")
 
-    def test_perception_plugin_enable_disable_edits_active_activation(self) -> None:
+    def test_perception_update_plugins_stages_a_custom_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            vehicle_runtime_dir = runtime_root / vehicle_id
-            bundle = controller_bundle_paths(vehicle_runtime_dir)
-            sync_controller_bundle(bundle, output=None)
-
-            perception_dir = Path(bundle["root_dir"]) / "runtime" / "perception"
-            write_json(
-                perception_dir / "active.json",
-                {
-                    "schema": "automa_perception_activation_v0",
-                    "vehicle_id": vehicle_id,
-                    "vehicle_kind": "chase-sim-ws",
-                    "provider": "chase-sim",
-                    "controller_bundle": bundle,
-                    "perception": {
-                        "algorithm": "lightweight_observer",
-                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
-                        "mapper_config": {
-                            "plugins": ["frame"],
-                            "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
-                        },
-                        "source_dir": bundle["perception_dir"],
-                    },
-                },
-            )
-
-            enable = run_automa(
+            result = run_automa(
                 "vehicles",
+                "update",
                 "perception",
-                "enable",
                 "--id",
-                vehicle_id,
-                "floor_plane",
-                "--json",
-                runtime_root=runtime_root,
-            )
-            disable = run_automa(
-                "vehicles",
-                "perception",
-                "disable",
-                "--id",
-                vehicle_id,
+                "chase-sim-chaser",
+                "--plugin",
                 "frame",
+                "--plugin",
+                "classical_regions",
+                "--dry-run",
                 "--json",
                 runtime_root=runtime_root,
             )
-            info = run_automa(
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["preset"], CUSTOM_PRESET)
+        self.assertEqual(payload["manifest"]["plugins"], ["frame", "classical_regions"])
+        metadata = payload["manifest"]["metadata"]
+        self.assertEqual(metadata["preset"], CUSTOM_PRESET)
+        self.assertNotIn("preset_description", metadata)
+        self.assertNotIn("source_dir", metadata)
+        self.assertNotIn("workspace_source_dir", metadata)
+        self.assertEqual(set(metadata["controller_bundle"]), set(CONTROLLER_BUNDLE_KEYS))
+
+    def test_perception_update_rejects_a_preset_with_plugins_and_unknown_plugins(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            both = run_automa(
                 "vehicles",
-                "info",
+                "update",
                 "perception",
                 "--id",
-                vehicle_id,
-                "--json",
+                "chase-sim-chaser",
+                "--preset",
+                "visual_observer",
+                "--plugin",
+                "frame",
+                "--dry-run",
                 runtime_root=runtime_root,
+                check=False,
+            )
+            unknown = run_automa(
+                "vehicles",
+                "update",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                "--plugin",
+                "no_such_plugin",
+                "--dry-run",
+                runtime_root=runtime_root,
+                check=False,
             )
 
-        enable_payload = json.loads(enable.stdout)
-        self.assertTrue(enable_payload["changed"])
-        self.assertEqual(enable_payload["plugins_after"], ["frame", "floor_plane"])
+        self.assertNotEqual(both.returncode, 0)
+        self.assertNotEqual(unknown.returncode, 0)
+        self.assertIn("no_such_plugin", unknown.stdout + unknown.stderr)
 
-        disable_payload = json.loads(disable.stdout)
-        self.assertTrue(disable_payload["changed"])
-        self.assertEqual(disable_payload["plugins_after"], ["floor_plane"])
+    def test_update_perception_and_memory_share_staging_provenance(self) -> None:
+        from unittest.mock import patch
 
-        info_payload = json.loads(info.stdout)
-        self.assertEqual(info_payload["activation"]["algorithm"], "custom")
+        from cli.automa_cli import memory as memory_module
+        from cli.automa_cli import perception as perception_module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            with (
+                patch.object(perception_module, "RUNTIME_ROOT", runtime_root),
+                patch.object(memory_module, "RUNTIME_ROOT", runtime_root),
+                patch.object(
+                    perception_module,
+                    "get_vehicle_status",
+                    return_value={
+                        "vehicle_id": "chase-sim-chaser",
+                        "layers": {},
+                        "readiness": {},
+                    },
+                ),
+            ):
+                perception_module.update_vehicle_perception(
+                    vehicle_id="chase-sim-chaser", timeout_s=0.2, json_output=True,
+                )
+                memory_module.update_vehicle_memory(
+                    vehicle_id="chase-sim-chaser", timeout_s=0.2, json_output=True,
+                )
+            perception = json.loads(
+                (runtime_root / "chase-sim-chaser/bundle/runtime/perception/active.json").read_text()
+            )
+            memory = json.loads(
+                (runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").read_text()
+            )
+
+        self.assertEqual(set(perception["metadata"]), set(memory["metadata"]))
+        perception_bundle = perception["metadata"]["controller_bundle"]
+        memory_bundle = memory["metadata"]["controller_bundle"]
+        self.assertEqual(set(perception_bundle), set(CONTROLLER_BUNDLE_KEYS))
+        self.assertEqual(set(memory_bundle), set(CONTROLLER_BUNDLE_KEYS))
+        for key in ("root_dir", "autonomy_dir", "implementations_dir", "runtime_dir"):
+            self.assertEqual(perception_bundle[key], memory_bundle[key])
         self.assertEqual(
-            info_payload["activation"]["mapper_config"]["plugins"], ["floor_plane"]
+            perception_bundle["release"]["tree_sha256"],
+            memory_bundle["release"]["tree_sha256"],
         )
+        for key in ("vehicle_id", "provider", "vehicle_kind"):
+            self.assertEqual(perception["metadata"][key], memory["metadata"][key])
+        self.assertEqual(perception["metadata"]["runtime"], memory["metadata"]["runtime"])
+        for document in (perception, memory):
+            self.assertNotIn("source_dir", document["metadata"])
+            self.assertNotIn("workspace_source_dir", document["metadata"])
+            self.assertNotIn("preset_description", document["metadata"])
+            self.assertIn("preset", document["metadata"])

@@ -5,23 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Automa</title>
   <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111820; color: #e5edf5; }
-    main { max-width: 640px; margin: 12vh auto; padding: 24px; }
-    p { color: #aab9c8; line-height: 1.6; }
-    nav { display: grid; gap: 16px; margin-top: 32px; }
-    a, .decision-unavailable { display: block; padding: 24px; border: 1px solid #405165; border-radius: 8px; color: inherit; text-decoration: none; }
-    a:hover, a:focus-visible { background: #203044; }
-    a span, .decision-unavailable span { display: block; margin-top: 8px; color: #aab9c8; }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0a0a0a;
+      color: #ededed;
+      --muted: #8c8c8c;
+      --line: rgba(255, 255, 255, 0.14);
+    }
+    body { margin: 0; background: #0a0a0a; letter-spacing: -0.01em; }
+    main { max-width: 280px; margin: 18vh auto; padding: 16px; }
+    h1 { margin: 0 0 14px; font-size: 13px; font-weight: 500; }
+    nav { display: grid; gap: 8px; }
+    a, .decision-unavailable {
+      display: block;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    a:hover, a:focus-visible {
+      background: rgba(255, 255, 255, 0.06);
+      color: #ededed;
+    }
+    .decision-unavailable { color: #6a6a6a; }
   </style>
 </head>
 <body>
   <main>
     <h1>Automa</h1>
-    <p>Explore the running vehicle’s perception, memory, and accepted shadow decisions.</p>
     <nav aria-label="Runtime views">
-      <a href="/perception">Perception<span>Live camera frames and perception overlays.</span></a>
-      <a href="/memory">Memory<span>Explore remembered keys and mapped values.</span></a>
+      <a href="/perception">Perception</a>
+      <a href="/memory">Memory</a>
       __DECISION_NAV__
+      <a href="/plugins">Plugins</a>
     </nav>
   </main>
 </body>

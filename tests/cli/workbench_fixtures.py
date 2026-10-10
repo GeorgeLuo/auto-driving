@@ -1,6 +1,5 @@
 from __future__ import annotations
 import json
-import shutil
 import threading
 import time
 from contextlib import contextmanager
@@ -9,18 +8,27 @@ from tempfile import TemporaryDirectory
 from typing import Iterator
 from urllib.request import Request, urlopen
 from PIL import Image
-from autonomy.perception import (
+from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
+)
+from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
     PerceivedThing,
     ViewLocation,
 )
-from autonomy.decision.memory import MemoryBounds, MemorySnapshot
+from autonomy.decision_cycle.activation import StepActivation
+from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
     WorkbenchServer,
 )
+
+
+def perception_activations(*plugin_ids: str) -> dict[str, StepActivation]:
+    """Runner activations that select these perception plugins, in order."""
+
+    return {"perception": selection_activation("perception", plugins=list(plugin_ids))}
 
 
 @contextmanager
@@ -55,28 +63,6 @@ def post_action(base: str, payload: dict[str, object], *, timeout: float = 2) ->
         timeout=timeout,
     )
     return json.loads(response.read())
-
-
-class PluginCatalogFixture:
-    def setUp(self):
-        temporary = TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.plugin_root = Path(temporary.name)
-        source_root = Path(__file__).resolve().parents[2] / "lab/plugins/perception"
-        # Exercise real manifests and entrypoints without scanning local models,
-        # virtual environments, recorded runs, or unrelated candidate packages.
-        for name in (
-            "classical_regions",
-            "fastsam",
-            "floor_continuity",
-            "floor_continuity_capture",
-        ):
-            source = source_root / name
-            paths = [source / "plugin.json", *sorted((source / "src").glob("*.py"))]
-            for path in paths:
-                target = self.plugin_root / name / path.relative_to(source)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(path, target)
 
 
 class ImageReplayRunner(ProductionImageReplayRunner):
@@ -187,15 +173,8 @@ class BlockingSecondMapper(FixtureMapper):
 
 
 class ErrorMemory:
-    def __call__(self, context, observation) -> MemorySnapshot:
-        return MemorySnapshot(
-            memory_id="error-memory",
-            epoch_id="epoch-1",
-            health="error",
-            bounds=MemoryBounds(max_records=4),
-            created_at_ms=0,
-            error="injected memory failure",
-        )
+    def __call__(self, context, observation) -> None:
+        raise RuntimeError("injected memory failure")
 
     def reset(self, shared_memory=None) -> None:
         return None

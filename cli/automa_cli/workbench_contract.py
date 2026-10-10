@@ -6,7 +6,7 @@ from typing import Any
 
 
 WORKBENCH_SEQUENCE_ID = "workbench.image_replay.v1"
-WORKBENCH_STATE_SCHEMA = "workbench_image_replay_state_v1"
+WORKBENCH_STATE_SCHEMA = "workbench_image_replay_state_v3"
 WORKBENCH_SERVER_SCHEMA = "workbench_server_v1"
 WORKBENCH_ACTION_RESULT_SCHEMA = "workbench_action_result_v1"
 WORKBENCH_ERROR_SCHEMA = "workbench_error_v1"
@@ -18,16 +18,12 @@ WORKBENCH_PACES = ("fixed", "realtime")
 WORKBENCH_MAX_ACTION_BYTES = 64 * 1024
 WORKBENCH_ACTIONS = (
     "validate",
-    "refresh_plugins",
-    "inspect_plugins",
     "select_plugins",
-    "set_plugins",
     "start",
     "pause",
     "resume",
     "step",
     "seek",
-    "cancel",
     "reset",
     "set_cadence",
     "set_loop",

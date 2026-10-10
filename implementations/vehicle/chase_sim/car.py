@@ -23,10 +23,11 @@ from autonomy.vehicle import (
     CarInterface,
     SensorReadRequest,
     SensorReading,
-    SensorSnapshot,
+    SensorFrame,
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
+    run_vehicle_pulse,
 )
 
 
@@ -260,9 +261,9 @@ class ChaseSimCar(CarInterface):
         self.ws_url = (ws_url or get_default_chase_ui_ws_url()).strip() or DEFAULT_CHASE_UI_WS_URL
         self.timeout_s = float(timeout_s)
         self.client = MetricsUiWsClient(self.ws_url, timeout_s=self.timeout_s)
-        # Evaluator-only shadow reference from the most recent capture. Not part of
-        # SensorSnapshot so it never enters observation/memory inputs.
-        self._last_capture_shadow_reference: dict[str, Any] | None = None
+        # Evaluator-only chaser reference from the most recent capture. Not part of
+        # SensorFrame so it never enters observation/memory inputs.
+        self._last_capture_chaser_reference: dict[str, Any] | None = None
         self._last_evaluator_reference: dict[str, Any] = {
             "status": "unavailable",
             "reason": "not_captured",
@@ -288,8 +289,8 @@ class ChaseSimCar(CarInterface):
             },
             notes=(
                 "Applies normalized RC-car-like actions to Chase via Metrics UI WS.",
-                "Chase WS control uses fixed scenario speed; throttle magnitude is represented by pulse duration.",
-                "Use prepare_for_external_control() before running an external decision model.",
+                "Chase WS has directional throttle at fixed scenario speed; receipts report this quantization.",
+                "Control acquisition is managed by the shared execution runtime.",
             ),
         )
 
@@ -474,38 +475,20 @@ class ChaseSimCar(CarInterface):
             "action": action.to_dict(),
             "throttle": max(0.0, min(1.0, float(throttle))),
             "payload": payload,
+            "boundary": "chase_ws_input",
+            "throttle_semantics": "directional_fixed_speed",
             "ack": ack,
             "sent_at_ms": int(time.time() * 1000),
         }
 
     def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
-        started_ms = int(time.time() * 1000)
-        try:
-            command = self.execute_action(
-                pulse.action,
-                throttle=pulse.throttle,
-                recording=pulse.recording,
-            )
-            time.sleep(pulse.duration_s)
-        finally:
-            self.stop()
-
-        if pulse.settle_s > 0:
-            time.sleep(pulse.settle_s)
-
-        return {
-            "label": pulse.label,
-            "pulse": pulse.to_dict(),
-            "command": command,
-            "started_at_ms": started_ms,
-            "completed_at_ms": int(time.time() * 1000),
-        }
+        return run_vehicle_pulse(self, pulse)
 
     @property
-    def last_capture_shadow_reference(self) -> dict[str, Any] | None:
-        """Evaluator-only shadow reference from the most recent front-camera capture."""
+    def last_capture_chaser_reference(self) -> dict[str, Any] | None:
+        """Evaluator-only chaser reference from the most recent front-camera capture."""
 
-        return self._last_capture_shadow_reference
+        return self._last_capture_chaser_reference
 
     @property
     def last_simulator_frame_index(self) -> int | None:
@@ -671,7 +654,7 @@ class ChaseSimCar(CarInterface):
             raw_image = raw_sensor.get("image") if isinstance(raw_sensor, dict) else None
             result["image"] = dict(raw_image) if isinstance(raw_image, dict) else None
 
-        self._last_capture_shadow_reference = (
+        self._last_capture_chaser_reference = (
             evaluator.get("reference")
             if evaluator.get("status") == "available"
             and isinstance(evaluator.get("reference"), dict)
@@ -929,7 +912,7 @@ class ChaseSimCar(CarInterface):
                 else None
             )
 
-        self._last_capture_shadow_reference = (
+        self._last_capture_chaser_reference = (
             evaluator.get("reference")
             if isinstance(evaluator, dict)
             and evaluator.get("status") == "available"
@@ -1128,11 +1111,11 @@ class ChaseSimCar(CarInterface):
         }
         return capture
 
-    def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:
+    def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         _reject_unsupported_sensors(request)
         started_ms = _timestamp_ms()
         readings: dict[str, SensorReading] = {}
-        self._last_capture_shadow_reference = None
+        self._last_capture_chaser_reference = None
         self._last_evaluator_reference = {
             "status": "unavailable",
             "reason": "not_captured",
@@ -1154,25 +1137,25 @@ class ChaseSimCar(CarInterface):
                 metadata=capture,
             )
 
-        snapshot_metadata: dict[str, Any] = {"vehicle": self.capabilities.to_dict()}
+        sensor_frame_metadata: dict[str, Any] = {"vehicle": self.capabilities.to_dict()}
         if self._last_simulator_frame_index is not None:
-            snapshot_metadata["simulator_frame_index"] = self._last_simulator_frame_index
-            snapshot_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
+            sensor_frame_metadata["simulator_frame_index"] = self._last_simulator_frame_index
+            sensor_frame_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
         if self._last_passive_capture:
             sensor = self._last_passive_capture.get("sensor")
             if isinstance(sensor, dict):
-                snapshot_metadata["simulation_epoch"] = sensor.get("simulation_epoch")
-            snapshot_metadata["passive_capture"] = {
+                sensor_frame_metadata["simulation_epoch"] = sensor.get("simulation_epoch")
+            sensor_frame_metadata["passive_capture"] = {
                 "status": self._last_passive_capture.get("status"),
                 "mutation_attempted": False,
             }
-            snapshot_metadata["evaluator_reference"] = self.last_evaluator_reference
+            sensor_frame_metadata["evaluator_reference"] = self.last_evaluator_reference
 
-        return SensorSnapshot(
+        return SensorFrame(
             read_id=request.read_id,
             readings=readings,
             started_at_ms=started_ms,
             completed_at_ms=_timestamp_ms(),
             request=request.to_dict(),
-            metadata=snapshot_metadata,
+            metadata=sensor_frame_metadata,
         )

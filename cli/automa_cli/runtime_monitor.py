@@ -244,13 +244,16 @@ def _sync_recording(client: RuntimeClient, state: dict[str, Any], *,
         batch = client.read_recording(recording_id, after=state["recorded_count"])
         if batch["run_id"] != recording_id or batch["after"] != state["recorded_count"]:
             raise RuntimeError("the host recording identity or cursor changed")
+        sources = {
+            name: base64.b64decode(source, validate=True) for name, source in batch["sources"].items()
+        }
         for item in batch["frames"]:
             frame = item["frame"]
             if frame["run_id"] != recording_id or frame["vehicle_id"] != state["vehicle_id"]:
                 raise RuntimeError("a host recording frame belongs to another run or vehicle")
             write_recorded_frame(
                 run_dir, frame, base64.b64decode(item["image_base64"], validate=True),
-                item["image_extension"],
+                item["image_extension"], sources,
             )
             state["recorded_count"] += 1
         if state["recorded_count"] == batch["recorded_count"]:

@@ -3,27 +3,33 @@
 The host commits a cycle and its exact image before counting the decision or
 ending the run. Live latest-only publications are independent of this history.
 Each recorded step names the controller release the host imported, which is
-the code replay must run; a host outside a release records none.
+the code replay must run; a host outside a release records none. A plugin
+uploaded to the host's catalog is outside every release, so the recording keeps
+each uploaded source its steps name, as ``plugins/<sha256>.py``.
 """
 from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import secrets
 import threading
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from autonomy.decision_cycle.activation import (
     DECISION_STEPS, STEPS, StepActivation, activation_generation_id, require_step,
     step_activation_from_payload,
 )
 from autonomy.decision_cycle.cycle import DecisionCycleResult
+from autonomy.plugins import uploaded_source
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest_v0"
 RECORDING_MANIFEST_NAME = "manifest.json"
+# Uploaded plugin sources a recording carries, as ``<sha256>.py``.
+UPLOADED_SOURCES_DIR = "plugins"
 
 
 def _installed_release() -> dict[str, Any] | None:
@@ -168,13 +174,40 @@ def append_recording_frame(
     write_json_atomically(manifest_path, payload)
 
 
-def write_recorded_frame(run_dir: Path, frame: dict[str, Any], image: bytes, extension: str) -> None:
-    """Commit the same replay artifacts locally or from an onboard transport."""
+def uploaded_sources(steps: dict[str, Any]) -> set[str]:
+    """The uploaded source files, ``<sha256>.py``, these step selections name."""
+
+    return {
+        module
+        for payload in steps.values() if payload is not None
+        for spec in payload["plugin_specs"].values()
+        if (module := spec.partition(":")[0]).endswith(".py") and not Path(module).is_absolute()
+    }
+
+
+def write_recorded_frame(
+    run_dir: Path, frame: dict[str, Any], image: bytes, extension: str,
+    sources: Mapping[str, bytes],
+) -> None:
+    """Commit the same replay artifacts locally or from an onboard transport.
+
+    ``sources`` holds each uploaded source the frame names that the run
+    directory does not have yet.
+    """
     frame_id = frame["frame_id"]
     if not frame_id or Path(frame_id).name != frame_id or frame_id in {".", ".."}:
         raise ValueError("recorded frame_id must be a filename")
     if extension not in {".jpg", ".jpeg", ".png"} or not image:
         raise ValueError("recorded camera image is missing or has an unsupported extension")
+    for name in sorted(uploaded_sources(frame["step_activations"])):
+        path = run_dir / UPLOADED_SOURCES_DIR / name
+        if path.is_file():
+            continue
+        source = sources.get(name)
+        if source is None or f"{hashlib.sha256(source).hexdigest()}.py" != name:
+            raise ValueError(f"recorded frame {frame_id} ran uploaded source {name} without carrying it")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(source)
     image_path = run_dir / "frames" / f"{frame_id}_{FRONT_CAMERA_SENSOR_ID}{extension}"
     perception_path = run_dir / "perception" / frame_id / "perception.json"
     image_path.parent.mkdir(parents=True, exist_ok=True)
@@ -266,7 +299,12 @@ class RunRecording:
         with self._lock:
             if (self.root / "perception" / context.frame_id / "perception.json").exists():
                 raise ValueError("recorded frame_id must be unique within the run")
-            write_recorded_frame(self.root, frame, image, extension)
+            sources = {
+                name: uploaded_source(name).read_bytes()
+                for name in uploaded_sources(frame["step_activations"])
+                if not (self.root / UPLOADED_SOURCES_DIR / name).is_file()
+            }
+            write_recorded_frame(self.root, frame, image, extension, sources)
             self.count += 1
 
     def status(self) -> dict[str, Any]:
@@ -284,12 +322,19 @@ class RunRecording:
                 if self.count else []
             )
             frames = []
+            names: set[str] = set()
             for entry in entries[after:after + 8]:
                 frame_id = entry["frame_id"]
                 image_path = self.root / entry["image_path"]
+                frame = json.loads((self.root / "perception" / frame_id / "perception.json").read_text())
+                names |= uploaded_sources(frame["step_activations"])
                 frames.append({
-                    "frame": json.loads((self.root / "perception" / frame_id / "perception.json").read_text()),
+                    "frame": frame,
                     "image_base64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
                     "image_extension": image_path.suffix,
                 })
-            return {**self.status(), "after": after, "frames": frames}
+            sources = {
+                name: base64.b64encode((self.root / UPLOADED_SOURCES_DIR / name).read_bytes()).decode("ascii")
+                for name in sorted(names)
+            }
+            return {**self.status(), "after": after, "frames": frames, "sources": sources}

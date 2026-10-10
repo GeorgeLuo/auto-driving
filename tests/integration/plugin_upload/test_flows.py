@@ -15,6 +15,7 @@ from urllib.request import urlopen
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.bundles import controller_bundle_paths
@@ -110,7 +111,7 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertTrue(all(plugin["step"] == "perception" for plugin in listing["plugins"]))
                     registered = next(p for p in listing["plugins"] if p["id"] == plugin_id)
                     self.assertEqual(registered, receipt["plugin"])
-                    self.assertEqual(Path(registered["metadata"]["source_path"]).read_bytes(), source)
+                    self.assertEqual(uploaded_source(registered["metadata"]["source_file"]).read_bytes(), source)
                 shown = get_json(base, "/api/state")
                 self.assertEqual(shown["phase"], phase)
                 self.assertEqual(shown["run_id"], before["run_id"])
@@ -145,7 +146,7 @@ class PluginUploadFlows(unittest.TestCase):
             _, second = upload(base, file, "prototype")
             self.assertNotEqual(first["plugin"]["metadata"]["revision"], second["plugin"]["metadata"]["revision"])
             self.assertFalse(next_marker.exists())
-            self.assertEqual(Path(first["plugin"]["metadata"]["source_path"]).read_bytes(), first_source)
+            self.assertEqual(uploaded_source(first["plugin"]["metadata"]["source_file"]).read_bytes(), first_source)
             shown = get_json(base, "/api/state")
             self.assertEqual(shown["current_frame"], before["current_frame"])
             self.assertEqual(shown["steps"], before["steps"])

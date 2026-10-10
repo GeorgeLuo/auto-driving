@@ -15,7 +15,9 @@ the next selection is loaded and validated before published instances are reset.
 the instances a step has published. Definitions may come from packaged entries
 or a live catalog implementing ``PluginResolver``. Upload stores a source
 revision without selecting or importing it; existing selections retain their
-definitions until explicitly changed.
+definitions until explicitly changed. An uploaded source is named by its
+sha256, ``<sha256>.py:Name``, so the catalog that received it and every
+recording that ran it hold the same code under the same name.
 ``instantiate_plugin`` constructs a definition's entrypoint with its config; a
 step checks the resulting instance against its own plugin protocol.
 """
@@ -60,7 +62,7 @@ class PluginDefinition:
     def executable_entrypoint(self) -> str:
         """An uploaded source is independent of the installed module namespace."""
 
-        source = self.metadata.get("source_path")
+        source = self.metadata.get("source_file")
         if source is not None:
             return f"{source}:{self.entrypoint.partition(':')[2]}"
         return self.entrypoint
@@ -93,6 +95,32 @@ class PluginDefinition:
             config=config or {},
             metadata=metadata or {},
         )
+
+
+_UPLOADED_SOURCE_ROOTS: dict[str, None] = {}
+_UPLOADED_SOURCE_LOCK = threading.Lock()
+
+
+def add_uploaded_source_root(path: Path | str) -> None:
+    """Let uploaded sources import from ``path``: a catalog's store or a recording's."""
+
+    with _UPLOADED_SOURCE_LOCK:
+        _UPLOADED_SOURCE_ROOTS[str(path)] = None
+
+
+def uploaded_source(name: str) -> Path:
+    """The file holding uploaded source ``<sha256>.py``; every copy is the same code."""
+
+    with _UPLOADED_SOURCE_LOCK:
+        roots = list(_UPLOADED_SOURCE_ROOTS)
+    for root in reversed(roots):
+        path = Path(root) / name
+        if path.is_file():
+            return path
+    raise PluginManagementError(
+        f"uploaded plugin source {name} is not available here; the catalog that "
+        "received it and each recording that ran it keep it under that name"
+    )
 
 
 class PluginResolver(Protocol):
@@ -144,8 +172,8 @@ class LocalPluginCatalog:
 
         Source that does not compile is refused here, naming its line.
         Sources live outside installed packages for this catalog's lifetime.
-        Every upload gets its own file, so an existing selection can retain its
-        definition and source even when this ID gains another available revision.
+        Each source is kept once under its sha256, so an existing selection
+        retains its source when this ID gains another available revision.
         """
 
         definition = PluginDefinition(step, plugin_id, entrypoint, config or {})
@@ -153,25 +181,25 @@ class LocalPluginCatalog:
             compile(source, filename, "exec")
         except SyntaxError as exc:
             raise ValueError(f"{filename}:{exc.lineno}: {exc.msg}") from exc
+        revision = hashlib.sha256(source).hexdigest()
         with self._lock:
             if self._sources is None:
                 self._sources = tempfile.mkdtemp(prefix="automa-plugins-")
                 weakref.finalize(self, shutil.rmtree, self._sources, ignore_errors=True)
-            descriptor, path = tempfile.mkstemp(suffix=".py", dir=self._sources)
-            try:
+                add_uploaded_source_root(self._sources)
+            path = Path(self._sources) / f"{revision}.py"
+            if not path.is_file():
+                descriptor, partial = tempfile.mkstemp(suffix=".partial", dir=self._sources)
                 with os.fdopen(descriptor, "wb") as stream:
                     stream.write(source)
-                definition = PluginDefinition(
-                    step, plugin_id, entrypoint, definition.config,
-                    {"source_path": path, "revision": hashlib.sha256(source).hexdigest(),
-                     "filename": filename},
-                )
-                self._definitions[(step, plugin_id)] = definition
-                self.version += 1
-                return definition
-            except BaseException:
-                Path(path).unlink(missing_ok=True)
-                raise
+                os.replace(partial, path)
+            definition = PluginDefinition(
+                step, plugin_id, entrypoint, definition.config,
+                {"source_file": path.name, "revision": revision, "filename": filename},
+            )
+            self._definitions[(step, plugin_id)] = definition
+            self.version += 1
+            return definition
 
     def list(self, step: str) -> tuple[PluginDefinition, ...]:
         with self._lock:
@@ -413,7 +441,8 @@ def _import_entrypoint(entrypoint: str, *, reload_module: bool = False) -> Any:
         # modules/packages are a future loader concern, not an upload gate.
         name = "_automa_uploaded_" + hashlib.sha256(module_name.encode()).hexdigest()
         if name not in sys.modules:
-            spec = importlib.util.spec_from_file_location(name, module_name)
+            path = module_name if Path(module_name).is_absolute() else uploaded_source(module_name)
+            spec = importlib.util.spec_from_file_location(name, path)
             module = importlib.util.module_from_spec(spec)
             sys.modules[name] = module
             try:

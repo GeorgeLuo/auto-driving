@@ -75,8 +75,9 @@ test remains an explicit skip in the default suite.
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi
 ```
 
-The Pi must be powered on, reachable at `http://piracer.local:8887`, and running
-the boot-enabled `automa-donkey.service`. A prepared Pi reaches this state
+The Pi must be powered on, reachable at `$PIRACER_BASE_URL` (the URL the CLI's
+discovery reads; default `http://piracer.local:8887`), and running the
+boot-enabled `automa-donkey.service`. A prepared Pi reaches this state
 automatically after boot. The smoke path is read-only. Override the endpoint or
 request timeout when needed:
 
@@ -87,8 +88,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi \
 ```
 
 This path sends read-only requests to `/autonomy/status`. It requires an
-available autonomy manager, a loaded decision engine and perception preset,
-and Donkey drive mode `user`. It does not send drive or mode-change requests,
+available runtime host with a loaded action step, in mode `manual`. It does not send drive or mode-change requests,
 restart the runtime, use SSH, capture frames, or move the vehicle. An unreachable
 or unsafe endpoint is reported as `unavailable` with exit code 2 before the test
 suite starts; it is not converted into a passing skip. The live Pi test remains

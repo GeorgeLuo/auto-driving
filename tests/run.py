@@ -18,7 +18,7 @@ for path in (ROOT / "cli", ROOT):
 
 from automa_cli.deploy import inspect_picar_autonomy_runtime
 from automa_cli.simulators import ensure_simulator
-from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL
+from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL, LOCAL_CAR_BASE_URL_ENV
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,8 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--picar-url",
-        default=DEFAULT_LOCAL_CAR_BASE_URL,
-        help=f"Pi Donkey server base URL for --live-pi (default: {DEFAULT_LOCAL_CAR_BASE_URL}).",
+        default=os.environ.get(LOCAL_CAR_BASE_URL_ENV) or DEFAULT_LOCAL_CAR_BASE_URL,
+        help=(
+            f"Pi Donkey server base URL for --live-pi (default: ${LOCAL_CAR_BASE_URL_ENV}, "
+            f"which the CLI's discovery also reads, else {DEFAULT_LOCAL_CAR_BASE_URL})."
+        ),
     )
     parser.add_argument(
         "--pi-timeout-s",

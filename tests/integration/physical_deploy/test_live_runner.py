@@ -17,7 +17,7 @@ from tests.run import prepare_live_pi
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def _runtime_status_response(*, drive_mode: str, action: list[str] | None = ["hold"]) -> MagicMock:
+def _runtime_status_response(*, mode: str, action: list[str] | None = ["hold"]) -> MagicMock:
     steps = {"perception": {"plugin_ids": ["frame", "floor_plane"]}}
     if action is not None:
         steps["action"] = {"plugin_ids": action}
@@ -26,7 +26,7 @@ def _runtime_status_response(*, drive_mode: str, action: list[str] | None = ["ho
     response.read.return_value = json.dumps(
         {
             "ok": True,
-            "drive_mode": drive_mode,
+            "mode": mode,
             "autonomy": {"steps": steps, "components": {}},
         }
     ).encode("utf-8")
@@ -35,7 +35,7 @@ def _runtime_status_response(*, drive_mode: str, action: list[str] | None = ["ho
 
 class PiLiveRunnerTests(unittest.TestCase):
     def test_ready_pi_reports_loaded_activation_and_enables_live_test(self) -> None:
-        response = _runtime_status_response(drive_mode="user")
+        response = _runtime_status_response(mode="manual")
         output = io.StringIO()
 
         with (
@@ -62,12 +62,12 @@ class PiLiveRunnerTests(unittest.TestCase):
 
         self.assertTrue(ready)
         self.assertIn("result: ready", output.getvalue())
-        self.assertIn("drive mode: user", output.getvalue())
+        self.assertIn("mode: manual", output.getvalue())
         self.assertIn("action: hold", output.getvalue())
         self.assertIn("perception: frame, floor_plane", output.getvalue())
 
     def test_non_manual_pi_is_unavailable_and_does_not_enable_live_test(self) -> None:
-        response = _runtime_status_response(drive_mode="local")
+        response = _runtime_status_response(mode="autonomy")
         output = io.StringIO()
 
         with (
@@ -83,14 +83,14 @@ class PiLiveRunnerTests(unittest.TestCase):
 
         self.assertFalse(ready)
         self.assertIn("result: unavailable", output.getvalue())
-        self.assertIn("drive mode is 'local'; expected 'user'", output.getvalue())
+        self.assertIn("mode is 'autonomy'; expected 'manual'", output.getvalue())
         self.assertIn(
             "No drive, mode-change, restart, or SSH command was sent.",
             output.getvalue(),
         )
 
     def test_missing_action_step_is_unavailable(self) -> None:
-        response = _runtime_status_response(drive_mode="user", action=None)
+        response = _runtime_status_response(mode="manual", action=None)
         output = io.StringIO()
 
         with (

@@ -79,8 +79,10 @@ def staged_step_info(
         runner = load_staged_runner(activation)
     except Exception as exc:  # noqa: BLE001 - staged plugins are third-party code
         return None, failure("load", exc)
+    # Plan and action plugins declare no schema; their info has none.
+    describe = getattr(runner, "describe_schema", None)
     try:
-        schema = runner.describe_schema()
+        schema = describe() if describe is not None else None
     except Exception as exc:  # noqa: BLE001 - staged plugins are third-party code
         return None, failure("inspect", exc)
     available = manager.available
@@ -94,8 +96,10 @@ def staged_step_info(
             "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
         },
         "controller_bundle": {key: stored_bundle.get(key) for key in CONTROLLER_BUNDLE_KEYS},
-        f"{step}_schema_source": schema_source(step),
-        f"{step}_schema": schema,
+        **({} if schema is None else {
+            f"{step}_schema_source": schema_source(step),
+            f"{step}_schema": schema,
+        }),
     }, None
 
 

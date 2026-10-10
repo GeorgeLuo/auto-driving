@@ -1,29 +1,11 @@
 from __future__ import annotations
 import json
-import os
 import unittest
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from copy import deepcopy
-from pathlib import Path
 from urllib.request import urlopen
-from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
-from cli.automa_cli.automation import _read_latest_decision_frame_for_view
-from cli.automa_cli.proposal import get_vehicle_proposal_info
-from cli.automa_cli.decision import (
-    publish_decision_frame,
-    strict_decode_apply_evidence,
-    strict_decode_apply_observation,
-)
-from cli.automa_cli.decision_records import DecisionRunners
-from tests.cli.decision.decision_surfaces_fixtures import (
-    host_result_for_records,
-    packaged_decision_steps,
-)
-from tests.cli.decision.live_runtime_decision_view_fixtures import (
-    ACTIVE_RUN,
-    LiveRuntimeDecisionViewFixture,
-)
+from tests.cli.decision.decision_surfaces_fixtures import left_obstruction_frame
+from tests.cli.decision.live_runtime_decision_view_fixtures import LiveRuntimeDecisionViewFixture
 
 
 class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.TestCase):
@@ -56,16 +38,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get_content_type(), "text/html")
 
-        info = get_vehicle_proposal_info(
-            vehicle_id="chase-sim-chaser", json_output=True
-        )
-        self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["published_view"]
-        self.assertTrue(combined["available"])
-        self.assertEqual(combined["status"], "current")
-        self.assertEqual(
-            combined["url"], f"{self.server.url}decision?generation={generation}"
-        )
+        self.assertEqual(self.server.decision.health_payload()["status"], "running")
         self.assertEqual(
             payload["freshness"]["captured_at_ms"],
             stream_frame["timestamp_ms"],
@@ -76,9 +49,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         )
 
     def test_api_keeps_host_observations_separate_and_attributable(self) -> None:
-        raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))[
-            "frames"
-        ][0]
+        raw = left_obstruction_frame()
         frame_id = raw["frame_id"]
         cases = (
             ("absent", None, "unavailable", None),
@@ -127,73 +98,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                     self.assertIsNone(host["value"])
                 else:
                     self.assertEqual(host["value"]["steering"], steering)
-
-    def test_decision_publish_joins_the_exact_buffered_capture(self) -> None:
-        raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))[
-            "frames"
-        ][0]
-        records = DecisionRunners.from_payloads(packaged_decision_steps()).run(
-            frame_id=raw["frame_id"],
-            frame_index=raw["frame_index"],
-            timestamp_ms=raw["timestamp_ms"],
-            observation=strict_decode_apply_observation(raw["observation"]),
-            shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
-        )
-        cycle = host_result_for_records(
-            records,
-            frame_id=raw["frame_id"],
-            frame_index=raw["frame_index"],
-            timestamp_ms=raw["timestamp_ms"],
-        )
-        self.assertTrue(
-            publish_decision_frame(
-                cycle_result=cycle,
-                context_frame_id=raw["frame_id"],
-                vehicle_id="chase-sim-chaser",
-                vehicle_runtime_dir=self.vehicle_runtime,
-                run_id="run-live",
-                worker_pid=os.getpid(),
-                activation=self.activation,
-            )
-        )
-        latest = _read_latest_decision_frame_for_view(
-            self.automation_dir / "latest_decision.json",
-            frame_id=raw["frame_id"],
-            run_id="run-live",
-            worker_pid=os.getpid(),
-            generation_id=self.activation["generation_id"],
-        )
-        if latest is None:
-            self.fail("decision publish did not write a matching latest decision frame")
-        frame_path = Path(self._temporary.name) / "joined-frame.png"
-        Image.new("RGB", (40, 30), (20, 80, 150)).save(frame_path)
-        frame_record = {
-            "frame_id": latest["frame_id"],
-            "frame_index": latest["frame_index"],
-            "captured_at_ms": latest["timestamp_ms"],
-            "run_id": "run-live",
-            "worker_pid": os.getpid(),
-            "sensor_frame": {
-                "readings": {"front_camera": {"read_id": latest["frame_id"]}}
-            },
-        }
-        self.server.perception.publish_frame(
-            frame_path=frame_path, frame_record=frame_record
-        )
-        self.assertTrue(
-            self.server.decision.publish(
-                report=latest,
-                frame_record=frame_record,
-                image=self.server.perception.frame(latest["frame_id"]),
-            )
-        )
-        generation = self.server.decision.generation_id
-        with urlopen(
-            f"{self.server.url}api/decision/latest?generation={generation}", timeout=1.0
-        ) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        self.assertEqual(payload["current_image"]["frame_id"], latest["frame_id"])
-        self.assertEqual(payload["decision"]["frame_id"], latest["frame_id"])
 
     def test_exact_retained_evidence_is_machine_visible_and_renderable(self) -> None:
         stream_frame = self._accepted_frame_with_evidence()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import time
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from PIL import Image
 from unittest.mock import patch
@@ -12,6 +13,9 @@ from autonomy.decision_cycle.perception.interface import (
 )
 from implementations.decision_cycle.catalog import packaged_activation, preset_activation
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from cli.automa_cli.bundles import controller_bundle_paths
+
+VEHICLE_ID = "chase-sim-chaser"
 
 
 class _SlowMapper:
@@ -173,3 +177,38 @@ def staged_runners(*, perception=None, wrap=None):
         return runner
 
     return patch("autonomy.decision_cycle.steps.load_runner", side_effect=load_runner)
+
+
+@contextmanager
+def chase_runtime(runtime_root: Path, *, car=None, vehicle_id: str = VEHICLE_ID):
+    """Serve the vehicle's staged runtime from an in-process Chase host.
+
+    The host writes the record a started ``automation host`` writes, so the
+    CLI (in process or as a subprocess under ``runtime_root``) finds it by
+    ``base_url``. Enter it inside ``staged_runners``: the host loads its steps
+    when constructed.
+    """
+
+    import os
+
+    from implementations.runtime.chase_sim.service import (
+        HOST_RECORD_SCHEMA, ChaseRuntimeHost, write_host_record,
+    )
+    from cli.automa_cli.runtime_hosts import HOST_RECORD
+
+    bundle = controller_bundle_paths(runtime_root / vehicle_id)
+    with ExitStack() as stack:
+        stack.enter_context(patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root))
+        host = stack.enter_context(ChaseRuntimeHost(
+            car=_FakeCar() if car is None else car,
+            runtime_dir=Path(bundle["runtime_dir"]), vehicle_id=vehicle_id,
+        ))
+        record = Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD
+        write_host_record(record, {
+            "schema": HOST_RECORD_SCHEMA, "vehicle_id": vehicle_id,
+            "pid": os.getpid(), "base_url": host.base_url,
+        })
+        stack.callback(record.unlink, missing_ok=True)
+        # Starting a host builds it from a release; this one is already serving.
+        stack.enter_context(patch("cli.automa_cli.automation.runtime_base_url", return_value=host.base_url))
+        yield host

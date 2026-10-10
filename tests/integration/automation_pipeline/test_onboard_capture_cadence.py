@@ -13,7 +13,7 @@ import numpy as np
 
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import onboard_automation
+from cli.automa_cli import runtime_monitor
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.integration.automation_pipeline.cadence_fixtures import CaptureClock, GatedPerception
 
@@ -21,7 +21,6 @@ from tests.integration.automation_pipeline.cadence_fixtures import CaptureClock,
 def _part(perception: GatedPerception, clock: CaptureClock, interval_s: float) -> AutonomyPilotPart:
     host = create_host(steps=replace(decision_steps(), perception=perception))
     part = AutonomyPilotPart(host=host, interval_s=interval_s, monotonic=clock, run_id="cadence-test")
-    host.register_status_provider("observation", part.observation_status)
     return part
 
 
@@ -117,7 +116,11 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
         class RuntimeClient:
+            base_url = "http://picar.invalid"
             polls = 0
+
+            def host_status(self):
+                return {"autonomy": part.host.status()}
 
             def start(self, configuration, *, record=False):
                 if record:
@@ -171,15 +174,14 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 # Substitute HTTP reads and lifecycle transport only. Host, workers,
                 # publications, monitor polling, loopback view and records are real.
                 with (
-                    patch.object(onboard_automation, "OnboardRuntimeClient", return_value=RuntimeClient()),
-                    patch.object(onboard_automation, "fetch_autonomy_status", side_effect=lambda *_a, **_kw: {"autonomy": part.host.status()}),
-                    patch.object(onboard_automation, "fetch_observation_publication", side_effect=publication),
-                    patch.object(onboard_automation, "fetch_observation_frame", side_effect=frame),
+                    patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
+                    patch.object(runtime_monitor, "fetch_observation_publication", side_effect=publication),
+                    patch.object(runtime_monitor, "fetch_observation_frame", side_effect=frame),
                     patch("cli.automa_cli.decision_live.fetch_observation_frame", side_effect=frame),
                     patch("cli.automa_cli.decision_live.fetch_decision_publication", side_effect=lambda *_a, **_kw: part.publish_decision_latest()),
                 ):
                     started = time.monotonic()
-                    code, message = onboard_automation.monitor_onboard_runtime(
+                    code, message = runtime_monitor.monitor_runtime(
                         vehicle_id="picar-test", base_url="http://picar.invalid", automation_dir=root,
                         perception={"preset": "gated", "plugins": [], "activation": "perception/active.json"},
                         decision={"generation_id": "test", "steps": {}, "published": False},

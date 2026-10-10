@@ -65,7 +65,8 @@ def run_startup_action_check(
             pixel_threshold=plan.comparison_pixel_threshold,
         )
         diff_artifact = write_diff_artifact(before_path, after_path, diff_path)
-        passed, failure_reasons = check_startup_action_result(
+        # A dry run sends no pulses, so there is no motion to score.
+        passed, failure_reasons = (None, []) if dry_run else check_startup_action_result(
             instruction=instruction,
             plan=plan,
             comparison=comparison,
@@ -105,7 +106,7 @@ def run_startup_action_check(
         "dry_run": dry_run,
         "checks_total": len(results),
         "checks_passed": passed_count,
-        "passed": passed_count == len(results),
+        "passed": None if dry_run else passed_count == len(results),
         "results": results,
     }
     write_json(out_dir / "report.json", report)
@@ -119,7 +120,7 @@ def _write_summary(path: Path, report: dict[str, Any]) -> None:
         f"# Startup Action Check: {report['run_id']}",
         "",
         f"- Vehicle: `{report['vehicle'].get('vehicle_kind')}` / `{report['vehicle'].get('vehicle_id')}`",
-        f"- Overall passed: `{report['passed']}`",
+        f"- Overall passed: `{'not scored (dry run)' if report['dry_run'] else report['passed']}`",
         f"- Checks passed: `{report['checks_passed']}/{report['checks_total']}`",
         "",
         "| Check | Expected | Passed | Mean diff | Changed pixels | Notes |",

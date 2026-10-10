@@ -12,13 +12,10 @@ from implementations.operations import (
     build_basic_startup_action_check_plan,
     run_startup_action_check,
 )
+from implementations.operations.artifact_writers import write_json
 from .paths import ROOT, display_path
 from .vehicle_access import create_vehicle_access
-from .vehicles import (
-    discover_active_vehicles,
-    find_vehicle_by_id,
-    format_active_vehicles,
-)
+from .vehicles import discover_vehicle
 
 
 OPERATION_OUTPUT_ROOT = Path(
@@ -42,26 +39,9 @@ def run_vehicle_startup_check(
     dry_run: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
+    vehicle, error = discover_vehicle(vehicle_id, timeout_s=timeout_s)
     if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+        return CommandResult(2, error)
 
     preparation: dict[str, Any] | None = None
     try:
@@ -82,7 +62,9 @@ def run_vehicle_startup_check(
         return CommandResult(2, f"Invalid startup action check plan: {exc}")
 
     # Dry runs stay passive: capture frames, but do not acquire control.
-    # A live check acquires through the vehicle's control target, then releases.
+    # A live check acquires through the vehicle's control target, then releases;
+    # report.json records both events.
+    control: list[dict[str, Any]] = []
     acquired = False
     if not dry_run:
         try:
@@ -90,6 +72,7 @@ def run_vehicle_startup_check(
             acquired = True
         except Exception as exc:
             return CommandResult(2, f"Could not prepare vehicle {vehicle_id!r}: {exc}")
+        control.append({"event": "acquire", "at_ms": int(time.time() * 1000), "receipt": preparation})
 
     release_error: Exception | None = None
     try:
@@ -113,13 +96,18 @@ def run_vehicle_startup_check(
         if acquired:
             try:
                 _release_control(access.control)
+                control.append({"event": "release", "at_ms": int(time.time() * 1000)})
             except Exception as exc:
                 release_error = exc
+                control.append({"event": "release", "at_ms": int(time.time() * 1000),
+                                "error": f"{type(exc).__name__}: {exc}"})
+    report["control"] = control
+    write_json(out_dir / "report.json", report)
     if release_error is not None:
         return CommandResult(2, f"Could not release vehicle {vehicle_id!r}: {release_error}")
 
     payload = _compact_startup_report(report, out_dir, preparation)
-    exit_code = 0 if report["passed"] else 1
+    exit_code = 0 if dry_run or report["passed"] else 1
     if json_output:
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(exit_code, _format_startup_report(payload))
@@ -156,6 +144,7 @@ def _compact_startup_report(
         "vehicle": report["vehicle"],
         "preparation": preparation,
         "dry_run": report["dry_run"],
+        "control": report["control"],
         "checks_total": report["checks_total"],
         "checks_passed": report["checks_passed"],
         "passed": report["passed"],
@@ -179,15 +168,25 @@ def _compact_startup_report(
 
 
 def _format_startup_report(payload: dict[str, Any]) -> str:
+    if payload["dry_run"]:
+        result_line = (
+            f"Result: dry run, no control acquired; {payload['checks_total']} frame pairs "
+            "captured, not scored"
+        )
+    else:
+        result_line = (
+            f"Result: {'passed' if payload['passed'] else 'failed'} "
+            f"({payload['checks_passed']}/{payload['checks_total']} checks)"
+        )
     return "\n".join(
         [
             f"Startup action check: {payload['run_id']}",
-            f"Result: {'passed' if payload['passed'] else 'failed'} "
-            f"({payload['checks_passed']}/{payload['checks_total']} checks)",
+            result_line,
             f"Artifacts: {display_path(Path(payload['out_dir']))}",
             "",
             *[
-                f"- {result['label']}: {'pass' if result['passed'] else 'fail'} "
+                f"- {result['label']}: "
+                f"{ {True: 'pass', False: 'fail'}.get(result['passed'], 'captured')} "
                 f"(mean diff={result['mean_abs_diff_norm']:.5f}, "
                 f"changed={result['changed_pixel_ratio']:.5f})"
                 for result in payload["results"]

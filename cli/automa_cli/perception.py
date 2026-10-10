@@ -6,7 +6,6 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
-from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import (
     StepActivation,
@@ -36,32 +35,33 @@ from .step_activations import (
     BUILTIN_STEPS,
     apply_staged,
     bundle_activation_problems,
+    changed_plugins,
     ensure_builtin_activations,
     format_activation_problems,
     format_apply_staged,
+    keep_staged_configs,
     read_bundle_activation,
     refresh_release,
     stage_activation,
     staged_activation,
     staging_vehicle,
     step_update_error,
+    valid_bundle_activation,
 )
 from .step_hosting import load_staged_runner
 from .step_schema import format_staged_step, staged_step_info
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
-from .view_discovery import discover_runtime_view, runtime_view_dir
-from .picar_observation import (
+from .view_discovery import discover_runtime_view
+from .host_publications import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_observation_publication,
-    picar_base_url,
 )
+from .runtime_hosts import RuntimeHostError, runtime_base_url
 from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
     READINESS_SCHEMA,
-    discover_active_vehicles,
-    find_vehicle_by_id,
     get_vehicle_status,
 )
 
@@ -155,73 +155,21 @@ def get_vehicle_perception_info(
     json_output: bool = False,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
-    bundle = controller_bundle_paths(vehicle_runtime_dir)
-    manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    has_local_activation = manifest_path.exists()
-    # Discovery is an enrichment read for staged inspection, not a gate.  It
-    # must still run when active.json exists so a reachable PiCar cannot be
-    # silently hidden behind the local activation record.
-    live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
-    live_vehicle: dict[str, Any] | None = None
-    live_vehicle = (
-        live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
-    )
-    live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
+    """The staged perception, the local view, and the runtime host's latest publication."""
 
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    staged, error = staged_step_info(bundle, vehicle_id, "perception")
+    if error is not None:
+        return CommandResult(2, error)
     payload: dict[str, Any] = {
-        "schema": "vehicle_perception_info_v0",
+        "schema": "vehicle_perception_info_v1",
         "vehicle_id": vehicle_id,
+        **staged,
+        "published_view": discover_runtime_view(
+            vehicle_id, get_perception_view_status, runtime_root=RUNTIME_ROOT
+        ),
+        "live_observation": _live_observation_info(vehicle_id, timeout_s=timeout_s),
     }
-
-    # A PiCar reached live can be reported without a local staged activation.
-    if has_local_activation or live_provider != "picar":
-        staged, error = staged_step_info(bundle, vehicle_id, "perception")
-        if error is not None:
-            return CommandResult(2, error)
-        automation_dir = Path(bundle["runtime_dir"]) / "automation"
-        published_view, automation_status = _chase_automation_info(
-            automation_dir
-        )
-        payload.update(
-            {
-                **staged,
-                "published_view": published_view,
-                "automation": automation_status,
-            }
-        )
-    else:
-        payload.update(
-            {
-                "activation": None,
-                "controller_bundle": None,
-                "perception_schema_source": None,
-                "perception_schema": None,
-                "published_view": {
-                    "available": False,
-                    "status": "unavailable",
-                    "reason": "no local staged activation; PiCar live view uses stream",
-                },
-                "automation": {"status": "not_started", "running": False},
-            }
-        )
-
-    if live_provider == "picar" and live_vehicle is not None:
-        payload["live_observation"] = _live_picar_observation_info(
-            vehicle_id=vehicle_id,
-            vehicle=live_vehicle,
-            timeout_s=timeout_s,
-        )
-        # Prefer the PiCar stream view when it is running.
-        live_view = payload["live_observation"].get("published_view")
-        if isinstance(live_view, dict) and live_view.get("available"):
-            payload["published_view"] = live_view
-    else:
-        payload["live_observation"] = _unavailable_live_observation(
-            live,
-            vehicle=live_vehicle,
-        )
-
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, _format_perception_info(payload))
@@ -272,6 +220,9 @@ def update_vehicle_perception(
 
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
+    previous = valid_bundle_activation(bundle, "perception")
+    if plugins:
+        activation = keep_staged_configs(bundle, activation)
     perception_runtime_dir = Path(bundle["perception_runtime_dir"])
     manifest_path = perception_runtime_dir / "active.json"
     manifest = staged_activation(
@@ -376,7 +327,8 @@ def update_vehicle_perception(
         sample_paths=sample_paths,
         restart=restart,
     )
-    payload["apply"] = apply_staged(vehicle_id, provider, "perception")
+    payload["apply"] = apply_staged(vehicle_id, provider, "perception",
+                                    changed=None if restart else changed_plugins(previous, activation))
     readiness = None
     next_action = None
     readiness_exit_code = 0
@@ -687,24 +639,10 @@ def _manifest_preset(manifest: dict[str, Any]) -> str | None:
 
 
 def _format_perception_info(payload: dict[str, Any]) -> str:
-    live = (
-        payload.get("live_observation")
-        if isinstance(payload.get("live_observation"), dict)
-        else None
+    lines = format_staged_step(
+        "perception", payload, view=_format_published_view(payload.get("published_view"))
     )
-
-    if isinstance(payload.get("activation"), dict):
-        lines = format_staged_step(
-            "perception", payload, view=_format_published_view(payload.get("published_view"))
-        )
-    else:
-        lines = [
-            f"Perception: {payload['vehicle_id']} (no local staged activation)",
-            _format_published_view(payload.get("published_view")),
-        ]
-
-    if live is not None:
-        lines.extend(["", _format_live_observation(live)])
+    lines.extend(["", _format_live_observation(payload["live_observation"])])
     return "\n".join(lines)
 
 
@@ -712,30 +650,21 @@ def _format_published_view(value: Any) -> str:
     view = value if isinstance(value, dict) else {}
     if view.get("available") and view.get("url"):
         return f"Perception view: {view['url']}"
-    reason = view.get("reason") or "automation view is not running"
-    if view.get("status") == "starting":
-        return f"Perception view: starting ({reason})"
-    if view.get("status") == "error":
-        return f"Perception view: unavailable ({reason})"
+    reason = view.get("reason") or "no view is running"
     return (
         f"Perception view: unavailable ({reason}); "
-        "for Chase run automation, for PiCar run "
-        "`./cli/automa vehicles stream perception --id <vehicle_id>`"
+        "`./cli/automa vehicles stream perception --id <vehicle_id>` starts one"
     )
 
 
 def _format_live_observation(live: dict[str, Any]) -> str:
-    view = live.get("published_view") if isinstance(live.get("published_view"), dict) else {}
     if not live.get("available"):
-        error = live.get("error") or live.get("reason") or "PiCar observation is unavailable"
-        lines = [f"Live onboard observation: unavailable ({error})"]
-        if view:
-            lines.append(_format_live_view(view))
-        return "\n".join(lines)
+        error = live.get("error") or live.get("reason") or "the runtime host published no observation"
+        return f"Live observation: unavailable ({error})"
     frame = live.get("frame") if isinstance(live.get("frame"), dict) else {}
     control = live.get("control") if isinstance(live.get("control"), dict) else {}
-    lines = [
-        "Live onboard observation:",
+    return "\n".join([
+        "Live observation:",
         f"- health: {live.get('health', 'unknown')}  age_ms={live.get('result_age_ms', 'unknown')}",
         f"- preset: {live.get('preset', 'unknown')}  mode: {live.get('mode', 'unknown')}",
         f"- frame: {frame.get('frame_id', 'none')}  duration_ms={live.get('duration_ms', 'unknown')}",
@@ -746,123 +675,38 @@ def _format_live_observation(live: dict[str, Any]) -> str:
         ),
         f"- endpoint: {live.get('base_url', 'unknown')}{LATEST_JSON_PATH}",
         f"- frame endpoint: {live.get('base_url', 'unknown')}{LATEST_FRAME_PATH}",
-    ]
-    lines.append(_format_live_view(view))
-    return "\n".join(lines)
+    ])
 
 
-def _format_live_view(view: dict[str, Any]) -> str:
-    if view.get("available") and view.get("url"):
-        return f"- local view: {view['url']}"
-    reason = view.get("reason") or "PiCar perception view is unavailable"
-    return (
-        f"- local view: unavailable ({reason}); "
-        "`./cli/automa vehicles stream perception --id <vehicle_id>` starts it"
-    )
+def _live_observation_info(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
+    """The runtime host's latest observation publication, for any vehicle."""
 
-
-def _unavailable_live_observation(
-    live: dict[str, Any],
-    *,
-    vehicle: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Describe missing live enrichment without invalidating staged data."""
-
-    provider = vehicle.get("provider") if isinstance(vehicle, dict) else None
-    reason = live.get("error")
-    if not isinstance(reason, str) or not reason:
-        if provider is not None:
-            reason = f"discovered provider {provider!r} is not a PiCar"
-        else:
-            reason = "vehicle is not currently reachable"
-    result: dict[str, Any] = {
-        "available": False,
-        "provider": provider,
-        "reason": reason,
-    }
-    if isinstance(live.get("error"), str) and live["error"]:
-        result["error"] = live["error"]
-    return result
-
-
-def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
     try:
-        discovery = discover_active_vehicles(
-            timeout_s=timeout_s,
-            include_picar=True,
-            include_chase_sim=True,
-            include_inactive=True,
-        )
-    except Exception as exc:
-        return {"vehicle": None, "error": f"{type(exc).__name__}: {exc}"}
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return {"vehicle": None, "error": error}
-    return {"vehicle": vehicle, "error": None}
-
-
-def _live_picar_observation_info(
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any],
-    timeout_s: float,
-) -> dict[str, Any]:
-    base_url = picar_base_url(vehicle)
-    if not base_url:
-        return {
-            "available": False,
-            "provider": "picar",
-            "error": f"Vehicle {vehicle_id!r} has no PiCar base URL.",
-        }
-    try:
-        parsed_base_url = urlparse(base_url)
-        usable_base_url = (
-            parsed_base_url.scheme in {"http", "https"}
-            and bool(parsed_base_url.netloc)
-        )
-    except ValueError:
-        usable_base_url = False
-    if not usable_base_url:
-        return {
-            "available": False,
-            "provider": "picar",
-            "base_url": base_url,
-            "error": f"Vehicle {vehicle_id!r} has an invalid PiCar base URL.",
-        }
-    view = discover_runtime_view(vehicle_id, get_perception_view_status, runtime_root=RUNTIME_ROOT)
+        base_url = runtime_base_url(vehicle_id)
+    except RuntimeHostError as exc:
+        return {"available": False, "error": str(exc)}
     try:
         publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
     except ConnectionError as exc:
-        return {
-            "available": False,
-            "provider": "picar",
-            "base_url": base_url,
-            "error": str(exc),
-            "published_view": view,
-            "runtime_dir": display_path(runtime_view_dir(vehicle_id, runtime_root=RUNTIME_ROOT)),
-        }
-    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
+        return {"available": False, "base_url": base_url, "error": str(exc)}
     result = {
         "available": True,
-        "provider": "picar",
         "base_url": base_url,
         "health": publication.get("health"),
         "ok": publication.get("ok"),
         "result_age_ms": publication.get("result_age_ms"),
         "duration_ms": publication.get("duration_ms"),
         "preset": publication.get("preset"),
-        "mode": publication.get("mode") or publication.get("drive_mode"),
+        "mode": publication.get("mode"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),
         "skipped_since_previous": publication.get("skipped_since_previous"),
         "frames_captured": publication.get("frames_captured"),
         "interval_s": publication.get("interval_s"),
         "control": publication.get("control"),
-        "frame": frame,
+        "frame": publication.get("frame") if isinstance(publication.get("frame"), dict) else None,
         "latest_json_path": LATEST_JSON_PATH,
         "latest_frame_path": LATEST_FRAME_PATH,
-        "published_view": view,
-        "runtime_dir": display_path(runtime_view_dir(vehicle_id, runtime_root=RUNTIME_ROOT)),
     }
     if publication.get("health") not in {"healthy", "stale"}:
         error = publication.get("error")
@@ -870,69 +714,8 @@ def _live_picar_observation_info(
         result["reason"] = (
             error
             if isinstance(error, str) and error.strip()
-            else f"PiCar observation health is {publication.get('health')!r}"
+            else f"observation health is {publication.get('health')!r}"
         )
         if isinstance(error, str) and error.strip():
             result["error"] = error
     return result
-
-
-def _chase_automation_info(
-    automation_dir: Path,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    state = _read_json_file(automation_dir / "state.json")
-    process = _read_json_file(automation_dir / "process.json")
-    state = state if isinstance(state, dict) else {}
-    process = process if isinstance(process, dict) else {}
-    pid = state.get("pid") if isinstance(state.get("pid"), int) else process.get("pid")
-    running = _process_alive(pid) if isinstance(pid, int) else False
-    status = str(state.get("status") or "not_started")
-    runtime = {
-        "status": status,
-        "pid": pid,
-        "running": running,
-        "state_path": display_path(automation_dir / "state.json"),
-        "error": state.get("error") if isinstance(state.get("error"), str) else None,
-    }
-    run_id = state.get("run_id") if isinstance(state.get("run_id"), str) else None
-    view = get_perception_view_status(
-        automation_dir,
-        expected_run_id=run_id,
-        expected_worker_pid=pid if isinstance(pid, int) else None,
-    )
-    if view.get("available"):
-        return view, runtime
-    if status in {"launching", "starting"}:
-        if running:
-            reason = f"automation worker PID {pid} is still initializing"
-            return {**view, "status": "starting", "reason": reason}, runtime
-        reason = f"automation worker exited during startup (recorded PID {pid})"
-        return {**view, "status": "error", "reason": reason}, runtime
-    if status == "error":
-        detail = runtime["error"] or "automation worker reported a startup or runtime error"
-        summary = next(
-            (line.strip() for line in str(detail).splitlines() if line.strip()),
-            "automation worker reported an error",
-        ).rstrip(".;:")
-        reason = f"{summary}; details: {runtime['state_path']}"
-        return {**view, "status": "error", "reason": reason}, runtime
-    return view, runtime
-
-
-def _read_json_file(path: Path) -> Any:
-    if not path.is_file():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def _process_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True

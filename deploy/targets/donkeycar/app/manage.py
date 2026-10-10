@@ -29,6 +29,7 @@ except:
 import json
 import os
 import secrets
+import signal
 import sys
 import time
 from pathlib import Path
@@ -463,62 +464,22 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             from autonomy.runtime.layout import RuntimeLayout
             runtime_root = RuntimeLayout(Path(__file__).resolve().parent).runtime
             identity_path = runtime_root / "identity.json"
-            from autonomy.decision_cycle.activation import (
-                STEPS,
-                read_step_activation,
-                step_activation_path,
-            )
-            from autonomy.decision_cycle.steps import (
-                decision_steps,
-            )
-            from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE
-            from implementations.runtime.picar import (
-                DEFAULT_INTERVAL_S,
-                AutonomyPilotPart,
-                create_host,
-            )
+            from autonomy.runtime.assembly import staged_runtime
+            from autonomy.runtime.session import DEFAULT_INTERVAL_S
+            from implementations.runtime.picar import AutonomyPilotPart, create_host
             from implementations.runtime.picar.host_telemetry import (
                 DriveModeTelemetryAdapter,
                 HostTelemetryStore,
             )
 
-            activations = {}
-            for step in STEPS:
-                path = step_activation_path(runtime_root, step)
-                if not path.exists():
-                    logger.warning("No %s activation at %s", step, path)
-                    continue
-                try:
-                    activations[step] = read_step_activation(path, step)
-                    logger.info(
-                        "Activated %s plugins %s",
-                        step,
-                        ", ".join(activations[step].plugins) or "(none)",
-                    )
-                except Exception:
-                    logger.exception(
-                        "Unable to read the %s activation at %s; the step %s",
-                        step,
-                        path,
-                        "uses its built-in plugin"
-                        if builtin_activation(step) is not None
-                        else "stays empty",
-                    )
-            host = create_host(
-                steps=decision_steps(activations, source=INSTALLED_PACKAGE)
-            )
-            host.follow_activations(activations, runtime_root)
-            applied = host.applied_decision()
-            decision_activations = applied["steps"]
-            perception = activations.get("perception")
-            perception_preset = (
-                perception.metadata.get("preset") if perception is not None else None
+            host, loop_options = staged_runtime(
+                runtime_root, lambda steps: create_host(steps=steps)
             )
 
             telemetry_store = None
             vehicle_id = None
             source_id = None
-            generation_id = applied["generation_id"]
+            generation_id = loop_options["generation_id"]
             run_id = None
             try:
                 identity = (
@@ -563,26 +524,30 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             autonomy_part = AutonomyPilotPart(
                 host=host,
                 interval_s=capture_interval_s,
-                preset=perception_preset,
                 vehicle_id=vehicle_id,
                 source_id=source_id if telemetry_store is not None else None,
-                decision_activations=decision_activations,
-                generation_id=generation_id,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
                 controller=autonomy_controller,
-                recording_root=runtime_root / "automation" / "runs",
+                **loop_options,
             )
             autonomy_execution = host.execution
             if telemetry_store is not None:
                 host.register_status_provider("host_telemetry", telemetry_store.status)
-                if autonomy_controller is not None:
-                    autonomy_controller.host_telemetry_publisher = host_telemetry_publisher
-            host.register_status_provider("observation", autonomy_part.observation_status)
-            # HTTP handlers read the host status and this publisher.
+            # The web controller serves the shared runtime routes.
             if autonomy_controller is not None:
-                autonomy_controller.autonomy_host = host
-                autonomy_controller.observation_publisher = autonomy_part
+                from autonomy.runtime.routes import RuntimeRoutes
+
+                def restart_service():
+                    # systemd restarts this host. SIGINT runs Donkey's
+                    # shutdown hooks, including the shared runtime stop.
+                    os.kill(os.getpid(), signal.SIGINT)
+
+                autonomy_controller.autonomy_routes = RuntimeRoutes(
+                    autonomy_part,
+                    telemetry=host_telemetry_publisher if telemetry_store is not None else None,
+                    on_restart=restart_service,
+                )
             else:
                 logger.warning("Autonomy endpoints unavailable; no web controller.")
             V.add(

@@ -253,18 +253,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     # implementations.runtime
     ("implementations.runtime.picar", "create_host", "implementations.runtime.picar", "create_host"),
     ("implementations.runtime.picar", "AutonomyPilotPart", "implementations.runtime.picar.donkey_part", "AutonomyPilotPart"),
-    ("implementations.runtime.picar", "CAMERA_LATEST_FRAME_PATH", "implementations.runtime.picar.donkey_part", "CAMERA_LATEST_FRAME_PATH"),
-    ("implementations.runtime.picar", "CAMERA_LATEST_JSON_PATH", "implementations.runtime.picar.donkey_part", "CAMERA_LATEST_JSON_PATH"),
-    ("implementations.runtime.picar", "CAMERA_PUBLICATION_SCHEMA", "implementations.runtime.picar.donkey_part", "CAMERA_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.picar", "DECISION_LATEST_PATH", "implementations.runtime.picar.donkey_part", "DECISION_LATEST_PATH"),
-    ("implementations.runtime.picar", "DECISION_PUBLICATION_SCHEMA", "implementations.runtime.picar.donkey_part", "DECISION_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.picar", "DEFAULT_INTERVAL_S", "autonomy.runtime.session", "DEFAULT_INTERVAL_S"),
-    ("implementations.runtime.picar", "LATEST_FRAME_PATH", "implementations.runtime.picar.donkey_part", "LATEST_FRAME_PATH"),
-    ("implementations.runtime.picar", "LATEST_JSON_PATH", "implementations.runtime.picar.donkey_part", "LATEST_JSON_PATH"),
-    ("implementations.runtime.picar", "LatestCameraFrame", "implementations.runtime.picar.donkey_part", "LatestCameraFrame"),
-    ("implementations.runtime.picar", "LatestObservationState", "implementations.runtime.picar.donkey_part", "LatestObservationState"),
-    ("implementations.runtime.picar", "OBSERVATION_PUBLICATION_SCHEMA", "implementations.runtime.picar.donkey_part", "OBSERVATION_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.picar", "ONBOARD_OBSERVATION_STATE_SCHEMA", "implementations.runtime.picar.donkey_part", "ONBOARD_OBSERVATION_STATE_SCHEMA"),
 
     # implementations.vehicle
     ("implementations.vehicle", "ChaseSimCar", "implementations.vehicle.chase_sim.car", "ChaseSimCar"),

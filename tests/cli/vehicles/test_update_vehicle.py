@@ -99,6 +99,32 @@ class UpdateVehicleTests(unittest.TestCase):
                         self.assertEqual(code, 0, stdout)
             offline.assert_not_called()
 
+    def test_a_plugin_list_keeps_staged_configs_and_a_config_change_names_its_restart(self) -> None:
+        # The PiCar case: a tuned preset, then one more plugin, must stay adoptable live.
+        plugins = ("frame", "floor_plane", "multi_obstruction_tracks", "motion_tracks")
+        with self._runtime() as root, patch(DISCOVERY, return_value=_discovered(PICAR)):
+            def update(*args: str) -> str:
+                code, stdout = _invoke("vehicles", "update", "perception", "--id", "piracer-test", *args)
+                self.assertEqual(code, 0, stdout)
+                return stdout
+
+            update("--preset", "obstruction_observer")
+            tuned = read_bundle_activation(vehicle_bundle("piracer-test", root), "perception").plugin_configs
+            added = json.loads(update(*(arg for plugin in plugins for arg in ("--plugin", plugin)), "--json"))
+            self.assertEqual(added["manifest"]["plugins"], list(plugins))
+            self.assertEqual(added["manifest"]["plugin_configs"], tuned)
+            self.assertEqual(added["apply"]["changed_plugins"], [])
+            self.assertEqual(added["apply"]["selection_command"],
+                             "./cli/automa vehicles update autonomy --id piracer-test")
+
+            switched = update("--preset", "visual_observer")
+            self.assertIn(
+                "Apply: ./cli/automa vehicles update autonomy --id piracer-test --restart "
+                "(specs or configs changed: multi_obstruction_tracks)",
+                switched,
+            )
+            self.assertNotIn("Apply selection:", switched)
+
     def test_each_first_staged_step_makes_the_vehicle_known_to_every_step_offline(self) -> None:
         for first in UPDATE_STEPS:
             with self.subTest(first=first), self._runtime() as root:

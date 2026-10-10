@@ -35,15 +35,18 @@ from .step_activations import (
     BUILTIN_STEPS,
     apply_staged,
     bundle_activation_problems,
+    changed_plugins,
     ensure_builtin_activations,
     format_activation_problems,
     format_apply_staged,
+    keep_staged_configs,
     read_bundle_activation,
     refresh_release,
     stage_activation,
     staged_activation,
     staging_vehicle,
     step_update_error,
+    valid_bundle_activation,
 )
 from .step_hosting import load_staged_runner
 from .step_schema import format_staged_step, staged_step_info
@@ -217,6 +220,9 @@ def update_vehicle_perception(
 
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
+    previous = valid_bundle_activation(bundle, "perception")
+    if plugins:
+        activation = keep_staged_configs(bundle, activation)
     perception_runtime_dir = Path(bundle["perception_runtime_dir"])
     manifest_path = perception_runtime_dir / "active.json"
     manifest = staged_activation(
@@ -321,7 +327,8 @@ def update_vehicle_perception(
         sample_paths=sample_paths,
         restart=restart,
     )
-    payload["apply"] = apply_staged(vehicle_id, provider, "perception")
+    payload["apply"] = apply_staged(vehicle_id, provider, "perception",
+                                    changed=None if restart else changed_plugins(previous, activation))
     readiness = None
     next_action = None
     readiness_exit_code = 0

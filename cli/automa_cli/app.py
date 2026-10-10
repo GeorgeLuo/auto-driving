@@ -1340,7 +1340,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="plugins",
         default=None,
         metavar="PLUGIN_ID",
-        help="Packaged perception plugin to select instead of a preset; repeat to select several in order.",
+        help="Packaged perception plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
     )
     perception.add_argument(
         "--dry-run",
@@ -1444,7 +1444,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="plugins",
         default=None,
         metavar="PLUGIN_ID",
-        help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
+        help="Packaged memory plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
     )
     memory.add_argument(
         "--dry-run",

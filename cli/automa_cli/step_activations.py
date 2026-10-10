@@ -68,6 +68,56 @@ def read_bundle_activation(bundle: dict[str, str], step: str) -> StepActivation 
     return read_step_activation_if_present(bundle_activation_path(bundle, step), step)
 
 
+def valid_bundle_activation(bundle: dict[str, str], step: str) -> StepActivation | None:
+    """The staged activation, or ``None`` when absent or unreadable; restaging replaces either."""
+
+    try:
+        return read_bundle_activation(bundle, step)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def keep_staged_configs(bundle: dict[str, str], activation: StepActivation) -> StepActivation:
+    """``activation`` with the staged config of every plugin whose spec is unchanged.
+
+    A plugin list changes which plugins run, not how each one is configured,
+    so a running host can still adopt it without a restart.
+    """
+
+    staged = valid_bundle_activation(bundle, activation.step)
+    if staged is None:
+        return activation
+    configs = dict(activation.plugin_configs)
+    for plugin_id, spec in activation.plugin_specs.items():
+        if staged.plugin_specs.get(plugin_id) != spec:
+            continue
+        if plugin_id in staged.plugin_configs:
+            configs[plugin_id] = deepcopy(staged.plugin_configs[plugin_id])
+        else:
+            configs.pop(plugin_id, None)
+    return StepActivation(
+        step=activation.step,
+        plugins=activation.plugins,
+        plugin_specs=activation.plugin_specs,
+        plugin_configs=configs,
+        metadata=activation.metadata,
+        source_path=activation.source_path,
+    )
+
+
+def changed_plugins(previous: StepActivation | None, staged: StepActivation) -> list[str]:
+    """Plugin IDs whose spec or config ``staged`` changes; a running host adopts them only on restart."""
+
+    if previous is None:
+        return []
+    return sorted(
+        plugin_id
+        for plugin_id in {*previous.plugin_specs, *staged.plugin_specs}
+        if previous.plugin_specs.get(plugin_id) != staged.plugin_specs.get(plugin_id)
+        or previous.plugin_configs.get(plugin_id) != staged.plugin_configs.get(plugin_id)
+    )
+
+
 def bundle_activation_problems(
     bundle: dict[str, str], vehicle_id: str, *, steps: tuple[str, ...] = STEPS,
 ) -> list[dict[str, str]]:
@@ -107,7 +157,7 @@ def format_activation_problems(problems: list[dict[str, str]]) -> str:
     )
 
 
-def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
+def apply_staged(vehicle_id: str, provider: Any, step: str, *, changed: list[str] | None = None) -> dict[str, Any]:
     """How a vehicle's running autonomy picks up ``step`` as ``vehicles update`` staged it.
 
     Every host selects a restaged live-selection step's plugins on its next
@@ -115,10 +165,11 @@ def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
     run (``selection_command`` is ``None``); a PiCar reads the copy ``vehicles
     update autonomy`` installs onboard. Other steps, and changed plugin specs
     or configs, take effect after ``restart_command``, the same for every
-    vehicle: package a release and restart the host onto it.
+    vehicle: package a release and restart the host onto it. ``changed``
+    names the plugins whose spec or config this restage changed.
     """
 
-    live = step in LIVE_SELECTION_STEPS
+    live = step in LIVE_SELECTION_STEPS and not changed
     install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
     selection = install if provider == "picar" else None
     restart = f"{install} --restart"
@@ -126,10 +177,14 @@ def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
         "live_selection": live,
         "selection_command": selection if live else restart,
         "restart_command": restart,
+        "changed_plugins": list(changed or ()),
     }
 
 
 def format_apply_staged(apply: dict[str, Any]) -> list[str]:
+    if apply.get("changed_plugins"):
+        return [f"Apply: {apply.get('restart_command')} "
+                f"(specs or configs changed: {', '.join(apply['changed_plugins'])})"]
     if not apply.get("live_selection"):
         return [f"Apply: {apply.get('restart_command')}"]
     selection = apply.get("selection_command") or "automatic on the running worker's next frame"
@@ -505,6 +560,8 @@ def update_vehicle_step(
         return step_update_error(vehicle_id, step, "unknown_vehicle", unknown, json_output=json_output)
 
     bundle = vehicle_bundle(vehicle_id, runtime_root)
+    previous = valid_bundle_activation(bundle, step)
+    activation = keep_staged_configs(bundle, activation)
     path = bundle_activation_path(bundle, step)
     release: dict[str, Any] | None = None
     if not dry_run:
@@ -519,7 +576,8 @@ def update_vehicle_step(
         "activation": display_path(path),
         "manifest": activation.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
-        "apply": apply_staged(vehicle_id, vehicle.get("provider"), step),
+        "apply": apply_staged(vehicle_id, vehicle.get("provider"), step,
+                              changed=changed_plugins(previous, activation)),
     }
     if json_output:
         return 0, json.dumps(payload, indent=2, sort_keys=True)

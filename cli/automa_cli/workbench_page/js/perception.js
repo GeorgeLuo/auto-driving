@@ -22,5 +22,5 @@ function renderPerception() {
   setText("perceptionPluginRuns", Array.isArray(perception.plugin_runs) ? perception.plugin_runs.length : 0);
   setText("perceptionCounts", (perception.things || []).length + " / " + (perception.signals || []).length);
   elements.perceptionLines.textContent = Array.isArray(perception.lines)
-    ? perception.lines.join("\n") : "Structured perception output has no text lines.";
+    ? perception.lines.join("\n") : "";
 }

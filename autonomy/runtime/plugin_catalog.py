@@ -11,6 +11,12 @@ PLUGIN_CATALOG_PATH = "/api/plugins"
 ARMING_STEPS = ("perception", "memory", "proposal")
 
 
+def _field(payload: Mapping[str, Any], name: str) -> Any:
+    if name not in payload:
+        raise ValueError(f"missing field: {name}")
+    return payload[name]
+
+
 def catalog_write_error(headers: Mapping[str, str], *, origin: str) -> tuple[int, dict[str, Any]] | None:
     """Allow JSON CLI writes and same-origin browser writes before reading a body."""
 
@@ -47,11 +53,11 @@ class PluginCatalogAPI:
                 if payload.get("operation") == "arm":
                     if self.arm is None:
                         raise ValueError("arming requires a vehicle runtime host; this catalog supports upload only")
-                    return self.arm(payload["selections"])
+                    return self.arm(_field(payload, "selections"))
                 definition = self.catalog.upload(
-                    step=payload["step"], plugin_id=payload["plugin_id"],
-                    entrypoint=payload["entrypoint"],
-                    source=base64.b64decode(payload["source_base64"], validate=True),
+                    step=_field(payload, "step"), plugin_id=_field(payload, "plugin_id"),
+                    entrypoint=_field(payload, "entrypoint"),
+                    source=base64.b64decode(_field(payload, "source_base64"), validate=True),
                     filename=payload.get("filename", "plugin.py"), config=payload.get("config"),
                 )
                 return {"ok": True, "status": "uploaded", "plugin": describe_plugin(definition),

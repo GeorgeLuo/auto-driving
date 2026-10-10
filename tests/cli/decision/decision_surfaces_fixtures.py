@@ -2,7 +2,6 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -10,15 +9,13 @@ from types import SimpleNamespace
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.evidence import RetainedEvidence
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.report import report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
-from cli.automa_cli.decision import (
-    DECISION_STREAM_MAX_AGE_MS,
-    strict_decode_apply_evidence,
-    strict_decode_apply_observation,
-)
 from cli.automa_cli.decision_records import DecisionRecords, DecisionRunners
 from cli.automa_cli.step_activations import (
     decision_generation_id,
@@ -28,10 +25,26 @@ from cli.automa_cli.step_activations import (
 )
 
 
-SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
-ACTIVE_RUN = SOURCES / "apply_active_left"
-NO_MEM_RUN = SOURCES / "apply_no_memory"
-TWO_FRAME_RUN = SOURCES / "apply_two_frames"
+LEFT_OBSTRUCTION_FRAME = Path(__file__).with_name("left_obstruction_frame.json")
+# The freshness ceiling these fixtures publish with their reports.
+STALE_AFTER_MS = 30_000
+
+
+def left_obstruction_frame() -> dict:
+    """One recorded frame: its observation and the retained evidence of a left obstruction."""
+
+    return json.loads(LEFT_OBSTRUCTION_FRAME.read_text(encoding="utf-8"))
+
+
+def frame_inputs(frame: dict) -> dict:
+    """The observation and shared memory a decision cycle reads for ``frame``."""
+
+    return {
+        "observation": Observation.from_dict(frame["observation"]),
+        "shared_memory": {
+            EVIDENCE_KEY: tuple(RetainedEvidence.from_dict(record) for record in frame["evidence"]),
+        },
+    }
 
 
 def packaged_decision_steps(action: str = "hold") -> dict:
@@ -99,7 +112,7 @@ def vehicle_report_for_records(
 ) -> dict:
     """The ``vehicle_report_v0`` both viewers accept for these decision records."""
 
-    report_values = {"stale_after_ms": DECISION_STREAM_MAX_AGE_MS}
+    report_values = {"stale_after_ms": STALE_AFTER_MS}
     if values:
         report_values.update(values)
     return report_from_host_result(
@@ -121,13 +134,12 @@ def vehicle_report_for_records(
 def sample_records(action: str = "hold") -> DecisionRecords:
     """One frame of the packaged decision steps over the recorded left evidence."""
 
-    frame = json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0]
+    frame = left_obstruction_frame()
     return DecisionRunners.from_payloads(packaged_decision_steps(action)).run(
         frame_id="frame_001",
         frame_index=1,
         timestamp_ms=1000,
-        observation=strict_decode_apply_observation(frame["observation"]),
-        shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(frame["evidence"])},
+        **frame_inputs(frame),
     )
 
 
@@ -141,24 +153,16 @@ class DecisionSurfaceFixture:
             {"AUTOMA_RUNTIME_ROOT": str(self.runtime_root)},
         )
         self._env_patch.start()
-        # decision module reads RUNTIME_ROOT at import time; rebind for tests.
-        import cli.automa_cli.chase_observation as chase_observation_mod
-        import cli.automa_cli.decision as decision_mod
-        import cli.automa_cli.proposal as proposal_mod
+        # runtime_hosts reads RUNTIME_ROOT at import time; rebind for tests.
+        import cli.automa_cli.runtime_hosts as runtime_hosts_mod
 
-        self._decision_mod = decision_mod
-        self._old_runtime = decision_mod.RUNTIME_ROOT
-        decision_mod.RUNTIME_ROOT = self.runtime_root
-        self._chase_observation_mod = chase_observation_mod
-        self._old_chase_runtime = chase_observation_mod.RUNTIME_ROOT
-        chase_observation_mod.RUNTIME_ROOT = self.runtime_root
-        self._proposal_root_patch = patch.object(proposal_mod, "RUNTIME_ROOT", self.runtime_root)
-        self._proposal_root_patch.start()
+        self._root_patches = [patch.object(runtime_hosts_mod, "RUNTIME_ROOT", self.runtime_root)]
+        for root_patch in self._root_patches:
+            root_patch.start()
 
     def tearDown(self) -> None:
-        self._proposal_root_patch.stop()
-        self._chase_observation_mod.RUNTIME_ROOT = self._old_chase_runtime
-        self._decision_mod.RUNTIME_ROOT = self._old_runtime
+        for root_patch in self._root_patches:
+            root_patch.stop()
         self._env_patch.stop()
         self._tmp.cleanup()
 

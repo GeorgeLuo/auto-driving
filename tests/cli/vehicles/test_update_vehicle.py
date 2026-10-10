@@ -5,6 +5,7 @@ import io
 import json
 import tempfile
 import threading
+import time
 import unittest
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +23,7 @@ from cli.automa_cli.step_activations import (
 from tests.support.cli_runner import run_automa
 
 UPDATE_STEPS = ("perception", "memory", *GENERIC_UPDATE_STEPS)
-DISCOVERY = "cli.automa_cli.step_activations.discover_active_vehicles"
+DISCOVERY = "cli.automa_cli.vehicles.discover_active_vehicles"
 PICAR = {
     "vehicle_id": "piracer-test",
     "vehicle_kind": "picar",
@@ -52,7 +53,7 @@ class UpdateVehicleTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.perception.RUNTIME_ROOT", root),
                 patch("cli.automa_cli.memory.RUNTIME_ROOT", root),
-                patch("cli.automa_cli.app.DECISION_RUNTIME_ROOT", root),
+                patch("cli.automa_cli.app.VEHICLES_RUNTIME_ROOT", root),
             ):
                 yield root
 
@@ -98,6 +99,32 @@ class UpdateVehicleTests(unittest.TestCase):
                         )
                         self.assertEqual(code, 0, stdout)
             offline.assert_not_called()
+
+    def test_a_plugin_list_keeps_staged_configs_and_a_config_change_names_its_restart(self) -> None:
+        # The PiCar case: a tuned preset, then one more plugin, must stay adoptable live.
+        plugins = ("frame", "floor_plane", "multi_obstruction_tracks", "motion_tracks")
+        with self._runtime() as root, patch(DISCOVERY, return_value=_discovered(PICAR)):
+            def update(*args: str) -> str:
+                code, stdout = _invoke("vehicles", "update", "perception", "--id", "piracer-test", *args)
+                self.assertEqual(code, 0, stdout)
+                return stdout
+
+            update("--preset", "obstruction_observer")
+            tuned = read_bundle_activation(vehicle_bundle("piracer-test", root), "perception").plugin_configs
+            added = json.loads(update(*(arg for plugin in plugins for arg in ("--plugin", plugin)), "--json"))
+            self.assertEqual(added["manifest"]["plugins"], list(plugins))
+            self.assertEqual(added["manifest"]["plugin_configs"], tuned)
+            self.assertEqual(added["apply"]["changed_plugins"], [])
+            self.assertEqual(added["apply"]["selection_command"],
+                             "./cli/automa vehicles update autonomy --id piracer-test")
+
+            switched = update("--preset", "visual_observer")
+            self.assertIn(
+                "Apply: ./cli/automa vehicles update autonomy --id piracer-test --restart "
+                "(specs or configs changed: multi_obstruction_tracks)",
+                switched,
+            )
+            self.assertNotIn("Apply selection:", switched)
 
     def test_each_first_staged_step_makes_the_vehicle_known_to_every_step_offline(self) -> None:
         for first in UPDATE_STEPS:
@@ -261,6 +288,36 @@ class UpdateVehicleTests(unittest.TestCase):
             server.server_close()
             worker.join(2)
         self.assertEqual(requests, ["/autonomy/status"])
+
+    def test_a_slow_host_is_reported_with_the_wait_not_only_as_not_found(self) -> None:
+        class SlowHandler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                time.sleep(1.0)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *_args) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), SlowHandler)
+        server.daemon_threads = True
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                result = run_automa(
+                    "vehicles", "update", "perception", "--id", "slow-pi", "--timeout-s", "0.2",
+                    runtime_root=Path(tmp), extra_env={"PIRACER_ID": "slow-pi", "PIRACER_BASE_URL": base_url},
+                    check=False,
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(2)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("Vehicle 'slow-pi' was not found among discoverable vehicles.", result.stdout)
+        self.assertIn(f"GET {base_url}/autonomy/status did not answer within 0.2 s", result.stdout)
 
     def test_help_explains_the_shared_identity_rule_and_perception_restart(self) -> None:
         for step in UPDATE_STEPS:

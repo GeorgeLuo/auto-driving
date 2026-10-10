@@ -13,10 +13,13 @@ from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.runtime.picar import create_host
 from tests.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
 from tests.integration.plugin_upload.test_flows import get_json, upload
+from tests.integration.plugin_arming.test_flows import write_plugin
+from tests.integration.automation_pipeline.pipeline_fixtures import chase_runtime, _write_activations
+from cli.automa_cli.bundles import controller_bundle_paths
 
 
 class CatalogWriteBoundaryFlows(unittest.TestCase):
-    def test_browser_and_form_requests_cannot_upload_or_arm_through_viewer_or_workbench(self):
+    def test_browser_and_form_requests_cannot_upload_or_arm_through_host_viewer_or_workbench(self):
         with image_source(1) as root:
             host = create_host(steps=decision_steps())
             self.addCleanup(host.close)
@@ -25,10 +28,13 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                                      port=0, plugin_catalog=host.plugin_catalog).start()
             self.addCleanup(view.stop)
             workbench = serve_workbench(self, ImageReplayRunner(root))
-            for base in (view.url, workbench):
+            runtime = root / "vehicles"
+            _write_activations(controller_bundle_paths(runtime / "chase-sim-chaser"))
+            shared_host = self.enterContext(chase_runtime(runtime))
+            for base in (view.url, workbench, shared_host.base_url + "/"):
                 with self.subTest(endpoint=base):
                     file = root / "prototype.py"
-                    file.write_text("raise RuntimeError('rejected uploads must never execute')")
+                    write_plugin(file, "proposal", "existing", 1)
                     upload(base, file, "existing", step="proposal")
                     before = get_json(base, "/api/plugins")
                     payloads = (
@@ -37,15 +43,17 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                         {"operation": "arm", "selections": {"proposal": ["existing"]}},
                     )
                     for payload in payloads:
-                        for headers, status in (
+                        requests = [
                             ({"Origin": "https://attacker.example", "Content-Type": "text/plain"}, 403),
                             ({"Origin": "https://attacker.example", "Content-Type": "application/json"}, 403),
                             ({"Origin": "null", "Content-Type": "application/json"}, 403),
                             ({"Sec-Fetch-Site": "cross-site", "Content-Type": "application/json"}, 403),
                             ({"Content-Type": "text/plain"}, 415),
                             ({"Origin": base.rstrip("/"), "Content-Type": "application/x-www-form-urlencoded"}, 415),
-                            ({"Host": "attacker.example", "Content-Type": "application/json"}, 403),
-                        ):
+                        ]
+                        if base != shared_host.base_url + "/":
+                            requests.append(({"Host": "attacker.example", "Content-Type": "application/json"}, 403))
+                        for headers, status in requests:
                             with self.subTest(payload=payload.get("operation", "upload"), headers=headers):
                                 request = Request(base + "api/plugins", data=json.dumps(payload).encode(), headers=headers)
                                 with self.assertRaises(HTTPError) as rejected:
@@ -61,7 +69,7 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                                       headers={"Origin": base.rstrip("/"), "Content-Type": "application/json; charset=utf-8"})
                     with urlopen(request, timeout=3) as response:
                         self.assertEqual(json.load(response)["status"], "uploaded")
-                    if base == view.url:
+                    if base != workbench:
                         request = Request(base + "api/plugins", data=json.dumps(payloads[1]).encode(),
                                           headers={"Origin": base.rstrip("/"), "Content-Type": "application/json"})
                         with urlopen(request, timeout=3) as response:

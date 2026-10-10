@@ -16,6 +16,7 @@ from playwright.sync_api import sync_playwright, expect
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.bundles import controller_bundle_paths
@@ -28,6 +29,7 @@ from tests.cli.workbench_fixtures import (
     ImageReplayRunner, _wait_until, image_source, perception_activations,
     post_action, serve_workbench,
 )
+from tests.integration.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.support.cli_runner import AUTOMA_PATH, run_automa
 
 
@@ -80,8 +82,8 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertIn("existing host or workbench catalog", guidance)
             self.assertIn("module", run_automa("vehicles", "plugins", "upload", "--help").stdout)
             file = root / "prototype.py"
-            # Neither an unavailable dependency nor invalid Python is an upload gate.
-            sources = [b"from not_uploaded_yet import Helper\n", b"not valid Python !!!\n"]
+            # An unavailable dependency is not an upload gate.
+            sources = [b"from not_uploaded_yet import Helper\n", b"raise RuntimeError('loaded later')\n"]
             for phase in ("idle", "running", "paused", "completed"):
                 if phase == "running":
                     post_action(base, {"action": "start"})
@@ -110,7 +112,7 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertTrue(all(plugin["step"] == "perception" for plugin in listing["plugins"]))
                     registered = next(p for p in listing["plugins"] if p["id"] == plugin_id)
                     self.assertEqual(registered, receipt["plugin"])
-                    self.assertEqual(Path(registered["metadata"]["source_path"]).read_bytes(), source)
+                    self.assertEqual(uploaded_source(registered["metadata"]["source_file"]).read_bytes(), source)
                 shown = get_json(base, "/api/state")
                 self.assertEqual(shown["phase"], phase)
                 self.assertEqual(shown["run_id"], before["run_id"])
@@ -145,7 +147,7 @@ class PluginUploadFlows(unittest.TestCase):
             _, second = upload(base, file, "prototype")
             self.assertNotEqual(first["plugin"]["metadata"]["revision"], second["plugin"]["metadata"]["revision"])
             self.assertFalse(next_marker.exists())
-            self.assertEqual(Path(first["plugin"]["metadata"]["source_path"]).read_bytes(), first_source)
+            self.assertEqual(uploaded_source(first["plugin"]["metadata"]["source_file"]).read_bytes(), first_source)
             shown = get_json(base, "/api/state")
             self.assertEqual(shown["current_frame"], before["current_frame"])
             self.assertEqual(shown["steps"], before["steps"])
@@ -174,7 +176,7 @@ class PluginUploadFlows(unittest.TestCase):
             ).stdout)
             default_cutoff = next(item for item in catalog["plugins"] if item["id"] == "multi_obstruction_tracks")["config"]["floor_cutoff_y"]
             file = root / "unselected.py"
-            file.write_text("not loaded during catalog registration")
+            file.write_text("raise RuntimeError('not loaded during catalog registration')\n")
             upload(base, file, "unselected")
             ids = staged["perception"]["plugins"]
             post_action(base, {"action": "select_plugins", "step": "perception", "active_plugin_ids": ids})
@@ -210,7 +212,7 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(memory["phase"], "paused")
             self.assertEqual(memory["run_id"], run_id)
 
-    def test_invalid_code_succeeds_at_upload_and_fails_when_replay_loads_it(self):
+    def test_syntax_fails_the_upload_and_an_import_error_fails_when_replay_loads_it(self):
         with image_source(1) as root:
             runner = ImageReplayRunner(root)
             base = serve_workbench(self, runner)
@@ -230,7 +232,12 @@ class PluginUploadFlows(unittest.TestCase):
                 self.assertEqual(unchanged["steps"], before["steps"])
                 self.assertEqual(get_json(base, "/api/plugins"), catalog)
             file = root / "broken.py"
-            file.write_text("invalid Python !!!")
+            file.write_text("class Prototype:\n    invalid Python !!!\n")
+            result, receipt = upload(base, file, "broken", check=False)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("broken.py:2: invalid syntax", receipt["error"])
+            self.assertEqual(get_json(base, "/api/plugins"), catalog)
+            file.write_text("import not_installed_anywhere\n")
             _, receipt = upload(base, file, "broken")
             self.assertTrue(receipt["ok"])
             post_action(base, {"action": "select_plugins", "step": "perception", "active_plugin_ids": ["broken"]})
@@ -251,13 +258,15 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertIn(str(root / "missing.py"), receipt["outcome"]["recovery"])
             self.assertEqual(get_json(base, "/api/plugins"), before)
             file = root / "prototype.py"
-            file.write_text("not checked during upload")
+            file.write_text("class Prototype:\n    pass\n")
             result, receipt = upload(base, file, "", check=False)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(receipt["ok"])
             self.assertEqual(receipt["status"], "failed")
             self.assertTrue(receipt["error"])
             self.assertEqual(get_json(base, "/api/plugins"), before)
+            rejected = PluginCatalogClient(base)({"plugin_id": "prototype"})
+            self.assertEqual(rejected["error"], "missing field: step")
 
     def test_vehicle_catalog_uploads_before_during_and_after_run_completion(self):
         browser_runtime = sync_playwright().start()
@@ -309,16 +318,12 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(missing["outcome"]["status"], "unavailable")
             self.assertEqual(missing["outcome"]["recovery"], "./cli/automa vehicles status --id chase-sim-chaser")
             bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
-            host = create_picar_host(steps=decision_steps())
-            self.addCleanup(host.close)
-            onboard = RuntimeViewServer(vehicle_id="picar", automation_dir=root / "onboard", port=0,
-                                        plugin_catalog=PluginCatalogAPI(host.catalog)).start()
-            self.addCleanup(onboard.stop)
+            chase = self.enterContext(chase_runtime(runtime_root))
             viewer = RuntimeViewServer(vehicle_id="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",
-                                       port=0, plugin_catalog=PluginCatalogClient(onboard.url)).start()
+                                       port=0, plugin_catalog=PluginCatalogClient(chase.base_url)).start()
             self.addCleanup(viewer.stop)
             file = root / "prototype.py"
-            file.write_text("dependency can arrive later")
+            file.write_text("from dependency_can_arrive_later import Prototype\n")
             result = run_automa("vehicles", "plugins", "upload", "--id", "chase-sim-chaser",
                                 "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
                                 "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
@@ -339,6 +344,28 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(len(listed["plugins"]), 1)
             self.assertEqual(listed["plugins"][0]["id"], "prototype")
             self.assertIn(listed["plugins"][0]["metadata"]["revision"], result.stdout)
-            self.assertEqual(get_json(viewer.url, "/api/plugins"), get_json(onboard.url, "/api/plugins"))
-            self.assertEqual(host.catalog.resolve("memory", "prototype").metadata["revision"],
+            self.assertEqual(get_json(viewer.url, "/api/plugins"), get_json(chase.base_url, "/api/plugins"))
+            self.assertEqual(chase.loop.host.catalog.resolve("memory", "prototype").metadata["revision"],
                              listed["plugins"][0]["metadata"]["revision"])
+
+    def test_uploads_last_for_the_host_run_the_cli_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime_root = Path(directory) / "vehicles"
+            file = Path(directory) / "prototype.py"
+            file.write_text("from dependency_can_arrive_later import Prototype\n")
+
+            def status(host_run_id: str) -> str:
+                result = run_automa("vehicles", "plugins", "status", "--id", "chase-sim-chaser",
+                                    "--step", "memory", runtime_root=runtime_root)
+                self.assertIn(f"(host run {host_run_id})", result.stdout)
+                return result.stdout
+
+            with chase_runtime(runtime_root) as first:
+                uploaded = run_automa("vehicles", "plugins", "upload", "--id", "chase-sim-chaser",
+                                      "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
+                                      "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
+                self.assertIn(f"(host run {first.loop.run_id})", uploaded.stdout)
+                self.assertIn("memory/prototype", status(first.loop.run_id))
+            with chase_runtime(runtime_root) as restarted:
+                self.assertNotEqual(restarted.loop.run_id, first.loop.run_id)
+                self.assertNotIn("memory/prototype", status(restarted.loop.run_id))

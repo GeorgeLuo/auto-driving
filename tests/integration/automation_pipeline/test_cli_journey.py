@@ -23,7 +23,10 @@ def _session_fingerprint(payload: dict) -> dict:
         raise AssertionError(f"passive capture attempted a mutation: {passive}")
     if preservation["before"] != preservation["after"]:
         raise AssertionError(f"passive capture changed the session: {preservation}")
-    return preservation["before"]
+    # The simulator plays between captures, so only its frame index moves.
+    session = dict(preservation["before"])
+    session["playback"] = {key: value for key, value in session["playback"].items() if key != "frameIndex"}
+    return session
 
 
 class SimulatorPerceptionCliJourneyTests(unittest.TestCase):

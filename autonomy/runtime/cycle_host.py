@@ -34,6 +34,7 @@ from autonomy.decision_cycle.cycle import (
     DecisionCycleResult,
     DecisionFrameContext,
     DecisionSteps,
+    timestamp_ms,
 )
 from autonomy.decision_cycle.steps import (
     STEP_RUNNERS, decision_steps, load_decision_steps, snapshot_step_activations,
@@ -51,6 +52,11 @@ IDLE_REASON = "cycle-idle"
 # Steps whose restaged plugin selection a running host applies between frames.
 # Other steps, and changed specs or configs, take effect on a restart.
 LIVE_SELECTION_STEPS = ARMING_STEPS
+
+
+# A status read waits this long for a running cycle, then answers with the
+# step reports from the last refresh, so a slow plugin never hides the host.
+STATUS_WAIT_S = 0.05
 
 
 class AutonomyCycleHost:
@@ -83,10 +89,18 @@ class AutonomyCycleHost:
         self._selection_error: str | None = None
         self._arm_request_id = 0
         self._applied_decision: dict[str, Any] | None = None
+        self._cycle_in_progress: dict[str, Any] | None = None
+        self._step_reports: dict[str, Any] = {}
+        self._step_reports_wanted = False
+        self._selection: dict[str, Any] | None = None
         self.plugin_catalog = PluginCatalogAPI(
             self.catalog, arm=self.arm, selection_status=self.selection_status,
             applied_decision=self.applied_decision,
         )
+        # A host whose cycles run back to back may never free the lock for a
+        # status read, so its steps and arming are reported from the start.
+        self._refresh_step_reports()
+        self.selection_status()
 
     @classmethod
     def from_runtime(cls, runtime_root: Path, *, target: ControlTarget | None = None) -> "AutonomyCycleHost":
@@ -107,6 +121,7 @@ class AutonomyCycleHost:
         with self._lock:
             self._attach_catalog(runner)
             self.cycle.steps = replace(self.cycle.steps, **{require_step(step): runner})
+            self._refresh_step_reports()
 
     def _attach_catalog(self, runner: Any) -> None:
         manager = getattr(runner, "plugin_manager", None)
@@ -156,7 +171,12 @@ class AutonomyCycleHost:
             return requested
 
     def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
-        """Add/update named definitions from one catalog snapshot, without loading."""
+        """Add/update named definitions from one catalog snapshot and load them now.
+
+        Loading between cycles answers the request with any import or
+        construction error and keeps the previous selection. A loaded group
+        publishes together at the next cycle.
+        """
 
         if not isinstance(selections, Mapping) or not selections:
             raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
@@ -180,19 +200,35 @@ class AutonomyCycleHost:
                         raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
                     current[plugin_id] = definition
                 requested[step] = tuple(current.values())
-            for step, selected in requested.items():
-                if self.step(step) is None:
-                    self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
-                self.step(step).plugin_manager.select(selected)
+            self._arm_request_id += 1
+            previous: dict[str, tuple[Any, ...]] = {}
+            try:
+                for step, selected in requested.items():
+                    if self.step(step) is None:
+                        self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
+                    runner = self.step(step)
+                    previous[step] = runner.plugin_manager.selected
+                    runner.plugin_manager.select(selected)
+                    if runner.plugin_manager.selected != tuple(item for item, _ in runner.applied):
+                        runner.prepare_selection()
+            except Exception as exc:  # noqa: BLE001 - plugin import and construction
+                for item, selected in previous.items():
+                    self.step(item).discard_selection()
+                    self.step(item).plugin_manager.select(selected)
+                self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
+                return {"ok": False, "status": "failed", "error": self._selection_error,
+                        "arming": self.selection_status()}
+            for step in requested:
                 self._pending_activations.pop(step, None)
                 self._armed_steps.add(step)
             self._selection_error = None
-            self._arm_request_id += 1
             state = self.selection_status()
             return {"ok": True, "status": state["status"], "arming": state}
 
     def selection_status(self) -> dict[str, Any]:
-        with self._lock:
+        if not self._lock.acquire(timeout=STATUS_WAIT_S):
+            return deepcopy(self._selection)
+        try:
             requested, applied = {}, {}
             pending = False
             for step in LIVE_SELECTION_STEPS:
@@ -203,9 +239,14 @@ class AutonomyCycleHost:
                 requested[step] = [describe_plugin(item) for item in selected]
                 applied[step] = [describe_plugin(item) for item in loaded]
                 pending |= selected != loaded
-            return {"status": "failed" if self._selection_error else "requested" if pending else "applied",
-                    "request_id": self._arm_request_id, "error": self._selection_error,
-                    "requested": requested, "applied": applied}
+            self._selection = {
+                "status": "failed" if self._selection_error else "requested" if pending else "applied",
+                "request_id": self._arm_request_id, "error": self._selection_error,
+                "requested": requested, "applied": applied,
+            }
+            return deepcopy(self._selection)
+        finally:
+            self._lock.release()
 
     def _adopt_selection(self) -> None:
         """Prepare the whole requested group before any step publishes it."""
@@ -217,7 +258,8 @@ class AutonomyCycleHost:
         phase = "prepare"
         try:
             for step in changed:
-                self.step(step).prepare_selection()
+                if not self.step(step).selection_prepared:
+                    self.step(step).prepare_selection()
             phase = "commit"
             for step in changed:
                 self.step(step).commit_selection(self.shared_memory)
@@ -239,6 +281,8 @@ class AutonomyCycleHost:
                 raise
         finally:
             self._record_applied_decision()
+            self._refresh_step_reports()
+            self.selection_status()
 
     def use_applied_decision(self, identity: Mapping[str, Any]) -> None:
         """Seed the decision identity published until a restaged selection applies."""
@@ -256,10 +300,8 @@ class AutonomyCycleHost:
     def applied_decision(self) -> dict[str, Any] | None:
         """The proposal, plan, and action identity this host is running."""
 
-        with self._lock:
-            if self._applied_decision is None:
-                return None
-            return deepcopy(self._applied_decision)
+        applied = self._applied_decision
+        return None if applied is None else deepcopy(applied)
 
     def _record_applied_decision(self) -> None:
         """Derive identity from applied definitions, including uploaded revisions."""
@@ -285,6 +327,7 @@ class AutonomyCycleHost:
         if ticket is not None:
             context = replace(context, mode=ticket.mode)
         with self._lock:
+            self._cycle_in_progress = {"frame_id": context.frame_id, "started_at_ms": timestamp_ms()}
             if context.shared_memory is None:
                 context = replace(context, shared_memory=self.shared_memory)
             else:
@@ -316,6 +359,7 @@ class AutonomyCycleHost:
                 self.last_result = result
                 self._record_applied_decision()
             except Exception as exc:
+                self._cycle_in_progress = None
                 self._record_frame_context(context)
                 try:
                     if self.execution is not None:
@@ -329,6 +373,10 @@ class AutonomyCycleHost:
                     traceback.format_exception_only(type(exc), exc)
                 ).strip()
                 raise
+            finally:
+                if self._step_reports_wanted:
+                    self._refresh_step_reports()
+            self._cycle_in_progress = None
             return result
 
     def _record_frame_context(self, context: DecisionFrameContext) -> DecisionFrameContext:
@@ -351,10 +399,12 @@ class AutonomyCycleHost:
             self.run_state = "running"
             return self.session_status()
 
-    def stop(self, *, reason: str = "stopped") -> dict[str, Any]:
+    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
         with self._session_lock:
             self._run_generation += 1
             self.run_state = reason
+            if error is not None:
+                self.last_error = error
             if self.execution is not None and not self.execution.status()["closed"]:
                 self.set_mode("manual")
             return self.session_status()
@@ -400,44 +450,70 @@ class AutonomyCycleHost:
         return result.control if result is not None else None
 
     def status(self) -> dict[str, Any]:
-        with self._lock:
-            steps: dict[str, Any] = {}
-            for step in STEPS:
-                runner = getattr(self.cycle.steps, step)
-                report = getattr(runner, "status", None)
-                if runner is None:
-                    steps[step] = None
-                elif callable(report):
-                    try:
-                        steps[step] = report()
-                    except Exception as exc:  # noqa: BLE001 - status must not fail the host
-                        steps[step] = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
-                else:
-                    steps[step] = {"runner": type(runner).__name__}
-            components: dict[str, Any] = {}
-            for component_id, provider in self._status_providers.items():
+        cycle = self._cycle_in_progress
+        components: dict[str, Any] = {}
+        # Providers report from their own state and never wait on a cycle.
+        for component_id, provider in list(self._status_providers.items()):
+            try:
+                components[component_id] = provider()
+            except Exception as exc:  # noqa: BLE001 - status must not fail the host
+                components[component_id] = {
+                    "status": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+        last_result = self.last_result
+        return {
+            "session": self.session_status(),
+            "execution": self.execution.status() if self.execution is not None else None,
+            "steps": self._report_steps(),
+            "applied_decision": self.applied_decision(),
+            "arming": self.selection_status(),
+            "components": components,
+            "cycle_in_progress": None if cycle is None else {
+                **cycle, "elapsed_ms": timestamp_ms() - cycle["started_at_ms"],
+            },
+            "cycle_count": self.cycle_count,
+            "error_count": self.error_count,
+            "last_error": self.last_error,
+            "last_control": (
+                last_result.control.to_dict() if last_result is not None else None
+            ),
+            "last_cycle": last_result.to_dict() if last_result is not None else None,
+        }
+
+    def _report_steps(self) -> dict[str, Any]:
+        """Each step's report; during a running cycle, the last refreshed reports.
+
+        A read the running cycle turns away asks it to refresh them as it ends.
+        """
+
+        if not self._lock.acquire(timeout=STATUS_WAIT_S):
+            self._step_reports_wanted = True
+            return deepcopy(self._step_reports)
+        try:
+            return deepcopy(self._refresh_step_reports())
+        finally:
+            self._lock.release()
+
+    def _refresh_step_reports(self) -> dict[str, Any]:
+        """Collect each step's report; the caller holds the cycle lock or owns the host."""
+
+        steps: dict[str, Any] = {}
+        for step in STEPS:
+            runner = getattr(self.cycle.steps, step)
+            report = getattr(runner, "status", None)
+            if runner is None:
+                steps[step] = None
+            elif callable(report):
                 try:
-                    components[component_id] = provider()
+                    steps[step] = report()
                 except Exception as exc:  # noqa: BLE001 - status must not fail the host
-                    components[component_id] = {
-                        "status": "error",
-                        "error": f"{type(exc).__name__}: {exc}",
-                    }
-            return {
-                "session": self.session_status(),
-                "execution": self.execution.status() if self.execution is not None else None,
-                "steps": steps,
-                "applied_decision": self.applied_decision(),
-                "arming": self.selection_status(),
-                "components": components,
-                "cycle_count": self.cycle_count,
-                "error_count": self.error_count,
-                "last_error": self.last_error,
-                "last_control": (
-                    self.last_control.to_dict() if self.last_control is not None else None
-                ),
-                "last_cycle": self.last_result.to_dict() if self.last_result is not None else None,
-            }
+                    steps[step] = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+            else:
+                steps[step] = {"runner": type(runner).__name__}
+        self._step_reports = steps
+        self._step_reports_wanted = False
+        return steps
 
     def reset_memory(self) -> dict[str, Any] | None:
         """Reset the memory step when present.
@@ -459,6 +535,7 @@ class AutonomyCycleHost:
             fresh = memory.reset(self.shared_memory)
             self.shared_memory.clear()
             self.shared_memory.update(fresh)
+            self._refresh_step_reports()
             return memory.report()
 
 

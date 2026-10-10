@@ -3,15 +3,15 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.perception import update_vehicle_perception
 from tests.integration.automation_pipeline.pipeline_fixtures import (
-    _FakeCar,
+    VEHICLE_ID,
     _SlowMapper,
     _write_activations,
+    chase_runtime,
     staged_runners,
 )
 
@@ -35,26 +35,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
     def test_cli_plugin_update_changes_running_mapper_on_next_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            bundle = controller_bundle_paths(runtime_root / vehicle_id)
+            bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
             sync_controller_bundle(bundle, output=None)
             _write_activations(bundle, plugins=["frame"])
-
-            vehicle = {
-                "id": vehicle_id,
-                "provider": "chase-sim",
-                "connection": {"ws_url": "ws://unused"},
-                "status": {
-                    "passive_capture": {
-                        "status": "available",
-                        "session_preservation": {
-                            "preserved": True,
-                            "unknown_fields": [],
-                            "changed_fields": [],
-                        },
-                    }
-                },
-            }
             applied_selections: list[tuple[str, ...]] = []
             cli_updates = []
 
@@ -67,48 +50,25 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     result = perceive(request)
                     applied_selections.append(tuple(mapper.plugin_ids))
                     if len(applied_selections) == 1:
-                        cli_updates.append(
-                            update_vehicle_perception(
-                                vehicle_id=vehicle_id,
-                                plugins=["frame", "floor_plane"],
-                                json_output=True,
-                            )
-                        )
+                        cli_updates.append(update_vehicle_perception(
+                            vehicle_id=VEHICLE_ID, plugins=["frame", "floor_plane"], json_output=True,
+                        ))
                     elif len(applied_selections) == 2:
-                        cli_updates.append(
-                            update_vehicle_perception(
-                                vehicle_id=vehicle_id,
-                                plugins=["floor_plane"],
-                                json_output=True,
-                            )
-                        )
+                        cli_updates.append(update_vehicle_perception(
+                            vehicle_id=VEHICLE_ID, plugins=["floor_plane"], json_output=True,
+                        ))
                     return result
 
                 mapper.perceive = perceive_with_cli_updates
 
             with (
-                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.perception.RUNTIME_ROOT", runtime_root),
-                patch(
-                    "cli.automa_cli.perception.get_vehicle_status",
-                    return_value=_READY_STATUS,
-                ),
-                patch(
-                    "cli.automa_cli.automation.discover_active_vehicles",
-                    return_value={},
-                ),
-                patch(
-                    "cli.automa_cli.automation.find_vehicle_by_id",
-                    return_value=(vehicle, None),
-                ),
-                patch("cli.automa_cli.automation.create_vehicle_access", side_effect=lambda *_args, **_kw: SimpleNamespace(car=_FakeCar())),
+                patch("cli.automa_cli.perception.get_vehicle_status", return_value=_READY_STATUS),
                 staged_runners(wrap=wrap_perception),
+                chase_runtime(runtime_root),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=vehicle_id,
-                    interval_s=0.4,
-                    num_decisions=3,
-                    take_control=False,
+                    vehicle_id=VEHICLE_ID, interval_s=0.4, num_decisions=3, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
@@ -118,228 +78,47 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             self.assertEqual([update.exit_code for update in cli_updates], [0, 0])
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
-            state = json.loads(
-                (automation_dir / "state.json").read_text(encoding="utf-8")
-            )
-            report = state["perception"]["plugin_report"]
-            self.assertEqual(report["applied_plugin_ids"], ["floor_plane"])
-            self.assertEqual(report["plugins"][0]["plugin_id"], "floor_plane")
-            self.assertTrue(report["plugins"][0]["plugin_id"])
-            self.assertIsNotNone(report["plugins"][0]["duration_ms"])
-            latest = json.loads(
-                (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(latest["perception_plugin_report"], report)
-            self.assertIn("memory_plugin_report", latest)
+            state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["steps"]["perception"]["plugin_ids"], ["floor_plane"])
+            latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
+            self.assertEqual(latest["step_activations"]["perception"]["plugins"], ["floor_plane"])
+            self.assertIn("memory", latest)
 
-    def test_decision_view_publication_failure_does_not_stop_automation(self) -> None:
+    def test_a_decision_view_failure_is_recorded_and_does_not_stop_automation(self) -> None:
         """A view failure cannot change the completed cycle's authority result."""
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            bundle = controller_bundle_paths(runtime_root / vehicle_id)
+            bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
             _write_activations(bundle)
-            mapper = _SlowMapper()
-            vehicle = {
-                "id": vehicle_id,
-                "provider": "chase-sim",
-                "connection": {"ws_url": "ws://unused"},
-                "status": {
-                    "passive_capture": {
-                        "status": "available",
-                        "session_preservation": {
-                            "preserved": True,
-                            "changed_fields": [],
-                            "unknown_fields": [],
-                        },
-                    }
-                },
-            }
 
             with (
-                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
+                staged_runners(perception=_SlowMapper()),
+                chase_runtime(runtime_root),
                 patch(
-                    "cli.automa_cli.automation.discover_active_vehicles",
-                    return_value={},
-                ),
-                patch(
-                    "cli.automa_cli.automation.find_vehicle_by_id",
-                    return_value=(vehicle, None),
-                ),
-                patch("cli.automa_cli.automation.create_vehicle_access", side_effect=lambda *_args, **_kw: SimpleNamespace(car=_FakeCar())),
-                staged_runners(perception=mapper),
-                patch(
-                    "cli.automa_cli.automation.publish_decision_frame",
-                    return_value=True,
-                ),
-                patch(
-                    "cli.automa_cli.automation._read_latest_decision_frame_for_view",
-                    return_value={"frame_id": "view-publication-frame"},
-                ),
-                patch(
-                    "cli.automa_cli.decision_view.DecisionView.publish",
+                    "cli.automa_cli.runtime_monitor.DecisionViewAdapter.refresh",
                     side_effect=RuntimeError("decision view unavailable"),
                 ),
+                patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=vehicle_id,
-                    interval_s=0.0,
-                    num_decisions=1,
-                    take_control=False,
+                    vehicle_id=VEHICLE_ID, interval_s=0.0, num_decisions=1, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
+            invalidate.assert_called()
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
-            state = json.loads(
-                (automation_dir / "state.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(state["status"], "completed")
-            self.assertEqual(state["processed_count"], 1)
-            latest = json.loads(
-                (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(latest["control"]["steering"], 0.0)
-            self.assertEqual(latest["control"]["throttle"], 0.0)
-            self.assertFalse(latest["control"]["applied"])
-
-    def test_missing_latest_decision_invalidates_view_and_records_skip(self) -> None:
-        """A reader bypass cannot leave a cached decision current."""
-
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            bundle = controller_bundle_paths(runtime_root / vehicle_id)
-            _write_activations(bundle)
-            mapper = _SlowMapper()
-            vehicle = {
-                "id": vehicle_id,
-                "provider": "chase-sim",
-                "connection": {"ws_url": "ws://unused"},
-                "status": {
-                    "passive_capture": {
-                        "status": "available",
-                        "session_preservation": {
-                            "preserved": True,
-                            "changed_fields": [],
-                            "unknown_fields": [],
-                        },
-                    }
-                },
-            }
-
-            with (
-                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
-                patch(
-                    "cli.automa_cli.automation.discover_active_vehicles",
-                    return_value={},
-                ),
-                patch(
-                    "cli.automa_cli.automation.find_vehicle_by_id",
-                    return_value=(vehicle, None),
-                ),
-                patch("cli.automa_cli.automation.create_vehicle_access", side_effect=lambda *_args, **_kw: SimpleNamespace(car=_FakeCar())),
-                staged_runners(perception=mapper),
-                patch(
-                    "cli.automa_cli.automation.publish_decision_frame",
-                    return_value=True,
-                ),
-                patch(
-                    "cli.automa_cli.automation._read_latest_decision_frame_for_view",
-                    return_value=None,
-                ),
-                patch(
-                    "cli.automa_cli.decision_view.DecisionView.invalidate_latest",
-                    autospec=True,
-                ) as invalidate_latest,
-            ):
-                result = run_vehicle_automation(
-                    vehicle_id=vehicle_id,
-                    interval_s=0.0,
-                    num_decisions=1,
-                    take_control=False,
-                )
-
-            self.assertEqual(result.exit_code, 0, result.message)
-            invalidate_latest.assert_called_once()
-            automation_dir = Path(bundle["runtime_dir"]) / "automation"
-            state = json.loads(
-                (automation_dir / "state.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(state["status"], "completed")
+            state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual((state["status"], state["processed_count"]), ("completed", 1))
             self.assertEqual(state["decision"]["latest_frame_publish_skips"], 1)
             self.assertEqual(
                 state["decision"]["latest_frame_publish_skip_reason"],
-                "decision_view_exact_transaction_unavailable",
+                "RuntimeError: decision view unavailable",
             )
+            latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
+            self.assertEqual((latest["control"]["steering"], latest["control"]["throttle"]), (0.0, 0.0))
+            self.assertFalse(latest["control"]["applied"])
 
-    def test_slow_cycle_keeps_its_exact_capture_through_cache_turnover(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            bundle = controller_bundle_paths(runtime_root / vehicle_id)
-            _write_activations(bundle)
-            mapper = _SlowMapper()
-            publications: list[tuple[str, tuple[bytes, str] | None]] = []
-            vehicle = {
-                "id": vehicle_id,
-                "provider": "chase-sim",
-                "connection": {"ws_url": "ws://unused"},
-                "status": {
-                    "passive_capture": {
-                        "status": "available",
-                        "session_preservation": {
-                            "preserved": True,
-                            "changed_fields": [],
-                            "unknown_fields": [],
-                        },
-                    }
-                },
-            }
 
-            def accepted_frame(_path, **identity):
-                return {"frame_id": identity["frame_id"]}
-
-            def publish_view(*, report, frame_record, image):
-                publications.append((frame_record["frame_id"], image))
-                return True
-
-            with (
-                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
-                patch(
-                    "cli.automa_cli.automation.discover_active_vehicles",
-                    return_value={},
-                ),
-                patch(
-                    "cli.automa_cli.automation.find_vehicle_by_id",
-                    return_value=(vehicle, None),
-                ),
-                patch("cli.automa_cli.automation.create_vehicle_access", side_effect=lambda *_args, **_kw: SimpleNamespace(car=_FakeCar())),
-                staged_runners(perception=mapper),
-                patch(
-                    "cli.automa_cli.automation.publish_decision_frame",
-                    return_value=True,
-                ),
-                patch(
-                    "cli.automa_cli.automation._read_latest_decision_frame_for_view",
-                    side_effect=accepted_frame,
-                ),
-                patch(
-                    "cli.automa_cli.decision_view.DecisionView.publish",
-                    side_effect=publish_view,
-                ),
-            ):
-                result = run_vehicle_automation(
-                    vehicle_id=vehicle_id,
-                    interval_s=0.0,
-                    num_decisions=12,
-                    take_control=False,
-                )
-
-            self.assertEqual(result.exit_code, 0, result.message)
-            self.assertTrue(publications)
-            first_frame_id, first_image = publications[0]
-            self.assertEqual(first_frame_id, mapper.frame_ids[0])
-            self.assertEqual(first_frame_id, "chase_frame_000100")
-            self.assertIsNotNone(first_image)
-            self.assertTrue(first_image[0])
+if __name__ == "__main__":
+    unittest.main()

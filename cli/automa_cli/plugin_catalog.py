@@ -8,11 +8,14 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, catalog_write_error
+
+# Arming waits for the host's current cycle and for the selection to load.
+ARM_TIMEOUT_S = 60.0
 
 
 class PluginCatalogClient:
@@ -22,11 +25,12 @@ class PluginCatalogClient:
             self.url += PLUGIN_CATALOG_PATH
         self.timeout_s = timeout_s
 
-    def __call__(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    def __call__(self, payload: dict[str, Any] | None = None, *, timeout_s: float | None = None) -> dict[str, Any]:
         data = json.dumps(payload).encode() if payload is not None else None
         request = Request(self.url, data=data, headers={"Content-Type": "application/json"})
+        timeout_s = self.timeout_s if timeout_s is None else timeout_s
         try:
-            with urlopen(request, timeout=self.timeout_s) as response:
+            with urlopen(request, timeout=timeout_s) as response:
                 return json.load(response)
         except HTTPError as exc:
             with exc:
@@ -34,6 +38,10 @@ class PluginCatalogClient:
                     return json.load(exc)
                 except (ValueError, UnicodeError):
                     raise RuntimeError(f"catalog request failed: HTTP {exc.code}") from exc
+        except (TimeoutError, URLError) as exc:
+            if not isinstance(getattr(exc, "reason", exc), TimeoutError):
+                raise
+            raise TimeoutError(f"{self.url} did not answer within {timeout_s:g} s") from exc
 
 
 def serve_plugin_catalog(handler: Any, api: Callable | None, *, include_body: bool = True) -> None:
@@ -81,21 +89,11 @@ class CommandResult:
 
 
 def catalog_url(vehicle_id: str) -> str:
-    from .automation import RUNTIME_ROOT, _staged_onboard_vehicle
-    from .bundles import controller_bundle_paths
-    from .paths import safe_path_part
-    from .perception_view import VIEW_RECORD_NAME
+    """The catalog of the vehicle's runtime host; every host serves ``/api/plugins``."""
 
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    record = Path(bundle["runtime_dir"]) / "automation" / VIEW_RECORD_NAME
-    if record.exists():
-        view = json.loads(record.read_text())
-        if view.get("available") and view.get("url"):
-            return view["url"]
-    vehicle = _staged_onboard_vehicle(vehicle_id)
-    if vehicle is not None:
-        return vehicle["connection"]["base_url"]
-    raise RuntimeError(f"No live catalog endpoint for {vehicle_id}; use --url to address an existing host.")
+    from .runtime_hosts import runtime_base_url
+
+    return runtime_base_url(vehicle_id)
 
 
 def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: str,
@@ -113,7 +111,7 @@ def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: 
         client = PluginCatalogClient(endpoint)
         result = client(payload)
         if not result.get("ok"):
-            recovery = "./cli/automa vehicles plugins upload --help"
+            recovery = f"Fix {file}, then upload it again."
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     if result.get("ok"):
@@ -130,7 +128,7 @@ def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: 
 
 
 def _request_arm(client: PluginCatalogClient, selections: dict[str, Any]) -> dict[str, Any]:
-    return client({"operation": "arm", "selections": selections})
+    return client({"operation": "arm", "selections": selections}, timeout_s=ARM_TIMEOUT_S)
 
 
 def arm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = None,
@@ -143,7 +141,7 @@ def arm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = N
         recovery = _catalog_recovery(url, vehicle_id)
         endpoint = url or catalog_url(vehicle_id)
         result = _request_arm(PluginCatalogClient(endpoint), selections)
-        recovery = f"./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}" if result.get("ok") else "./cli/automa vehicles plugins arm --help"
+        recovery = f"./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     return _result(result, operation="arm", url=endpoint, vehicle_id=vehicle_id, step=step,
@@ -178,18 +176,25 @@ def _catalog_recovery(url: str | None, vehicle_id: str | None) -> str:
     return f"Check that the catalog host at {url} is running, then retry ./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
 
 
+def _catalog_version(result: dict[str, Any]) -> str:
+    host_run = result.get("host_run_id")
+    return f"Catalog version: {result['catalog_version']}" + (f" (host run {host_run})" if host_run else "")
+
+
 def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_id: str | None,
             step: str | None, recovery: str | None, json_output: bool,
             plugin_id: str | None = None) -> CommandResult:
     """Render the same target, outcome and recovery in human and JSON output."""
 
     ok = bool(result.get("ok"))
+    # A selection the host could not load fails status too, until an arm succeeds.
+    exit_code = 0 if ok and (result.get("arming") or {}).get("status") != "failed" else 2
     if operation == "arm":
         label, state = "Arming", result.get("status", "failed")
-        message = "Plugin selection requested; inspect status for applied revisions."
+        message = "Plugin selection loaded; the host applies it at its next cycle."
     elif result.get("upload"):
         label, state = "Arming", result.get("status", "failed")
-        message = "Plugin uploaded; inspect status for applied revisions."
+        message = "Plugin uploaded and loaded; the host applies it at its next cycle."
     elif operation == "upload":
         label, state = "Upload", "uploaded" if ok else "failed"
         message = "Plugin uploaded and available; selection unchanged."
@@ -206,7 +211,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
                     "message": message, "recovery": recovery},
     }
     if json_output:
-        return CommandResult(0 if ok else 1, json.dumps(result, indent=2, sort_keys=True))
+        return CommandResult(exit_code, json.dumps(result, indent=2, sort_keys=True))
     lines = [f"Vehicle: {vehicle_id}"] if vehicle_id else []
     if url:
         lines.append(f"Endpoint: {url}")
@@ -216,7 +221,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
     if result.get("upload"):
         lines.extend([f"Upload: {result['upload']['status']}", f"Plugin: {plugin_id}",
                       f"Revision: {result['plugin']['metadata']['revision']}",
-                      f"Catalog version: {result['catalog_version']}"])
+                      _catalog_version(result)])
         if not ok:
             lines.append(f"Reason: {message}")
     elif not ok:
@@ -224,10 +229,10 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
     elif operation == "upload":
         lines.extend([
             f"Plugin: {plugin_id}", f"Revision: {result['plugin']['metadata']['revision']}",
-            f"Catalog version: {result['catalog_version']}", "Selection: unchanged",
+            _catalog_version(result), "Selection: unchanged",
         ])
     elif operation == "status":
-        lines.extend([f"Catalog version: {result['catalog_version']}", "Available plugins:"])
+        lines.extend([_catalog_version(result), "Available plugins:"])
         entries = []
         for plugin in result["plugins"]:
             metadata = plugin.get("metadata", {})
@@ -243,8 +248,8 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
             for selected_step, definitions in arming[name].items():
                 selected = ", ".join(f"{item['id']} ({item['metadata'].get('revision', 'packaged')})" for item in definitions)
                 lines.append(f"{name.capitalize()} {selected_step}: {selected or '(none)'}")
-        if arming.get("error"):
+        if ok and arming.get("error"):
             lines.append(f"Reason: {arming['error']}")
     if recovery:
         lines.append(f"Next: {recovery}")
-    return CommandResult(0 if ok else 1, "\n".join(lines))
+    return CommandResult(exit_code, "\n".join(lines))

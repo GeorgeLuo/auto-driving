@@ -24,7 +24,6 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import builtin_activation, decision_steps
 from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE, CodeSource, load_runner
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.decision_view import DecisionView
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
@@ -70,16 +69,12 @@ def _open(vehicle: str, activations: dict, *, source, watches=()):
     return host
 
 
-def _publish(host, sink: dict, view: DecisionView | None = None) -> dict:
+def _publish(host, sink: dict) -> dict:
     """Copy the host identity the way each vehicle's frame loop does."""
 
     applied = host.applied_decision()
     sink["generation_id"] = applied["generation_id"]
     sink["steps"] = applied["steps"]
-    if view is not None:
-        current = view.health_payload()["identity"]["activation_generation_id"]
-        if applied["generation_id"] != current:
-            view.adopt(applied)
     return applied
 
 
@@ -186,17 +181,6 @@ class SharedSelectionTests(unittest.TestCase):
                 host, path = self._watched_proposal(vehicle)
                 startup = host.applied_decision()["generation_id"]
                 sink: dict = {}
-                view = (
-                    DecisionView(
-                        vehicle_id="chase-sim-chaser",
-                        run_id="run-1",
-                        worker_pid=1,
-                        activation=host.applied_decision(),
-                        activation_path=path,
-                    )
-                    if vehicle == "chase"
-                    else None
-                )
                 runner = host.step("proposal")
                 original = runner.run
                 written = False
@@ -211,26 +195,16 @@ class SharedSelectionTests(unittest.TestCase):
 
                 runner.run = run_and_restage
                 _frame(host, 0)
-                _publish(host, sink, view)
+                _publish(host, sink)
                 self.assertEqual(sink["generation_id"], startup)
                 self.assertEqual(list(runner.plugin_ids), ["avoid_recent_obstruction"])
-                if view is not None:
-                    self.assertEqual(
-                        view.health_payload()["identity"]["activation_generation_id"],
-                        startup,
-                    )
 
                 _frame(host, 1)
-                applied = _publish(host, sink, view)
+                applied = _publish(host, sink)
                 self.assertNotEqual(applied["generation_id"], startup)
                 self.assertEqual(list(runner.plugin_ids), [])
                 self.assertEqual(sink["generation_id"], applied["generation_id"])
                 self.assertEqual(sink["steps"]["proposal"]["plugins"], [])
-                if view is not None:
-                    self.assertEqual(
-                        view.health_payload()["identity"]["activation_generation_id"],
-                        applied["generation_id"],
-                    )
 
     def test_config_changes_keep_the_startup_identity(self) -> None:
         for vehicle in VEHICLES:

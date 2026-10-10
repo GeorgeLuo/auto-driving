@@ -91,6 +91,31 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 child.terminate()
                 child.wait(timeout=5)
 
+    def test_an_unbounded_control_run_is_refused_before_anything_stops(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            try:
+                paths = write_runtime_fixture(runtime_root, VEHICLE_ID, pid=child.pid)
+                process = paths.automation_process.read_bytes()
+                for command in ("run", "restart"):
+                    with self.subTest(command=command):
+                        result = run_automa(
+                            "vehicles", "automation", command, "--id", VEHICLE_ID,
+                            runtime_root=runtime_root, check=False,
+                        )
+                        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                        self.assertIn(
+                            "A run that applies control needs --num-decisions N (N > 0); "
+                            "only --observe-only runs unbounded.",
+                            result.stdout,
+                        )
+                self.assertIsNone(child.poll())
+                self.assertEqual(paths.automation_process.read_bytes(), process)
+            finally:
+                child.terminate()
+                child.wait(timeout=5)
+
     def test_perception_readiness_rejects_old_memory_and_explicit_restage_recovers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
@@ -155,7 +180,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                         self.assertFalse((bundle / "runtime/perception/active.json").exists())
                         self.assertFalse((bundle / "releases").exists())
 
-    def test_info_and_decision_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
+    def test_info_and_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
         with fake_metrics_ui_server() as ws_url:
             for step in ("perception", "memory", *DECISION_STEPS):
                 with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
@@ -165,12 +190,10 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa vehicles update {step} --id {VEHICLE_ID}"
-                    # Each step's info reads its own activation; the decision stream reads its three.
-                    surfaces = []
-                    if step in ("perception", "memory", "proposal"):
-                        surfaces.append(("info", step))
+                    # Each step's info reads its own activation; a decision step's stream reads all three.
+                    surfaces = [("info", step)]
                     if step in DECISION_STEPS:
-                        surfaces.append(("stream", "decision", "--once"))
+                        surfaces.append(("stream", step, "--once"))
                     for surface in surfaces:
                         result = run_automa(
                             "vehicles", *surface, "--id", VEHICLE_ID,
@@ -183,7 +206,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     if step not in DECISION_STEPS:
                         continue
                     machine = run_automa(
-                        "vehicles", "stream", "decision", "--once", "--id", VEHICLE_ID, "--json",
+                        "vehicles", "stream", step, "--once", "--id", VEHICLE_ID, "--json",
                         runtime_root=runtime_root, extra_env=env, check=False,
                     )
                     payload = json.loads(machine.stdout)

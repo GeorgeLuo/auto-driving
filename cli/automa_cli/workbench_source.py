@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
+from autonomy.plugins import add_uploaded_source_root
+from autonomy.runtime.recording import UPLOADED_SOURCES_DIR
 from .inspection_runs import recorded_selection, recorded_selections
 
 
@@ -135,6 +137,9 @@ def normalize_image_directory(
         raise SourceValidationError(f"source path is not a directory: {source_path}")
 
     manifest_path, manifest = read_image_manifest(source_path)
+    if (source_path / UPLOADED_SOURCES_DIR).is_dir():
+        # Replay imports the uploaded plugins a recording ran from the sources it carries.
+        add_uploaded_source_root(source_path / UPLOADED_SOURCES_DIR)
     if (
         manifest is not None
         and "frames" not in manifest

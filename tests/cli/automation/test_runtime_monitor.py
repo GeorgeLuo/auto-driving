@@ -10,7 +10,7 @@ from unittest import mock
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import onboard_automation
+from cli.automa_cli import runtime_monitor
 from cli.automa_cli.run_record import control_application, control_source
 
 
@@ -26,12 +26,18 @@ DECISION = {
 
 
 class _FakeClient:
-    """An onboard host that runs two frames and then ends the run itself."""
+    """A runtime host that runs two frames and then ends the run itself."""
 
-    def __init__(self, sessions: list[dict]) -> None:
+    base_url = "http://host.invalid:8887"
+
+    def __init__(self, sessions: list[dict], hosts: list[dict]) -> None:
         self.sessions = sessions
+        self.hosts = hosts
         self.started_with: RunConfiguration | None = None
         self.stopped = False
+
+    def host_status(self) -> dict:
+        return self.hosts.pop(0)
 
     def start(self, configuration: RunConfiguration) -> dict:
         self.started_with = configuration
@@ -48,7 +54,7 @@ class _FakeClient:
 
 class _FakeDecisionView:
     def __init__(self, **kwargs) -> None:
-        self.action_policy = kwargs["action_policy"]
+        pass
 
     def refresh(self) -> bool:
         return True
@@ -92,7 +98,7 @@ def _publication(index: int) -> dict:
     }
 
 
-class OnboardMonitorTests(unittest.TestCase):
+class RuntimeMonitorTests(unittest.TestCase):
     def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict]):
         jpeg = io.BytesIO()
         Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
@@ -107,21 +113,20 @@ class OnboardMonitorTests(unittest.TestCase):
         def frame(*_args, **_kwargs) -> tuple[bytes, dict]:
             return jpeg.getvalue(), {"frame_id": current["publication"]["frame"]["frame_id"]}
 
-        client = _FakeClient(sessions)
+        client = _FakeClient(sessions, hosts)
         output = io.StringIO()
         with (
-            mock.patch.object(onboard_automation, "OnboardRuntimeClient", return_value=client),
-            mock.patch.object(onboard_automation, "fetch_autonomy_status", side_effect=hosts),
-            mock.patch.object(onboard_automation, "fetch_observation_publication", side_effect=publication),
-            mock.patch.object(onboard_automation, "fetch_observation_frame", side_effect=frame),
+            mock.patch.object(runtime_monitor, "RuntimeClient", return_value=client),
+            mock.patch.object(runtime_monitor, "fetch_observation_publication", side_effect=publication),
+            mock.patch.object(runtime_monitor, "fetch_observation_frame", side_effect=frame),
             mock.patch.object(
-                onboard_automation, "frame_id_from_headers", side_effect=lambda headers: headers["frame_id"]
+                runtime_monitor, "frame_id_from_headers", side_effect=lambda headers: headers["frame_id"]
             ),
-            mock.patch.object(onboard_automation, "PicarDecisionViewAdapter", _FakeDecisionView),
+            mock.patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
-            code, message = onboard_automation.monitor_onboard_runtime(
+            code, message = runtime_monitor.monitor_runtime(
                 vehicle_id=VEHICLE_ID,
-                base_url="http://picar.invalid:8887",
+                base_url=client.base_url,
                 automation_dir=automation_dir,
                 perception=dict(PERCEPTION),
                 decision=dict(DECISION),
@@ -138,7 +143,7 @@ class OnboardMonitorTests(unittest.TestCase):
         state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
         return client, code, message, output.getvalue().splitlines(), state
 
-    def test_onboard_run_prints_and_records_what_a_chase_run_does(self) -> None:
+    def test_a_run_prints_and_records_the_host_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             automation_dir = Path(tmp) / "automation"
             client, code, message, lines, state = self._monitor(
@@ -157,7 +162,7 @@ class OnboardMonitorTests(unittest.TestCase):
                 f"Automation running: {VEHICLE_ID}",
                 "Perception: lane-preset",
                 "Recording: off; latest frame and perception are overwritten each iteration",
-                "Control source: onboard Donkey host",
+                "Control source: vehicle runtime host",
                 "Action policy: autonomy",
                 "Decision generation: gen-1",
                 "Decisions: 2",
@@ -173,7 +178,7 @@ class OnboardMonitorTests(unittest.TestCase):
                 "Frames captured: 3",
                 "Decisions completed: 2",
                 "Frames superseded before decision: 1",
-                "Control source: onboard",
+                "Control source: runtime_host",
                 "Action policy: autonomy",
             ],
         )
@@ -195,9 +200,9 @@ class OnboardMonitorTests(unittest.TestCase):
 
     def test_missing_skip_counters_are_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):
-            onboard_automation._observation_counts({"components": {"observation": {}}})
+            runtime_monitor._observation_counts({"components": {"observation": {}}})
         self.assertEqual(
-            onboard_automation._observation_counts(_host(0, 0)["autonomy"]), (0, 0)
+            runtime_monitor._observation_counts(_host(0, 0)["autonomy"]), (0, 0)
         )
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
@@ -220,19 +225,11 @@ class OnboardMonitorTests(unittest.TestCase):
 
 
 class ControlRecordTests(unittest.TestCase):
-    def test_each_vehicle_names_its_control_source_and_application(self) -> None:
+    def test_every_vehicle_runs_on_its_host_and_applies_only_autonomy(self) -> None:
         autonomy = RunConfiguration(mode="autonomy")
         observe = RunConfiguration(mode="observe_only")
 
-        self.assertEqual(
-            [
-                control_source(autonomy, onboard=False),
-                control_source(observe, onboard=False),
-                control_source(autonomy, onboard=True),
-                control_source(observe, onboard=True),
-            ],
-            ["external_ws", "preserved_current", "onboard", "onboard"],
-        )
+        self.assertEqual([control_source(autonomy), control_source(observe)], ["runtime_host"] * 2)
         self.assertEqual(
             [control_application(autonomy), control_application(observe)],
             ["shared_execution", "not_applied"],

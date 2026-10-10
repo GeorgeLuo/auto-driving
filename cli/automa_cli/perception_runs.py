@@ -19,7 +19,6 @@ from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
-from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     SensorFrame,
@@ -29,7 +28,9 @@ from autonomy.vehicle import (
 from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
-from .inspection_runs import recorded_selection, recorded_selections, replay_step, selection_record
+from .inspection_runs import (
+    recorded_runner, recorded_selection, recorded_selections, replay_step, selection_record,
+)
 from .paths import ROOT, display_path, safe_path_part
 from .perception import ensure_local_perception_runtime
 from .perception_evaluation import evaluate_perception_frames
@@ -281,7 +282,7 @@ def _inspect_images(
             activation = recorded_selection(
                 "perception", source_manifest
             ) or selection_activation("perception")
-        runner = PerceptionRunner.from_activation(activation)
+        runner = recorded_runner(activation)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(
             2,

@@ -10,15 +10,13 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, activation_genera
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.runtime.picar import (
+from autonomy.runtime.frame_loop import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     OBSERVATION_PUBLICATION_SCHEMA,
-    AutonomyPilotPart,
-    DonkeyControlTarget,
-    create_host,
 )
+from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
 
 
 class ObservationPublicationTests(unittest.TestCase):
@@ -210,6 +208,9 @@ class ObservationPublicationTests(unittest.TestCase):
             def status(self):
                 return {"steps": {}}
 
+            def register_status_provider(self, name, provider):
+                pass
+
             def run(self, context):
                 del context
                 raise RuntimeError("boom")
@@ -350,50 +351,24 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIsNotNone(jpeg)
         self.assertEqual(meta["frame"]["frame_id"], part.latest_state.frame_id)
 
-    def test_manage_and_web_wire_publication_routes(self) -> None:
-        manage = (
-            Path(__file__).resolve().parents[3]
-            / "deploy"
-            / "targets"
-            / "donkeycar"
-            / "app"
-            / "manage.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("autonomy_controller.observation_publisher = autonomy_part", manage)
-        self.assertIn("preset=perception_preset", manage)
+    def test_manage_and_web_serve_the_shared_runtime_routes(self) -> None:
+        root = Path(__file__).resolve().parents[3] / "deploy" / "targets" / "donkeycar"
+        manage = (root / "app" / "manage.py").read_text(encoding="utf-8")
+        self.assertIn("autonomy_controller.autonomy_routes = RuntimeRoutes(", manage)
+        self.assertIn("**loop_options", manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
-        patch = (
-            Path(__file__).resolve().parents[3]
-            / "deploy"
-            / "targets"
-            / "donkeycar"
-            / "patches"
-            / "waveshare-donkeycar-local.patch"
-        ).read_text(encoding="utf-8")
-        self.assertIn('/autonomy/observation/latest', patch)
-        self.assertIn('/autonomy/observation/latest/frame.jpg', patch)
-        self.assertIn('/autonomy/camera/latest', patch)
-        self.assertIn('/autonomy/camera/latest/frame.jpg', patch)
-        self.assertIn("class AutonomyCameraLatestAPI", patch)
-        self.assertIn("class AutonomyCameraLatestFrameAPI", patch)
-        self.assertIn('/autonomy/memory/reset', patch)
-        self.assertIn("class AutonomyObservationLatestAPI", patch)
-        self.assertIn("class AutonomyObservationLatestFrameAPI", patch)
-        self.assertIn("class AutonomyMemoryResetAPI", patch)
-        self.assertIn('/autonomy/decision/latest', patch)
-        self.assertIn("class AutonomyDecisionLatestAPI", patch)
-        route_source = patch.split("class AutonomyDecisionLatestAPI", 1)[1].split(
-            "+class AutonomyModeAPI", 1
-        )[0]
+        patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")
+        self.assertIn('+            (r"/(?:autonomy/.*|api/plugins)", AutonomyRoutesAPI),', patch)
+        self.assertNotIn("/autonomy/mode", patch)
+        dispatcher = patch.split("+class AutonomyRoutesAPI", 1)[1].split(" class WsTest", 1)[0]
         compile(
-            "class AutonomyDecisionLatestAPI(AutonomyAPIBase):\n" + "\n".join(
-                line[1:] for line in route_source.splitlines() if line.startswith("+")
+            "class AutonomyRoutesAPI(RequestHandler):\n" + "\n".join(
+                line[1:] for line in dispatcher.splitlines() if line.startswith("+")
             ),
-            "AutonomyDecisionLatestAPI",
+            "AutonomyRoutesAPI",
             "exec",
         )
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

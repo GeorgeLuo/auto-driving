@@ -71,7 +71,8 @@ same live worker generation. `--open-view` is explicit. A browser-launch
 failure leaves the healthy worker running and prints the URL for manual use.
 
 `--num-decisions 0` starts an unbounded background worker; the launch command returns
-once the correlated view is ready. Use `automation stop` to stop the worker.
+once the correlated view is ready and prints `automation stop`, which stops the worker.
+Only `--observe-only` runs unbounded: a run that applies control needs `--num-decisions N`.
 Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
@@ -105,9 +106,9 @@ use `--json` for the complete receipt or catalog snapshot, including the target,
 outcome, and recovery action. `plugins list` remains an alias for `status`. `plugins help`
 describes the file identity arguments and the existing-host precondition.
 Open **Plugins** in the runtime viewer to see the available
-revision. Upload does not change the selected or running plugins. The file is
-not imported, constructed, or checked for dependencies during upload; invalid
-code can be registered and fail when loaded downstream.
+revision. Upload does not change the selected or running plugins. Source that
+does not compile is refused with its file and line. The file is not imported,
+constructed, or checked for dependencies during upload; arming loads it.
 
 Use `--url <viewer-or-workbench-url>` instead of `--id` to address a catalog
 directly. The same command and `/api/plugins` endpoint apply to Chase, PiCar,
@@ -131,7 +132,10 @@ After uploading, request the available revision without restarting the worker:
 ./cli/automa vehicles stream perception --id chase-sim-chaser --once
 ```
 
-The receipt reports `requested`; adoption happens before a subsequent frame.
+The host imports and constructs the selection before answering. The receipt
+reports `requested`, and the host applies it at its next cycle. An import or
+construction error fails the arm with exit 2 and the error, keeps the previous
+selection, and `plugins status` exits 2 until an arm succeeds.
 Status and the viewer's **Plugins** page distinguish available, requested and
 applied revisions. New IDs append in command order. An existing ID updates in
 place; other plugins retain their definitions and configurations. Uploading a
@@ -141,8 +145,7 @@ and history.
 
 For one-command registration and arming, add `--arm` to the upload command.
 It uses the same arm operation and reports upload and arming outcomes separately;
-the upload remains available if arming fails. Imports and construction still
-occur downstream, with their failures visible in catalog status.
+the upload remains available if arming fails.
 
 For dependent plugins, upload each file first, then arm the group with a JSON
 selection document:
@@ -156,11 +159,11 @@ selection document:
 ./cli/automa vehicles plugins status --id chase-sim-chaser
 ```
 
-The host prepares every changed step before publishing any of the group. The
+The host loads every changed step before publishing any of the group. The
 next cycle sees the adopted perception, memory and proposal selections together.
 Observation, plan and action keep their existing deployment behavior. Arming
 neither starts automation nor changes its control mode. An idle or completed
-host can accept a request while its catalog exists; it stays pending until the
+host can accept a request while its catalog exists; it stays requested until the
 next cycle. A Chase worker exiting ends that catalog and its uploaded selections.
 The replay workbench continues to use its existing selection controls and
 supports upload only through this command group.

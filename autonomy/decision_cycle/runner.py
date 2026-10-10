@@ -212,6 +212,13 @@ class StepRunner(Generic[PluginT]):
         with self._runtime_lock:
             self._prepare_selection()
 
+    @property
+    def selection_prepared(self) -> bool:
+        """Whether the manager's selection is loaded and waiting to be committed."""
+
+        with self._runtime_lock:
+            return self._selection_runtime.prepared
+
     def commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
         """Reset removed plugins and publish the prepared selection."""
 

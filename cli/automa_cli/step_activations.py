@@ -43,12 +43,7 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .paths import display_path, safe_path_part
-from .vehicles import (
-    DEFAULT_READINESS_TIMEOUT_S,
-    discover_active_vehicles,
-    find_vehicle_by_id,
-    format_active_vehicles,
-)
+from .vehicles import DEFAULT_READINESS_TIMEOUT_S, discover_vehicle
 
 # Steps whose packaged plugins are staged with `vehicles update <step>`.
 GENERIC_UPDATE_STEPS = ("observation", "proposal", "plan", "action")
@@ -66,6 +61,56 @@ def bundle_activation_path(bundle: dict[str, str], step: str) -> Path:
 
 def read_bundle_activation(bundle: dict[str, str], step: str) -> StepActivation | None:
     return read_step_activation_if_present(bundle_activation_path(bundle, step), step)
+
+
+def valid_bundle_activation(bundle: dict[str, str], step: str) -> StepActivation | None:
+    """The staged activation, or ``None`` when absent or unreadable; restaging replaces either."""
+
+    try:
+        return read_bundle_activation(bundle, step)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def keep_staged_configs(bundle: dict[str, str], activation: StepActivation) -> StepActivation:
+    """``activation`` with the staged config of every plugin whose spec is unchanged.
+
+    A plugin list changes which plugins run, not how each one is configured,
+    so a running host can still adopt it without a restart.
+    """
+
+    staged = valid_bundle_activation(bundle, activation.step)
+    if staged is None:
+        return activation
+    configs = dict(activation.plugin_configs)
+    for plugin_id, spec in activation.plugin_specs.items():
+        if staged.plugin_specs.get(plugin_id) != spec:
+            continue
+        if plugin_id in staged.plugin_configs:
+            configs[plugin_id] = deepcopy(staged.plugin_configs[plugin_id])
+        else:
+            configs.pop(plugin_id, None)
+    return StepActivation(
+        step=activation.step,
+        plugins=activation.plugins,
+        plugin_specs=activation.plugin_specs,
+        plugin_configs=configs,
+        metadata=activation.metadata,
+        source_path=activation.source_path,
+    )
+
+
+def changed_plugins(previous: StepActivation | None, staged: StepActivation) -> list[str]:
+    """Plugin IDs whose spec or config ``staged`` changes; a running host adopts them only on restart."""
+
+    if previous is None:
+        return []
+    return sorted(
+        plugin_id
+        for plugin_id in {*previous.plugin_specs, *staged.plugin_specs}
+        if previous.plugin_specs.get(plugin_id) != staged.plugin_specs.get(plugin_id)
+        or previous.plugin_configs.get(plugin_id) != staged.plugin_configs.get(plugin_id)
+    )
 
 
 def bundle_activation_problems(
@@ -107,45 +152,47 @@ def format_activation_problems(problems: list[dict[str, str]]) -> str:
     )
 
 
-def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
+def apply_staged(vehicle_id: str, provider: Any, step: str, *, changed: list[str] | None = None) -> dict[str, Any]:
     """How a vehicle's running autonomy picks up ``step`` as ``vehicles update`` staged it.
 
-    The Chase worker hosts the local bundle; the PiCar hosts the copy that
-    ``vehicles update autonomy`` installs onboard. Either host selects a
-    restaged live-selection step's plugins on its next frame
-    (``selection_command`` is ``None`` when nothing needs to run); other
-    steps, and changed plugin specs or configs, take effect after
-    ``restart_command``.
+    Every host selects a restaged live-selection step's plugins on its next
+    frame. A Chase host reads the local runtime directory, so nothing needs to
+    run (``selection_command`` is ``None``); a PiCar reads the copy ``vehicles
+    update autonomy`` installs onboard. Other steps, and changed plugin specs
+    or configs, take effect after ``restart_command``, the same for every
+    vehicle: package a release and restart the host onto it. ``changed``
+    names the plugins whose spec or config this restage changed.
     """
 
-    live = step in LIVE_SELECTION_STEPS
-    if provider == "picar":
-        install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
-        selection, restart = install, f"{install} --restart"
-    else:
-        selection = None
-        restart = f"./cli/automa vehicles automation restart --id {vehicle_id}"
+    live = step in LIVE_SELECTION_STEPS and not changed
+    install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
+    selection = install if provider == "picar" else None
+    restart = f"{install} --restart"
     return {
         "live_selection": live,
         "selection_command": selection if live else restart,
         "restart_command": restart,
+        "changed_plugins": list(changed or ()),
     }
 
 
 def format_apply_staged(apply: dict[str, Any]) -> list[str]:
+    if apply.get("changed_plugins"):
+        return [f"Apply: {apply.get('restart_command')} "
+                f"(specs or configs changed: {', '.join(apply['changed_plugins'])})"]
     if not apply.get("live_selection"):
         return [f"Apply: {apply.get('restart_command')}"]
-    selection = apply.get("selection_command") or "automatic on the running worker's next frame"
+    selection = apply.get("selection_command") or "automatic on the host's next frame"
     return [
         f"Apply selection: {selection}",
         f"Apply changed specs or configs: {apply.get('restart_command')}",
     ]
 
 
-def absent_step_error(step: str, vehicle_id: str, provider: Any) -> str:
+def absent_step_error(step: str, vehicle_id: str) -> str:
     """The same guidance for every vehicle whose running autonomy lacks ``step``."""
 
-    restart = apply_staged(vehicle_id, provider, step)["restart_command"]
+    restart = apply_staged(vehicle_id, None, step)["restart_command"]
     return (
         f"{vehicle_id} runs no {step} step. Stage it with "
         f"./cli/automa vehicles update {step} --id {vehicle_id}, then restart: {restart}"
@@ -180,22 +227,7 @@ def staging_vehicle(
         return vehicle, None
 
     _emit(output, f"Discovering active vehicles for id {vehicle_id!r}...")
-    payload = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-    if vehicle is None:
-        return None, "\n\n".join(
-            [
-                error or f"Vehicle {vehicle_id!r} was not found.",
-                "Discovery:",
-                format_active_vehicles(payload, include_inactive=True),
-            ]
-        )
-    return vehicle, None
+    return discover_vehicle(vehicle_id, timeout_s=timeout_s)
 
 
 def _offline_sim_vehicle(vehicle_id: str) -> dict[str, Any] | None:
@@ -508,16 +540,13 @@ def update_vehicle_step(
         return step_update_error(vehicle_id, step, "unknown_vehicle", unknown, json_output=json_output)
 
     bundle = vehicle_bundle(vehicle_id, runtime_root)
+    previous = valid_bundle_activation(bundle, step)
+    activation = keep_staged_configs(bundle, activation)
     path = bundle_activation_path(bundle, step)
     release: dict[str, Any] | None = None
     if not dry_run:
         release = sync_controller_bundle(bundle, output=output if verbose else None)
         path = stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
-        if step in DECISION_STEPS:
-            from .decision import invalidate_latest_decision_frame
-
-            # A restaged decision step retires the latest published decision frame.
-            invalidate_latest_decision_frame(Path(bundle["root_dir"]).parent)
     payload = {
         "schema": "vehicle_step_update_v0",
         "vehicle_id": vehicle_id,
@@ -527,7 +556,8 @@ def update_vehicle_step(
         "activation": display_path(path),
         "manifest": activation.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
-        "apply": apply_staged(vehicle_id, vehicle.get("provider"), step),
+        "apply": apply_staged(vehicle_id, vehicle.get("provider"), step,
+                              changed=changed_plugins(previous, activation)),
     }
     if json_output:
         return 0, json.dumps(payload, indent=2, sort_keys=True)

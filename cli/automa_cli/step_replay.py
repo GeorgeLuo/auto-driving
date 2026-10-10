@@ -16,12 +16,14 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.steps import builtin_activation, step_runner
+from autonomy.decision_cycle.steps import builtin_activation
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PRESETS, packaged_activation, selection_activation,
 )
 
-from .inspection_runs import recorded_selection, recorded_selections, replay_step, selection_record
+from .inspection_runs import (
+    recorded_runner, recorded_selection, recorded_selections, replay_step, selection_record,
+)
 from .paths import safe_path_part
 from .workbench_frames import FrameOutcome, run_frame
 from .workbench_source import (
@@ -92,7 +94,7 @@ class StepReplay:
             else:
                 self.activations[step] = recorded_selection(step, manifest) or default_selection(step)
         self.runners = {
-            step: step_runner(activation) if activation is not None else None
+            step: recorded_runner(activation) if activation is not None else None
             for step, activation in self.activations.items()
         }
         self.shared_memory: dict[str, Any] = {}

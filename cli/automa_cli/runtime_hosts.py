@@ -75,23 +75,28 @@ def update_command(vehicle_id: str) -> str:
     return f"./cli/automa vehicles update autonomy --id {vehicle_id}"
 
 
-def release_manifest(vehicle_id: str, archive_sha256: str | None = None) -> dict[str, Any]:
-    """The latest release, or the one whose archive has ``archive_sha256``."""
+def release_manifest(
+    vehicle_id: str, archive_sha256: str | None = None, *, tree_sha256: str | None = None,
+) -> dict[str, Any]:
+    """The latest release, or the newest whose archive or source tree has that sha256."""
 
     releases = bundle_root(vehicle_id) / "releases"
-    if archive_sha256 is None:
+    wanted = archive_sha256 or tree_sha256
+    if wanted is None:
         candidates = [releases / "latest-controller-bundle.json"]
     else:
-        candidates = sorted(releases.glob("*.manifest.json"))
+        candidates = sorted(releases.glob("*.manifest.json"), reverse=True)
     for path in candidates:
         try:
             manifest = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        sha = (manifest.get("archive") or {}).get("sha256")
-        if archive_sha256 is None or sha == archive_sha256:
-            return manifest
-    named = "No controller release" if archive_sha256 is None else f"Controller release {archive_sha256[:12]} is not"
+        if archive_sha256 is not None and (manifest.get("archive") or {}).get("sha256") != archive_sha256:
+            continue
+        if tree_sha256 is not None and manifest.get("tree_sha256") != tree_sha256:
+            continue
+        return manifest
+    named = "No controller release" if wanted is None else f"Controller release {wanted[:12]} is not"
     raise RuntimeHostError(
         f"{named} in {display_path(releases)}.\nRun: {update_command(vehicle_id)}"
     )
@@ -106,10 +111,12 @@ def release_summary(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def release_code_dir(vehicle_id: str, archive_sha256: str | None = None) -> tuple[Path, dict[str, Any]]:
+def release_code_dir(
+    vehicle_id: str, archive_sha256: str | None = None, *, tree_sha256: str | None = None,
+) -> tuple[Path, dict[str, Any]]:
     """The release's code, extracted once into ``releases/<archive sha256>``."""
 
-    manifest = release_manifest(vehicle_id, archive_sha256)
+    manifest = release_manifest(vehicle_id, archive_sha256, tree_sha256=tree_sha256)
     summary = release_summary(manifest)
     sha = summary["archive_sha256"]
     releases = bundle_root(vehicle_id) / "releases"

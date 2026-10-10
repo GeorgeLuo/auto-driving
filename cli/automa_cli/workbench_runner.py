@@ -13,7 +13,6 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
-from autonomy.decision_cycle.steps import step_runner
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, STEP_PRESETS
 from autonomy.plugins import LocalPluginCatalog
@@ -21,7 +20,7 @@ from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
-from .inspection_runs import recorded_selections, replay_step
+from .inspection_runs import recorded_runner, recorded_selections, replay_step
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -672,7 +671,7 @@ class ImageReplayRunner:
         for step in STEPS:
             if step in recorded and step not in self._selection_overrides:
                 activation = recorded[step]
-                steps[step] = step_runner(activation) if activation is not None else None
+                steps[step] = recorded_runner(activation) if activation is not None else None
                 if step in SELECTABLE_STEPS:
                     self._activations[step] = activation or self._catalogs[step].activation([])
             elif step in SELECTABLE_STEPS:

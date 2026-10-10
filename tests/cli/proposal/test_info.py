@@ -14,7 +14,6 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.steps import load_decision_steps
 from implementations.decision_cycle.catalog import step_plugins
 from cli.automa_cli.decision_steps import get_vehicle_step_info
-from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.step_activations import (
     bundle_activation_path,
     update_vehicle_step,
@@ -27,7 +26,7 @@ from tests.cli.decision.decision_surfaces_fixtures import (
 
 
 class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
-    def test_info_and_replay_load_decision_steps_from_the_staged_bundle(self) -> None:
+    def test_info_loads_decision_steps_from_the_staged_bundle(self) -> None:
         self._stage()
         bundle = vehicle_bundle("chase-sim-chaser", self.runtime_root)
         activation_path = bundle_activation_path(bundle, "proposal")
@@ -65,13 +64,6 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual(
             payload["proposal_schema"]["configuration"]["applied_plugin_ids"], ["bundle_only"],
         )
-        shared_memory = {}
-        replay = DecisionRunners.from_payloads(self._identity()["steps"]).run(
-            frame_id="bundle-frame", frame_index=1, timestamp_ms=1_000,
-            shared_memory=shared_memory,
-        )
-        self.assertEqual([item.plugin_id for item in replay.proposal.candidates], ["bundle_only"])
-        self.assertEqual(shared_memory["bundle_marker"], "from the staged bundle")
 
         # A step whose bundle is gone is reported by that step's info, not raised.
         action_path = bundle_activation_path(bundle, "action")

@@ -191,6 +191,12 @@ The paths identify the staged code; `release` identifies the packaged source
 and archive. Plugin selections and constructor configs remain in `plugins`,
 `plugin_specs`, and `plugin_configs`.
 
+Replay (`workbench` and every step's `inspect` on a recording)
+runs each recorded selection on the release its frames name. It extracts that
+archive from `runtime/vehicles/<id>/bundle/releases/` and ignores whatever is
+staged now. If the archive is gone, replay exits 2 naming the release and
+`vehicles update autonomy`.
+
 Perception additionally reports Chase readiness after staging. Its
 `--timeout-s` also bounds each live readiness check and simulator operation;
 it is not a deadline for the entire update command. Perception `--restart`

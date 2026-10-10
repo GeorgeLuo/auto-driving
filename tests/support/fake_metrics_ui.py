@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import itertools
 import json
 import socketserver
 import struct
@@ -93,7 +94,7 @@ def _response_for(message: dict) -> dict | None:
             request_id,
             {
                 "queryId": query_id,
-                "result": _atomic_capture(),
+                "result": _atomic_capture(next(_FRAME_INDEXES)),
             },
         )
     return {
@@ -220,13 +221,17 @@ def _debug() -> dict:
     }
 
 
-def _atomic_capture() -> dict:
+# The fixture plays: each capture sees the next simulator frame.
+_FRAME_INDEXES = itertools.count(12)
+
+
+def _atomic_capture(frame_index: int) -> dict:
     fingerprint = {
         "gameId": "chase",
         "scenarioId": "fixture-scenario",
         "simulationEpoch": "fixture-epoch",
         "playback": {
-            "frameIndex": 12,
+            "frameIndex": frame_index,
             "phase": "running",
             "pendingAction": False,
         },
@@ -237,12 +242,12 @@ def _atomic_capture() -> dict:
     }
     return {
         "contractVersion": 1,
-        "captureId": "fixture-capture-12",
+        "captureId": f"fixture-capture-{frame_index}",
         "actorId": "chaser",
         "frameIdentity": {
             "gameId": "chase",
             "simulationEpoch": "fixture-epoch",
-            "frameIndex": 12,
+            "frameIndex": frame_index,
         },
         "playback": {"advanced": False},
         "sensor": {

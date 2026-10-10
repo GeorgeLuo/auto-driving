@@ -2,6 +2,8 @@
 
 The host commits a cycle and its exact image before counting the decision or
 ending the run. Live latest-only publications are independent of this history.
+Each recorded step names the controller release the host imported, which is
+the code replay must run; a host outside a release records none.
 """
 from __future__ import annotations
 
@@ -22,6 +24,23 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest_v0"
 RECORDING_MANIFEST_NAME = "manifest.json"
+
+
+def _installed_release() -> dict[str, Any] | None:
+    # Resolved at import: a later deploy may relink the package to another release.
+    try:
+        manifest = json.loads(
+            (Path(__file__).resolve().parents[2] / "bundle-manifest.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    tree_sha256 = manifest.get("tree_sha256") if isinstance(manifest, dict) else None
+    if not isinstance(tree_sha256, str):
+        return None
+    return {"tree_sha256": tree_sha256, "created_at_ms": manifest.get("created_at_ms")}
+
+
+INSTALLED_RELEASE = _installed_release()
 
 
 def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
@@ -173,10 +192,30 @@ def write_recorded_frame(run_dir: Path, frame: dict[str, Any], image: bytes, ext
     )
 
 
+def ran_on_release(
+    steps: dict[str, Any], *, vehicle_id: str, release: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Each step payload naming the vehicle and the release its code came from."""
+    stamped: dict[str, Any] = {}
+    for step, payload in steps.items():
+        if payload is None:
+            stamped[step] = None
+            continue
+        metadata = copy.deepcopy(dict(payload.get("metadata") or {}))
+        metadata.setdefault("vehicle_id", vehicle_id)
+        metadata["controller_bundle"] = {
+            **dict(metadata.get("controller_bundle") or {}), "release": copy.deepcopy(release),
+        }
+        stamped[step] = {**payload, "metadata": metadata}
+    return stamped
+
+
 def cycle_frame(result: DecisionCycleResult, *, vehicle_id: str, run_id: str) -> dict[str, Any]:
     """The same completed frame, selections and application on either host."""
     context = result.context
-    steps = context.metadata["step_activations"]
+    steps = ran_on_release(
+        context.metadata["step_activations"], vehicle_id=vehicle_id, release=INSTALLED_RELEASE,
+    )
     generation = activation_generation_id(
         {step: steps[step] for step in DECISION_STEPS}, prefix="decision",
     )

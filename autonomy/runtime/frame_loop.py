@@ -235,6 +235,7 @@ class FrameLoop:
         self._current_decision_runners: tuple[Any, ...] | None = None
         self._last_cycle_failed = False
         self.latest_camera_frame: LatestCameraFrame | None = None
+        self._session_frame_id: str | None = None
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
         self._last_cycle: dict[str, Any] | None = None
         self.vehicle_id = vehicle_id
@@ -432,6 +433,7 @@ class FrameLoop:
         with self._lock:
             self.interval_s = configuration.interval_s
             self._last_capture_monotonic = None
+            self._session_frame_id = None
             self._discard_pending_locked()
         status = self.host.start(configuration, recording=recording)
         self._session_started(configuration)
@@ -482,6 +484,10 @@ class FrameLoop:
         if mode is None:
             mode = self.host.execution.status()["mode"]
         with self._lock:
+            if frame_id is not None and frame_id == self._session_frame_id:
+                # A paused simulator repeats its frame; there is nothing new to decide.
+                return self.latest_camera_frame
+            self._session_frame_id = frame_id
             camera = self._store_camera_frame_locked(
                 image,
                 timestamp_ms() if captured_at_ms is None else int(captured_at_ms),

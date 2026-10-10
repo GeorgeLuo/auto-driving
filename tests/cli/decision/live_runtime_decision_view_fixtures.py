@@ -1,28 +1,25 @@
 from __future__ import annotations
 import json
-import os
 import tempfile
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+import time
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
-from cli.automa_cli import decision as decision_module
-from cli.automa_cli import proposal as proposal_module
-from cli.automa_cli.decision import (
-    build_decision_stream_frame,
-    strict_decode_apply_evidence,
-    strict_decode_apply_observation,
-)
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
-from tests.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
+from tests.cli.decision.decision_surfaces_fixtures import (
+    frame_inputs,
+    left_obstruction_frame,
+    packaged_decision_steps,
+    vehicle_report_for_records,
+)
 
 
-SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
-ACTIVE_RUN = SOURCES / "apply_active_left"
+
+SOURCE_ID = "runtime-host"
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -36,14 +33,6 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(self._temporary.cleanup)
         self.runtime_root = Path(self._temporary.name) / "vehicles"
         self.runtime_root.mkdir()
-        self._old_runtime_root = decision_module.RUNTIME_ROOT
-        decision_module.RUNTIME_ROOT = self.runtime_root
-        self.addCleanup(
-            setattr, decision_module, "RUNTIME_ROOT", self._old_runtime_root
-        )
-        proposal_root = proposal_module.RUNTIME_ROOT
-        proposal_module.RUNTIME_ROOT = self.runtime_root
-        self.addCleanup(setattr, proposal_module, "RUNTIME_ROOT", proposal_root)
         for step in ("proposal", "action"):
             code, message = update_vehicle_step(
                 vehicle_id="chase-sim-chaser",
@@ -55,18 +44,25 @@ class LiveRuntimeDecisionViewFixture:
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"
-        self.activation_path = self.runtime_dir
         self.activation = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
         self.server = RuntimeViewServer(
             vehicle_id="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=0,
             run_id="run-live",
-            worker_pid=os.getpid(),
-            decision_activation=self.activation,
-            decision_activation_path=self.activation_path,
+            decision_identity=self._producer(),
         ).start()
         self.addCleanup(self.server.stop)
+
+    def _producer(self, run_id: str = "run-live") -> dict:
+        """The decision producer a runtime host session announces."""
+
+        return {
+            "vehicle_id": "chase-sim-chaser",
+            "source_id": SOURCE_ID,
+            "run_id": run_id,
+            "producer_generation_id": self.activation["generation_id"],
+        }
 
     def _accepted_frame(
         self,
@@ -76,30 +72,29 @@ class LiveRuntimeDecisionViewFixture:
         host_application: ComponentEnvelope | None = None,
     ) -> dict:
         if raw is None:
-            raw = json.loads(
-                (ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8")
-            )["frames"][0]
-        cycle = DecisionRunners.from_payloads(packaged_decision_steps()).run(
+            raw = left_obstruction_frame()
+        records = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
-            observation=strict_decode_apply_observation(raw["observation"]),
-            shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
+            **frame_inputs(raw),
             host_application=host_application,
         )
-        return build_decision_stream_frame(
-            cycle,
+        return vehicle_report_for_records(
+            records,
             vehicle_id="chase-sim-chaser",
             run_id=run_id,
-            worker_pid=os.getpid(),
             generation_id=self.activation["generation_id"],
+            frame_id=raw["frame_id"],
+            frame_index=raw["frame_index"],
+            timestamp_ms=raw["timestamp_ms"],
+            published_at_ms=int(time.time() * 1000),
+            values={"source_id": SOURCE_ID},
         )
 
     def _accepted_frame_with_evidence(self, mutate=None) -> dict:
         raw = deepcopy(
-            json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))[
-                "frames"
-            ][0]
+            left_obstruction_frame()
         )
         record = raw["evidence"][0]
         origin = record["origin"]
@@ -135,7 +130,6 @@ class LiveRuntimeDecisionViewFixture:
             "frame_index": stream_frame["frame_index"],
             "captured_at_ms": stream_frame["timestamp_ms"],
             "run_id": run_id,
-            "worker_pid": os.getpid(),
             "sensor_frame": {
                 "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
             },
@@ -160,7 +154,7 @@ class LiveRuntimeDecisionViewFixture:
         self.assertIsNotNone(exact_image)
         self.assertTrue(
             target.decision.publish(
-                stream_frame=stream_frame,
+                report=stream_frame,
                 frame_record=frame_record,
                 image=exact_image,
             )

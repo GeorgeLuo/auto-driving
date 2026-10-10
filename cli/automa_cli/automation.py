@@ -1,118 +1,64 @@
 from __future__ import annotations
 
-import copy
 import json
 import os
-import queue
+import shlex
 import signal
-import shutil
 import subprocess
 import sys
-import threading
 import time
-import uuid
 import webbrowser
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.activation import read_step_activation
-from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.activation import DECISION_STEPS, read_step_activation
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
-from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
-from implementations.runtime.chase_sim import create_host
-from implementations.vehicle.chase_sim import (
-    ChaseCaptureValidationError,
-    ChasePassiveCaptureError,
-)
-from implementations.vehicle.chase_sim.frame_identity import (
-    format_chase_frame_id,
-    simulator_epoch_from_sensor_frame,
-    simulator_frame_index_from_sensor_frame,
-)
-from implementations.vehicle.chase_sim.metrics_ws import (
-    MetricsUiWebSocketError,
-    compare_chase_session_fingerprints,
-)
+from autonomy.runtime.client import RuntimeClient
+from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
-from .chase_observation import (
-    _pid_alive,
-    _pid_matches_automation,
-    _process_command,
-    chase_automation_dir,
-)
-from .decision import (
-    invalidate_latest_decision_frame,
-    publish_decision_frame,
-)
 from .paths import display_path, safe_path_part
-from .picar_observation import fetch_autonomy_status, picar_view_status, picar_base_url
+from . import runtime_hosts
+from .runtime_hosts import (
+    bundle_paths,
+    RuntimeHostError,
+    automation_dir as vehicle_automation_dir,
+    running_base_url,
+    runtime_base_url,
+    staged_vehicle,
+    stop_chase_host,
+)
+from .runtime_monitor import monitor_runtime
 from .step_activations import (
-    apply_staged,
     bundle_activation_path,
     bundle_activation_problems,
-    decision_generation_id,
     decision_identity,
     format_activation_problems,
-    read_bundle_activation,
-    staging_vehicle,
 )
-from .step_hosting import load_staged_runner, plugin_report
 from .run_record import (
     control_application,
     control_source,
     decision_record,
     failed_readiness,
-    finish_run,
-    frame_line,
-    frame_readiness,
     new_run_state,
     perception_record,
-    record_host_status,
-    reports_frame,
-    run_result,
-    startup_lines,
-    step_status,
     stopped_readiness,
 )
-from .runtime_view import RuntimeViewServer
+from .view_discovery import discover_runtime_view
 from .perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from .vehicles import (
-    DEFAULT_READINESS_TIMEOUT_S,
-    discover_active_vehicles,
-    find_vehicle_by_id,
-    format_active_vehicles,
-    is_chase_vehicle_id,
-)
+from .vehicles import DEFAULT_READINESS_TIMEOUT_S, is_chase_vehicle_id
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
-MAX_DECISION_FILE_BYTES = 8 * 1024 * 1024
-# Observe-only continuous runs allow playback/input to evolve; identity and
-# control authority must stay fixed until stop.
-PASSIVE_RUN_STABLE_FIELDS = (
-    "game_id",
-    "scenario_id",
-    "simulation_epoch",
-    "control_source",
-)
-PASSIVE_RUN_DYNAMIC_FIELDS = (
-    "playback",
-    "control_input",
-)
 
 
 @dataclass(frozen=True)
@@ -121,43 +67,24 @@ class CommandResult:
     message: str
 
 
-@dataclass(frozen=True)
-class _PendingAutomationFrame:
-    context: DecisionFrameContext
-    front_path: Path
-    # Evaluator-only chaser reference; never fed into the decision cycle.
-    chaser_reference: dict[str, Any] | None = None
-
-
-def _staged_onboard_vehicle(vehicle_id: str) -> dict[str, Any] | None:
-    if is_chase_vehicle_id(vehicle_id):
-        return None
-    vehicle, _unknown = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT, timeout_s=1.0)
-    provider = vehicle.get("provider") if isinstance(vehicle, dict) else None
-    return vehicle if isinstance(provider, str) and provider != "chase-sim" else None
-
-
-def _onboard_runtime_status(
+def _host_runtime_status(
     vehicle_id: str,
-    vehicle: dict[str, Any],
+    base_url: str,
     *,
     timeout_s: float,
 ) -> dict[str, Any]:
-    """An onboard host's ``/autonomy/status`` in the worker status rows.
+    """A runtime host's ``/autonomy/status`` in the worker status rows.
 
-    The Chase worker reports these rows from its local state files; a PiCar
-    reports the same cycle counters from its observation status provider.
-    The local view is the one a terminal ``vehicles stream`` hosts.
+    While a monitor runs, its state record holds these rows; otherwise the
+    host reports the same cycle counters from its observation status
+    provider. The local view is the one a terminal ``vehicles stream`` hosts.
     """
 
-    base_url = picar_base_url(vehicle)
-    endpoint = f"{base_url}/autonomy/status" if base_url else None
+    endpoint = f"{base_url}/autonomy/status"
     try:
-        if not base_url:
-            raise ConnectionError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
-        status = fetch_autonomy_status(base_url, timeout_s=max(0.1, timeout_s))
+        status = RuntimeClient(base_url, timeout_s=max(0.1, timeout_s)).host_status()
         error = None
-    except ConnectionError as exc:
+    except RuntimeError as exc:
         status, error = {}, str(exc)
     autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
     components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
@@ -167,10 +94,16 @@ def _onboard_runtime_status(
     latest = observation.get("latest") if isinstance(observation.get("latest"), dict) else {}
     completed_at_ms = _int_or_none(latest.get("completed_at_ms"))
     if error is None and not autonomy:
-        error = "Donkey runtime is up but reports no onboard host"
+        error = f"{base_url} answers but reports no runtime host"
     session = autonomy.get("session") or {}
     worker_status = str(session.get("status") or "stopped") if error is None else "error"
-    view = picar_view_status(vehicle_id, timeout_s=min(0.25, max(0.0, timeout_s)))
+    view = discover_runtime_view(
+        vehicle_id,
+        lambda directory: get_perception_view_status(
+            directory, timeout_s=min(0.25, max(0.0, timeout_s)),
+        ),
+        runtime_root=runtime_hosts.RUNTIME_ROOT,
+    )
     if not view.get("available"):
         view = {
             **view,
@@ -180,12 +113,12 @@ def _onboard_runtime_status(
         "process": {
             "pid": None,
             "running": worker_status == "running",
-            "pid_state": f"onboard {base_url or 'no endpoint'}",
+            "pid_state": f"host {base_url}",
             "status": worker_status,
             "generation_matches": True,
             "reason": error,
             "recovery": (
-                apply_staged(vehicle_id, vehicle["provider"], "perception")["restart_command"]
+                f"./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
                 if error is not None
                 else None
             ),
@@ -197,13 +130,15 @@ def _onboard_runtime_status(
         "state": {
             "status": worker_status,
             "run_id": None,
-            "frames_captured": observation.get("camera_frame_count", 0),
+            "frames_captured": observation.get("frames_captured", 0),
             "processed_count": observation.get("processed_count", 0),
             "skipped_count": observation.get("skipped_count", 0),
-            "max_frames": None,
-            "interval_s": observation.get("min_interval_s"),
+            "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
+                "num_decisions", 0
+            ),
+            "interval_s": observation.get("interval_s"),
             "recording": False,
-            "control_source": "onboard",
+            "control_source": "runtime_host",
             "action_policy": (autonomy.get("execution") or {}).get("mode"),
             "execution": autonomy.get("execution"),
             "session": autonomy.get("session"),
@@ -224,29 +159,61 @@ def _onboard_runtime_status(
             ),
         },
         "published_view": view,
+        "applied_decision": autonomy.get("applied_decision"),
     }
+
+
+def _decision_summary(identity: Any) -> dict[str, Any]:
+    """Whether a decision identity is deployed, its generation, and each step's plugins."""
+
+    if not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict):
+        return {"deployed": False}
+    return {
+        "deployed": True,
+        "generation_id": identity.get("generation_id"),
+        "plugins": {
+            step: (identity["steps"][step] or {}).get("plugins") or []
+            for step in DECISION_STEPS
+            if step in identity["steps"]
+        },
+    }
+
+
+def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: int) -> RunConfiguration:
+    """The run a start requests; a run that applies control is always bounded."""
+
+    if take_control and num_decisions == 0:
+        raise ValueError(
+            "A run that applies control needs --num-decisions N (N > 0); "
+            "only --observe-only runs unbounded."
+        )
+    return RunConfiguration(
+        mode="autonomy" if take_control else "observe_only",
+        interval_s=interval_s,
+        num_decisions=num_decisions,
+    )
 
 
 def run_vehicle_automation(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = 0.25,
-    frames: int = 0,
+    interval_s: float = DEFAULT_INTERVAL_S,
+    num_decisions: int = 0,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
     try:
-        configuration = RunConfiguration(
-            mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames
+        configuration = _run_configuration(
+            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
-    # Both vehicles run the staged bundle: the Chase worker hosts it here and
-    # a PiCar hosts the copy `vehicles update autonomy` installed onboard.
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    # Every vehicle runs its staged steps on its runtime host: a PiCar's Donkey
+    # service or a local Chase host, each from its controller release.
+    bundle = bundle_paths(vehicle_id)
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     if not manifest_path.exists():
         return CommandResult(
@@ -267,928 +234,30 @@ def run_vehicle_automation(
         identity = decision_identity(bundle)
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
-    onboard = _staged_onboard_vehicle(vehicle_id)
-    if onboard is not None:
-        from .onboard_automation import monitor_onboard_runtime
-        code, message = monitor_onboard_runtime(
-            vehicle_id=vehicle_id, base_url=picar_base_url(onboard),
-            automation_dir=Path(bundle["runtime_dir"]) / "automation",
-            perception=perception_record(manifest_path, perception_activation),
-            decision=decision_record(identity),
-            step_activations={
-                step: bundle_activation_path(bundle, step) for step in ("memory", "proposal")
-            },
-            configuration=configuration, timeout_s=timeout_s, record=record,
-            verbose=verbose, output=output,
-        )
-        return CommandResult(code, message)
-    payload = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=False,
-        include_chase_sim=True,
-        include_inactive=True,
+    try:
+        base_url = runtime_base_url(vehicle_id, start=True)
+    except RuntimeHostError as exc:
+        return CommandResult(2, str(exc))
+    code, message = monitor_runtime(
+        vehicle_id=vehicle_id, base_url=base_url,
+        automation_dir=Path(bundle["runtime_dir"]) / "automation",
+        perception=perception_record(manifest_path, perception_activation),
+        decision=decision_record(identity),
+        step_activations={
+            step: bundle_activation_path(bundle, step) for step in ("memory", "proposal")
+        },
+        configuration=configuration, timeout_s=timeout_s, record=record,
+        verbose=verbose, output=output,
     )
-    vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(payload, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-    if vehicle.get("provider") != "chase-sim":
-        return CommandResult(2, f"Unsupported runtime provider: {vehicle.get('provider')}")
-    if not take_control:
-        vehicle_status = (
-            vehicle.get("status")
-            if isinstance(vehicle.get("status"), dict)
-            else {}
-        )
-        passive = (
-            vehicle_status.get("passive_capture")
-            if isinstance(vehicle_status.get("passive_capture"), dict)
-            else {}
-        )
-        if passive.get("status") != "available":
-            code = str(passive.get("code") or "simulator_capability_missing")
-            preservation = (
-                passive.get("session_preservation")
-                if isinstance(passive.get("session_preservation"), dict)
-                else {}
-            )
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Observation-only automation is not ready for {vehicle_id}.",
-                        f"Reason: {code}",
-                        "Layer: passive_capture",
-                        (
-                            "Missing preservation fields: "
-                            + ", ".join(
-                                str(item)
-                                for item in preservation.get("unknown_fields", [])
-                            )
-                            if preservation.get("unknown_fields")
-                            else "Session preservation could not be proven."
-                        ),
-                        "No scenario, playback, control-source, or input mutation was attempted.",
-                        (
-                            "Minimum Metrics UI contract: expose the required session "
-                            "fingerprint fields or a fail-closed preserveSession receipt."
-                        ),
-                    ]
-                ),
-            )
-
-    try:
-        memory_activation = read_bundle_activation(bundle, "memory")
-        proposal_activation = read_bundle_activation(bundle, "proposal")
-        activations = {
-            step: read_bundle_activation(bundle, step)
-            for step in ("observation", "plan", "action")
-        }
-    except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
-    perception_plugins = ", ".join(perception_activation.plugins) or "(none)"
-    decision_published = decision_record(identity)["published"]
-
-    car = create_vehicle_access(vehicle, timeout_s=timeout_s).car
-    try:
-        perception_step = load_staged_runner(perception_activation)
-    except Exception as exc:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Could not load perception for {vehicle_id}.",
-                    f"Plugins: {perception_plugins}",
-                    f"Reason: {type(exc).__name__}: {exc}",
-                ]
-            ),
-        )
-
-    memory_activation_path = bundle_activation_path(bundle, "memory")
-    memory_step = None
-    if memory_activation is not None:
-        try:
-            memory_step = load_staged_runner(memory_activation)
-        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not load memory activation for {vehicle_id}.",
-                        f"Activation: {display_path(memory_activation_path)}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-    # Proposals load from the bundle, as memory does; without a staged
-    # activation the vehicle proposes nothing and holds.
-    proposal_activation_path = bundle_activation_path(bundle, "proposal")
-    proposal_step = None
-    if proposal_activation is not None:
-        try:
-            proposal_step = load_staged_runner(proposal_activation)
-        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not load proposal activation for {vehicle_id}.",
-                        f"Activation: {display_path(proposal_activation_path)}",
-                        f"Reason: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-    try:
-        steps = decision_steps(
-            {step: activation for step, activation in activations.items() if activation}
-        )
-    except Exception as exc:
-        return CommandResult(2, f"Could not load decision steps for {vehicle_id}: {type(exc).__name__}: {exc}")
-    cycle_host = create_host(
-        car, steps=replace(
-            steps, perception=perception_step, memory=memory_step, proposal=proposal_step
-        ),
-    )
-    # Restaged selections apply between frames, as on the onboard host.
-    for step, activation in (
-        ("perception", perception_activation),
-        ("memory", memory_activation),
-        ("proposal", proposal_activation),
-    ):
-        if step in LIVE_SELECTION_STEPS and activation is not None:
-            cycle_host.watch_selection(step, bundle_activation_path(bundle, step), activation)
-
-    automation_dir = Path(bundle["runtime_dir"]) / "automation"
-    run_id = _now_id("automation")
-    run_dir = automation_dir / "runs" / run_id if record else None
-    frames_dir = run_dir / "frames" if run_dir is not None else automation_dir / "latest" / "frames"
-    perception_dir = run_dir / "perception" if run_dir is not None else automation_dir / "latest" / "perception"
-    state_path = automation_dir / "state.json"
-    latest_json_path = automation_dir / "latest_perception.json"
-    latest_text_path = automation_dir / "latest_perception.txt"
-    latest_front_camera_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.png"
-    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
-    # Stale latest_decision.json from prior workers must not remain stream-valid.
-    invalidate_latest_decision_frame(vehicle_runtime_dir)
-    if run_dir is not None:
-        run_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        for transient_dir in (frames_dir, perception_dir):
-            if transient_dir.exists():
-                shutil.rmtree(transient_dir)
-
-    view_server: RuntimeViewServer | None = None
-    try:
-        view_server = RuntimeViewServer(
-            vehicle_id=vehicle_id,
-            automation_dir=automation_dir,
-            run_id=run_id,
-            worker_pid=os.getpid(),
-            decision_activation=identity if decision_published else None,
-            decision_activation_path=Path(bundle["runtime_dir"]),
-        ).start()
-        published_view = view_server.describe()
-    except (OSError, RuntimeError, ValueError) as exc:
-        published_view = {
-            "status": "error",
-            "available": False,
-            "url": None,
-            "reason": f"{type(exc).__name__}: {exc}",
-        }
-
-    state = new_run_state(
-        vehicle_id=vehicle_id,
-        run_id=run_id,
-        status="running",
-        pid=os.getpid(),
-        configuration=configuration,
-        record=record,
-        control_source=control_source(configuration, onboard=False),
-        automation_dir=automation_dir,
-        front_camera_path=latest_front_camera_path,
-        run_dir=run_dir,
-        published_view=published_view,
-    )
-    state["perception"] = {
-        **perception_record(manifest_path, perception_activation),
-        "plugin_report": plugin_report(perception_step),
-    }
-    state["decision"] = decision_record(identity)
-    state["execution"] = cycle_host.execution.status()
-    step_activations = {
-        "memory": memory_activation_path,
-        "proposal": proposal_activation_path,
-    }
-    record_host_status(state, cycle_host.status(), activations=step_activations)
-    _write_json(state_path, state)
-    for line in startup_lines(state):
-        _emit(output, line)
-
-    pending_frames: queue.Queue[_PendingAutomationFrame | object] = queue.Queue(maxsize=1)
-    worker_sentinel = object()
-    worker_failed = threading.Event()
-    worker_errors: list[BaseException] = []
-    state_lock = threading.Lock()
-
-    def update_view_state(payload: dict[str, Any]) -> None:
-        with state_lock:
-            state["published_view"] = payload
-
-    memory_reset_lock = threading.Lock()
-    passive_session_initial: dict[str, Any] | None = None
-
-    def apply_memory_reset_if_requested() -> None:
-        request_path = automation_dir / "memory_reset.request.json"
-        result_path = automation_dir / "memory_reset.result.json"
-        if not request_path.exists():
-            return
-        if not memory_reset_lock.acquire(blocking=False):
-            return
-        try:
-            _apply_memory_reset_locked(request_path=request_path, result_path=result_path)
-        finally:
-            memory_reset_lock.release()
-
-    def _apply_memory_reset_locked(*, request_path: Path, result_path: Path) -> None:
-        if not request_path.exists():
-            return
-        try:
-            request = json.loads(request_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            _write_json(
-                result_path,
-                {
-                    "schema": "automa_memory_reset_result_v0",
-                    "ok": False,
-                    "status": "error",
-                    "error": f"invalid reset request: {exc}",
-                    "completed_at_ms": _timestamp_ms(),
-                },
-            )
-            try:
-                request_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            return
-        if not isinstance(request, dict):
-            request = {}
-        token = request.get("token")
-        if memory_step is None:
-            result = {
-                "schema": "automa_memory_reset_result_v0",
-                "ok": False,
-                "status": "absent",
-                "token": token,
-                "error": "no memory step is activated in the automation worker",
-                "completed_at_ms": _timestamp_ms(),
-            }
-        else:
-            try:
-                report = cycle_host.reset_memory()
-                result = {
-                    "schema": "automa_memory_reset_result_v0",
-                    "ok": True,
-                    "status": "reset",
-                    "token": token,
-                    "report": report,
-                    "memory": memory_step.status(),
-                    "completed_at_ms": _timestamp_ms(),
-                }
-            except Exception as exc:  # noqa: BLE001 - worker control boundary
-                result = {
-                    "schema": "automa_memory_reset_result_v0",
-                    "ok": False,
-                    "status": "error",
-                    "token": token,
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "completed_at_ms": _timestamp_ms(),
-                }
-        _write_json(result_path, result)
-        with state_lock:
-            if memory_step is not None:
-                state["memory"] = {
-                    "activation": display_path(memory_activation_path),
-                    "status": memory_step.status(),
-                }
-            state["updated_at_ms"] = _timestamp_ms()
-            _write_json(state_path, state)
-        try:
-            request_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-    def adopt_staged_decision() -> None:
-        """Publish under the staged decision generation once this worker runs it.
-
-        The proposal runner applies a changed plugin list during the cycle.
-        Adopt only after its applied IDs match the staged generation: a load
-        or reset failure can leave the requested selection unapplied.
-        Restaged proposal configs, plan, or action wait for a restart.
-        """
-
-        nonlocal identity
-        try:
-            staged = decision_identity(bundle)
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            return
-        applied_ids = getattr(proposal_step, "plugin_ids", None)
-        if staged == identity or applied_ids is None:
-            return
-        running = {
-            **identity["steps"],
-            "proposal": {**identity["steps"]["proposal"], "plugins": list(applied_ids)},
-        }
-        if decision_generation_id(running) != staged["generation_id"]:
-            return
-        identity = staged
-        with state_lock:
-            state["decision"].update(
-                generation_id=staged["generation_id"], steps=staged["steps"]
-            )
-        if view_server is not None:
-            view_server.decision.adopt(staged)
-        _emit(output, f"Decision generation: {staged['generation_id']} (restaged)")
-
-    def process_frame(pending: _PendingAutomationFrame) -> None:
-        apply_memory_reset_if_requested()
-        context = pending.context
-        sensor_frame = context.sensor_frame
-        if sensor_frame is None:
-            raise ValueError(f"{context.frame_id} has no sensor frame")
-        cycle_started_at_ms = _timestamp_ms()
-        perception_started_at_ms = _timestamp_ms()
-        cycle_host.sync_selection()
-        cycle_result = cycle_host.run(context)
-        if proposal_step is not None:
-            adopt_staged_decision()
-        # Publish the accepted decision frame first. The server-owned decision
-        # transaction is joined only after the full frame record exists below.
-        published = False
-        try:
-            last_cycle = cycle_result.action
-            published = decision_published and publish_decision_frame(
-                cycle_result=cycle_result,
-                context_frame_id=context.frame_id,
-                vehicle_id=vehicle_id,
-                vehicle_runtime_dir=vehicle_runtime_dir,
-                run_id=str(state.get("run_id") or run_id),
-                worker_pid=int(state.get("pid") or os.getpid()),
-                activation=identity,
-            )
-            if not published and decision_published:
-                # Count for workers that staged proposals at start (including
-                # after a restage this worker cannot run until it restarts).
-                reason = (
-                    "gate_rejected"
-                    if last_cycle is None
-                    else "gate_rejected_frame_or_activation_mismatch"
-                )
-                _record_decision_publish_skip(
-                    state, state_path, state_lock, reason=reason
-                )
-                if verbose:
-                    _emit(
-                        output,
-                        f"{context.frame_id}: decision latest-frame publish "
-                        f"skipped ({reason})",
-                    )
-        except Exception as exc:  # noqa: BLE001 - non-fatal publish skip
-            reason = f"{type(exc).__name__}: {exc}"
-            # Counter persistence must never re-raise into the cycle path.
-            _record_decision_publish_skip(state, state_path, state_lock, reason=reason)
-            if verbose:
-                try:
-                    _emit(
-                        output,
-                        f"{context.frame_id}: decision latest-frame publish skip: {reason}",
-                    )
-                except Exception:  # noqa: BLE001 - logging is best-effort
-                    pass
-        perception = cycle_result.perception
-        perception_completed_at_ms = _timestamp_ms()
-        if perception is None:
-            latest_perception_text = "\n".join(
-                [
-                    f"schema={PERCEPTION_TEXT_SCHEMA}",
-                    "plugin=decision-cycle",
-                    "signal id=perception_ready value=false confidence=1.000 reason=no_perception",
-                ]
-            )
-            perception_dict: dict[str, Any] | None = None
-        else:
-            latest_perception_text = perception.text
-            perception_dict = perception.to_dict()
-        perception_plugin_report = plugin_report(perception_step)
-        memory_plugin_report = plugin_report(memory_step)
-        proposal_plugin_report = plugin_report(proposal_step)
-
-        control_record = cycle_result.control_record()
-        host_status = cycle_host.status()
-        simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
-        simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
-        if simulator_frame_index is None or simulation_epoch is None:
-            raise ValueError(
-                "Chase decision frame is missing atomic simulation-run identity"
-            )
-        frame_record = {
-            "frame_id": context.frame_id,
-            "frame_index": context.frame_index,
-            "simulator_frame_index": simulator_frame_index,
-            "simulation_epoch": simulation_epoch,
-            # Immutable automation generation: pairs frame publications with probe.
-            "run_id": state.get("run_id"),
-            "worker_pid": state.get("pid"),
-            "captured_at_ms": sensor_frame.completed_at_ms,
-            "cycle_started_at_ms": cycle_started_at_ms,
-            "cycle_completed_at_ms": perception_completed_at_ms,
-            "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
-            "perception_started_at_ms": perception_started_at_ms,
-            "perception_completed_at_ms": perception_completed_at_ms,
-            "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
-            "capture_to_perception_ms": perception_completed_at_ms - sensor_frame.completed_at_ms,
-            "sensor_frame": sensor_frame.to_dict(),
-            "perception": perception_dict,
-            "perception_plugin_report": perception_plugin_report,
-            "memory_plugin_report": memory_plugin_report,
-            "proposal_plugin_report": proposal_plugin_report,
-            "observation": cycle_result.observation.to_dict()
-            if cycle_result.observation is not None
-            else None,
-            # The memory step's report of each plugin's state.
-            "memory": copy.deepcopy(cycle_result.memory),
-            "control": control_record,
-            "steps": step_status(host_status),
-            "decision_cycle": cycle_result.to_dict(),
-            "action_policy": state["action_policy"],
-            "control_source": state["control_source"],
-            "control_application": state["control_application"],
-        }
-        # The chaser reference is evaluator-only: sibling of candidate results, not an input.
-        if isinstance(pending.chaser_reference, dict):
-            frame_record["chaser_reference"] = pending.chaser_reference
-            frame_record["reference_alignment"] = {
-                "aligned": pending.chaser_reference.get("simulator_frame_index")
-                == simulator_frame_index
-                and pending.chaser_reference.get("simulation_epoch") == simulation_epoch,
-                "candidate_frame_index": simulator_frame_index,
-                "reference_frame_index": pending.chaser_reference.get("simulator_frame_index"),
-                "candidate_simulation_epoch": simulation_epoch,
-                "reference_simulation_epoch": pending.chaser_reference.get("simulation_epoch"),
-            }
-        if view_server is not None:
-            try:
-                if published:
-                    latest_decision = _read_latest_decision_frame_for_view(
-                        automation_dir / "latest_decision.json",
-                        frame_id=context.frame_id,
-                        run_id=str(state.get("run_id") or run_id),
-                        worker_pid=int(state.get("pid") or os.getpid()),
-                        generation_id=identity["generation_id"],
-                    )
-                    if latest_decision is None:
-                        view_server.decision.invalidate_latest()
-                        decision_view_skip = True
-                    else:
-                        decision_view_skip = not view_server.decision.publish(
-                            stream_frame=latest_decision,
-                            frame_record=frame_record,
-                            image=view_server.perception.frame(context.frame_id),
-                        )
-                    if decision_view_skip:
-                        _record_decision_publish_skip(
-                            state,
-                            state_path,
-                            state_lock,
-                            reason="decision_view_exact_transaction_unavailable",
-                        )
-                view_server.perception.publish_perception(frame_record=frame_record)
-                update_view_state(view_server.health_payload())
-            except Exception as exc:  # noqa: BLE001 - view publication is observational
-                update_view_state(
-                    {
-                        **view_server.describe(),
-                        "last_error": f"{type(exc).__name__}: {exc}",
-                    }
-                )
-
-        frame_json_path = None
-        frame_text_path = None
-        if record:
-            frame_json_path = perception_dir / context.frame_id / "perception.json"
-            frame_text_path = perception_dir / context.frame_id / "perception.txt"
-            _write_json(frame_json_path, frame_record)
-            frame_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")
-        _write_json(latest_json_path, frame_record)
-        latest_text_path.write_text(latest_perception_text + "\n", encoding="utf-8")
-
-        with state_lock:
-            state["processed_count"] = int(state["processed_count"]) + 1
-            state["last_frame"] = {
-                "frame_id": context.frame_id,
-                "frame_index": context.frame_index,
-                "simulator_frame_index": simulator_frame_index,
-                "simulation_epoch": simulation_epoch,
-                "captured_at_ms": sensor_frame.completed_at_ms,
-                "perception_completed_at_ms": perception_completed_at_ms,
-                "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
-                "capture_to_perception_ms": perception_completed_at_ms - sensor_frame.completed_at_ms,
-                "cycle_duration_ms": perception_completed_at_ms - cycle_started_at_ms,
-                "perception_json": display_path(frame_json_path)
-                if frame_json_path is not None
-                else display_path(latest_json_path),
-                "perception_text": display_path(frame_text_path)
-                if frame_text_path is not None
-                else display_path(latest_text_path),
-                "things": len(perception.things) if perception is not None else 0,
-                "signals": len(perception.signals) if perception is not None else 0,
-                "control": control_record,
-                "generation_id": identity["generation_id"],
-                "reference_aligned": bool(
-                    isinstance(pending.chaser_reference, dict)
-                    and pending.chaser_reference.get("simulator_frame_index")
-                    == simulator_frame_index
-                    and pending.chaser_reference.get("simulation_epoch") == simulation_epoch
-                ),
-            }
-            view_health = (
-                state.get("published_view")
-                if isinstance(state.get("published_view"), dict)
-                else {}
-            )
-            state["readiness"] = frame_readiness(perception_view_ready(view_health))
-            record_host_status(state, host_status, activations=step_activations)
-            perception_state = state.get("perception")
-            if isinstance(perception_state, dict):
-                perception_state["plugin_report"] = copy.deepcopy(perception_plugin_report)
-            state["session"] = cycle_host.session_status()
-            state["execution"] = cycle_host.execution.status()
-            state["updated_at_ms"] = _timestamp_ms()
-            _write_json(state_path, state)
-
-        if reports_frame(int(state["processed_count"]), verbose=verbose):
-            _emit(
-                output,
-                frame_line(
-                    context.frame_id,
-                    signals=len(perception.signals) if perception is not None else 0,
-                    things=len(perception.things) if perception is not None else 0,
-                    action=cycle_result.control.reason,
-                ),
-            )
-
-    def perception_worker() -> None:
-        while True:
-            item = pending_frames.get()
-            try:
-                if item is worker_sentinel:
-                    return
-                if not isinstance(item, _PendingAutomationFrame):
-                    raise TypeError("perception queue received an invalid frame")
-                if not worker_failed.is_set() and cycle_host.run_state == "running":
-                    process_frame(item)
-            except BaseException as exc:
-                cycle_host.close()
-                if not worker_failed.is_set():
-                    worker_errors.append(exc)
-                    worker_failed.set()
-            finally:
-                if isinstance(item, _PendingAutomationFrame) and view_server is not None:
-                    view_server.perception.release_frame(item.context.frame_id)
-                if isinstance(item, _PendingAutomationFrame) and not record:
-                    item.front_path.unlink(missing_ok=True)
-                pending_frames.task_done()
-
-    worker_thread = threading.Thread(
-        target=perception_worker,
-        name=f"automa-perception-worker-{vehicle_id}",
-        daemon=True,
-    )
-
-    def enqueue_latest(pending: _PendingAutomationFrame) -> None:
-        while True:
-            try:
-                pending_frames.put_nowait(pending)
-                return
-            except queue.Full:
-                try:
-                    dropped = pending_frames.get_nowait()
-                except queue.Empty:
-                    continue
-                if isinstance(dropped, _PendingAutomationFrame) and not record:
-                    dropped.front_path.unlink(missing_ok=True)
-                if isinstance(dropped, _PendingAutomationFrame) and view_server is not None:
-                    view_server.perception.release_frame(dropped.context.frame_id)
-                pending_frames.task_done()
-                with state_lock:
-                    state["skipped_count"] = int(state["skipped_count"]) + 1
-
-    def stop_perception_worker(*, process_latest: bool) -> None:
-        if not process_latest:
-            cycle_host.close()
-        if not process_latest:
-            try:
-                dropped = pending_frames.get_nowait()
-            except queue.Empty:
-                dropped = None
-            if isinstance(dropped, _PendingAutomationFrame):
-                if view_server is not None:
-                    view_server.perception.release_frame(dropped.context.frame_id)
-                if not record:
-                    dropped.front_path.unlink(missing_ok=True)
-                with state_lock:
-                    state["skipped_count"] = int(state["skipped_count"]) + 1
-                pending_frames.task_done()
-        try:
-            pending_frames.put(worker_sentinel, timeout=1.0)
-        except queue.Full:
-            cycle_host.close()
-            raise TimeoutError("decision queue did not accept shutdown")
-        worker_thread.join(timeout=5.0)
-        if worker_thread.is_alive():
-            cycle_host.close()
-            raise TimeoutError("decision worker did not stop within five seconds")
-
-    try:
-        cycle_host.start(configuration)
-        worker_thread.start()
-        capture_sequence = 0
-        next_capture_at = time.monotonic()
-        capture_interval_s = max(0.0, float(interval_s))
-        while cycle_host.run_state == "running":
-            if worker_failed.is_set():
-                raise worker_errors[0]
-            apply_memory_reset_if_requested()
-            if capture_sequence > 0 and capture_interval_s > 0:
-                next_capture_at += capture_interval_s
-                delay_s = max(0.0, next_capture_at - time.monotonic())
-                if worker_failed.wait(delay_s):
-                    raise worker_errors[0]
-                apply_memory_reset_if_requested()
-
-            captured_started_at_ms = _timestamp_ms()
-            # Provisional id for the sensor request path; rewritten from simulator
-            # frame identity once the capture returns.
-            provisional_id = f"capture_{capture_sequence:06d}"
-            perception_output_dir = None
-            sensor_frame = car.read_sensors(
-                SensorReadRequest(
-                    output_dir=frames_dir,
-                    read_id=provisional_id,
-                    requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
-                    image_extension="png",
-                    front_camera_endpoint="atomic-evaluation-capture",
-                )
-            )
-            if not take_control:
-                passive_capture = getattr(car, "last_passive_capture", None)
-                environment = (
-                    passive_capture.get("environment")
-                    if isinstance(passive_capture, dict)
-                    and isinstance(passive_capture.get("environment"), dict)
-                    else {}
-                )
-                preserved_source = environment.get("control_source")
-                if isinstance(preserved_source, str) and preserved_source:
-                    state["control_source"] = preserved_source
-                state["passive_capture"] = passive_capture
-                preservation = (
-                    passive_capture.get("session_preservation")
-                    if isinstance(passive_capture, dict)
-                    and isinstance(
-                        passive_capture.get("session_preservation"),
-                        dict,
-                    )
-                    else {}
-                )
-                before_fingerprint = (
-                    preservation.get("before")
-                    if isinstance(preservation.get("before"), dict)
-                    else None
-                )
-                after_fingerprint = (
-                    preservation.get("after")
-                    if isinstance(preservation.get("after"), dict)
-                    else None
-                )
-                if passive_session_initial is None and before_fingerprint is not None:
-                    passive_session_initial = before_fingerprint
-                if (
-                    passive_session_initial is not None
-                    and after_fingerprint is not None
-                ):
-                    session_receipt = compare_chase_session_fingerprints(
-                        passive_session_initial,
-                        after_fingerprint,
-                        field_names=PASSIVE_RUN_STABLE_FIELDS,
-                    )
-                    session_receipt["dynamic_fields_allowed"] = list(
-                        PASSIVE_RUN_DYNAMIC_FIELDS
-                    )
-                    state["passive_session"] = session_receipt
-                    if not session_receipt.get("preserved"):
-                        raise ChasePassiveCaptureError(
-                            code=(
-                                "simulator_state_changed"
-                                if session_receipt.get("changed_fields")
-                                else "simulator_capability_missing"
-                            ),
-                            message=(
-                                "The simulator identity or control authority "
-                                "changed during observation-only automation."
-                            ),
-                            details={
-                                "session_preservation": session_receipt,
-                                "mutation_attempted": False,
-                            },
-                        )
-            simulator_frame_index = simulator_frame_index_from_sensor_frame(sensor_frame)
-            if simulator_frame_index is None and hasattr(car, "last_simulator_frame_index"):
-                simulator_frame_index = getattr(car, "last_simulator_frame_index", None)
-            if simulator_frame_index is not None:
-                frame_index = int(simulator_frame_index)
-                frame_id = format_chase_frame_id(frame_index)
-            else:
-                # Fail closed for live Chase: local counters cannot align chaser references.
-                raise ValueError(
-                    "Chase sensor capture missing simulator frameIndex; "
-                    "cannot assign camera-derived frame identity for reference alignment"
-                )
-            simulation_epoch = simulator_epoch_from_sensor_frame(sensor_frame)
-            if simulation_epoch is None:
-                raise ValueError(
-                    "Chase sensor capture missing simulationEpoch; "
-                    "cannot establish atomic run identity for reference alignment"
-                )
-            # Align SensorFrame.read_id with simulator identity (capture used a provisional id).
-            if sensor_frame.read_id != frame_id:
-                sensor_frame = replace(sensor_frame, read_id=frame_id)
-            if record:
-                perception_output_dir = perception_dir / frame_id
-            chaser_reference = None
-            if hasattr(car, "last_capture_chaser_reference"):
-                chaser_reference = getattr(car, "last_capture_chaser_reference", None)
-
-            front_reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
-            front_path = (
-                Path(front_reading.path)
-                if front_reading is not None and isinstance(front_reading.path, str)
-                else None
-            )
-            if front_path is None:
-                raise ValueError("front camera reading has no published path")
-            # Rename capture file to the simulator-anchored frame id when needed.
-            desired_name = f"{frame_id}_{FRONT_CAMERA_SENSOR_ID}{front_path.suffix}"
-            if front_path.name != desired_name:
-                target_path = front_path.with_name(desired_name)
-                try:
-                    if front_path.exists() and not target_path.exists():
-                        front_path.rename(target_path)
-                        front_path = target_path
-                        if front_reading is not None:
-                            updated = replace(front_reading, path=str(front_path))
-                            sensor_frame = replace(
-                                sensor_frame,
-                                readings={**sensor_frame.readings, FRONT_CAMERA_SENSOR_ID: updated},
-                            )
-                except OSError:
-                    pass
-            if not record:
-                _copy_file_atomic(front_path, latest_front_camera_path)
-
-            capture_record = {
-                "frame_id": frame_id,
-                "frame_index": frame_index,
-                "simulator_frame_index": frame_index,
-                "simulation_epoch": simulation_epoch,
-                "capture_sequence": capture_sequence,
-                "captured_at_ms": sensor_frame.completed_at_ms,
-                "capture_started_at_ms": captured_started_at_ms,
-                "capture_duration_ms": sensor_frame.completed_at_ms - captured_started_at_ms,
-                "sensor_frame": sensor_frame.to_dict(),
-            }
-            # Evaluator-only: never placed on DecisionFrameContext / observation.
-            if isinstance(chaser_reference, dict):
-                capture_record["chaser_reference"] = chaser_reference
-            if view_server is not None:
-                try:
-                    view_server.perception.publish_frame(frame_path=front_path, frame_record=capture_record)
-                    update_view_state(view_server.health_payload())
-                except Exception as exc:  # noqa: BLE001 - view publication is observational
-                    update_view_state(
-                        {
-                            **view_server.describe(),
-                            "last_error": f"{type(exc).__name__}: {exc}",
-                        }
-                    )
-
-            context = DecisionFrameContext(
-                frame_id=frame_id,
-                frame_index=frame_index,
-                timestamp_ms=captured_started_at_ms,
-                sensor_frame=sensor_frame,
-                mode=configuration.mode,
-                metadata={
-                    "vehicle_id": vehicle_id,
-                    "run_id": run_id,
-                    "activation": str(manifest_path),
-                    "recording": bool(record),
-                    "simulator_frame_index": frame_index,
-                    "simulation_epoch": simulation_epoch,
-                    "capture_sequence": capture_sequence,
-                    "perception_output_dir": (
-                        str(perception_output_dir) if perception_output_dir is not None else None
-                    ),
-                    "control_application": state["control_application"],
-                },
-            )
-            if view_server is not None:
-                view_server.perception.retain_frame(frame_id)
-            enqueue_latest(
-                _PendingAutomationFrame(
-                    context=context,
-                    front_path=front_path,
-                    chaser_reference=chaser_reference if isinstance(chaser_reference, dict) else None,
-                )
-            )
-
-            with state_lock:
-                state["frames_captured"] = capture_sequence + 1
-                state["last_capture"] = {
-                    "frame_id": frame_id,
-                    "frame_index": frame_index,
-                    "simulator_frame_index": frame_index,
-                    "simulation_epoch": simulation_epoch,
-                    "capture_sequence": capture_sequence,
-                    "captured_at_ms": sensor_frame.completed_at_ms,
-                    "capture_duration_ms": sensor_frame.completed_at_ms - captured_started_at_ms,
-                    "front_camera": display_path(latest_front_camera_path if not record else front_path),
-                    "reference_aligned": isinstance(chaser_reference, dict)
-                    and chaser_reference.get("simulator_frame_index") == frame_index
-                    and chaser_reference.get("simulation_epoch") == simulation_epoch,
-                }
-                state["updated_at_ms"] = _timestamp_ms()
-                _write_json(state_path, state)
-
-            capture_sequence += 1
-
-        stop_perception_worker(process_latest=True)
-        if worker_failed.is_set():
-            raise worker_errors[0]
-
-    except KeyboardInterrupt:
-        cycle_host.close()
-        if worker_thread.is_alive():
-            stop_perception_worker(process_latest=False)
-        finish_run(state, view_server, status="stopped", stop_reason="keyboard_interrupt")
-    except (MetricsUiWebSocketError, ChaseCaptureValidationError, ChasePassiveCaptureError) as exc:
-        cycle_host.close()
-        if worker_thread.is_alive():
-            stop_perception_worker(process_latest=False)
-        finish_run(
-            state,
-            view_server,
-            status="error",
-            error=str(exc),
-            error_code=getattr(exc, "code", "simulator_transport_error"),
-            error_details=(
-                exc.to_dict() if hasattr(exc, "to_dict") and callable(exc.to_dict) else None
-            ),
-            blocking_layer=(
-                "capture" if isinstance(exc, ChaseCaptureValidationError) else "passive_capture"
-            ),
-        )
-    except Exception as exc:
-        cycle_host.close()
-        if worker_thread.is_alive():
-            stop_perception_worker(process_latest=False)
-        finish_run(state, view_server, status="error", error=f"{type(exc).__name__}: {exc}")
-    else:
-        # The host ended the run: its stop reason is how the run ended.
-        stop_reason = cycle_host.run_state
-        cycle_host.close()
-        finish_run(state, view_server, status="completed", stop_reason=stop_reason)
-    # Every exit closed the host: its release is the run's last application.
-    state["execution"] = cycle_host.execution.status()
-    _write_json(state_path, state)
-    return CommandResult(*run_result(state, state_path=state_path))
+    return CommandResult(code, message)
 
 
 def start_vehicle_automation_background(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = 0.25,
-    frames: int = 0,
+    interval_s: float = DEFAULT_INTERVAL_S,
+    num_decisions: int = 0,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -1197,17 +266,17 @@ def start_vehicle_automation_background(
     startup_wait_s: float = 20.0,
 ) -> CommandResult:
     try:
-        configuration = RunConfiguration(
-            mode="autonomy" if take_control else "observe_only", interval_s=interval_s, frames=frames
+        configuration = _run_configuration(
+            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
-    automation_dir = chase_automation_dir(vehicle_id)
+    automation_dir = vehicle_automation_dir(vehicle_id)
     automation_dir.mkdir(parents=True, exist_ok=True)
     process_path = automation_dir / "process.json"
     log_path = automation_dir / "automation.log"
 
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    bundle = bundle_paths(vehicle_id)
     problems = bundle_activation_problems(bundle, vehicle_id)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
@@ -1336,8 +405,8 @@ def start_vehicle_automation_background(
         str(timeout_s),
         "--interval-s",
         str(interval_s),
-        "--frames",
-        str(max(0, int(frames))),
+        "--num-decisions",
+        str(configuration.num_decisions),
         "--foreground",
     ]
     if not take_control:
@@ -1354,7 +423,6 @@ def start_vehicle_automation_background(
         started_at_ms=started_at_ms,
         configuration=configuration,
         record=record,
-        onboard=_staged_onboard_vehicle(vehicle_id) is not None,
     )
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
@@ -1421,9 +489,6 @@ def start_vehicle_automation_background(
     startup_status = startup["status"]
     if startup_status == "ready":
         phases = startup.get("phases") if isinstance(startup.get("phases"), dict) else {}
-        capture_phase = (
-            phases.get("capture") if isinstance(phases.get("capture"), dict) else {}
-        )
         perception_phase = (
             phases.get("perception")
             if isinstance(phases.get("perception"), dict)
@@ -1435,13 +500,17 @@ def start_vehicle_automation_background(
             f"First frame: {startup.get('frame_id', 'captured')}",
             (
                 "Startup phases: "
-                f"capture={capture_phase.get('duration_ms', 'unknown')}ms, "
-                f"perception={perception_phase.get('duration_ms', 'unknown')}ms, "
+                "capture=complete, "
+                f"perception={_duration_label(perception_phase)}, "
                 "view=current-generation correlated"
             ),
             f"Runtime view: {startup.get('view_url')}",
-            "Ready for: inspect perception and stop automation",
         ]
+        capture_lag = startup.get("capture_lag")
+        if isinstance(capture_lag, int) and capture_lag > 0:
+            lines.append(f"Capture lag: {capture_lag} frames")
+        lines.append("Ready for: inspect perception and stop automation")
+        lines.append(f"Stop: ./cli/automa vehicles automation stop --id {vehicle_id}")
         if open_view:
             lines.append(_open_view_message(str(startup.get("view_url"))))
         exit_code = 0
@@ -1480,7 +549,7 @@ def record_vehicle_automation_terminal_result(
 
     if result.exit_code == 0:
         return
-    automation_dir = chase_automation_dir(vehicle_id)
+    automation_dir = vehicle_automation_dir(vehicle_id)
     state_path = automation_dir / "state.json"
     state = _read_json(state_path)
     if not isinstance(state, dict) or state.get("status") not in {"launching", "starting"}:
@@ -1514,7 +583,6 @@ def _initialize_automation_startup(
     started_at_ms: int,
     configuration: RunConfiguration,
     record: bool,
-    onboard: bool,
 ) -> None:
     view_record_path = automation_dir / "perception_view.json"
     view_record_path.unlink(missing_ok=True)
@@ -1541,8 +609,6 @@ def _initialize_automation_startup(
             "perception": {"confidence": 0.0, "things": []},
         },
     )
-    # A PiCar camera publishes JPEG frames; Chase captures PNG.
-    extension = "jpg" if onboard else "png"
     _write_json(
         automation_dir / "state.json",
         new_run_state(
@@ -1552,10 +618,10 @@ def _initialize_automation_startup(
             pid=None,
             configuration=configuration,
             record=record,
-            control_source=control_source(configuration, onboard=onboard),
+            control_source=control_source(configuration),
             automation_dir=automation_dir,
             front_camera_path=(
-                automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.{extension}"
+                automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
             ),
             run_dir=None,
             published_view={
@@ -1588,11 +654,6 @@ def _wait_for_automation_startup(
         )
         frames_captured = state.get("frames_captured")
         processed_count = state.get("processed_count")
-        last_capture = (
-            state.get("last_capture")
-            if isinstance(state.get("last_capture"), dict)
-            else {}
-        )
         last_frame = (
             state.get("last_frame")
             if isinstance(state.get("last_frame"), dict)
@@ -1605,48 +666,45 @@ def _wait_for_automation_startup(
             and frames_captured > 0
             and isinstance(processed_count, int)
             and processed_count > 0
-            and last_capture.get("frame_id") == last_frame.get("frame_id")
         ):
             expected_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
             expected_run_id = (
                 state.get("run_id") if isinstance(state.get("run_id"), str) else None
             )
             remaining = deadline - time.monotonic()
-            if remaining < 0.05:
-                continue
-            view = get_perception_view_status(
-                automation_dir,
-                timeout_s=min(0.25, remaining),
-                expected_run_id=expected_run_id,
-                expected_worker_pid=expected_pid,
-            )
-            if (
-                _view_ready_for_inspection(view)
-                and view.get("latest_frame_id") == last_frame.get("frame_id")
-                and view.get("latest_perception_frame_id") == last_frame.get("frame_id")
-            ):
-                return {
-                    "status": "ready",
-                    "frame_id": last_frame.get("frame_id"),
-                    "view_url": view.get("url"),
-                    "phases": {
-                        "capture": {
-                            "status": "complete",
-                            "duration_ms": last_capture.get("capture_duration_ms"),
+            if remaining >= 0.05:
+                view = get_perception_view_status(
+                    automation_dir,
+                    timeout_s=min(0.25, remaining),
+                    expected_run_id=expected_run_id,
+                    expected_worker_pid=expected_pid,
+                )
+                if (
+                    _view_ready_for_inspection(view)
+                    and view.get("latest_perception_frame_id")
+                    == last_frame.get("frame_id")
+                ):
+                    return {
+                        "status": "ready",
+                        "frame_id": last_frame.get("frame_id"),
+                        "view_url": view.get("url"),
+                        "capture_lag": view.get("capture_lag"),
+                        "capture_lag_ms": view.get("capture_lag_ms"),
+                        "phases": {
+                            "capture": {"status": "complete"},
+                            "perception": {
+                                "status": "complete",
+                                "duration_ms": last_frame.get("perception_duration_ms"),
+                            },
+                            "view": {
+                                "status": "complete",
+                                "duration_ms": 0,
+                                "run_id": expected_run_id,
+                                "worker_pid": expected_pid,
+                            },
                         },
-                        "perception": {
-                            "status": "complete",
-                            "duration_ms": last_frame.get("perception_duration_ms"),
-                        },
-                        "view": {
-                            "status": "complete",
-                            "duration_ms": 0,
-                            "run_id": expected_run_id,
-                            "worker_pid": expected_pid,
-                        },
-                    },
-                    "state": state,
-                }
+                        "state": state,
+                    }
         if status == "completed":
             return {"status": "completed", "state": state}
         if status in {"error", "stopped"}:
@@ -1716,6 +774,11 @@ def _view_ready_for_inspection(view: dict[str, Any]) -> bool:
     return perception_view_ready(view)
 
 
+def _duration_label(phase: dict[str, Any]) -> str:
+    value = phase.get("duration_ms")
+    return f"{value}ms" if isinstance(value, (int, float)) else "not reported"
+
+
 def _open_view_message(url: str) -> str:
     """Attempt the explicit browser launch without weakening worker readiness."""
 
@@ -1773,7 +836,7 @@ def get_vehicle_automation_status(
     payload = {
         "schema": "automa_automation_status_v0",
         "generated_at_ms": _timestamp_ms(),
-        "runtime_root": display_path(RUNTIME_ROOT),
+        "runtime_root": display_path(runtime_hosts.RUNTIME_ROOT),
         "requested_vehicle_id": vehicle_id,
         "vehicles": vehicles,
     }
@@ -1784,7 +847,7 @@ def get_vehicle_automation_status(
             "status": "not_found",
             "message": f"No deployed automation runtime found for {vehicle_id!r}.",
             "expected_bundle": display_path(
-                RUNTIME_ROOT / safe_path_part(vehicle_id) / "bundle"
+                runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id) / "bundle"
             ),
             "recovery": (
                 f"./cli/automa vehicles update perception --id {vehicle_id}"
@@ -1823,14 +886,19 @@ def stop_vehicle_automation(
     vehicle_id: str,
     wait_s: float = 3.0,
 ) -> CommandResult:
-    onboard = _staged_onboard_vehicle(vehicle_id)
-    if onboard is not None:
-        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+    # The host ends the session and releases control; the monitor then
+    # finishes the run record.
+    base_url = running_base_url(vehicle_id)
+    if base_url is not None:
         try:
-            OnboardRuntimeClient(picar_base_url(onboard), timeout_s=max(1.0, wait_s)).stop()
-        except (RuntimeError, OSError, ValueError) as exc:
-            return CommandResult(2, f"Could not stop {vehicle_id}: {exc}")
-    automation_dir = chase_automation_dir(vehicle_id)
+            RuntimeClient(base_url, timeout_s=max(1.0, wait_s)).stop()
+        except RuntimeError as exc:
+            if not is_chase_vehicle_id(vehicle_id):
+                return CommandResult(2, f"Could not stop {vehicle_id}: {exc}")
+            forced = _replace_unanswering_host(vehicle_id, wait_s=wait_s)
+            if forced is not None:
+                return forced
+    automation_dir = vehicle_automation_dir(vehicle_id)
     process_path = automation_dir / "process.json"
     state_path = automation_dir / "state.json"
     process = _read_json(process_path)
@@ -1898,17 +966,6 @@ def stop_vehicle_automation(
             )
         time.sleep(0.1)
 
-    if onboard is None and (_read_json(state_path) or {}).get("action_policy") == "autonomy":
-        # A killed process cannot run its watchdog or finally blocks. Stop the
-        # transport before terminating a worker whose plugin did not return.
-        discovery = discover_active_vehicles(timeout_s=max(1.0, wait_s), include_inactive=True)
-        vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-        if vehicle is None or error:
-            return CommandResult(2, f"Could not resolve {vehicle_id} for forced stop: {error}")
-        try:
-            create_vehicle_access(vehicle, timeout_s=max(1.0, wait_s)).car.stop()
-        except Exception as exc:
-            return CommandResult(2, f"Could not deliver stop to {vehicle_id}: {exc}")
     _terminate_pid(pid, signal.SIGKILL)
     forced_deadline = time.monotonic() + 1.0
     while time.monotonic() < forced_deadline:
@@ -1941,12 +998,32 @@ def stop_vehicle_automation(
     )
 
 
+def _replace_unanswering_host(vehicle_id: str, *, wait_s: float) -> CommandResult | None:
+    """End a Chase host that does not answer; a killed one cannot release control.
+
+    ``None`` once the host is gone with control released.
+    """
+
+    killed = stop_chase_host(vehicle_id, wait_s=wait_s)
+    if not killed:
+        return None
+    try:
+        create_vehicle_access(staged_vehicle(vehicle_id), timeout_s=max(1.0, wait_s)).car.stop()
+    except Exception as exc:  # noqa: BLE001 - reported with the recovery
+        return CommandResult(2, "\n".join([
+            f"The Chase host for {vehicle_id} did not answer and was killed; "
+            f"stopping the car failed: {type(exc).__name__}: {exc}",
+            "Stop the chaser in the simulator before the next run.",
+        ]))
+    return None
+
+
 def restart_vehicle_automation(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = 0.25,
-    frames: int = 0,
+    interval_s: float = DEFAULT_INTERVAL_S,
+    num_decisions: int = 0,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -1954,7 +1031,11 @@ def restart_vehicle_automation(
     open_view: bool = False,
     wait_s: float = 3.0,
 ) -> CommandResult:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    try:
+        _run_configuration(take_control=take_control, interval_s=interval_s, num_decisions=num_decisions)
+    except (TypeError, ValueError) as exc:
+        return CommandResult(2, str(exc))
+    bundle = bundle_paths(vehicle_id)
     problems = bundle_activation_problems(bundle, vehicle_id)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
@@ -1962,21 +1043,20 @@ def restart_vehicle_automation(
     if stop_result.exit_code != 0:
         return stop_result
 
-    onboard = _staged_onboard_vehicle(vehicle_id)
-    if onboard is not None:
-        from implementations.runtime.donkeycar.client import OnboardRuntimeClient
+    # A fresh host process loads the staged specs and configs; a Chase host
+    # with none running starts on the latest release with the run.
+    base_url = running_base_url(vehicle_id)
+    if base_url is not None:
         try:
-            OnboardRuntimeClient(picar_base_url(onboard), timeout_s=timeout_s).restart(
-                timeout_s=max(30.0, timeout_s)
-            )
-        except (RuntimeError, OSError, ValueError) as exc:
+            RuntimeClient(base_url, timeout_s=timeout_s).restart(timeout_s=max(30.0, timeout_s))
+        except (RuntimeError, TimeoutError) as exc:
             return CommandResult(2, f"Could not restart {vehicle_id}: {exc}")
 
     start_result = start_vehicle_automation_background(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
         interval_s=interval_s,
-        frames=frames,
+        num_decisions=num_decisions,
         take_control=take_control,
         record=record,
         verbose=verbose,
@@ -1993,10 +1073,10 @@ def _collect_automation_status(
     view_timeout_s: float | None = None,
 ) -> list[dict[str, Any]]:
     if vehicle_id is not None:
-        candidate = RUNTIME_ROOT / safe_path_part(vehicle_id)
+        candidate = runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id)
         candidates = [candidate] if candidate.is_dir() else []
-    elif RUNTIME_ROOT.exists():
-        candidates = sorted(path for path in RUNTIME_ROOT.iterdir() if path.is_dir())
+    elif runtime_hosts.RUNTIME_ROOT.exists():
+        candidates = sorted(path for path in runtime_hosts.RUNTIME_ROOT.iterdir() if path.is_dir())
     else:
         candidates = []
 
@@ -2026,7 +1106,7 @@ def _collect_automation_status(
     statuses = []
     for vehicle_runtime_dir in candidates:
         vehicle_name = vehicle_runtime_dir.name
-        onboard = _staged_onboard_vehicle(vehicle_name)
+        host_url = running_base_url(vehicle_name)
         bundle = controller_bundle_paths(vehicle_runtime_dir)
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
@@ -2079,10 +1159,9 @@ def _collect_automation_status(
                 pid=pid,
                 state=state,
             )
-            # Live workers publish camera then perception asynchronously. Status
-            # must not fail the frontier gate by sampling the gap between those
-            # publishes; poll briefly for a correlated current view — always
-            # capped by the remaining command budget.
+            # The first capture is published before its perception result.
+            # Status waits out that gap, within the command budget. A later
+            # capture does not withdraw a completed result whose image remains.
             if (
                 worker_status == "running"
                 and pid_alive
@@ -2126,18 +1205,13 @@ def _collect_automation_status(
                 else [],
             }
 
-        # Unstaged decision steps run their built-ins, so a readable identity is deployed.
+        # A running monitor records the decision its host applied. Otherwise the
+        # staged steps are what a start deploys; unstaged ones run their built-ins.
         try:
-            identity = decision_identity(bundle)
+            identity = state.get("decision") if pid_alive else None
+            decision = _decision_summary(identity) if identity else _decision_summary(decision_identity(bundle))
         except (OSError, TypeError, ValueError):
-            identity = None
-        decision: dict[str, Any] = {"deployed": identity is not None}
-        if identity is not None:
-            decision["generation_id"] = identity["generation_id"]
-            decision["plugins"] = {
-                step: (payload or {}).get("plugins") or []
-                for step, payload in identity["steps"].items()
-            }
+            decision = {"deployed": False}
 
         statuses.append(
             {
@@ -2179,13 +1253,14 @@ def _collect_automation_status(
                     "frames_captured": state.get("frames_captured", 0),
                     "processed_count": state.get("processed_count", 0),
                     "skipped_count": state.get("skipped_count", 0),
-                    "max_frames": state.get("max_frames"),
+                    "num_decisions": state.get("num_decisions"),
                     "interval_s": state.get("interval_s"),
                     "recording": state.get("recording"),
                     "pid": state.get("pid"),
                     "control_source": state.get("control_source"),
                     "action_policy": state.get("action_policy"),
                     "execution": state.get("execution"),
+                    "arming": state.get("arming"),
                     "session": state.get("session"),
                     "control_application": state.get("control_application"),
                     "passive_capture": state.get("passive_capture")
@@ -2220,12 +1295,14 @@ def _collect_automation_status(
                 "published_view": published_view,
             }
         )
-        if onboard is not None and not pid_alive:
-            statuses[-1].update(
-                _onboard_runtime_status(
-                    vehicle_name, onboard, timeout_s=_remaining_view_budget() or 0.5
-                )
+        if host_url is not None and not pid_alive:
+            host = _host_runtime_status(
+                vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5
             )
+            applied = host.pop("applied_decision")
+            statuses[-1].update(host)
+            if applied:
+                statuses[-1]["decision"].update(_decision_summary(applied))
             if activation_problems:
                 statuses[-1]["process"]["recovery"] = activation_problems[0]["command"]
     return statuses
@@ -2281,6 +1358,11 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
                 f"  log: {_status_log_label(process)}",
             ]
         )
+        arming = state.get("arming")
+        if isinstance(arming, dict) and arming.get("request_id"):
+            lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
+            if arming.get("error"):
+                lines.append(f"  problem: {arming['error']}")
         problems = item.get("activation_problems")
         if isinstance(problems, list) and problems:
             lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
@@ -2363,38 +1445,46 @@ def _status_reason(value: Any, *, fallback: str) -> str:
 
 
 def _run_label(state: dict[str, Any]) -> str:
-    max_frames = state.get("max_frames")
-    max_text = "unbounded" if max_frames is None else str(max_frames)
-    parts = [
-        f"id={state.get('run_id', 'none')}",
-        f"captured={state.get('frames_captured', 0)}/{max_text}",
-        f"processed={state.get('processed_count', 0)}",
-        f"skipped={state.get('skipped_count', 0)}",
-        f"capture_interval_s={state.get('interval_s', 'unknown')}",
-        f"recording={state.get('recording', 'unknown')}",
-        f"control={state.get('control_source', 'unknown')}",
-        f"action={state.get('action_policy', 'unknown')}",
-    ]
-    return "  ".join(parts)
+    if not state.get("run_id"):
+        return "none"
+    num_decisions = state.get("num_decisions")
+    fields = {
+        "id": state["run_id"],
+        "captured": state.get("frames_captured") or 0,
+        "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
+        "skipped": state.get("skipped_count") or 0,
+        "capture_interval_s": state.get("interval_s"),
+        "recording": state.get("recording"),
+        "control": state.get("control_source"),
+        "action": state.get("action_policy"),
+    }
+    return "  ".join(f"{name}={value}" for name, value in fields.items() if value is not None)
 
 
 def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> str:
     if not last_frame:
-        return f"none  perception={state.get('latest_perception_text', 'unknown')}"
-    parts = [
-        f"frame={last_frame.get('frame_id', 'none')}",
-        f"signals={last_frame.get('signals', 'unknown')}",
-        f"things={last_frame.get('things', 'unknown')}",
-        f"perception_ms={last_frame.get('perception_duration_ms', 'unknown')}",
-        f"cycle_ms={last_frame.get('cycle_duration_ms', 'unknown')}",
-        f"age_ms={state.get('latest_perception_age_ms', 'unknown')}",
-    ]
-    return "  ".join(parts)
+        return "none"
+    fields = {
+        "frame": last_frame.get("frame_id"),
+        "signals": last_frame.get("signals"),
+        "things": last_frame.get("things"),
+        "perception_ms": last_frame.get("perception_duration_ms"),
+        "cycle_ms": last_frame.get("cycle_duration_ms"),
+        "age_ms": state.get("latest_perception_age_ms"),
+    }
+    return "  ".join(f"{name}={value}" for name, value in fields.items() if value is not None)
 
 
 def _published_view_label(published_view: dict[str, Any]) -> str:
     if published_view.get("available") and published_view.get("url"):
-        return str(published_view["url"])
+        label = str(published_view["url"])
+        lag = published_view.get("capture_lag")
+        if isinstance(lag, int) and lag > 0:
+            lag_ms = published_view.get("capture_lag_ms")
+            if isinstance(lag_ms, int):
+                return f"{label}  capture_lag={lag} ({lag_ms}ms)"
+            return f"{label}  capture_lag={lag}"
+        return label
     return f"unavailable ({published_view.get('reason', 'automation view is not running')})"
 
 
@@ -2404,32 +1494,76 @@ def _status_log_label(process: dict[str, Any]) -> str:
     return process.get("log_path") or "enabled"
 
 
-def _manifest_get_str(manifest: dict[str, Any], section: str, key: str) -> str | None:
-    value = manifest.get(section)
-    if not isinstance(value, dict):
-        return None
-    found = value.get(key)
-    return found if isinstance(found, str) else None
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
 
-def _manifest_get_dict(manifest: dict[str, Any], section: str, key: str) -> dict[str, Any]:
-    value = manifest.get(section)
-    if not isinstance(value, dict):
-        return {}
-    found = value.get(key)
-    return dict(found) if isinstance(found, dict) else {}
+def _pid_matches_automation(pid: int, vehicle_id: str) -> bool:
+    """Return whether *pid* looks like this vehicle's automation monitor.
 
-
-def _now_id(prefix: str) -> str:
-    """Generate a unique automation/run identifier.
-
-    Wall-clock seconds alone collide when two workers start in the same second.
-    Append a UUID fragment so the generation token is unique even under a frozen
-    or equal timestamp.
+    When the process command cannot be read, returns True (stop path stays
+    permissive). Callers that must fail closed should read the command first
+    and use :func:`_automation_command_matches_vehicle` directly.
     """
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return f"{prefix}-{stamp}-{uuid.uuid4().hex[:12]}"
+    command = _process_command(pid)
+    if command is None:
+        return True
+    return _automation_command_matches_vehicle(command, vehicle_id)
+
+
+def _automation_command_matches_vehicle(command: str, vehicle_id: str) -> bool:
+    """Pure check: command is an automation run for exactly *vehicle_id*.
+
+    Requires the contiguous launcher subcommand ``vehicles automation run`` and
+    an exact ``--id <vehicle_id>`` argument pair (token equality, not substring).
+    """
+
+    if not vehicle_id or not str(vehicle_id).strip():
+        return False
+    vehicle_key = str(vehicle_id).strip()
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+    # Contiguous launcher subcommand as emitted by start_automation.
+    matched_run = False
+    for index in range(len(tokens) - 2):
+        if tokens[index : index + 3] == ["vehicles", "automation", "run"]:
+            matched_run = True
+            break
+    if not matched_run:
+        return False
+    for index, token in enumerate(tokens):
+        if token == "--id":
+            if index + 1 < len(tokens) and tokens[index + 1] == vehicle_key:
+                return True
+        elif token.startswith("--id="):
+            if token[len("--id=") :] == vehicle_key:
+                return True
+    return False
+
+
+def _process_command(pid: int) -> str | None:
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    command = result.stdout.strip()
+    return command or None
 
 
 def _timestamp_ms() -> int:
@@ -2444,79 +1578,9 @@ def _int_or_none(value: Any) -> int | None:
     return None
 
 
-def _copy_file_atomic(source: Path, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
-    shutil.copyfile(source, temporary)
-    temporary.replace(destination)
-
-
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     write_json_atomically(path, payload)
-
-
-def _record_decision_publish_skip(
-    state: dict[str, Any],
-    state_path: Path,
-    state_lock: threading.Lock,
-    *,
-    reason: str,
-) -> None:
-    """Count a non-fatal decision latest-frame publish skip (never raises).
-
-    State persistence is best-effort. In-memory counters are updated first so a
-    later successful state write still reflects the skip even if an intermediate
-    disk write fails. Disk failures are swallowed so publish observability cannot
-    fail the automation cycle path.
-    """
-
-    try:
-        with state_lock:
-            decision = state.get("decision")
-            if not isinstance(decision, dict):
-                decision = {}
-                state["decision"] = decision
-            decision["latest_frame_publish_skips"] = int(
-                decision.get("latest_frame_publish_skips") or 0
-            ) + 1
-            decision["latest_frame_publish_skip_reason"] = reason[:MAX_STATUS_REASON_CHARS]
-            state["updated_at_ms"] = _timestamp_ms()
-            try:
-                _write_json(state_path, state)
-            except Exception:  # noqa: BLE001 - disk observability is best-effort
-                pass
-    except Exception:  # noqa: BLE001 - counter path must never raise
-        pass
-
-
-def _read_latest_decision_frame_for_view(
-    path: Path,
-    *,
-    frame_id: str,
-    run_id: str,
-    worker_pid: int,
-    generation_id: Any,
-) -> dict[str, Any] | None:
-    """Read only the bounded frame just accepted by this worker generation."""
-
-    try:
-        payload = Path(path).read_bytes()
-        if len(payload) > MAX_DECISION_FILE_BYTES:
-            return None
-        frame = json.loads(payload.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
-        return None
-    if not isinstance(frame, dict):
-        return None
-    if (
-        frame.get("frame_id") != frame_id
-        or frame.get("run_id") != run_id
-        or frame.get("worker_pid") != worker_pid
-        or frame.get("generation_id") != generation_id
-    ):
-        return None
-    return frame
 
 
 def _read_json(path: Path) -> Any:
@@ -2583,9 +1647,3 @@ def _terminate_pid(
             os.kill(pid, sig)
         except OSError:
             return
-
-
-def _emit(output: TextIO | None, message: str) -> None:
-    if output is None:
-        return
-    print(message, file=output, flush=True)

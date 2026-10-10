@@ -24,6 +24,7 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("autonomy.decision_cycle.observation.perception_summary:PerceptionSummary", "autonomy.decision_cycle.observation.perception_summary", "PerceptionSummary"),
     ("autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan", "autonomy.decision_cycle.plan.highest_confidence", "HighestConfidencePlan"),
     ("autonomy.decision_cycle.action.hold:HoldAction", "autonomy.decision_cycle.action.hold", "HoldAction"),
+    ("autonomy.decision_cycle.action.selected:SelectedAction", "autonomy.decision_cycle.action.selected", "SelectedAction"),
     ("implementations.decision_cycle.action.mode.plugin:ModeAction", "implementations.decision_cycle.action.mode.plugin", "ModeAction"),
     ("implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger", "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger"),
     ("implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:AvoidRecentObstruction", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin", "AvoidRecentObstruction"),
@@ -79,6 +80,7 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.action.values", "AuthorityResult", "autonomy.decision_cycle.action.values", "AuthorityResult"),
     ("autonomy.decision_cycle.action_identifiers", "ActionInputError", "autonomy.decision_cycle.action_identifiers", "ActionInputError"),
     ("autonomy.decision_cycle.action.result", "ActionResult", "autonomy.decision_cycle.action.result", "ActionResult"),
+    ("autonomy.vehicle", "run_vehicle_pulse", "autonomy.vehicle", "run_vehicle_pulse"),
     ("autonomy.decision_cycle.proposal.values", "SourceRef", "autonomy.decision_cycle.proposal.values", "SourceRef"),
     ("autonomy.decision_cycle.proposal.inputs", "build_decision_data_source", "autonomy.decision_cycle.proposal.inputs", "build_decision_data_source"),
     ("autonomy.serialization", "canonical_json_size_bytes", "autonomy.serialization", "canonical_json_size_bytes"),
@@ -249,19 +251,8 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.decision_cycle.perception.plugins.floor_plane.model", "source_obstacle_hits", "implementations.decision_cycle.perception.plugins.floor_plane.model", "source_obstacle_hits"),
 
     # implementations.runtime
-    ("implementations.runtime.donkeycar", "AutonomyPilotPart", "implementations.runtime.donkeycar.donkey_part", "AutonomyPilotPart"),
-    ("implementations.runtime.donkeycar", "CAMERA_LATEST_FRAME_PATH", "implementations.runtime.donkeycar.donkey_part", "CAMERA_LATEST_FRAME_PATH"),
-    ("implementations.runtime.donkeycar", "CAMERA_LATEST_JSON_PATH", "implementations.runtime.donkeycar.donkey_part", "CAMERA_LATEST_JSON_PATH"),
-    ("implementations.runtime.donkeycar", "CAMERA_PUBLICATION_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "CAMERA_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.donkeycar", "DECISION_LATEST_PATH", "implementations.runtime.donkeycar.donkey_part", "DECISION_LATEST_PATH"),
-    ("implementations.runtime.donkeycar", "DECISION_PUBLICATION_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "DECISION_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.donkeycar", "DEFAULT_OBSERVATION_INTERVAL_S", "implementations.runtime.donkeycar.donkey_part", "DEFAULT_OBSERVATION_INTERVAL_S"),
-    ("implementations.runtime.donkeycar", "LATEST_FRAME_PATH", "implementations.runtime.donkeycar.donkey_part", "LATEST_FRAME_PATH"),
-    ("implementations.runtime.donkeycar", "LATEST_JSON_PATH", "implementations.runtime.donkeycar.donkey_part", "LATEST_JSON_PATH"),
-    ("implementations.runtime.donkeycar", "LatestCameraFrame", "implementations.runtime.donkeycar.donkey_part", "LatestCameraFrame"),
-    ("implementations.runtime.donkeycar", "LatestObservationState", "implementations.runtime.donkeycar.donkey_part", "LatestObservationState"),
-    ("implementations.runtime.donkeycar", "OBSERVATION_PUBLICATION_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "OBSERVATION_PUBLICATION_SCHEMA"),
-    ("implementations.runtime.donkeycar", "ONBOARD_OBSERVATION_STATE_SCHEMA", "implementations.runtime.donkeycar.donkey_part", "ONBOARD_OBSERVATION_STATE_SCHEMA"),
+    ("implementations.runtime.picar", "create_host", "implementations.runtime.picar", "create_host"),
+    ("implementations.runtime.picar", "AutonomyPilotPart", "implementations.runtime.picar.donkey_part", "AutonomyPilotPart"),
 
     # implementations.vehicle
     ("implementations.vehicle", "ChaseSimCar", "implementations.vehicle.chase_sim.car", "ChaseSimCar"),

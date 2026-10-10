@@ -31,6 +31,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
+from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any, ClassVar, Generic, TypeVar
@@ -144,6 +145,7 @@ class StepRunner(Generic[PluginT]):
         self.last_error: str | None = None
         self.run_count = 0
         self.failure_count = 0
+        self._selection_held = 0
         self.apply_selection()
 
     @classmethod
@@ -210,6 +212,13 @@ class StepRunner(Generic[PluginT]):
         with self._runtime_lock:
             self._prepare_selection()
 
+    @property
+    def selection_prepared(self) -> bool:
+        """Whether the manager's selection is loaded and waiting to be committed."""
+
+        with self._runtime_lock:
+            return self._selection_runtime.prepared
+
     def commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
         """Reset removed plugins and publish the prepared selection."""
 
@@ -226,8 +235,26 @@ class StepRunner(Generic[PluginT]):
         """Prepare and commit the manager's selection; a failure raises."""
 
         with self._runtime_lock:
+            if self._selection_held:
+                return
             self._prepare_selection()
             self._commit_selection(shared_memory)
+
+    @contextmanager
+    def hold_selection(self):
+        """Keep a host's prepared group fixed throughout one cycle."""
+
+        with self._runtime_lock:
+            self._selection_held += 1
+            try:
+                yield
+            finally:
+                self._selection_held -= 1
+
+    def adopt_activation(self, activation: StepActivation) -> None:
+        """Record a staged document only after its definitions have applied."""
+
+        self.activation = require_step_activation(activation, self.step)
 
     def _prepare_selection(self) -> None:
         self._selection_runtime.prepare(load=self.load_plugin, validate=self.validate_selection)

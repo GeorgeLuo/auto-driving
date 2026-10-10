@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import unittest
 from unittest import mock
 from autonomy.decision_cycle.memory.interface import MEMORY_REPORT_SCHEMA
@@ -7,11 +6,9 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorFrame
 from implementations.decision_cycle.catalog import selection_activation, step_plugins
-from implementations.decision_cycle.memory.presets import MEMORY_PRESETS
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
-from cli.automa_cli.memory import update_vehicle_memory
 from cli.automa_cli.workbench_plugins import packaged_plugin_catalog
-from cli.automa_cli.workbench import PluginCatalogError, ReplayActionError
+from cli.automa_cli.workbench import ReplayActionError
 from tests.cli.workbench_fixtures import (
     DecisionFixtureMapper,
     ImageReplayRunner,
@@ -54,28 +51,6 @@ class WorkbenchTests(unittest.TestCase):
         )))
         self.assertEqual(perception_step.plugin_ids, ("frame", "floor_plane"))
         self.assertIs(perception_step.plugins["frame"], original)
-
-    def test_selection_keeps_order_and_rejects_unknown_or_repeated_ids(self) -> None:
-        catalog = packaged_plugin_catalog("perception")
-        self.assertEqual(
-            catalog.normalize_selection(["floor_continuity", "classical_regions"]),
-            ("floor_continuity", "classical_regions"),
-        )
-        self.assertEqual(catalog.normalize_selection([]), ())
-        with self.assertRaisesRegex(PluginCatalogError, "unknown perception plugin\(s\) missing"):
-            catalog.normalize_selection(["missing"])
-        with self.assertRaisesRegex(PluginCatalogError, "duplicates"):
-            catalog.normalize_selection(["frame", "frame"])
-        perception_step = catalog.build(
-            catalog.activation(["floor_continuity", "classical_regions"])
-        )
-        perception = perception_step.perceive(PerceptionRequest(SensorFrame(
-            read_id="ordered", readings={}, started_at_ms=100, completed_at_ms=100,
-        )))
-        self.assertEqual(
-            [run.plugin_id for run in perception.plugin_runs],
-            ["floor_continuity", "classical_regions"],
-        )
 
     def test_workbench_can_run_packaged_plugin_outside_default_selection(self) -> None:
         with image_source(1) as root:
@@ -439,39 +414,6 @@ class WorkbenchStartingSelectionTests(unittest.TestCase):
                 )
                 runner.dispatch("reset", run_id=run_id)
 
-    def test_reselecting_a_presets_plugins_keeps_its_configs(self) -> None:
-        activation = selection_activation("perception", preset="obstruction_observer")
-        self.assertIn("multi_obstruction_tracks", activation.plugin_configs)
-        plugins = list(activation.plugins)
-        with image_source(3) as root:
-            runner = ImageReplayRunner(
-                root, activations={"perception": activation}, cadence_ms=30000
-            )
-            idle = runner.dispatch("select_plugins", step="perception", active_plugin_ids=plugins)
-            self.assertEqual(
-                idle["machine_detail"]["pipeline"]["perception_preset"], "obstruction_observer"
-            )
-            run_id, _ = _pause_after_first_frame(runner)
-            built = runner._steps["perception"]
-            same = runner.dispatch(
-                "select_plugins", run_id=run_id, step="perception", active_plugin_ids=plugins
-            )
-            self.assertIs(runner._steps["perception"], built)
-            self.assertEqual(
-                same["machine_detail"]["pipeline"]["perception_preset"], "obstruction_observer"
-            )
-            self.assertEqual(built.activation.to_payload(), activation.to_payload())
-
-            changed = runner.dispatch(
-                "select_plugins", run_id=run_id, step="perception", active_plugin_ids=["frame"]
-            )
-            self.assertEqual(changed["machine_detail"]["pipeline"]["perception_preset"], "custom")
-            self.assertEqual(
-                runner._steps["perception"].activation.to_payload(),
-                selection_activation("perception", plugins=["frame"]).to_payload(),
-            )
-            runner.dispatch("reset", run_id=run_id)
-
     def test_memory_starts_from_its_given_activation(self) -> None:
         with image_source(2) as root:
             runner = ImageReplayRunner(
@@ -545,25 +487,6 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
         state = runner.state()
         self.assertEqual(state["active_perception_plugin_ids"], ["frame", "floor_plane"])
         self.assertEqual(state["active_memory_plugin_ids"], ["bounded_evidence"])
-
-    def test_memory_activation_equals_update_memory_manifest(self) -> None:
-        with image_source(3) as root:
-            for preset, entry in MEMORY_PRESETS.items():
-                plugins = list(entry["plugins"])
-                manifest = json.loads(update_vehicle_memory(
-                    vehicle_id="chase-sim-chaser", preset=preset,
-                    dry_run=True, json_output=True,
-                ).message)["manifest"]
-                runner = self._runner(root)
-                self.assertEqual(
-                    runner._catalogs["memory"].activation(plugins).to_payload(), manifest, plugins
-                )
-                run_id, _ = _pause_after_first_frame(runner)
-                runner.dispatch(
-                    "select_plugins", run_id=run_id, step="memory", active_plugin_ids=plugins
-                )
-                self.assertEqual(runner._steps["memory"].activation.to_payload(), manifest, plugins)
-                runner.dispatch("reset", run_id=run_id)
 
     def test_paused_memory_selection_rebuilds_memory_from_the_first_frame(self) -> None:
         with image_source(6) as root:

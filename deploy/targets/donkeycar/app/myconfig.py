@@ -827,8 +827,7 @@ JOYSTICK_MAX_THROTTLE = 1.0
 
 # Generic autonomy runtime. Starts idle and only controls the car when
 # Donkey mode is switched to local_angle or local. Camera samples publish
-# every drive-loop tick on /autonomy/camera/latest. Perception still runs
-# in manual user mode at AUTONOMY_OBSERVATION_INTERVAL_S from config.py
-# and does not block those samples.
+# at the configured capture cadence on /autonomy/camera/latest. Decisions run
+# independently in manual user mode too, consuming the newest pending sample.
 AUTONOMY_ENABLED = True
-# AUTONOMY_OBSERVATION_INTERVAL_S = 0.5
+# AUTONOMY_CAPTURE_INTERVAL_S = 0.25

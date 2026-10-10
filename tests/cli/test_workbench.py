@@ -216,7 +216,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["progress"]["completed"], 2)
         self.assertEqual(len(perception_step.calls), 2)
         self.assertEqual(
-            state["steps"]["observation"]["metadata"]["source"], "workbench.image_replay.v1"
+            state["steps"]["observation"]["metadata"]["source"], "perception_summary"
         )
         ledger = state["steps"]["memory"]["plugins"][0]
         self.assertEqual(ledger["state"]["health"], "healthy")
@@ -272,19 +272,19 @@ class WorkbenchTests(unittest.TestCase):
             )
         )
         self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
-        self.assertFalse(decision["authority"]["proposed_applied"])
+        self.assertTrue(decision["authority"]["proposed_applied"])
         self.assertTrue(
             state["timeline"][0]["frame"]["frame_id"].endswith(
                 state["timeline"][0]["decision"]["selected_proposal_id"].rsplit(":", 1)[1]
             )
         )
-        self.assertFalse(state["timeline"][0]["decision"]["proposed_applied"])
+        self.assertTrue(state["timeline"][0]["decision"]["proposed_applied"])
         self.assertEqual(
             state["machine_detail"]["pipeline"]["decision_steps"],
-            {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["hold"]},
+            {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["selected"]},
         )
         decision_config = state["machine_detail"]["pipeline"]["decision_config"]
-        self.assertFalse(decision_config["proposed_applied"])
+        self.assertEqual(decision_config["action"], ["selected"])
         self.assertEqual(decision_config["plugins"], ["avoid_recent_obstruction"])
         proposal_config = decision_config["plugin_configs"]["avoid_recent_obstruction"]
         self.assertEqual(proposal_config["steer_magnitude"], 1.0)
@@ -317,7 +317,8 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(len(perception_step.calls), 1)
         self.assertTrue(state["timeline"][1]["frame"]["absent"])
-        self.assertEqual(state["steps"]["observation"]["metadata"]["absence_reason"], "dropout")
+        self.assertEqual(state["timeline"][1]["frame"]["absence_reason"], "dropout")
+        self.assertIsNone(state["steps"]["observation"])
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
         with image_source(2) as root:

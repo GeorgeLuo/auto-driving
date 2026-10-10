@@ -18,6 +18,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from autonomy.decision_cycle.activation import STEPS
+from autonomy.plugins import add_uploaded_source_root
+from autonomy.runtime.recording import UPLOADED_SOURCES_DIR
+from .inspection_runs import recorded_selection, recorded_selections
+
 
 WORKBENCH_ADAPTER = "image_directory"
 WORKBENCH_DEFAULT_MAX_FRAMES = 512
@@ -132,6 +137,9 @@ def normalize_image_directory(
         raise SourceValidationError(f"source path is not a directory: {source_path}")
 
     manifest_path, manifest = read_image_manifest(source_path)
+    if (source_path / UPLOADED_SOURCES_DIR).is_dir():
+        # Replay imports the uploaded plugins a recording ran from the sources it carries.
+        add_uploaded_source_root(source_path / UPLOADED_SOURCES_DIR)
     if (
         manifest is not None
         and "frames" not in manifest
@@ -201,6 +209,21 @@ def normalize_image_directory(
         raise SourceValidationError(
             "manifest source must remain inside the configured source root"
         )
+    try:
+        defaults = recorded_selections(manifest or {})
+        for step in STEPS:
+            legacy = recorded_selection(step, manifest or {})
+            if step not in defaults and legacy is not None:
+                defaults[step] = legacy
+        if defaults:
+            payloads = {step: value.to_payload() if value else None for step, value in defaults.items()}
+            entries = [
+                {**entry, "steps": {**payloads, **entry.get("steps", {})}}
+                if isinstance(entry, dict) else {"image_path": entry, "steps": payloads}
+                for entry in entries
+            ]
+    except (TypeError, ValueError) as exc:
+        raise SourceValidationError(f"invalid recorded selections: {exc}") from exc
     frames = tuple(
         _build_frame(
             source_id=source_id,
@@ -467,6 +490,24 @@ def _build_frame(
     metadata = {"manifest_position": position, **image_metadata}
     if "annotation" in entry:
         metadata["annotation"] = copy.deepcopy(entry["annotation"])
+    if "context" in entry:
+        if not isinstance(entry["context"], dict):
+            raise SourceValidationError(f"frame {position} context must be an object")
+        metadata["context"] = copy.deepcopy(entry["context"])
+    # A recording manifest keeps the report identity and staged step selections.
+    for key in ("vehicle_id", "run_id", "generation_id"):
+        value = entry.get(key)
+        if isinstance(value, str) and value:
+            metadata[key] = value
+    if "steps" in entry:
+        try:
+            selections = recorded_selections(entry, source_root=source_path)
+        except (TypeError, ValueError) as exc:
+            raise SourceValidationError(f"frame {position} has invalid recorded selections: {exc}") from exc
+        metadata["steps"] = {
+            step: activation.to_payload() if activation is not None else None
+            for step, activation in selections.items()
+        }
     return ReplayFrame(
         source_id=source_id,
         frame_id=frame_id,

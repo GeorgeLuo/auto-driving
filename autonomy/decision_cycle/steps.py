@@ -10,6 +10,7 @@ default and stay empty. ``load_decision_steps`` reads
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from autonomy.decision_cycle.observation.runner import ObservationRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from autonomy.runtime.plugin_loader import CodeSource, load_runner
 
 STEP_RUNNERS: dict[str, Any] = {
     "perception": PerceptionRunner,
@@ -62,13 +64,62 @@ def builtin_activation(step: str) -> StepActivation | None:
 
 
 def step_runner(activation: StepActivation) -> Any:
+    """Construct the runner from the process's already-imported package."""
+
     return STEP_RUNNERS[activation.step].from_activation(activation)
+
+
+def snapshot_runner_activation(runner: Any, step: str) -> StepActivation | None:
+    """Preserve staged context while describing the definitions actually applied."""
+
+    loaded = getattr(runner, "activation", None)
+    if not hasattr(runner, "applied"):
+        return replace(loaded, plugins=tuple(runner.plugin_ids)) if loaded is not None else None
+    definitions = [definition for definition, _ in runner.applied]
+    if not definitions and loaded is None:
+        return None
+    loaded = loaded or step_activation(step, [], {})
+    specs, configs = dict(loaded.plugin_specs), dict(loaded.plugin_configs)
+    for item in definitions:
+        specs[item.plugin_id] = item.executable_entrypoint
+        if item.config:
+            configs[item.plugin_id] = dict(item.config)
+        else:
+            configs.pop(item.plugin_id, None)
+    return replace(loaded, plugins=tuple(item.plugin_id for item in definitions),
+                   plugin_specs=specs, plugin_configs=configs)
+
+
+def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
+    """Detached executable selections actually applied by the frame's runners.
+
+    A pending selection is not a running selection. Unconfigured callables
+    have no executable activation and are omitted.
+    """
+    snapshot: dict[str, Any] = {}
+    for step in STEPS:
+        runner = getattr(steps, step)
+        if runner is None:
+            snapshot[step] = None
+            continue
+        activation = snapshot_runner_activation(runner, step)
+        if activation is not None:
+            snapshot[step] = activation.to_payload()
+        elif hasattr(runner, "applied"):
+            snapshot[step] = None
+    return snapshot
 
 
 def decision_steps(
     activations: dict[str, StepActivation | None] | None = None,
+    *,
+    source: CodeSource | None = None,
 ) -> DecisionSteps:
-    """Runners for the given activations; unlisted steps use their built-ins."""
+    """Runners for the given activations; unlisted steps use their built-ins.
+
+    ``source`` is the installed package when omitted. A host that staged the
+    activations passes the bundle code source instead.
+    """
 
     activations = dict(activations or {})
     runners: dict[str, Any] = {}
@@ -76,7 +127,12 @@ def decision_steps(
         activation = activations[step] if step in activations else builtin_activation(step)
         if activation is not None and activation.step != step:
             raise ValueError(f"activation for {activation.step!r} given as {step!r}")
-        runners[step] = step_runner(activation) if activation is not None else None
+        try:
+            runners[step] = (
+                load_runner(activation, source=source) if activation is not None else None
+            )
+        except Exception as exc:
+            raise RuntimeError(f"could not load {step}: {type(exc).__name__}: {exc}") from exc
     return DecisionSteps(**runners)
 
 

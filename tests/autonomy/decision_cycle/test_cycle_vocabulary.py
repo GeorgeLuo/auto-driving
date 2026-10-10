@@ -115,6 +115,7 @@ class CycleVocabularyTests(unittest.TestCase):
                 "plan",
                 "action",
                 "control",
+                "application",
             },
         )
         self.assertNotIn("shared_memory", payload["context"])

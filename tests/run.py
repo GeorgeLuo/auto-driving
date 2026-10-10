@@ -18,7 +18,7 @@ for path in (ROOT / "cli", ROOT):
 
 from automa_cli.deploy import inspect_picar_autonomy_runtime
 from automa_cli.simulators import ensure_simulator
-from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL
+from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL, LOCAL_CAR_BASE_URL_ENV
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,8 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--picar-url",
-        default=DEFAULT_LOCAL_CAR_BASE_URL,
-        help=f"Pi Donkey server base URL for --live-pi (default: {DEFAULT_LOCAL_CAR_BASE_URL}).",
+        default=os.environ.get(LOCAL_CAR_BASE_URL_ENV) or DEFAULT_LOCAL_CAR_BASE_URL,
+        help=(
+            f"Pi Donkey server base URL for --live-pi (default: ${LOCAL_CAR_BASE_URL_ENV}, "
+            f"which the CLI's discovery also reads, else {DEFAULT_LOCAL_CAR_BASE_URL})."
+        ),
     )
     parser.add_argument(
         "--pi-timeout-s",
@@ -94,10 +97,10 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
         )
         return False
 
-    if status["drive_mode"] != "user":
+    if status["mode"] != "manual":
         _print_pi_unavailable(
             endpoint=str(status["status_url"]),
-            reason=f"drive mode is {status['drive_mode']!r}; expected 'user'",
+            reason=f"mode is {status['mode']!r}; expected 'manual'",
         )
         return False
 
@@ -111,7 +114,7 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
                 "------------------",
                 "result: ready",
                 f"endpoint: {status['status_url']}",
-                f"drive mode: {status['drive_mode']}",
+                f"mode: {status['mode']}",
                 *(
                     f"{step}: {', '.join(plugins) if plugins is not None else '(not loaded)'}"
                     for step, plugins in status["steps"].items()

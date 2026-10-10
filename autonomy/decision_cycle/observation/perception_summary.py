@@ -77,4 +77,5 @@ class PerceptionSummary:
             sensor_frame=context.sensor_frame,
             perception=perception,
             metadata={"source": self.plugin_id},
+            created_at_ms=context.timestamp_ms,
         )

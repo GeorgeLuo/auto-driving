@@ -159,10 +159,10 @@
             "responsibility": "Concrete runtime hosts for environments that need special integration code.",
             "children": [
               {
-                "path": "implementations/runtime/donkeycar/",
+                "path": "implementations/runtime/picar/",
                 "category": "runtime-implementation",
                 "commit_policy": "source",
-                "responsibility": "DonkeyCar part and drive-loop integration."
+                "responsibility": "PiCar runtime host and DonkeyCar drive-loop integration."
               }
             ]
           },

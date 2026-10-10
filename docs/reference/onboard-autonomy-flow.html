@@ -373,7 +373,7 @@
         Source points: <code>autonomy/decision_cycle/cycle.py</code>,
         <code>autonomy/runtime/cycle_host.py</code>,
         <code>cli/automa_cli/automation.py</code>, and
-        <code>implementations/runtime/donkeycar/donkey_part.py</code>
+        <code>implementations/runtime/picar/donkey_part.py</code>
       </p>
     </header>
 
@@ -596,7 +596,7 @@
         <div>
           <h3>Recorded Cycle</h3>
           <p>Opt into a bounded recording when the full perception, observation, control, and cycle result need inspection.</p>
-          <p><code>./cli/automa vehicles automation run --id chase-sim-chaser --frames 5 --record</code></p>
+          <p><code>./cli/automa vehicles automation run --id chase-sim-chaser --num-decisions 5 --record</code></p>
           <p>Recorded cycle JSON reflects the actual runtime; unimplemented state steps remain <code>null</code>.</p>
         </div>
       </div>

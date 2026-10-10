@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -165,13 +167,13 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertEqual(host.status()["error_count"], 1)
             self.assertIn("no_such_module", host.status()["last_error"])
 
-    def test_default_steps_hold_while_memory_runs(self) -> None:
+    def test_default_steps_idle_while_memory_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             host = AutonomyCycleHost(
                 steps=replace(decision_steps(), memory=_memory_step(Path(tmp)))
             )
             result = host.run(DecisionFrameContext("frame_i", 0, 1))
-            self.assertEqual(result.control.reason, "hold-idle")
+            self.assertEqual(result.control.reason, "no-selected-command")
             self.assertIsNone(result.proposal)
             self.assertEqual(result.plan.status, "idle")
             self.assertIsNotNone(result.memory)
@@ -295,6 +297,46 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertEqual(status["error_count"], 0)
         with self.assertRaises(ValueError):
             host.register_status_provider("", lambda: {})
+
+    def test_status_answers_while_a_slow_step_holds_the_cycle(self) -> None:
+        entered, release = threading.Event(), threading.Event()
+        recording = _RecordingProposal()
+
+        def slow_proposal(context, observation):
+            if context.frame_id != "frame_1":
+                entered.set()
+                release.wait(5.0)
+            return recording(context, observation)
+
+        host, _ = _host(proposal=slow_proposal)
+        host.run(DecisionFrameContext("frame_1", 0, 1_000))
+
+        def busy_status(frame_id: str, index: int) -> dict:
+            """Read status while ``frame_id`` holds the cycle, then let it finish."""
+            entered.clear()
+            release.clear()
+            cycle = threading.Thread(
+                target=host.run, args=(DecisionFrameContext(frame_id, index, 1_000 * (index + 1)),)
+            )
+            cycle.start()
+            try:
+                self.assertTrue(entered.wait(5.0))
+                started = time.monotonic()
+                status = host.status()
+                self.assertLess(time.monotonic() - started, 1.0)
+                self.assertEqual(status["cycle_in_progress"]["frame_id"], frame_id)
+                return status["steps"]
+            finally:
+                release.set()
+                cycle.join(5.0)
+
+        # Back-to-back cycles never freed the lock for a read, yet the steps report.
+        steps = busy_status("frame_2", 1)
+        self.assertEqual(steps["action"]["plugin_ids"], list(host.steps.action.plugin_ids))
+        # The turned-away read had frame_2 refresh the counters as it ended.
+        self.assertEqual(busy_status("frame_3", 2)["action"]["run_count"], 2)
+        self.assertIsNone(host.status()["cycle_in_progress"])
+        self.assertEqual(host.status()["cycle_count"], 3)
 
 
 if __name__ == "__main__":

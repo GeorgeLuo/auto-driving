@@ -15,7 +15,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES
 from implementations.decision_cycle.catalog import packaged_activation, step_plugins
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from implementations.runtime.donkeycar import AutonomyPilotPart, create_host
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 
 
 def _records(
@@ -99,8 +99,8 @@ def _run(
 
 class PackagedCatalogTests(unittest.TestCase):
     def test_action_catalog_offers_hold_and_mode(self) -> None:
-        self.assertEqual(sorted(step_plugins("action")), ["hold", "mode"])
-        self.assertEqual(packaged_activation("action").plugins, ("hold",))
+        self.assertEqual(sorted(step_plugins("action")), ["hold", "mode", "selected"])
+        self.assertEqual(packaged_activation("action").plugins, ("selected",))
         self.assertEqual(packaged_activation("proposal").plugins, ("avoid_recent_obstruction",))
 
 
@@ -200,7 +200,7 @@ class ModeActionTests(unittest.TestCase):
 
         part = AutonomyPilotPart(
             host=create_host(steps=replace(_steps("mode"), memory=remember)),
-            min_interval_s=0.0,
+            interval_s=0.0,
         )
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()

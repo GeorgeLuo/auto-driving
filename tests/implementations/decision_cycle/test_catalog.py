@@ -34,7 +34,7 @@ class DeclaredIdTests(unittest.TestCase):
 
     def test_two_plugins_declaring_one_id_stop_the_step(self) -> None:
         with self._clashing_actions():
-            with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate action plugin id 'hold'"):
+            with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate action plugin id 'selected'"):
                 catalog.step_plugins("action")
             self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence"])
 
@@ -51,7 +51,7 @@ class DeclaredIdTests(unittest.TestCase):
                 ["vehicles", "update", "action", "--id", "chase-sim-chaser", "--plugin", "hold", "--dry-run"]
             )
         self.assertEqual(code, 2)
-        self.assertIn("error: duplicate action plugin id 'hold'", stderr.getvalue())
+        self.assertIn("error: duplicate action plugin id 'selected'", stderr.getvalue())
 
 
 class PresetActivationTests(unittest.TestCase):

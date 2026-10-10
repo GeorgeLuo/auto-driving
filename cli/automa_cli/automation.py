@@ -488,9 +488,6 @@ def start_vehicle_automation_background(
     startup_status = startup["status"]
     if startup_status == "ready":
         phases = startup.get("phases") if isinstance(startup.get("phases"), dict) else {}
-        capture_phase = (
-            phases.get("capture") if isinstance(phases.get("capture"), dict) else {}
-        )
         perception_phase = (
             phases.get("perception")
             if isinstance(phases.get("perception"), dict)
@@ -502,7 +499,7 @@ def start_vehicle_automation_background(
             f"First frame: {startup.get('frame_id', 'captured')}",
             (
                 "Startup phases: "
-                f"capture={_duration_label(capture_phase)}, "
+                "capture=complete, "
                 f"perception={_duration_label(perception_phase)}, "
                 "view=current-generation correlated"
             ),
@@ -656,11 +653,6 @@ def _wait_for_automation_startup(
         )
         frames_captured = state.get("frames_captured")
         processed_count = state.get("processed_count")
-        last_capture = (
-            state.get("last_capture")
-            if isinstance(state.get("last_capture"), dict)
-            else {}
-        )
         last_frame = (
             state.get("last_frame")
             if isinstance(state.get("last_frame"), dict)
@@ -698,10 +690,7 @@ def _wait_for_automation_startup(
                         "capture_lag": view.get("capture_lag"),
                         "capture_lag_ms": view.get("capture_lag_ms"),
                         "phases": {
-                            "capture": {
-                                "status": "complete",
-                                "duration_ms": last_capture.get("capture_duration_ms"),
-                            },
+                            "capture": {"status": "complete"},
                             "perception": {
                                 "status": "complete",
                                 "duration_ms": last_frame.get("perception_duration_ms"),
@@ -1473,15 +1462,15 @@ def _run_label(state: dict[str, Any]) -> str:
 def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> str:
     if not last_frame:
         return f"none  perception={state.get('latest_perception_text', 'unknown')}"
-    parts = [
-        f"frame={last_frame.get('frame_id', 'none')}",
-        f"signals={last_frame.get('signals', 'unknown')}",
-        f"things={last_frame.get('things', 'unknown')}",
-        f"perception_ms={last_frame.get('perception_duration_ms', 'unknown')}",
-        f"cycle_ms={last_frame.get('cycle_duration_ms', 'unknown')}",
-        f"age_ms={state.get('latest_perception_age_ms', 'unknown')}",
-    ]
-    return "  ".join(parts)
+    fields = {
+        "frame": last_frame.get("frame_id"),
+        "signals": last_frame.get("signals"),
+        "things": last_frame.get("things"),
+        "perception_ms": last_frame.get("perception_duration_ms"),
+        "cycle_ms": last_frame.get("cycle_duration_ms"),
+        "age_ms": state.get("latest_perception_age_ms"),
+    }
+    return "  ".join(f"{name}={value}" for name, value in fields.items() if value is not None)
 
 
 def _published_view_label(published_view: dict[str, Any]) -> str:

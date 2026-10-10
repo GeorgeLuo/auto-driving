@@ -22,8 +22,7 @@ from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
 from .paths import ROOT, display_path
 from .runtime_hosts import runtime_base_url
-from .streaming import _live_plugins, probe_live_memory
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
+from .streaming import _live_plugins, _live_step_fields, probe_live_memory
 from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
@@ -170,61 +169,26 @@ def reset_vehicle_memory(
     *,
     vehicle_id: str,
     timeout_s: float = 3.0,
-    wait_s: float = 5.0,
     json_output: bool = False,
 ) -> CommandResult:
     """Reset live memory on the vehicle's runtime host.
 
-    The reset is confirmed when the live probe afterwards shows every applied
-    plugin's ledger empty (``ledger_is_empty``); ``nonempty_plugin_ids`` names
-    any that still hold records. Operators can check with ``info memory``,
-    ``stream memory``, or the Memory map.
+    The host answers with the memory step's status under the same lock as
+    its cycles, before any later frame refills memory. The reset is confirmed
+    when, in that answer, every applied plugin started a new epoch or holds
+    no records; ``unconfirmed_plugin_ids`` names any that did neither.
+    Operators can check with ``info memory``, ``stream memory``, or the
+    Memory map.
     """
 
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-
-    provider = vehicle.get("provider")
-    before = probe_live_memory(
-        vehicle_id=vehicle_id,
-        vehicle=vehicle,
-        timeout_s=timeout_s,
-    )
-    if before.get("status") == "absent":
+    before = probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s)
+    if before.get("status") != "live":
         return CommandResult(
             2,
             "\n".join(
                 [
-                    f"No live memory step to reset for {vehicle_id!r}.",
-                    str(before.get("error") or "Memory component is absent."),
-                ]
-            ),
-        )
-    if before.get("status") not in {"live", "error"}:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Cannot reset memory for {vehicle_id!r}: live status is {before.get('status')!r}.",
-                    str(before.get("error") or "Start automation (Chase) or deploy autonomy (Pi) first."),
+                    f"Cannot reset memory for {vehicle_id!r}: live memory is {before.get('status')!r}.",
+                    str(before.get("error") or "The runtime host reported no memory step."),
                 ]
             ),
         )
@@ -235,19 +199,12 @@ def reset_vehicle_memory(
     except RuntimeError as exc:
         return CommandResult(2, f"Memory reset failed for {vehicle_id}: {exc}")
 
-    after = probe_live_memory(
-        vehicle_id=vehicle_id,
-        vehicle=vehicle,
-        timeout_s=timeout_s,
-    )
-    payload = {
+    payload: dict[str, Any] = {
         "schema": MEMORY_RESET_SCHEMA,
         "vehicle_id": vehicle_id,
-        "provider": provider,
         "ok": bool(reset_payload.get("ok")),
         "reset": reset_payload,
         "before": before,
-        "after": after,
     }
     if not payload["ok"]:
         if json_output:
@@ -262,15 +219,22 @@ def reset_vehicle_memory(
             ),
         )
 
-    # Operator-facing confirmation: every applied plugin's ledger is empty.
-    nonempty = [entry["plugin_id"] for entry in _live_plugins(after) if not ledger_is_empty(entry)]
-    confirmed = after.get("status") == "live" and not nonempty
-    payload["confirmed_empty"] = confirmed
-    payload["nonempty_plugin_ids"] = nonempty
-    if json_output:
-        return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
+    step = reset_payload.get("memory") if isinstance(reset_payload.get("memory"), dict) else {}
+    after = {"status": "live", **_live_step_fields("memory", step)}
+    payload["after"] = after
     before_plugins = {entry["plugin_id"]: entry for entry in _live_plugins(before)}
     after_plugins = {entry["plugin_id"]: entry for entry in _live_plugins(after)}
+    unconfirmed = [
+        plugin_id
+        for plugin_id, now in after_plugins.items()
+        if not ledger_is_empty(now)
+        and now.get(EPOCH_ID) == before_plugins.get(plugin_id, {}).get(EPOCH_ID)
+    ]
+    confirmed = bool(step) and not unconfirmed
+    payload["confirmed"] = confirmed
+    payload["unconfirmed_plugin_ids"] = unconfirmed
+    if json_output:
+        return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
     lines = [
         f"Reset memory: {vehicle_id}",
         f"Plugins: {', '.join(after.get('plugin_ids') or before.get('plugin_ids') or []) or '—'}",
@@ -292,7 +256,11 @@ def reset_vehicle_memory(
         ]
     )
     if not confirmed:
-        detail = f" Still holding records: {', '.join(nonempty)}." if nonempty else ""
-        lines.append(f"Warning: live probe did not confirm an empty memory after reset.{detail}")
+        detail = (
+            f" Same epoch and still holding records: {', '.join(unconfirmed)}."
+            if unconfirmed
+            else " The host answered without the memory step's status."
+        )
+        lines.append(f"Warning: the host's answer does not confirm the reset.{detail}")
         return CommandResult(2, "\n".join(lines))
     return CommandResult(0, "\n".join(lines))

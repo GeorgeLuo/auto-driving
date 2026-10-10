@@ -1153,7 +1153,8 @@ def _read_runtime_status(status_url: str, *, timeout_s: float) -> dict[str, Any]
         with urllib_request.urlopen(status_url, timeout=timeout_s) as response:
             body = response.read()
     except urllib_error.HTTPError as exc:
-        body = exc.read()
+        with exc:
+            body = exc.read()
         if not body:
             raise RuntimeError(f"GET {status_url} failed: HTTP {exc.code}") from exc
     except (OSError, urllib_error.URLError, ValueError) as exc:

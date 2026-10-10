@@ -33,7 +33,8 @@ class RuntimeClient:
             with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
                 body = response.read()
         except urllib.error.HTTPError as exc:
-            body = exc.read()
+            with exc:
+                body = exc.read()
             try:
                 return json.loads(body)
             except ValueError:

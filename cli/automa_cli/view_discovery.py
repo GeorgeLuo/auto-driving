@@ -1,4 +1,4 @@
-"""Runtime view locations shared by local workers and remote-host monitors."""
+"""Where a vehicle's Mac-side runtime views record themselves."""
 
 from __future__ import annotations
 
@@ -25,19 +25,9 @@ def discover_runtime_view(
     runtime_root: Path = RUNTIME_ROOT,
 ) -> dict[str, Any]:
     """Prefer a run's view, then a standalone view, without starting either."""
-    vehicle_dir = runtime_root / safe_path_part(vehicle_id)
-    runtime_dir = Path(controller_bundle_paths(vehicle_dir)["runtime_dir"])
-    directories = (
-        runtime_dir / "automation",
-        runtime_view_dir(vehicle_id, runtime_root=runtime_root),
-        # Read existing records while older standalone processes wind down.
-        vehicle_dir / "picar_observation",
-    )
-    first = probe(directories[0])
-    if first.get("available"):
-        return first
-    for directory in directories[1:]:
-        status = probe(directory)
-        if status.get("available"):
-            return status
-    return first
+    view_dir = runtime_view_dir(vehicle_id, runtime_root=runtime_root)
+    run = probe(view_dir.parent / "automation")
+    if run.get("available"):
+        return run
+    standalone = probe(view_dir)
+    return standalone if standalone.get("available") else run

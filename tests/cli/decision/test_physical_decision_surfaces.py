@@ -13,12 +13,12 @@ from PIL import Image
 from autonomy.decision_cycle.activation import step_activation_path, write_step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from cli.automa_cli.bundles import controller_bundle_paths
-from cli.automa_cli.decision_live import PicarDecisionViewAdapter, _provider_identity
+from cli.automa_cli.decision_live import DecisionViewAdapter, _provider_identity
 from cli.automa_cli.decision_records import activations_from_payloads
 from cli.automa_cli.memory_report import plugin_states
 from cli.automa_cli.decision import (
-    accept_picar_decision_publication,
-    picar_decision_view_frame,
+    accept_decision_publication,
+    decision_view_frame,
 )
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import replace_metadata
@@ -38,7 +38,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     ) -> None:
         now_ms = 2_000
         publication = self._physical_publication(published_at_ms=now_ms)
-        accepted = accept_picar_decision_publication(
+        accepted = accept_decision_publication(
             publication,
             vehicle_id="piracer",
             now_ms=now_ms,
@@ -87,35 +87,33 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             with self.subTest(reason=expected_reason), self.assertRaises(
                 Exception
             ) as raised:
-                accept_picar_decision_publication(
+                accept_decision_publication(
                     candidate,
                     vehicle_id="piracer",
                     now_ms=now_ms,
                 )
-            self.assertEqual(raised.exception.error, "picar_decision_unavailable")
+            self.assertEqual(raised.exception.error, "decision_publication_unavailable")
             self.assertEqual(raised.exception.details.get("reason"), expected_reason)
 
-    def test_physical_decision_uses_shared_runtime_view_without_local_pid(self) -> None:
+    def test_physical_decision_is_served_under_the_host_producer_identity(self) -> None:
         now_ms = int(time.time() * 1000)
-        normalized = accept_picar_decision_publication(
+        normalized = accept_decision_publication(
             self._physical_publication(published_at_ms=now_ms),
             vehicle_id="piracer",
             now_ms=now_ms,
         )
         server = RuntimeViewServer(
             vehicle_id="piracer",
-            automation_dir=self.runtime_root / "piracer" / "picar_observation",
+            automation_dir=self.runtime_root / "piracer" / "runtime_view",
             port=0,
             run_id=normalized["run_id"],
-            decision_provider_identity=_provider_identity(normalized),
+            decision_identity=_provider_identity(normalized),
         ).start()
         self.addCleanup(server.stop)
 
-        self.assertIsNone(server.worker_pid)
-        stream_frame = picar_decision_view_frame(normalized)
         self.assertTrue(
-            server.decision.publish_provider_transaction(
-                stream_frame=stream_frame,
+            server.decision.publish(
+                report=decision_view_frame(normalized),
                 frame_record={
                     "frame_id": normalized["frame_id"],
                     "frame_index": normalized["frame_index"],
@@ -141,7 +139,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             payload = json.loads(response.read().decode("utf-8"))
 
         self.assertEqual(payload["identity"]["source_id"], "donkeycar:piracer")
-        self.assertNotIn("worker_pid", payload["identity"])
         self.assertEqual(payload["current_image"]["frame_id"], "frame_001")
         self.assertEqual(payload["authority"]["proposed_applied"], False)
         with urlopen(
@@ -152,17 +149,17 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
 
     def test_physical_live_adapter_keeps_all_views_in_one_session(self) -> None:
         now_ms = int(time.time() * 1000)
-        normalized = accept_picar_decision_publication(
+        normalized = accept_decision_publication(
             self._physical_publication(published_at_ms=now_ms),
             vehicle_id="piracer",
             now_ms=now_ms,
         )
         server = RuntimeViewServer(
             vehicle_id="piracer",
-            automation_dir=self.runtime_root / "piracer" / "picar_observation",
+            automation_dir=self.runtime_root / "piracer" / "runtime_view",
             port=0,
             run_id=normalized["run_id"],
-            decision_provider_identity=_provider_identity(normalized),
+            decision_identity=_provider_identity(normalized),
         ).start()
         self.addCleanup(server.stop)
 
@@ -172,7 +169,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             "cli.automa_cli.decision_live._accepted_pair",
             return_value=(normalized, (image_buffer.getvalue(), "image/jpeg")),
         ):
-            adapter = PicarDecisionViewAdapter(
+            adapter = DecisionViewAdapter(
                 vehicle_id="piracer",
                 base_url="http://piracer.invalid:8887",
                 view_server=server,
@@ -314,7 +311,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             )
             self.assertEqual(expired.returncode, 2, expired.stderr + expired.stdout)
             unavailable = json.loads(expired.stdout)
-            self.assertEqual(unavailable["error"], "picar_decision_unavailable")
+            self.assertEqual(unavailable["error"], "decision_publication_unavailable")
             self.assertEqual(unavailable["details"]["reason"], "expired")
         finally:
             server.shutdown()

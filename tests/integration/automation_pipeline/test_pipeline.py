@@ -96,7 +96,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 staged_runners(perception=_SlowMapper()),
                 chase_runtime(runtime_root),
                 patch(
-                    "cli.automa_cli.runtime_monitor.PicarDecisionViewAdapter.refresh",
+                    "cli.automa_cli.runtime_monitor.DecisionViewAdapter.refresh",
                     side_effect=RuntimeError("decision view unavailable"),
                 ),
                 patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,

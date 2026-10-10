@@ -24,7 +24,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch(
                     "cli.automa_cli.automation.subprocess.Popen",
                     return_value=_ExitedProcess(),
@@ -94,7 +93,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation.subprocess.Popen", side_effect=launch),
                 patch(
                     "cli.automa_cli.automation.get_perception_view_status",
@@ -172,7 +170,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation._pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.automation.get_perception_view_status",
@@ -230,7 +227,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.automation._pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.automation.get_perception_view_status",
@@ -264,7 +260,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
             ):
                 result = stop_vehicle_automation(vehicle_id="chase-sim-chaser")
 
@@ -293,7 +288,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.chase_observation.RUNTIME_ROOT", runtime_root),
             ):
                 record_vehicle_automation_terminal_result(
                     vehicle_id="chase-sim-chaser",

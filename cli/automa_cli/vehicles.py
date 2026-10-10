@@ -1288,27 +1288,6 @@ def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     )
 
 
-def _summarize_chase_state(state: dict[str, Any]) -> dict[str, Any]:
-    sidebar = _find_play_sidebar_values(state)
-    return {
-        "sidebar_app": state.get("sidebarApp"),
-        "playback": state.get("playback"),
-        "viewport": state.get("viewport"),
-        "scenario": sidebar.get("scenario-select"),
-        "chaser_control_source": sidebar.get("chaser-control-source"),
-    }
-
-
-def _summarize_front_view_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    image = snapshot.get("image") if isinstance(snapshot.get("image"), dict) else {}
-    return {
-        "has_data_url": isinstance(image.get("dataUrl"), str),
-        "has_svg": isinstance(image.get("svg"), str),
-        "width": snapshot.get("width"),
-        "height": snapshot.get("height"),
-    }
-
-
 def _inactive_detail(diagnostics: dict[str, Any]) -> str:
     parts: list[str] = []
     runtime_state = diagnostics.get("runtime_state")
@@ -1387,26 +1366,6 @@ def _probe_tcp_endpoint(base_url: str, *, timeout_s: float) -> dict[str, Any]:
     return diagnostics
 
 
-def _find_play_sidebar_values(state: dict[str, Any]) -> dict[str, Any]:
-    values: dict[str, Any] = {}
-    sections = state.get("playSidebarSections")
-    if not isinstance(sections, list):
-        return values
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        rows = section.get("rows")
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            row_id = row.get("id")
-            if isinstance(row_id, str) and "value" in row:
-                values[row_id] = row.get("value")
-    return values
-
-
 def _get_json(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[dict[str, Any] | None, str | None]:
     ok, body_or_error = _get(base_url, endpoint, timeout_s=timeout_s)
     if not ok:
@@ -1435,6 +1394,7 @@ def _get(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[bool, str]:
             body = response.read()
             return True, body.decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
+        exc.close()
         return False, f"GET {url} returned HTTP {exc.code}"
     except urllib.error.URLError as exc:
         return False, f"GET {url} failed: {exc.reason}"

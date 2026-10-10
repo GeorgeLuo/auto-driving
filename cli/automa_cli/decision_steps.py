@@ -27,11 +27,11 @@ from .decision import (
     DecisionSurfaceError,
     _error_result,
     _require_valid_activations,
-    accept_picar_decision_publication,
+    accept_decision_publication,
     decision_error_payload,
 )
 from .paths import ROOT, display_path
-from .picar_observation import fetch_decision_publication
+from .host_publications import fetch_decision_publication
 from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
 from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
@@ -188,7 +188,7 @@ def stream_vehicle_step(
                 vehicle_id=vehicle_id,
                 details={"reason": "missing", "transport": str(exc)},
             ) from exc
-        normalized = accept_picar_decision_publication(
+        normalized = accept_decision_publication(
             publication, vehicle_id=vehicle_id, now_ms=int(time.time() * 1000),
         )
         report = normalized["decision"]

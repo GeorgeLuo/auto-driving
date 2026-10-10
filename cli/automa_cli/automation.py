@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -20,12 +21,6 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
-from .chase_observation import (
-    _pid_alive,
-    _pid_matches_automation,
-    _process_command,
-)
-from .decision import load_live_decision_activation
 from .paths import display_path, safe_path_part
 from . import runtime_hosts
 from .runtime_hosts import (
@@ -164,6 +159,22 @@ def _host_runtime_status(
             ),
         },
         "published_view": view,
+        "applied_decision": autonomy.get("applied_decision"),
+    }
+
+
+def _decision_summary(identity: Any) -> dict[str, Any]:
+    """Whether a decision identity is deployed, its generation, and each step's plugins."""
+
+    if not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict):
+        return {"deployed": False}
+    return {
+        "deployed": True,
+        "generation_id": identity.get("generation_id"),
+        "plugins": {
+            step: (payload or {}).get("plugins") or []
+            for step, payload in identity["steps"].items()
+        },
     }
 
 
@@ -1183,18 +1194,13 @@ def _collect_automation_status(
                 else [],
             }
 
-        # Unstaged decision steps run their built-ins, so a readable identity is deployed.
+        # A running monitor records the decision its host applied. Otherwise the
+        # staged steps are what a start deploys; unstaged ones run their built-ins.
         try:
-            identity = load_live_decision_activation(vehicle_runtime_dir) or decision_identity(bundle)
+            identity = state.get("decision") if pid_alive else None
+            decision = _decision_summary(identity) if identity else _decision_summary(decision_identity(bundle))
         except (OSError, TypeError, ValueError):
-            identity = None
-        decision: dict[str, Any] = {"deployed": identity is not None}
-        if identity is not None:
-            decision["generation_id"] = identity["generation_id"]
-            decision["plugins"] = {
-                step: (payload or {}).get("plugins") or []
-                for step, payload in identity["steps"].items()
-            }
+            decision = {"deployed": False}
 
         statuses.append(
             {
@@ -1279,11 +1285,13 @@ def _collect_automation_status(
             }
         )
         if host_url is not None and not pid_alive:
-            statuses[-1].update(
-                _host_runtime_status(
-                    vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5
-                )
+            host = _host_runtime_status(
+                vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5
             )
+            applied = host.pop("applied_decision")
+            statuses[-1].update(host)
+            if applied:
+                statuses[-1]["decision"].update(_decision_summary(applied))
             if activation_problems:
                 statuses[-1]["process"]["recovery"] = activation_problems[0]["command"]
     return statuses
@@ -1474,10 +1482,76 @@ def _status_log_label(process: dict[str, Any]) -> str:
     return process.get("log_path") or "enabled"
 
 
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
 
+def _pid_matches_automation(pid: int, vehicle_id: str) -> bool:
+    """Return whether *pid* looks like this vehicle's automation monitor.
+
+    When the process command cannot be read, returns True (stop path stays
+    permissive). Callers that must fail closed should read the command first
+    and use :func:`_automation_command_matches_vehicle` directly.
+    """
+
+    command = _process_command(pid)
+    if command is None:
+        return True
+    return _automation_command_matches_vehicle(command, vehicle_id)
 
 
+def _automation_command_matches_vehicle(command: str, vehicle_id: str) -> bool:
+    """Pure check: command is an automation run for exactly *vehicle_id*.
+
+    Requires the contiguous launcher subcommand ``vehicles automation run`` and
+    an exact ``--id <vehicle_id>`` argument pair (token equality, not substring).
+    """
+
+    if not vehicle_id or not str(vehicle_id).strip():
+        return False
+    vehicle_key = str(vehicle_id).strip()
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+    # Contiguous launcher subcommand as emitted by start_automation.
+    matched_run = False
+    for index in range(len(tokens) - 2):
+        if tokens[index : index + 3] == ["vehicles", "automation", "run"]:
+            matched_run = True
+            break
+    if not matched_run:
+        return False
+    for index, token in enumerate(tokens):
+        if token == "--id":
+            if index + 1 < len(tokens) and tokens[index + 1] == vehicle_key:
+                return True
+        elif token.startswith("--id="):
+            if token[len("--id=") :] == vehicle_key:
+                return True
+    return False
+
+
+def _process_command(pid: int) -> str | None:
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    command = result.stdout.strip()
+    return command or None
 
 
 def _timestamp_ms() -> int:
@@ -1492,15 +1566,9 @@ def _int_or_none(value: Any) -> int | None:
     return None
 
 
-
-
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     write_json_atomically(path, payload)
-
-
-
-
 
 
 def _read_json(path: Path) -> Any:

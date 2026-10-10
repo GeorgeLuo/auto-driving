@@ -318,6 +318,14 @@ def stop_chase_host(vehicle_id: str, *, wait_s: float = 3.0) -> bool:
 
 # Any vehicle ----------------------------------------------------------------
 
+def staged_connection(vehicle_id: str) -> dict[str, Any]:
+    """The connection ``vehicles update`` staged for the vehicle, without discovery."""
+
+    vehicle = _offline_staged_vehicle(bundle_paths(vehicle_id), vehicle_id) or {}
+    connection = vehicle.get("connection")
+    return connection if isinstance(connection, dict) else {}
+
+
 def running_base_url(vehicle_id: str) -> str | None:
     """The runtime host to address now, without discovery or starting one.
 
@@ -327,8 +335,7 @@ def running_base_url(vehicle_id: str) -> str | None:
     if is_chase_vehicle_id(vehicle_id):
         record = host_record(vehicle_id)
         return None if record is None else record["base_url"]
-    vehicle = _offline_staged_vehicle(bundle_paths(vehicle_id), vehicle_id) or {}
-    base_url = (vehicle.get("connection") or {}).get("base_url")
+    base_url = staged_connection(vehicle_id).get("base_url")
     return base_url.rstrip("/") if isinstance(base_url, str) and base_url.strip() else None
 
 

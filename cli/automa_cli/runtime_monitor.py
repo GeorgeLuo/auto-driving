@@ -19,7 +19,7 @@ from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
 from autonomy.runtime.client import RuntimeClient
 from .paths import display_path
 from .perception_view import perception_view_ready
-from .picar_observation import (
+from .host_publications import (
     fetch_observation_publication, fetch_observation_frame,
     frame_id_from_headers, publication_to_frame_record, perception_text_from_publication,
 )
@@ -29,7 +29,7 @@ from .run_record import (
     timestamp_ms,
 )
 from .runtime_view import RuntimeViewServer
-from .decision_live import PicarDecisionViewAdapter
+from .decision_live import DecisionViewAdapter
 from .staged_bundle import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
 
@@ -94,7 +94,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
             run_id=run_id, worker_pid=os.getpid(),
             plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
         ).start()
-        decision_view = PicarDecisionViewAdapter(
+        decision_view = DecisionViewAdapter(
             vehicle_id=vehicle_id, base_url=base_url, view_server=server, timeout_s=timeout_s,
             action_policy=configuration.mode,
         )

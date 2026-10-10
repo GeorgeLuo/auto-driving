@@ -1,8 +1,7 @@
-"""What a PiCar's onboard host publishes, read over HTTP.
+"""What a vehicle's runtime host publishes, read over HTTP.
 
 Its autonomy status, observation and decision publications, frames and host
-telemetry. ``chase_observation`` reads the Chase worker's counterparts from
-its runtime directory.
+telemetry. A PiCar's host and a local Chase host serve the same routes.
 """
 
 from __future__ import annotations
@@ -64,8 +63,8 @@ HOST_TELEMETRY_REASONS = frozenset(
 )
 
 
-class PicarDecisionPublicationError(ValueError):
-    """A PiCar decision publication is absent or fails normalization."""
+class DecisionPublicationError(ValueError):
+    """A decision publication is absent or fails normalization."""
 
     def __init__(
         self,
@@ -96,20 +95,17 @@ class HostTelemetryError(ValueError):
         self.details = details or {}
 
 
-def fetch_autonomy_status(
-    base_url: str,
-    *,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    """GET /autonomy/status from a PiCar's Donkey runtime."""
+def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, Any]:
+    """GET one JSON object from a runtime host; an HTTP error's JSON body is the answer."""
 
-    url = f"{base_url.rstrip('/')}{STATUS_JSON_PATH}"
+    url = f"{base_url.rstrip('/')}{path}"
     try:
         with urllib.request.urlopen(url, timeout=max(0.1, float(timeout_s))) as response:
             body = response.read()
             status_code = getattr(response, "status", 200)
     except urllib.error.HTTPError as exc:
-        body = exc.read() if exc.fp is not None else b""
+        with exc:
+            body = exc.read() if exc.fp is not None else b""
         status_code = int(exc.code)
         if not body:
             raise ConnectionError(
@@ -130,70 +126,22 @@ def fetch_autonomy_status(
     return payload
 
 
-def fetch_observation_publication(
-    base_url: str,
-    *,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    url = f"{base_url.rstrip('/')}{LATEST_JSON_PATH}"
-    try:
-        with urllib.request.urlopen(url, timeout=max(0.1, float(timeout_s))) as response:
-            body = response.read()
-            status_code = getattr(response, "status", 200)
-    except urllib.error.HTTPError as exc:
-        body = exc.read() if exc.fp is not None else b""
-        status_code = int(exc.code)
-        if not body:
-            raise ConnectionError(
-                f"GET {url} failed with HTTP {status_code} and empty body"
-            ) from exc
-    except urllib.error.URLError as exc:
-        raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
+def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
+    """GET /autonomy/status from a runtime host."""
 
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConnectionError(f"GET {url} returned non-JSON body") from exc
-    if not isinstance(payload, dict):
-        raise ConnectionError(f"GET {url} returned a non-object JSON payload")
-    payload.setdefault("http_status", status_code)
-    return payload
+    return _get_json(base_url, STATUS_JSON_PATH, timeout_s=timeout_s)
 
 
-def fetch_decision_publication(
-    base_url: str,
-    *,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    """GET the read-only current decision publication from the PiCar onboard host."""
+def fetch_observation_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
+    """GET the latest observation publication from a runtime host."""
 
-    url = f"{base_url.rstrip('/')}{DECISION_LATEST_PATH}"
-    try:
-        with urllib.request.urlopen(url, timeout=max(0.1, float(timeout_s))) as response:
-            body = response.read()
-            status_code = getattr(response, "status", 200)
-    except urllib.error.HTTPError as exc:
-        body = exc.read() if exc.fp is not None else b""
-        status_code = int(exc.code)
-        if not body:
-            raise ConnectionError(
-                f"GET {url} failed with HTTP {status_code} and empty body"
-            ) from exc
-    except urllib.error.URLError as exc:
-        raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
+    return _get_json(base_url, LATEST_JSON_PATH, timeout_s=timeout_s)
 
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConnectionError(f"GET {url} returned non-JSON body") from exc
-    if not isinstance(payload, dict):
-        raise ConnectionError(f"GET {url} returned a non-object JSON payload")
-    payload.setdefault("http_status", status_code)
-    return payload
+
+def fetch_decision_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
+    """GET the read-only current decision publication from a runtime host."""
+
+    return _get_json(base_url, DECISION_LATEST_PATH, timeout_s=timeout_s)
 
 
 class _RejectTelemetryRedirect(urllib.request.HTTPRedirectHandler):
@@ -230,12 +178,13 @@ def _fetch_host_telemetry_json(
             status_code = int(getattr(response, "status", 200))
     except urllib.error.HTTPError as exc:
         status_code = int(exc.code)
+        with exc:
+            body = exc.read() if exc.fp is not None and not 300 <= status_code < 400 else b""
         if 300 <= status_code < 400:
             raise HostTelemetryError(
                 "redirect_rejected",
                 f"GET {url} returned a redirect that the telemetry client rejected.",
             ) from exc
-        body = exc.read() if exc.fp is not None else b""
         if not body:
             reason = (
                 "method_not_allowed"
@@ -317,19 +266,19 @@ def fetch_host_telemetry_records(
     return _fetch_host_telemetry_json(url, timeout_s=timeout_s, query_route=True)
 
 
-def _picar_decision_error(
+def _publication_error(
     reason: str,
     message: str,
     *,
     field: str | None = None,
-) -> PicarDecisionPublicationError:
+) -> DecisionPublicationError:
     details: dict[str, Any] = {}
     if field is not None:
         details["field"] = field
-    return PicarDecisionPublicationError(reason, message, details=details)
+    return DecisionPublicationError(reason, message, details=details)
 
 
-def _picar_required_int(
+def _required_int(
     value: object,
     *,
     field: str,
@@ -340,30 +289,30 @@ def _picar_required_int(
     except ValueError as exc:
         if allow_negative and type(value) is int:
             return int(value)
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            f"PiCar decision publication {field} must be a non-bool int.",
+            f"Decision publication {field} must be a non-bool int.",
             field=field,
         ) from exc
     return number
 
 
-def _picar_required_id(value: object, *, field: str) -> str:
+def _required_id(value: object, *, field: str) -> str:
     try:
         return require_ascii_id(value, field_name=field)
     except ValueError as exc:
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            f"PiCar decision publication {field} is not a valid identity.",
+            f"Decision publication {field} is not a valid identity.",
             field=field,
         ) from exc
 
 
-def _picar_require_mapping(value: object, *, field: str) -> dict[str, Any]:
+def _require_mapping(value: object, *, field: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            f"PiCar decision publication {field} must be an object.",
+            f"Decision publication {field} must be an object.",
             field=field,
         )
     return value
@@ -1259,37 +1208,37 @@ def _decision_source_frame(decision: dict[str, Any]) -> dict[str, Any]:
             except HostTelemetryError as exc:
                 raise _host_telemetry_error(
                     "identity_mismatch",
-                    "PiCar decision source-frame identity is invalid.",
+                    "Decision source-frame identity is invalid.",
                     details=exc.details,
                 ) from exc
             if frame["captured_at_ms"] > frame["completed_at_ms"]:
                 raise _host_telemetry_error(
                     "identity_mismatch",
-                    "PiCar decision source-frame timestamps are invalid.",
+                    "Decision source-frame timestamps are invalid.",
                 )
             return frame
     raise _host_telemetry_error(
         "identity_mismatch",
-        "PiCar decision publication cannot expose the complete source-frame identity.",
+        "Decision publication cannot expose the complete source-frame identity.",
         field="decision.source_frame",
     )
 
 
-def picar_decision_identity(normalized_decision: dict[str, Any]) -> dict[str, Any]:
+def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[str, Any]:
     """Extract the exact composite identity needed for a telemetry join."""
 
     decision = normalized_decision.get("decision")
     if not isinstance(decision, dict):
         raise _host_telemetry_error(
             "identity_mismatch",
-            "PiCar decision publication has no decision object.",
+            "Decision publication has no decision object.",
         )
     values = decision.get("values") if isinstance(decision.get("values"), dict) else {}
     activation = values.get("activation") if isinstance(values.get("activation"), dict) else None
     if not isinstance(activation, dict):
         raise _host_telemetry_error(
             "identity_mismatch",
-            "PiCar decision publication cannot expose activation identity.",
+            "Decision publication cannot expose activation identity.",
         )
     try:
         vehicle_id = _host_require_id(decision.get("vehicle_id"), field="decision.vehicle_id")
@@ -1307,28 +1256,28 @@ def picar_decision_identity(normalized_decision: dict[str, Any]) -> dict[str, An
             raise
         raise _host_telemetry_error(
             "identity_mismatch",
-            "PiCar decision publication cannot expose exact telemetry identity.",
+            "Decision publication cannot expose exact telemetry identity.",
             details=exc.details,
         ) from exc
     if activation_generation_id != generation_id:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "PiCar decision activation generation does not match its envelope.",
+            "Decision activation generation does not match its envelope.",
         )
     if decision.get("frame_id") != source_frame["frame_id"]:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "PiCar decision frame_id does not match its source-frame identity.",
+            "Decision frame_id does not match its source-frame identity.",
         )
     if decision.get("frame_index") != source_frame["frame_index"]:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "PiCar decision frame_index does not match its source-frame identity.",
+            "Decision frame_index does not match its source-frame identity.",
         )
     if decision.get("timestamp_ms") != source_frame["captured_at_ms"]:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "PiCar decision timestamp does not match its source-frame identity.",
+            "Decision timestamp does not match its source-frame identity.",
         )
     return {
         "vehicle_id": vehicle_id,
@@ -1376,7 +1325,7 @@ def join_host_telemetry_to_decision(
     now_ms: int | None = None,
     vehicle_id: str | None = None,
 ) -> dict[str, Any]:
-    """Join a normalized/latest telemetry point to a PiCar decision exactly."""
+    """Join a normalized/latest telemetry point to a decision exactly."""
 
     if isinstance(telemetry, dict) and telemetry.get("schema") == HOST_TELEMETRY_SCHEMA:
         if now_ms is None:
@@ -1397,12 +1346,12 @@ def join_host_telemetry_to_decision(
             reason if reason in HOST_TELEMETRY_REASONS else "field_invalid",
             "Host telemetry point is not healthy enough to join.",
         )
-    decision_identity = picar_decision_identity(normalized_decision)
+    decision_identity = decision_publication_identity(normalized_decision)
     telemetry_identity = telemetry.get("identity")
     if not isinstance(telemetry_identity, dict) or telemetry_identity != decision_identity:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Host telemetry identity does not exactly match the PiCar decision.",
+            "Host telemetry identity does not exactly match the decision.",
             details={
                 "decision_identity": decision_identity,
                 "telemetry_identity": deepcopy(telemetry_identity),
@@ -1418,14 +1367,14 @@ def join_host_telemetry_to_decision(
 
 # Short aliases keep the consumer seam discoverable without making the
 # producer or accepted decision schemas depend on these helpers.
-def normalize_picar_decision_publication(
+def normalize_decision_publication(
     publication: object,
     *,
     vehicle_id: str,
     now_ms: int,
     max_age_ms: int | None = None,
 ) -> dict[str, Any]:
-    """Normalize and freshness-check a PiCar decision publication.
+    """Normalize and freshness-check a decision publication.
 
     The provider returns a detached view of the onboard transport and never
     creates vehicle/run/activation/frame identity. The typed cycle remains the
@@ -1433,19 +1382,19 @@ def normalize_picar_decision_publication(
     """
 
     if publication is None:
-        raise _picar_decision_error(
+        raise _publication_error(
             "missing",
-            "PiCar decision publication is missing.",
+            "Decision publication is missing.",
         )
     if not isinstance(publication, dict):
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            "PiCar decision publication must be a JSON object.",
+            "Decision publication must be a JSON object.",
         )
     if publication.get("schema") != DECISION_PUBLICATION_SCHEMA:
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            f"PiCar decision publication schema must be {DECISION_PUBLICATION_SCHEMA!r}.",
+            f"Decision publication schema must be {DECISION_PUBLICATION_SCHEMA!r}.",
             field="schema",
         )
     try:
@@ -1453,9 +1402,9 @@ def normalize_picar_decision_publication(
     except ValueError as exc:
         raise ValueError("vehicle_id must be a valid identity") from exc
     if "status" not in publication or "ok" not in publication:
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            "PiCar decision publication must include status and ok.",
+            "Decision publication must include status and ok.",
         )
     status = publication.get("status")
     ok = publication.get("ok")
@@ -1481,53 +1430,53 @@ def normalize_picar_decision_publication(
         }
         if reason not in allowed:
             reason = "unavailable"
-        raise _picar_decision_error(
+        raise _publication_error(
             reason,
-            f"PiCar decision publication is unavailable: {reason}.",
+            f"Decision publication is unavailable: {reason}.",
         )
     if publication.get("reason") != "":
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            "Ready PiCar decision publication must have an empty reason.",
+            "Ready decision publication must have an empty reason.",
             field="reason",
         )
 
-    read_at_ms = _picar_required_int(
+    read_at_ms = _required_int(
         publication.get("read_at_ms"), field="read_at_ms", allow_negative=True
     )
-    result_age_ms = _picar_required_int(
+    result_age_ms = _required_int(
         publication.get("result_age_ms"),
         field="result_age_ms",
         allow_negative=True,
     )
     advertised_ceiling = publication.get("stale_after_ms")
     if type(advertised_ceiling) is not int or advertised_ceiling <= 0:
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            "PiCar decision publication stale_after_ms must be positive.",
+            "Decision publication stale_after_ms must be positive.",
             field="stale_after_ms",
         )
 
     try:
         report = VehicleReport.from_dict(publication.get("decision"))
     except (TypeError, ValueError) as exc:
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            f"PiCar decision publication is not a vehicle report: {exc}",
+            f"Decision publication is not a vehicle report: {exc}",
             field="decision",
         ) from exc
     try:
         published_ceiling = diagnostic_ceiling(report.values)
     except ValueError as exc:
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
             str(exc),
             field="decision.values.stale_after_ms",
         ) from exc
     if advertised_ceiling != published_ceiling:
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            "PiCar decision publication stale_after_ms does not match the report.",
+            "Decision publication stale_after_ms does not match the report.",
             field="stale_after_ms",
         )
     if max_age_ms is None:
@@ -1541,12 +1490,12 @@ def normalize_picar_decision_publication(
 
     decision_vehicle_id = report.vehicle_id
     if decision_vehicle_id != vehicle_id:
-        raise _picar_decision_error(
+        raise _publication_error(
             "mismatched",
-            "PiCar decision publication vehicle_id does not match the requested vehicle.",
+            "Decision publication vehicle_id does not match the requested vehicle.",
             field="decision.vehicle_id",
         )
-    source_id = _picar_required_id(values.get("source_id"), field="decision.values.source_id")
+    source_id = _required_id(values.get("source_id"), field="decision.values.source_id")
     run_id = report.run_id
     generation_id = report.generation_id
     frame_id = report.frame_id
@@ -1554,26 +1503,26 @@ def normalize_picar_decision_publication(
     timestamp_value = report.timestamp_ms
     published_at_ms = report.published_at_ms
 
-    activation = _picar_require_mapping(
+    activation = _require_mapping(
         values.get("activation"), field="decision.values.activation"
     )
     for field in ("generation_id", "steps"):
         if field not in activation:
-            raise _picar_decision_error(
+            raise _publication_error(
                 "incomplete",
-                f"PiCar decision publication decision.values.activation.{field} is missing.",
+                f"Decision publication decision.values.activation.{field} is missing.",
                 field=f"decision.values.activation.{field}",
             )
     if activation.get("generation_id") != generation_id:
-        raise _picar_decision_error(
+        raise _publication_error(
             "mismatched",
             "Decision activation generation does not match its outer identity.",
             field="decision.values.activation.generation_id",
         )
     if not isinstance(activation.get("steps"), dict):
-        raise _picar_decision_error(
+        raise _publication_error(
             "incomplete",
-            "PiCar decision activation steps must be an object.",
+            "Decision activation steps must be an object.",
             field="decision.values.activation.steps",
         )
 
@@ -1583,15 +1532,15 @@ def normalize_picar_decision_publication(
         raise ValueError("now_ms must be a non-bool int")
     age_ms = int(now_ms) - published_at_ms
     if age_ms < 0:
-        raise _picar_decision_error(
+        raise _publication_error(
             "future_dated",
-            f"PiCar decision publication is future-dated by {-age_ms} ms.",
+            f"Decision publication is future-dated by {-age_ms} ms.",
             field="decision.published_at_ms",
         )
     if age_ms > ceiling:
-        raise _picar_decision_error(
+        raise _publication_error(
             "expired",
-            f"PiCar decision publication age {age_ms} ms exceeds {ceiling} ms.",
+            f"Decision publication age {age_ms} ms exceeds {ceiling} ms.",
             field="decision.published_at_ms",
         )
 
@@ -1627,7 +1576,8 @@ def fetch_observation_frame(
     except urllib.error.HTTPError as exc:
         detail = ""
         try:
-            detail = exc.read().decode("utf-8", errors="replace")
+            with exc:
+                detail = exc.read().decode("utf-8", errors="replace")
         except Exception:
             detail = ""
         raise ConnectionError(
@@ -1714,7 +1664,3 @@ def perception_text_from_publication(publication: dict[str, Any]) -> str:
     return f"health={health}\n(no perception payload in latest state)"
 
 
-def picar_base_url(vehicle: dict[str, Any]) -> str | None:
-    connection = vehicle.get("connection") if isinstance(vehicle.get("connection"), dict) else {}
-    base = connection.get("base_url")
-    return base.rstrip("/") if isinstance(base, str) and base.strip() else None

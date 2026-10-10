@@ -139,10 +139,10 @@ def format_apply_staged(apply: dict[str, Any]) -> list[str]:
     ]
 
 
-def absent_step_error(step: str, vehicle_id: str, provider: Any) -> str:
+def absent_step_error(step: str, vehicle_id: str) -> str:
     """The same guidance for every vehicle whose running autonomy lacks ``step``."""
 
-    restart = apply_staged(vehicle_id, provider, step)["restart_command"]
+    restart = apply_staged(vehicle_id, None, step)["restart_command"]
     return (
         f"{vehicle_id} runs no {step} step. Stage it with "
         f"./cli/automa vehicles update {step} --id {vehicle_id}, then restart: {restart}"

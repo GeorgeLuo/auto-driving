@@ -643,11 +643,11 @@ def build_parser() -> argparse.ArgumentParser:
     memory_help.set_defaults(handler=_handle_vehicles_memory_help)
     memory_reset = memory_commands.add_parser(
         "reset",
-        help="Reset live memory to a new empty epoch on Chase or PiCar.",
+        help="Reset live memory to a new empty epoch on the vehicle's runtime host.",
         description=(
-            "Reset the activated memory step on the live host. Chase uses the "
-            "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms via "
-            "live probe that every applied plugin's ledger is empty. Does not move the vehicle."
+            "POST /autonomy/memory/reset to the vehicle's runtime host. Confirms that every "
+            "applied plugin started a new epoch or holds no records when the host answers. "
+            "Does not move the vehicle."
         ),
     )
     memory_reset.add_argument(
@@ -660,13 +660,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout-s",
         type=float,
         default=3.0,
-        help="HTTP/discovery timeout in seconds.",
-    )
-    memory_reset.add_argument(
-        "--wait-s",
-        type=float,
-        default=5.0,
-        help="Seconds to wait for Chase automation worker to acknowledge reset.",
+        help="HTTP timeout in seconds.",
     )
     memory_reset.add_argument(
         "--json",
@@ -781,8 +775,8 @@ def build_parser() -> argparse.ArgumentParser:
         "viability",
         help="Health-check memory on a vehicle.",
         description=(
-            "Health-check memory on a vehicle. The live memory step of a PiCar or a "
-            "running Chase worker is polled for a bounded interval (default 60s) to "
+            "Health-check memory on a vehicle. The live memory step of the vehicle's "
+            "runtime host is polled for a bounded interval (default 60s) to "
             "record update cadence, update duration, failures, and each applied "
             "plugin's health and epoch stability. Measurements save report.json under "
             "lab/runs/memory-viability/ unless --no-record."
@@ -820,7 +814,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
+        help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
     )
     memory_viability.set_defaults(handler=_handle_vehicles_memory_viability)
 
@@ -1122,9 +1116,10 @@ def build_parser() -> argparse.ArgumentParser:
         "viability",
         help="Health-check perception on a vehicle.",
         description=(
-            "Health-check perception on a vehicle. A PiCar's publication or a running "
-            "Chase worker's latest cycle is polled for a bounded interval (default 60s) "
-            "to record cadence, result age, processing duration, and skip policy, plus "
+            "Health-check perception on a vehicle. The runtime host's observation "
+            "publication is polled for a bounded interval (default 60s) to record "
+            "cadence, result age, processing duration, skip policy, and that no control "
+            "was applied, plus "
             "host RSS/CPU when the vehicle supplies an ssh_target. Measurements save "
             "report.json and summary.md under lab/runs/perception-viability/ unless --no-record."
         ),
@@ -1161,7 +1156,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
+        help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
     )
     perception_viability.set_defaults(handler=_handle_vehicles_perception_viability)
 
@@ -2106,7 +2101,6 @@ def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:
     result = reset_vehicle_memory(
         vehicle_id=args.vehicle_id,
         timeout_s=args.timeout_s,
-        wait_s=args.wait_s,
         json_output=args.json,
     )
     if result.message:

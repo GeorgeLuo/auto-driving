@@ -122,7 +122,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             mock.patch.object(
                 runtime_monitor, "frame_id_from_headers", side_effect=lambda headers: headers["frame_id"]
             ),
-            mock.patch.object(runtime_monitor, "PicarDecisionViewAdapter", _FakeDecisionView),
+            mock.patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
             code, message = runtime_monitor.monitor_runtime(
                 vehicle_id=VEHICLE_ID,

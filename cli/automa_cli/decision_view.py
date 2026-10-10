@@ -16,12 +16,11 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode
 
 from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
-from .picar_observation import host_telemetry_failure
+from .host_publications import host_telemetry_failure
 
 
 DECISION_VIEW_SCHEMA = "automa_live_decision_view_v1"
@@ -207,57 +206,14 @@ def _evidence_projection(
     }
 
 
-def decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
-    from .decision import load_applied_decision_identity
-    from .step_activations import decision_identity as staged_identity
-
-    return load_applied_decision_identity(Path(bundle["runtime_dir"])) or staged_identity(bundle)
-
-
-def _activation_identity(activation: dict[str, Any]) -> dict[str, Any]:
-    """The decision generation of a staged identity (``generation_id`` and ``steps``)."""
-
-    generation = activation.get("generation_id") if isinstance(activation, dict) else None
-    steps = activation.get("steps") if isinstance(activation, dict) else None
-    if type(generation) is not str or not generation:
-        raise ValueError("decision identity generation_id is invalid")
-    if not isinstance(steps, dict):
-        raise ValueError("decision identity has no steps")
-    return {
-        "activation_generation_id": generation,
-        "activation_sha256": _sha256_json(steps),
-    }
-
-
 def decision_view_identity(
-    *,
-    vehicle_id: str,
-    run_id: str,
-    worker_pid: int,
-    activation: dict[str, Any],
-) -> dict[str, Any]:
-    if type(vehicle_id) is not str or not vehicle_id:
-        raise ValueError("decision view vehicle_id is invalid")
-    if type(run_id) is not str or not run_id:
-        raise ValueError("decision view run_id is invalid")
-    if type(worker_pid) is not int or worker_pid <= 0:
-        raise ValueError("decision view worker_pid is invalid")
-    return {
-        "vehicle_id": vehicle_id,
-        "run_id": run_id,
-        "worker_pid": worker_pid,
-        **_activation_identity(activation),
-    }
-
-
-def provider_decision_view_identity(
     *,
     vehicle_id: str,
     source_id: str,
     run_id: str,
     producer_generation_id: str,
 ) -> dict[str, Any]:
-    """Identify a non-local producer without inventing local process state."""
+    """Identify one runtime host session's decision producer."""
 
     for field, value in (
         ("vehicle_id", vehicle_id),
@@ -276,20 +232,7 @@ def provider_decision_view_identity(
 
 
 def generation_id(identity: dict[str, Any]) -> str:
-    local_expected = {
-        "vehicle_id",
-        "run_id",
-        "worker_pid",
-        "activation_generation_id",
-        "activation_sha256",
-    }
-    provider_expected = {
-        "vehicle_id",
-        "source_id",
-        "run_id",
-        "producer_generation_id",
-    }
-    if frozenset(identity) not in {frozenset(local_expected), frozenset(provider_expected)}:
+    if set(identity) != {"vehicle_id", "source_id", "run_id", "producer_generation_id"}:
         raise ValueError("decision view identity has an unexpected key set")
     return _sha256_json(identity)
 
@@ -332,39 +275,16 @@ def parse_image_query(query: str) -> tuple[str, str]:
 class DecisionView:
     """One runtime generation's bounded decision/image transactions."""
 
-    def __init__(
-        self,
-        *,
-        vehicle_id: str,
-        run_id: str | None,
-        worker_pid: int | None,
-        activation: dict[str, Any] | None,
-        activation_path: Path,
-        provider_identity: dict[str, Any] | None = None,
-    ) -> None:
-        self._vehicle_id, self._run_id, self._worker_pid = vehicle_id, run_id, worker_pid
-        self._activation_path = Path(activation_path)
-        self._activation = _json_copy(activation) if isinstance(activation, dict) else None
+    def __init__(self, *, vehicle_id: str, identity: dict[str, Any] | None = None) -> None:
+        self._vehicle_id = vehicle_id
         self.identity: dict[str, Any] | None = None
         self.generation_id: str | None = None
-        self._provider_identity = (
-            _json_copy(provider_identity) if isinstance(provider_identity, dict) else None
-        )
-        if self._provider_identity is not None:
-            self.identity = provider_decision_view_identity(**self._provider_identity)
-            self.generation_id = generation_id(self.identity)
-        elif self._activation is not None and run_id is not None and worker_pid is not None:
-            self.identity = decision_view_identity(
-                vehicle_id=vehicle_id,
-                run_id=run_id,
-                worker_pid=worker_pid,
-                activation=self._activation,
-            )
-            self.generation_id = generation_id(self.identity)
         self._lock = threading.Lock()
         self._transactions: OrderedDict[str, _Transaction] = OrderedDict()
         self._latest_transaction_id: str | None = None
         self._stopped = False
+        if identity is not None:
+            self.adopt(identity)
 
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
@@ -389,36 +309,17 @@ class DecisionView:
             return None
         return f"/decision?{urlencode({'generation': self.generation_id})}"
 
-    def adopt(self, activation: dict[str, Any]) -> None:
-        """Publish under ``activation``, a restage the worker now runs.
+    def adopt(self, producer: dict[str, Any]) -> None:
+        """Publish under ``producer``, the host session generation now deciding.
 
-        The view takes that generation and drops the previous one's
-        transactions; a page pinned to the old generation gets a 409 naming
-        the new one, which it follows while the run and worker are the same.
+        A new generation drops the previous one's transactions; a page pinned
+        to the old generation gets a 409 naming the new one.
         """
 
-        if self._run_id is None or self._worker_pid is None or self._provider_identity is not None:
-            return
-        identity = decision_view_identity(
-            vehicle_id=self._vehicle_id,
-            run_id=self._run_id,
-            worker_pid=self._worker_pid,
-            activation=activation,
-        )
-        with self._lock:
-            self._activation = _json_copy(activation)
-            self.identity = identity
-            self.generation_id = generation_id(identity)
-            self._transactions.clear()
-            self._latest_transaction_id = None
-
-    def adopt_provider(self, provider: dict[str, Any]) -> None:
-        """Adopt an accepted onboard generation using the same view lifecycle."""
-        identity = provider_decision_view_identity(**provider)
+        identity = decision_view_identity(**producer)
         with self._lock:
             if self.identity == identity:
                 return
-            self._provider_identity = _json_copy(provider)
             self.identity = identity
             self.generation_id = generation_id(identity)
             self._transactions.clear()
@@ -445,39 +346,21 @@ class DecisionView:
         frame_record: dict[str, Any],
         image: tuple[bytes, str] | None,
     ) -> bool:
-        """Store one report when the vehicle, run, generation, and frame agree.
-
-        Chase identifies its worker pid in ``values``. PiCar identifies its
-        source there. The named report fields are the same for both.
-        """
+        """Store one report when the vehicle, run, generation, source, and frame agree."""
 
         if self.identity is None or image is None:
-            self.invalidate_latest()
-            return False
-        if self._provider_identity is None and self._activation is None:
             self.invalidate_latest()
             return False
         try:
             parsed = VehicleReport.from_dict(report)
             diagnostic_ceiling(parsed.values)
             identity = self.identity
-            expected_generation = identity.get(
-                "producer_generation_id", identity.get("activation_generation_id")
-            )
             if (
                 parsed.vehicle_id != identity["vehicle_id"]
                 or parsed.run_id != identity["run_id"]
-                or parsed.generation_id != expected_generation
+                or parsed.generation_id != identity["producer_generation_id"]
+                or parsed.values.get("source_id") != identity["source_id"]
             ):
-                self.invalidate_latest()
-                return False
-            if (
-                "worker_pid" in identity
-                and parsed.values.get("worker_pid") != identity["worker_pid"]
-            ):
-                self.invalidate_latest()
-                return False
-            if "source_id" in identity and parsed.values.get("source_id") != identity["source_id"]:
                 self.invalidate_latest()
                 return False
             if (
@@ -491,7 +374,6 @@ class DecisionView:
                 type(image_bytes) is not bytes
                 or not image_bytes
                 or content_type not in {"image/png", "image/jpeg"}
-                or (self._provider_identity is None and not self._activation_matches())
             ):
                 self.invalidate_latest()
                 return False
@@ -507,17 +389,6 @@ class DecisionView:
             image_bytes=image_bytes,
             content_type=content_type,
         )
-
-    def publish_provider_transaction(
-        self,
-        *,
-        stream_frame: dict[str, Any],
-        frame_record: dict[str, Any],
-        image: tuple[bytes, str] | None,
-    ) -> bool:
-        """Store one onboard report through the same intake as ``publish``."""
-
-        return self.publish(report=stream_frame, frame_record=frame_record, image=image)
 
     def _store_transaction(
         self,
@@ -554,12 +425,6 @@ class DecisionView:
 
     def latest_payload(self, *, generation: str, now_ms: int | None = None) -> dict[str, Any]:
         self.require_generation(generation)
-        if not self._activation_matches():
-            raise DecisionViewError(
-                503,
-                "activation_mismatch",
-                "decision activation no longer matches this producer generation",
-            )
         with self._lock:
             transaction_id = self._latest_transaction_id
             transaction = (
@@ -638,8 +503,6 @@ class DecisionView:
 
     def image_response(self, *, generation: str, transaction_id: str) -> tuple[bytes, str]:
         self.require_generation(generation)
-        if not self._activation_matches():
-            raise DecisionViewError(503, "activation_mismatch", "decision activation no longer matches")
         with self._lock:
             transaction = self._transactions.get(transaction_id)
         if transaction is None:
@@ -651,18 +514,6 @@ class DecisionView:
             self._stopped = True
             self._latest_transaction_id = None
             self._transactions.clear()
-
-    def _activation_matches(self) -> bool:
-        if self._provider_identity is not None:
-            return True
-        if self._activation is None:
-            return False
-        try:
-            # Catalog-armed steps, or the compatible staged-file identity.
-            staged = decision_identity({"runtime_dir": str(self._activation_path)})
-            return _activation_identity(staged) == _activation_identity(self._activation)
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            return False
 
 
 def decision_error_payload(view: DecisionView, *, reason: str) -> dict[str, Any]:

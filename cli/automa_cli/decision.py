@@ -9,11 +9,9 @@ aggregates, and generation agree with the step activations it names.
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.plan.values import (
@@ -61,19 +59,15 @@ from autonomy.runtime.report import (
     REPORT_SCHEMA,
 )
 
-from .bundles import controller_bundle_paths
-from .decision_records import DecisionRecords, DecisionRunners, activations_from_payloads
+from .decision_records import DecisionRecords, activations_from_payloads
 from .step_activations import (
-    bundle_activation_path,
     bundle_activation_problems,
-    decision_identity,
     format_activation_problems,
     proposal_plugin_ids,
 )
-from .paths import display_path
-from .picar_observation import (
-    PicarDecisionPublicationError,
-    normalize_picar_decision_publication,
+from .host_publications import (
+    DecisionPublicationError,
+    normalize_decision_publication,
 )
 
 ERROR_SCHEMA = "vehicle_decision_error_v0"
@@ -238,39 +232,6 @@ def _require_valid_activations(
         )
 
 
-def _read_surface_identity(
-    bundle: dict[str, str],
-    *,
-    vehicle_id: str,
-    require_proposal: bool = True,
-) -> dict[str, Any]:
-    """The staged decision steps every operator-facing decision surface reads."""
-
-    _require_valid_activations(bundle, vehicle_id=vehicle_id, steps=DECISION_STEPS)
-    identity = decision_identity(bundle)
-    if require_proposal and identity["steps"]["proposal"] is None:
-        raise DecisionSurfaceError(
-            "activation_missing",
-            "\n".join(
-                [
-                    f"No proposal plugins are staged for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(bundle_activation_path(bundle, 'proposal'))}",
-                    "Run: ./cli/automa vehicles update proposal --id <vehicle_id>",
-                ]
-            ),
-            vehicle_id=vehicle_id,
-        )
-    try:
-        DecisionRunners.from_payloads(identity["steps"]) if identity["steps"]["proposal"] else None
-    except Exception as exc:  # noqa: BLE001 - staged plugins are third-party code
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            f"Staged decision steps cannot be loaded: {exc}",
-            vehicle_id=vehicle_id,
-        ) from exc
-    return identity
-
-
 def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
     """The decision steps of an identity; its generation ID must match their content."""
 
@@ -323,33 +284,33 @@ def _require_report_cycle_alignment(
         )
 
 
-def accept_picar_decision_publication(
+def accept_decision_publication(
     publication: object,
     *,
     vehicle_id: str,
     now_ms: int,
     max_age_ms: int | None = None,
 ) -> dict[str, Any]:
-    """Normalize and accept a PiCar decision without fabricating local state."""
+    """Normalize and accept a host's decision publication without fabricating local state."""
 
     try:
-        normalized = normalize_picar_decision_publication(
+        normalized = normalize_decision_publication(
             publication,
             vehicle_id=vehicle_id,
             now_ms=now_ms,
             max_age_ms=max_age_ms,
         )
-    except PicarDecisionPublicationError as exc:
+    except DecisionPublicationError as exc:
         raise DecisionSurfaceError(
-            "picar_decision_unavailable",
+            "decision_publication_unavailable",
             exc.message_text,
             vehicle_id=vehicle_id,
             details={"reason": exc.reason, **exc.details},
         ) from exc
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
-            "picar_decision_unavailable",
-            f"PiCar decision publication is invalid: {exc}",
+            "decision_publication_unavailable",
+            f"Decision publication is invalid: {exc}",
             vehicle_id=vehicle_id,
             details={"reason": "incomplete"},
         ) from exc
@@ -359,8 +320,8 @@ def accept_picar_decision_publication(
         _require_report_cycle_alignment(decision, decision["values"]["activation"])
     except DecisionSurfaceError as exc:
         raise DecisionSurfaceError(
-            "picar_decision_unavailable",
-            f"PiCar decision publication is invalid: {exc.message_text}",
+            "decision_publication_unavailable",
+            f"Decision publication is invalid: {exc.message_text}",
             vehicle_id=vehicle_id,
             details={"reason": "mismatched", "source_error": exc.error, **exc.details},
         ) from exc
@@ -1126,59 +1087,13 @@ def _require_runner_plan_alignment(
     )
 
 
-def is_pid_alive(pid: int) -> bool:
-    """Production process liveness check (os.kill(pid, 0))."""
-
-    if type(pid) is not int or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Process exists but we cannot signal it.
-        return True
-    except OSError:
-        return False
-    return True
-
-
-def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, Any] | None:
-    """Catalog-armed runtime identity, or the compatible staged-file identity."""
-
-    try:
-        bundle = controller_bundle_paths(Path(vehicle_runtime_dir))
-        return load_applied_decision_identity(Path(bundle["runtime_dir"])) or _read_surface_identity(
-            bundle, vehicle_id=Path(vehicle_runtime_dir).name,
-        )
-    except (OSError, json.JSONDecodeError, TypeError, ValueError, DecisionSurfaceError):
-        return None
-
-
-def load_applied_decision_identity(runtime_dir: Path) -> dict[str, Any] | None:
-    """The decision identity the running session's host applied, as its monitor recorded it."""
-
-    state_path = Path(runtime_dir) / "automation" / "state.json"
-    if not state_path.exists():
-        return None
-    state = json.loads(state_path.read_text())
-    if (not isinstance(state, dict) or state.get("status") != "running"
-            or not is_pid_alive(state.get("pid", 0))):
-        return None
-    identity = state.get("decision")
-    if (not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict)
-            or activation_generation_id(identity["steps"], prefix="decision") != identity.get("generation_id")):
-        raise ValueError("armed runtime decision identity is invalid")
-    return {"generation_id": identity["generation_id"], "steps": identity["steps"]}
-
-
-def picar_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
-    """The accepted PiCar decision is the shared vehicle report."""
+def decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
+    """The accepted decision publication is the shared vehicle report."""
 
     decision = normalized["decision"]
     if not isinstance(decision, dict) or decision.get("schema") != REPORT_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "PiCar decision view requires a vehicle report.",
+            "Decision view requires a vehicle report.",
         )
     return deepcopy(decision)

@@ -127,38 +127,34 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame. A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
-| `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
-| `vehicles stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts; on PiCar it also serves a local `/memory` map page whose URL the terminal shows. Keys are `record_id`s; click a key to see the retained value. |
+| `vehicles stream perception` | Displays rolling latest perception from the runtime host's `/autonomy/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
+| `vehicles stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
 | `vehicles stream proposal\|plan\|action` | Prints that step's record from the latest cycle the vehicle's runtime host published, with its age, generation and plugins; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `vehicle_<step>_stream_v1`. |
-| `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
+| `vehicles memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
 | `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
-| `vehicles memory viability` | Memory health check: 60s poll of the live memory step on a PiCar (update cadence, duration, failures, health, epoch stability); Chase returns a stub pass. PiCar measurements save `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
-| `vehicles perception viability` | Perception health check: 60s onboard cadence/freshness measurement on a PiCar (RSS when the vehicle supplies an `ssh_target`); Chase returns a stub pass. PiCar measurements save `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
+| `vehicles memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
+| `vehicles perception viability` | Perception health check: 60s cadence/freshness measurement of the runtime host's observation publication that also requires that no cycle's control was applied (host RSS/CPU when the vehicle supplies an `ssh_target`). Saves `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory step; if activation is present but the step is missing, update core (manage.py harness) then re-run autonomy. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
 `stream perception` and `stream memory` take the same flags. By default each
-refresh redraws the terminal view, and on PiCar updates the local view whose
-URL it shows. `--json` prints one probe per refresh in place of both, for
+refresh redraws the terminal view and updates the local view whose URL it
+shows. `--json` prints one probe per refresh in place of both, for
 scripts: `vehicle_perception_live_v0` for perception and
 `vehicle_memory_live_v1` for memory.
 `--once` exits 2 unless the probe's `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
-Discovery failures also emit one `unavailable` JSON probe and exit 2, even
-without `--once`. Terminal streams show the same probe verdict and reason;
-perception labels the worker's state and the onboard publication's health
-separately from that verdict.
-On Chase, both steps are live only while this vehicle's automation worker is
-running and its state is under 30s old
-(`AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS`). This is the capture-loop heartbeat,
-not the completion time of each step. Perception additionally requires a
-result from the current automation run and reports its frame identity and
-`age_ms`; memory reports the retained step's lifecycle and plugin state.
+When no runtime host can be addressed, both emit one `unavailable` JSON probe
+and exit 2, even without `--once`; the error names the command that starts one.
+Terminal streams show the same probe verdict and reason, and perception labels
+the publication's health separately from that verdict.
 
-On PiCar, perception reads `/autonomy/observation/latest`: a healthy publication
-with a perception payload is live, and `age_ms` comes from the Pi's clock.
+Every vehicle's runtime host serves the same routes; the CLI finds a Chase
+host from its host record and a PiCar's from its staged `base_url`.
+Perception reads `/autonomy/observation/latest`: a healthy publication with a
+perception payload is live, and `age_ms` comes from the host's clock.
 Memory reads the retained step in `/autonomy/status`: the step's presence is
 live. Its `plugins[]` entries retain each applied plugin's `state` and expose
 that plugin's `health`, `epoch_id`, `record_count`, and `bounds` alongside it;
@@ -167,18 +163,13 @@ that plugin's `health`, `epoch_id`, `record_count`, and `bounds` alongside it;
 Use the nested perception result and plugin reports to inspect plugin outcomes;
 `live` describes availability rather than promising that every plugin succeeded.
 
-Worker probe overrides are `AUTOMA_CHASE_WORKER_PROBE_MAX_AGE_MS` (default
-30000) and `AUTOMA_CHASE_WORKER_PROBE_CLOCK_SKEW_MS` (default 2000). These
-replace the former memory-only `AUTOMA_CHASE_MEMORY_PROBE_MAX_AGE_MS` and
-`AUTOMA_CHASE_MEMORY_PROBE_CLOCK_SKEW_MS` names.
-
-Both viability commands exit 0 for a passed measurement or Chase stub, 1 for
-failed measurement gates, and 2 for a preflight failure. Under `--json`, preflight
-failures return `vehicle_step_viability_error_v0` with `vehicle_id`, `step`,
-`error` (`unknown_vehicle`, `unsupported_provider`, or `missing_connection`), and
-the diagnostic in `message`. PiCar reports are also saved in JSON mode; use
-`--json --no-record` for a report printed only to stdout. Chase stubs produce
-terminal or JSON output only.
+Both viability commands exit 0 for a passed measurement, 1 for failed
+measurement gates, and 2 when no runtime host can be addressed. Under `--json`,
+that failure returns `vehicle_step_viability_error_v0` with `vehicle_id`,
+`step`, `error` (`no_runtime_host`), and the diagnostic in `message`. Reports
+are also saved in JSON mode; use `--json --no-record` for a report printed only
+to stdout. The `control_never_applied` gate fails if any sampled cycle applied
+control, so measure a running host in manual or observe-only mode.
 
 Every `vehicles update <step>` stages only for a known vehicle. A `chase-sim-*`
 id, or a vehicle with matching identity metadata in any staged step, is known

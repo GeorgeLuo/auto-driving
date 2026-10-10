@@ -153,14 +153,10 @@ class DecisionSurfaceFixture:
             {"AUTOMA_RUNTIME_ROOT": str(self.runtime_root)},
         )
         self._env_patch.start()
-        # Modules read RUNTIME_ROOT at import time; rebind for tests.
-        import cli.automa_cli.chase_observation as chase_observation_mod
+        # runtime_hosts reads RUNTIME_ROOT at import time; rebind for tests.
         import cli.automa_cli.runtime_hosts as runtime_hosts_mod
 
-        self._root_patches = [
-            patch.object(module, "RUNTIME_ROOT", self.runtime_root)
-            for module in (chase_observation_mod, runtime_hosts_mod)
-        ]
+        self._root_patches = [patch.object(runtime_hosts_mod, "RUNTIME_ROOT", self.runtime_root)]
         for root_patch in self._root_patches:
             root_patch.start()
 

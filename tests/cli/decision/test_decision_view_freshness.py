@@ -1,13 +1,11 @@
 from __future__ import annotations
 import json
-import os
 import threading
 import unittest
 from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
-from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
@@ -26,7 +24,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             "frame_index": stream_frame["frame_index"],
             "captured_at_ms": stream_frame["timestamp_ms"],
             "run_id": "run-live",
-            "worker_pid": os.getpid(),
         }
         rejected_frame = {**stream_frame, "cycle": None}
         self.assertFalse(
@@ -177,56 +174,12 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         error = json.loads(caught.exception.read().decode("utf-8"))
         self.assertEqual(error["reason"], "decision_stale")
 
-    def test_old_session_is_unavailable_after_public_activation_restaging(self) -> None:
+    def test_adopted_generation_moves_the_view_and_names_it_to_old_sessions(self) -> None:
         self._publish_exact_transaction()
         old_generation = self.server.decision.generation_id
-        self.assertIsNotNone(old_generation)
-        old_latest_url = (
-            f"{self.server.url}api/decision/latest?generation={old_generation}"
-        )
-        with urlopen(old_latest_url, timeout=1.0) as response:
-            old_payload = json.loads(response.read().decode("utf-8"))
-        old_image_url = (
-            f"{self.server.url.rstrip('/')}{old_payload['current_image']['url']}"
-        )
-
-        # Use the public update command to replace the active decision
-        # generation while the old producer is still serving its URL.
-        code, message = update_vehicle_step(
-            vehicle_id="chase-sim-chaser",
-            step="action",
-            plugins=["mode"],
-            runtime_root=self.runtime_root,
-            json_output=True,
-        )
-        self.assertEqual(code, 0, message)
-        current = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
-        self.assertNotEqual(current["generation_id"], self.activation["generation_id"])
-
-        for old_url in (old_latest_url, old_image_url):
-            with self.subTest(old_url=old_url):
-                with self.assertRaises(HTTPError) as rejected:
-                    urlopen(old_url, timeout=1.0)
-                self.assertEqual(rejected.exception.code, 503)
-                error = json.loads(rejected.exception.read().decode("utf-8"))
-                self.assertEqual(error["status"], "unavailable")
-                self.assertEqual(error["reason"], "activation_mismatch")
-                self.assertNotIn("transaction_id", error)
-                self.assertNotIn("current_image", error)
-
-    def test_adopted_restage_moves_the_view_and_names_it_to_old_sessions(self) -> None:
-        self._publish_exact_transaction()
-        old_generation = self.server.decision.generation_id
-        # Restaging the same proposals stages a new identity the worker runs.
-        code, message = update_vehicle_step(
-            vehicle_id="chase-sim-chaser",
-            step="proposal",
-            runtime_root=self.runtime_root,
-            json_output=True,
-        )
-        self.assertEqual(code, 0, message)
-        self.activation = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
-        self.server.decision.adopt(self.activation)
+        # The host applies a new decision generation; the view follows it.
+        self.activation = {**self.activation, "generation_id": "f" * 64}
+        self.server.decision.adopt(self._producer())
         new_generation = self.server.decision.generation_id
         self.assertNotEqual(new_generation, old_generation)
 
@@ -267,9 +220,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             automation_dir=self.automation_dir,
             port=old_port,
             run_id="run-replacement",
-            worker_pid=os.getpid(),
-            decision_activation=self.activation,
-            decision_activation_path=self.activation_path,
+            decision_identity=self._producer("run-replacement"),
         ).start()
         self.addCleanup(replacement.stop)
         replacement_frame, replacement_image = self._publish_exact_transaction(

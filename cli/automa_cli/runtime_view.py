@@ -54,9 +54,7 @@ class RuntimeViewServer:
         port: int | None = None,
         run_id: str | None = None,
         worker_pid: int | None = None,
-        decision_activation: dict[str, Any] | None = None,
-        decision_activation_path: Path | None = None,
-        decision_provider_identity: dict[str, Any] | None = None,
+        decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
@@ -66,27 +64,10 @@ class RuntimeViewServer:
         self.host = host
         self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
         self.run_id = run_id
-        self.worker_pid = (
-            int(worker_pid)
-            if isinstance(worker_pid, int)
-            else None
-            if decision_provider_identity is not None
-            else os.getpid()
-        )
+        self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
         self.record_path = automation_dir / VIEW_RECORD_NAME
         self.perception = PerceptionView(vehicle_id=vehicle_id)
-        self.decision = DecisionView(
-            vehicle_id=vehicle_id,
-            run_id=run_id,
-            worker_pid=self.worker_pid,
-            activation=decision_activation,
-            activation_path=(
-                decision_activation_path
-                if decision_activation_path is not None
-                else automation_dir.parent
-            ),
-            provider_identity=decision_provider_identity,
-        )
+        self.decision = DecisionView(vehicle_id=vehicle_id, identity=decision_identity)
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None

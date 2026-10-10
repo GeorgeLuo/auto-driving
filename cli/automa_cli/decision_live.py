@@ -13,11 +13,11 @@ from autonomy.decision_cycle.memory.interface import (
 )
 from .decision import (
     DecisionSurfaceError,
-    accept_picar_decision_publication,
-    picar_decision_view_frame,
+    accept_decision_publication,
+    decision_view_frame,
 )
 from .decision_view import unavailable_host_telemetry_panel
-from .picar_observation import (
+from .host_publications import (
     fetch_decision_publication,
     fetch_observation_frame,
     frame_id_from_headers,
@@ -27,7 +27,7 @@ from .picar_observation import (
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    picar_decision_identity,
+    decision_publication_identity,
 )
 from .runtime_view import RuntimeViewServer
 
@@ -144,22 +144,22 @@ def _accepted_pair(
     vehicle_id: str,
     timeout_s: float,
 ) -> tuple[dict[str, Any], tuple[bytes, str]]:
-    """Read image first and accept only an exact PiCar decision/image pair."""
+    """Read image first and accept only an exact decision/image pair."""
 
     deadline = time.monotonic() + min(1.0, max(0.2, float(timeout_s)))
-    last_error = "matched PiCar decision image is unavailable"
+    last_error = "matched decision image is unavailable"
     while time.monotonic() < deadline:
         image_bytes, image_headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
         image_frame_id = frame_id_from_headers(image_headers)
         publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
         try:
-            normalized = accept_picar_decision_publication(
+            normalized = accept_decision_publication(
                 publication,
                 vehicle_id=vehicle_id,
                 now_ms=int(time.time() * 1000),
             )
         except DecisionSurfaceError as exc:
-            # PiCar and the CLI may have a few milliseconds of clock skew.
+            # The host and the CLI may have a few milliseconds of clock skew.
             # Keep the future-dated rejection fail-closed, but retry the
             # read-only pair while the published cycle becomes current.
             if exc.details.get("reason") != "future_dated":
@@ -176,13 +176,13 @@ def _accepted_pair(
             continue
         content_type = image_headers.get("content-type", "").split(";", 1)[0].strip()
         if content_type not in {"image/jpeg", "image/png"}:
-            raise ValueError(f"unsupported PiCar decision image type {content_type!r}")
+            raise ValueError(f"unsupported decision image type {content_type!r}")
         return normalized, (image_bytes, content_type)
     raise ConnectionError(last_error)
 
 
-class PicarDecisionViewAdapter:
-    """Publish accepted PiCar transactions through the shared decision view."""
+class DecisionViewAdapter:
+    """Publish a runtime host's accepted transactions through the shared decision view."""
 
     def __init__(
         self,
@@ -205,9 +205,9 @@ class PicarDecisionViewAdapter:
         normalized: dict[str, Any],
         image: tuple[bytes, str],
     ) -> bool:
-        self.view_server.decision.adopt_provider(_provider_identity(normalized))
+        self.view_server.decision.adopt(_provider_identity(normalized))
         frame_record = _frame_record(normalized, action_policy=self.action_policy)
-        report = picar_decision_view_frame(normalized)
+        report = decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,
             normalized_decision=normalized,
@@ -223,7 +223,7 @@ class PicarDecisionViewAdapter:
             self.view_server.decision.invalidate_latest()
             return False
 
-        # Keep the PiCar decision, perception, and memory pages on one
+        # Keep the decision, perception, and memory pages on one
         # RuntimeViewServer session. The decision image is already the exact
         # matched image, so do not fetch a second potentially different frame.
         try:
@@ -257,7 +257,7 @@ def read_host_telemetry_panel(
     timeout_s: float = 3.0,
     now_ms: int | None = None,
 ) -> dict[str, Any]:
-    """Fetch the PiCar record and join it to the exact decision identity."""
+    """Fetch the host's record and join it to the exact decision identity."""
 
     effective_now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     try:
@@ -284,7 +284,7 @@ def read_host_telemetry_panel(
         except HostTelemetryError as latest_error:
             if latest_error.reason != "identity_mismatch":
                 raise
-            decision_identity = picar_decision_identity(normalized_decision)
+            decision_identity = decision_publication_identity(normalized_decision)
             sequence = (raw.get("host_tick") or {}).get("sequence")
             if type(sequence) is not int or sequence < 1:
                 raise latest_error

@@ -1,23 +1,17 @@
+"""Live step streams and probes, read from a vehicle's runtime host.
+
+Every vehicle host serves ``autonomy.runtime.routes``, so a stream resolves
+the host's ``base_url`` (``runtime_hosts``) and reads the same routes for a
+PiCar or a Chase car: ``/autonomy/status`` for the steps the host runs, and
+the observation publication for the latest cycle.
+"""
 from __future__ import annotations
 
 import json
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from .chase_observation import (
-    CHASE_WORKER_PROBE_MAX_AGE_MS,
-    ChaseStateError,
-    assess_chase_worker_liveness,
-    chase_automation_dir,
-    read_chase_record,
-    read_chase_state,
-)
-from .paths import display_path
-from .runtime_view import RuntimeViewServer
-from .view_discovery import runtime_view_dir
-from .step_activations import absent_step_error
 from autonomy.decision_cycle.memory.interface import (
     BOUNDS,
     EPOCH_ID,
@@ -25,28 +19,30 @@ from autonomy.decision_cycle.memory.interface import (
     RECORD_COUNT,
 )
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
-from .picar_observation import (
+from .host_publications import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_autonomy_status,
     fetch_observation_frame,
     fetch_observation_publication,
     perception_text_from_publication,
-    picar_base_url,
     publication_to_frame_record,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
+from .plugin_catalog import PluginCatalogClient
+from .runtime_hosts import RuntimeHostError, runtime_base_url
+from .runtime_view import RuntimeViewServer
+from .step_activations import absent_step_error
+from .view_discovery import runtime_view_dir
 
 PERCEPTION_LIVE_SCHEMA = "vehicle_perception_live_v0"
-# Memory's and the decision steps' live schemas sit with perception's. Their probe and
-# live screen, and memory's stream, are in this module.
+# Every step's live probe schema; their probes and live screens are in this module.
 MEMORY_LIVE_SCHEMA = "vehicle_memory_live_v1"
 LIVE_STEP_SCHEMAS = {
     "memory": MEMORY_LIVE_SCHEMA,
     **{step: f"vehicle_{step}_live_v1" for step in ("proposal", "plan", "action")},
 }
-# Onboard publication health -> probe status; "healthy" is the only live one.
-_PICAR_PERCEPTION_STATUS = {
+# Observation publication health -> probe status; "healthy" is the only live one.
+_PERCEPTION_STATUS = {
     "warming": "absent",
     "absent": "absent",
     "stale": "stale",
@@ -71,127 +67,71 @@ def stream_vehicle_perception(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll the latest perception for Chase or PiCar.
+    """Poll the latest perception the vehicle's runtime host publishes.
 
-    JSON mode emits probes even when discovery fails. Terminal mode renders
-    the same probe verdict used by ``--once``; worker state and publication
-    health remain separate diagnostics.
+    JSON mode prints each probe alone, including the unavailable one when no
+    host can be addressed. The terminal view renders the same probe verdict
+    and feeds a local runtime view from the same publication.
     """
 
-    payload = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-    if error:
+    try:
+        base_url = runtime_base_url(vehicle_id)
+    except RuntimeHostError as exc:
         return CommandResult(
             *unavailable_stream_outcome(
                 step="perception",
                 schema=PERCEPTION_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
-                message="\n\n".join(
-                    [
-                        error,
-                        "Discovery:",
-                        format_active_vehicles(payload, include_inactive=True),
-                    ]
-                ),
+                message=str(exc),
                 json_output=json_output,
                 stream=output,
             )
         )
-    if vehicle is None:
-        return CommandResult(
-            *unavailable_stream_outcome(
-                step="perception",
-                schema=PERCEPTION_LIVE_SCHEMA,
-                vehicle_id=vehicle_id,
-                message=f"Vehicle {vehicle_id!r} was not found.",
-                json_output=json_output,
-                stream=output,
-            )
-        )
+    view = None if json_output else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
 
-    provider = vehicle.get("provider")
-    if provider == "chase-sim":
-        return _stream_chase_perception(
-            vehicle_id=vehicle_id,
-            refresh_s=refresh_s,
-            once=once,
-            no_clear=no_clear,
-            json_output=json_output,
-            output=output,
-        )
-    if provider == "picar":
-        return _stream_picar_perception(
-            vehicle_id=vehicle_id,
-            vehicle=vehicle,
-            refresh_s=refresh_s,
-            once=once,
-            no_clear=no_clear,
-            timeout_s=timeout_s,
-            json_output=json_output,
-            output=output,
-        )
-    return CommandResult(
-        *unavailable_stream_outcome(
-            step="perception",
-            schema=PERCEPTION_LIVE_SCHEMA,
-            vehicle_id=vehicle_id,
-            message=f"Vehicle {vehicle_id!r} is provider {provider!r}; perception stream supports chase-sim and picar.",
-            json_output=json_output,
-            stream=output,
-        )
-    )
-
-
-def probe_live_perception(
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any] | None = None,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    """Return a normalized live-perception probe without requiring stream mode."""
-
-    if vehicle is None:
-        discovery = discover_active_vehicles(
-            timeout_s=timeout_s,
-            include_picar=True,
-            include_chase_sim=True,
-            include_inactive=True,
-        )
-        vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-        if error or vehicle is None:
-            return {
-                "schema": PERCEPTION_LIVE_SCHEMA,
-                "vehicle_id": vehicle_id,
-                "status": "unavailable",
-                "error": error or f"Vehicle {vehicle_id!r} was not found.",
-                "probed_at_ms": _timestamp_ms(),
-            }
-
-    provider = vehicle.get("provider")
-    if provider == "picar":
-        base_url = picar_base_url(vehicle)
-        publication, fetch_error = _read_picar_publication(base_url, timeout_s=timeout_s)
-        return _probe_picar_perception(
+    def probe() -> tuple[dict[str, Any], Any]:
+        publication, fetch_error = _read_publication(base_url, timeout_s=timeout_s)
+        live = _probe_perception(
             vehicle_id=vehicle_id,
             base_url=base_url,
             publication=publication,
             fetch_error=fetch_error,
         )
-    if provider == "chase-sim":
-        return _probe_chase_perception(vehicle_id=vehicle_id)
+        return live, publication
+
+    def render(live: dict[str, Any], publication: Any) -> str:
+        assert view is not None
+        view.publish(publication)
+        return _perception_screen(
+            vehicle_id=vehicle_id,
+            live=live,
+            base_url=base_url,
+            publication=publication,
+            view=view,
+        )
+
+    try:
+        return _poll_stream(
+            step="perception",
+            probe=probe,
+            render=render,
+            refresh_s=refresh_s,
+            once=once,
+            no_clear=no_clear,
+            json_output=json_output,
+            stream=output,
+        )
+    finally:
+        if view is not None:
+            view.stop()
+
+
+def _unavailable_probe(schema: str, vehicle_id: str, error: str) -> dict[str, Any]:
     return {
-        "schema": PERCEPTION_LIVE_SCHEMA,
+        "schema": schema,
         "vehicle_id": vehicle_id,
         "status": "unavailable",
-        "error": (
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            "live perception supports picar and chase-sim."
-        ),
+        "error": error,
         "probed_at_ms": _timestamp_ms(),
     }
 
@@ -205,23 +145,17 @@ def unavailable_stream_outcome(
     json_output: bool,
     stream: TextIO | None,
 ) -> tuple[int, str]:
-    """Preserve JSON stream output when discovery or provider selection fails.
+    """Preserve JSON stream output when no runtime host can be addressed.
 
     Preflight failures terminate with exit 2 in either mode. JSON mode emits
     one unavailable probe under the step's live probe ``schema``, including
-    with ``--once`` omitted; terminal mode returns the discovery diagnostic for
-    the CLI handler to print.
+    with ``--once`` omitted; terminal mode returns the diagnostic for the CLI
+    handler to print.
     """
 
     if not json_output:
         return 2, message
-    live = {
-        "schema": schema,
-        "vehicle_id": vehicle_id,
-        "status": "unavailable",
-        "error": message,
-        "probed_at_ms": _timestamp_ms(),
-    }
+    live = _unavailable_probe(schema, vehicle_id, message)
     line = json.dumps(live, sort_keys=True)
     if stream is not None:
         print(line, file=stream, flush=True)
@@ -285,16 +219,17 @@ def _poll_stream(
         return CommandResult(130, "")
 
 
-class _PicarViewFeed:
-    """A loopback runtime view a stream feeds from the PiCar publication.
+class _ViewFeed:
+    """A loopback runtime view a terminal stream feeds from the host's publication.
 
-    The Chase worker serves its own view (``published_view`` in its state);
-    the PiCar serves none, so its terminal streams host one locally.
+    It serves the host's plugin catalog, as the view of ``automation run`` does.
     """
 
-    def __init__(self, vehicle_id: str) -> None:
+    def __init__(self, vehicle_id: str, *, base_url: str, timeout_s: float) -> None:
         runtime_dir = runtime_view_dir(vehicle_id)
         runtime_dir.mkdir(parents=True, exist_ok=True)
+        self.base_url = base_url
+        self.timeout_s = timeout_s
         self.frame_path = runtime_dir / "latest_frame.jpg"
         self.server: RuntimeViewServer | None = None
         self.error: str | None = None
@@ -302,6 +237,7 @@ class _PicarViewFeed:
             self.server = RuntimeViewServer(
                 vehicle_id=vehicle_id,
                 automation_dir=runtime_dir,
+                plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
             ).start()
         except OSError as exc:
             self.error = f"{type(exc).__name__}: {exc}"
@@ -310,23 +246,18 @@ class _PicarViewFeed:
     def url(self) -> str | None:
         return self.server.url if self.server is not None else None
 
-    def publish(
-        self,
-        *,
-        base_url: str,
-        publication: dict[str, Any] | None,
-        timeout_s: float,
-    ) -> None:
+    def publish(self, publication: dict[str, Any] | None) -> None:
         if publication is None or self.server is None:
             return
+        frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
+        if frame is None or not frame.get("has_image"):
+            return
         try:
-            _publish_picar_view(
-                view_server=self.server,
-                base_url=base_url,
-                publication=publication,
-                frame_path=self.frame_path,
-                timeout_s=timeout_s,
-            )
+            jpeg, _headers = fetch_observation_frame(self.base_url, timeout_s=self.timeout_s)
+            self.frame_path.write_bytes(jpeg)
+            frame_record = publication_to_frame_record(publication)
+            self.server.perception.publish_frame(frame_path=self.frame_path, frame_record=frame_record)
+            self.server.perception.publish_perception(frame_record=frame_record)
             self.error = None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
             self.error = f"{type(exc).__name__}: {exc}"
@@ -336,206 +267,32 @@ class _PicarViewFeed:
             self.server.stop()
 
 
-def _chase_view(state: dict[str, Any] | None) -> tuple[str | None, str | None]:
-    """The Chase worker's own runtime view: its URL, or why there is none."""
-
-    view = state.get("published_view") if isinstance(state, dict) else None
-    view = view if isinstance(view, dict) else {}
-    if view.get("available") and view.get("url"):
-        return str(view["url"]), None
-    return None, str(view.get("reason") or view.get("status") or "the worker publishes no view")
-
-
 def _view_line(label: str, url: str | None, error: str | None, route: str = "") -> str:
     if url:
         return f"{label}: {url.rstrip('/') + route if route else url}"
     return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"
 
 
-def _stream_chase_perception(
-    *,
-    vehicle_id: str,
-    refresh_s: float,
-    once: bool,
-    no_clear: bool,
-    json_output: bool,
-    output: TextIO | None,
-) -> CommandResult:
-    automation_dir = chase_automation_dir(vehicle_id)
-    if not json_output and not automation_dir.exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No automation runtime exists for {vehicle_id!r}.",
-                    f"Expected: {display_path(automation_dir)}",
-                    f"Run: ./cli/automa vehicles automation run --id {vehicle_id}",
-                ]
-            ),
-        )
-    return _poll_stream(
-        step="perception",
-        probe=lambda: (_probe_chase_perception(vehicle_id=vehicle_id), None),
-        render=lambda live, _source: _chase_perception_screen(
-            vehicle_id=vehicle_id,
-            live=live,
-            automation_dir=automation_dir,
-        ),
-        refresh_s=refresh_s,
-        once=once,
-        no_clear=no_clear,
-        json_output=json_output,
-        stream=output,
-    )
-
-
-def _stream_picar_perception(
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any],
-    refresh_s: float,
-    once: bool,
-    no_clear: bool,
-    timeout_s: float,
-    json_output: bool,
-    output: TextIO | None,
-) -> CommandResult:
-    base_url = picar_base_url(vehicle)
-    if not json_output and not base_url:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has no PiCar base URL.")
-    # JSON output prints the probe alone; only the terminal view feeds a view.
-    view = None if json_output else _PicarViewFeed(vehicle_id)
-
-    def probe() -> tuple[dict[str, Any], Any]:
-        publication, fetch_error = _read_picar_publication(base_url, timeout_s=timeout_s)
-        live = _probe_picar_perception(
-            vehicle_id=vehicle_id,
-            base_url=base_url,
-            publication=publication,
-            fetch_error=fetch_error,
-        )
-        return live, publication
-
-    def render(live: dict[str, Any], publication: Any) -> str:
-        assert view is not None and base_url
-        view.publish(base_url=base_url, publication=publication, timeout_s=timeout_s)
-        return _picar_perception_screen(
-            vehicle_id=vehicle_id,
-            live=live,
-            base_url=base_url,
-            publication=publication,
-            view=view,
-        )
-
-    try:
-        return _poll_stream(
-            step="perception",
-            probe=probe,
-            render=render,
-            refresh_s=refresh_s,
-            once=once,
-            no_clear=no_clear,
-            json_output=json_output,
-            stream=output,
-        )
-    finally:
-        if view is not None:
-            view.stop()
-
-
-def _probe_chase_perception(*, vehicle_id: str) -> dict[str, Any]:
-    probed_at_ms = _timestamp_ms()
-    probe: dict[str, Any] = {
-        "schema": PERCEPTION_LIVE_SCHEMA,
-        "vehicle_id": vehicle_id,
-        "provider": "chase-sim",
-        "probed_at_ms": probed_at_ms,
-    }
-    try:
-        state = read_chase_state(vehicle_id)
-    except ChaseStateError as exc:
-        return {**probe, "status": exc.status, "error": str(exc)}
-
-    liveness = assess_chase_worker_liveness(
-        state=state,
-        probed_at_ms=probed_at_ms,
-        step="perception",
-        vehicle_id=vehicle_id,
-    )
-    probe.update(
-        worker_status=state.get("status"),
-        worker_pid=liveness.get("pid"),
-        worker_updated_at_ms=liveness.get("updated_at_ms"),
-        run_id=state.get("run_id"),
-        frames_captured=state.get("frames_captured"),
-        interval_s=state.get("interval_s"),
-        processed_count=state.get("processed_count"),
-        skipped_count=state.get("skipped_count"),
-        mode=state.get("action_policy"),
-    )
-    if not liveness["live"]:
-        return {
-            **probe,
-            "status": liveness["status"],
-            "error": liveness["error"],
-            "max_age_ms": CHASE_WORKER_PROBE_MAX_AGE_MS,
-        }
-
-    step = state.get("perception") if isinstance(state.get("perception"), dict) else {}
-    probe.update(
-        activation=step.get("activation"),
-        preset=step.get("preset"),
-        plugin_ids=step.get("plugins", []),
-    )
-    record = read_chase_record(vehicle_id)
-    # A record from an earlier run, or the start placeholder, is not this worker's.
-    if record is None or record.get("run_id") != state.get("run_id"):
-        return {
-            **probe,
-            "status": "absent",
-            "error": "Automation worker has not published a perception result for this run yet.",
-        }
-    completed_at = _int_or_none(record.get("perception_completed_at_ms"))
-    return _probe_latest_perception(
-        {**probe, "plugin_report": record.get("perception_plugin_report")},
-        record,
-        age_ms=None if completed_at is None else max(0, probed_at_ms - completed_at),
-    )
-
-
-def _read_picar_publication(
-    base_url: str | None,
-    *,
-    timeout_s: float,
-) -> tuple[dict[str, Any] | None, str | None]:
-    if not base_url:
-        return None, None
+def _read_publication(base_url: str, *, timeout_s: float) -> tuple[dict[str, Any] | None, str | None]:
     try:
         return fetch_observation_publication(base_url, timeout_s=timeout_s), None
     except ConnectionError as exc:
         return None, str(exc)
 
 
-def _probe_picar_perception(
+def _probe_perception(
     *,
     vehicle_id: str,
-    base_url: str | None,
+    base_url: str,
     publication: dict[str, Any] | None,
     fetch_error: str | None,
 ) -> dict[str, Any]:
     probe: dict[str, Any] = {
         "schema": PERCEPTION_LIVE_SCHEMA,
         "vehicle_id": vehicle_id,
-        "provider": "picar",
+        "endpoint": f"{base_url}{LATEST_JSON_PATH}",
         "probed_at_ms": _timestamp_ms(),
     }
-    if not base_url:
-        return {
-            **probe,
-            "status": "unavailable",
-            "error": f"Vehicle {vehicle_id!r} has no PiCar base URL.",
-        }
-    probe["endpoint"] = f"{base_url}{LATEST_JSON_PATH}"
     if fetch_error is not None or publication is None:
         return {**probe, "status": "error", "error": fetch_error or "No publication was read."}
 
@@ -543,7 +300,7 @@ def _probe_picar_perception(
     probe.update(
         health=health,
         preset=publication.get("preset"),
-        mode=publication.get("mode") or publication.get("drive_mode"),
+        mode=publication.get("mode"),
         interval_s=publication.get("interval_s"),
         frames_captured=publication.get("frames_captured"),
         processed_count=publication.get("processed_count"),
@@ -552,11 +309,11 @@ def _probe_picar_perception(
     if health != "healthy":
         return {
             **probe,
-            "status": _PICAR_PERCEPTION_STATUS.get(health, "error"),
+            "status": _PERCEPTION_STATUS.get(health, "error"),
             "error": publication.get("error")
-            or f"Onboard perception publication health is {health!r}.",
+            or f"The observation publication health is {health!r}.",
         }
-    # The Pi computes the result age on its own clock.
+    # The host computes the result age on its own clock.
     return _probe_latest_perception(
         probe,
         publication_to_frame_record(publication),
@@ -601,57 +358,40 @@ def _probe_latest_perception(
     }
 
 
-def _publish_picar_view(
-    *,
-    view_server: RuntimeViewServer,
-    base_url: str,
-    publication: dict[str, Any],
-    frame_path: Path,
-    timeout_s: float,
-) -> None:
-    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
-    if frame is None or not frame.get("has_image"):
-        return
-    jpeg, _headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
-    frame_path.write_bytes(jpeg)
-    frame_record = publication_to_frame_record(publication)
-    view_server.perception.publish_frame(frame_path=frame_path, frame_record=frame_record)
-    view_server.perception.publish_perception(frame_record=frame_record)
-
-
-def _render_perception_screen(
+def _perception_screen(
     *,
     vehicle_id: str,
     live: dict[str, Any],
-    source: str,
-    record: dict[str, Any],
-    preset: Any,
-    mode: Any,
-    cadence: dict[str, Any],
-    view: str,
-    details: list[str],
-    body: str,
+    base_url: str,
+    publication: dict[str, Any] | None,
+    view: _ViewFeed,
 ) -> str:
-    """The perception screen of every vehicle; ``source`` and ``details`` are its own.
+    """The perception screen: the probe verdict and the host's latest cycle."""
 
-    ``record`` is the latest frame record (the Chase worker's
-    ``latest_perception.json``, or the PiCar publication adapted to one);
-    ``cadence`` names capture interval, processed frames, superseded captures,
-    and timing. ``skipped_since_previous`` belongs to the latest decision frame.
-    """
-
+    publication = publication if isinstance(publication, dict) else {}
+    record = publication_to_frame_record(publication)
     perception = record.get("perception") if isinstance(record.get("perception"), dict) else {}
     control = record.get("control") if isinstance(record.get("control"), dict) else {}
     signals = perception.get("signals")
     things = perception.get("things")
+    cadence = {
+        "interval_s": publication.get("interval_s"),
+        "processed": publication.get("processed_count"),
+        "skipped": publication.get("skipped_count"),
+        "skipped_since_previous": publication.get("skipped_since_previous"),
+        "cycle_ms": publication.get("duration_ms"),
+        # The host computes the result age on its own clock.
+        "age_ms": publication.get("result_age_ms"),
+    }
+    body = perception_text_from_publication(publication) if publication else ""
     lines = [
         "automa perception stream",
         "",
         f"vehicle: {vehicle_id}",
-        f"source: {source}",
+        f"host: {base_url}",
         f"status: {live.get('status', 'unknown')}",
         *([f"error: {live['error']}"] if live.get("error") else []),
-        f"preset: {_shown(preset)}  mode: {_shown(mode)}",
+        f"preset: {_shown(publication.get('preset'))}  mode: {_shown(publication.get('mode'))}",
         (
             f"control: steering={_shown(control.get('steering'))}  "
             f"throttle={_shown(control.get('throttle'))}  reason={_shown(control.get('reason'))}"
@@ -663,8 +403,11 @@ def _render_perception_screen(
             f"signals={_shown(len(signals) if isinstance(signals, list) else None)}  "
             f"things={_shown(len(things) if isinstance(things, list) else None)}"
         ),
-        view,
-        *details,
+        _view_line("view", view.url, view.error),
+        (
+            f"publication: {publication.get('health') or 'unavailable'}  "
+            f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
+        ),
         "",
         "latest perception",
         "-----------------",
@@ -673,125 +416,13 @@ def _render_perception_screen(
     return "\n".join(lines)
 
 
-def _chase_perception_screen(
-    *,
-    vehicle_id: str,
-    live: dict[str, Any],
-    automation_dir: Path,
-) -> str:
-    state = _read_json(automation_dir / "state.json") or {}
-    process = _read_json(automation_dir / "process.json") or {}
-    record = _read_json(automation_dir / "latest_perception.json") or {}
-    step = state.get("perception") if isinstance(state.get("perception"), dict) else {}
-    completed_at = _int_or_none(record.get("perception_completed_at_ms"))
-    view_url, view_error = _chase_view(state)
-    return _render_perception_screen(
-        vehicle_id=vehicle_id,
-        live=live,
-        source="chase-sim automation worker",
-        record=record,
-        preset=step.get("preset"),
-        mode=state.get("action_policy"),
-        cadence={
-            "interval_s": state.get("interval_s"),
-            "processed": state.get("processed_count"),
-            "skipped": state.get("skipped_count"),
-            "skipped_since_previous": record.get("skipped_since_previous"),
-            "cycle_ms": record.get("cycle_duration_ms"),
-            "age_ms": None if completed_at is None else max(0, _timestamp_ms() - completed_at),
-        },
-        view=_view_line("view", view_url, view_error),
-        details=[
-            (
-                f"worker: {live.get('worker_status') or state.get('status') or 'unknown'}  "
-                f"pid: {live.get('worker_pid') or state.get('pid') or 'unknown'}  "
-                f"control_source: {_shown(state.get('control_source'))}  "
-                f"recording: {_shown(state.get('recording'))}  "
-                f"num_decisions: {_shown(state.get('num_decisions') or 'unbounded')}"
-            ),
-            f"state: {display_path(automation_dir / 'state.json')}",
-            _log_line(process, automation_dir / "automation.log"),
-        ],
-        body=_read_text(automation_dir / "latest_perception.txt"),
-    )
-
-
-def _picar_perception_screen(
-    *,
-    vehicle_id: str,
-    live: dict[str, Any],
-    base_url: str,
-    publication: dict[str, Any] | None,
-    view: _PicarViewFeed,
-) -> str:
-    publication = publication if isinstance(publication, dict) else {}
-    return _render_perception_screen(
-        vehicle_id=vehicle_id,
-        live=live,
-        source=f"picar onboard host  endpoint: {base_url}",
-        record=publication_to_frame_record(publication),
-        preset=publication.get("preset"),
-        mode=publication.get("mode") or publication.get("drive_mode"),
-        cadence={
-            "interval_s": publication.get("interval_s"),
-            "processed": publication.get("processed_count"),
-            "skipped": publication.get("skipped_count"),
-            "skipped_since_previous": publication.get("skipped_since_previous"),
-            "cycle_ms": publication.get("duration_ms"),
-            # The Pi computes the result age on its own clock.
-            "age_ms": publication.get("result_age_ms"),
-        },
-        view=_view_line("view", view.url, view.error),
-        details=[
-            (
-                f"publication: {publication.get('health') or 'unavailable'}  "
-                f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
-            )
-        ],
-        body=perception_text_from_publication(publication) if publication else "",
-    )
-
-
 def _shown(value: Any, default: str = "unknown") -> Any:
     return default if value is None else value
 
 
-def _log_line(process: dict[str, Any], default_log_path: Path) -> str:
-    configured_path = process.get("log_path")
-    log_to_disk = bool(process.get("log_to_disk")) or isinstance(configured_path, str)
-    if not log_to_disk:
-        return "log: disabled"
-    if isinstance(configured_path, str) and configured_path:
-        return f"log: {configured_path}"
-    return f"log: {display_path(default_log_path)}"
-
-
-def _read_json(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    return value if isinstance(value, dict) else None
-
-
-def _read_text(path: Path) -> str:
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8", errors="replace")
-
-
-def _int_or_none(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    return None
-
-
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
+
 
 def stream_vehicle_memory(
     *,
@@ -803,72 +434,39 @@ def stream_vehicle_memory(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll live memory lifecycle health for Chase or PiCar.
+    """Poll the live memory step the vehicle's runtime host runs.
 
-    JSON mode emits probes even when discovery fails. ``live`` means the
-    retained step is available; update health stays in the plugin diagnostics.
-    Each probe lists every applied plugin's ledger and names the evidence
-    publisher; the terminal view prints the same, then the memory map and
-    perception view URLs and the latest published memory report.
+    ``live`` means the host runs a memory step; update health stays in the
+    plugin diagnostics. Each probe lists every applied plugin's ledger and
+    names the evidence publisher; the terminal view prints the same, then the
+    memory map and perception view URLs and the latest published memory
+    report.
     """
 
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
+    try:
+        base_url = runtime_base_url(vehicle_id)
+    except RuntimeHostError as exc:
         return CommandResult(
             *unavailable_stream_outcome(
                 step="memory",
                 schema=MEMORY_LIVE_SCHEMA,
                 vehicle_id=vehicle_id,
-                message="\n\n".join(
-                    [
-                        error,
-                        "Discovery:",
-                        format_active_vehicles(discovery, include_inactive=True),
-                    ]
-                ),
+                message=str(exc),
                 json_output=json_output,
                 stream=output,
             )
         )
-    if vehicle is None:
-        return CommandResult(
-            *unavailable_stream_outcome(
-                step="memory",
-                schema=MEMORY_LIVE_SCHEMA,
-                vehicle_id=vehicle_id,
-                message=f"Vehicle {vehicle_id!r} was not found.",
-                json_output=json_output,
-                stream=output,
-            )
-        )
-
-    provider = vehicle.get("provider")
-    base_url = picar_base_url(vehicle) if provider == "picar" else None
-    if provider == "picar" and not json_output and not base_url:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has no PiCar base URL.")
-    # JSON output prints the probe alone; only the terminal view feeds a view.
-    view = _PicarViewFeed(vehicle_id) if base_url and not json_output else None
+    view = None if json_output else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
 
     def render(live: dict[str, Any], _source: Any) -> str:
-        if view is not None and base_url:
-            publication, fetch_error = _read_picar_publication(base_url, timeout_s=timeout_s)
-            view.publish(base_url=base_url, publication=publication, timeout_s=timeout_s)
-            view_url, view_error = view.url, view.error
-        else:
-            automation_dir = chase_automation_dir(vehicle_id)
-            view_url, view_error = _chase_view(_read_json(automation_dir / "state.json"))
-            publication, fetch_error = _read_json(automation_dir / "latest_perception.json"), None
+        assert view is not None
+        publication, fetch_error = _read_publication(base_url, timeout_s=timeout_s)
+        view.publish(publication)
         return _memory_screen(
             vehicle_id=vehicle_id,
             live=live,
-            view_url=view_url,
-            view_error=view_error,
+            view_url=view.url,
+            view_error=view.error,
             report=publication.get("memory") if isinstance(publication, dict) else None,
             report_error=fetch_error,
         )
@@ -877,7 +475,7 @@ def stream_vehicle_memory(
         return _poll_stream(
             step="memory",
             probe=lambda: (
-                probe_live_memory(vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s),
+                _probe_step("memory", vehicle_id=vehicle_id, base_url=base_url, timeout_s=timeout_s),
                 None,
             ),
             render=render,
@@ -901,9 +499,8 @@ def _memory_screen(
     report: Any,
     report_error: str | None,
 ) -> str:
-    """The memory screen of every vehicle: the engine's memory step, the
-    views, and the memory report its latest cycle published (the Chase
-    worker's ``latest_perception.json``, or the PiCar publication)."""
+    """The memory screen: the host's memory step, the views, and the memory
+    report its latest cycle published."""
 
     lines = [
         _format_live_memory_screen(vehicle_id=vehicle_id, live=live),
@@ -921,64 +518,43 @@ def _memory_screen(
     return "\n".join(lines)
 
 
-def probe_live_memory(
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any] | None = None,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
+def probe_live_memory(*, vehicle_id: str, timeout_s: float = 3.0) -> dict[str, Any]:
     """Return a normalized live-memory probe without requiring stream mode."""
 
-    return probe_live_step("memory", vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
+    return probe_live_step("memory", vehicle_id=vehicle_id, timeout_s=timeout_s)
 
 
-def probe_live_step(
-    step: str,
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any] | None = None,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    """``step`` as the running autonomy engine has it: its runner's status.
+def probe_live_step(step: str, *, vehicle_id: str, timeout_s: float = 3.0) -> dict[str, Any]:
+    """``step`` as the vehicle's runtime host runs it: its runner's status
+    under ``/autonomy/status``, not what any view last rendered."""
 
-    The PiCar reports it under ``/autonomy/status``; a Chase automation
-    worker under its step in ``state.json``. That is what the engine runs,
-    not what any view last rendered.
-    """
+    try:
+        base_url = runtime_base_url(vehicle_id)
+    except RuntimeHostError as exc:
+        return _unavailable_probe(LIVE_STEP_SCHEMAS[step], vehicle_id, str(exc))
+    return _probe_step(step, vehicle_id=vehicle_id, base_url=base_url, timeout_s=timeout_s)
 
-    schema = LIVE_STEP_SCHEMAS[step]
-    if vehicle is None:
-        discovery = discover_active_vehicles(
-            timeout_s=timeout_s,
-            include_picar=True,
-            include_chase_sim=True,
-            include_inactive=True,
-        )
-        vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-        if error or vehicle is None:
-            return {
-                "schema": schema,
-                "vehicle_id": vehicle_id,
-                "status": "unavailable",
-                "error": error or f"Vehicle {vehicle_id!r} was not found.",
-                "probed_at_ms": int(time.time() * 1000),
-            }
 
-    provider = vehicle.get("provider")
-    if provider == "picar":
-        return _probe_picar_step(step, vehicle_id=vehicle_id, vehicle=vehicle, timeout_s=timeout_s)
-    if provider == "chase-sim":
-        return _probe_chase_step(step, vehicle_id=vehicle_id)
-    return {
-        "schema": schema,
+def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) -> dict[str, Any]:
+    probe: dict[str, Any] = {
+        "schema": LIVE_STEP_SCHEMAS[step],
         "vehicle_id": vehicle_id,
-        "status": "unavailable",
-        "error": (
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            f"live {step} supports picar and chase-sim."
-        ),
-        "probed_at_ms": int(time.time() * 1000),
+        "endpoint": f"{base_url}/autonomy/status",
+        "probed_at_ms": _timestamp_ms(),
     }
+    try:
+        status = fetch_autonomy_status(base_url, timeout_s=timeout_s)
+    except ConnectionError as exc:
+        return {**probe, "status": "error", "error": str(exc)}
+
+    session = status.get("session") if isinstance(status.get("session"), dict) else {}
+    probe.update(mode=status.get("mode"), session_status=session.get("status"))
+    autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
+    steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
+    runner = steps.get(step) if isinstance(steps.get(step), dict) else None
+    if runner is None:
+        return {**probe, "status": "absent", "error": absent_step_error(step, vehicle_id)}
+    return {**probe, "status": "live", **_live_step_fields(step, runner)}
 
 
 def _live_step_fields(step: str, status: dict[str, Any]) -> dict[str, Any]:
@@ -1036,140 +612,6 @@ def _live_plugins(live: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _probe_picar_step(
-    step: str,
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any],
-    timeout_s: float,
-) -> dict[str, Any]:
-    base_url = picar_base_url(vehicle)
-    probed_at_ms = int(time.time() * 1000)
-    if not base_url:
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "picar",
-            "status": "unavailable",
-            "error": f"Vehicle {vehicle_id!r} has no PiCar base URL.",
-            "probed_at_ms": probed_at_ms,
-        }
-    try:
-        status = fetch_autonomy_status(base_url, timeout_s=timeout_s)
-    except ConnectionError as exc:
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "picar",
-            "status": "error",
-            "endpoint": f"{base_url}/autonomy/status",
-            "error": str(exc),
-            "probed_at_ms": probed_at_ms,
-        }
-
-    autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
-    steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
-    runner = steps.get(step) if isinstance(steps.get(step), dict) else None
-    last_control = autonomy.get("last_control") if isinstance(autonomy.get("last_control"), dict) else {}
-    control_meta = (
-        last_control.get("metadata") if isinstance(last_control.get("metadata"), dict) else {}
-    )
-    # Whether the engine's last cycle saw memory; only memory's probe reports it.
-    has_memory = (
-        {"has_memory": bool(control_meta.get("has_memory"))} if step == "memory" else {}
-    )
-    if runner is None:
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "picar",
-            "status": "absent",
-            "endpoint": f"{base_url}/autonomy/status",
-            "drive_mode": status.get("drive_mode"),
-            **has_memory,
-            "error": absent_step_error(step, vehicle_id, "picar"),
-            "probed_at_ms": probed_at_ms,
-        }
-
-    return {
-        "schema": LIVE_STEP_SCHEMAS[step],
-        "vehicle_id": vehicle_id,
-        "provider": "picar",
-        "status": "live",
-        "endpoint": f"{base_url}/autonomy/status",
-        "drive_mode": status.get("drive_mode"),
-        **has_memory,
-        **_live_step_fields(step, runner),
-        "probed_at_ms": probed_at_ms,
-    }
-
-
-def _probe_chase_step(step: str, *, vehicle_id: str) -> dict[str, Any]:
-    probed_at_ms = int(time.time() * 1000)
-    try:
-        state = read_chase_state(vehicle_id)
-    except ChaseStateError as exc:
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "chase-sim",
-            "status": exc.status,
-            "error": str(exc),
-            "probed_at_ms": probed_at_ms,
-        }
-
-    liveness = assess_chase_worker_liveness(
-        state=state,
-        probed_at_ms=probed_at_ms,
-        step=step,
-        vehicle_id=vehicle_id,
-    )
-    if not liveness["live"]:
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "chase-sim",
-            "status": liveness["status"],
-            "error": liveness["error"],
-            "probed_at_ms": probed_at_ms,
-            "worker_status": state.get("status"),
-            "worker_pid": liveness.get("pid"),
-            "worker_updated_at_ms": liveness.get("updated_at_ms"),
-            "max_age_ms": CHASE_WORKER_PROBE_MAX_AGE_MS,
-        }
-
-    entry = state.get(step) if isinstance(state.get(step), dict) else None
-    if entry is None or entry.get("status") == "absent":
-        return {
-            "schema": LIVE_STEP_SCHEMAS[step],
-            "vehicle_id": vehicle_id,
-            "provider": "chase-sim",
-            "status": "absent",
-            "error": absent_step_error(step, vehicle_id, "chase-sim"),
-            "probed_at_ms": probed_at_ms,
-            f"worker_{step}": entry,
-            "worker_status": state.get("status"),
-            "worker_pid": liveness.get("pid"),
-        }
-
-    status_block = entry.get("status") if isinstance(entry.get("status"), dict) else entry
-    if not isinstance(status_block, dict):
-        status_block = {}
-    return {
-        "schema": LIVE_STEP_SCHEMAS[step],
-        "vehicle_id": vehicle_id,
-        "provider": "chase-sim",
-        "status": "live",
-        **_live_step_fields(step, status_block),
-        "activation": entry.get("activation") or status_block.get("activation"),
-        "probed_at_ms": probed_at_ms,
-        "worker_status": state.get("status"),
-        "worker_pid": liveness.get("pid"),
-        "run_id": state.get("run_id"),
-        "worker_updated_at_ms": liveness.get("updated_at_ms"),
-    }
-
-
 def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
     return format_live_step_screen("memory", vehicle_id=vehicle_id, live=live)
 
@@ -1179,12 +621,10 @@ def format_live_step_screen(step: str, *, vehicle_id: str, live: dict[str, Any])
     lines = [
         f"Live {step}: {vehicle_id} [{status}]",
     ]
-    if live.get("provider"):
-        lines.append(f"Provider: {live.get('provider')}")
     if live.get("endpoint"):
         lines.append(f"Endpoint: {live.get('endpoint')}")
-    if live.get("drive_mode") is not None:
-        lines.append(f"Drive mode: {live.get('drive_mode')}")
+    if live.get("mode") is not None:
+        lines.append(f"Mode: {live.get('mode')}  session: {live.get('session_status') or 'unknown'}")
     if status == "live":
         lines.append(f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}")
         if step == "memory":
@@ -1207,8 +647,6 @@ def format_live_step_screen(step: str, *, vehicle_id: str, live: dict[str, Any])
             lines.append(f"Last update duration: {live.get('last_duration_ms')} ms")
         if live.get("last_error"):
             lines.append(f"Last error: {live.get('last_error')}")
-        if live.get("has_memory") is not None:
-            lines.append(f"Engine saw memory: {live.get('has_memory')}")
     else:
         if live.get("error"):
             lines.append(f"Detail: {live.get('error')}")

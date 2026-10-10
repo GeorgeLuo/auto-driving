@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from cli.automa_cli.picar_observation import frame_id_from_headers
+from cli.automa_cli.host_publications import frame_id_from_headers
 
 
 class FramePairHelpersTests(unittest.TestCase):

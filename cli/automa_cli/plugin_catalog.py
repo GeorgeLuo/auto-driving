@@ -158,6 +158,11 @@ def _catalog_recovery(url: str | None, vehicle_id: str | None) -> str:
     return f"Check that the catalog host at {url} is running, then retry ./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
 
 
+def _catalog_version(result: dict[str, Any]) -> str:
+    host_run = result.get("host_run_id")
+    return f"Catalog version: {result['catalog_version']}" + (f" (host run {host_run})" if host_run else "")
+
+
 def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_id: str | None,
             step: str | None, recovery: str | None, json_output: bool,
             plugin_id: str | None = None) -> CommandResult:
@@ -198,7 +203,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
     if result.get("upload"):
         lines.extend([f"Upload: {result['upload']['status']}", f"Plugin: {plugin_id}",
                       f"Revision: {result['plugin']['metadata']['revision']}",
-                      f"Catalog version: {result['catalog_version']}"])
+                      _catalog_version(result)])
         if not ok:
             lines.append(f"Reason: {message}")
     elif not ok:
@@ -206,10 +211,10 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
     elif operation == "upload":
         lines.extend([
             f"Plugin: {plugin_id}", f"Revision: {result['plugin']['metadata']['revision']}",
-            f"Catalog version: {result['catalog_version']}", "Selection: unchanged",
+            _catalog_version(result), "Selection: unchanged",
         ])
     elif operation == "status":
-        lines.extend([f"Catalog version: {result['catalog_version']}", "Available plugins:"])
+        lines.extend([_catalog_version(result), "Available plugins:"])
         entries = []
         for plugin in result["plugins"]:
             metadata = plugin.get("metadata", {})

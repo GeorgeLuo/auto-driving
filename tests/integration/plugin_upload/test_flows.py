@@ -338,3 +338,25 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(get_json(viewer.url, "/api/plugins"), get_json(chase.base_url, "/api/plugins"))
             self.assertEqual(chase.loop.host.catalog.resolve("memory", "prototype").metadata["revision"],
                              listed["plugins"][0]["metadata"]["revision"])
+
+    def test_uploads_last_for_the_host_run_the_cli_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime_root = Path(directory) / "vehicles"
+            file = Path(directory) / "prototype.py"
+            file.write_text("from dependency_can_arrive_later import Prototype\n")
+
+            def status(host_run_id: str) -> str:
+                result = run_automa("vehicles", "plugins", "status", "--id", "chase-sim-chaser",
+                                    "--step", "memory", runtime_root=runtime_root)
+                self.assertIn(f"(host run {host_run_id})", result.stdout)
+                return result.stdout
+
+            with chase_runtime(runtime_root) as first:
+                uploaded = run_automa("vehicles", "plugins", "upload", "--id", "chase-sim-chaser",
+                                      "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
+                                      "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
+                self.assertIn(f"(host run {first.loop.run_id})", uploaded.stdout)
+                self.assertIn("memory/prototype", status(first.loop.run_id))
+            with chase_runtime(runtime_root) as restarted:
+                self.assertNotEqual(restarted.loop.run_id, first.loop.run_id)
+                self.assertNotIn("memory/prototype", status(restarted.loop.run_id))

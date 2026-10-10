@@ -167,7 +167,8 @@ class RuntimeRoutes:
             payload = self._json_body(body) if body else None
         except ValueError as exc:
             return json_response({"ok": False, "error": str(exc)}, 400)
-        result = self.host.plugin_catalog(payload)
+        # Uploads last for this host run; the id shows when a restart cleared them.
+        result = {**self.host.plugin_catalog(payload), "host_run_id": self.loop.run_id}
         return json_response(result, 200 if result.get("ok") else 400)
 
     def _observation(self, query: dict[str, list[str]], body: bytes) -> Response:

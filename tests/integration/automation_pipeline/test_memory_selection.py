@@ -4,20 +4,24 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from cli.automa_cli.automation import run_vehicle_automation
-from implementations.vehicle.access import VehicleAccess
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
+from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.step_activations import replace_metadata
 from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
 from implementations.decision_cycle.catalog import packaged_activation
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import BoundedEvidenceLedger
 from tests.integration.automation_pipeline.pipeline_fixtures import (
-    _FakeCar,
+    VEHICLE_ID,
     _SlowMapper,
     _write_activations,
+    chase_runtime,
     staged_runners,
 )
+
+
+class SecondLedger(BoundedEvidenceLedger):
+    plugin_id = "second"
 
 
 def edit_staged_selection(path, plugin_id, enabled):
@@ -41,37 +45,17 @@ def edit_staged_selection(path, plugin_id, enabled):
 
 
 class AutomationMemorySelectionTests(unittest.TestCase):
-    def test_edits_to_the_staged_activation_change_plugins_on_next_cycle_in_same_worker(self):
+    def test_edits_to_the_staged_activation_change_plugins_on_the_next_cycle_of_the_running_host(self):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            bundle = controller_bundle_paths(runtime_root / vehicle_id)
-            sync_controller_bundle(bundle, output=None)
+            bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
             _write_activations(bundle)
-            # This implementation exists only in the staged bundle and is first
-            # loaded after automation starts, exercising the lazy import context.
-            staged = Path(bundle["root_dir"]) / "implementations/decision_cycle/memory/second.py"
-            staged.write_text(
-                "from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import BoundedEvidenceLedger\n"
-                "class SecondLedger(BoundedEvidenceLedger):\n"
-                "    plugin_id = 'second'\n"
-                "    plugin_id = 'second'\n", encoding="utf-8",
-            )
             payload = packaged_activation("memory", ["bounded_evidence"]).to_payload()
-            config = payload["plugin_configs"]["bounded_evidence"]
-            payload["plugin_specs"]["second"] = "implementations.decision_cycle.memory.second:SecondLedger"
-            payload["plugin_configs"]["second"] = dict(config)
-            payload["metadata"] = {"controller_bundle": {"root_dir": bundle["root_dir"]}}
+            payload["plugin_specs"]["second"] = f"{__name__}:SecondLedger"
+            payload["plugin_configs"]["second"] = dict(payload["plugin_configs"]["bounded_evidence"])
             path = Path(bundle["memory_runtime_dir"]) / "active.json"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
-            vehicle = {
-                "id": vehicle_id, "provider": "chase-sim",
-                "connection": {"ws_url": "ws://unused"},
-                "status": {"passive_capture": {"status": "available", "session_preservation": {
-                    "preserved": True, "unknown_fields": [], "changed_fields": [],
-                }}},
-            }
             applied = []
             outputs = []
             edits = []
@@ -97,21 +81,11 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 step.update = update_with_cli_edits
 
             with (
-                patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
-                patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
-                patch(
-                    "cli.automa_cli.automation.create_vehicle_access",
-                    lambda vehicle, *, timeout_s: VehicleAccess(
-                        car=_FakeCar(),
-                        image_extension="png",
-                        front_camera_endpoint="atomic-evaluation-capture",
-                    ),
-                ),
                 staged_runners(perception=_SlowMapper(), wrap=wrap_memory),
+                chase_runtime(runtime_root),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=vehicle_id, interval_s=0.4, num_decisions=5, take_control=False,
+                    vehicle_id=VEHICLE_ID, interval_s=0.4, num_decisions=5, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(

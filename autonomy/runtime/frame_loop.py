@@ -257,6 +257,7 @@ class FrameLoop:
         self.run_id = run_id or f"{runtime}-run-{secrets.token_hex(12)}"
         self._decision_identity_error = self._validate_decision_identity()
         self.last_status: dict[str, Any] = self.status()
+        host.register_status_provider("observation", self.observation_status)
 
     # Adapter hooks. A vehicle adapter overrides these to mirror the shared
     # session in its own vocabulary; the loop never depends on them.

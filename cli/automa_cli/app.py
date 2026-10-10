@@ -439,6 +439,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds to wait for graceful stop before forcing termination.",
     )
     automation_restart.set_defaults(handler=_handle_vehicles_automation_restart)
+    automation_host = automation_commands.add_parser(
+        "host",
+        help="Serve a Chase car's runtime host in the foreground (automation run starts one).",
+        description=(
+            "Serve the runtime routes for a Chase car from its latest controller release, "
+            "and relaunch on a restart command. `automation run` starts this in the background; "
+            "its log is runtime/vehicles/<id>/bundle/runtime/automation/host.log."
+        ),
+    )
+    automation_host.add_argument("--id", required=True, dest="vehicle_id", help="Chase vehicle id.")
+    automation_host.set_defaults(handler=_handle_vehicles_automation_host)
 
     operation = vehicle_commands.add_parser("operation", help="Run bounded vehicle checks and setup tasks.")
     operation.set_defaults(handler=_handle_vehicles_operation_help)
@@ -1983,6 +1994,12 @@ def _handle_vehicles_automation_status(args: argparse.Namespace) -> int:
     if result.message:
         print(result.message)
     return result.exit_code
+
+
+def _handle_vehicles_automation_host(args: argparse.Namespace) -> int:
+    from .runtime_hosts import serve_chase_host
+
+    return serve_chase_host(args.vehicle_id)
 
 
 def _handle_vehicles_automation_restart(args: argparse.Namespace) -> int:

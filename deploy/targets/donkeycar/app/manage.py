@@ -464,15 +464,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             from autonomy.runtime.layout import RuntimeLayout
             runtime_root = RuntimeLayout(Path(__file__).resolve().parent).runtime
             identity_path = runtime_root / "identity.json"
-            from autonomy.decision_cycle.activation import (
-                STEPS,
-                read_step_activation,
-                step_activation_path,
-            )
-            from autonomy.decision_cycle.steps import (
-                decision_steps,
-            )
-            from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE
+            from autonomy.runtime.assembly import staged_runtime
             from autonomy.runtime.session import DEFAULT_INTERVAL_S
             from implementations.runtime.picar import AutonomyPilotPart, create_host
             from implementations.runtime.picar.host_telemetry import (
@@ -480,43 +472,14 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 HostTelemetryStore,
             )
 
-            activations = {}
-            for step in STEPS:
-                path = step_activation_path(runtime_root, step)
-                if not path.exists():
-                    logger.warning("No %s activation at %s", step, path)
-                    continue
-                try:
-                    activations[step] = read_step_activation(path, step)
-                    logger.info(
-                        "Activated %s plugins %s",
-                        step,
-                        ", ".join(activations[step].plugins) or "(none)",
-                    )
-                except Exception:
-                    logger.exception(
-                        "Unable to read the %s activation at %s; the step %s",
-                        step,
-                        path,
-                        "uses its built-in plugin"
-                        if builtin_activation(step) is not None
-                        else "stays empty",
-                    )
-            host = create_host(
-                steps=decision_steps(activations, source=INSTALLED_PACKAGE)
-            )
-            host.follow_activations(activations, runtime_root)
-            applied = host.applied_decision()
-            decision_activations = applied["steps"]
-            perception = activations.get("perception")
-            perception_preset = (
-                perception.metadata.get("preset") if perception is not None else None
+            host, loop_options = staged_runtime(
+                runtime_root, lambda steps: create_host(steps=steps)
             )
 
             telemetry_store = None
             vehicle_id = None
             source_id = None
-            generation_id = applied["generation_id"]
+            generation_id = loop_options["generation_id"]
             run_id = None
             try:
                 identity = (
@@ -561,20 +524,16 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             autonomy_part = AutonomyPilotPart(
                 host=host,
                 interval_s=capture_interval_s,
-                preset=perception_preset,
                 vehicle_id=vehicle_id,
                 source_id=source_id if telemetry_store is not None else None,
-                decision_activations=decision_activations,
-                generation_id=generation_id,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
                 controller=autonomy_controller,
-                recording_root=runtime_root / "automation" / "runs",
+                **loop_options,
             )
             autonomy_execution = host.execution
             if telemetry_store is not None:
                 host.register_status_provider("host_telemetry", telemetry_store.status)
-            host.register_status_provider("observation", autonomy_part.observation_status)
             # The web controller serves the shared runtime routes.
             if autonomy_controller is not None:
                 from autonomy.runtime.routes import RuntimeRoutes

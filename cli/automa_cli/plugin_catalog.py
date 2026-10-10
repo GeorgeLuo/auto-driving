@@ -63,21 +63,11 @@ class CommandResult:
 
 
 def catalog_url(vehicle_id: str) -> str:
-    from .automation import RUNTIME_ROOT, _staged_onboard_vehicle
-    from .bundles import controller_bundle_paths
-    from .paths import safe_path_part
-    from .perception_view import VIEW_RECORD_NAME
+    """The catalog of the vehicle's runtime host; every host serves ``/api/plugins``."""
 
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    record = Path(bundle["runtime_dir"]) / "automation" / VIEW_RECORD_NAME
-    if record.exists():
-        view = json.loads(record.read_text())
-        if view.get("available") and view.get("url"):
-            return view["url"]
-    vehicle = _staged_onboard_vehicle(vehicle_id)
-    if vehicle is not None:
-        return vehicle["connection"]["base_url"]
-    raise RuntimeError(f"No live catalog endpoint for {vehicle_id}; use --url to address an existing host.")
+    from .runtime_hosts import runtime_base_url
+
+    return runtime_base_url(vehicle_id)
 
 
 def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: str,

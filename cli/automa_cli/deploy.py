@@ -48,7 +48,7 @@ from .step_activations import (
     format_activation_problems,
     read_bundle_activation,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id
+from .vehicles import discover_active_vehicles, find_vehicle_by_id, is_chase_vehicle_id
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -344,6 +344,13 @@ def update_vehicle_autonomy(
 ) -> CommandResult:
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
+    if is_chase_vehicle_id(vehicle_id):
+        if drive_args is not None or ssh_target is not None or pi_home is not None:
+            return CommandResult(2, "--drive-args, --ssh-target and --pi-home apply only to a PiCar.")
+        return _update_local_autonomy(
+            vehicle_id=vehicle_id, dry_run=dry_run, restart=restart,
+            json_output=json_output, output=output,
+        )
     target, error = _resolve_picar_target(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
@@ -523,6 +530,89 @@ def update_vehicle_autonomy(
             ]
         ),
     )
+
+
+def _update_local_autonomy(
+    *,
+    vehicle_id: str,
+    dry_run: bool,
+    restart: bool,
+    json_output: bool,
+    output: TextIO | None,
+) -> CommandResult:
+    """Package a release for a locally hosted vehicle; ``restart`` moves its host onto it."""
+
+    from autonomy.runtime.client import RuntimeClient
+    from .runtime_hosts import RuntimeHostError, host_record, release_code_dir, staged_vehicle
+
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    source_summary = controller_bundle_source_summary()
+    if dry_run:
+        payload = {"vehicle_id": vehicle_id, "dry_run": True, "restart": restart, "source": source_summary}
+        if json_output:
+            return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+        return CommandResult(0, "\n".join([
+            f"Dry run: would package {vehicle_id}'s controller release "
+            f"(tree {source_summary['tree_sha256'][:12]}, {source_summary['file_count']} files)",
+            f"Restart the host onto it: {'yes' if restart else 'no'}",
+        ]))
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
+    try:
+        vehicle = staged_vehicle(vehicle_id)
+        release = sync_controller_bundle(bundle, output=output)
+        ensure_vehicle_perception_activation(
+            vehicle=vehicle, preset=DEFAULT_PERCEPTION_PRESET, bundle=bundle, release=release,
+        )
+        ensure_vehicle_memory_activation(vehicle_id=vehicle_id, bundle=bundle, release=release)
+        ensure_builtin_activations(vehicle_id=vehicle_id, bundle=bundle, release=release)
+        _, summary = release_code_dir(vehicle_id, release["archive"]["sha256"])
+    except RuntimeHostError as exc:
+        return CommandResult(2, str(exc))
+    activations = {
+        step: activation
+        for step in STEPS
+        if (activation := read_bundle_activation(bundle, step)) is not None
+    }
+    steps = {step: list(activation.plugins) for step, activation in activations.items()}
+    record = host_record(vehicle_id)
+    restarted = False
+    if restart and record is not None:
+        try:
+            RuntimeClient(record["base_url"], timeout_s=5.0).restart(timeout_s=DONKEY_READY_TIMEOUT_S)
+        except (RuntimeError, TimeoutError) as exc:
+            return CommandResult(2, f"Release {summary['archive']} was packaged, but the host did not restart: {exc}")
+        restarted = True
+    payload = {
+        "vehicle_id": vehicle_id,
+        "dry_run": False,
+        "release": summary,
+        "steps": steps,
+        "generation_id": decision_generation_id(
+            {step: activations.get(step) for step in ("proposal", "plan", "action")}
+        ),
+        "restarted": restarted,
+    }
+    if json_output:
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    if restarted:
+        host_line = "Runtime restarted: yes"
+    elif record is None:
+        host_line = "Runtime restarted: no host running; the next automation run starts on this release"
+    else:
+        host_line = (
+            "Runtime restarted: no; an idle host moves onto this release at the next automation run, "
+            f"or now with: ./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
+        )
+    return CommandResult(0, "\n".join([
+        f"Autonomy updated: {vehicle_id} (local host)",
+        f"Release: {summary['archive']}",
+        f"Archive SHA-256: {summary['archive_sha256']}",
+        *_step_lines(steps),
+        f"Decision generation: {payload['generation_id']}",
+        host_line,
+    ]))
 
 
 def _resolve_picar_target(

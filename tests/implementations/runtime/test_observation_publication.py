@@ -208,6 +208,9 @@ class ObservationPublicationTests(unittest.TestCase):
             def status(self):
                 return {"steps": {}}
 
+            def register_status_provider(self, name, provider):
+                pass
+
             def run(self, context):
                 del context
                 raise RuntimeError("boom")
@@ -352,7 +355,7 @@ class ObservationPublicationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[3] / "deploy" / "targets" / "donkeycar"
         manage = (root / "app" / "manage.py").read_text(encoding="utf-8")
         self.assertIn("autonomy_controller.autonomy_routes = RuntimeRoutes(", manage)
-        self.assertIn("preset=perception_preset", manage)
+        self.assertIn("**loop_options", manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")

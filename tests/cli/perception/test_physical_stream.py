@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -64,7 +63,7 @@ class PhysicalObservationAdapterTests(unittest.TestCase):
         self.assertEqual(record["skipped_since_previous"], 4)
         self.assertEqual(record["perception"]["things"][0]["thing_id"], "boundary-1")
         self.assertEqual(record["control"]["steering"], 0.0)
-        self.assertEqual(record["control_source"], "onboard")
+        self.assertEqual(record["control_source"], "runtime_host")
         self.assertEqual(record["action_policy"], "observe_only")
 
     def test_perception_text_prefers_lines(self) -> None:

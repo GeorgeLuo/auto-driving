@@ -197,7 +197,7 @@ def _frame_record(normalized: dict[str, Any], *, action_policy: str | None) -> d
             else None
         ),
         "action_policy": action_policy,
-        "control_source": "onboard",
+        "control_source": "runtime_host",
         "control_application": (
             "shared_execution" if action_policy == "autonomy" else "not_applied"
         ),

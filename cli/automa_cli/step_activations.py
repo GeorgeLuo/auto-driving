@@ -110,21 +110,18 @@ def format_activation_problems(problems: list[dict[str, str]]) -> str:
 def apply_staged(vehicle_id: str, provider: Any, step: str) -> dict[str, Any]:
     """How a vehicle's running autonomy picks up ``step`` as ``vehicles update`` staged it.
 
-    The Chase worker hosts the local bundle; the PiCar hosts the copy that
-    ``vehicles update autonomy`` installs onboard. Either host selects a
-    restaged live-selection step's plugins on its next frame
-    (``selection_command`` is ``None`` when nothing needs to run); other
-    steps, and changed plugin specs or configs, take effect after
-    ``restart_command``.
+    Every host selects a restaged live-selection step's plugins on its next
+    frame. A Chase host reads the local runtime directory, so nothing needs to
+    run (``selection_command`` is ``None``); a PiCar reads the copy ``vehicles
+    update autonomy`` installs onboard. Other steps, and changed plugin specs
+    or configs, take effect after ``restart_command``, the same for every
+    vehicle: package a release and restart the host onto it.
     """
 
     live = step in LIVE_SELECTION_STEPS
-    if provider == "picar":
-        install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
-        selection, restart = install, f"{install} --restart"
-    else:
-        selection = None
-        restart = f"./cli/automa vehicles automation restart --id {vehicle_id}"
+    install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
+    selection = install if provider == "picar" else None
+    restart = f"{install} --restart"
     return {
         "live_selection": live,
         "selection_command": selection if live else restart,
@@ -513,11 +510,6 @@ def update_vehicle_step(
     if not dry_run:
         release = sync_controller_bundle(bundle, output=output if verbose else None)
         path = stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
-        if step in DECISION_STEPS:
-            from .decision import invalidate_latest_decision_frame
-
-            # A restaged decision step retires the latest published decision frame.
-            invalidate_latest_decision_frame(Path(bundle["root_dir"]).parent)
     payload = {
         "schema": "vehicle_step_update_v0",
         "vehicle_id": vehicle_id,

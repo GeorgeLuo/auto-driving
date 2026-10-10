@@ -27,6 +27,7 @@ from tests.cli.workbench_fixtures import (
     ImageReplayRunner, _wait_until, image_source, perception_activations,
     post_action, serve_workbench,
 )
+from tests.integration.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.support.cli_runner import AUTOMA_PATH, run_automa
 
 
@@ -301,13 +302,9 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(missing["outcome"]["status"], "unavailable")
             self.assertEqual(missing["outcome"]["recovery"], "./cli/automa vehicles status --id chase-sim-chaser")
             bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
-            host = create_picar_host(steps=decision_steps())
-            self.addCleanup(host.close)
-            onboard = RuntimeViewServer(vehicle_id="picar", automation_dir=root / "onboard", port=0,
-                                        plugin_catalog=PluginCatalogAPI(host.catalog)).start()
-            self.addCleanup(onboard.stop)
+            chase = self.enterContext(chase_runtime(runtime_root))
             viewer = RuntimeViewServer(vehicle_id="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",
-                                       port=0, plugin_catalog=PluginCatalogClient(onboard.url)).start()
+                                       port=0, plugin_catalog=PluginCatalogClient(chase.base_url)).start()
             self.addCleanup(viewer.stop)
             file = root / "prototype.py"
             file.write_text("dependency can arrive later")
@@ -331,6 +328,6 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(len(listed["plugins"]), 1)
             self.assertEqual(listed["plugins"][0]["id"], "prototype")
             self.assertIn(listed["plugins"][0]["metadata"]["revision"], result.stdout)
-            self.assertEqual(get_json(viewer.url, "/api/plugins"), get_json(onboard.url, "/api/plugins"))
-            self.assertEqual(host.catalog.resolve("memory", "prototype").metadata["revision"],
+            self.assertEqual(get_json(viewer.url, "/api/plugins"), get_json(chase.base_url, "/api/plugins"))
+            self.assertEqual(chase.loop.host.catalog.resolve("memory", "prototype").metadata["revision"],
                              listed["plugins"][0]["metadata"]["revision"])

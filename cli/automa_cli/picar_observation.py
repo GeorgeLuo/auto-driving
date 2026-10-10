@@ -1979,7 +1979,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "health": publication.get("health"),
         "result_age_ms": publication.get("result_age_ms"),
         "action_policy": publication.get("mode"),
-        "control_source": "onboard",
+        "control_source": "runtime_host",
         "control_application": (
             "shared_execution" if publication.get("mode") == "autonomy" else "not_applied"
         ),

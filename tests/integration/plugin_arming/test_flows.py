@@ -8,12 +8,14 @@ import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 from urllib.request import urlopen
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from cli.automa_cli.runtime_hosts import stop_chase_host
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
@@ -300,8 +302,15 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                     self.assertEqual(streamed["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
                     view_url = original["published_view"]["url"].rstrip("/")
-                    with urlopen(view_url + "/api/health", timeout=3) as response:
-                        health = json.load(response)["decision"]
+                    # The run's monitor publishes the host's decision to the view on its next poll.
+                    deadline = time.monotonic() + 5
+                    while True:
+                        with urlopen(view_url + "/api/health", timeout=3) as response:
+                            health = json.load(response)["decision"]
+                        if (health["identity"] or {}).get("producer_generation_id") == streamed["generation_id"]:
+                            break
+                        self.assertLess(time.monotonic(), deadline, health)
+                        time.sleep(0.05)
                     self.assertEqual(health["status"], "running")
                     with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
                         viewed = json.load(response)
@@ -313,10 +322,14 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
                     self.assertEqual(current["decision"]["generation_id"], streamed["generation_id"])
                     self.assertNotEqual(streamed["generation_id"], before["applied_decision"]["generation_id"])
+                cli("automation", "stop", "--id", "chase-sim-chaser")
+                # The host outlives the run and keeps the armed catalog, like a PiCar's.
+                after = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
+                self.assertEqual(selected(after, "applied", "proposal")[0], receipt["plugin"])
             finally:
                 cli("automation", "stop", "--id", "chase-sim-chaser", check=False)
-            unavailable = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json", check=False).stdout)
-            self.assertFalse(unavailable["ok"])
+                with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime):
+                    stop_chase_host("chase-sim-chaser")
 
 
 if __name__ == "__main__":

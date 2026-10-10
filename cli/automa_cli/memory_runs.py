@@ -22,15 +22,15 @@ from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_CO
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.runtime.client import RuntimeClient
 from implementations.decision_cycle.catalog import selection_activation
 
-from .chase_observation import chase_automation_dir
 from .inspection_runs import recorded_selection, recorded_selections, replay_step, selection_record
 from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
 from .paths import ROOT, display_path, safe_path_part
-from .picar_observation import picar_base_url, post_memory_reset
-from .streaming import _live_plugins, _probe_chase_step, probe_live_memory
+from .runtime_hosts import runtime_base_url
+from .streaming import _live_plugins, probe_live_memory
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 from .workbench_frames import run_frame
 from .workbench_source import (
@@ -247,7 +247,7 @@ def reset_vehicle_memory(
     wait_s: float = 5.0,
     json_output: bool = False,
 ) -> CommandResult:
-    """Reset live memory on the Chase automation worker or the PiCar onboard host.
+    """Reset live memory on the vehicle's runtime host.
 
     The reset is confirmed when the live probe afterwards shows every applied
     plugin's ledger empty (``ledger_is_empty``); ``nonempty_plugin_ids`` names
@@ -304,24 +304,9 @@ def reset_vehicle_memory(
         )
 
     try:
-        if provider == "picar":
-            reset_payload = _reset_picar_memory(
-                vehicle_id=vehicle_id,
-                vehicle=vehicle,
-                timeout_s=timeout_s,
-            )
-        elif provider == "chase-sim":
-            reset_payload = _reset_chase_memory(
-                vehicle_id=vehicle_id,
-                before=before,
-                wait_s=wait_s,
-            )
-        else:
-            return CommandResult(
-                2,
-                f"Vehicle {vehicle_id!r} is provider {provider!r}; memory reset supports picar and chase-sim.",
-            )
-    except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+        base_url = runtime_base_url(vehicle_id)
+        reset_payload = RuntimeClient(base_url, timeout_s=timeout_s).reset_memory()
+    except RuntimeError as exc:
         return CommandResult(2, f"Memory reset failed for {vehicle_id}: {exc}")
 
     after = probe_live_memory(
@@ -385,120 +370,3 @@ def reset_vehicle_memory(
         lines.append(f"Warning: live probe did not confirm an empty memory after reset.{detail}")
         return CommandResult(2, "\n".join(lines))
     return CommandResult(0, "\n".join(lines))
-
-
-def _reset_picar_memory(
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any],
-    timeout_s: float,
-) -> dict[str, Any]:
-    base_url = picar_base_url(vehicle)
-    if not base_url:
-        raise ValueError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
-    payload = post_memory_reset(base_url, timeout_s=timeout_s)
-    if payload.get("ok") is True:
-        return payload
-    # HTTP non-2xx may still carry structured JSON.
-    if payload.get("http_status") in {200, 201} and payload.get("status") == "reset":
-        payload["ok"] = True
-        return payload
-    payload.setdefault("ok", False)
-    payload.setdefault(
-        "error",
-        payload.get("error")
-        or f"POST /autonomy/memory/reset returned HTTP {payload.get('http_status')}",
-    )
-    return payload
-
-
-def _reset_chase_memory(
-    *,
-    vehicle_id: str,
-    before: dict[str, Any],
-    wait_s: float,
-) -> dict[str, Any]:
-    automation_dir = chase_automation_dir(vehicle_id)
-    if not automation_dir.exists():
-        raise ValueError(
-            f"No automation runtime for {vehicle_id!r}. "
-            f"Run: ./cli/automa vehicles automation run --id {vehicle_id}"
-        )
-    request_path = automation_dir / "memory_reset.request.json"
-    result_path = automation_dir / "memory_reset.result.json"
-    if result_path.exists():
-        result_path.unlink()
-    token = f"reset-{int(time.time() * 1000)}"
-    request = {
-        "schema": "automa_memory_reset_request_v0",
-        "token": token,
-        "requested_at_ms": int(time.time() * 1000),
-        "vehicle_id": vehicle_id,
-    }
-    request_path.write_text(json.dumps(request, indent=2, sort_keys=True), encoding="utf-8")
-
-    deadline = time.monotonic() + max(0.2, float(wait_s))
-    while time.monotonic() < deadline:
-        if result_path.exists():
-            try:
-                result = json.loads(result_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                time.sleep(0.05)
-                continue
-            if isinstance(result, dict) and result.get("token") == token:
-                try:
-                    request_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                return result
-        # Fallback: detect reset via live probe when worker updated state.
-        # This is already the Chase file protocol. Avoid general vehicle
-        # discovery here: it can outlast the acknowledgement deadline and
-        # hide a result the worker has already written.
-        live = _probe_chase_step("memory", vehicle_id=vehicle_id)
-        if _probe_shows_reset(before, live):
-            try:
-                request_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            return {
-                "ok": True,
-                "status": "reset",
-                "token": token,
-                "detected_via": "live_probe",
-                "memory": {
-                    "plugin_ids": live.get("plugin_ids"),
-                    "plugins": live.get("plugins"),
-                    "evidence_publisher": live.get("evidence_publisher"),
-                    "reset_count": live.get("reset_count"),
-                },
-            }
-        time.sleep(0.05)
-
-    try:
-        request_path.unlink(missing_ok=True)
-    except OSError:
-        pass
-    raise TimeoutError(
-        f"Automation worker did not acknowledge memory reset within {wait_s}s. "
-        "Is the worker running?"
-    )
-
-
-def _probe_shows_reset(before: dict[str, Any], live: dict[str, Any]) -> bool:
-    """Whether a live probe shows a reset since ``before``.
-
-    A reset shows when some plugin reports an epoch other than the one it
-    reported before, and every plugin's ledger is empty.
-    """
-
-    if live.get("status") != "live":
-        return False
-    plugins = _live_plugins(live)
-    before_epochs = {entry["plugin_id"]: entry.get(EPOCH_ID) for entry in _live_plugins(before)}
-    epoch_changed = any(
-        entry.get(EPOCH_ID) not in {None, before_epochs.get(entry["plugin_id"])}
-        for entry in plugins
-    )
-    return epoch_changed and all(ledger_is_empty(entry) for entry in plugins)
-

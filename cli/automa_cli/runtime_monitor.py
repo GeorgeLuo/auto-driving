@@ -1,8 +1,9 @@
-"""Local publication monitor for an onboard shared runtime.
+"""Run and monitor one session on a vehicle's runtime host.
 
-Execution belongs to the host behind OnboardRuntimeClient. This module only
-persists and displays its publications, in the run record and terminal lines
-a locally hosted run writes (``run_record``).
+Execution belongs to the host at ``base_url`` (a PiCar's Donkey service or a
+local Chase host); both serve ``autonomy.runtime.routes``. This module starts
+the session, then persists and displays its publications in the run record
+and terminal lines (``run_record``) and the Mac-side runtime view.
 """
 from __future__ import annotations
 
@@ -15,11 +16,11 @@ from typing import Any, TextIO
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import write_recorded_frame
 from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.runtime.picar.client import OnboardRuntimeClient
+from autonomy.runtime.client import RuntimeClient
 from .paths import display_path
 from .perception_view import perception_view_ready
 from .picar_observation import (
-    fetch_autonomy_status, fetch_observation_publication, fetch_observation_frame,
+    fetch_observation_publication, fetch_observation_frame,
     frame_id_from_headers, publication_to_frame_record, perception_text_from_publication,
 )
 from .run_record import (
@@ -36,29 +37,29 @@ MONITOR_POLL_INTERVAL_S = 0.1
 
 
 def _observation_counts(host: dict[str, Any]) -> tuple[int, int]:
-    """The onboard host's cumulative camera and skipped frame counters."""
+    """The host's cumulative camera and skipped frame counters."""
 
     components = host.get("components") if isinstance(host.get("components"), dict) else {}
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
     counts = tuple(observation.get(key) for key in ("frames_captured", "skipped_count"))
     if any(type(count) is not int or count < 0 for count in counts):
-        raise RuntimeError("Onboard host does not report capture and skipped-frame counters; update core and autonomy.")
+        raise RuntimeError("The runtime host does not report capture and skipped-frame counters; update core and autonomy.")
     return counts
 
 
-def _host_status(base_url: str, timeout_s: float) -> dict[str, Any]:
-    autonomy = fetch_autonomy_status(base_url, timeout_s=timeout_s).get("autonomy")
+def _host_status(client: RuntimeClient) -> dict[str, Any]:
+    autonomy = client.host_status().get("autonomy")
     if not isinstance(autonomy, dict):
-        raise ConnectionError("Donkey runtime is up but reports no onboard host")
+        raise RuntimeError(f"{client.base_url} answers but reports no runtime host")
     return autonomy
 
 
-def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
+def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                             perception: dict[str, Any], decision: dict[str, Any],
                             step_activations: dict[str, Path],
                             configuration: RunConfiguration, timeout_s: float,
                             record: bool, verbose: bool, output: TextIO | None) -> tuple[int, str]:
-    client = OnboardRuntimeClient(base_url, timeout_s=timeout_s)
+    client = RuntimeClient(base_url, timeout_s=timeout_s)
     automation_dir.mkdir(parents=True, exist_ok=True)
     state_path = automation_dir / "state.json"
     latest_json_path = automation_dir / "latest_perception.json"
@@ -69,19 +70,21 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
     state = new_run_state(
         vehicle_id=vehicle_id, run_id=None, status="starting", pid=os.getpid(),
         configuration=configuration, record=record,
-        control_source=control_source(configuration, onboard=True),
+        control_source=control_source(configuration),
         automation_dir=automation_dir,
         front_camera_path=automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg",
         run_dir=None, published_view={"status": "starting", "available": False, "url": None},
     )
     state.update(perception=perception, decision=decision)
     try:
-        capture_base, skipped_base = _observation_counts(_host_status(base_url, timeout_s))
+        host = _host_status(client)
+        capture_base, skipped_base = _observation_counts(host)
+        record_host_status(state, host, activations=step_activations)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
         recording = response.get("session", {}).get("recording")
         if record and recording is None:
-            raise RuntimeError("onboard host does not support complete recordings; update core and autonomy")
+            raise RuntimeError("the runtime host does not support complete recordings; update core and autonomy")
         recording_id = recording["run_id"] if record else None
         run_dir = automation_dir / "runs" / recording_id if record else None
         frames_dir = automation_dir / "latest" / "frames"
@@ -103,14 +106,14 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
         for line in startup_lines(state):
             if output is not None:
                 print(line, file=output, flush=True)
-        last_frame_id = None
+        last_capture = None
         frames_seen = 0
         while True:
             runtime = client.status()
             if runtime["host_run_id"] != run_id:
-                raise RuntimeError("onboard host restarted during this run")
+                raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
-            host = _host_status(base_url, timeout_s)
+            host = _host_status(client)
             capture_count, skipped_count = _observation_counts(host)
             state.update(
                 session=session, execution=session["execution"],
@@ -124,12 +127,14 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
             # its final decision in the live latest-only publication.
             if run_dir is not None and session["status"] != "running":
                 break
-            # Onboard capture has its own cadence; the monitor never executes
+            # The host captures at its own cadence; the monitor never executes
             # a decision or chooses a vehicle command.
             publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
             frame = publication_to_frame_record(publication)
             frame_id = frame.get("frame_id")
-            if frame_id and frame_id != last_frame_id and session["processed_decisions"]:
+            # A paused simulator repeats its frame index, so a new cycle is a new capture.
+            capture = (frame_id, frame.get("captured_at_ms"))
+            if frame_id and capture != last_capture and session["processed_decisions"]:
                 jpeg, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
                 if frame_id_from_headers(headers) == frame_id:
                     frame.update(
@@ -188,7 +193,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
                         "skipped_since_previous": frame.get("skipped_since_previous"),
                         "generation_id": frame.get("generation_id"),
                     }
-                    last_frame_id = frame_id
+                    last_capture = capture
                     frames_seen += 1
                     if output is not None and reports_frame(frames_seen, verbose=verbose):
                         action = (frame.get("control") or {}).get("reason")
@@ -198,7 +203,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
                         )
                         print(line, file=output, flush=True)
             state["published_view"] = server.health_payload()
-            if last_frame_id is not None:
+            if last_capture is not None:
                 state["readiness"] = frame_readiness(perception_view_ready(state["published_view"]))
             state["updated_at_ms"] = timestamp_ms()
             write_json_atomically(state_path, state)
@@ -222,7 +227,7 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
         if reason == "error":
             finish_run(state, server, status="error", stop_reason=reason,
-                       error=host.get("last_error") or "onboard cycle failed")
+                       error=host.get("last_error") or "the runtime cycle failed")
         elif stop_error is not None:
             finish_run(state, server, status="error", stop_reason=reason, error=stop_error)
         else:
@@ -232,18 +237,18 @@ def monitor_onboard_runtime(*, vehicle_id: str, base_url: str, automation_dir: P
     return run_result(state, state_path=state_path)
 
 
-def _sync_recording(client: OnboardRuntimeClient, state: dict[str, Any], *,
+def _sync_recording(client: RuntimeClient, state: dict[str, Any], *,
                     run_dir: Path | None, recording_id: str | None) -> None:
     if run_dir is None:
         return
     while True:
         batch = client.read_recording(recording_id, after=state["recorded_count"])
         if batch["run_id"] != recording_id or batch["after"] != state["recorded_count"]:
-            raise RuntimeError("onboard recording identity or cursor changed")
+            raise RuntimeError("the host recording identity or cursor changed")
         for item in batch["frames"]:
             frame = item["frame"]
             if frame["run_id"] != recording_id or frame["vehicle_id"] != state["vehicle_id"]:
-                raise RuntimeError("onboard recording frame belongs to another run or vehicle")
+                raise RuntimeError("a host recording frame belongs to another run or vehicle")
             write_recorded_frame(
                 run_dir, frame, base64.b64decode(item["image_base64"], validate=True),
                 item["image_extension"],
@@ -252,10 +257,10 @@ def _sync_recording(client: OnboardRuntimeClient, state: dict[str, Any], *,
         if state["recorded_count"] == batch["recorded_count"]:
             return
         if not batch["frames"]:
-            raise RuntimeError("onboard recording history is incomplete")
+            raise RuntimeError("the host recording history is incomplete")
 
 
-def _stop(client: OnboardRuntimeClient, state: dict[str, Any], *,
+def _stop(client: RuntimeClient, state: dict[str, Any], *,
           run_dir: Path | None, recording_id: str | None) -> str | None:
     """Release control first, then drain every committed cycle of this run."""
     try:
@@ -265,5 +270,5 @@ def _stop(client: OnboardRuntimeClient, state: dict[str, Any], *,
             state["processed_count"] = session["processed_decisions"]
         _sync_recording(client, state, run_dir=run_dir, recording_id=recording_id)
     except Exception as exc:  # noqa: BLE001 - recorded as the run's error
-        return f"Could not stop or finish onboard recording: {type(exc).__name__}: {exc}"
+        return f"Could not stop the run or finish its recording: {type(exc).__name__}: {exc}"
     return None

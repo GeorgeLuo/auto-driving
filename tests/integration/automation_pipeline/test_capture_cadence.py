@@ -7,14 +7,14 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.runtime_hosts import stop_chase_host
 from tests.integration.automation_pipeline.cadence_fixtures import GatedPerception
 from tests.integration.automation_pipeline.pipeline_fixtures import (
-    _FakeCar, _write_activations, staged_runners,
+    VEHICLE_ID, _FakeCar, _write_activations, chase_runtime, staged_runners,
 )
 from tests.support.cli_runner import run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
@@ -23,26 +23,12 @@ from tests.support.fake_metrics_ui import fake_metrics_ui_server
 class ChaseCaptureCadenceTests(unittest.TestCase):
     def _run(self, runtime_root: Path, car: _FakeCar, perception: GatedPerception,
              *, interval_s: float, num_decisions: int):
-        vehicle_id = "chase-sim-chaser"
-        bundle = controller_bundle_paths(runtime_root / vehicle_id)
+        bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
         _write_activations(bundle)
         output = io.StringIO()
-        vehicle = {
-            "id": vehicle_id, "provider": "chase-sim",
-            "connection": {"ws_url": "ws://unused"},
-            "status": {"passive_capture": {"status": "available", "session_preservation": {
-                "preserved": True, "unknown_fields": [], "changed_fields": [],
-            }}},
-        }
-        with (
-            patch("cli.automa_cli.automation.RUNTIME_ROOT", runtime_root),
-            patch("cli.automa_cli.automation.discover_active_vehicles", return_value={}),
-            patch("cli.automa_cli.automation.find_vehicle_by_id", return_value=(vehicle, None)),
-            patch("cli.automa_cli.automation.create_vehicle_access", return_value=SimpleNamespace(car=car)),
-            staged_runners(perception=perception),
-        ):
+        with staged_runners(perception=perception), chase_runtime(runtime_root, car=car):
             result = run_vehicle_automation(
-                vehicle_id=vehicle_id, interval_s=interval_s, num_decisions=num_decisions,
+                vehicle_id=VEHICLE_ID, interval_s=interval_s, num_decisions=num_decisions,
                 take_control=False, record=True, verbose=True, output=output,
             )
         state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
@@ -64,7 +50,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             try:
-                result, state, output = self._run(
+                result, state, _output = self._run(
                     Path(tmp), CaptureCar(simulator_frame_stride=7), perception,
                     interval_s=0.0, num_decisions=2,
                 )
@@ -80,15 +66,13 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             self.assertEqual(state["session"]["processed_decisions"], 2)
             self.assertGreater(state["frames_captured"], state["processed_count"] + state["skipped_count"])
             records = [json.loads(p.read_text()) for p in Path(state["run_dir"]).glob("perception/*/perception.json")]
-            records.sort(key=lambda r: r["decision_cycle"]["context"]["metadata"]["capture_sequence"])
+            records.sort(key=lambda r: r["context"]["metadata"]["capture_sequence"])
             self.assertEqual([r["skipped_since_previous"] for r in records], [0, 1])
-            self.assertEqual([r["simulator_frame_index"] for r in records], [100, 114])
-            self.assertEqual(records[-1]["simulation_epoch"], "chase-run:test")
-            self.assertEqual(records[-1]["chaser_reference"]["simulator_frame_index"], 114)
-            self.assertEqual(state["last_frame"]["skipped_since_previous"], 1)
+            self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 114])
+            self.assertEqual(records[-1]["context"]["metadata"]["simulation_epoch"], "chase-run:test")
             self.assertIn("Decisions completed: 2", result.message)
             self.assertIn("Frames superseded before decision: 1", result.message)
-            self.assertIn("skipped_since_previous=1", output)
+            self.assertIn("Decisions recorded: 2", result.message)
 
     def test_bounded_completion_wakes_a_long_capture_interval(self) -> None:
         perception = GatedPerception(1)
@@ -125,15 +109,20 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             root = Path(tmp)
             env = {"CHASE_UI_WS_URL": ws_url}
+            # Staging builds the controller release the car's runtime host runs.
             run_automa(
                 "vehicles", "update", "perception", "--id", "chase-sim-chaser",
                 "--plugin", "frame", runtime_root=root, extra_env=env,
             )
-            run = run_automa(
-                "vehicles", "automation", "run", "--id", "chase-sim-chaser",
-                "--observe-only", "--num-decisions", "3", "--interval-s", "0",
-                "--foreground", runtime_root=root, extra_env=env,
-            )
+            try:
+                run = run_automa(
+                    "vehicles", "automation", "run", "--id", "chase-sim-chaser",
+                    "--observe-only", "--num-decisions", "3", "--interval-s", "0",
+                    "--foreground", runtime_root=root, extra_env=env,
+                )
+            finally:
+                with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", root):
+                    stop_chase_host("chase-sim-chaser")
             state = json.loads((root / "chase-sim-chaser/bundle/runtime/automation/state.json").read_text())
             self.assertEqual(state["status"], "completed")
             self.assertEqual(state["num_decisions"], 3)

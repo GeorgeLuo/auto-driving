@@ -10,7 +10,9 @@ from urllib.request import urlopen
 from unittest.mock import patch
 import numpy as np
 from PIL import Image
+from autonomy.decision_cycle.activation import step_activation_path, write_step_activation
 from autonomy.decision_cycle.steps import decision_steps
+from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.decision_live import PicarDecisionViewAdapter, _provider_identity
 from cli.automa_cli.decision_records import activations_from_payloads
 from cli.automa_cli.memory_report import plugin_states
@@ -19,6 +21,8 @@ from cli.automa_cli.decision import (
     picar_decision_view_frame,
 )
 from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.step_activations import replace_metadata
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.support.cli_runner import run_automa
 from tests.cli.decision.decision_surfaces_fixtures import (
@@ -267,8 +271,17 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         thread.start()
         base_url = f"http://127.0.0.1:{server.server_port}"
+        # The CLI addresses a PiCar by the connection its staging recorded.
+        proposal = packaged_activation("proposal")
+        write_step_activation(
+            step_activation_path(controller_bundle_paths(self.runtime_root / vehicle_id)["runtime_dir"], "proposal"),
+            replace_metadata(proposal, {
+                **proposal.metadata, "vehicle_id": vehicle_id, "provider": "picar",
+                "runtime": {"connection": {"base_url": base_url}},
+            }),
+        )
         try:
-            env = {"PIRACER_BASE_URL": base_url, "PIRACER_ID": vehicle_id}
+            env = {}
             json_result = run_automa(
                 "vehicles",
                 "stream",

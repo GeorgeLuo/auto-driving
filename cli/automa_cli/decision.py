@@ -55,7 +55,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, activation_genera
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
-from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
@@ -66,10 +66,6 @@ from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.report import (
     REPORT_SCHEMA,
-    VehicleReport,
-    delivery_values,
-    diagnostic_ceiling,
-    report_from_host_result,
 )
 
 from .bundles import controller_bundle_paths
@@ -81,15 +77,14 @@ from .step_activations import (
     format_activation_problems,
     proposal_plugin_ids,
 )
-from .chase_observation import ChaseStateError, read_chase_state
 from .paths import ROOT, display_path, safe_path_part
 from .picar_observation import (
     PicarDecisionPublicationError,
     fetch_decision_publication,
     normalize_picar_decision_publication,
-    picar_base_url,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, is_chase_vehicle_id
+from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
+from .vehicles import is_chase_vehicle_id
 
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
@@ -106,33 +101,12 @@ DECISION_APPLY_MAX_RECORD_BYTES = int(
 )
 
 APPLY_SEQUENCE_SCHEMA = "automa_decision_apply_sequence_v1"
-STREAM_FRAME_SCHEMA = "vehicle_decision_stream_frame_v0"
 APPLY_RESULT_SCHEMA = "vehicle_decision_apply_result_v0"
 APPLY_DIGEST_SCHEMA = "vehicle_decision_apply_digest_v0"
 ERROR_SCHEMA = "vehicle_decision_error_v0"
 EXACT_FRAME_REVIEW_SCHEMA = "decision_exact_frame_review_v0"
 COMBINED_VIEW_ID = "decision-combined-v0"
-LATEST_DECISION_FILENAME = "latest_decision.json"
 
-STREAM_FRAME_EXACT_KEYS = frozenset(
-    {
-        "schema",
-        "vehicle_id",
-        "generation_id",
-        "run_id",
-        "worker_pid",
-        "published_at_ms",
-        "frame_id",
-        "frame_index",
-        "timestamp_ms",
-        "cycle",
-        "observation_summary",
-        "memory_summary",
-        "plan_summary",
-        "authority_summary",
-        "view",
-    }
-)
 # A decision frame's cycle holds the proposal, plan, and action step records.
 CYCLE_EXACT_KEYS = frozenset({"proposal", "plan", "action"})
 PROPOSAL_RECORD_EXACT_KEYS = frozenset(
@@ -207,37 +181,6 @@ SOURCE_REF_EXACT_KEYS = frozenset(
 COMMAND_EXACT_KEYS = frozenset(
     {"schema", "steering", "throttle", "gear", "normalized"}
 )
-OBS_SUMMARY_EXACT_KEYS = frozenset({"status", "frame_id", "reason"})
-MEM_SUMMARY_EXACT_KEYS = frozenset({"status", "health", "record_count", "records"})
-PLAN_SUMMARY_EXACT_KEYS = frozenset(
-    {"status", "selected_proposal_id", "candidates", "contributions"}
-)
-PLAN_SUMMARY_CAND_EXACT_KEYS = frozenset(
-    {
-        "proposal_id",
-        "plugin_id",
-        "lifecycle",
-        "freshness",
-        "confidence",
-        "reason",
-        "command",
-        "source_refs",
-    }
-)
-AUTHORITY_SUMMARY_EXACT_KEYS = frozenset(
-    {
-        "proposed",
-        "authorized_output",
-        "proposed_applied",
-        "host_application",
-        "proposed_equals_authorized",
-        "cycle_status",
-        "cycle_reason",
-        "gate_id",
-    }
-)
-VIEW_EXACT_KEYS = frozenset({"view_id", "applied_emphasized"})
-
 OBSERVATION_REQUIRED_KEYS = frozenset(
     {
         "schema",
@@ -314,13 +257,6 @@ def decision_apply_output_root() -> Path:
     )
 
 
-def latest_decision_path(vehicle_runtime_dir: Path | str) -> Path:
-    """Path of generation-scoped latest decision frame beside automation state."""
-
-    bundle = controller_bundle_paths(Path(vehicle_runtime_dir))
-    return Path(bundle["runtime_dir"]) / "automation" / LATEST_DECISION_FILENAME
-
-
 def decision_error_payload(
     *,
     error: str,
@@ -360,7 +296,6 @@ def _error_result(
             ),
         )
     return CommandResult(exc.exit_code, exc.message_text)
-
 
 
 def _require_valid_activations(
@@ -414,7 +349,6 @@ def _read_surface_identity(
     return identity
 
 
-
 def load_decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
     """The staged decision steps and their generation; a proposal step is required."""
 
@@ -425,54 +359,6 @@ def load_decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Stream frame build / accept / publish
 # ---------------------------------------------------------------------------
-
-
-def build_decision_stream_frame(
-    cycle_result: Any,
-    *,
-    vehicle_id: str,
-    run_id: str,
-    worker_pid: int,
-    generation_id: str,
-    published_at_ms: int | None = None,
-) -> dict[str, Any]:
-    """Build one ``vehicle_decision_stream_frame_v0`` from a cycle's decision records."""
-
-    if isinstance(cycle_result, dict):
-        cycle_dict = cycle_result
-    else:
-        records = (
-            cycle_result
-            if isinstance(cycle_result, DecisionRecords)
-            else DecisionRecords.from_cycle(cycle_result)
-        )
-        if records is None:
-            raise TypeError("cycle_result must carry proposal and action records")
-        cycle_dict = records.to_dict()
-
-    source, plan, authority, action = _cycle_parts(cycle_dict)
-    return {
-        "schema": STREAM_FRAME_SCHEMA,
-        "vehicle_id": vehicle_id,
-        "generation_id": generation_id,
-        "run_id": run_id,
-        "worker_pid": int(worker_pid),
-        "published_at_ms": int(
-            published_at_ms if published_at_ms is not None else int(time.time() * 1000)
-        ),
-        "frame_id": action.get("frame_id"),
-        "frame_index": _cycle_frame_index(source, action),
-        "timestamp_ms": _cycle_timestamp_ms(source, action),
-        "cycle": cycle_dict,
-        "observation_summary": _observation_summary(source),
-        "memory_summary": _memory_summary(source),
-        "plan_summary": _plan_summary(plan),
-        "authority_summary": _authority_summary(authority, action),
-        "view": {
-            "view_id": COMBINED_VIEW_ID,
-            "applied_emphasized": True,
-        },
-    }
 
 
 def _cycle_parts(
@@ -487,22 +373,6 @@ def _cycle_parts(
     plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else None
     authority = action.get("authority") if isinstance(action.get("authority"), dict) else {}
     return source, plan, authority, action
-
-
-def _cycle_frame_index(source: dict[str, Any] | None, cycle: dict[str, Any]) -> int:
-    if source is not None and type(source.get("frame_index")) is int:
-        return int(source["frame_index"])
-    if type(cycle.get("frame_index")) is int:
-        return int(cycle["frame_index"])
-    return 0
-
-
-def _cycle_timestamp_ms(source: dict[str, Any] | None, cycle: dict[str, Any]) -> int:
-    if source is not None and type(source.get("timestamp_ms")) is int:
-        return int(source["timestamp_ms"])
-    if type(cycle.get("timestamp_ms")) is int:
-        return int(cycle["timestamp_ms"])
-    return 0
 
 
 def _observation_summary(source: dict[str, Any] | None) -> dict[str, Any]:
@@ -660,89 +530,6 @@ def _authority_summary(
     }
 
 
-def accept_decision_stream_frame(
-    frame: object,
-    *,
-    activation: dict[str, Any] | None,
-    automation_state: dict[str, Any] | None,
-    now_ms: int,
-    is_pid_alive: Callable[[int], bool],
-    max_age_ms: int | None = None,
-) -> None:
-    """Production stream acceptance predicate. Raises DecisionSurfaceError.
-
-    ``activation`` is the staged decision identity: the proposal, plan, and
-    action activations and the generation ID they identify.
-    """
-
-    ceiling = DECISION_STREAM_MAX_AGE_MS if max_age_ms is None else int(max_age_ms)
-    if type(ceiling) is not int or ceiling <= 0:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Decision stream max age is not a positive int.",
-        )
-
-    if not isinstance(frame, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Latest decision frame is not a JSON object.",
-        )
-    reconstructed_cycle = _require_stream_frame_envelope(frame)
-
-    steps = _require_identity_steps(activation, error="activation_missing")
-    _require_runner_plan_alignment(reconstructed_cycle, steps)
-
-    if frame.get("generation_id") != activation.get("generation_id"):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Latest decision frame does not match the currently staged decision generation.",
-        )
-
-    if not isinstance(automation_state, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Automation state is missing; cannot accept a decision stream frame.",
-        )
-    if automation_state.get("run_id") != frame.get("run_id"):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Latest decision frame run_id does not match the live automation worker.",
-        )
-    if automation_state.get("status") != "running":
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            f"Automation worker status is {automation_state.get('status')!r}; "
-            "stream decision requires status='running'.",
-        )
-    state_pid = automation_state.get("pid")
-    frame_pid = frame.get("worker_pid")
-    if type(state_pid) is not int or type(frame_pid) is not int or state_pid != frame_pid:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Latest decision frame worker_pid does not match automation state pid.",
-        )
-    if not is_pid_alive(int(state_pid)):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            f"Automation worker pid {state_pid} is not alive.",
-        )
-
-    published_at = frame.get("published_at_ms")
-    if type(now_ms) is not int or type(published_at) is not int:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "published_at_ms and now_ms must be non-bool ints for freshness.",
-        )
-    age = now_ms - published_at
-    if not (0 <= age <= ceiling):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            f"Latest decision frame age {age} ms is outside 0..{ceiling} ms.",
-            details={"age_ms": age, "max_age_ms": ceiling},
-        )
-    _require_stream_summaries_match_cycle(frame, frame["cycle"])
-
-
 def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
     """The decision steps of an identity; its generation ID must match their content."""
 
@@ -839,16 +626,6 @@ def accept_picar_decision_publication(
     return normalized
 
 
-def _require_non_bool_int(value: object, *, field: str) -> int:
-    if type(value) is not int:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"Latest decision frame {field} must be a non-bool int.",
-            details={"field": field},
-        )
-    return value
-
-
 def _require_exact_keys(
     payload: dict[str, Any],
     exact: frozenset[str],
@@ -867,147 +644,6 @@ def _require_exact_keys(
                 "extra": sorted(keys - set(exact)),
                 "missing": sorted(set(exact) - keys),
             },
-        )
-
-
-def _require_stream_frame_envelope(
-    frame: dict[str, Any],
-) -> DecisionRecords:
-    """Validate exact vehicle_decision_stream_frame_v0 + nested cycle export."""
-
-    if "applied_control" in frame:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Latest decision frame must not include applied_control.",
-            details={"field": "applied_control"},
-        )
-    if frame.get("schema") != STREAM_FRAME_SCHEMA:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"Latest decision frame schema must be {STREAM_FRAME_SCHEMA!r}.",
-        )
-    _require_exact_keys(frame, STREAM_FRAME_EXACT_KEYS, field="stream_frame")
-
-    for key in ("vehicle_id", "generation_id", "run_id"):
-        if type(frame.get(key)) is not str or not str(frame.get(key)):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"Latest decision frame {key} must be a non-empty string.",
-                details={"field": key},
-            )
-    try:
-        require_ascii_id(frame["frame_id"], field_name="frame_id")
-    except ValueError as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"Latest decision frame frame_id is not a valid ASCII id: {exc}",
-            details={"field": "frame_id"},
-        ) from exc
-    _require_non_bool_int(frame.get("worker_pid"), field="worker_pid")
-    _require_non_bool_int(frame.get("published_at_ms"), field="published_at_ms")
-    _require_non_bool_int(frame.get("frame_index"), field="frame_index")
-    _require_non_bool_int(frame.get("timestamp_ms"), field="timestamp_ms")
-
-    _require_observation_summary(frame["observation_summary"])
-    _require_memory_summary(frame["memory_summary"])
-    _require_plan_summary_envelope(frame["plan_summary"])
-    _require_authority_summary(frame["authority_summary"])
-    view = frame["view"]
-    if not isinstance(view, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "view must be an object.",
-        )
-    _require_exact_keys(view, VIEW_EXACT_KEYS, field="view")
-    if view.get("view_id") != COMBINED_VIEW_ID or view.get("applied_emphasized") is not True:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "view must be decision-combined-v0 with applied_emphasized=true.",
-        )
-
-    cycle = frame["cycle"]
-    if not isinstance(cycle, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Latest decision frame cycle must be an object.",
-        )
-    reconstructed = _require_exact_cycle_export(cycle)
-    _require_aggregate_cycle_alignment(frame, reconstructed)
-    return reconstructed
-
-
-def _require_observation_summary(payload: object) -> None:
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "observation_summary must be an object.",
-        )
-    _require_exact_keys(payload, OBS_SUMMARY_EXACT_KEYS, field="observation_summary")
-
-
-def _require_memory_summary(payload: object) -> None:
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "memory_summary must be an object.",
-        )
-    _require_exact_keys(payload, MEM_SUMMARY_EXACT_KEYS, field="memory_summary")
-    records = payload.get("records")
-    if not isinstance(records, list):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "memory_summary.records must be a list.",
-        )
-
-
-def _require_plan_summary_envelope(payload: object) -> None:
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "plan_summary must be an object.",
-        )
-    _require_exact_keys(payload, PLAN_SUMMARY_EXACT_KEYS, field="plan_summary")
-    candidates = payload.get("candidates")
-    if not isinstance(candidates, list):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "plan_summary.candidates must be a list.",
-        )
-    for index, cand in enumerate(candidates):
-        if not isinstance(cand, dict):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"plan_summary.candidates[{index}] must be an object.",
-            )
-        _require_exact_keys(
-            cand,
-            PLAN_SUMMARY_CAND_EXACT_KEYS,
-            field=f"plan_summary.candidates[{index}]",
-        )
-    contributions = payload.get("contributions")
-    if not isinstance(contributions, list):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "plan_summary.contributions must be a list.",
-        )
-
-
-def _require_authority_summary(payload: object) -> None:
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "authority_summary must be an object.",
-        )
-    _require_exact_keys(payload, AUTHORITY_SUMMARY_EXACT_KEYS, field="authority_summary")
-    if type(payload.get("proposed_applied")) is not bool:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "authority_summary.proposed_applied must be a bool.",
-        )
-    if "applied_control" in payload:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "authority_summary must not include applied_control.",
         )
 
 
@@ -1737,42 +1373,6 @@ def _require_runner_plan_alignment(
     )
 
 
-def _require_stream_summaries_match_cycle(
-    frame: dict[str, Any],
-    cycle: dict[str, Any],
-) -> None:
-    """Rebuild summaries from cycle and require canonical equality (check #10)."""
-
-    source, plan, authority, action = _cycle_parts(cycle)
-    expected = {
-        "observation_summary": _observation_summary(source),
-        "memory_summary": _memory_summary(source),
-        "plan_summary": _plan_summary(plan),
-        "authority_summary": _authority_summary(authority, action),
-        "view": {
-            "view_id": COMBINED_VIEW_ID,
-            "applied_emphasized": True,
-        },
-    }
-    for key, rebuilt in expected.items():
-        actual = frame.get(key)
-        try:
-            if canonical_json_utf8(_json_ready(actual)) != canonical_json_utf8(
-                _json_ready(rebuilt)
-            ):
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"Latest decision frame {key} is not consistent with cycle.",
-                    details={"field": key},
-                )
-        except ValueError as exc:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"Latest decision frame {key} is not strictly JSON-serializable: {exc}",
-                details={"field": key},
-            ) from exc
-
-
 def is_pid_alive(pid: int) -> bool:
     """Production process liveness check (os.kill(pid, 0))."""
 
@@ -1790,38 +1390,6 @@ def is_pid_alive(pid: int) -> bool:
     return True
 
 
-def write_latest_decision_frame(path: Path, frame: dict[str, Any]) -> None:
-    """Atomic write of latest_decision.json (temp + fsync + replace)."""
-
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    payload = json.dumps(frame, indent=2, sort_keys=True)
-    with temporary.open("w", encoding="utf-8") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
-
-
-def invalidate_latest_decision_frame(vehicle_runtime_dir: Path | str) -> None:
-    """Remove or replace latest_decision.json so it cannot satisfy stream."""
-
-    path = latest_decision_path(vehicle_runtime_dir)
-    try:
-        if path.exists():
-            path.unlink()
-    except OSError:
-        # Best-effort: write a non-schema placeholder that fails acceptance.
-        try:
-            write_latest_decision_frame(
-                path,
-                {"schema": "invalid_stale_decision_placeholder_v0", "stale": True},
-            )
-        except OSError:
-            pass
-
-
 def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, Any] | None:
     """Catalog-armed runtime identity, or the compatible staged-file identity."""
 
@@ -1835,14 +1403,13 @@ def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, 
 
 
 def load_applied_decision_identity(runtime_dir: Path) -> dict[str, Any] | None:
-    """The armed identity used by publication, stream and viewer freshness gates."""
+    """The decision identity the running session's host applied, as its monitor recorded it."""
 
     state_path = Path(runtime_dir) / "automation" / "state.json"
     if not state_path.exists():
         return None
     state = json.loads(state_path.read_text())
-    if (not isinstance(state, dict) or not isinstance(state.get("arming"), dict)
-            or not state["arming"].get("request_id") or state.get("status") != "running"
+    if (not isinstance(state, dict) or state.get("status") != "running"
             or not is_pid_alive(state.get("pid", 0))):
         return None
     identity = state.get("decision")
@@ -1850,68 +1417,6 @@ def load_applied_decision_identity(runtime_dir: Path) -> dict[str, Any] | None:
             or activation_generation_id(identity["steps"], prefix="decision") != identity.get("generation_id")):
         raise ValueError("armed runtime decision identity is invalid")
     return {"generation_id": identity["generation_id"], "steps": identity["steps"]}
-
-
-def publish_decision_frame(
-    *,
-    cycle_result: Any | None,
-    context_frame_id: str,
-    vehicle_id: str,
-    vehicle_runtime_dir: Path | str,
-    run_id: str,
-    worker_pid: int,
-    activation: dict[str, Any] | None = None,
-) -> bool:
-    """Write one ``vehicle_report_v0`` for this host result. Returns True when written.
-
-    The worker passes the decision identity its steps run. The staged
-    identity is re-read and must still be that generation; a restage the
-    worker cannot run leaves the invalidated latest file untouched until the
-    worker restarts.
-    """
-
-    if cycle_result is None or not isinstance(activation, dict):
-        return False
-    records = (
-        cycle_result
-        if isinstance(cycle_result, DecisionRecords)
-        else DecisionRecords.from_cycle(cycle_result)
-    )
-    application = getattr(cycle_result, "application", None)
-    context = getattr(cycle_result, "context", None)
-    if (
-        records is None
-        or records.frame_id != context_frame_id
-        or context is None
-        or context.frame_id != context_frame_id
-        or application is None
-    ):
-        return False
-    generation_id = activation.get("generation_id")
-    if not isinstance(generation_id, str) or not generation_id:
-        return False
-
-    live = load_live_decision_activation(vehicle_runtime_dir)
-    # Refuse to relabel a generation-A worker cycle as generation B.
-    if live is None or live.get("generation_id") != generation_id:
-        return False
-
-    try:
-        report = report_from_host_result(
-            cycle_result,
-            vehicle_id=vehicle_id,
-            run_id=run_id,
-            generation_id=generation_id,
-            values={
-                "worker_pid": int(worker_pid),
-                **delivery_values(application),
-                "stale_after_ms": DECISION_STREAM_MAX_AGE_MS,
-            },
-        )
-    except (TypeError, ValueError):
-        return False
-    write_latest_decision_frame(latest_decision_path(vehicle_runtime_dir), report.to_dict())
-    return True
 
 
 def picar_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
@@ -1948,34 +1453,38 @@ def _decision_stream_output(
     }
 
 
-def _stream_picar_decision(
+def stream_vehicle_decision(
     *,
     vehicle_id: str,
-    vehicle: dict[str, Any],
-    refresh_s: float,
-    once: bool,
-    no_clear: bool,
-    json_output: bool,
-    output: TextIO | None,
-    timeout_s: float,
+    refresh_s: float = 0.5,
+    once: bool = False,
+    no_clear: bool = False,
+    json_output: bool = False,
+    output: TextIO | None = None,
+    timeout_s: float = 3.0,
 ) -> CommandResult:
-    base_url = picar_base_url(vehicle)
-    if base_url is None:
-        exc = DecisionSurfaceError(
-            "picar_decision_unavailable",
-            f"Vehicle {vehicle_id!r} has no PiCar base URL.",
-            vehicle_id=vehicle_id,
-            details={"reason": "missing"},
-        )
+    """Poll the latest decision the vehicle's runtime host publishes."""
+
+    timeout_s = max(0.1, float(timeout_s))
+    try:
+        # Broken staging is the first thing to fix; it names its restage command.
+        _require_valid_activations(bundle_paths(vehicle_id), vehicle_id=vehicle_id, steps=DECISION_STEPS)
+        base_url = runtime_base_url(vehicle_id)
+    except DecisionSurfaceError as exc:
         return _error_result(exc, json_output=json_output)
+    except RuntimeHostError as exc:
+        return _error_result(DecisionSurfaceError(
+            "runtime_unavailable", str(exc), vehicle_id=vehicle_id, details={"reason": "missing"},
+        ), json_output=json_output)
+    provider = "chase-sim" if is_chase_vehicle_id(vehicle_id) else "picar"
 
     def _accept_once() -> dict[str, Any]:
         try:
             publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
         except (ConnectionError, OSError) as exc:
             raise DecisionSurfaceError(
-                "picar_decision_unavailable",
-                f"Could not read PiCar decision publication: {exc}",
+                "runtime_decision_unavailable",
+                f"Could not read the decision publication at {base_url}: {exc}",
                 vehicle_id=vehicle_id,
                 details={"reason": "missing", "transport": str(exc)},
             ) from exc
@@ -1989,141 +1498,11 @@ def _stream_picar_decision(
         activation = values.get("activation") if isinstance(values.get("activation"), dict) else {}
         return _decision_stream_output(
             decision,
-            provider="picar",
+            provider=provider,
             steps=activation.get("steps") or {},
-            # The Pi computes the result age on its own clock.
+            # The host computes the result age on its own clock.
             age_ms=normalized["result_age_ms"],
             max_age_ms=normalized["max_age_ms"],
-        )
-
-    return _poll_decision(
-        vehicle_id=vehicle_id,
-        accept=_accept_once,
-        refresh_s=refresh_s,
-        once=once,
-        no_clear=no_clear,
-        json_output=json_output,
-        output=output,
-    )
-
-
-def stream_vehicle_decision(
-    *,
-    vehicle_id: str,
-    refresh_s: float = 0.5,
-    once: bool = False,
-    no_clear: bool = False,
-    json_output: bool = False,
-    output: TextIO | None = None,
-    timeout_s: float = 3.0,
-) -> CommandResult:
-    """Poll the latest accepted decision for Chase or PiCar."""
-
-    # Chase keeps its generation-scoped local state files. A PiCar is
-    # discovered through the existing read-only vehicle registry and consumed
-    # through its onboard publication endpoint; no local PID/run state is
-    # fabricated for it.
-    if not is_chase_vehicle_id(vehicle_id):
-        try:
-            discovery = discover_active_vehicles(
-                timeout_s=max(0.1, float(timeout_s)),
-                include_picar=True,
-                include_chase_sim=True,
-            )
-            vehicle, _ = find_vehicle_by_id(discovery, vehicle_id)
-        except (OSError, TypeError, ValueError):
-            vehicle = None
-        if isinstance(vehicle, dict) and vehicle.get("provider") == "picar":
-            return _stream_picar_decision(
-                vehicle_id=vehicle_id,
-                vehicle=vehicle,
-                refresh_s=refresh_s,
-                once=once,
-                no_clear=no_clear,
-                json_output=json_output,
-                output=output,
-                timeout_s=max(0.1, float(timeout_s)),
-            )
-    return _stream_chase_decision(
-        vehicle_id=vehicle_id,
-        refresh_s=refresh_s,
-        once=once,
-        no_clear=no_clear,
-        json_output=json_output,
-        output=output,
-    )
-
-
-def _stream_chase_decision(
-    *,
-    vehicle_id: str,
-    refresh_s: float,
-    once: bool,
-    no_clear: bool,
-    json_output: bool,
-    output: TextIO | None,
-) -> CommandResult:
-    """Read and accept latest_decision.json under the production predicate."""
-
-    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
-    bundle = controller_bundle_paths(vehicle_runtime_dir)
-    frame_path = latest_decision_path(vehicle_runtime_dir)
-
-    def _load_activation() -> dict[str, Any]:
-        identity = load_live_decision_activation(vehicle_runtime_dir)
-        if identity is None:
-            return _read_surface_identity(bundle, vehicle_id=vehicle_id)
-        return identity
-
-    def _load_state() -> dict[str, Any] | None:
-        try:
-            return read_chase_state(vehicle_id)
-        except ChaseStateError:
-            return None
-
-    def _load_frame() -> dict[str, Any]:
-        if not frame_path.exists():
-            raise DecisionSurfaceError(
-                "latest_frame_missing",
-                f"No latest decision frame at {display_path(frame_path)}.",
-                vehicle_id=vehicle_id,
-            )
-        try:
-            payload = json.loads(frame_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"Could not parse latest decision frame: {exc}",
-                vehicle_id=vehicle_id,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "Latest decision frame is not a JSON object.",
-                vehicle_id=vehicle_id,
-            )
-        return payload
-
-    def _accept_once() -> dict[str, Any]:
-        # Staged-step gates before frame IO so a missing proposal step surfaces cleanly.
-        activation = _load_activation()
-        frame = _load_frame()
-        state = _load_state()
-        now_ms = int(time.time() * 1000)
-        report = accept_published_report(
-            frame,
-            vehicle_id=vehicle_id,
-            activation=activation,
-            automation_state=state,
-            now_ms=now_ms,
-            is_pid_alive=is_pid_alive,
-        )
-        return _decision_stream_output(
-            frame,
-            provider="chase-sim",
-            steps=activation["steps"],
-            age_ms=now_ms - report.published_at_ms,
-            max_age_ms=report.values.get("stale_after_ms"),
         )
 
     return _poll_decision(
@@ -2203,106 +1582,6 @@ def _poll_decision(
             time.sleep(max(0.05, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, last_error or "")
-
-
-def accept_published_report(
-    frame: object,
-    *,
-    vehicle_id: str,
-    activation: dict[str, Any] | None,
-    automation_state: dict[str, Any] | None,
-    now_ms: int,
-    is_pid_alive: Callable[[int], bool],
-    max_age_ms: int | None = None,
-) -> VehicleReport:
-    """Accept one ``vehicle_report_v0`` from the Chase worker's file.
-
-    The document is the shared report. The worker pid lives in ``values`` and
-    still has to name the running automation process. PiCar does not use this
-    file check; it accepts the same document from its HTTP publication.
-    """
-
-    if not isinstance(frame, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Latest decision frame is not a JSON object.",
-        )
-    try:
-        report = VehicleReport.from_dict(frame)
-    except (TypeError, ValueError) as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"Latest decision frame is not a vehicle report: {exc}",
-        ) from exc
-    if max_age_ms is None:
-        try:
-            ceiling = diagnostic_ceiling(report.values)
-        except ValueError as exc:
-            raise DecisionSurfaceError(
-                "latest_frame_stale",
-                str(exc),
-                details={"field": "values.stale_after_ms"},
-            ) from exc
-    elif type(max_age_ms) is not int or max_age_ms <= 0:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Decision stream max age is not a positive int.",
-        )
-    else:
-        ceiling = max_age_ms
-    if report.vehicle_id != vehicle_id:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Latest decision frame vehicle_id does not match the requested vehicle.",
-            details={"field": "vehicle_id"},
-        )
-    _require_identity_steps(activation, error="activation_missing")
-    if not isinstance(activation, dict) or report.generation_id != activation.get("generation_id"):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Latest decision frame does not match the currently staged decision generation.",
-        )
-    if not isinstance(automation_state, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Automation state is missing; cannot accept a decision report.",
-        )
-    if automation_state.get("run_id") != report.run_id:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Latest decision frame run_id does not match the live automation worker.",
-        )
-    if automation_state.get("status") != "running":
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            f"Automation worker status is {automation_state.get('status')!r}; "
-            "stream decision requires status='running'.",
-        )
-    state_pid = automation_state.get("pid")
-    frame_pid = report.values.get("worker_pid")
-    if type(state_pid) is not int or type(frame_pid) is not int or state_pid != frame_pid:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "Latest decision frame worker_pid does not match automation state pid.",
-        )
-    if not is_pid_alive(int(state_pid)):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            f"Automation worker pid {state_pid} is not alive.",
-        )
-    if type(now_ms) is not int:
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            "now_ms must be a non-bool int for freshness.",
-        )
-    age = now_ms - report.published_at_ms
-    if not (0 <= age <= ceiling):
-        raise DecisionSurfaceError(
-            "latest_frame_stale",
-            f"Latest decision frame age {age} ms is outside 0..{ceiling} ms.",
-            details={"age_ms": age, "max_age_ms": ceiling},
-        )
-    return report
 
 
 def _format_stream_frame(frame: dict[str, Any]) -> str:

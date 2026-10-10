@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -295,6 +297,34 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertEqual(status["error_count"], 0)
         with self.assertRaises(ValueError):
             host.register_status_provider("", lambda: {})
+
+    def test_status_answers_while_a_slow_step_holds_the_cycle(self) -> None:
+        entered, release = threading.Event(), threading.Event()
+        recording = _RecordingProposal()
+
+        def slow_proposal(context, observation):
+            if context.frame_id == "frame_2":
+                entered.set()
+                release.wait(5.0)
+            return recording(context, observation)
+
+        host, _ = _host(proposal=slow_proposal)
+        host.run(DecisionFrameContext("frame_1", 0, 1_000))
+        before = host.status()["steps"]
+        cycle = threading.Thread(target=host.run, args=(DecisionFrameContext("frame_2", 1, 2_000),))
+        cycle.start()
+        try:
+            self.assertTrue(entered.wait(5.0))
+            started = time.monotonic()
+            status = host.status()
+            self.assertLess(time.monotonic() - started, 1.0)
+            self.assertEqual(status["cycle_in_progress"]["frame_id"], "frame_2")
+            self.assertEqual(status["steps"], before)
+        finally:
+            release.set()
+            cycle.join(5.0)
+        self.assertIsNone(host.status()["cycle_in_progress"])
+        self.assertEqual(host.status()["cycle_count"], 2)
 
 
 if __name__ == "__main__":

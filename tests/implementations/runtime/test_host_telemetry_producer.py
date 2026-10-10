@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import logging
-import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -24,14 +23,6 @@ from implementations.runtime.picar.host_telemetry import (
 
 ROOT = Path(__file__).resolve().parents[3]
 MANAGE_PATH = ROOT / "deploy" / "targets" / "donkeycar" / "app" / "manage.py"
-PATCH_PATH = (
-    ROOT
-    / "deploy"
-    / "targets"
-    / "donkeycar"
-    / "patches"
-    / "waveshare-donkeycar-local.patch"
-)
 
 
 class _Clock:
@@ -505,30 +496,6 @@ class DriveModeBoundaryTests(unittest.TestCase):
         stopped_drive_mode.shutdown()
         self.assertEqual(store.status()["status"], "stopped")
         self.assertEqual(store.latest(now_ms=10_000)["reason"], "producer_stopped")
-
-
-class VendorRouteShapeTests(unittest.TestCase):
-    def test_telemetry_routes_are_read_only_exact_and_bounded(self) -> None:
-        patch_text = PATCH_PATH.read_text(encoding="utf-8")
-        self.assertIn(
-            '+            (r"/autonomy/telemetry/latest", AutonomyTelemetryLatestAPI),',
-            patch_text,
-        )
-        self.assertIn(
-            '+            (r"/autonomy/telemetry/records", AutonomyTelemetryRecordsAPI),',
-            patch_text,
-        )
-        start = patch_text.index("+class AutonomyTelemetryLatestAPI")
-        end = patch_text.index(" class WsTest", start)
-        handlers = patch_text[start:end]
-        methods = [
-            method
-            for method in re.findall(r"^\+\s+def\s+(\w+)\(", handlers, re.MULTILINE)
-            if method in {"get", "head", "post", "put", "patch", "delete", "options"}
-        ]
-        self.assertEqual(methods, ["get", "head", "get", "head"])
-        self.assertNotRegex(handlers, r"^\+\s+def\s+(post|put|patch|delete|options)\(")
-        self.assertIn("parse_records_query", Path(ROOT / "implementations/runtime/picar/host_telemetry.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

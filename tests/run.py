@@ -94,10 +94,10 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
         )
         return False
 
-    if status["drive_mode"] != "user":
+    if status["mode"] != "manual":
         _print_pi_unavailable(
             endpoint=str(status["status_url"]),
-            reason=f"drive mode is {status['drive_mode']!r}; expected 'user'",
+            reason=f"mode is {status['mode']!r}; expected 'manual'",
         )
         return False
 
@@ -111,7 +111,7 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
                 "------------------",
                 "result: ready",
                 f"endpoint: {status['status_url']}",
-                f"drive mode: {status['drive_mode']}",
+                f"mode: {status['mode']}",
                 *(
                     f"{step}: {', '.join(plugins) if plugins is not None else '(not loaded)'}"
                     for step, plugins in status["steps"].items()

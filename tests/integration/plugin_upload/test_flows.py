@@ -287,7 +287,7 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertEqual(host.session_status()["status"], phase)
                     self.assertIn(f"prototype-{index}", [p["id"] for p in get_json(view.url, "/api/plugins")["plugins"]])
                 with urlopen(view.url + "plugins") as response:
-                    self.assertIn(b"Plugin catalog", response.read())
+                    self.assertIn(b"<h1>Plugins</h1>", response.read())
 
     def test_cli_vehicle_address_and_viewer_proxy_share_the_host_catalog(self):
         with tempfile.TemporaryDirectory() as directory:

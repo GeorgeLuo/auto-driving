@@ -269,8 +269,6 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertIn("decision_activations=decision_activations", snippet)
         self.assertIn("generation_id=generation_id", snippet)
         self.assertIn("run_id=run_id if telemetry_store is not None else None", snippet)
-        self.assertIn("autonomy_controller.observation_publisher = autonomy_part", snippet)
-        self.assertIn("autonomy_controller.autonomy_host = host", snippet)
         self.assertNotIn("run_condition", snippet)
         self.assertIn("AUTONOMY_CAPTURE_INTERVAL_S", source)
         self.assertEqual(DEFAULT_INTERVAL_S, 0.25)

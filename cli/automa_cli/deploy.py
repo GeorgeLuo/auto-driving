@@ -280,7 +280,7 @@ def update_vehicle_core(
         readiness = {
             "ok": True,
             "status_url": f"{_target_base_url(target)}/autonomy/status",
-            "drive_mode": "user",
+            "mode": "manual",
         }
     else:
         try:
@@ -1001,10 +1001,10 @@ def _verify_picar_autonomy_runtime(
             raise RuntimeError(
                 f"{status_url} reported {step} plugins {actual!r}, expected {plugins!r}"
             )
-    drive_mode = verification["drive_mode"]
-    if drive_mode != "user":
+    mode = verification["mode"]
+    if mode != "manual":
         raise RuntimeError(
-            f"{status_url} reported drive mode {drive_mode!r}; expected 'user' for idle smoke verification"
+            f"{status_url} reported mode {mode!r}; expected 'manual' for idle smoke verification"
         )
     return verification
 
@@ -1027,22 +1027,12 @@ def inspect_picar_autonomy_runtime(
     if not normalized_url:
         raise RuntimeError("PiCar base URL is required for runtime inspection")
     status_url = f"{normalized_url}/autonomy/status"
-    try:
-        with urllib_request.urlopen(status_url, timeout=max(0.1, float(timeout_s))) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (
-        OSError,
-        urllib_error.URLError,
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-        ValueError,
-    ) as exc:
-        raise RuntimeError(f"GET {status_url} failed: {exc}") from exc
-
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"{status_url} did not return a JSON object")
+    payload = _read_runtime_status(status_url, timeout_s=max(0.1, float(timeout_s)))
     if payload.get("ok") is not True:
-        raise RuntimeError(f"{status_url} did not report an available decision cycle")
+        raise RuntimeError(
+            f"{status_url} did not report an available decision cycle: "
+            f"{payload.get('error') or 'no error reported'}"
+        )
 
     autonomy = payload.get("autonomy")
     if not isinstance(autonomy, dict):
@@ -1062,9 +1052,29 @@ def inspect_picar_autonomy_runtime(
     return {
         "status_url": status_url,
         "steps": steps,
-        "drive_mode": payload.get("drive_mode"),
+        "mode": payload.get("mode"),
         "ok": True,
     }
+
+
+def _read_runtime_status(status_url: str, *, timeout_s: float) -> dict[str, Any]:
+    """Read the status route, including the error body a 503 carries."""
+    try:
+        with urllib_request.urlopen(status_url, timeout=timeout_s) as response:
+            body = response.read()
+    except urllib_error.HTTPError as exc:
+        body = exc.read()
+        if not body:
+            raise RuntimeError(f"GET {status_url} failed: HTTP {exc.code}") from exc
+    except (OSError, urllib_error.URLError, ValueError) as exc:
+        raise RuntimeError(f"GET {status_url} failed: {exc}") from exc
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"GET {status_url} did not return JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{status_url} did not return a JSON object")
+    return payload
 
 
 def _wait_for_donkey_readiness(
@@ -1078,26 +1088,20 @@ def _wait_for_donkey_readiness(
     last_error = "no response"
     while time.monotonic() < deadline:
         try:
-            with urllib_request.urlopen(status_url, timeout=1.0) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            if not isinstance(payload, dict):
-                last_error = "endpoint did not return a JSON object"
-            elif payload.get("drive_mode") != "user":
-                last_error = f"drive mode is {payload.get('drive_mode')!r}, expected 'user'"
+            payload = _read_runtime_status(status_url, timeout_s=1.0)
+            # Donkey answers even when the autonomy runtime failed to load;
+            # autonomy verification reports that error separately.
+            if payload.get("ok") is True and payload.get("mode") != "manual":
+                last_error = f"mode is {payload.get('mode')!r}, expected 'manual'"
             else:
                 return {
                     "ok": True,
                     "status_url": status_url,
-                    "drive_mode": "user",
+                    "mode": payload.get("mode"),
                     "autonomy_available": payload.get("ok") is True,
+                    "autonomy_error": payload.get("error"),
                 }
-        except (
-            OSError,
-            urllib_error.URLError,
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-            ValueError,
-        ) as exc:
+        except RuntimeError as exc:
             last_error = str(exc)
         time.sleep(0.5)
     raise RuntimeError(f"GET {status_url} was not ready within {timeout_s:g}s ({last_error})")

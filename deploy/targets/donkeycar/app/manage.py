@@ -29,6 +29,7 @@ except:
 import json
 import os
 import secrets
+import signal
 import sys
 import time
 from pathlib import Path
@@ -472,11 +473,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 decision_steps,
             )
             from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE
-            from implementations.runtime.picar import (
-                DEFAULT_INTERVAL_S,
-                AutonomyPilotPart,
-                create_host,
-            )
+            from autonomy.runtime.session import DEFAULT_INTERVAL_S
+            from implementations.runtime.picar import AutonomyPilotPart, create_host
             from implementations.runtime.picar.host_telemetry import (
                 DriveModeTelemetryAdapter,
                 HostTelemetryStore,
@@ -576,13 +574,21 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             autonomy_execution = host.execution
             if telemetry_store is not None:
                 host.register_status_provider("host_telemetry", telemetry_store.status)
-                if autonomy_controller is not None:
-                    autonomy_controller.host_telemetry_publisher = host_telemetry_publisher
             host.register_status_provider("observation", autonomy_part.observation_status)
-            # HTTP handlers read the host status and this publisher.
+            # The web controller serves the shared runtime routes.
             if autonomy_controller is not None:
-                autonomy_controller.autonomy_host = host
-                autonomy_controller.observation_publisher = autonomy_part
+                from autonomy.runtime.routes import RuntimeRoutes
+
+                def restart_service():
+                    # systemd restarts this host. SIGINT runs Donkey's
+                    # shutdown hooks, including the shared runtime stop.
+                    os.kill(os.getpid(), signal.SIGINT)
+
+                autonomy_controller.autonomy_routes = RuntimeRoutes(
+                    autonomy_part,
+                    telemetry=host_telemetry_publisher if telemetry_store is not None else None,
+                    on_restart=restart_service,
+                )
             else:
                 logger.warning("Autonomy endpoints unavailable; no web controller.")
             V.add(

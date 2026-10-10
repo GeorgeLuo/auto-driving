@@ -3,29 +3,21 @@ import json
 import os
 import tempfile
 import time
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
-from cli.automa_cli import decision as decision_module
-from cli.automa_cli import proposal as proposal_module
-from cli.automa_cli.decision import (
-    strict_decode_apply_evidence,
-    strict_decode_apply_observation,
-)
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from tests.cli.decision.decision_surfaces_fixtures import (
+    frame_inputs,
+    left_obstruction_frame,
     packaged_decision_steps,
     vehicle_report_for_records,
 )
 
-
-SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
-ACTIVE_RUN = SOURCES / "apply_active_left"
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -39,14 +31,6 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(self._temporary.cleanup)
         self.runtime_root = Path(self._temporary.name) / "vehicles"
         self.runtime_root.mkdir()
-        self._old_runtime_root = decision_module.RUNTIME_ROOT
-        decision_module.RUNTIME_ROOT = self.runtime_root
-        self.addCleanup(
-            setattr, decision_module, "RUNTIME_ROOT", self._old_runtime_root
-        )
-        proposal_root = proposal_module.RUNTIME_ROOT
-        proposal_module.RUNTIME_ROOT = self.runtime_root
-        self.addCleanup(setattr, proposal_module, "RUNTIME_ROOT", proposal_root)
         for step in ("proposal", "action"):
             code, message = update_vehicle_step(
                 vehicle_id="chase-sim-chaser",
@@ -79,15 +63,12 @@ class LiveRuntimeDecisionViewFixture:
         host_application: ComponentEnvelope | None = None,
     ) -> dict:
         if raw is None:
-            raw = json.loads(
-                (ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8")
-            )["frames"][0]
+            raw = left_obstruction_frame()
         records = DecisionRunners.from_payloads(packaged_decision_steps()).run(
             frame_id=raw["frame_id"],
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
-            observation=strict_decode_apply_observation(raw["observation"]),
-            shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(raw["evidence"])},
+            **frame_inputs(raw),
             host_application=host_application,
         )
         return vehicle_report_for_records(
@@ -104,9 +85,7 @@ class LiveRuntimeDecisionViewFixture:
 
     def _accepted_frame_with_evidence(self, mutate=None) -> dict:
         raw = deepcopy(
-            json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))[
-                "frames"
-            ][0]
+            left_obstruction_frame()
         )
         record = raw["evidence"][0]
         origin = record["origin"]

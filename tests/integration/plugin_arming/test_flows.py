@@ -297,10 +297,10 @@ class PluginArmingFlows(unittest.TestCase):
                         self.assertLess(time.monotonic(), deadline, shown)
                         time.sleep(0.05)
                     self.assertEqual(selected(shown, "applied", "proposal")[0], receipt["plugin"])
-                    streamed = json.loads(cli("stream", "decision", "--id", "chase-sim-chaser", "--once", "--json").stdout)
-                    self.assertEqual(streamed["decision_steps"]["proposal"], ["prototype"])
+                    streamed = json.loads(cli("stream", "proposal", "--id", "chase-sim-chaser", "--once", "--json").stdout)
+                    self.assertEqual(streamed["plugins"], ["prototype"])
                     self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
-                    self.assertEqual(streamed["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
+                    self.assertEqual(streamed["record"]["candidates"][0]["metadata"]["revision"], revision)
                     view_url = original["published_view"]["url"].rstrip("/")
                     # The run's monitor publishes the host's decision to the view on its next poll.
                     deadline = time.monotonic() + 5

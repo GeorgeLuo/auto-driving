@@ -151,8 +151,6 @@ class MemoryResetCommandTests(unittest.TestCase):
             ), mock.patch(
                 "cli.automa_cli.chase_observation._process_command", return_value=AUTOMATION_COMMAND
             ), mock.patch(
-                "cli.automa_cli.memory_runs.time.time", return_value=now / 1000.0
-            ), mock.patch(
                 "cli.automa_cli.streaming.time.time", return_value=now / 1000.0
             ):
                 client.return_value.reset_memory.side_effect = reset_memory

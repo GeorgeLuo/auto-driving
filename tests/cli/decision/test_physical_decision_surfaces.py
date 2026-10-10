@@ -283,50 +283,31 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         try:
             env = {}
             json_result = run_automa(
-                "vehicles",
-                "stream",
-                "decision",
-                "--id",
-                vehicle_id,
-                "--once",
-                "--json",
+                "vehicles", "stream", "action", "--id", vehicle_id, "--once", "--json",
                 runtime_root=self.runtime_root,
                 extra_env=env,
             )
             payload = json.loads(json_result.stdout)
-            self.assertEqual(payload["schema"], "vehicle_report_v0")
-            self.assertEqual(payload["provider"], "picar")
-            self.assertEqual(
-                payload["values"]["source_id"], f"donkeycar:{vehicle_id}"
-            )
+            self.assertEqual(payload["schema"], "vehicle_action_stream_v1")
+            self.assertEqual(payload["vehicle_id"], vehicle_id)
             self.assertEqual(payload["run_id"], "donkey-run-http-fixture")
-            authority = payload["cycle"]["action"]["authority"]
+            self.assertEqual(payload["plugins"], steps["action"]["plugins"])
+            authority = payload["record"]["authority"]
             self.assertFalse(authority["proposed_applied"])
             self.assertEqual(authority["authorized_output"]["steering"], 0.0)
             self.assertEqual(authority["authorized_output"]["throttle"], 0.0)
 
             text_result = run_automa(
-                "vehicles",
-                "stream",
-                "decision",
-                "--id",
-                vehicle_id,
-                "--once",
+                "vehicles", "stream", "action", "--id", vehicle_id, "--once",
                 runtime_root=self.runtime_root,
                 extra_env=env,
             )
-            self.assertIn(f"source=donkeycar:{vehicle_id}", text_result.stdout)
-            self.assertIn("proposed_applied=false", text_result.stdout)
+            self.assertIn(f"Action stream: {vehicle_id}", text_result.stdout)
+            self.assertIn("Proposed applied: false", text_result.stdout)
 
             fixture_state["force_expired"] = True
             expired = run_automa(
-                "vehicles",
-                "stream",
-                "decision",
-                "--id",
-                vehicle_id,
-                "--once",
-                "--json",
+                "vehicles", "stream", "action", "--id", vehicle_id, "--once", "--json",
                 runtime_root=self.runtime_root,
                 extra_env=env,
                 check=False,

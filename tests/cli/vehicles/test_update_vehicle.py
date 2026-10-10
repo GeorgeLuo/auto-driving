@@ -52,7 +52,7 @@ class UpdateVehicleTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.perception.RUNTIME_ROOT", root),
                 patch("cli.automa_cli.memory.RUNTIME_ROOT", root),
-                patch("cli.automa_cli.app.DECISION_RUNTIME_ROOT", root),
+                patch("cli.automa_cli.app.VEHICLES_RUNTIME_ROOT", root),
             ):
                 yield root
 

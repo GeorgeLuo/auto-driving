@@ -10,36 +10,22 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.steps import builtin_activation, step_runner
 from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_COUNT
-from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.runtime.client import RuntimeClient
-from implementations.decision_cycle.catalog import selection_activation
 
-from .inspection_runs import recorded_selection, recorded_selections, replay_step, selection_record
 from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
-from .paths import ROOT, display_path, safe_path_part
+from .paths import ROOT, display_path
 from .runtime_hosts import runtime_base_url
 from .streaming import _live_plugins, probe_live_memory
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
-from .workbench_frames import run_frame
-from .workbench_source import (
-    WORKBENCH_DEFAULT_MAX_FRAMES,
-    SourceValidationError,
-    normalize_image_directory,
-    normalize_image_file,
-    read_image_manifest,
-)
+from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
+from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
 INSPECT_ROOT = Path(
     os.environ.get("AUTOMA_MEMORY_INSPECT_ROOT", ROOT / "runtime" / "memory-inspections")
@@ -74,63 +60,27 @@ def inspect_memory(
     activation, error = _selected_memory(preset, plugins)
     if error is not None:
         return error
-    path = Path(source).expanduser()
     try:
-        if max_frames <= 0:
-            raise SourceValidationError("max_frames must be greater than zero")
-        image_source = (
-            normalize_image_file(path)
-            if path.is_file()
-            else normalize_image_directory(path, max_frames=max_frames)
-        )
-        _manifest_path, source_manifest = (
-            read_image_manifest(image_source.source_path)
-            if path.is_dir()
-            else (None, None)
-        )
+        image_source, manifest = read_replay_source(source, max_frames=max_frames)
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read memory inspect source: {exc}")
+    overridden = preset is not None or plugins is not None
     try:
-        source_manifest = source_manifest or {}
-        perception_activation = (
-            recorded_selection("perception", source_manifest) or selection_activation("perception")
+        replay = StepReplay(
+            manifest, steps=("perception", "observation", "memory"),
+            overrides={"memory": activation} if overridden else None,
         )
-        if preset is None and plugins is None:
-            activation = recorded_selection("memory", source_manifest) or activation
-        perception_runner = PerceptionRunner.from_activation(perception_activation)
-        memory_step = MemoryRunner.from_activation(activation)
-        observation_activation = builtin_activation("observation")
-        observation_step = step_runner(observation_activation)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
 
-    shared_memory: dict[str, Any] = {}
     frames: list[dict[str, Any]] = []
     for frame in image_source.frames:
         try:
-            selections = recorded_selections(frame.metadata)
-            if "perception" in selections:
-                perception_activation = selections["perception"] or selection_activation("perception", plugins=[])
-                perception_runner = replay_step(perception_runner, perception_activation, shared_memory)
-            if "memory" in selections and preset is None and plugins is None:
-                activation = selections["memory"] or selection_activation("memory", plugins=[])
-                memory_step = replay_step(memory_step, activation, shared_memory)
-            if "observation" in selections:
-                observation_activation = selections["observation"]
-                observation_step = replay_step(observation_step, observation_activation, shared_memory)
-            outcome = run_frame(
-                frame,
-                steps={
-                    "perception": perception_runner, "memory": memory_step,
-                    "observation": observation_step,
-                },
-                shared_memory=shared_memory,
-            )
+            result = replay.run(frame).result
         except Exception as exc:  # Plugins are third-party code; name the frame that broke.
             return CommandResult(
                 2, f"Memory inspect failed at {frame.frame_id}: {type(exc).__name__}: {exc}"
             )
-        result = outcome.result
         frames.append(
             {
                 "frame_id": frame.frame_id,
@@ -141,15 +91,12 @@ def inspect_memory(
                 "plugins": plugin_summaries(result.memory),
                 "evidence_publisher": evidence_publisher(result.memory),
                 "observation": _observation_counts(result.observation),
-                "steps": {
-                    "perception": perception_activation.to_payload(),
-                    "observation": observation_activation.to_payload() if observation_activation else None,
-                    "memory": activation.to_payload(),
-                },
+                "steps": replay.step_payloads(),
             }
         )
 
-    run_id = _inspect_run_id(image_source.source_id)
+    run_id = inspect_run_id(image_source.source_id)
+    selections = replay.selection_records()
     report = {
         "schema": MEMORY_INSPECT_SCHEMA,
         "run_id": run_id,
@@ -159,32 +106,16 @@ def inspect_memory(
             "source_id": image_source.source_id,
             "frame_count": len(frames),
         },
-        "perception": {
-            **selection_record(perception_activation),
-            "plugins": list(perception_activation.plugins),
-        },
-        "memory": {**selection_record(activation), "plugins": list(activation.plugins)},
+        "perception": selections["perception"],
+        "memory": selections["memory"],
         "frames": frames,
-        "final": memory_step.report(),
+        "final": replay.runners["memory"].report(),
         "run_dir": None,
     }
     if record:
         run_dir = INSPECT_ROOT / run_id
         try:
-            run_dir.mkdir(parents=True, exist_ok=False)
-            report["run_dir"] = str(run_dir)
-            frames_dir = run_dir / "frames"
-            frames_dir.mkdir()
-            for frame, recorded_frame in zip(image_source.frames, report["frames"]):
-                if frame.image_path is not None:
-                    relative = (
-                        Path("frames") / f"frame_{frame.position:06d}{frame.image_path.suffix.lower()}"
-                    )
-                    shutil.copyfile(frame.image_path, run_dir / relative)
-                    recorded_frame["image_path"] = relative.as_posix()
-            (run_dir / "report.json").write_text(
-                json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-            )
+            record_inspect_run(run_dir, report, image_source)
         except OSError as exc:
             return CommandResult(2, f"Could not record memory inspect run {run_dir}: {exc}")
     if json_output:
@@ -200,11 +131,6 @@ def _observation_counts(observation: Observation | None) -> dict[str, Any] | Non
         "things": len(observation.things),
         "signals": len(observation.signals),
     }
-
-
-def _inspect_run_id(source_id: str) -> str:
-    stamp = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
-    return f"inspect-{safe_path_part(source_id)}-{stamp}"
 
 
 def _format_inspect_report(report: dict[str, Any]) -> str:

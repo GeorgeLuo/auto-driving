@@ -10,7 +10,6 @@ URL supplied by a client.
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import math
 import threading
@@ -19,23 +18,15 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import parse_qs, urlencode
 
 from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
-from .perception_view import VIEW_RECORD_NAME
-from .picar_observation import (
-    HOST_TELEMETRY_PANEL_SCHEMA,
-    build_host_telemetry_capture,
-    host_telemetry_failure,
-)
+from .picar_observation import host_telemetry_failure
 
 
 DECISION_VIEW_SCHEMA = "automa_live_decision_view_v1"
 DECISION_VIEW_ID = "decision-combined-v0"
 MAX_RETAINED_TRANSACTIONS = 8
-MAX_PROBE_BYTES = 1024 * 1024
 
 
 class DecisionViewError(Exception):
@@ -683,223 +674,6 @@ def decision_error_payload(view: DecisionView, *, reason: str) -> dict[str, Any]
         "generation_id": view.generation_id,
         "identity": _json_copy(view.identity) if view.identity is not None else None,
     }
-
-
-class _NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req: Request, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
-        return None
-
-
-def get_decision_view_status(
-    *,
-    automation_dir: Path,
-    vehicle_id: str,
-    activation: dict[str, Any],
-    timeout_s: float = 0.25,
-) -> dict[str, Any]:
-    """Boundedly probe an already-running decision view without starting it.
-
-    Chase and PiCar both match on vehicle, run, and generation. A local view's
-    generation is its staged activation. An onboard view's generation is its
-    producer generation. A worker pid is not required.
-    """
-
-    record_path = Path(automation_dir) / VIEW_RECORD_NAME
-    try:
-        record = json.loads(record_path.read_text(encoding="utf-8"))
-    except (OSError, TypeError, ValueError, json.JSONDecodeError):
-        return _unavailable_status("runtime view record is unavailable")
-    if not isinstance(record, dict):
-        return _unavailable_status("runtime view record is invalid")
-    url = record.get("url")
-    parsed = urlparse(url) if isinstance(url, str) else None
-    if (
-        parsed is None
-        or parsed.scheme != "http"
-        or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
-        or parsed.port is None
-    ):
-        return _unavailable_status("runtime view record has no valid loopback producer")
-    health_url = urljoin(url, "api/health")
-    try:
-        opener = build_opener(_NoRedirect())
-        with opener.open(Request(health_url, method="GET"), timeout=max(0.05, timeout_s)) as response:
-            body = response.read(MAX_PROBE_BYTES + 1)
-        if len(body) > MAX_PROBE_BYTES:
-            return _unavailable_status("decision view probe response is too large")
-        payload = json.loads(body.decode("utf-8"))
-    except (HTTPError, URLError, OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
-        return _unavailable_status("decision view producer is unavailable")
-    decision = payload.get("decision") if isinstance(payload, dict) else None
-    identity = decision.get("identity") if isinstance(decision, dict) else None
-    if not isinstance(payload, dict) or not isinstance(decision, dict) or not isinstance(identity, dict):
-        return _unavailable_status("decision view producer returned a mismatched response")
-    try:
-        generation = generation_id(identity)
-    except (TypeError, ValueError):
-        return _unavailable_status("decision view producer returned a mismatched response")
-    if (
-        decision.get("generation_id") != generation
-        or decision.get("status") not in {"warming", "running"}
-        or identity.get("vehicle_id") != vehicle_id
-        or type(identity.get("run_id")) is not str
-        or not identity.get("run_id")
-    ):
-        return _unavailable_status("decision view producer returned a mismatched response")
-    record_run_id = record.get("run_id")
-    if record_run_id is not None and record_run_id != identity.get("run_id"):
-        return _unavailable_status("decision view producer returned a mismatched response")
-    if payload.get("run_id") not in {None, identity.get("run_id")}:
-        return _unavailable_status("decision view producer returned a mismatched response")
-    try:
-        if "producer_generation_id" in identity:
-            if (
-                identity.get("producer_generation_id") != activation.get("generation_id")
-                or type(identity.get("source_id")) is not str
-                or not identity.get("source_id")
-            ):
-                return _unavailable_status("decision view producer returned a mismatched response")
-        else:
-            expected = _activation_identity(activation)
-            if (
-                identity.get("activation_generation_id") != expected["activation_generation_id"]
-                or identity.get("activation_sha256") != expected["activation_sha256"]
-            ):
-                return _unavailable_status("decision view producer returned a mismatched response")
-            identity_pid = identity.get("worker_pid")
-            record_pid = record.get("worker_pid")
-            if (
-                type(identity_pid) is int
-                and type(record_pid) is int
-                and identity_pid != record_pid
-            ):
-                return _unavailable_status("decision view producer returned a mismatched response")
-    except (TypeError, ValueError):
-        return _unavailable_status("decision activation cannot identify a live view")
-    api_url = f"{urljoin(url, 'api/decision/latest')}?{urlencode({'generation': generation})}"
-    page_url = f"{urljoin(url, 'decision')}?{urlencode({'generation': generation})}"
-    return {
-        "available": True,
-        "status": "current" if decision.get("status") == "running" else "warming",
-        "reason": None,
-        "generation_id": generation,
-        "identity": identity,
-        "api_url": api_url,
-        "url": page_url,
-    }
-
-
-def _unavailable_status(reason: str) -> dict[str, Any]:
-    return {
-        "available": False,
-        "status": "unavailable",
-        "reason": reason,
-        "generation_id": None,
-        "identity": None,
-        "api_url": None,
-        "url": None,
-    }
-
-
-def project_host_telemetry_panel(
-    panel: object,
-    *,
-    decision_frame_id: str | None = None,
-) -> dict[str, Any]:
-    """Return a safe additive telemetry panel for the live decision view."""
-
-    if not isinstance(panel, dict):
-        return host_telemetry_failure(
-            "schema_invalid",
-            message="Host telemetry panel is not an object.",
-        )
-    if panel.get("schema") != HOST_TELEMETRY_PANEL_SCHEMA:
-        return host_telemetry_failure(
-            "schema_invalid",
-            message="Host telemetry panel schema is invalid.",
-        )
-    if "authority" in panel or "host_application" in panel:
-        return host_telemetry_failure(
-            "field_invalid",
-            message="Host telemetry panel cannot contain decision authority fields.",
-        )
-    if decision_frame_id is not None:
-        decision = panel.get("decision")
-        if isinstance(decision, dict) and decision.get("frame_id") != decision_frame_id:
-            return host_telemetry_failure(
-                "identity_mismatch",
-                message="Host telemetry panel frame does not match the decision frame.",
-            )
-    try:
-        copied = _json_copy(panel)
-    except (TypeError, ValueError):
-        return host_telemetry_failure(
-            "field_invalid",
-            message="Host telemetry panel is not strict JSON.",
-        )
-    return copied if isinstance(copied, dict) else host_telemetry_failure("schema_invalid")
-
-
-def project_decision_with_host_telemetry(
-    decision_payload: object,
-    panel: object,
-    *,
-    decision_frame_id: str | None = None,
-) -> dict[str, Any]:
-    """Add telemetry as a sibling while preserving decision authority bytes."""
-
-    if not isinstance(decision_payload, dict):
-        raise ValueError("Decision view payload is not an object.")
-    copied = _json_copy(decision_payload)
-    if not isinstance(copied, dict):
-        raise ValueError("Decision view payload is not an object.")
-    frame_id = decision_frame_id
-    if frame_id is None:
-        frame_id = copied.get("frame_id")
-        if frame_id is None and isinstance(copied.get("decision"), dict):
-            frame_id = copied["decision"].get("frame_id")
-    copied["host_telemetry"] = project_host_telemetry_panel(
-        panel,
-        decision_frame_id=frame_id if isinstance(frame_id, str) else None,
-    )
-    return copied
-
-
-def build_decision_host_telemetry_capture(
-    *,
-    decision_payload: object,
-    panel: object,
-    records_result: dict[str, Any] | None = None,
-    vehicle_id: str | None = None,
-) -> dict[str, Any]:
-    """Build a capture envelope with decision and telemetry as siblings."""
-
-    if not isinstance(decision_payload, dict):
-        raise ValueError("Decision capture payload is not an object.")
-    safe_panel = project_host_telemetry_panel(panel)
-    capture = build_host_telemetry_capture(
-        joined_point=safe_panel,
-        records_result=records_result,
-        vehicle_id=vehicle_id,
-    )
-    return {
-        "schema": "automa_physical_decision_capture_v0",
-        "decision": _json_copy(decision_payload),
-        "host_telemetry": capture,
-    }
-
-
-def render_host_telemetry_panel_html(panel: object) -> str:
-    """Render the additive telemetry panel used by static/live consumers."""
-
-    safe_panel = project_host_telemetry_panel(panel)
-    serialized = html.escape(json.dumps(safe_panel, indent=2, sort_keys=True), quote=True)
-    return (
-        '<section id="host_telemetry" aria-label="Host telemetry separate observation">'
-        "<h2>Host telemetry · separate observation</h2>"
-        f"<pre>{serialized}</pre>"
-        "</section>"
-    )
 
 
 def unavailable_host_telemetry_panel(

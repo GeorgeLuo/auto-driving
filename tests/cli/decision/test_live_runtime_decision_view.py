@@ -4,11 +4,8 @@ import unittest
 from copy import deepcopy
 from urllib.request import urlopen
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
-from cli.automa_cli.proposal import get_vehicle_proposal_info
-from tests.cli.decision.live_runtime_decision_view_fixtures import (
-    ACTIVE_RUN,
-    LiveRuntimeDecisionViewFixture,
-)
+from tests.cli.decision.decision_surfaces_fixtures import left_obstruction_frame
+from tests.cli.decision.live_runtime_decision_view_fixtures import LiveRuntimeDecisionViewFixture
 
 
 class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.TestCase):
@@ -41,16 +38,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get_content_type(), "text/html")
 
-        info = get_vehicle_proposal_info(
-            vehicle_id="chase-sim-chaser", json_output=True
-        )
-        self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["published_view"]
-        self.assertTrue(combined["available"])
-        self.assertEqual(combined["status"], "current")
-        self.assertEqual(
-            combined["url"], f"{self.server.url}decision?generation={generation}"
-        )
+        self.assertEqual(self.server.decision.health_payload()["status"], "running")
         self.assertEqual(
             payload["freshness"]["captured_at_ms"],
             stream_frame["timestamp_ms"],
@@ -61,9 +49,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         )
 
     def test_api_keeps_host_observations_separate_and_attributable(self) -> None:
-        raw = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))[
-            "frames"
-        ][0]
+        raw = left_obstruction_frame()
         frame_id = raw["frame_id"]
         cases = (
             ("absent", None, "unavailable", None),

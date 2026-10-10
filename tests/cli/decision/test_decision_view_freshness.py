@@ -7,11 +7,10 @@ from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
-from cli.automa_cli import decision as decision_module
-from cli.automa_cli.proposal import get_vehicle_proposal_info
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
+from tests.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
 from tests.cli.decision.live_runtime_decision_view_fixtures import (
     LiveRuntimeDecisionViewFixture,
 )
@@ -151,19 +150,13 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertNotIn("error", reader_result)
         self.assertEqual(reader_result.get("body"), expected_image)
 
-    def test_info_reports_generation_url_while_warming(self) -> None:
+    def test_view_names_its_generation_page_while_warming(self) -> None:
         generation = self.server.decision.generation_id
         self.assertIsNotNone(generation)
-        info = get_vehicle_proposal_info(
-            vehicle_id="chase-sim-chaser", json_output=True
-        )
-        self.assertEqual(info.exit_code, 0, info.message)
-        combined = json.loads(info.message)["published_view"]
-        self.assertTrue(combined["available"])
-        self.assertEqual(combined["status"], "warming")
-        self.assertEqual(
-            combined["url"], f"{self.server.url}decision?generation={generation}"
-        )
+        health = self.server.decision.health_payload()
+        self.assertTrue(health["available"])
+        self.assertEqual(health["status"], "warming")
+        self.assertEqual(self.server.decision.page_url(), f"/decision?generation={generation}")
 
     def test_stale_decision_is_unavailable_through_api(self) -> None:
         stream_frame, _expected_image = self._publish_exact_transaction()
@@ -171,7 +164,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertIsNotNone(generation)
         stale_now = (
             stream_frame["published_at_ms"]
-            + decision_module.DECISION_STREAM_MAX_AGE_MS
+            + STALE_AFTER_MS
             + 1
         )
         with patch("cli.automa_cli.decision_view._now_ms", return_value=stale_now):
@@ -253,11 +246,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             timeout=1.0,
         ) as response:
             self.assertEqual(json.loads(response.read().decode("utf-8"))["status"], "current")
-        info = get_vehicle_proposal_info(vehicle_id="chase-sim-chaser", json_output=True)
-        self.assertEqual(
-            json.loads(info.message)["published_view"]["url"],
-            f"{self.server.url}decision?generation={new_generation}",
-        )
+        self.assertEqual(self.server.decision.page_url(), f"/decision?generation={new_generation}")
 
     def test_old_session_cannot_attach_to_same_port_replacement(self) -> None:
         self._publish_exact_transaction()

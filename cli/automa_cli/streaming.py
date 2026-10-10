@@ -38,11 +38,13 @@ from .picar_observation import (
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
 
 PERCEPTION_LIVE_SCHEMA = "vehicle_perception_live_v0"
-# Memory's and proposal's live schemas sit with perception's. Their probe and
+# Memory's and the decision steps' live schemas sit with perception's. Their probe and
 # live screen, and memory's stream, are in this module.
 MEMORY_LIVE_SCHEMA = "vehicle_memory_live_v1"
-PROPOSAL_LIVE_SCHEMA = "vehicle_proposal_live_v1"
-LIVE_STEP_SCHEMAS = {"memory": MEMORY_LIVE_SCHEMA, "proposal": PROPOSAL_LIVE_SCHEMA}
+LIVE_STEP_SCHEMAS = {
+    "memory": MEMORY_LIVE_SCHEMA,
+    **{step: f"vehicle_{step}_live_v1" for step in ("proposal", "plan", "action")},
+}
 # Onboard publication health -> probe status; "healthy" is the only live one.
 _PICAR_PERCEPTION_STATUS = {
     "warming": "absent",

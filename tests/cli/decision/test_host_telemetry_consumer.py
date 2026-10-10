@@ -9,24 +9,16 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-import json
-
 from cli.automa_cli.decision_live import (
     PicarDecisionViewAdapter,
     _accepted_pair,
     read_host_telemetry_panel,
 )
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from cli.automa_cli.decision import (
-    DecisionSurfaceError,
-    strict_decode_apply_evidence,
-    strict_decode_apply_observation,
-)
+from cli.automa_cli.decision import DecisionSurfaceError
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.picar_observation import (
     DECISION_PUBLICATION_SCHEMA,
     HOST_TELEMETRY_SCHEMA,
-    build_host_telemetry_capture,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
@@ -34,7 +26,8 @@ from cli.automa_cli.picar_observation import (
     picar_decision_identity,
 )
 from tests.cli.decision.decision_surfaces_fixtures import (
-    ACTIVE_RUN,
+    frame_inputs,
+    left_obstruction_frame,
     packaged_decision_steps,
     packaged_identity,
     vehicle_report_for_records,
@@ -104,13 +97,12 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         "captured_at_ms": 8_000,
         "completed_at_ms": 8_500,
     }
-    recorded = json.loads((ACTIVE_RUN / "sequence.json").read_text(encoding="utf-8"))["frames"][0]
+    recorded = left_obstruction_frame()
     records = DecisionRunners.from_payloads(packaged_decision_steps("hold")).run(
         frame_id=frame["frame_id"],
         frame_index=frame["frame_index"],
         timestamp_ms=frame["captured_at_ms"],
-        observation=strict_decode_apply_observation(recorded["observation"]),
-        shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(recorded["evidence"])},
+        **frame_inputs(recorded),
     )
     report = vehicle_report_for_records(
         records,
@@ -579,29 +571,6 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(
             evicted_result["coverage"]["coverage_reason"], "history_evicted"
         )
-
-    def test_capture_keeps_telemetry_out_of_authority(self) -> None:
-        point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
-        joined = join_host_telemetry_to_decision(point, _decision())
-        records = normalize_host_telemetry_records(
-            {
-                "schema": "automa_host_boundary_telemetry_records_v0",
-                "status": "healthy",
-                "records": [_record()],
-                "coverage": {"complete": True, "baseline": True},
-            },
-            now_ms=NOW_MS,
-            vehicle_id="piracer",
-        )
-        capture = build_host_telemetry_capture(
-            joined_point=joined,
-            records_result=records,
-            vehicle_id="piracer",
-        )
-        self.assertEqual(capture["schema"], "automa_host_boundary_telemetry_capture_v0")
-        self.assertIn("host_telemetry", capture)
-        self.assertNotIn("authority", capture)
-        self.assertNotIn("host_application", capture["host_telemetry"])
 
 
 if __name__ == "__main__":

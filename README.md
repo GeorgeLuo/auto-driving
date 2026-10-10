@@ -123,12 +123,13 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles plugins upload` | Stores a local file in an existing live catalog; `--arm` also requests adoption through the same operation as `plugins arm`. |
 | `vehicles plugins arm` | Adds or updates perception, memory and proposal plugins before a subsequent cycle, without restarting automation. Repeat `--plugin` with `--step`, or use a JSON `--selection` map to request several steps together. |
 | `vehicles plugins status` | Reads available, requested and applied revisions, plus downstream loading failures. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
-| `vehicles info perception\|memory\|proposal` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception and memory also show their preset. Each reports its view; memory and proposal include live runner status. Proposal also shows the decision generation, plan selector, and action authority. |
-| `vehicles decision inspect` | Serves an offline inspector for saved decision inputs; `--open` opens its URL in a browser. Toggle obstruction side to inspect the proposal, plan, and action records. [Sample command and input](examples/decision-inspection/README.md). |
+| `vehicles info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception and memory also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
+| `vehicles proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame. A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
 | `vehicles stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts; on PiCar it also serves a local `/memory` map page whose URL the terminal shows. Keys are `record_id`s; click a key to see the retained value. |
+| `vehicles stream proposal\|plan\|action` | Prints that step's record from the latest cycle the vehicle's runtime host published, with its age, generation and plugins; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `vehicle_<step>_stream_v1`. |
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
 | `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
 | `vehicles memory viability` | Memory health check: 60s poll of the live memory step on a PiCar (update cadence, duration, failures, health, epoch stability); Chase returns a stub pass. PiCar measurements save `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
@@ -254,8 +255,8 @@ your intended selection, then check status again. Every command that reads
 staged documents checks them first and prints the same step, path, reason, and
 restage command: startup and restart before launching or stopping a worker,
 `vehicles update perception` and `vehicles update autonomy` before packaging or
-writing, and `vehicles info`, `vehicles stream decision`, and `vehicles
-perception inspect` before reporting. An invalid optional step blocks startup;
+writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and
+`vehicles perception inspect` before reporting. An invalid optional step blocks startup;
 an absent optional step keeps its built-in or empty behavior.
 
 See the
@@ -502,15 +503,14 @@ their default configs from `implementations/decision_cycle/proposal/catalog.py`.
 Proposal has no presets; without `--plugin` it stages its default plugins.
 
 `vehicles info proposal` reports the staged plugins and the available ones,
-the staged runner's `proposal_schema_v1` contract, the decision view a running
-worker publishes the proposals to, and the plan and action plugins that act on
-them. `--json` returns `vehicle_proposal_info_v1` with that contract under
-`proposal_schema`, the view under `published_view`, and the decision
-generation, plan selector and action authority under `decision`. Like memory
-info, it probes the running autonomy engine and reports its proposal step under
-`live` (`vehicle_proposal_live_v1`): the plugins it runs and its run and
-failure counts, from the Chase worker's state or the PiCar's
-`/autonomy/status`. That is the engine's step, not the proposals any view last
+the staged runner's `proposal_schema_v1` contract, and the plan and action
+plugins that act on them. `--json` returns `vehicle_proposal_info_v1` with that
+contract under `proposal_schema`, and the decision generation, each decision
+step's plugins and the action authority under `decision`; `vehicles info plan`
+and `vehicles info action` report the same for their step. Like memory info, it
+probes the running autonomy engine and reports its proposal step under `live`
+(`vehicle_proposal_live_v1`): the plugins it runs and its run and failure
+counts, from the runtime host's `/autonomy/status`. That is the engine's step, not the proposals any view last
 rendered. A worker loads the staged proposals from the controller bundle when
 it starts, as it loads memory, and reports them under `proposal` in its state
 and `proposal_plugin_report` in each frame. Staging replaces the selection. A

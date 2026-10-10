@@ -1,16 +1,9 @@
-"""Read-only adapter from PiCar decision publications to RuntimeViewServer.
-
-A Chase automation worker serves the same decision page itself; ``decision
-live`` points at it rather than adapting anything.
-"""
+"""Read-only adapter from a runtime host's decision publications to RuntimeViewServer."""
 
 from __future__ import annotations
 
-import threading
 import time
-import webbrowser
-from dataclasses import dataclass
-from typing import Any, TextIO
+from typing import Any
 
 from autonomy.decision_cycle.memory.interface import (
     MEMORY_REPORT_SCHEMA,
@@ -18,84 +11,25 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryPluginReport,
     MemoryReport,
 )
-from .bundles import controller_bundle_paths
 from .decision import (
-    RUNTIME_ROOT,
-    CommandResult,
     DecisionSurfaceError,
     accept_picar_decision_publication,
-    load_decision_identity,
     picar_decision_view_frame,
 )
-from .decision_view import (
-    build_decision_host_telemetry_capture,
-    get_decision_view_status,
-    project_decision_with_host_telemetry,
-    unavailable_host_telemetry_panel,
-)
+from .decision_view import unavailable_host_telemetry_panel
 from .picar_observation import (
-    fetch_autonomy_status,
     fetch_decision_publication,
     fetch_observation_frame,
     frame_id_from_headers,
     HostTelemetryError,
-    fetch_host_telemetry_capture,
     fetch_host_telemetry_latest,
     fetch_host_telemetry_records,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
     picar_decision_identity,
-    picar_base_url,
 )
-from .paths import safe_path_part
 from .runtime_view import RuntimeViewServer
-from .view_discovery import discover_runtime_view, runtime_view_dir
-from .vehicles import (
-    discover_active_vehicles,
-    find_vehicle_by_id,
-    format_active_vehicles,
-    is_chase_vehicle_id,
-)
-
-
-@dataclass(frozen=True)
-class _ResolvedPicarVehicle:
-    vehicle_id: str
-    base_url: str
-
-
-def _resolve_picar_vehicle(
-    vehicle_id: str,
-    *,
-    timeout_s: float,
-) -> tuple[_ResolvedPicarVehicle | None, str | None]:
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=False,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return None, "\n\n".join(
-            [
-                error,
-                "Discovery:",
-                format_active_vehicles(discovery, include_inactive=True),
-            ]
-        )
-    if vehicle is None:
-        return None, f"Vehicle {vehicle_id!r} was not found."
-    if vehicle.get("provider") != "picar":
-        return None, (
-            f"Vehicle {vehicle_id!r} is provider {vehicle.get('provider')!r}; "
-            "live decision view supports chase-sim and picar."
-        )
-    base_url = picar_base_url(vehicle)
-    if not base_url:
-        return None, f"Vehicle {vehicle_id!r} has no PiCar base URL."
-    return _ResolvedPicarVehicle(vehicle_id, base_url), None
 
 
 def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
@@ -313,148 +247,6 @@ class PicarDecisionViewAdapter:
             timeout_s=self.timeout_s,
         )
         return self.publish_frame(normalized, image)
-
-
-def run_live_decision_monitor(
-    *,
-    vehicle_id: str,
-    port: int = 0,
-    open_browser: bool = False,
-    timeout_s: float = 2.0,
-    output: TextIO | None = None,
-) -> CommandResult:
-    """Open the live decision page for Chase or PiCar."""
-
-    if not 0 <= int(port) <= 65535:
-        return CommandResult(2, "--port must be between 0 and 65535.")
-    if is_chase_vehicle_id(vehicle_id):
-        return _chase_decision_view(vehicle_id, open_browser=open_browser)
-    return _picar_decision_view(
-        vehicle_id,
-        port=port,
-        open_browser=open_browser,
-        timeout_s=timeout_s,
-        output=output,
-    )
-
-
-def _picar_action_policy(base_url: str, timeout_s: float) -> str | None:
-    """The onboard host's execution mode, or None when it reports none."""
-
-    try:
-        autonomy = fetch_autonomy_status(base_url, timeout_s=timeout_s).get("autonomy")
-    except ConnectionError:
-        return None
-    execution = autonomy.get("execution") if isinstance(autonomy, dict) else None
-    mode = execution.get("mode") if isinstance(execution, dict) else None
-    return mode if isinstance(mode, str) else None
-
-
-def _picar_decision_view(
-    vehicle_id: str,
-    *,
-    port: int,
-    open_browser: bool,
-    timeout_s: float,
-    output: TextIO | None,
-) -> CommandResult:
-    """Serve the shared RuntimeViewServer decision page from the PiCar's
-    publications until Ctrl-C."""
-
-    try:
-        resolved, error = _resolve_picar_vehicle(
-            vehicle_id,
-            timeout_s=max(0.1, float(timeout_s)),
-        )
-    except (OSError, TypeError, ValueError) as exc:
-        return CommandResult(2, f"Vehicle discovery failed: {type(exc).__name__}: {exc}")
-    if error is not None or resolved is None:
-        return CommandResult(2, error or f"Vehicle {vehicle_id!r} could not be resolved.")
-
-    server: RuntimeViewServer | None = None
-    try:
-        normalized, image = _accepted_pair(
-            resolved.base_url,
-            vehicle_id=resolved.vehicle_id,
-            timeout_s=timeout_s,
-        )
-        server = RuntimeViewServer(
-            vehicle_id=resolved.vehicle_id,
-            automation_dir=runtime_view_dir(vehicle_id, runtime_root=RUNTIME_ROOT),
-            port=port,
-            run_id=normalized["run_id"],
-            decision_provider_identity=_provider_identity(normalized),
-        ).start()
-        adapter = PicarDecisionViewAdapter(
-            vehicle_id=resolved.vehicle_id,
-            base_url=resolved.base_url,
-            view_server=server,
-            timeout_s=max(0.1, float(timeout_s)),
-            action_policy=_picar_action_policy(resolved.base_url, timeout_s),
-        )
-        if not adapter.publish_frame(normalized, image):
-            return CommandResult(2, "PiCar decision transaction was rejected")
-        page_path = server.decision.page_url()
-        if page_path is None or server.url is None:
-            return CommandResult(2, "PiCar decision view did not expose a generation URL")
-        view_url = f"{server.url.rstrip('/')}{page_path}"
-        if output is not None:
-            print(
-                f"Live decision view: {view_url}\n"
-                f"Vehicle: {resolved.vehicle_id} (picar onboard host {resolved.base_url})\n"
-                "Read-only decision view; no vehicle commands are sent. Ctrl-C stops it.",
-                file=output,
-                flush=True,
-            )
-        if open_browser and not webbrowser.open(view_url, new=2) and output is not None:
-            print(f"Open the view manually: {view_url}", file=output, flush=True)
-        while True:
-            adapter.action_policy = _picar_action_policy(resolved.base_url, timeout_s)
-            try:
-                adapter.refresh()
-            except Exception:  # noqa: BLE001 - every incomplete refresh fails closed
-                server.decision.invalidate_latest()
-            threading.Event().wait(0.2)
-    except KeyboardInterrupt:
-        return CommandResult(0, "Live decision view stopped.")
-    except (OSError, ValueError, TypeError, ConnectionError) as exc:
-        return CommandResult(2, f"live decision view unavailable: {type(exc).__name__}: {exc}")
-    finally:
-        if server is not None:
-            server.stop()
-
-
-def _chase_decision_view(vehicle_id: str, *, open_browser: bool) -> CommandResult:
-    """The decision page the running Chase automation worker serves."""
-
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    try:
-        identity = load_decision_identity(bundle)
-    except DecisionSurfaceError as exc:
-        return CommandResult(exc.exit_code, exc.message_text)
-    view = discover_runtime_view(
-        vehicle_id,
-        lambda directory: get_decision_view_status(
-            automation_dir=directory, vehicle_id=vehicle_id, activation=identity,
-        ),
-        runtime_root=RUNTIME_ROOT,
-    )
-    if not view.get("available"):
-        return CommandResult(
-            2,
-            f"Live decision view unavailable for {vehicle_id}: {view.get('reason')}.\n"
-            f"Start it: ./cli/automa vehicles automation run --id {vehicle_id} --observe-only",
-        )
-    view_url = str(view["url"])
-    lines = [
-        f"Live decision view: {view_url}",
-        f"Vehicle: {vehicle_id} (chase-sim automation worker)",
-        "Read-only decision view; no vehicle commands are sent. "
-        "The automation worker serves it until it stops.",
-    ]
-    if open_browser and not webbrowser.open(view_url, new=2):
-        lines.append(f"Open the view manually: {view_url}")
-    return CommandResult(0, "\n".join(lines))
 
 
 def read_host_telemetry_panel(
@@ -694,46 +486,3 @@ def _host_record_matches_identity(
             "completed_at_ms": source_frame.get("completed_at_ms"),
         },
     } == decision_identity
-
-
-def read_host_telemetry_capture(
-    base_url: str,
-    *,
-    normalized_decision: dict[str, Any],
-    vehicle_id: str,
-    after_sequence: int = 0,
-    limit: int = 128,
-    timeout_s: float = 3.0,
-    now_ms: int | None = None,
-) -> dict[str, Any]:
-    return fetch_host_telemetry_capture(
-        base_url,
-        normalized_decision=normalized_decision,
-        vehicle_id=vehicle_id,
-        after_sequence=after_sequence,
-        limit=limit,
-        now_ms=now_ms,
-        timeout_s=timeout_s,
-    )
-
-
-def project_live_decision_payload(
-    decision_payload: dict[str, Any],
-    host_telemetry_panel: dict[str, Any],
-) -> dict[str, Any]:
-    return project_decision_with_host_telemetry(decision_payload, host_telemetry_panel)
-
-
-def build_live_decision_capture(
-    *,
-    decision_payload: dict[str, Any],
-    host_telemetry_panel: dict[str, Any],
-    records_result: dict[str, Any] | None = None,
-    vehicle_id: str | None = None,
-) -> dict[str, Any]:
-    return build_decision_host_telemetry_capture(
-        decision_payload=decision_payload,
-        panel=host_telemetry_panel,
-        records_result=records_result,
-        vehicle_id=vehicle_id,
-    )

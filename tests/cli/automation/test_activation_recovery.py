@@ -155,7 +155,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                         self.assertFalse((bundle / "runtime/perception/active.json").exists())
                         self.assertFalse((bundle / "releases").exists())
 
-    def test_info_and_decision_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
+    def test_info_and_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
         with fake_metrics_ui_server() as ws_url:
             for step in ("perception", "memory", *DECISION_STEPS):
                 with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
@@ -165,12 +165,10 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa vehicles update {step} --id {VEHICLE_ID}"
-                    # Each step's info reads its own activation; the decision stream reads its three.
-                    surfaces = []
-                    if step in ("perception", "memory", "proposal"):
-                        surfaces.append(("info", step))
+                    # Each step's info reads its own activation; a decision step's stream reads all three.
+                    surfaces = [("info", step)]
                     if step in DECISION_STEPS:
-                        surfaces.append(("stream", "decision", "--once"))
+                        surfaces.append(("stream", step, "--once"))
                     for surface in surfaces:
                         result = run_automa(
                             "vehicles", *surface, "--id", VEHICLE_ID,
@@ -183,7 +181,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     if step not in DECISION_STEPS:
                         continue
                     machine = run_automa(
-                        "vehicles", "stream", "decision", "--once", "--id", VEHICLE_ID, "--json",
+                        "vehicles", "stream", step, "--once", "--id", VEHICLE_ID, "--json",
                         runtime_root=runtime_root, extra_env=env, check=False,
                     )
                     payload = json.loads(machine.stdout)

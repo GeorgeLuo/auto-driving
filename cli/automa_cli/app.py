@@ -16,14 +16,7 @@ from .automation import (
     stop_vehicle_automation,
 )
 from .deploy import update_vehicle_autonomy, update_vehicle_core
-from .decision import (
-    RUNTIME_ROOT as DECISION_RUNTIME_ROOT,
-    apply_vehicle_decision,
-    stream_vehicle_decision,
-)
-from .decision_inspector import run_decision_inspector
-from .proposal import get_vehicle_proposal_info
-from .decision_live import run_live_decision_monitor
+from .decision_steps import get_vehicle_step_info, inspect_decision_step, stream_vehicle_step
 from .memory import (
     get_vehicle_memory_info,
     update_vehicle_memory,
@@ -43,6 +36,7 @@ from implementations.decision_cycle.perception.presets import (
 )
 
 from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
+from .runtime_hosts import RUNTIME_ROOT as VEHICLES_RUNTIME_ROOT
 from .perception import (
     get_vehicle_perception_info,
     update_vehicle_perception,
@@ -53,7 +47,7 @@ from .perception_runs import (
 from .workbench import run_workbench_replay
 from .plugin_catalog import arm_plugins, list_plugins, upload_plugin
 from autonomy.runtime.plugin_catalog import ARMING_STEPS
-from autonomy.decision_cycle.activation import STEPS
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .viability import (
@@ -592,143 +586,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
-    decision_stream = stream_commands.add_parser(
-        "decision",
-        help="Show the latest decision frame (generation-scoped latest replacement).",
-        description=(
-            "Read automation/latest_decision.json for the staged proposal, plan, and "
-            "action steps. "
-            "Accepts only generation-matched frames from a running live worker within the "
-            "configured max age, replacing the terminal view as each arrives. Use --once for "
-            "a single accepted frame."
-        ),
-    )
-    decision_stream.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    decision_stream.add_argument(
-        "--refresh-s",
-        type=float,
-        default=0.5,
-        help="Refresh cadence for the replacing terminal view.",
-    )
-    decision_stream.add_argument(
-        "--once",
-        action="store_true",
-        help="Accept one frame and exit.",
-    )
-    decision_stream.add_argument(
-        "--no-clear",
-        action="store_true",
-        help="Print each render below the previous one, keeping earlier renders in scrollback.",
-    )
-    decision_stream.add_argument(
-        "--json",
-        action="store_true",
-        help="Print machine-readable decision stream frames (one JSON object per refresh).",
-    )
-    decision_stream.set_defaults(handler=_handle_vehicles_stream_decision)
-
-    decision_control = vehicle_commands.add_parser(
-        "decision",
-        help=(
-            "Inspect or operate vehicle decision "
-            "(offline inspect/replay or read-only live monitor)."
-        ),
-    )
-    decision_control.set_defaults(handler=_handle_vehicles_decision_help)
-    decision_control_commands = decision_control.add_subparsers(dest="decision_command")
-    decision_help = decision_control_commands.add_parser(
-        "help",
-        help="Show decision-level commands.",
-    )
-    decision_help.set_defaults(handler=_handle_vehicles_decision_help)
-    decision_inspect = decision_control_commands.add_parser(
-        "inspect", help="Serve an offline decision inspector for a saved input sequence.",
-        description="Compute left/right proposal scenarios offline from one saved frame and serve them on a local inspector page.",
-    )
-    decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
-    decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
-    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged hold-action configuration; otherwise use packaged defaults.")
-    decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
-    decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
-    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts as JSON and exit, in place of the local inspector page.")
-    decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
-    decision_apply = decision_control_commands.add_parser(
-        "apply",
-        help="Replay a recorded decision sequence through staged hold-action offline.",
-        description=(
-            "Feed a recorded observation+memory sequence through the vehicle's staged "
-            "hold-action activation. Requires --id. Reports a deterministic digest "
-            "(canonical_json_utf8 byte equality across two passes); --record also saves "
-            "exact-frame HTML under lab/runs/decision-apply/."
-        ),
-    )
-    decision_apply.add_argument(
-        "--id",
-        required=False,
-        dest="vehicle_id",
-        help="Vehicle id used to resolve the staged decision activation.",
-    )
-    decision_apply.add_argument(
-        "--from-run",
-        required=True,
-        dest="from_run",
-        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v1).",
-    )
-    decision_apply.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable apply result (includes digest).",
-    )
-    decision_apply.add_argument(
-        "--record",
-        action="store_true",
-        help=(
-            "Also save a bounded exact-frame review directory with HTML, digest, and "
-            "manifest."
-        ),
-    )
-    decision_apply.set_defaults(handler=_handle_vehicles_decision_apply)
-
-    decision_live = decision_control_commands.add_parser(
-        "live",
-        help="Open the shared read-only decision view for a live vehicle.",
-        description=(
-            "Open the decision page with matched image-relative evidence and "
-            "proposed versus authorized output. A Chase automation worker serves "
-            "it; for a PiCar this adapts the decision publication into the same "
-            "RuntimeViewServer page until Ctrl-C. It sends no vehicle commands."
-        ),
-    )
-    decision_live.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    decision_live.add_argument(
-        "--port",
-        type=int,
-        default=0,
-        help="Preferred local loopback port (0 chooses an available port).",
-    )
-    decision_live.add_argument(
-        "--open",
-        action="store_true",
-        dest="open_browser",
-        help="Open the shared decision view in the default browser.",
-    )
-    decision_live.add_argument(
-        "--timeout-s",
-        type=float,
-        default=2.0,
-        help="Per-request Pi timeout.",
-    )
-    decision_live.set_defaults(handler=_handle_vehicles_decision_live)
+    for step_name in DECISION_STEPS:
+        step_stream = stream_commands.add_parser(
+            step_name,
+            help=f"Show the {step_name} record of the latest cycle the vehicle published.",
+            description=(
+                f"Read the vehicle runtime host's latest cycle and print its {step_name} record"
+                + {
+                    "proposal": ", with the observation and memory it read and its candidates",
+                    "plan": ", with the selected candidate and contributions",
+                    "action": ", with its authority and the host's application of the output",
+                }[step_name]
+                + ". Accepts only a fresh cycle whose generation matches its step selections, "
+                "replacing the terminal view as each arrives."
+            ),
+        )
+        step_stream.add_argument(
+            "--id",
+            required=True,
+            dest="vehicle_id",
+            help="Vehicle id from `automa vehicles active`.",
+        )
+        step_stream.add_argument(
+            "--refresh-s",
+            type=float,
+            default=0.5,
+            help="Refresh cadence for the replacing terminal view.",
+        )
+        step_stream.add_argument(
+            "--once",
+            action="store_true",
+            help="Accept one cycle and exit; exit 2 when none is available.",
+        )
+        step_stream.add_argument(
+            "--no-clear",
+            action="store_true",
+            help="Print each render below the previous one, keeping earlier renders in scrollback.",
+        )
+        step_stream.add_argument(
+            "--json",
+            action="store_true",
+            help=f"Print one vehicle_{step_name}_stream_v1 JSON object per refresh.",
+        )
+        step_stream.set_defaults(handler=_handle_vehicles_stream_step, step=step_name)
 
     memory_control = vehicle_commands.add_parser(
         "memory",
@@ -821,6 +721,62 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable report.",
     )
     memory_inspect.set_defaults(handler=_handle_vehicles_memory_inspect)
+
+    decision_inspects = []
+    for step_name in DECISION_STEPS:
+        step_control = vehicle_commands.add_parser(
+            step_name,
+            help=f"Inspect the {step_name} step offline, from images or a recorded run.",
+        )
+        step_control.set_defaults(handler=_handle_vehicles_decision_step_help, step=step_name)
+        step_commands = step_control.add_subparsers(dest=f"{step_name}_command")
+        step_commands.add_parser(
+            "help", help=f"Show {step_name}-level commands.",
+        ).set_defaults(handler=_handle_vehicles_decision_step_help, step=step_name)
+        step_inspect = step_commands.add_parser(
+            "inspect",
+            help=f"Show the {step_name} record for every frame of images or a recorded run.",
+            description=(
+                f"Replay the source (an image, a directory of images, or a recorded automation, "
+                f"perception, memory or decision-step inspect run) through perception, observation "
+                f"and memory, then proposal, plan and action, frame by frame, and report the "
+                f"{step_name} record after each. A recording restores every step's selection, "
+                f"restaged per frame as recorded; --plugin overrides {step_name}. Otherwise each "
+                f"step uses its default. Recorded frames replay with their recorded drive mode."
+            ),
+        )
+        step_inspect.add_argument(
+            "source",
+            type=Path,
+            help="Image file, directory of images, or recorded run.",
+        )
+        step_inspect.add_argument(
+            "--plugin",
+            dest="plugins",
+            action="append",
+            default=None,
+            metavar="PLUGIN",
+            help=f"Inspect these packaged {step_name} plugins, in order, with their default configs. Repeatable.",
+        )
+        step_inspect.add_argument(
+            "--frame",
+            type=int,
+            default=None,
+            metavar="N",
+            help="Report only the source's Nth frame (0-based); the frames before it still replay.",
+        )
+        step_inspect.add_argument(
+            "--record",
+            action="store_true",
+            help=f"Persist the reported frames, every step's selection and the per-frame report under runtime/{step_name}-inspections/ for replay.",
+        )
+        step_inspect.add_argument(
+            "--json",
+            action="store_true",
+            help="Print the machine-readable report.",
+        )
+        step_inspect.set_defaults(handler=_handle_vehicles_decision_step_inspect, step=step_name)
+        decision_inspects.append(step_inspect)
     memory_viability = memory_commands.add_parser(
         "viability",
         help="Health-check memory on a vehicle.",
@@ -1038,27 +994,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory_info.set_defaults(handler=_handle_vehicles_info_memory)
 
-    proposal_info = info_commands.add_parser(
-        "proposal",
-        help="Show the staged proposal plugins, the runner schema, the decision view URL and the live proposal step state.",
-        description=(
-            "Show the staged proposal plugins, the runner schema, the decision view URL, "
-            "the plan and action steps that act on the proposals, and the proposal step "
-            "as the running autonomy engine has it."
-        ),
-    )
-    proposal_info.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    proposal_info.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable proposal info payload.",
-    )
-    proposal_info.set_defaults(handler=_handle_vehicles_info_proposal)
+    for step_name in DECISION_STEPS:
+        step_info = info_commands.add_parser(
+            step_name,
+            help=f"Show the staged {step_name} plugins, the decision they belong to and the live {step_name} step state.",
+            description=(
+                f"Show the staged {step_name} plugins"
+                + (" and the runner schema" if step_name == "proposal" else "")
+                + ", the proposal, plan and action plugins of the staged decision with its "
+                f"generation and authority, and the {step_name} step as the running autonomy "
+                "engine has it."
+            ),
+        )
+        step_info.add_argument(
+            "--id",
+            required=True,
+            dest="vehicle_id",
+            help="Vehicle id from `automa vehicles active`.",
+        )
+        step_info.add_argument(
+            "--json",
+            action="store_true",
+            help=f"Print the full machine-readable {step_name} info payload.",
+        )
+        step_info.set_defaults(handler=_handle_vehicles_info_step, step=step_name)
 
     perception_control = vehicle_commands.add_parser(
         "perception",
@@ -1148,7 +1107,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_inspect.set_defaults(handler=_handle_vehicles_perception_inspect)
 
-    for inspection in (perception_inspect, memory_inspect):
+    for inspection in (perception_inspect, memory_inspect, *decision_inspects):
         inspection.add_argument(
             "--max-frames",
             type=int,
@@ -1672,7 +1631,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (inspect, viability, reset)",
-                "- decision     offline decision apply/replay (stage via update proposal)",
+                "- proposal     inspect proposals offline; same for plan and action",
                 (
                     "- workbench    replay images through perception, memory, proposals, "
                     "and decisions"
@@ -1759,7 +1718,9 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show staged perception schema and live view",
                 "- memory      show staged memory schema and live memory",
-                "- proposal    show staged proposal schema, decision view and live proposals",
+                "- proposal    show staged proposal schema, the staged decision and live proposals",
+                "- plan        show staged plan plugins, the staged decision and the live plan step",
+                "- action      show staged action plugins, the staged decision and the live action step",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1796,7 +1757,9 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show latest local automation perception output",
                 "- memory      show live memory lifecycle health",
-                "- decision    show the latest decision frame",
+                "- proposal    show the latest cycle's proposals and their inputs",
+                "- plan        show the latest cycle's plan and selected candidate",
+                "- action      show the latest cycle's authority and host application",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -2063,8 +2026,9 @@ def _handle_vehicles_stream_memory(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_stream_decision(args: argparse.Namespace) -> int:
-    result = stream_vehicle_decision(
+def _handle_vehicles_stream_step(args: argparse.Namespace) -> int:
+    result = stream_vehicle_step(
+        args.step,
         vehicle_id=args.vehicle_id,
         refresh_s=args.refresh_s,
         once=args.once,
@@ -2077,60 +2041,38 @@ def _handle_vehicles_stream_decision(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
+def _handle_vehicles_decision_step_help(args: argparse.Namespace) -> int:
+    step = args.step
     print(
         "\n".join(
             [
-                "automa vehicles decision commands",
+                f"automa vehicles {step} commands",
                 "",
-                "- inspect offline browser inspector for saved decision input",
-                "- apply   offline replay of a recorded sequence; digest; optional --record",
-                "- live    read-only local browser monitor for a live PiCar publication",
-                "- help    show this summary",
+                f"- inspect  the {step} record for every frame of images or a recorded run; optional --frame, --record",
+                "- help     show this summary",
                 "",
-                "Stage proposals (held idle):  ./cli/automa vehicles update proposal --id <vehicle>",
-                "Apply them in live modes:     ./cli/automa vehicles update action --id <vehicle> --plugin mode",
-                "Proposal schema and view: ./cli/automa vehicles info proposal --id <vehicle>",
-                "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
-                "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
+                f"Stage plugins with:              ./cli/automa vehicles update {step} --id <vehicle>",
+                f"Inspect staged config with:      ./cli/automa vehicles info {step} --id <vehicle>",
+                f"Stream the latest cycle:         ./cli/automa vehicles stream {step} --id <vehicle>",
+                "Act on proposals in live modes:  ./cli/automa vehicles update action --id <vehicle> --plugin mode",
                 "",
                 "Detailed help:",
-                "- ./cli/automa vehicles decision <command> --help",
+                f"- ./cli/automa vehicles {step} inspect --help",
             ]
         )
     )
     return 0
 
 
-def _handle_vehicles_decision_inspect(args: argparse.Namespace) -> int:
-    result = run_decision_inspector(
-        args.from_run, frame_index=args.frame, vehicle_id=args.vehicle_id,
-        port=args.port, open_browser=args.open_browser, json_output=args.json, output=sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_vehicles_decision_apply(args: argparse.Namespace) -> int:
-    result = apply_vehicle_decision(
-        vehicle_id=args.vehicle_id,
-        from_run=args.from_run,
-        json_output=args.json,
+def _handle_vehicles_decision_step_inspect(args: argparse.Namespace) -> int:
+    result = inspect_decision_step(
+        args.step,
+        source=str(args.source),
+        plugins=args.plugins,
+        frame=args.frame,
         record=args.record,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_vehicles_decision_live(args: argparse.Namespace) -> int:
-    result = run_live_decision_monitor(
-        vehicle_id=args.vehicle_id,
-        port=args.port,
-        open_browser=args.open_browser,
-        timeout_s=args.timeout_s,
-        output=sys.stdout,
+        json_output=args.json,
+        max_frames=args.max_frames,
     )
     if result.message:
         print(result.message)
@@ -2301,8 +2243,9 @@ def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_info_proposal(args: argparse.Namespace) -> int:
-    result = get_vehicle_proposal_info(
+def _handle_vehicles_info_step(args: argparse.Namespace) -> int:
+    result = get_vehicle_step_info(
+        args.step,
         vehicle_id=args.vehicle_id,
         json_output=args.json,
     )
@@ -2411,7 +2354,7 @@ def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
         vehicle_id=args.vehicle_id,
         step=args.step,
         plugins=args.plugins,
-        runtime_root=DECISION_RUNTIME_ROOT,
+        runtime_root=VEHICLES_RUNTIME_ROOT,
         timeout_s=args.timeout_s,
         dry_run=args.dry_run,
         json_output=args.json,

@@ -13,7 +13,7 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.decision_cycle.steps import load_decision_steps
 from implementations.decision_cycle.catalog import step_plugins
-from cli.automa_cli.proposal import get_vehicle_proposal_info
+from cli.automa_cli.decision_steps import get_vehicle_step_info
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.step_activations import (
     bundle_activation_path,
@@ -56,8 +56,8 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             metadata=original.metadata,
         ))
 
-        info = get_vehicle_proposal_info(
-            vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
+        info = get_vehicle_step_info(
+            "proposal", vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
         )
         self.assertEqual(info.exit_code, 0, info.message)
         payload = json.loads(info.message)
@@ -73,13 +73,13 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual([item.plugin_id for item in replay.proposal.candidates], ["bundle_only"])
         self.assertEqual(shared_memory["bundle_marker"], "from the staged bundle")
 
-        # A decision step whose bundle is gone is reported, not raised.
+        # A step whose bundle is gone is reported by that step's info, not raised.
         action_path = bundle_activation_path(bundle, "action")
         action = read_step_activation(action_path, "action").to_payload()
         action["metadata"]["controller_bundle"]["root_dir"] = str(self.runtime_root / "missing")
         action_path.write_text(json.dumps(action), encoding="utf-8")
-        missing = get_vehicle_proposal_info(
-            vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
+        missing = get_vehicle_step_info(
+            "action", vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
         )
         self.assertEqual(missing.exit_code, 2)
         self.assertIn("Controller bundle is missing", missing.message)
@@ -92,8 +92,8 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             self.assertEqual(staged[key], expected[key])
         self.assertEqual(staged["metadata"]["vehicle_id"], "chase-sim-chaser")
 
-        info = get_vehicle_proposal_info(
-            vehicle_id="chase-sim-chaser", json_output=True, include_live=False
+        info = get_vehicle_step_info(
+            "proposal", vehicle_id="chase-sim-chaser", json_output=True, include_live=False
         )
         self.assertEqual(info.exit_code, 0, info.message)
         info_payload = json.loads(info.message)
@@ -114,7 +114,10 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         decision = info_payload["decision"]
         self.assertEqual(decision["generation_id"], identity["generation_id"])
-        self.assertEqual(decision["selector_id"], "highest_confidence")
+        self.assertEqual(
+            decision["plugins"],
+            {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["hold"]},
+        )
         self.assertEqual(
             decision["authority"],
             {
@@ -123,15 +126,11 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
                 "authorized_idle_reason": HOLD_IDLE_REASON,
             },
         )
-        self.assertEqual(info_payload["published_view"]["view_id"], "decision-combined-v0")
-        self.assertFalse(info_payload["published_view"]["available"])
 
-        human = get_vehicle_proposal_info(vehicle_id="chase-sim-chaser", include_live=False).message
+        human = get_vehicle_step_info("proposal", vehicle_id="chase-sim-chaser", include_live=False).message
         for expected in (
             "avoid_recent_obstruction",
             HOLD_IDLE_REASON,
-            "Decision view: unavailable",
-            "vehicles decision inspect",
             "Failure policy:",
         ):
             self.assertIn(expected, human)
@@ -172,7 +171,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertFalse(activation.exists())
 
     def test_info_missing_activation(self) -> None:
-        result = get_vehicle_proposal_info(vehicle_id="missing", json_output=True)
+        result = get_vehicle_step_info("proposal", vehicle_id="missing", json_output=True)
         self.assertEqual(result.exit_code, 2)
         self.assertIn("No active proposal activation found", result.message)
 

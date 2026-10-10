@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import math
-import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
@@ -26,14 +25,12 @@ LATEST_JSON_PATH = "/autonomy/observation/latest"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 DECISION_LATEST_PATH = "/autonomy/decision/latest"
 STATUS_JSON_PATH = "/autonomy/status"
-MEMORY_RESET_PATH = "/autonomy/memory/reset"
 HOST_TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
 HOST_TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records_v0"
 HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel_v0"
-HOST_TELEMETRY_CAPTURE_SCHEMA = "automa_host_boundary_telemetry_capture_v0"
 HOST_TELEMETRY_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_normalized_v0"
 HOST_TELEMETRY_RECORDS_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_records_normalized_v0"
 
@@ -129,46 +126,6 @@ def fetch_autonomy_status(
         raise ConnectionError(f"GET {url} returned non-JSON body") from exc
     if not isinstance(payload, dict):
         raise ConnectionError(f"GET {url} returned a non-object JSON payload")
-    payload.setdefault("http_status", status_code)
-    return payload
-
-
-def post_memory_reset(
-    base_url: str,
-    *,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    """POST /autonomy/memory/reset on a PiCar's Donkey runtime."""
-
-    url = f"{base_url.rstrip('/')}{MEMORY_RESET_PATH}"
-    request = urllib.request.Request(
-        url,
-        data=b"{}",
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=max(0.1, float(timeout_s))) as response:
-            body = response.read()
-            status_code = getattr(response, "status", 200)
-    except urllib.error.HTTPError as exc:
-        body = exc.read() if exc.fp is not None else b""
-        status_code = int(exc.code)
-        if not body:
-            raise ConnectionError(
-                f"POST {url} failed with HTTP {status_code} and empty body"
-            ) from exc
-    except urllib.error.URLError as exc:
-        raise ConnectionError(f"POST {url} failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise ConnectionError(f"POST {url} timed out after {timeout_s}s") from exc
-
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConnectionError(f"POST {url} returned non-JSON body") from exc
-    if not isinstance(payload, dict):
-        raise ConnectionError(f"POST {url} returned a non-object JSON payload")
     payload.setdefault("http_status", status_code)
     return payload
 
@@ -1459,136 +1416,8 @@ def join_host_telemetry_to_decision(
     return panel
 
 
-def build_host_telemetry_capture(
-    *,
-    joined_point: dict[str, Any] | None,
-    records_result: dict[str, Any] | None = None,
-    vehicle_id: str | None = None,
-) -> dict[str, Any]:
-    """Build a separate telemetry capture envelope without changing decision bytes."""
-
-    point = joined_point if isinstance(joined_point, dict) else host_telemetry_failure(
-        "publisher_missing"
-    )
-    records = records_result if isinstance(records_result, dict) else None
-    point_status = point.get("status")
-    point_reason = point.get("reason") or ""
-    coverage = (
-        deepcopy(records.get("coverage"))
-        if records is not None and isinstance(records.get("coverage"), dict)
-        else {
-            "status": "limited",
-            "reason": "coverage_gap",
-            "coverage_reason": "latest_point_only",
-            "interval_covered": False,
-            "record_count": 0,
-        }
-    )
-    interval_covered = coverage.get("interval_covered") is True
-    if point_status not in {"healthy", "limited"} or not point.get("joined"):
-        status = point_status or "unavailable"
-        reason = point_reason or "identity_mismatch"
-        interval_covered = False
-    elif not interval_covered:
-        status = "limited"
-        reason = (
-            records.get("reason")
-            if records is not None and records.get("reason")
-            else "coverage_gap"
-        )
-    else:
-        status = point_status
-        reason = point_reason
-    return {
-        "schema": HOST_TELEMETRY_CAPTURE_SCHEMA,
-        "status": status,
-        "reason": reason,
-        "vehicle_id": vehicle_id
-        or (point.get("identity") or {}).get("vehicle_id"),
-        "identity": deepcopy(point.get("identity")),
-        "host_telemetry": deepcopy(point),
-        "records": deepcopy(records.get("records", [])) if records is not None else [],
-        "coverage": coverage,
-        "interval_covered": interval_covered,
-    }
-
-
-def fetch_host_telemetry_capture(
-    base_url: str,
-    *,
-    normalized_decision: dict[str, Any],
-    vehicle_id: str,
-    after_sequence: int = 0,
-    limit: int = 128,
-    now_ms: int | None = None,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    """Fetch a point plus bounded history for an additive telemetry artifact."""
-
-    effective_now_ms = int(time.time() * 1000) if now_ms is None else now_ms
-    try:
-        latest = fetch_host_telemetry_latest(base_url, timeout_s=timeout_s)
-        normalized_latest = normalize_host_telemetry_record(
-            latest,
-            now_ms=effective_now_ms,
-            vehicle_id=vehicle_id,
-        )
-        joined_point = join_host_telemetry_to_decision(
-            normalized_latest,
-            normalized_decision,
-            vehicle_id=vehicle_id,
-        )
-    except (HostTelemetryError, ConnectionError, OSError, TypeError, ValueError) as exc:
-        reason = exc.reason if isinstance(exc, HostTelemetryError) else "publisher_missing"
-        joined_point = host_telemetry_failure(
-            reason,
-            message=str(exc),
-            details=exc.details if isinstance(exc, HostTelemetryError) else {},
-        )
-    records_result: dict[str, Any] | None = None
-    try:
-        records_payload = fetch_host_telemetry_records(
-            base_url,
-            after_sequence=after_sequence,
-            limit=limit,
-            timeout_s=timeout_s,
-        )
-        records_result = normalize_host_telemetry_records(
-            records_payload,
-            now_ms=effective_now_ms,
-            after_sequence=after_sequence,
-            limit=limit,
-            vehicle_id=vehicle_id,
-        )
-    except (HostTelemetryError, ConnectionError, OSError, TypeError, ValueError) as exc:
-        reason = exc.reason if isinstance(exc, HostTelemetryError) else "publisher_missing"
-        records_result = _host_records_result(
-            status=_host_panel_status(reason),
-            reason=reason,
-            records=[],
-            after_sequence=after_sequence,
-            limit=limit,
-            coverage={
-                "status": "limited",
-                "reason": reason,
-                "interval_covered": False,
-                "record_count": 0,
-            },
-            details=exc.details if isinstance(exc, HostTelemetryError) else {},
-        )
-    return build_host_telemetry_capture(
-        joined_point=joined_point,
-        records_result=records_result,
-        vehicle_id=vehicle_id,
-    )
-
-
 # Short aliases keep the consumer seam discoverable without making the
 # producer or accepted decision schemas depend on these helpers.
-normalize_host_boundary_telemetry = normalize_host_telemetry_record
-join_host_boundary_telemetry = join_host_telemetry_to_decision
-
-
 def normalize_picar_decision_publication(
     publication: object,
     *,
@@ -1815,16 +1644,6 @@ def fetch_observation_frame(
     return body, headers
 
 
-def frame_id_from_publication(publication: dict[str, Any]) -> str | None:
-    """Return the publication's frame identity when present."""
-
-    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-    frame_id = frame.get("frame_id")
-    if isinstance(frame_id, str) and frame_id.strip():
-        return frame_id.strip()
-    return None
-
-
 def frame_id_from_headers(headers: dict[str, str]) -> str | None:
     """Return X-Frame-Id (case-insensitive) from an observation frame response."""
 
@@ -1832,123 +1651,6 @@ def frame_id_from_headers(headers: dict[str, str]) -> str | None:
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
     return None
-
-
-def fetch_matched_observation_pair(
-    base_url: str,
-    *,
-    timeout_s: float = 3.0,
-    match_timeout_s: float = 3.0,
-    require_image: bool = True,
-    after_frame_id: str | None = None,
-) -> dict[str, Any]:
-    """Fetch latest publication + JPEG and require matching frame identities.
-
-    Separate GETs can race. Retry until ``X-Frame-Id`` equals the publication
-    ``frame.frame_id`` (or until timeout). When ``require_image`` is true, a
-    nonempty JPEG body is required; publications without an image keep polling
-    instead of succeeding empty. When ``after_frame_id`` is set, the matched
-    pair must use a different frame id. Raises ``TimeoutError`` when a verified
-    pair cannot be obtained.
-    """
-
-    deadline = time.monotonic() + max(0.2, float(match_timeout_s))
-    last_error: str | None = None
-    attempts = 0
-    previous = (after_frame_id or "").strip() or None
-    while time.monotonic() < deadline:
-        attempts += 1
-        try:
-            publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
-        except ConnectionError as exc:
-            last_error = str(exc)
-            time.sleep(0.05)
-            continue
-
-        pub_frame_id = frame_id_from_publication(publication)
-        frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-        has_image = True
-        if "has_image" in frame:
-            has_image = bool(frame.get("has_image"))
-
-        if not require_image:
-            if not pub_frame_id:
-                last_error = "publication has no frame.frame_id"
-                time.sleep(0.05)
-                continue
-            if previous is not None and pub_frame_id == previous:
-                last_error = f"publication frame_id still {pub_frame_id!r}; waiting for newer frame"
-                time.sleep(0.05)
-                continue
-            return {
-                "publication": publication,
-                "frame_bytes": None,
-                "frame_headers": {},
-                "frame_id": pub_frame_id,
-                "matched": True,
-                "attempts": attempts,
-                "image_required": False,
-            }
-
-        # require_image=True: never succeed without a real JPEG body.
-        if not has_image:
-            last_error = "publication has_image=false; waiting for a frame with an image"
-            time.sleep(0.05)
-            continue
-
-        if not pub_frame_id:
-            last_error = "publication has no frame.frame_id"
-            time.sleep(0.05)
-            continue
-
-        if previous is not None and pub_frame_id == previous:
-            last_error = f"publication frame_id still {pub_frame_id!r}; waiting for newer frame"
-            time.sleep(0.05)
-            continue
-
-        try:
-            frame_bytes, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
-        except ConnectionError as exc:
-            last_error = str(exc)
-            time.sleep(0.05)
-            continue
-
-        if not frame_bytes:
-            last_error = "frame response body is empty"
-            time.sleep(0.05)
-            continue
-
-        jpeg_frame_id = frame_id_from_headers(headers)
-        if jpeg_frame_id is None:
-            last_error = "frame response missing X-Frame-Id"
-            time.sleep(0.05)
-            continue
-        if jpeg_frame_id != pub_frame_id:
-            last_error = (
-                f"frame pair mismatch publication={pub_frame_id!r} jpeg={jpeg_frame_id!r}"
-            )
-            time.sleep(0.05)
-            continue
-        if previous is not None and jpeg_frame_id == previous:
-            last_error = f"jpeg frame_id still {jpeg_frame_id!r}; waiting for newer frame"
-            time.sleep(0.05)
-            continue
-
-        return {
-            "publication": publication,
-            "frame_bytes": frame_bytes,
-            "frame_headers": headers,
-            "frame_id": pub_frame_id,
-            "matched": True,
-            "attempts": attempts,
-            "image_required": True,
-        }
-
-    raise TimeoutError(
-        f"Timed out after {match_timeout_s}s waiting for a matched publication/JPEG pair"
-        + (f": {last_error}" if last_error else "")
-        + f" (attempts={attempts})"
-    )
 
 
 def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:

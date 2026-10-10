@@ -164,7 +164,10 @@ class ImageReplayRunner:
 
     def state(self) -> dict[str, Any]:
         with self._lock:
-            self._apply_plugin_configuration_locked()
+            for step in SELECTABLE_STEPS:
+                self._state[f"{step}_plugin_catalog"] = self._catalogs[step].to_dict(
+                    active_ids=self._state[f"active_{step}_plugin_ids"],
+                )
             return copy.deepcopy(self._state)
 
     @staticmethod

@@ -15,6 +15,7 @@ import hashlib
 import json
 import secrets
 import threading
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -58,7 +59,7 @@ def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | None]:
+def recorded_selections(record: dict[str, Any], *, source_root: Path | None = None) -> dict[str, StepActivation | None]:
     """Read a frame's executable selections, preserving disabled steps."""
     if "steps" not in record:
         return {}
@@ -78,7 +79,33 @@ def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | No
         )
         if generation != expected:
             raise ValueError("recorded generation does not match its step selections")
+    # Earlier recordings mapped the host's absolute upload paths to retained
+    # assets. Resolve those at the input boundary; all runners use one loader.
+    if source_root is not None and record.get("plugin_sources"):
+        sources = {
+            original: str(recorded_source_path(source_root, relative))
+            for original, relative in record["plugin_sources"].items()
+        }
+        for step, activation in activations.items():
+            if activation is not None:
+                referenced = {
+                    path: sources[path] for spec in activation.plugin_specs.values()
+                    if (path := spec.partition(":")[0]) in sources
+                }
+                if referenced:
+                    activations[step] = replace(
+                        activation, metadata={**activation.metadata, "plugin_sources": referenced},
+                    )
     return activations
+
+
+def recorded_source_path(run_dir: Path, relative: str) -> Path:
+    """Resolve a retained source inside a recording, including after moving it."""
+    root = Path(run_dir).resolve()
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError("recorded plugin source must stay inside the run directory")
+    return path
 
 
 def _recording_text(value: Any, label: str) -> str:

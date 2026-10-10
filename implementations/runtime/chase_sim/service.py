@@ -148,7 +148,10 @@ class _RouteHandler(BaseHTTPRequestHandler):
     def _serve(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
-        status, headers, payload = self.server.routes.handle(self.command, self.path, body)
+        status, headers, payload = self.server.routes.handle(
+            self.command, self.path, body, headers=self.headers,
+            origin=f"http://{self.headers.get('Host', '')}",
+        )
         self.send_response(status)
         for name, value in headers.items():
             self.send_header(name, value)

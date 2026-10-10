@@ -110,7 +110,8 @@ class RuntimeRoutesTests(unittest.TestCase):
         status, payload = _json(routes.handle("GET", "/api/plugins"))
         self.assertEqual(status, 200)
         self.assertTrue(payload["ok"])
-        self.assertEqual(_json(routes.handle("POST", "/api/plugins", b"[]"))[0], 400)
+        self.assertEqual(_json(routes.handle("POST", "/api/plugins", b"[]",
+                         headers={"Content-Type": "application/json"}))[0], 400)
 
     def test_a_failed_loop_stops_the_session_with_its_error(self) -> None:
         loop, routes = _routes()

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections.abc import Mapping
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
@@ -22,6 +23,7 @@ from autonomy.runtime.frame_loop import (
     LATEST_JSON_PATH,
 )
 from autonomy.runtime.session import RunConfiguration
+from autonomy.runtime.plugin_catalog import catalog_write_error
 
 logger = logging.getLogger(__name__)
 
@@ -81,12 +83,18 @@ class RuntimeRoutes:
     def handles(self, path: str) -> bool:
         return any(route_path == urlsplit(path).path for _, route_path in self._routes)
 
-    def handle(self, method: str, target: str, body: bytes = b"") -> Response:
+    def handle(self, method: str, target: str, body: bytes = b"", *,
+               headers: Mapping[str, str] | None = None, origin: str = "") -> Response:
         """Answer one request; ``target`` is the path with its query string."""
 
         parts = urlsplit(target)
         path = parts.path.rstrip("/") or "/"
         method = "GET" if method.upper() == "HEAD" else method.upper()
+        if method == "POST" and path == PLUGINS_PATH:
+            error = catalog_write_error(headers or {}, origin=origin)
+            if error is not None:
+                status, payload = error
+                return json_response(payload, status)
         route = self._routes.get((method, path))
         if route is None:
             if any(route_path == path for _, route_path in self._routes):

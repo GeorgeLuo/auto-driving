@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 from cli.automa_cli import bundles
+from cli.automa_cli.runtime_hosts import stop_chase_host
 from tests.support.cli_runner import WORKSPACE_ROOT, run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
@@ -115,6 +116,12 @@ class ReplayByReleaseTests(unittest.TestCase):
             runs = runtime_root / VEHICLE_ID / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
             self.assertEqual((recording / "plugins" / source).read_bytes(), plugin.read_bytes())
+            with mock.patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root):
+                stop_chase_host(VEHICLE_ID)
+            plugin.unlink()
+            moved = Path(tmp) / "moved-recording"
+            shutil.move(recording, moved)
+            recording = moved
 
             replay = json.loads(automa("perception", "inspect", str(recording), "--json").stdout)
             for frame in replay["frames"]:

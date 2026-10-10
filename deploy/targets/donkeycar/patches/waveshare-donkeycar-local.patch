@@ -255,7 +255,7 @@ index 8af4669..0fde4f0 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +251,39 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +251,42 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -275,7 +275,10 @@ index 8af4669..0fde4f0 100644
 +        # Arming loads plugins and waits out a cycle; drive and video stay served meanwhile.
 +        loop = asyncio.get_running_loop()
 +        status, headers, body = await loop.run_in_executor(
-+            None, routes.handle, self.request.method, self.request.uri, self.request.body
++            None, lambda: routes.handle(
++                self.request.method, self.request.uri, self.request.body,
++                headers=self.request.headers, origin=f"{self.request.protocol}://{self.request.host}",
++            )
 +        )
 +        self.set_status(status)
 +        for name, value in headers.items():

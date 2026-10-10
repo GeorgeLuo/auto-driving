@@ -501,10 +501,13 @@ def _build_frame(
             metadata[key] = value
     if "steps" in entry:
         try:
-            recorded_selections(entry)
+            selections = recorded_selections(entry, source_root=source_path)
         except (TypeError, ValueError) as exc:
             raise SourceValidationError(f"frame {position} has invalid recorded selections: {exc}") from exc
-        metadata["steps"] = copy.deepcopy(entry["steps"])
+        metadata["steps"] = {
+            step: activation.to_payload() if activation is not None else None
+            for step, activation in selections.items()
+        }
     return ReplayFrame(
         source_id=source_id,
         frame_id=frame_id,

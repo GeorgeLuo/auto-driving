@@ -4,8 +4,13 @@ Tests mirror the ownership boundaries of production code. Run the deterministic
 suite from the repository root:
 
 ```sh
+python3 -m pip install -r requirements-test.txt
+python3 -m playwright install chromium
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 ```
+
+Viewer integration tests use headless Chromium to check rendered catalog rows.
+CI installs its system dependencies with `playwright install --with-deps chromium`.
 
 The flagless command includes unit, contract, CLI, and local integration tests.
 It does not launch a simulator, contact a Pi, or record runtime artifacts.

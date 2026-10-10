@@ -9,12 +9,13 @@ whatever is checked out or staged now.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from autonomy.decision_cycle.activation import (
     StepActivation, step_activation,
 )
-from autonomy.runtime.plugin_loader import CodeSource, load_runner
+from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.runtime.recording import recorded_selections
 
 from .runtime_hosts import release_code_dir
@@ -28,6 +29,7 @@ def replay_step(runner: Any, activation: StepActivation | None, shared_memory: d
             previous.plugin_specs == activation.plugin_specs
             and previous.plugin_configs == activation.plugin_configs
             and recorded_release(previous) == recorded_release(activation)
+            and code_source_from_activation(previous) == code_source_from_activation(activation)
         ):
             if tuple(runner.plugin_ids) != activation.plugins:
                 runner.plugin_manager.select(activation.plugins)
@@ -66,7 +68,7 @@ def recorded_runner(activation: StepActivation) -> Any:
         return load_runner(activation)
     vehicle_id, tree_sha256 = release
     code_dir, _ = release_code_dir(vehicle_id, tree_sha256=tree_sha256)
-    return load_runner(activation, source=CodeSource(bundle_root=code_dir))
+    return load_runner(activation, source=replace(code_source_from_activation(activation), bundle_root=code_dir))
 
 
 def selection_record(activation: StepActivation) -> dict[str, Any]:

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.activation import read_step_activation
+from autonomy.decision_cycle.activation import DECISION_STEPS, read_step_activation
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -172,8 +172,9 @@ def _decision_summary(identity: Any) -> dict[str, Any]:
         "deployed": True,
         "generation_id": identity.get("generation_id"),
         "plugins": {
-            step: (payload or {}).get("plugins") or []
-            for step, payload in identity["steps"].items()
+            step: (identity["steps"][step] or {}).get("plugins") or []
+            for step in DECISION_STEPS
+            if step in identity["steps"]
         },
     }
 
@@ -1444,24 +1445,25 @@ def _status_reason(value: Any, *, fallback: str) -> str:
 
 
 def _run_label(state: dict[str, Any]) -> str:
+    if not state.get("run_id"):
+        return "none"
     num_decisions = state.get("num_decisions")
-    limit_text = str(num_decisions) if num_decisions else "unbounded"
-    parts = [
-        f"id={state.get('run_id', 'none')}",
-        f"captured={state.get('frames_captured', 0)}",
-        f"decisions={state.get('processed_count', 0)}/{limit_text}",
-        f"skipped={state.get('skipped_count', 0)}",
-        f"capture_interval_s={state.get('interval_s', 'unknown')}",
-        f"recording={state.get('recording', 'unknown')}",
-        f"control={state.get('control_source', 'unknown')}",
-        f"action={state.get('action_policy', 'unknown')}",
-    ]
-    return "  ".join(parts)
+    fields = {
+        "id": state["run_id"],
+        "captured": state.get("frames_captured") or 0,
+        "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
+        "skipped": state.get("skipped_count") or 0,
+        "capture_interval_s": state.get("interval_s"),
+        "recording": state.get("recording"),
+        "control": state.get("control_source"),
+        "action": state.get("action_policy"),
+    }
+    return "  ".join(f"{name}={value}" for name, value in fields.items() if value is not None)
 
 
 def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> str:
     if not last_frame:
-        return f"none  perception={state.get('latest_perception_text', 'unknown')}"
+        return "none"
     fields = {
         "frame": last_frame.get("frame_id"),
         "signals": last_frame.get("signals"),

@@ -182,7 +182,7 @@ def format_apply_staged(apply: dict[str, Any]) -> list[str]:
                 f"(specs or configs changed: {', '.join(apply['changed_plugins'])})"]
     if not apply.get("live_selection"):
         return [f"Apply: {apply.get('restart_command')}"]
-    selection = apply.get("selection_command") or "automatic on the running worker's next frame"
+    selection = apply.get("selection_command") or "automatic on the host's next frame"
     return [
         f"Apply selection: {selection}",
         f"Apply changed specs or configs: {apply.get('restart_command')}",

@@ -1235,10 +1235,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     autonomy = update_commands.add_parser(
         "autonomy",
-        help="Deploy a versioned autonomy controller release to a PiCar.",
+        help="Package the staged steps as a controller release for the vehicle's host.",
         description=(
-            "Deploy a versioned autonomy controller release to a PiCar. "
-            "With --restart, verifies every deployed step runs its staged plugins. "
+            "Package the staged steps as a versioned controller release: a PiCar receives it "
+            "over SSH, a simulator vehicle keeps it locally. "
+            "With --restart, the host restarts onto it and verifies every step runs its staged plugins. "
             "Memory activation ships here; manage.py load path ships with core—if "
             "verification reports no memory step, update core then re-run autonomy."
         ),
@@ -1279,7 +1280,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--restart",
         action="store_true",
         help=(
-            "Restart the supervised Donkey runtime after activating the release. Without it, "
+            "Restart the vehicle's host (the PiCar's Donkey service or the simulator worker) "
+            "onto the release. Without it, "
             "a running runtime selects restaged plugins on its next frame; changed plugin "
             "specs or configs, plan, and action need a restart."
         ),
@@ -1689,7 +1691,7 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
                 "automa vehicles update commands",
                 "",
                 "- core         deploy the DonkeyCar harness to a PiCar",
-                "- autonomy     deploy an autonomy controller release to a PiCar",
+                "- autonomy     package staged steps as a release for the vehicle's host",
                 "- perception   stage local vehicle perception code",
                 "- observation  stage observation plugins",
                 "- memory       stage memory plugins",

@@ -490,7 +490,7 @@
       appendMetric(authorityMetrics, "Plugin", candidate?.plugin_id || "none");
       appendMetric(authorityMetrics, "Proposed", commandText(authority.proposed || candidate?.command));
       appendMetric(authorityMetrics, "Authorized", commandText(authority.authorized_output));
-      appendMetric(authorityMetrics, "Applied", authority.proposed_applied ? "true" : "false");
+      appendMetric(authorityMetrics, "Authorized as proposed", authority.proposed_applied ? "true" : "false");
       const hostFrame = decision.frame_id || latest.current_image?.frame_id;
       appendMetric(
         authorityMetrics,

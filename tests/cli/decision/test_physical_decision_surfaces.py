@@ -300,7 +300,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 extra_env=env,
             )
             self.assertIn(f"Action stream: {vehicle_id}", text_result.stdout)
-            self.assertIn("Proposed applied: false", text_result.stdout)
+            self.assertIn("Authorized as proposed: false", text_result.stdout)
 
             fixture_state["force_expired"] = True
             expired = run_automa(

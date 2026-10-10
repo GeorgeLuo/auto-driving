@@ -336,7 +336,8 @@ def _action_lines(record: dict[str, Any]) -> list[str]:
         f"gate={authority.get('gate_id') or HoldAction.plugin_id}",
         f"Proposed: {json.dumps(authority.get('proposed'), sort_keys=True)}",
         f"Authorized: {json.dumps(authority.get('authorized_output') or idle_output(), sort_keys=True)}",
-        f"Proposed applied: {str(authority.get('proposed_applied') is True).lower()}",
+        # The action step passed the proposal through; the host decides whether it reaches the vehicle.
+        f"Authorized as proposed: {str(authority.get('proposed_applied') is True).lower()}",
     ]
 
 

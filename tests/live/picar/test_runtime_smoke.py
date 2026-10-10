@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 
-from cli.automa_cli.deploy import inspect_physical_autonomy_runtime
+from cli.automa_cli.deploy import inspect_picar_autonomy_runtime
 from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL
 
 
@@ -13,15 +13,14 @@ from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL
 )
 class PiRuntimeSmokeTests(unittest.TestCase):
     def test_runtime_is_reachable_activated_and_manual(self) -> None:
-        status = inspect_physical_autonomy_runtime(
+        status = inspect_picar_autonomy_runtime(
             base_url=os.environ.get("AUTOMA_TEST_PICAR_URL", DEFAULT_LOCAL_CAR_BASE_URL),
             timeout_s=float(os.environ.get("AUTOMA_TEST_PICAR_TIMEOUT_S", "3.0")),
         )
 
         self.assertTrue(status["ok"])
-        self.assertEqual(status["drive_mode"], "user")
-        self.assertTrue(status["engine"])
-        self.assertTrue(status["perception_preset"])
+        self.assertEqual(status["mode"], "manual")
+        self.assertIsNotNone(status["steps"]["action"])
 
 
 if __name__ == "__main__":

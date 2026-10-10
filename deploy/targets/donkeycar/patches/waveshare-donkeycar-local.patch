@@ -221,23 +221,10 @@ index 64581bc..bf5f54d 100755
          }
  
 diff --git a/donkeycar/parts/web_controller/web.py b/donkeycar/parts/web_controller/web.py
-index 8af4669..232d5df 100644
+index 8af4669..0fde4f0 100644
 --- a/donkeycar/parts/web_controller/web.py
 +++ b/donkeycar/parts/web_controller/web.py
-@@ -28,6 +28,12 @@ from ... import utils
- logger = logging.getLogger(__name__)
- 
- 
-+AUTONOMY_MODE_TO_DRIVE_MODE = {
-+    "manual": "user",
-+    "autonomy": "local",
-+}
-+
-+
- class RemoteWebServer():
-     '''
-     A controller that repeatedly polls a remote webserver and expects
-@@ -101,7 +107,7 @@ class RemoteWebServer():
+@@ -101,7 +101,7 @@ class RemoteWebServer():
  
  class LocalWebController(tornado.web.Application):
  
@@ -246,31 +233,19 @@ index 8af4669..232d5df 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +129,33 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +123,21 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
 +        self.camera = camera
 +        # Set by manage.py when the autonomy bundle is activated.
-+        self.autonomy_host = None
-+        # Set by manage.py after AutonomyPilotPart is constructed.
-+        self.observation_publisher = None
-+        self.host_telemetry_publisher = None
++        self.autonomy_routes = None
  
  
          handlers = [
              (r"/", RedirectHandler, dict(url="/drive")),
              (r"/drive", DriveAPI),
-+            (r"/autonomy/status", AutonomyStatusAPI),
-+            (r"/autonomy/mode", AutonomyModeAPI),
-+            (r"/autonomy/observation/latest", AutonomyObservationLatestAPI),
-+            (r"/autonomy/observation/latest/frame.jpg", AutonomyObservationLatestFrameAPI),
-+            (r"/autonomy/camera/latest", AutonomyCameraLatestAPI),
-+            (r"/autonomy/camera/latest/frame.jpg", AutonomyCameraLatestFrameAPI),
-+            (r"/autonomy/decision/latest", AutonomyDecisionLatestAPI),
-+            (r"/autonomy/telemetry/latest", AutonomyTelemetryLatestAPI),
-+            (r"/autonomy/telemetry/records", AutonomyTelemetryRecordsAPI),
-+            (r"/autonomy/memory/reset", AutonomyMemoryResetAPI),
++            (r"/(?:autonomy/.*|api/plugins)", AutonomyRoutesAPI),
              (r"/wsDrive", WebSocketDriveAPI),
              (r"/wsCalibrate", WebSocketCalibrateAPI),
              (r"/calibrate", CalibrateHandler),
@@ -280,434 +255,50 @@ index 8af4669..232d5df 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +263,426 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +251,42 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
-+class AutonomyAPIBase(RequestHandler):
-+    def write_json(self, payload: dict, status: int = 200):
++class AutonomyRoutesAPI(RequestHandler):
++    """Transport only; the shared runtime route table answers every request."""
++
++    async def _dispatch(self):
++        routes = getattr(self.application, "autonomy_routes", None)
++        if routes is None:
++            self.set_status(503)
++            self.set_header("Content-Type", "application/json")
++            self.write(json.dumps(
++                {"ok": False, "error": "autonomy runtime unavailable; see the automa service log"},
++                sort_keys=True,
++            ))
++            return
++        # Arming loads plugins and waits out a cycle; drive and video stay served meanwhile.
++        loop = asyncio.get_running_loop()
++        status, headers, body = await loop.run_in_executor(
++            None, lambda: routes.handle(
++                self.request.method, self.request.uri, self.request.body,
++                headers=self.request.headers, origin=f"{self.request.protocol}://{self.request.host}",
++            )
++        )
 +        self.set_status(status)
-+        self.set_header("Content-Type", "application/json")
-+        self.write(json.dumps(payload, sort_keys=True))
++        for name, value in headers.items():
++            self.set_header(name, value)
++        self.write(body)
 +
-+    def read_json_body(self) -> dict:
-+        if not self.request.body:
-+            return {}
-+        return tornado.escape.json_decode(self.request.body)
++    async def get(self):
++        await self._dispatch()
 +
-+    def status_payload(self) -> dict:
-+        host = getattr(self.application, "autonomy_host", None)
-+        autonomy_status = None if host is None else host.status()
-+        return {
-+            "ok": host is not None,
-+            "drive_mode": getattr(self.application, "mode", None),
-+            "autonomy_modes": sorted(AUTONOMY_MODE_TO_DRIVE_MODE.keys()),
-+            "drive_mode_map": AUTONOMY_MODE_TO_DRIVE_MODE,
-+            "autonomy": autonomy_status,
-+        }
++    async def head(self):
++        await self._dispatch()
 +
-+
-+class AutonomyStatusAPI(AutonomyAPIBase):
-+    def get(self):
-+        self.write_json(self.status_payload())
-+
-+
-+class AutonomyObservationLatestAPI(AutonomyAPIBase):
-+    """Publish one exact latest observation snapshot without history or disk writes."""
-+
-+    def get(self):
-+        publisher = getattr(self.application, "observation_publisher", None)
-+        if publisher is None or not hasattr(publisher, "publish_latest"):
-+            self.write_json(
-+                {
-+                    "schema": "automa_physical_observation_publication_v0",
-+                    "ok": False,
-+                    "health": "absent",
-+                    "error": "observation publisher is not available",
-+                    "drive_mode": getattr(self.application, "mode", None),
-+                },
-+                status=503,
-+            )
-+            return
-+
-+        payload = publisher.publish_latest()
-+        payload["drive_mode"] = getattr(self.application, "mode", None)
-+        status_code = 200
-+        if payload.get("health") == "absent":
-+            status_code = 503
-+        elif payload.get("health") == "warming":
-+            status_code = 200
-+        self.write_json(payload, status=status_code)
-+
-+
-+class AutonomyObservationLatestFrameAPI(AutonomyAPIBase):
-+    """Serve the exact processed JPEG that matches the latest observation snapshot."""
-+
-+    def get(self):
-+        publisher = getattr(self.application, "observation_publisher", None)
-+        if publisher is None or not hasattr(publisher, "publish_latest_frame_jpeg"):
-+            self.set_status(503)
-+            self.set_header("Content-Type", "application/json")
-+            self.write(
-+                json.dumps(
-+                    {
-+                        "ok": False,
-+                        "health": "absent",
-+                        "error": "observation publisher is not available",
-+                    },
-+                    sort_keys=True,
-+                )
-+            )
-+            return
-+
-+        jpeg, meta = publisher.publish_latest_frame_jpeg()
-+        frame = meta.get("frame") if isinstance(meta, dict) else None
-+        frame_id = None if not isinstance(frame, dict) else frame.get("frame_id")
-+        if frame_id is None and isinstance(meta, dict):
-+            frame_id = meta.get("frame_id")
-+        if jpeg is None:
-+            self.set_status(503)
-+            self.set_header("Content-Type", "application/json")
-+            self.set_header("Cache-Control", "no-store")
-+            if frame_id is not None:
-+                self.set_header("X-Frame-Id", str(frame_id))
-+            if isinstance(meta, dict) and meta.get("health") is not None:
-+                self.set_header("X-Observation-Health", str(meta.get("health")))
-+            self.write(json.dumps(meta, sort_keys=True, default=str))
-+            return
-+
-+        self.set_header("Content-Type", "image/jpeg")
-+        self.set_header("Content-Length", str(len(jpeg)))
-+        self.set_header("Cache-Control", "no-store")
-+        if frame_id is not None:
-+            self.set_header("X-Frame-Id", str(frame_id))
-+        if isinstance(meta, dict):
-+            if meta.get("frame_index") is not None:
-+                self.set_header("X-Frame-Index", str(meta.get("frame_index")))
-+            elif isinstance(frame, dict) and frame.get("frame_index") is not None:
-+                self.set_header("X-Frame-Index", str(frame.get("frame_index")))
-+            if meta.get("health") is not None:
-+                self.set_header("X-Observation-Health", str(meta.get("health")))
-+            captured = meta.get("captured_at_ms")
-+            if captured is None and isinstance(frame, dict):
-+                captured = frame.get("captured_at_ms")
-+            if captured is not None:
-+                self.set_header("X-Captured-At-Ms", str(captured))
-+            completed = meta.get("completed_at_ms")
-+            if completed is None and isinstance(frame, dict):
-+                completed = frame.get("completed_at_ms")
-+            if completed is not None:
-+                self.set_header("X-Completed-At-Ms", str(completed))
-+        self.write(jpeg)
-+
-+
-+class AutonomyCameraLatestAPI(AutonomyAPIBase):
-+    """Publish the newest camera sample without waiting for perception."""
-+
-+    def get(self):
-+        publisher = getattr(self.application, "observation_publisher", None)
-+        if publisher is None or not hasattr(publisher, "publish_latest_camera"):
-+            self.write_json(
-+                {
-+                    "schema": "automa_physical_camera_publication_v0",
-+                    "ok": False,
-+                    "health": "absent",
-+                    "error": "camera publisher is not available",
-+                    "drive_mode": getattr(self.application, "mode", None),
-+                },
-+                status=503,
-+            )
-+            return
-+        payload = publisher.publish_latest_camera()
-+        payload["drive_mode"] = getattr(self.application, "mode", None)
-+        status_code = 200
-+        if payload.get("health") in {"absent", "unavailable"} and not payload.get("ok"):
-+            status_code = 503
-+        self.write_json(payload, status=status_code)
-+
-+
-+class AutonomyCameraLatestFrameAPI(AutonomyAPIBase):
-+    """Serve the JPEG for the newest camera sample."""
-+
-+    def get(self):
-+        publisher = getattr(self.application, "observation_publisher", None)
-+        if publisher is None or not hasattr(publisher, "publish_latest_camera_jpeg"):
-+            self.set_status(503)
-+            self.set_header("Content-Type", "application/json")
-+            self.write(
-+                json.dumps(
-+                    {
-+                        "ok": False,
-+                        "health": "absent",
-+                        "error": "camera publisher is not available",
-+                    },
-+                    sort_keys=True,
-+                )
-+            )
-+            return
-+        jpeg, meta = publisher.publish_latest_camera_jpeg()
-+        frame = meta.get("frame") if isinstance(meta, dict) else None
-+        frame_id = None if not isinstance(frame, dict) else frame.get("frame_id")
-+        if jpeg is None:
-+            self.set_status(503)
-+            self.set_header("Content-Type", "application/json")
-+            self.set_header("Cache-Control", "no-store")
-+            if frame_id is not None:
-+                self.set_header("X-Frame-Id", str(frame_id))
-+            self.write(json.dumps(meta, sort_keys=True, default=str))
-+            return
-+        self.set_header("Content-Type", "image/jpeg")
-+        self.set_header("Content-Length", str(len(jpeg)))
-+        self.set_header("Cache-Control", "no-store")
-+        if frame_id is not None:
-+            self.set_header("X-Frame-Id", str(frame_id))
-+        if isinstance(frame, dict) and frame.get("frame_index") is not None:
-+            self.set_header("X-Frame-Index", str(frame.get("frame_index")))
-+        captured = None if not isinstance(frame, dict) else frame.get("captured_at_ms")
-+        if captured is not None:
-+            self.set_header("X-Captured-At-Ms", str(captured))
-+        self.write(jpeg)
-+
-+
-+class AutonomyDecisionLatestAPI(AutonomyAPIBase):
-+    """Publish the current decision from the same onboard owner."""
-+
-+    def get(self):
-+        publisher = getattr(self.application, "observation_publisher", None)
-+        if publisher is None or not hasattr(publisher, "publish_decision_latest"):
-+            self.write_json(
-+                {
-+                    "schema": "automa_physical_decision_publication_v0",
-+                    "ok": False,
-+                    "status": "unavailable",
-+                    "reason": "publisher_missing",
-+                    "read_at_ms": None,
-+                    "result_age_ms": None,
-+                    "stale_after_ms": None,
-+                    "decision": None,
-+                },
-+                status=503,
-+            )
-+            return
-+
-+        payload = publisher.publish_decision_latest()
-+        self.write_json(payload, status=200 if payload.get("status") == "ready" else 503)
-+
-+
-+class AutonomyModeAPI(AutonomyAPIBase):
-+    def post(self):
-+        data = self.read_json_body()
-+        requested = str(data.get("mode", "")).strip()
-+        drive_mode = AUTONOMY_MODE_TO_DRIVE_MODE.get(requested)
-+        if drive_mode is None:
-+            self.write_json(
-+                {
-+                    "ok": False,
-+                    "error": f"unknown autonomy mode {requested!r}",
-+                    "valid_modes": sorted(AUTONOMY_MODE_TO_DRIVE_MODE.keys()),
-+                },
-+                status=400,
-+            )
-+            return
-+
-+        self.application.mode = drive_mode
-+        self.application.mode_latch = drive_mode
-+        if drive_mode == "user" and data.get("stop", True):
-+            self.application.angle = 0.0
-+            self.application.throttle = 0.0
-+
-+        payload = self.status_payload()
-+        payload["requested_mode"] = requested
-+        payload["drive_mode"] = drive_mode
-+        self.write_json(payload)
-+
-+
-+class AutonomyMemoryResetAPI(AutonomyAPIBase):
-+    """Reset the activated memory step without restarting the Donkey process."""
-+
-+    def post(self):
-+        publisher = getattr(self.application, "observation_publisher", None)
-+        if publisher is None or not hasattr(publisher, "reset_memory"):
-+            self.write_json(
-+                {
-+                    "schema": "automa_memory_reset_v0",
-+                    "ok": False,
-+                    "status": "absent",
-+                    "error": "memory reset is not available (observation publisher missing reset_memory)",
-+                    "drive_mode": getattr(self.application, "mode", None),
-+                },
-+                status=503,
-+            )
-+            return
-+
-+        result = publisher.reset_memory()
-+        if not isinstance(result, dict):
-+            self.write_json(
-+                {
-+                    "schema": "automa_memory_reset_v0",
-+                    "ok": False,
-+                    "status": "error",
-+                    "error": "reset_memory returned a non-object payload",
-+                },
-+                status=500,
-+            )
-+            return
-+
-+        payload = {
-+            "schema": "automa_memory_reset_v0",
-+            "drive_mode": getattr(self.application, "mode", None),
-+            **result,
-+        }
-+        # Include live autonomy status so operators can confirm empty epoch/counts.
-+        host = getattr(self.application, "autonomy_host", None)
-+        if host is not None:
-+            autonomy = host.status()
-+            payload["autonomy"] = autonomy
-+            steps = autonomy.get("steps") if isinstance(autonomy, dict) else None
-+            if isinstance(steps, dict) and isinstance(steps.get("memory"), dict):
-+                payload.setdefault("memory", steps["memory"])
-+
-+        status_code = 200 if payload.get("ok") else 409
-+        if payload.get("status") == "absent":
-+            status_code = 503
-+        elif payload.get("status") == "error":
-+            status_code = 500
-+        self.write_json(payload, status=status_code)
-+
-+
-+class AutonomyTelemetryLatestAPI(AutonomyAPIBase):
-+    """Read the immutable latest post-DriveMode host tick."""
-+
-+    def _query_is_empty(self):
-+        return not self.request.query_arguments
-+
-+    def get(self):
-+        publisher = getattr(self.application, "host_telemetry_publisher", None)
-+        latest = None if publisher is None else getattr(publisher, "latest", None)
-+        if not callable(latest):
-+            self.write_json(
-+                {
-+                    "schema": "automa_host_boundary_telemetry_v0",
-+                    "ok": False,
-+                    "status": "unavailable",
-+                    "reason": "publisher_missing",
-+                    "record": None,
-+                },
-+                status=503,
-+            )
-+            return
-+        if not self._query_is_empty():
-+            self.write_json(
-+                {
-+                    "schema": "automa_host_boundary_telemetry_v0",
-+                    "ok": False,
-+                    "status": "error",
-+                    "reason": "query_invalid",
-+                    "record": None,
-+                },
-+                status=400,
-+            )
-+            return
-+        try:
-+            payload = latest()
-+            if not isinstance(payload, dict):
-+                raise TypeError("host telemetry latest publication is not an object")
-+        except Exception:
-+            logger.exception("Unable to read host telemetry latest publication")
-+            self.write_json(
-+                {
-+                    "schema": "automa_host_boundary_telemetry_v0",
-+                    "ok": False,
-+                    "status": "error",
-+                    "reason": "observer_error",
-+                    "record": None,
-+                },
-+                status=500,
-+            )
-+            return
-+        self.write_json(payload, status=200 if payload.get("ok") else 503)
-+
-+    def head(self):
-+        self.get()
-+
-+
-+class AutonomyTelemetryRecordsAPI(AutonomyAPIBase):
-+    """Read a strictly bounded sequence of host ticks without side effects."""
-+
-+    def _query(self):
-+        query = {}
-+        for key, values in self.request.query_arguments.items():
-+            if len(values) != 1:
-+                return None
-+            try:
-+                query[key] = values[0].decode("ascii", errors="strict")
-+            except UnicodeDecodeError:
-+                return None
-+        if set(query) != {"after_sequence", "limit"}:
-+            return None
-+        return query
-+
-+    def get(self):
-+        publisher = getattr(self.application, "host_telemetry_publisher", None)
-+        records = None if publisher is None else getattr(publisher, "records", None)
-+        query = self._query()
-+        if not callable(records):
-+            self.write_json(
-+                {
-+                    "schema": "automa_host_boundary_telemetry_v0",
-+                    "ok": False,
-+                    "status": "unavailable",
-+                    "reason": "publisher_missing",
-+                    "records": [],
-+                },
-+                status=503,
-+            )
-+            return
-+        if query is None:
-+            self.write_json(
-+                {
-+                    "schema": "automa_host_boundary_telemetry_v0",
-+                    "ok": False,
-+                    "status": "error",
-+                    "reason": "query_invalid",
-+                    "records": [],
-+                },
-+                status=400,
-+            )
-+            return
-+        try:
-+            payload = records(
-+                after_sequence=query["after_sequence"],
-+                limit=query["limit"],
-+            )
-+            if not isinstance(payload, dict):
-+                raise TypeError("host telemetry history publication is not an object")
-+        except Exception:
-+            logger.exception("Unable to read host telemetry history")
-+            self.write_json(
-+                {
-+                    "schema": "automa_host_boundary_telemetry_v0",
-+                    "ok": False,
-+                    "status": "error",
-+                    "reason": "observer_error",
-+                    "records": [],
-+                },
-+                status=500,
-+            )
-+            return
-+        status = 200 if payload.get("ok") else 503
-+        if payload.get("reason") == "query_invalid":
-+            status = 400
-+        self.write_json(payload, status=status)
-+
-+    def head(self):
-+        self.get()
++    async def post(self):
++        await self._dispatch()
 +
 +
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +625,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +430,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -760,7 +351,7 @@ index 8af4669..232d5df 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +720,3 @@ class WebFpv(Application):
+@@ -440,5 +525,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

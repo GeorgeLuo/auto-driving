@@ -1,9 +1,9 @@
 """PiCar/PiRacer vehicle implementation."""
 
-from .car import DonkeyPiCar, create_local_car, describe_local_car
+from .car import PiCar, create_picar, describe_picar
 
 __all__ = [
-    "DonkeyPiCar",
-    "create_local_car",
-    "describe_local_car",
+    "PiCar",
+    "create_picar",
+    "describe_picar",
 ]

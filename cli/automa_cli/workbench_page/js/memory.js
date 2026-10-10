@@ -126,7 +126,7 @@ function paintMemorySelection(records) {
       origin: selected.origin,
       properties: selected.properties
     }, null, 2)
-    : "Select a server-produced memory record to inspect its origin.";
+    : "";
 }
 function bindMemoryList() {
   if (elements.memoryRecords.getAttribute("data-bound") === "true") return;
@@ -182,9 +182,9 @@ function renderMemory() {
     noSnapshot.className = "memory-empty muted help";
     noSnapshot.textContent = updateFailed
       ? "Memory update stopped this replay. See Failure for details."
-      : disabled ? "No memory plugins selected." : "No retained evidence yet.";
+      : disabled ? "No memory plugins selected." : "";
     elements.memoryRecords.appendChild(noSnapshot);
-    elements.memorySelected.textContent = "Select a server-produced memory record to inspect its origin.";
+    elements.memorySelected.textContent = "";
     return;
   }
   if (!shownMemoryPlugin(report)) {
@@ -196,9 +196,9 @@ function renderMemory() {
     noPublisher.className = "memory-empty muted help";
     noPublisher.textContent = plugins.length
       ? "No evidence publisher this frame. Pick a plugin to see its records."
-      : "The memory report lists no plugins.";
+      : "";
     elements.memoryRecords.appendChild(noPublisher);
-    elements.memorySelected.textContent = "Select a server-produced memory record to inspect its origin.";
+    elements.memorySelected.textContent = "";
     return;
   }
   var memory = shownMemoryState(report) || {};
@@ -254,10 +254,10 @@ function renderMemory() {
   if (!records.length) {
     var noRecords = document.createElement("p");
     noRecords.className = "memory-empty muted help";
-    noRecords.textContent = "Memory is empty for this frame.";
+    noRecords.textContent = "";
     elements.memoryRecords.appendChild(noRecords);
     setText("memorySelection", "no record selected");
-    elements.memorySelected.textContent = "Memory is empty for this frame.";
+    elements.memorySelected.textContent = "";
     return;
   }
   if (!visible.length) {

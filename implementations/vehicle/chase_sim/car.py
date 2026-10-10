@@ -27,6 +27,7 @@ from autonomy.vehicle import (
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
+    run_vehicle_pulse,
 )
 
 
@@ -288,8 +289,8 @@ class ChaseSimCar(CarInterface):
             },
             notes=(
                 "Applies normalized RC-car-like actions to Chase via Metrics UI WS.",
-                "Chase WS control uses fixed scenario speed; throttle magnitude is represented by pulse duration.",
-                "Use prepare_for_external_control() before running an external decision model.",
+                "Chase WS has directional throttle at fixed scenario speed; receipts report this quantization.",
+                "Control acquisition is managed by the shared execution runtime.",
             ),
         )
 
@@ -474,32 +475,14 @@ class ChaseSimCar(CarInterface):
             "action": action.to_dict(),
             "throttle": max(0.0, min(1.0, float(throttle))),
             "payload": payload,
+            "boundary": "chase_ws_input",
+            "throttle_semantics": "directional_fixed_speed",
             "ack": ack,
             "sent_at_ms": int(time.time() * 1000),
         }
 
     def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
-        started_ms = int(time.time() * 1000)
-        try:
-            command = self.execute_action(
-                pulse.action,
-                throttle=pulse.throttle,
-                recording=pulse.recording,
-            )
-            time.sleep(pulse.duration_s)
-        finally:
-            self.stop()
-
-        if pulse.settle_s > 0:
-            time.sleep(pulse.settle_s)
-
-        return {
-            "label": pulse.label,
-            "pulse": pulse.to_dict(),
-            "command": command,
-            "started_at_ms": started_ms,
-            "completed_at_ms": int(time.time() * 1000),
-        }
+        return run_vehicle_pulse(self, pulse)
 
     @property
     def last_capture_chaser_reference(self) -> dict[str, Any] | None:

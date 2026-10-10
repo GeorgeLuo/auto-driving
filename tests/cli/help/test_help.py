@@ -34,9 +34,13 @@ class HelpCommandTests(unittest.TestCase):
                 "--id",
                 "chase-sim-chaser",
                 "--observe-only",
-                "--frames",
+                "--num-decisions",
                 "0",
                 "--open-view",
+            ],
+            [
+                "vehicles", "automation", "restart", "--id", "piracer",
+                "--num-decisions", "7",
             ],
             ["vehicles", "status", "--id", "chase-sim-chaser"],
             ["vehicles", "automation", "stop", "--id", "chase-sim-chaser"],
@@ -44,12 +48,16 @@ class HelpCommandTests(unittest.TestCase):
             with self.subTest(args=args):
                 parsed = parser.parse_args(args)
                 self.assertEqual(parsed.command, "vehicles")
+                if "--num-decisions" in args:
+                    self.assertEqual(parsed.num_decisions, int(args[args.index("--num-decisions") + 1]))
 
     def test_removed_flags_are_rejected_before_execution(self) -> None:
         parser = build_parser()
         for args in (
             ["vehicles", "active", "--verbose"],
             ["vehicles", "active", "--include-inactive"],
+            ["vehicles", "automation", "run", "--id", "chase-sim-chaser", "--frames", "3"],
+            ["vehicles", "automation", "restart", "--id", "piracer", "--frames", "3"],
             [
                 "vehicles",
                 "automation",

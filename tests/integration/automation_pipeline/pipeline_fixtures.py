@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import time
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from PIL import Image
 from unittest.mock import patch
@@ -10,9 +11,11 @@ from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
-from cli.automa_cli import automation as automation_module
 from implementations.decision_cycle.catalog import packaged_activation, preset_activation
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from cli.automa_cli.bundles import controller_bundle_paths
+
+VEHICLE_ID = "chase-sim-chaser"
 
 
 class _SlowMapper:
@@ -46,8 +49,9 @@ class _SlowMapper:
 
 
 class _FakeCar:
-    def __init__(self, **_kwargs) -> None:
+    def __init__(self, *, simulator_frame_stride: int = 1, **_kwargs) -> None:
         self.capture_count = 0
+        self.simulator_frame_stride = simulator_frame_stride
         self.last_capture_chaser_reference: dict | None = None
         self.last_passive_capture: dict | None = None
         self.last_simulator_frame_index: int | None = None
@@ -63,7 +67,7 @@ class _FakeCar:
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         # Simulate advancing Chase play_debug frameIndex values.
-        simulator_frame_index = 100 + self.capture_count
+        simulator_frame_index = 100 + self.simulator_frame_stride * self.capture_count
         Image.new("RGB", (64, 48), (self.capture_count % 256, 40, 60)).save(path)
         self.capture_count += 1
         self.last_simulator_frame_index = simulator_frame_index
@@ -160,14 +164,51 @@ def _write_activations(
 def staged_runners(*, perception=None, wrap=None):
     """Patch the worker's step loading: substitute ``perception`` and/or ``wrap`` loaded runners."""
 
-    load = automation_module.load_staged_runner
+    from autonomy.runtime.plugin_loader import load_runner as load_installed_or_bundle
 
-    def load_runner(activation):
+    def load_runner(activation, *, source=None):
         if activation.step == "perception" and perception is not None:
+            perception.activation = activation
+            perception.plugin_ids = tuple(activation.plugins)
             return perception
-        runner = load(activation)
+        runner = load_installed_or_bundle(activation, source=source)
         if wrap is not None:
             wrap(activation.step, getattr(runner, "runner", runner))
         return runner
 
-    return patch("cli.automa_cli.automation.load_staged_runner", side_effect=load_runner)
+    return patch("autonomy.decision_cycle.steps.load_runner", side_effect=load_runner)
+
+
+@contextmanager
+def chase_runtime(runtime_root: Path, *, car=None, vehicle_id: str = VEHICLE_ID):
+    """Serve the vehicle's staged runtime from an in-process Chase host.
+
+    The host writes the record a started ``automation host`` writes, so the
+    CLI (in process or as a subprocess under ``runtime_root``) finds it by
+    ``base_url``. Enter it inside ``staged_runners``: the host loads its steps
+    when constructed.
+    """
+
+    import os
+
+    from implementations.runtime.chase_sim.service import (
+        HOST_RECORD_SCHEMA, ChaseRuntimeHost, write_host_record,
+    )
+    from cli.automa_cli.runtime_hosts import HOST_RECORD
+
+    bundle = controller_bundle_paths(runtime_root / vehicle_id)
+    with ExitStack() as stack:
+        stack.enter_context(patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root))
+        host = stack.enter_context(ChaseRuntimeHost(
+            car=_FakeCar() if car is None else car,
+            runtime_dir=Path(bundle["runtime_dir"]), vehicle_id=vehicle_id,
+        ))
+        record = Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD
+        write_host_record(record, {
+            "schema": HOST_RECORD_SCHEMA, "vehicle_id": vehicle_id,
+            "pid": os.getpid(), "base_url": host.base_url,
+        })
+        stack.callback(record.unlink, missing_ok=True)
+        # Starting a host builds it from a release; this one is already serving.
+        stack.enter_context(patch("cli.automa_cli.automation.runtime_base_url", return_value=host.base_url))
+        yield host

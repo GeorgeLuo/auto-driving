@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from implementations.vehicle.picar.defaults import get_default_local_car_base_url
+from implementations.vehicle.picar.defaults import get_default_picar_base_url
 from implementations.decision_cycle.perception.plugins.floor_plane.model import (
     FloorPlaneConfig,
     process_still,
@@ -21,7 +21,7 @@ from implementations.decision_cycle.perception.plugins.floor_plane.model import 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Process one PiRacer camera still into floor-plane debug outputs.")
-    parser.add_argument("--url", default=f"{get_default_local_car_base_url()}/frame.jpg",
+    parser.add_argument("--url", default=f"{get_default_picar_base_url()}/frame.jpg",
                         help="JPEG endpoint to fetch when --input is not provided.")
     parser.add_argument("--input", help="Existing image file to process instead of fetching from --url.")
     parser.add_argument("--out-dir", default=None,

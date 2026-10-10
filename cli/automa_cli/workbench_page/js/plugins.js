@@ -105,7 +105,7 @@ function renderPluginPanel(step) {
   if (!plugins.length) {
     var empty = document.createElement("p");
     empty.className = "muted help";
-    empty.textContent = "No packaged plugins found.";
+    empty.textContent = "No plugins available.";
     container.appendChild(empty);
   }
   plugins.forEach(function (plugin) {
@@ -125,7 +125,7 @@ function renderPluginPanel(step) {
     item.appendChild(checkbox);
     var copy = document.createElement("span");
     var title = document.createElement("strong");
-    title.textContent = text(plugin.name, plugin.id);
+    title.textContent = text(plugin.name, plugin.id) + (plugin.revision ? " · " + plugin.revision.slice(0, 12) : "");
     copy.appendChild(title);
     if (plugin.description) title.title = plugin.description;
     item.appendChild(copy);

@@ -8,23 +8,23 @@ import numpy as np
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.runtime.donkeycar import (
+from autonomy.runtime.frame_loop import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     OBSERVATION_PUBLICATION_SCHEMA,
-    AutonomyPilotPart,
 )
+from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
 
 
 class ObservationPublicationTests(unittest.TestCase):
     def _hold_part(self) -> AutonomyPilotPart:
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=decision_steps(activations)),
-            min_interval_s=0.0,
+            host=create_host(steps=decision_steps(activations)),
+            interval_s=0.0,
             vehicle_id="piracer",
             source_id="donkeycar:piracer",
             decision_activations={
@@ -35,8 +35,8 @@ class ObservationPublicationTests(unittest.TestCase):
 
     def test_warming_publication_before_first_result(self) -> None:
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(),
-            min_interval_s=0.0,
+            host=create_host(steps=decision_steps()),
+            interval_s=0.0,
             preset="lightweight_observer",
         )
         payload = part.publish_latest(now_ms=1_000)
@@ -50,8 +50,8 @@ class ObservationPublicationTests(unittest.TestCase):
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(),
-            min_interval_s=0.0,
+            host=create_host(steps=decision_steps()),
+            interval_s=0.0,
             preset="test-observer",
         )
         image = np.zeros((8, 12, 3), dtype=np.uint8)
@@ -62,7 +62,7 @@ class ObservationPublicationTests(unittest.TestCase):
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms + 10)
         self.assertEqual(payload["health"], "healthy")
         self.assertTrue(payload["ok"])
-        self.assertEqual(payload["mode"], "user")
+        self.assertEqual(payload["mode"], "manual")
         self.assertEqual(payload["control"]["steering"], 0.0)
         self.assertEqual(payload["control"]["throttle"], 0.0)
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
@@ -71,7 +71,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
-        self.assertEqual(payload["control"]["reason"], "hold-idle")
+        self.assertEqual(payload["control"]["reason"], "no-selected-command")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
     def test_publication_includes_the_memory_report_when_step_present(self) -> None:
@@ -80,7 +80,6 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.observation.values import Observation
         from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-        from autonomy.runtime.cycle_host import AutonomyCycleHost
 
         def remember(context, observation):
             del observation
@@ -118,8 +117,8 @@ class ObservationPublicationTests(unittest.TestCase):
                 "evidence_publisher": "bounded_evidence",
             }
 
-        host = AutonomyCycleHost(steps=DecisionSteps(memory=remember))
-        part = AutonomyPilotPart(host=host, min_interval_s=0.0, preset="test")
+        host = create_host(steps=DecisionSteps(memory=remember))
+        part = AutonomyPilotPart(host=host, interval_s=0.0, preset="test")
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
@@ -167,8 +166,8 @@ class ObservationPublicationTests(unittest.TestCase):
             "bounded_evidence": BoundedEvidenceLedger(**config),
         })
         part = AutonomyPilotPart(
-            host=AutonomyCycleHost(steps=DecisionSteps(observation=observe, memory=memory)),
-            min_interval_s=0.0,
+            host=create_host(steps=DecisionSteps(observation=observe, memory=memory)),
+            interval_s=0.0,
         )
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
@@ -193,7 +192,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
     def test_stale_and_error_health_states(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.5)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.5)
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         completed = part.latest_state.completed_at_ms
@@ -203,14 +202,20 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertGreater(stale["result_age_ms"], stale["stale_after_ms"])
 
         class Boom:
+            execution = ControlExecution(DonkeyControlTarget())
+            last_context = None
+
             def status(self):
                 return {"steps": {}}
+
+            def register_status_provider(self, name, provider):
+                pass
 
             def run(self, context):
                 del context
                 raise RuntimeError("boom")
 
-        failing = AutonomyPilotPart(host=Boom(), min_interval_s=0.0)  # type: ignore[arg-type]
+        failing = AutonomyPilotPart(host=Boom(), interval_s=0.0)  # type: ignore[arg-type]
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
         errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)
@@ -219,7 +224,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIn("RuntimeError", errored["error"] or "")
 
     def test_unavailable_when_image_missing(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
         part.run(image_array=None, mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
@@ -242,17 +247,19 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(decision["reason"], "")
         published = decision["decision"]
         assert isinstance(published, dict)
+        self.assertEqual(published["schema"], "vehicle_report_v0")
         self.assertEqual(published["vehicle_id"], "piracer")
-        self.assertEqual(published["source_id"], "donkeycar:piracer")
+        values = published["values"]
+        self.assertEqual(values["source_id"], "donkeycar:piracer")
         self.assertEqual(published["run_id"], "donkey-run-fixture")
         expected_generation = activation_generation_id(
             {step: packaged_activation(step) for step in DECISION_STEPS}, prefix="decision"
         )
         self.assertEqual(published["generation_id"], expected_generation)
-        self.assertEqual(published["activation"]["generation_id"], expected_generation)
-        self.assertEqual(sorted(published["activation"]["steps"]), sorted(DECISION_STEPS))
+        self.assertEqual(values["activation"]["generation_id"], expected_generation)
+        self.assertEqual(sorted(values["activation"]["steps"]), sorted(DECISION_STEPS))
         self.assertEqual(
-            published["activation"]["steps"]["proposal"]["plugins"],
+            values["activation"]["steps"]["proposal"]["plugins"],
             ["avoid_recent_obstruction"],
         )
         self.assertNotIn("producer_pid", published)
@@ -260,7 +267,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["frame_index"], part.latest_state.frame_index)
         self.assertEqual(published["timestamp_ms"], part.latest_state.captured_at_ms)
         self.assertEqual(
-            published["source_frame"],
+            values["source_frame"],
             {
                 "frame_id": part.latest_state.frame_id,
                 "frame_index": part.latest_state.frame_index,
@@ -296,7 +303,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(reset["reason"], "reset")
 
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
-        part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
         stop = threading.Event()
         errors: list[str] = []
 
@@ -344,50 +351,24 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIsNotNone(jpeg)
         self.assertEqual(meta["frame"]["frame_id"], part.latest_state.frame_id)
 
-    def test_manage_and_web_wire_publication_routes(self) -> None:
-        manage = (
-            Path(__file__).resolve().parents[3]
-            / "deploy"
-            / "targets"
-            / "donkeycar"
-            / "app"
-            / "manage.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("autonomy_controller.observation_publisher = autonomy_part", manage)
-        self.assertIn("preset=perception_preset", manage)
+    def test_manage_and_web_serve_the_shared_runtime_routes(self) -> None:
+        root = Path(__file__).resolve().parents[3] / "deploy" / "targets" / "donkeycar"
+        manage = (root / "app" / "manage.py").read_text(encoding="utf-8")
+        self.assertIn("autonomy_controller.autonomy_routes = RuntimeRoutes(", manage)
+        self.assertIn("**loop_options", manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
-        patch = (
-            Path(__file__).resolve().parents[3]
-            / "deploy"
-            / "targets"
-            / "donkeycar"
-            / "patches"
-            / "waveshare-donkeycar-local.patch"
-        ).read_text(encoding="utf-8")
-        self.assertIn('/autonomy/observation/latest', patch)
-        self.assertIn('/autonomy/observation/latest/frame.jpg', patch)
-        self.assertIn('/autonomy/camera/latest', patch)
-        self.assertIn('/autonomy/camera/latest/frame.jpg', patch)
-        self.assertIn("class AutonomyCameraLatestAPI", patch)
-        self.assertIn("class AutonomyCameraLatestFrameAPI", patch)
-        self.assertIn('/autonomy/memory/reset', patch)
-        self.assertIn("class AutonomyObservationLatestAPI", patch)
-        self.assertIn("class AutonomyObservationLatestFrameAPI", patch)
-        self.assertIn("class AutonomyMemoryResetAPI", patch)
-        self.assertIn('/autonomy/decision/latest', patch)
-        self.assertIn("class AutonomyDecisionLatestAPI", patch)
-        route_source = patch.split("class AutonomyDecisionLatestAPI", 1)[1].split(
-            "+class AutonomyModeAPI", 1
-        )[0]
+        patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")
+        self.assertIn('+            (r"/(?:autonomy/.*|api/plugins)", AutonomyRoutesAPI),', patch)
+        self.assertNotIn("/autonomy/mode", patch)
+        dispatcher = patch.split("+class AutonomyRoutesAPI", 1)[1].split(" class WsTest", 1)[0]
         compile(
-            "class AutonomyDecisionLatestAPI(AutonomyAPIBase):\n" + "\n".join(
-                line[1:] for line in route_source.splitlines() if line.startswith("+")
+            "class AutonomyRoutesAPI(RequestHandler):\n" + "\n".join(
+                line[1:] for line in dispatcher.splitlines() if line.startswith("+")
             ),
-            "AutonomyDecisionLatestAPI",
+            "AutonomyRoutesAPI",
             "exec",
         )
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

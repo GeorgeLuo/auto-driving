@@ -73,7 +73,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
                 "--id",
                 "chase-sim-chaser",
                 "--observe-only",
-                "--frames",
+                "--num-decisions",
                 "0",
                 "--open-view",
                 "--timeout-s",

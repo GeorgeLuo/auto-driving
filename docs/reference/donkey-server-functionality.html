@@ -380,7 +380,7 @@
       <p class="source-line">
         Source points: <code>deploy/targets/donkeycar/vendor/donkeycar/donkeycar/parts/web_controller/web.py</code>,
         <code>deploy/targets/donkeycar/app/manage.py</code>, and
-        <code>implementations/runtime/donkeycar/donkey_part.py</code>
+        <code>implementations/runtime/picar/donkey_part.py</code>
       </p>
     </header>
 
@@ -521,7 +521,7 @@
           </tr>
           <tr>
             <td><code>GET /autonomy/status</code></td>
-            <td>Returns Donkey drive mode, mode mapping, each step's plugins and status, counters, errors, and last control.</td>
+            <td>Returns the shared session <code>mode</code> (<code>manual</code>, <code>observe_only</code>, <code>autonomy</code>), <code>host_run_id</code>, each step's plugins and status, counters, errors, and last control.</td>
             <td>This is the post-deploy verification endpoint used by <code>automa</code>. Observation counters stay bounded and omit raw images.</td>
           </tr>
           <tr>
@@ -535,9 +535,9 @@
             <td>Headers include <code>X-Frame-Id</code> and <code>X-Observation-Health</code> so clients pair image and JSON without using the live camera feed.</td>
           </tr>
           <tr>
-            <td><code>POST /autonomy/mode</code></td>
-            <td>Switches between <code>manual</code> and <code>autonomy</code>.</td>
-            <td><code>manual</code> maps to Donkey <code>user</code>; <code>autonomy</code> maps to <code>local</code>. Returning to manual stops by default.</td>
+            <td><code>GET|POST /autonomy/runtime</code></td>
+            <td>Reads the session, or runs <code>run</code>, <code>stop</code>, <code>restart</code>, and <code>read_recording</code>.</td>
+            <td>The same route table (<code>autonomy/runtime/routes.py</code>) is served by every vehicle runtime. A run shows Donkey <code>local</code>; stopping returns to <code>user</code>.</td>
           </tr>
           <tr>
             <td><code>POST /autonomy/memory/reset</code></td>
@@ -561,7 +561,7 @@
             <p><code>manage.py</code> reads every <code>runtime/&lt;step&gt;/active.json</code> and builds an <code>AutonomyCycleHost</code> whose steps run the selected plugins.</p>
           </div>
           <div class="step">
-            <p>The web controller is given that host for <code>/autonomy/status</code> and memory reset.</p>
+            <p>The web controller serves the shared runtime route table for <code>/autonomy/*</code> and <code>/api/plugins</code>.</p>
           </div>
           <div class="step">
             <p><code>AutonomyPilotPart</code> is added to the Donkey loop without a <code>run_pilot</code> gate and observes at a bounded cadence.</p>

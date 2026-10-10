@@ -8,7 +8,7 @@ from autonomy.vehicle import clamp_unit
 
 @dataclass(frozen=True)
 class AutonomyControl:
-    """Normalized pilot output consumed by Donkey DriveMode."""
+    """Normalized signed steering and throttle for every vehicle."""
 
     steering: float = 0.0
     throttle: float = 0.0

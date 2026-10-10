@@ -16,14 +16,7 @@ from .automation import (
     stop_vehicle_automation,
 )
 from .deploy import update_vehicle_autonomy, update_vehicle_core
-from .decision import (
-    RUNTIME_ROOT as DECISION_RUNTIME_ROOT,
-    apply_vehicle_decision,
-    stream_vehicle_decision,
-)
-from .decision_inspector import run_decision_inspector
-from .proposal import get_vehicle_proposal_info
-from .decision_live import run_live_decision_monitor
+from .decision_steps import get_vehicle_step_info, inspect_decision_step, stream_vehicle_step
 from .memory import (
     get_vehicle_memory_info,
     update_vehicle_memory,
@@ -31,6 +24,7 @@ from .memory import (
 from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
+from autonomy.runtime.session import DEFAULT_INTERVAL_S
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 from implementations.decision_cycle.memory.presets import (
     DEFAULT_MEMORY_PRESET,
@@ -42,6 +36,7 @@ from implementations.decision_cycle.perception.presets import (
 )
 
 from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
+from .runtime_hosts import RUNTIME_ROOT as VEHICLES_RUNTIME_ROOT
 from .perception import (
     get_vehicle_perception_info,
     update_vehicle_perception,
@@ -50,15 +45,18 @@ from .perception_runs import (
     inspect_perception,
 )
 from .workbench import run_workbench_replay
+from .plugin_catalog import arm_plugins, list_plugins, upload_plugin
+from autonomy.runtime.plugin_catalog import ARMING_STEPS
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
-from .physical_viability import (
+from .viability import (
     run_memory_viability_measurement,
     run_perception_viability_measurement,
 )
 from .streaming import stream_vehicle_memory, stream_vehicle_perception
 from .vehicles import (
-    DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    DEFAULT_READINESS_TIMEOUT_S,
     discover_active_vehicles,
     format_active_vehicles,
     format_vehicle_status,
@@ -92,6 +90,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
 
+    plugins = vehicle_commands.add_parser("plugins", help="Upload, arm and inspect plugins in a live catalog.")
+    plugins.set_defaults(handler=_handle_plugins_help)
+    plugin_commands = plugins.add_subparsers(dest="plugin_command")
+    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming and catalog inspection usage.")
+    plugins_help.set_defaults(handler=_handle_plugins_help)
+    listing = plugin_commands.add_parser("status", aliases=["list"], help="Show live catalog availability and plugin revisions (list is an alias).")
+    listing_target = listing.add_mutually_exclusive_group(required=True)
+    listing_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose live catalog to read.")
+    listing_target.add_argument("--url", help="Runtime or workbench URL; bypass vehicle discovery.")
+    listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
+    listing.add_argument("--json", dest="json_output", action="store_true", help="Print the catalog snapshot as JSON.")
+    listing.set_defaults(handler=_handle_plugin_status)
+    upload = plugin_commands.add_parser(
+        "upload", help="Register a plugin file; optionally arm it on a runtime host.",
+        description="Store a file in an existing live catalog. Upload success means available; source that does not compile is refused. Selection stays unchanged unless --arm, which loads it on the host and fails with its import or construction error.",
+        epilog="Verify registration with: ./cli/automa vehicles plugins status --id <vehicle> --step <step>. Use --url for an existing workbench catalog.",
+    )
+    target = upload.add_mutually_exclusive_group(required=True)
+    target.add_argument("--id", dest="vehicle_id", help="Vehicle whose catalog receives the upload.")
+    target.add_argument("--url", help="Runtime or workbench URL; bypass vehicle discovery.")
+    upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; it must compile but is not imported until armed.")
+    upload.add_argument("--step", choices=STEPS, required=True, help="Cycle step whose catalog receives the file.")
+    upload.add_argument("--plugin-id", required=True, help="Plugin ID within the step; repeat an ID to make a new revision available.")
+    upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved when armed.")
+    upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
+    upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
+    upload.set_defaults(handler=_handle_plugin_upload)
+
+    arm = plugin_commands.add_parser(
+        "arm", help="Add/update uploaded or packaged plugins without restarting automation.",
+        description="Request the latest catalog definitions together. New IDs append; existing IDs update in place. The host loads them before answering: an import or construction error exits 2 and keeps the previous selection. A loaded selection applies at the host's next cycle.",
+        epilog="With --selection, use a JSON map such as {\"perception\": [\"prototype\"], \"memory\": [\"helper\"]}. Arming never starts automation or changes its control mode.",
+    )
+    arm_target = arm.add_mutually_exclusive_group(required=True)
+    arm_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose runtime host receives the request.")
+    arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
+    arm_input = arm.add_mutually_exclusive_group(required=True)
+    arm_input.add_argument("--step", choices=ARMING_STEPS, help="Step receiving the ordered --plugin IDs.")
+    arm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to ordered plugin-ID lists; arm the group together.")
+    arm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to add/update; repeat in the desired append order with --step.")
+    arm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
+    arm.set_defaults(handler=_handle_plugin_arm)
+
     active = vehicle_commands.add_parser(
         "active",
         help="Discover vehicle endpoints; this does not imply deployment or a running worker.",
@@ -103,10 +144,10 @@ def build_parser() -> argparse.ArgumentParser:
     active.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
             "One wall-clock readiness deadline per candidate in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     active.add_argument(
@@ -176,10 +217,10 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
             "One wall-clock deadline for all Chase readiness phases in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     status.add_argument(
@@ -191,7 +232,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation = vehicle_commands.add_parser(
         "automation",
-        help="Manage locally deployed automation workers and their current views.",
+        help=(
+            "Run the shared decision and movement runtime on a vehicle. "
+            "The vehicle ID selects local or onboard hosting."
+        ),
     )
     automation.set_defaults(handler=_handle_vehicles_automation_help)
     automation_commands = automation.add_subparsers(dest="automation_command")
@@ -202,9 +246,9 @@ def build_parser() -> argparse.ArgumentParser:
     automation_help.set_defaults(handler=_handle_vehicles_automation_help)
     automation_run = automation_commands.add_parser(
         "run",
-        help="Start a worker and verify one correlated camera/perception publication.",
+        help="Start an automation run and verify one correlated camera/perception publication.",
         description=(
-            "Start the automation worker. Success requires one camera frame, its "
+            "Start autonomous movement using the staged plugins. Success requires one camera frame, its "
             "completed perception result, and a healthy current-generation loopback view."
         ),
     )
@@ -217,33 +261,32 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock Chase readiness deadline in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            "Runtime readiness deadline in seconds "
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     automation_run.add_argument(
         "--interval-s",
         type=float,
-        default=0.25,
-        help="Target delay between camera captures. Slow perception skips superseded frames.",
+        default=DEFAULT_INTERVAL_S,
+        help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
     )
     automation_run.add_argument(
-        "--frames",
+        "--num-decisions",
         type=int,
         default=0,
         help=(
-            "Number of camera frames to capture. 0 means an unbounded background "
-            "worker; stop it with vehicles automation stop."
+            "Number of decision cycles to complete; a run that applies control needs one. "
+            "0 (unbounded) is allowed only with --observe-only; stop it with vehicles automation stop."
         ),
     )
     automation_run.add_argument(
         "--observe-only",
         action="store_true",
         help=(
-            "Passively observe without changing scenario, playback, control source, "
-            "input, or applying vehicle control."
+            "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
     automation_run.add_argument(
@@ -262,13 +305,13 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run.add_argument(
         "--verbose",
         action="store_true",
-        help="Print every-frame worker detail when output is connected.",
+        help="Print every frame's detail when output is connected.",
     )
     automation_run.add_argument(
         "--log",
         action="store_true",
         dest="log_to_disk",
-        help="Persist background worker output to automation.log.",
+        help="Persist background run output to automation.log.",
     )
     automation_run.add_argument(
         "--foreground",
@@ -281,7 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
         "stop",
         help="Stop the background automation loop for a vehicle.",
         description=(
-            "Stop the background worker. The local deployment remains staged and "
+            "Stop autonomous movement and its publication monitor. The deployment remains staged and "
             "its former view is no longer current-generation available."
         ),
     )
@@ -301,8 +344,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation_status = automation_commands.add_parser(
         "status",
-        help="Show locally deployed automation runtimes and worker status.",
-        description="Show locally deployed automation runtimes and worker status.",
+        help="Show locally deployed automation runtimes and run status.",
+        description="Show locally deployed automation runtimes and run status.",
     )
     automation_status.add_argument(
         "--id",
@@ -319,8 +362,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation_restart = automation_commands.add_parser(
         "restart",
-        help="Restart the automation worker and verify its correlated runtime view.",
-        description="Restart the automation worker and verify its correlated runtime view.",
+        help="Restart the automation run and verify its correlated runtime view.",
+        description="Restart the automation run and verify its correlated runtime view.",
     )
     automation_restart.add_argument(
         "--id",
@@ -331,33 +374,32 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock Chase readiness deadline in seconds "
-            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+            "Runtime readiness deadline in seconds "
+            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     automation_restart.add_argument(
         "--interval-s",
         type=float,
-        default=0.25,
-        help="Target delay between camera captures. Slow perception skips superseded frames.",
+        default=DEFAULT_INTERVAL_S,
+        help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
     )
     automation_restart.add_argument(
-        "--frames",
+        "--num-decisions",
         type=int,
         default=0,
         help=(
-            "Number of camera frames to capture. 0 means an unbounded background "
-            "worker; stop it with vehicles automation stop."
+            "Number of decision cycles to complete; a run that applies control needs one. "
+            "0 (unbounded) is allowed only with --observe-only; stop it with vehicles automation stop."
         ),
     )
     automation_restart.add_argument(
         "--observe-only",
         action="store_true",
         help=(
-            "Passively observe without changing scenario, playback, control source, "
-            "input, or applying vehicle control."
+            "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
     automation_restart.add_argument(
@@ -376,13 +418,13 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.add_argument(
         "--verbose",
         action="store_true",
-        help="Print every-frame worker detail when output is connected.",
+        help="Print every frame's detail when output is connected.",
     )
     automation_restart.add_argument(
         "--log",
         action="store_true",
         dest="log_to_disk",
-        help="Persist background worker output to automation.log.",
+        help="Persist background run output to automation.log.",
     )
     automation_restart.add_argument(
         "--wait-s",
@@ -391,6 +433,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds to wait for graceful stop before forcing termination.",
     )
     automation_restart.set_defaults(handler=_handle_vehicles_automation_restart)
+    automation_host = automation_commands.add_parser(
+        "host",
+        help="Serve a Chase car's runtime host in the foreground (automation run starts one).",
+        description=(
+            "Serve the runtime routes for a Chase car from its latest controller release, "
+            "and relaunch on a restart command. `automation run` starts this in the background; "
+            "its log is runtime/vehicles/<id>/bundle/runtime/automation/host.log."
+        ),
+    )
+    automation_host.add_argument("--id", required=True, dest="vehicle_id", help="Chase vehicle id.")
+    automation_host.set_defaults(handler=_handle_vehicles_automation_host)
 
     operation = vehicle_commands.add_parser("operation", help="Run bounded vehicle checks and setup tasks.")
     operation.set_defaults(handler=_handle_vehicles_operation_help)
@@ -438,7 +491,7 @@ def build_parser() -> argparse.ArgumentParser:
     startup_check.add_argument(
         "--dry-run",
         action="store_true",
-        help="Capture every comparison without sending movement pulses.",
+        help="Capture every comparison without acquiring control or sending movement pulses.",
     )
     startup_check.add_argument(
         "--json",
@@ -533,142 +586,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
-    decision_stream = stream_commands.add_parser(
-        "decision",
-        help="Show the latest decision frame (generation-scoped latest replacement).",
-        description=(
-            "Read automation/latest_decision.json for the staged proposal, plan, and "
-            "action steps. "
-            "Accepts only generation-matched frames from a running live worker within the "
-            "configured max age, replacing the terminal view as each arrives. Use --once for "
-            "a single accepted frame."
-        ),
-    )
-    decision_stream.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    decision_stream.add_argument(
-        "--refresh-s",
-        type=float,
-        default=0.5,
-        help="Refresh cadence for the replacing terminal view.",
-    )
-    decision_stream.add_argument(
-        "--once",
-        action="store_true",
-        help="Accept one frame and exit.",
-    )
-    decision_stream.add_argument(
-        "--no-clear",
-        action="store_true",
-        help="Print each render below the previous one, keeping earlier renders in scrollback.",
-    )
-    decision_stream.add_argument(
-        "--json",
-        action="store_true",
-        help="Print machine-readable decision stream frames (one JSON object per refresh).",
-    )
-    decision_stream.set_defaults(handler=_handle_vehicles_stream_decision)
-
-    decision_control = vehicle_commands.add_parser(
-        "decision",
-        help=(
-            "Inspect or operate vehicle decision "
-            "(offline inspect/replay or read-only live monitor)."
-        ),
-    )
-    decision_control.set_defaults(handler=_handle_vehicles_decision_help)
-    decision_control_commands = decision_control.add_subparsers(dest="decision_command")
-    decision_help = decision_control_commands.add_parser(
-        "help",
-        help="Show decision-level commands.",
-    )
-    decision_help.set_defaults(handler=_handle_vehicles_decision_help)
-    decision_inspect = decision_control_commands.add_parser(
-        "inspect", help="Serve an offline decision inspector for a saved input sequence.",
-        description="Compute left/right proposal scenarios offline from one saved frame and serve them on a local inspector page.",
-    )
-    decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
-    decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
-    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged hold-action configuration; otherwise use packaged defaults.")
-    decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
-    decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
-    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts as JSON and exit, in place of the local inspector page.")
-    decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
-    decision_apply = decision_control_commands.add_parser(
-        "apply",
-        help="Replay a recorded decision sequence through staged hold-action offline.",
-        description=(
-            "Feed a recorded observation+memory sequence through the vehicle's staged "
-            "hold-action activation. Requires --id. Reports a deterministic digest "
-            "(canonical_json_utf8 byte equality across two passes); --record also saves "
-            "exact-frame HTML under lab/runs/decision-apply/."
-        ),
-    )
-    decision_apply.add_argument(
-        "--id",
-        required=False,
-        dest="vehicle_id",
-        help="Vehicle id used to resolve the staged decision activation.",
-    )
-    decision_apply.add_argument(
-        "--from-run",
-        required=True,
-        dest="from_run",
-        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v1).",
-    )
-    decision_apply.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable apply result (includes digest).",
-    )
-    decision_apply.add_argument(
-        "--record",
-        action="store_true",
-        help=(
-            "Also save a bounded exact-frame review directory with HTML, digest, and "
-            "manifest."
-        ),
-    )
-    decision_apply.set_defaults(handler=_handle_vehicles_decision_apply)
-
-    decision_live = decision_control_commands.add_parser(
-        "live",
-        help="Open the shared read-only decision view for a live PiCar.",
-        description=(
-            "Adapt the PiCar decision publication into the same RuntimeViewServer "
-            "decision page used by Chase, with matched image-relative evidence and "
-            "proposed versus authorized output. It sends no vehicle commands."
-        ),
-    )
-    decision_live.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="PiCar vehicle id from `automa vehicles active`.",
-    )
-    decision_live.add_argument(
-        "--port",
-        type=int,
-        default=0,
-        help="Preferred local loopback port (0 chooses an available port).",
-    )
-    decision_live.add_argument(
-        "--open",
-        action="store_true",
-        dest="open_browser",
-        help="Open the shared decision view in the default browser.",
-    )
-    decision_live.add_argument(
-        "--timeout-s",
-        type=float,
-        default=2.0,
-        help="Per-request Pi timeout.",
-    )
-    decision_live.set_defaults(handler=_handle_vehicles_decision_live)
+    for step_name in DECISION_STEPS:
+        step_stream = stream_commands.add_parser(
+            step_name,
+            help=f"Show the {step_name} record of the latest cycle the vehicle published.",
+            description=(
+                f"Read the vehicle runtime host's latest cycle and print its {step_name} record"
+                + {
+                    "proposal": ", with the observation and memory it read and its candidates",
+                    "plan": ", with the selected candidate and contributions",
+                    "action": ", with its authority and the host's application of the output",
+                }[step_name]
+                + ". Accepts only a fresh cycle whose generation matches its step selections, "
+                "replacing the terminal view as each arrives."
+            ),
+        )
+        step_stream.add_argument(
+            "--id",
+            required=True,
+            dest="vehicle_id",
+            help="Vehicle id from `automa vehicles active`.",
+        )
+        step_stream.add_argument(
+            "--refresh-s",
+            type=float,
+            default=0.5,
+            help="Refresh cadence for the replacing terminal view.",
+        )
+        step_stream.add_argument(
+            "--once",
+            action="store_true",
+            help="Accept one cycle and exit; exit 2 when none is available.",
+        )
+        step_stream.add_argument(
+            "--no-clear",
+            action="store_true",
+            help="Print each render below the previous one, keeping earlier renders in scrollback.",
+        )
+        step_stream.add_argument(
+            "--json",
+            action="store_true",
+            help=f"Print one vehicle_{step_name}_stream_v1 JSON object per refresh.",
+        )
+        step_stream.set_defaults(handler=_handle_vehicles_stream_step, step=step_name)
 
     memory_control = vehicle_commands.add_parser(
         "memory",
@@ -683,11 +643,11 @@ def build_parser() -> argparse.ArgumentParser:
     memory_help.set_defaults(handler=_handle_vehicles_memory_help)
     memory_reset = memory_commands.add_parser(
         "reset",
-        help="Reset live memory to a new empty epoch on Chase or PiCar.",
+        help="Reset live memory to a new empty epoch on the vehicle's runtime host.",
         description=(
-            "Reset the activated memory step on the live host. Chase uses the "
-            "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms via "
-            "live probe that every applied plugin's ledger is empty. Does not move the vehicle."
+            "POST /autonomy/memory/reset to the vehicle's runtime host. Confirms that every "
+            "applied plugin started a new epoch or holds no records when the host answers. "
+            "Does not move the vehicle."
         ),
     )
     memory_reset.add_argument(
@@ -700,13 +660,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout-s",
         type=float,
         default=3.0,
-        help="HTTP/discovery timeout in seconds.",
-    )
-    memory_reset.add_argument(
-        "--wait-s",
-        type=float,
-        default=5.0,
-        help="Seconds to wait for Chase automation worker to acknowledge reset.",
+        help="HTTP timeout in seconds.",
     )
     memory_reset.add_argument(
         "--json",
@@ -761,14 +715,70 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable report.",
     )
     memory_inspect.set_defaults(handler=_handle_vehicles_memory_inspect)
+
+    decision_inspects = []
+    for step_name in DECISION_STEPS:
+        step_control = vehicle_commands.add_parser(
+            step_name,
+            help=f"Inspect the {step_name} step offline, from images or a recorded run.",
+        )
+        step_control.set_defaults(handler=_handle_vehicles_decision_step_help, step=step_name)
+        step_commands = step_control.add_subparsers(dest=f"{step_name}_command")
+        step_commands.add_parser(
+            "help", help=f"Show {step_name}-level commands.",
+        ).set_defaults(handler=_handle_vehicles_decision_step_help, step=step_name)
+        step_inspect = step_commands.add_parser(
+            "inspect",
+            help=f"Show the {step_name} record for every frame of images or a recorded run.",
+            description=(
+                f"Replay the source (an image, a directory of images, or a recorded automation, "
+                f"perception, memory or decision-step inspect run) through perception, observation "
+                f"and memory, then proposal, plan and action, frame by frame, and report the "
+                f"{step_name} record after each. A recording restores every step's selection, "
+                f"restaged per frame as recorded; --plugin overrides {step_name}. Otherwise each "
+                f"step uses its default. Recorded frames replay with their recorded drive mode."
+            ),
+        )
+        step_inspect.add_argument(
+            "source",
+            type=Path,
+            help="Image file, directory of images, or recorded run.",
+        )
+        step_inspect.add_argument(
+            "--plugin",
+            dest="plugins",
+            action="append",
+            default=None,
+            metavar="PLUGIN",
+            help=f"Inspect these packaged {step_name} plugins, in order, with their default configs. Repeatable.",
+        )
+        step_inspect.add_argument(
+            "--frame",
+            type=int,
+            default=None,
+            metavar="N",
+            help="Report only the source's Nth frame (0-based); the frames before it still replay.",
+        )
+        step_inspect.add_argument(
+            "--record",
+            action="store_true",
+            help=f"Persist the reported frames, every step's selection and the per-frame report under runtime/{step_name}-inspections/ for replay.",
+        )
+        step_inspect.add_argument(
+            "--json",
+            action="store_true",
+            help="Print the machine-readable report.",
+        )
+        step_inspect.set_defaults(handler=_handle_vehicles_decision_step_inspect, step=step_name)
+        decision_inspects.append(step_inspect)
     memory_viability = memory_commands.add_parser(
         "viability",
         help="Health-check memory on a vehicle.",
         description=(
-            "Health-check memory on a vehicle. A PiCar's live memory step is polled for a "
-            "bounded interval (default 60s) to record update cadence, update duration, "
-            "failures, and each applied plugin's health and epoch stability. "
-            "Chase returns a stub pass. PiCar measurements save report.json under "
+            "Health-check memory on a vehicle. The live memory step of the vehicle's "
+            "runtime host is polled for a bounded interval (default 60s) to "
+            "record update cadence, update duration, failures, and each applied "
+            "plugin's health and epoch stability. Measurements save report.json under "
             "lab/runs/memory-viability/ unless --no-record."
         ),
     )
@@ -776,7 +786,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
+        help="Vehicle id from `automa vehicles active`.",
     )
     memory_viability.add_argument(
         "--duration-s",
@@ -804,7 +814,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
+        help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
     )
     memory_viability.set_defaults(handler=_handle_vehicles_memory_viability)
 
@@ -978,27 +988,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory_info.set_defaults(handler=_handle_vehicles_info_memory)
 
-    proposal_info = info_commands.add_parser(
-        "proposal",
-        help="Show the staged proposal plugins, the runner schema, the decision view URL and the live proposal step state.",
-        description=(
-            "Show the staged proposal plugins, the runner schema, the decision view URL, "
-            "the plan and action steps that act on the proposals, and the proposal step "
-            "as the running autonomy engine has it."
-        ),
-    )
-    proposal_info.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    proposal_info.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable proposal info payload.",
-    )
-    proposal_info.set_defaults(handler=_handle_vehicles_info_proposal)
+    for step_name in DECISION_STEPS:
+        step_info = info_commands.add_parser(
+            step_name,
+            help=f"Show the staged {step_name} plugins, the decision they belong to and the live {step_name} step state.",
+            description=(
+                f"Show the staged {step_name} plugins"
+                + (" and the runner schema" if step_name == "proposal" else "")
+                + ", the proposal, plan and action plugins of the staged decision with its "
+                f"generation and authority, and the {step_name} step as the running autonomy "
+                "engine has it."
+            ),
+        )
+        step_info.add_argument(
+            "--id",
+            required=True,
+            dest="vehicle_id",
+            help="Vehicle id from `automa vehicles active`.",
+        )
+        step_info.add_argument(
+            "--json",
+            action="store_true",
+            help=f"Print the full machine-readable {step_name} info payload.",
+        )
+        step_info.set_defaults(handler=_handle_vehicles_info_step, step=step_name)
 
     perception_control = vehicle_commands.add_parser(
         "perception",
@@ -1088,7 +1101,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_inspect.set_defaults(handler=_handle_vehicles_perception_inspect)
 
-    for inspection in (perception_inspect, memory_inspect):
+    for inspection in (perception_inspect, memory_inspect, *decision_inspects):
         inspection.add_argument(
             "--max-frames",
             type=int,
@@ -1103,18 +1116,19 @@ def build_parser() -> argparse.ArgumentParser:
         "viability",
         help="Health-check perception on a vehicle.",
         description=(
-            "Health-check perception on a vehicle. A PiCar is polled for a bounded "
-            "interval (default 60s) to record cadence, result age, processing duration, "
-            "and skip policy, plus host RSS/CPU when the vehicle supplies an ssh_target. "
-            "Chase returns a stub pass. PiCar measurements save report.json and summary.md "
-            "under lab/runs/perception-viability/ unless --no-record."
+            "Health-check perception on a vehicle. The runtime host's observation "
+            "publication is polled for a bounded interval (default 60s) to record "
+            "cadence, result age, processing duration, skip policy, and that no control "
+            "was applied, plus "
+            "host RSS/CPU when the vehicle supplies an ssh_target. Measurements save "
+            "report.json and summary.md under lab/runs/perception-viability/ unless --no-record."
         ),
     )
     perception_viability.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active` (PiCar measurement or Chase stub).",
+        help="Vehicle id from `automa vehicles active`.",
     )
     perception_viability.add_argument(
         "--duration-s",
@@ -1142,7 +1156,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_viability.add_argument(
         "--json",
         action="store_true",
-        help="Print the report or preflight error as JSON; PiCar reports are also saved unless --no-record.",
+        help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
     )
     perception_viability.set_defaults(handler=_handle_vehicles_perception_viability)
 
@@ -1162,7 +1176,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Sync the Donkey harness and install its boot-enabled runtime service.",
         description=(
             "Sync the DonkeyCar core harness and install its supervised, boot-enabled "
-            "runtime service on a physical PiCar."
+            "runtime service on a PiCar."
         ),
     )
     core.add_argument(
@@ -1221,10 +1235,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     autonomy = update_commands.add_parser(
         "autonomy",
-        help="Deploy a versioned autonomy controller release to a physical PiCar.",
+        help="Package the staged steps as a controller release for the vehicle's host.",
         description=(
-            "Deploy a versioned autonomy controller release to a physical PiCar. "
-            "With --restart, verifies every deployed step runs its staged plugins. "
+            "Package the staged steps as a versioned controller release: a PiCar receives it "
+            "over SSH, a simulator vehicle keeps it locally. "
+            "With --restart, the host restarts onto it and verifies every step runs its staged plugins. "
             "Memory activation ships here; manage.py load path ships with core—if "
             "verification reports no memory step, update core then re-run autonomy."
         ),
@@ -1264,7 +1279,12 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy.add_argument(
         "--restart",
         action="store_true",
-        help="Restart the supervised Donkey runtime after activating the release.",
+        help=(
+            "Restart the vehicle's host (the PiCar's Donkey service or the simulator worker) "
+            "onto the release. Without it, "
+            "a running runtime selects restaged plugins on its next frame; changed plugin "
+            "specs or configs, plan, and action need a restart."
+        ),
     )
     autonomy.add_argument(
         "--drive-args",
@@ -1303,7 +1323,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
             _STAGING_DISCOVERY_TIMEOUT_HELP + " Also bounds each Chase readiness "
             "check after staging and live simulator operations with --restart."
@@ -1322,7 +1342,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="plugins",
         default=None,
         metavar="PLUGIN_ID",
-        help="Packaged perception plugin to select instead of a preset; repeat to select several in order.",
+        help="Packaged perception plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
     )
     perception.add_argument(
         "--dry-run",
@@ -1365,7 +1385,7 @@ def build_parser() -> argparse.ArgumentParser:
         step_parser.add_argument(
             "--timeout-s",
             type=float,
-            default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+            default=DEFAULT_READINESS_TIMEOUT_S,
             help=_STAGING_DISCOVERY_TIMEOUT_HELP,
         )
         step_parser.add_argument(
@@ -1410,7 +1430,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory.add_argument(
         "--timeout-s",
         type=float,
-        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        default=DEFAULT_READINESS_TIMEOUT_S,
         help=_STAGING_DISCOVERY_TIMEOUT_HELP,
     )
     memory_selection = memory.add_mutually_exclusive_group()
@@ -1426,7 +1446,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="plugins",
         default=None,
         metavar="PLUGIN_ID",
-        help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
+        help="Packaged memory plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
     )
     memory.add_argument(
         "--dry-run",
@@ -1501,12 +1521,64 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handle_plugins_help(args: argparse.Namespace) -> int:
+    print("\n".join([
+        "automa vehicles plugins commands", "",
+        "- upload  store a file and register an available plugin revision",
+        "- arm     add/update named plugins together on a runtime host",
+        "- status  show live catalog availability and plugin revisions (list is an alias)",
+        "- help    show this summary", "",
+        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; neither upload nor arm starts automation.",
+        "Use ./cli/automa vehicles status --id <vehicle> for the next startup action when no host is running.",
+        "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
+        "Example:",
+        "  ./cli/automa vehicles plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
+        "  ./cli/automa vehicles plugins status --id chase-sim-chaser --step perception", "",
+        "Upload refuses source that does not compile; imports and dependencies load when armed.",
+        "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.", "",
+        "Use upload --arm for one-command registration and arming; it calls the same operation as arm.",
+        "Arming supports perception, memory and proposal. New IDs append; existing IDs update in place.",
+        "Other plugins retain their definitions/configs. The host loads the selection before answering;",
+        "a load error exits 2 and keeps the previous selection. A loaded selection applies at the next cycle.",
+        "Status distinguishes available, requested and applied revisions, and exits 2 while the last arm failed.",
+        "Arming does not start automation or change control mode. Workbench catalogs support upload only.", "",
+        "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
+        "Detailed help: ./cli/automa vehicles plugins <command> --help",
+    ]))
+    return 0
+
+
+def _handle_plugin_status(args: argparse.Namespace) -> int:
+    result = list_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step, json_output=args.json_output)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugin_upload(args: argparse.Namespace) -> int:
+    result = upload_plugin(
+        url=args.url, vehicle_id=args.vehicle_id, file=args.file, step=args.step,
+        plugin_id=args.plugin_id, entrypoint=args.entrypoint, arm=args.arm, json_output=args.json_output,
+    )
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugin_arm(args: argparse.Namespace) -> int:
+    if (args.step and not args.plugins) or (args.selection and args.plugins):
+        print("Use --step with one or more --plugin IDs, or --selection without --plugin.")
+        return 2
+    result = arm_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step,
+                         plugins=args.plugins, selection=args.selection, json_output=args.json_output)
+    print(result.message)
+    return result.exit_code
+
+
 def _handle_top_level_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
                 "Automa is the control desk for the vehicles and simulators in this workspace.",
-                "It helps you find what is reachable, stage controller choices locally, and deploy code to a physical vehicle.",
+                "It helps you find what is reachable, stage controller choices locally, and deploy code to a PiCar.",
                 "It can start and stop automation runs without making you remember where the runtime files live.",
                 "It also gives you one place to inspect the latest perception output and the controller behavior staged for each vehicle.",
                 "Use it when you want to move from editing local code to running that code against a real or simulated vehicle.",
@@ -1552,11 +1624,12 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- active       discover vehicle endpoints (not worker/deployment state)",
                 "- status       inspect simulator, deployment, worker, and view layers",
                 "- update       stage controller selections or deploy vehicle code",
+                "- plugins      upload, arm and inspect plugins in a live catalog",
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (inspect, viability, reset)",
-                "- decision     offline decision apply/replay (stage via update proposal)",
+                "- proposal     inspect proposals offline; same for plan and action",
                 (
                     "- workbench    replay images through perception, memory, proposals, "
                     "and decisions"
@@ -1580,10 +1653,10 @@ def _handle_vehicles_automation_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles automation commands",
                 "",
-                "- run       start a worker and verify camera + perception + current view",
-                "- status    show locally deployed worker and view state",
-                "- restart   stop and start the automation worker",
-                "- stop      stop the worker; keep its deployment staged",
+                "- run       start a run and verify camera + perception + current view",
+                "- status    show locally deployed run and view state",
+                "- restart   stop and start the automation run",
+                "- stop      stop the run; keep its deployment staged",
                 "- help      show this summary",
                 "",
                 "Detailed help:",
@@ -1617,8 +1690,8 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles update commands",
                 "",
-                "- core         deploy physical DonkeyCar harness code",
-                "- autonomy     deploy physical autonomy controller release",
+                "- core         deploy the DonkeyCar harness to a PiCar",
+                "- autonomy     package staged steps as a release for the vehicle's host",
                 "- perception   stage local vehicle perception code",
                 "- observation  stage observation plugins",
                 "- memory       stage memory plugins",
@@ -1643,7 +1716,9 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show staged perception schema and live view",
                 "- memory      show staged memory schema and live memory",
-                "- proposal    show staged proposal schema, decision view and live proposals",
+                "- proposal    show staged proposal schema, the staged decision and live proposals",
+                "- plan        show staged plan plugins, the staged decision and the live plan step",
+                "- action      show staged action plugins, the staged decision and the live action step",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1661,7 +1736,7 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
                 "automa vehicles perception commands",
                 "",
                 "- inspect    show what a selection detects, from images or a live vehicle",
-                "- viability  health-check perception (PiCar cadence/freshness; simulator stub)",
+                "- viability  health-check perception cadence and freshness",
                 "- help       show this summary",
                 "",
                 "Detailed help:",
@@ -1680,7 +1755,9 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show latest local automation perception output",
                 "- memory      show live memory lifecycle health",
-                "- decision    show the latest decision frame",
+                "- proposal    show the latest cycle's proposals and their inputs",
+                "- plan        show the latest cycle's plan and selected candidate",
+                "- action      show the latest cycle's authority and host application",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1701,7 +1778,7 @@ _STAGING_VEHICLE_ID_HELP = (
 )
 _STAGING_DISCOVERY_TIMEOUT_HELP = (
     "Timeout in seconds for each vehicle discovery probe when local identity is unavailable "
-    f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+    f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
 )
 
 
@@ -1832,7 +1909,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
             vehicle_id=args.vehicle_id,
             timeout_s=args.timeout_s,
             interval_s=args.interval_s,
-            frames=args.frames,
+            num_decisions=args.num_decisions,
             take_control=not args.observe_only,
             record=args.record,
             verbose=args.verbose,
@@ -1843,7 +1920,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
             vehicle_id=args.vehicle_id,
             timeout_s=args.timeout_s,
             interval_s=args.interval_s,
-            frames=args.frames,
+            num_decisions=args.num_decisions,
             take_control=not args.observe_only,
             record=args.record,
             verbose=args.verbose,
@@ -1880,12 +1957,18 @@ def _handle_vehicles_automation_status(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+def _handle_vehicles_automation_host(args: argparse.Namespace) -> int:
+    from .runtime_hosts import serve_chase_host
+
+    return serve_chase_host(args.vehicle_id)
+
+
 def _handle_vehicles_automation_restart(args: argparse.Namespace) -> int:
     result = restart_vehicle_automation(
         vehicle_id=args.vehicle_id,
         timeout_s=args.timeout_s,
         interval_s=args.interval_s,
-        frames=args.frames,
+        num_decisions=args.num_decisions,
         take_control=not args.observe_only,
         record=args.record,
         verbose=args.verbose,
@@ -1941,8 +2024,9 @@ def _handle_vehicles_stream_memory(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_stream_decision(args: argparse.Namespace) -> int:
-    result = stream_vehicle_decision(
+def _handle_vehicles_stream_step(args: argparse.Namespace) -> int:
+    result = stream_vehicle_step(
+        args.step,
         vehicle_id=args.vehicle_id,
         refresh_s=args.refresh_s,
         once=args.once,
@@ -1955,60 +2039,38 @@ def _handle_vehicles_stream_decision(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
+def _handle_vehicles_decision_step_help(args: argparse.Namespace) -> int:
+    step = args.step
     print(
         "\n".join(
             [
-                "automa vehicles decision commands",
+                f"automa vehicles {step} commands",
                 "",
-                "- inspect offline browser inspector for saved decision input",
-                "- apply   offline replay of a recorded sequence; digest; optional --record",
-                "- live    read-only local browser monitor for a live PiCar publication",
-                "- help    show this summary",
+                f"- inspect  the {step} record for every frame of images or a recorded run; optional --frame, --record",
+                "- help     show this summary",
                 "",
-                "Stage proposals (held idle):  ./cli/automa vehicles update proposal --id <vehicle>",
-                "Apply them in live modes:     ./cli/automa vehicles update action --id <vehicle> --plugin mode",
-                "Proposal schema and view: ./cli/automa vehicles info proposal --id <vehicle>",
-                "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
-                "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
+                f"Stage plugins with:              ./cli/automa vehicles update {step} --id <vehicle>",
+                f"Inspect staged config with:      ./cli/automa vehicles info {step} --id <vehicle>",
+                f"Stream the latest cycle:         ./cli/automa vehicles stream {step} --id <vehicle>",
+                "Act on proposals in live modes:  ./cli/automa vehicles update action --id <vehicle> --plugin mode",
                 "",
                 "Detailed help:",
-                "- ./cli/automa vehicles decision <command> --help",
+                f"- ./cli/automa vehicles {step} inspect --help",
             ]
         )
     )
     return 0
 
 
-def _handle_vehicles_decision_inspect(args: argparse.Namespace) -> int:
-    result = run_decision_inspector(
-        args.from_run, frame_index=args.frame, vehicle_id=args.vehicle_id,
-        port=args.port, open_browser=args.open_browser, json_output=args.json, output=sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_vehicles_decision_apply(args: argparse.Namespace) -> int:
-    result = apply_vehicle_decision(
-        vehicle_id=args.vehicle_id,
-        from_run=args.from_run,
-        json_output=args.json,
+def _handle_vehicles_decision_step_inspect(args: argparse.Namespace) -> int:
+    result = inspect_decision_step(
+        args.step,
+        source=str(args.source),
+        plugins=args.plugins,
+        frame=args.frame,
         record=args.record,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_vehicles_decision_live(args: argparse.Namespace) -> int:
-    result = run_live_decision_monitor(
-        vehicle_id=args.vehicle_id,
-        port=args.port,
-        open_browser=args.open_browser,
-        timeout_s=args.timeout_s,
-        output=sys.stdout,
+        json_output=args.json,
+        max_frames=args.max_frames,
     )
     if result.message:
         print(result.message)
@@ -2022,7 +2084,7 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
                 "automa vehicles memory commands",
                 "",
                 "- inspect what a memory selection retains for an image source, frame by frame; optional --record",
-                "- viability  health-check memory (PiCar update cadence/failures/epoch; simulator stub)",
+                "- viability  health-check memory update cadence, failures, and epoch",
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- help    show this summary",
                 "",
@@ -2042,7 +2104,6 @@ def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:
     result = reset_vehicle_memory(
         vehicle_id=args.vehicle_id,
         timeout_s=args.timeout_s,
-        wait_s=args.wait_s,
         json_output=args.json,
     )
     if result.message:
@@ -2179,8 +2240,9 @@ def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_info_proposal(args: argparse.Namespace) -> int:
-    result = get_vehicle_proposal_info(
+def _handle_vehicles_info_step(args: argparse.Namespace) -> int:
+    result = get_vehicle_step_info(
+        args.step,
         vehicle_id=args.vehicle_id,
         json_output=args.json,
     )
@@ -2289,7 +2351,7 @@ def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
         vehicle_id=args.vehicle_id,
         step=args.step,
         plugins=args.plugins,
-        runtime_root=DECISION_RUNTIME_ROOT,
+        runtime_root=VEHICLES_RUNTIME_ROOT,
         timeout_s=args.timeout_s,
         dry_run=args.dry_run,
         json_output=args.json,

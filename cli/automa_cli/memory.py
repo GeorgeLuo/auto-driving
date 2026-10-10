@@ -26,14 +26,19 @@ from .bundles import (
 )
 from .paths import ROOT, display_path, safe_path_part
 from .step_activations import (
+    apply_staged,
+    changed_plugins,
+    format_apply_staged,
+    keep_staged_configs,
     refresh_release,
     stage_activation,
     staging_vehicle,
     step_update_error,
+    valid_bundle_activation,
 )
 from .step_schema import format_staged_step, staged_step_info
 from .streaming import _format_live_memory_screen, probe_live_memory
-from .vehicles import DEFAULT_CHASE_READINESS_TIMEOUT_S
+from .vehicles import DEFAULT_READINESS_TIMEOUT_S
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 
@@ -49,7 +54,7 @@ def update_vehicle_memory(
     vehicle_id: str,
     preset: str | None = None,
     plugins: list[str] | None = None,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     dry_run: bool = False,
     json_output: bool = False,
     verbose: bool = False,
@@ -66,6 +71,9 @@ def update_vehicle_memory(
         return CommandResult(*step_update_error(vehicle_id, "memory", "unknown_vehicle", unknown, json_output=json_output))
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
+    previous = valid_bundle_activation(bundle, "memory")
+    if plugins:
+        activation = keep_staged_configs(bundle, activation)
     activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
     release: dict[str, Any] | None = None
 
@@ -82,6 +90,8 @@ def update_vehicle_memory(
         "activation": display_path(activation_path),
         "manifest": activation.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
+        "apply": apply_staged(vehicle_id, vehicle.get("provider"), "memory",
+                              changed=changed_plugins(previous, activation)),
     }
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -94,6 +104,7 @@ def update_vehicle_memory(
                 f"Preset: {activation.metadata['preset']}",
                 *(f"Plugin: {plugin_id} ({activation.plugin_specs[plugin_id]})" for plugin_id in selected),
                 f"Activation: {display_path(activation_path)}",
+                *format_apply_staged(payload["apply"]),
             ]
         ),
     )

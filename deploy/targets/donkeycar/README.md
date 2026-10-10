@@ -15,11 +15,29 @@ Use the CLI for deployment:
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
+The controller host package is `implementations.runtime.picar`. When upgrading
+an already-running Pi from the previous package name, update core without
+`--restart`, then update autonomy with `--restart`, so the harness, vendor patch,
+and controller release use the same package at restart.
+
 Core update installs the systemd service, starts it when inactive, and waits for
 the read-only autonomy status endpoint in manual mode. Once installed, powering
 on the Pi is sufficient to start the Donkey runtime. The service restarts an
 unexpectedly exited process and sends output to the system journal rather than
 an accumulating project log file.
+
+Movement uses the same commands as Chase after deployment:
+
+```sh
+./cli/automa vehicles automation run --id piracer
+./cli/automa vehicles automation stop --id piracer
+./cli/automa vehicles automation restart --id piracer --observe-only
+```
+
+These commands use `/autonomy/runtime` to operate the shared host. Restart
+stops execution and restarts the systemd-managed process before starting a new
+run. The service still boots in manual mode. The CLI's local monitor publishes
+the onboard frames and decisions; it never calculates a second control policy.
 
 The CLI prepares the generated DonkeyCar vendor checkout from
 `donkeycar-vendor.json` and `patches/` before syncing. The generated checkout is

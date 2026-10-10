@@ -20,13 +20,13 @@ from implementations.vehicle.chase_sim.defaults import (
     CHASE_UI_WS_URL_ENV,
     DEFAULT_CHASE_UI_WS_URL,
 )
-from implementations.vehicle.picar import create_local_car
+from implementations.vehicle.picar import create_picar
 from implementations.vehicle.picar.defaults import (
     DEFAULT_LOCAL_CAR_BASE_URL,
     LOCAL_CAR_BASE_URL_ENV,
 )
 
-DEFAULT_CHASE_READINESS_TIMEOUT_S = 5.0
+DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_vehicle_status_v1"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 
@@ -67,7 +67,7 @@ class ProbeResult:
 
 def discover_active_vehicles(
     *,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     picar_urls: tuple[str, ...] = (),
     chase_ws_urls: tuple[str, ...] = (),
     include_picar: bool = True,
@@ -85,7 +85,7 @@ def discover_active_vehicles(
     if include_picar:
         candidates.extend(_picar_candidates(picar_urls))
     if include_chase_sim:
-        candidates.extend(_chase_sim_candidates(chase_ws_urls))
+        candidates.extend(_chase_candidates(chase_ws_urls))
 
     results = [_probe_candidate(candidate, timeout_s=timeout) for candidate in candidates]
     active = [result.vehicle for result in results if result.active and result.vehicle is not None]
@@ -182,12 +182,39 @@ def find_vehicle_by_id(
     return matches[0], None
 
 
+def discover_vehicle(
+    vehicle_id: str,
+    *,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+    include_picar: bool = True,
+    include_chase_sim: bool = True,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Discover ``vehicle_id``, or say what discovery saw and why each other candidate did not answer."""
+
+    payload = discover_active_vehicles(
+        timeout_s=timeout_s,
+        include_picar=include_picar,
+        include_chase_sim=include_chase_sim,
+        include_inactive=True,
+    )
+    vehicle, error = find_vehicle_by_id(payload, vehicle_id)
+    if vehicle is not None:
+        return vehicle, None
+    return None, "\n\n".join(
+        [
+            error or f"Vehicle {vehicle_id!r} was not found.",
+            "Discovery:",
+            format_active_vehicles(payload, include_inactive=True),
+        ]
+    )
+
+
 def get_vehicle_status(
     *,
     vehicle_id: str | None = None,
     chase_url: str | None = None,
     chase_ws_url: str | None = None,
-    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Read aggregate simulator, vehicle, deployment, worker, and view state."""
 
@@ -203,7 +230,7 @@ def get_vehicle_status(
     display_url = chase_operator_url(endpoint)
     started = time.monotonic()
     candidate = Candidate("chase-sim", endpoint, "cli")
-    probe = _probe_chase_sim(candidate, timeout_s=operation_timeout)
+    probe = _probe_chase(candidate, timeout_s=operation_timeout)
     discovery = {
         "schema": "automa_vehicle_discovery_v0",
         "checked_at_ms": int(time.time() * 1000),
@@ -233,7 +260,7 @@ def get_vehicle_status(
     deployed_by_id = {
         deployed_id: item
         for deployed_id, item in all_deployed_by_id.items()
-        if _is_chase_vehicle_id(deployed_id)
+        if is_chase_vehicle_id(deployed_id)
     }
     other_local_deployments = [
         {
@@ -355,7 +382,7 @@ def format_vehicle_status(payload: dict[str, Any]) -> str:
     return "\n".join(_format_vehicle_status_card(payload))
 
 
-def _is_chase_vehicle_id(vehicle_id: str) -> bool:
+def is_chase_vehicle_id(vehicle_id: str) -> bool:
     return vehicle_id == "chase-sim-chaser" or vehicle_id.startswith("chase-sim-")
 
 
@@ -724,7 +751,7 @@ def _vehicle_next_action(
                 "worker_start_failed",
                 command=(
                     "./cli/automa vehicles automation run "
-                    f"--id {vehicle_id} --observe-only --frames 0 --open-view --log"
+                    f"--id {vehicle_id} --observe-only --num-decisions 0 --open-view --log"
                 ),
                 expected_state="automation_worker=running",
             ),
@@ -737,7 +764,7 @@ def _vehicle_next_action(
                 "worker_stopped",
                 command=(
                     "./cli/automa vehicles automation run "
-                    f"--id {vehicle_id} --observe-only --frames 0 --open-view"
+                    f"--id {vehicle_id} --observe-only --num-decisions 0 --open-view"
                 ),
                 expected_state="automation_worker=running, perception_view=available",
             ),
@@ -771,7 +798,7 @@ def _vehicle_next_action(
                 else "view_unavailable",
                 command=(
                     "./cli/automa vehicles automation restart "
-                    f"--id {vehicle_id} --observe-only --frames 0"
+                    f"--id {vehicle_id} --observe-only --num-decisions 0"
                 ),
                 expected_state="perception_view=available",
             ),
@@ -995,7 +1022,7 @@ def _probe_candidate(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     if candidate.provider == "picar":
         return _probe_picar(candidate, timeout_s=timeout_s)
     if candidate.provider == "chase-sim":
-        return _probe_chase_sim(candidate, timeout_s=timeout_s)
+        return _probe_chase(candidate, timeout_s=timeout_s)
     return ProbeResult(
         active=False,
         candidate=candidate,
@@ -1018,7 +1045,7 @@ def _picar_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
     return _dedupe_candidates(candidates)
 
 
-def _chase_sim_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
+def _chase_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
     candidates: list[Candidate] = []
     env_url = os.environ.get(CHASE_UI_WS_URL_ENV)
     if env_url:
@@ -1105,7 +1132,7 @@ def chase_operator_url(ws_url: str) -> str:
 
 def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     base_url = candidate.url.rstrip("/")
-    car = create_local_car(base_url=base_url, timeout_s=timeout_s)
+    car = create_picar(base_url=base_url, timeout_s=timeout_s)
     capabilities = car.capabilities.to_dict()
 
     status, error = _get_json(base_url, "/autonomy/status", timeout_s=timeout_s)
@@ -1154,7 +1181,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     )
 
 
-def _probe_chase_sim(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     car = ChaseSimCar(ws_url=candidate.url, timeout_s=timeout_s)
     diagnostics: dict[str, Any] = {
         "ws_server": False,
@@ -1288,27 +1315,6 @@ def _probe_chase_sim(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     )
 
 
-def _summarize_chase_state(state: dict[str, Any]) -> dict[str, Any]:
-    sidebar = _find_play_sidebar_values(state)
-    return {
-        "sidebar_app": state.get("sidebarApp"),
-        "playback": state.get("playback"),
-        "viewport": state.get("viewport"),
-        "scenario": sidebar.get("scenario-select"),
-        "chaser_control_source": sidebar.get("chaser-control-source"),
-    }
-
-
-def _summarize_front_view_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    image = snapshot.get("image") if isinstance(snapshot.get("image"), dict) else {}
-    return {
-        "has_data_url": isinstance(image.get("dataUrl"), str),
-        "has_svg": isinstance(image.get("svg"), str),
-        "width": snapshot.get("width"),
-        "height": snapshot.get("height"),
-    }
-
-
 def _inactive_detail(diagnostics: dict[str, Any]) -> str:
     parts: list[str] = []
     runtime_state = diagnostics.get("runtime_state")
@@ -1387,26 +1393,6 @@ def _probe_tcp_endpoint(base_url: str, *, timeout_s: float) -> dict[str, Any]:
     return diagnostics
 
 
-def _find_play_sidebar_values(state: dict[str, Any]) -> dict[str, Any]:
-    values: dict[str, Any] = {}
-    sections = state.get("playSidebarSections")
-    if not isinstance(sections, list):
-        return values
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        rows = section.get("rows")
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            row_id = row.get("id")
-            if isinstance(row_id, str) and "value" in row:
-                values[row_id] = row.get("value")
-    return values
-
-
 def _get_json(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[dict[str, Any] | None, str | None]:
     ok, body_or_error = _get(base_url, endpoint, timeout_s=timeout_s)
     if not ok:
@@ -1435,8 +1421,11 @@ def _get(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[bool, str]:
             body = response.read()
             return True, body.decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
+        exc.close()
         return False, f"GET {url} returned HTTP {exc.code}"
     except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            return False, f"GET {url} did not answer within {timeout_s:g} s"
         return False, f"GET {url} failed: {exc.reason}"
     except TimeoutError:
-        return False, f"GET {url} timed out"
+        return False, f"GET {url} did not answer within {timeout_s:g} s"

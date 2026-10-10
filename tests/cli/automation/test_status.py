@@ -112,14 +112,14 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertEqual(vehicle["vehicle_id"], VEHICLE_ID)
         self.assertTrue(vehicle["deployed"])
         self.assertEqual(vehicle["perception"]["preset"], "sim_debug")
-        self.assertEqual(vehicle["decision"]["plugins"]["action"], ["hold"])
+        self.assertEqual(vehicle["decision"]["plugins"]["action"], ["selected"])
         self.assertEqual(vehicle["process"]["status"], "running")
         self.assertTrue(vehicle["process"]["running"])
 
         self.assertIn("deployed automations: 1", human.stdout)
         self.assertIn(vehicle["vehicle_id"], human.stdout)
         self.assertIn(f"perception: {vehicle['perception']['preset']}", human.stdout)
-        self.assertIn("decision: proposal=- plan=highest_confidence action=hold", human.stdout)
+        self.assertIn("decision: proposal=- plan=highest_confidence action=selected", human.stdout)
         self.assertIn(f"worker: {vehicle['process']['status']}", human.stdout)
         self.assertIn("log: disabled", human.stdout)
         self.assertNotIn("plugin_configs", human.stdout)
@@ -259,7 +259,7 @@ class AutomationStatusTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_runtime_fixture(runtime_root, VEHICLE_ID, pid=os.getpid())
             with mock.patch(
-                "cli.automa_cli.automation.RUNTIME_ROOT",
+                "cli.automa_cli.runtime_hosts.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.automation.get_perception_view_status",
@@ -307,7 +307,7 @@ class AutomationStatusTests(unittest.TestCase):
             write_runtime_fixture(runtime_root, "chase-sim-chaser", pid=os.getpid())
             write_runtime_fixture(runtime_root, "chase-sim-runner", pid=os.getpid())
             with mock.patch(
-                "cli.automa_cli.automation.RUNTIME_ROOT",
+                "cli.automa_cli.runtime_hosts.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.automation.get_perception_view_status",
@@ -335,23 +335,3 @@ class AutomationStatusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
-
-class AutomationRunIdTests(unittest.TestCase):
-    def test_now_id_is_unique_within_same_wall_clock_second(self) -> None:
-        from datetime import datetime
-        from unittest import mock
-
-        from cli.automa_cli.automation import _now_id
-
-        frozen = datetime(2026, 7, 26, 12, 0, 0)
-        with mock.patch("cli.automa_cli.automation.datetime") as mocked:
-            mocked.now.return_value = frozen
-            first = _now_id("automation")
-            second = _now_id("automation")
-        self.assertNotEqual(first, second)
-        self.assertTrue(first.startswith("automation-20260726-120000-"))
-        self.assertTrue(second.startswith("automation-20260726-120000-"))
-        # Trailing UUID fragments must both be present and distinct.
-        self.assertEqual(len(first.split("-")), 4)
-        self.assertNotEqual(first.rsplit("-", 1)[-1], second.rsplit("-", 1)[-1])

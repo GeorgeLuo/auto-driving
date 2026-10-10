@@ -8,8 +8,8 @@ from .donkey_client import DonkeyClient
 from .defaults import (
     DEFAULT_LOCAL_CAR_BASE_URL,
     DEFAULT_LOCAL_CAR_ID,
-    get_default_local_car_base_url,
-    get_default_local_car_id,
+    get_default_picar_base_url,
+    get_default_picar_id,
 )
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
@@ -20,6 +20,7 @@ from autonomy.vehicle import (
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
+    run_vehicle_pulse,
 )
 
 
@@ -33,7 +34,7 @@ def _reject_unsupported_sensors(request: SensorReadRequest) -> None:
         raise ValueError(f"unsupported PiCar sensors requested: {sorted(unsupported)}")
 
 
-class DonkeyPiCar(CarInterface):
+class PiCar(CarInterface):
     """PiCar/PiRacer embodiment implemented through the Donkey web server."""
 
     def __init__(
@@ -81,6 +82,16 @@ class DonkeyPiCar(CarInterface):
             return action.steering, normalized_throttle
         return action.steering, 0.0
 
+    def prepare_for_external_control(self) -> dict[str, Any]:
+        """The Donkey HTTP drive is already the external input."""
+        now_ms = int(time.time() * 1000)
+        return {
+            "boundary": "donkey_http_input",
+            "switched_control_source": False,
+            "started_at_ms": now_ms,
+            "completed_at_ms": now_ms,
+        }
+
     def stop(self) -> None:
         self.client.stop()
 
@@ -99,6 +110,7 @@ class DonkeyPiCar(CarInterface):
             recording=recording,
         )
         return {
+            "boundary": "donkey_http_input",
             "action": action.to_dict(),
             "angle": angle,
             "throttle": signed_throttle,
@@ -107,27 +119,7 @@ class DonkeyPiCar(CarInterface):
         }
 
     def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
-        started_ms = int(time.time() * 1000)
-        try:
-            command = self.execute_action(
-                pulse.action,
-                throttle=pulse.throttle,
-                recording=pulse.recording,
-            )
-            time.sleep(pulse.duration_s)
-        finally:
-            self.stop()
-
-        if pulse.settle_s > 0:
-            time.sleep(pulse.settle_s)
-
-        return {
-            "label": pulse.label,
-            "pulse": pulse.to_dict(),
-            "command": command,
-            "started_at_ms": started_ms,
-            "completed_at_ms": int(time.time() * 1000),
-        }
+        return run_vehicle_pulse(self, pulse)
 
     def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         _reject_unsupported_sensors(request)
@@ -157,21 +149,21 @@ class DonkeyPiCar(CarInterface):
         )
 
 
-def create_local_car(
+def create_picar(
     *,
     base_url: str | None = None,
     timeout_s: float = 5.0,
     vehicle_id: str | None = None,
-) -> DonkeyPiCar:
+) -> PiCar:
     """Create the standard local-network PiCar object without touching the network."""
-    return DonkeyPiCar(
-        base_url=base_url or get_default_local_car_base_url(),
+    return PiCar(
+        base_url=base_url or get_default_picar_base_url(),
         timeout_s=timeout_s,
-        vehicle_id=vehicle_id or get_default_local_car_id(),
+        vehicle_id=vehicle_id or get_default_picar_id(),
     )
 
 
-def describe_local_car(car: DonkeyPiCar) -> dict[str, Any]:
+def describe_picar(car: PiCar) -> dict[str, Any]:
     return {
         "base_url": car.base_url,
         "capabilities": car.capabilities.to_dict(),

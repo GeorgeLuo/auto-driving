@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.deploy import (
-    PhysicalTarget,
+    PicarTarget,
     _REMOTE_AUTONOMY_INSTALL_SCRIPT,
-    _verify_physical_autonomy_runtime,
+    _verify_picar_autonomy_runtime,
     _write_remote_activation_files,
 )
 from cli.automa_cli.memory import ensure_vehicle_memory_activation
@@ -25,7 +25,7 @@ from cli.automa_cli.step_activations import (
 )
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
-TARGET = PhysicalTarget(
+TARGET = PicarTarget(
     vehicle_id="piracer",
     vehicle={
         "vehicle_id": "piracer",
@@ -39,13 +39,13 @@ TARGET = PhysicalTarget(
 )
 
 
-def _status_response(drive_mode: str, steps: dict[str, list[str]]) -> MagicMock:
+def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
     response = MagicMock()
     response.__enter__.return_value = response
     response.read.return_value = json.dumps(
         {
             "ok": True,
-            "drive_mode": drive_mode,
+            "mode": mode,
             "autonomy": {
                 "steps": {step: {"plugin_ids": plugins} for step, plugins in steps.items()},
                 "components": {},
@@ -84,24 +84,24 @@ class PhysicalDeployTests(unittest.TestCase):
     def test_runtime_verification_requires_every_deployed_step_and_manual_mode(self) -> None:
         expected = {"memory": ["bounded_evidence"], "action": ["hold"]}
         cases = (
-            ("user", expected, None),
-            ("local", expected, "expected 'user'"),
-            ("user", {"action": ["hold"]}, "no live memory step"),
-            ("user", {**expected, "action": ["mode"]}, "expected \\['hold'\\]"),
+            ("manual", expected, None),
+            ("autonomy", expected, "expected 'manual'"),
+            ("manual", {"action": ["hold"]}, "no live memory step"),
+            ("manual", {**expected, "action": ["mode"]}, "expected \\['hold'\\]"),
         )
-        for drive_mode, reported, error in cases:
-            with self.subTest(drive_mode=drive_mode, reported=reported), patch(
+        for mode, reported, error in cases:
+            with self.subTest(mode=mode, reported=reported), patch(
                 "cli.automa_cli.deploy.urllib_request.urlopen",
-                return_value=_status_response(drive_mode, reported),
+                return_value=_status_response(mode, reported),
             ):
                 if error is None:
-                    verification = _verify_physical_autonomy_runtime(
+                    verification = _verify_picar_autonomy_runtime(
                         target=TARGET, expected_steps=expected, timeout_s=3.0
                     )
-                    self.assertEqual(verification["drive_mode"], "user")
+                    self.assertEqual(verification["mode"], "manual")
                     continue
                 with self.assertRaisesRegex(RuntimeError, error):
-                    _verify_physical_autonomy_runtime(
+                    _verify_picar_autonomy_runtime(
                         target=TARGET, expected_steps=expected, timeout_s=3.0
                     )
 
@@ -171,7 +171,7 @@ class PhysicalDeployTests(unittest.TestCase):
             self.assertEqual((app_root / "autonomy").resolve(), (release_root / "autonomy").resolve())
             runtime = app_root / "runtime"
             action = read_step_activation(runtime / "action" / "active.json", "action")
-            self.assertEqual(action.plugins, ("hold",))
+            self.assertEqual(action.plugins, ("selected",))
             memory = read_step_activation(runtime / "memory" / "active.json", "memory")
             self.assertEqual(memory.plugins, ("bounded_evidence",))
             self.assertEqual(

@@ -18,10 +18,11 @@ from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
 )
 from autonomy.decision_cycle.activation import STEPS
+from autonomy.runtime.layout import RuntimeLayout
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 from implementations.vehicle.picar.defaults import (
-    get_default_local_car_base_url,
-    get_default_local_car_id,
+    get_default_picar_base_url,
+    get_default_picar_id,
 )
 
 from .bundles import (
@@ -47,7 +48,7 @@ from .step_activations import (
     format_activation_problems,
     read_bundle_activation,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id
+from .vehicles import discover_vehicle, is_chase_vehicle_id
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -180,7 +181,7 @@ class CommandResult:
 
 
 @dataclass(frozen=True)
-class PhysicalTarget:
+class PicarTarget:
     vehicle_id: str
     vehicle: dict[str, object]
     provider: str
@@ -205,7 +206,7 @@ def update_vehicle_core(
     stream = output
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    target, error = _resolve_physical_target(
+    target, error = _resolve_picar_target(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
         ssh_target=ssh_target,
@@ -278,8 +279,8 @@ def update_vehicle_core(
         _emit(stream, "Donkey runtime service restarted.")
         readiness = {
             "ok": True,
-            "status_url": f"{_physical_base_url(target)}/autonomy/status",
-            "drive_mode": "user",
+            "status_url": f"{_target_base_url(target)}/autonomy/status",
+            "mode": "manual",
         }
     else:
         try:
@@ -343,7 +344,14 @@ def update_vehicle_autonomy(
 ) -> CommandResult:
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    target, error = _resolve_physical_target(
+    if is_chase_vehicle_id(vehicle_id):
+        if drive_args is not None or ssh_target is not None or pi_home is not None:
+            return CommandResult(2, "--drive-args, --ssh-target and --pi-home apply only to a PiCar.")
+        return _update_local_autonomy(
+            vehicle_id=vehicle_id, dry_run=dry_run, restart=restart,
+            json_output=json_output, output=output,
+        )
+    target, error = _resolve_picar_target(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
         ssh_target=ssh_target,
@@ -461,7 +469,7 @@ def update_vehicle_autonomy(
     )
     if restart:
         try:
-            runtime_verification = _verify_physical_autonomy_runtime(
+            runtime_verification = _verify_picar_autonomy_runtime(
                 target=target,
                 expected_steps=deployed_steps,
                 timeout_s=max(3.0, timeout_s),
@@ -510,12 +518,104 @@ def update_vehicle_autonomy(
                 f"Decision generation: {payload['activation']['generation_id']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
                 *verified_lines,
+                *(
+                    []
+                    if restart
+                    else [
+                        "A running runtime selects restaged perception, memory, and proposal "
+                        "plugins on its next frame; changed plugin specs or configs, plan, "
+                        "and action need --restart."
+                    ]
+                ),
             ]
         ),
     )
 
 
-def _resolve_physical_target(
+def _update_local_autonomy(
+    *,
+    vehicle_id: str,
+    dry_run: bool,
+    restart: bool,
+    json_output: bool,
+    output: TextIO | None,
+) -> CommandResult:
+    """Package a release for a locally hosted vehicle; ``restart`` moves its host onto it."""
+
+    from autonomy.runtime.client import RuntimeClient
+    from .runtime_hosts import RuntimeHostError, host_record, release_code_dir, staged_vehicle
+
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    source_summary = controller_bundle_source_summary()
+    if dry_run:
+        payload = {"vehicle_id": vehicle_id, "dry_run": True, "restart": restart, "source": source_summary}
+        if json_output:
+            return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+        return CommandResult(0, "\n".join([
+            f"Dry run: would package {vehicle_id}'s controller release "
+            f"(tree {source_summary['tree_sha256'][:12]}, {source_summary['file_count']} files)",
+            f"Restart the host onto it: {'yes' if restart else 'no'}",
+        ]))
+    problems = bundle_activation_problems(bundle, vehicle_id)
+    if problems:
+        return CommandResult(2, format_activation_problems(problems))
+    try:
+        vehicle = staged_vehicle(vehicle_id)
+        release = sync_controller_bundle(bundle, output=output)
+        ensure_vehicle_perception_activation(
+            vehicle=vehicle, preset=DEFAULT_PERCEPTION_PRESET, bundle=bundle, release=release,
+        )
+        ensure_vehicle_memory_activation(vehicle_id=vehicle_id, bundle=bundle, release=release)
+        ensure_builtin_activations(vehicle_id=vehicle_id, bundle=bundle, release=release)
+        _, summary = release_code_dir(vehicle_id, release["archive"]["sha256"])
+    except RuntimeHostError as exc:
+        return CommandResult(2, str(exc))
+    activations = {
+        step: activation
+        for step in STEPS
+        if (activation := read_bundle_activation(bundle, step)) is not None
+    }
+    steps = {step: list(activation.plugins) for step, activation in activations.items()}
+    record = host_record(vehicle_id)
+    restarted = False
+    if restart and record is not None:
+        try:
+            RuntimeClient(record["base_url"], timeout_s=5.0).restart(timeout_s=DONKEY_READY_TIMEOUT_S)
+        except (RuntimeError, TimeoutError) as exc:
+            return CommandResult(2, f"Release {summary['archive']} was packaged, but the host did not restart: {exc}")
+        restarted = True
+    payload = {
+        "vehicle_id": vehicle_id,
+        "dry_run": False,
+        "release": summary,
+        "steps": steps,
+        "generation_id": decision_generation_id(
+            {step: activations.get(step) for step in ("proposal", "plan", "action")}
+        ),
+        "restarted": restarted,
+    }
+    if json_output:
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    if restarted:
+        host_line = "Runtime restarted: yes"
+    elif record is None:
+        host_line = "Runtime restarted: no host running; the next automation run starts on this release"
+    else:
+        host_line = (
+            "Runtime restarted: no; an idle host moves onto this release at the next automation run, "
+            f"or now with: ./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
+        )
+    return CommandResult(0, "\n".join([
+        f"Autonomy updated: {vehicle_id} (local host)",
+        f"Release: {summary['archive']}",
+        f"Archive SHA-256: {summary['archive_sha256']}",
+        *_step_lines(steps),
+        f"Decision generation: {payload['generation_id']}",
+        host_line,
+    ]))
+
+
+def _resolve_picar_target(
     *,
     vehicle_id: str,
     timeout_s: float,
@@ -525,7 +625,7 @@ def _resolve_physical_target(
     output: TextIO | None,
     operation: str,
     allow_offline_default: bool = False,
-) -> tuple[PhysicalTarget | None, CommandResult | None]:
+) -> tuple[PicarTarget | None, CommandResult | None]:
     vehicle: dict[str, object] = {
         "vehicle_id": vehicle_id,
         "vehicle_kind": "picar",
@@ -537,15 +637,12 @@ def _resolve_physical_target(
         _emit(output, f"Skipping active vehicle discovery for id {vehicle_id!r}.")
     else:
         _emit(output, f"Discovering active vehicles for id {vehicle_id!r}...")
-        payload = discover_active_vehicles(
-            timeout_s=timeout_s,
-            include_picar=True,
-            include_chase_sim=False,
+        found_vehicle, error = discover_vehicle(
+            vehicle_id, timeout_s=timeout_s, include_chase_sim=False
         )
-        found_vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-        if error:
-            if allow_offline_default and vehicle_id == get_default_local_car_id():
-                default_base_url = get_default_local_car_base_url()
+        if found_vehicle is None:
+            if allow_offline_default and vehicle_id == get_default_picar_id():
+                default_base_url = get_default_picar_base_url()
                 vehicle = {
                     "vehicle_id": vehicle_id,
                     "vehicle_kind": "picar",
@@ -558,14 +655,12 @@ def _resolve_physical_target(
                 _emit(
                     output,
                     (
-                        "Donkey HTTP readiness is unavailable; using the configured physical "
+                        "Donkey HTTP readiness is unavailable; using the configured PiCar "
                         f"target {default_base_url}. SSH will determine deploy reachability."
                     ),
                 )
             else:
                 return None, CommandResult(2, error)
-        elif found_vehicle is None:
-            return None, CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
         else:
             vehicle = found_vehicle
 
@@ -573,7 +668,7 @@ def _resolve_physical_target(
     if provider != "picar":
         return None, CommandResult(
             2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; {operation} is only supported for physical PiCar targets.",
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; {operation} is only supported for PiCar targets.",
         )
 
     resolved_home = pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME
@@ -585,7 +680,7 @@ def _resolve_physical_target(
         )
 
     return (
-        PhysicalTarget(
+        PicarTarget(
             vehicle_id=vehicle_id,
             vehicle=vehicle,
             provider=provider,
@@ -598,7 +693,7 @@ def _resolve_physical_target(
 
 def _write_remote_activation_files(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     vehicle_runtime_dir: Path,
     release: dict[str, Any],
     release_id: str,
@@ -616,13 +711,8 @@ def _write_remote_activation_files(
     remote_release["manifest"] = f"{remote_release_root}/bundle-manifest.json"
 
     # Same controller_bundle keys staging_metadata records locally, with the Pi's paths.
-    remote_values = {
-        "root_dir": remote_app_root,
-        "autonomy_dir": f"{remote_app_root}/autonomy",
-        "implementations_dir": f"{remote_app_root}/implementations",
-        "runtime_dir": f"{remote_app_root}/runtime",
-        "release": remote_release,
-    }
+    remote_values = RuntimeLayout(Path(remote_app_root)).bundle_paths()
+    remote_values["release"] = remote_release
     remote_bundle = {key: remote_values[key] for key in CONTROLLER_BUNDLE_KEYS}
 
     written: dict[str, Path] = {}
@@ -675,7 +765,7 @@ def _write_remote_activation_files(
 
 def _autonomy_sync_commands(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     release_id: str,
     archive_path: Path,
     archive_sha256: str,
@@ -731,7 +821,7 @@ def _autonomy_sync_commands(
 
 def _autonomy_update_payload(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     dry_run: bool,
     source_summary: dict[str, Any],
     release: dict[str, Any] | None,
@@ -791,7 +881,7 @@ def _autonomy_update_payload(
 
 def _core_update_payload(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     dry_run: bool,
     vendor_manifest: dict[str, Any],
     vendor_source_dir: Path,
@@ -928,7 +1018,7 @@ def _display_deploy_command(label: str, command: list[str]) -> str:
     return shlex.join(command)
 
 
-def _display_restart_command(target: PhysicalTarget, drive_args: str | None) -> str:
+def _display_restart_command(target: PicarTarget, drive_args: str | None) -> str:
     remote_command = _donkey_service_control_command(
         pi_home=target.pi_home,
         action="restart",
@@ -939,7 +1029,7 @@ def _display_restart_command(target: PhysicalTarget, drive_args: str | None) -> 
 
 def _restart_drive_service(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     drive_args: str | None,
     verbose: bool,
     output: TextIO | None,
@@ -970,14 +1060,14 @@ def _restart_drive_service(
     return 0
 
 
-def _verify_physical_autonomy_runtime(
+def _verify_picar_autonomy_runtime(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     expected_steps: dict[str, list[str]],
     timeout_s: float,
 ) -> dict[str, Any]:
-    verification = inspect_physical_autonomy_runtime(
-        base_url=_physical_base_url(target),
+    verification = inspect_picar_autonomy_runtime(
+        base_url=_target_base_url(target),
         timeout_s=timeout_s,
     )
     status_url = str(verification["status_url"])
@@ -996,10 +1086,10 @@ def _verify_physical_autonomy_runtime(
             raise RuntimeError(
                 f"{status_url} reported {step} plugins {actual!r}, expected {plugins!r}"
             )
-    drive_mode = verification["drive_mode"]
-    if drive_mode != "user":
+    mode = verification["mode"]
+    if mode != "manual":
         raise RuntimeError(
-            f"{status_url} reported drive mode {drive_mode!r}; expected 'user' for idle smoke verification"
+            f"{status_url} reported mode {mode!r}; expected 'manual' for idle smoke verification"
         )
     return verification
 
@@ -1012,7 +1102,7 @@ def _step_lines(steps: dict[str, list[str]]) -> list[str]:
     ]
 
 
-def inspect_physical_autonomy_runtime(
+def inspect_picar_autonomy_runtime(
     *,
     base_url: str,
     timeout_s: float,
@@ -1020,24 +1110,14 @@ def inspect_physical_autonomy_runtime(
     """Read the deployed autonomy status without changing vehicle state."""
     normalized_url = str(base_url).strip().rstrip("/")
     if not normalized_url:
-        raise RuntimeError("Pi base URL is required for runtime inspection")
+        raise RuntimeError("PiCar base URL is required for runtime inspection")
     status_url = f"{normalized_url}/autonomy/status"
-    try:
-        with urllib_request.urlopen(status_url, timeout=max(0.1, float(timeout_s))) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (
-        OSError,
-        urllib_error.URLError,
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-        ValueError,
-    ) as exc:
-        raise RuntimeError(f"GET {status_url} failed: {exc}") from exc
-
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"{status_url} did not return a JSON object")
+    payload = _read_runtime_status(status_url, timeout_s=max(0.1, float(timeout_s)))
     if payload.get("ok") is not True:
-        raise RuntimeError(f"{status_url} did not report an available decision cycle")
+        raise RuntimeError(
+            f"{status_url} did not report an available decision cycle: "
+            f"{payload.get('error') or 'no error reported'}"
+        )
 
     autonomy = payload.get("autonomy")
     if not isinstance(autonomy, dict):
@@ -1057,48 +1137,63 @@ def inspect_physical_autonomy_runtime(
     return {
         "status_url": status_url,
         "steps": steps,
-        "drive_mode": payload.get("drive_mode"),
+        "mode": payload.get("mode"),
         "ok": True,
     }
 
 
+def _read_runtime_status(status_url: str, *, timeout_s: float) -> dict[str, Any]:
+    """Read the status route, including the error body a 503 carries."""
+    try:
+        with urllib_request.urlopen(status_url, timeout=timeout_s) as response:
+            body = response.read()
+    except urllib_error.HTTPError as exc:
+        with exc:
+            body = exc.read()
+        if not body:
+            raise RuntimeError(f"GET {status_url} failed: HTTP {exc.code}") from exc
+    except (OSError, urllib_error.URLError, ValueError) as exc:
+        raise RuntimeError(f"GET {status_url} failed: {exc}") from exc
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"GET {status_url} did not return JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{status_url} did not return a JSON object")
+    return payload
+
+
 def _wait_for_donkey_readiness(
     *,
-    target: PhysicalTarget,
+    target: PicarTarget,
     timeout_s: float,
 ) -> dict[str, Any]:
-    base_url = _physical_base_url(target)
+    base_url = _target_base_url(target)
     status_url = f"{base_url.rstrip('/')}/autonomy/status"
     deadline = time.monotonic() + max(0.1, float(timeout_s))
     last_error = "no response"
     while time.monotonic() < deadline:
         try:
-            with urllib_request.urlopen(status_url, timeout=1.0) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            if not isinstance(payload, dict):
-                last_error = "endpoint did not return a JSON object"
-            elif payload.get("drive_mode") != "user":
-                last_error = f"drive mode is {payload.get('drive_mode')!r}, expected 'user'"
+            payload = _read_runtime_status(status_url, timeout_s=1.0)
+            # Donkey answers even when the autonomy runtime failed to load;
+            # autonomy verification reports that error separately.
+            if payload.get("ok") is True and payload.get("mode") != "manual":
+                last_error = f"mode is {payload.get('mode')!r}, expected 'manual'"
             else:
                 return {
                     "ok": True,
                     "status_url": status_url,
-                    "drive_mode": "user",
+                    "mode": payload.get("mode"),
                     "autonomy_available": payload.get("ok") is True,
+                    "autonomy_error": payload.get("error"),
                 }
-        except (
-            OSError,
-            urllib_error.URLError,
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-            ValueError,
-        ) as exc:
+        except RuntimeError as exc:
             last_error = str(exc)
         time.sleep(0.5)
     raise RuntimeError(f"GET {status_url} was not ready within {timeout_s:g}s ({last_error})")
 
 
-def _physical_base_url(target: PhysicalTarget) -> str:
+def _target_base_url(target: PicarTarget) -> str:
     connection = target.vehicle.get("connection")
     base_url = connection.get("base_url") if isinstance(connection, dict) else None
     if isinstance(base_url, str) and base_url.strip():

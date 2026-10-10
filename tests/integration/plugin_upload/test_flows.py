@@ -80,8 +80,8 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertIn("existing host or workbench catalog", guidance)
             self.assertIn("module", run_automa("vehicles", "plugins", "upload", "--help").stdout)
             file = root / "prototype.py"
-            # Neither an unavailable dependency nor invalid Python is an upload gate.
-            sources = [b"from not_uploaded_yet import Helper\n", b"not valid Python !!!\n"]
+            # An unavailable dependency is not an upload gate.
+            sources = [b"from not_uploaded_yet import Helper\n", b"raise RuntimeError('loaded later')\n"]
             for phase in ("idle", "running", "paused", "completed"):
                 if phase == "running":
                     post_action(base, {"action": "start"})
@@ -174,7 +174,7 @@ class PluginUploadFlows(unittest.TestCase):
             ).stdout)
             default_cutoff = next(item for item in catalog["plugins"] if item["id"] == "multi_obstruction_tracks")["config"]["floor_cutoff_y"]
             file = root / "unselected.py"
-            file.write_text("not loaded during catalog registration")
+            file.write_text("raise RuntimeError('not loaded during catalog registration')\n")
             upload(base, file, "unselected")
             ids = staged["perception"]["plugins"]
             post_action(base, {"action": "select_plugins", "step": "perception", "active_plugin_ids": ids})
@@ -210,7 +210,7 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(memory["phase"], "paused")
             self.assertEqual(memory["run_id"], run_id)
 
-    def test_invalid_code_succeeds_at_upload_and_fails_when_replay_loads_it(self):
+    def test_syntax_fails_the_upload_and_an_import_error_fails_when_replay_loads_it(self):
         with image_source(1) as root:
             runner = ImageReplayRunner(root)
             base = serve_workbench(self, runner)
@@ -230,7 +230,12 @@ class PluginUploadFlows(unittest.TestCase):
                 self.assertEqual(unchanged["steps"], before["steps"])
                 self.assertEqual(get_json(base, "/api/plugins"), catalog)
             file = root / "broken.py"
-            file.write_text("invalid Python !!!")
+            file.write_text("class Prototype:\n    invalid Python !!!\n")
+            result, receipt = upload(base, file, "broken", check=False)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("broken.py:2: invalid syntax", receipt["error"])
+            self.assertEqual(get_json(base, "/api/plugins"), catalog)
+            file.write_text("import not_installed_anywhere\n")
             _, receipt = upload(base, file, "broken")
             self.assertTrue(receipt["ok"])
             post_action(base, {"action": "select_plugins", "step": "perception", "active_plugin_ids": ["broken"]})
@@ -251,13 +256,15 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertIn(str(root / "missing.py"), receipt["outcome"]["recovery"])
             self.assertEqual(get_json(base, "/api/plugins"), before)
             file = root / "prototype.py"
-            file.write_text("not checked during upload")
+            file.write_text("class Prototype:\n    pass\n")
             result, receipt = upload(base, file, "", check=False)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(receipt["ok"])
             self.assertEqual(receipt["status"], "failed")
             self.assertTrue(receipt["error"])
             self.assertEqual(get_json(base, "/api/plugins"), before)
+            rejected = PluginCatalogClient(base)({"plugin_id": "prototype"})
+            self.assertEqual(rejected["error"], "missing field: step")
 
     def test_vehicle_catalog_uploads_before_during_and_after_run_completion(self):
         for vehicle in ("chase", "picar"):
@@ -307,7 +314,7 @@ class PluginUploadFlows(unittest.TestCase):
                                        port=0, plugin_catalog=PluginCatalogClient(chase.base_url)).start()
             self.addCleanup(viewer.stop)
             file = root / "prototype.py"
-            file.write_text("dependency can arrive later")
+            file.write_text("from dependency_can_arrive_later import Prototype\n")
             result = run_automa("vehicles", "plugins", "upload", "--id", "chase-sim-chaser",
                                 "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
                                 "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)

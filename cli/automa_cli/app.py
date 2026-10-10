@@ -104,23 +104,23 @@ def build_parser() -> argparse.ArgumentParser:
     listing.set_defaults(handler=_handle_plugin_status)
     upload = plugin_commands.add_parser(
         "upload", help="Register a plugin file; optionally arm it on a runtime host.",
-        description="Store a file in an existing live catalog. Upload success means available; selection stays unchanged unless --arm requests adoption before a subsequent cycle.",
+        description="Store a file in an existing live catalog. Upload success means available; source that does not compile is refused. Selection stays unchanged unless --arm, which loads it on the host and fails with its import or construction error.",
         epilog="Verify registration with: ./cli/automa vehicles plugins status --id <vehicle> --step <step>. Use --url for an existing workbench catalog.",
     )
     target = upload.add_mutually_exclusive_group(required=True)
     target.add_argument("--id", dest="vehicle_id", help="Vehicle whose catalog receives the upload.")
     target.add_argument("--url", help="Runtime or workbench URL; bypass vehicle discovery.")
-    upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; code is not imported during registration.")
+    upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; it must compile but is not imported until armed.")
     upload.add_argument("--step", choices=STEPS, required=True, help="Cycle step whose catalog receives the file.")
     upload.add_argument("--plugin-id", required=True, help="Plugin ID within the step; repeat an ID to make a new revision available.")
-    upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved only when loaded downstream.")
+    upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved when armed.")
     upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
     upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
     upload.set_defaults(handler=_handle_plugin_upload)
 
     arm = plugin_commands.add_parser(
         "arm", help="Add/update uploaded or packaged plugins without restarting automation.",
-        description="Request the latest catalog definitions together. New IDs append; existing IDs update in place. Loading occurs before a subsequent cycle, and status distinguishes requested from applied revisions.",
+        description="Request the latest catalog definitions together. New IDs append; existing IDs update in place. The host loads them before answering: an import or construction error exits 2 and keeps the previous selection. A loaded selection applies at the host's next cycle.",
         epilog="With --selection, use a JSON map such as {\"perception\": [\"prototype\"], \"memory\": [\"helper\"]}. Arming never starts automation or changes its control mode.",
     )
     arm_target = arm.add_mutually_exclusive_group(required=True)
@@ -1532,12 +1532,13 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "Example:",
         "  ./cli/automa vehicles plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
         "  ./cli/automa vehicles plugins status --id chase-sim-chaser --step perception", "",
-        "Upload succeeds after storage and registration; imports and dependencies can fail downstream.",
+        "Upload refuses source that does not compile; imports and dependencies load when armed.",
         "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.", "",
         "Use upload --arm for one-command registration and arming; it calls the same operation as arm.",
         "Arming supports perception, memory and proposal. New IDs append; existing IDs update in place.",
-        "Other plugins retain their definitions/configs. A request applies before a subsequent cycle.",
-        "Status distinguishes available, requested and applied revisions, including loading failures.",
+        "Other plugins retain their definitions/configs. The host loads the selection before answering;",
+        "a load error exits 2 and keeps the previous selection. A loaded selection applies at the next cycle.",
+        "Status distinguishes available, requested and applied revisions, and exits 2 while the last arm failed.",
         "Arming does not start automation or change control mode. Workbench catalogs support upload only.", "",
         "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
         "Detailed help: ./cli/automa vehicles plugins <command> --help",

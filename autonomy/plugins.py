@@ -142,12 +142,17 @@ class LocalPluginCatalog:
     ) -> PluginDefinition:
         """Store source and publish its definition; loading belongs to selection.
 
+        Source that does not compile is refused here, naming its line.
         Sources live outside installed packages for this catalog's lifetime.
         Every upload gets its own file, so an existing selection can retain its
         definition and source even when this ID gains another available revision.
         """
 
         definition = PluginDefinition(step, plugin_id, entrypoint, config or {})
+        try:
+            compile(source, filename, "exec")
+        except SyntaxError as exc:
+            raise ValueError(f"{filename}:{exc.lineno}: {exc.msg}") from exc
         with self._lock:
             if self._sources is None:
                 self._sources = tempfile.mkdtemp(prefix="automa-plugins-")
@@ -318,6 +323,14 @@ class PluginSelectionRuntime(Generic[_T]):
         """The definitions and instances currently published by the step."""
 
         return self._applied
+
+    @property
+    def prepared(self) -> bool:
+        """Whether an outstanding preparation stages the manager's current selection."""
+
+        return self._prepared is not None and tuple(
+            definition for definition, _ in self._prepared
+        ) == self.manager.selected
 
     def prepare(
         self,

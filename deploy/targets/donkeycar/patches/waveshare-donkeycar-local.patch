@@ -255,14 +255,14 @@ index 8af4669..0fde4f0 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +251,37 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +251,39 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
 +class AutonomyRoutesAPI(RequestHandler):
 +    """Transport only; the shared runtime route table answers every request."""
 +
-+    def _dispatch(self):
++    async def _dispatch(self):
 +        routes = getattr(self.application, "autonomy_routes", None)
 +        if routes is None:
 +            self.set_status(503)
@@ -272,28 +272,30 @@ index 8af4669..0fde4f0 100644
 +                sort_keys=True,
 +            ))
 +            return
-+        status, headers, body = routes.handle(
-+            self.request.method, self.request.uri, self.request.body
++        # Arming loads plugins and waits out a cycle; drive and video stay served meanwhile.
++        loop = asyncio.get_running_loop()
++        status, headers, body = await loop.run_in_executor(
++            None, routes.handle, self.request.method, self.request.uri, self.request.body
 +        )
 +        self.set_status(status)
 +        for name, value in headers.items():
 +            self.set_header(name, value)
 +        self.write(body)
 +
-+    def get(self):
-+        self._dispatch()
++    async def get(self):
++        await self._dispatch()
 +
-+    def head(self):
-+        self._dispatch()
++    async def head(self):
++        await self._dispatch()
 +
-+    def post(self):
-+        self._dispatch()
++    async def post(self):
++        await self._dispatch()
 +
 +
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +428,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +430,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -346,7 +348,7 @@ index 8af4669..0fde4f0 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +523,3 @@ class WebFpv(Application):
+@@ -440,5 +525,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

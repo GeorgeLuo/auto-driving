@@ -228,32 +228,36 @@ class PluginArmingFlows(unittest.TestCase):
                 if phase != "stopped":
                     self.assertEqual(host.session_status()["status"], "completed")
 
-    def test_import_failure_is_downstream_and_the_group_keeps_previous_applied_definitions(self):
+    def test_an_import_failure_fails_the_arm_and_keeps_the_previous_selection(self):
         with (image_source(1) as root, self.host(root, activations={
                 "perception": packaged_activation("perception", ["frame"]),
         }) as (host, base)):
+            file = root / "proposal.py"
+            write_plugin(file, "proposal", "prototype-proposal", 1)
+            file.write_text("import not_uploaded_yet\n" + file.read_text())
+            upload(base, file, "proposal", "prototype-proposal")
             before = catalog(base)
-            for step in ("perception", "proposal"):
-                file = root / f"{step}.py"
-                write_plugin(file, step, f"prototype-{step}", 1)
-                if step == "proposal":
-                    file.write_text("import not_uploaded_yet\n" + file.read_text())
-                upload(base, file, step, f"prototype-{step}")
-                arm_step(base, step, f"prototype-{step}")
+            for command in (
+                ("arm", "--step", "proposal", "--plugin", "prototype-proposal"),
+                ("upload", "--file", str(file), "--step", "proposal", "--plugin-id", "prototype-proposal",
+                 "--entrypoint", "prototype:Prototype", "--arm"),
+            ):
+                with self.subTest(command=command[0]):
+                    refused = run_automa("vehicles", "plugins", *command, "--url", base, check=False)
+                    self.assertEqual(refused.returncode, 2, refused.stdout)
+                    self.assertIn("Arming: failed", refused.stdout)
+                    self.assertIn("ModuleNotFoundError: No module named 'not_uploaded_yet'", refused.stdout)
+            failed = run_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
+            self.assertEqual(failed.returncode, 2)
+            shown = json.loads(failed.stdout)
+            self.assertEqual(shown["arming"]["status"], "failed")
+            self.assertEqual(shown["arming"]["requested"], before["arming"]["requested"])
+            self.assertEqual(shown["arming"]["applied"], before["arming"]["applied"])
+            self.assertEqual(shown["applied_decision"], before["applied_decision"])
             host.run(frame(root, 1))
-            failed = catalog(base)
-            self.assertEqual(failed["arming"]["status"], "failed")
-            self.assertIn("not_uploaded_yet", failed["arming"]["error"])
-            self.assertEqual(failed["arming"]["applied"], before["arming"]["applied"])
-            self.assertEqual(failed["applied_decision"], before["applied_decision"])
-            self.assertGreater(host.status()["cycle_count"], 0)
-            # Re-upload alone does not replace the failed requested snapshot.
-            write_plugin(root / "proposal.py", "proposal", "prototype-proposal", 2)
-            upload(base, root / "proposal.py", "proposal", "prototype-proposal")
-            host.run(frame(root, 2))
-            self.assertEqual(catalog(base)["arming"]["status"], "failed")
-            arm_step(base, "proposal", "prototype-proposal")
-            self.assertEqual(proposal(host.run(frame(root, 3)), "prototype-proposal").metadata["revision"], 2)
+            write_plugin(file, "proposal", "prototype-proposal", 2)
+            upload(base, file, "proposal", "prototype-proposal", arm=True)
+            self.assertEqual(proposal(host.run(frame(root, 2)), "prototype-proposal").metadata["revision"], 2)
             self.assertEqual(catalog(base)["arming"]["status"], "applied")
 
     def test_upload_remains_available_when_composed_arming_fails_on_a_workbench(self):

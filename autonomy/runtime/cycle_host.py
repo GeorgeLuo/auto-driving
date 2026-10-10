@@ -165,7 +165,12 @@ class AutonomyCycleHost:
             return requested
 
     def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
-        """Add/update named definitions from one catalog snapshot, without loading."""
+        """Add/update named definitions from one catalog snapshot and load them now.
+
+        Loading between cycles answers the request with any import or
+        construction error and keeps the previous selection. A loaded group
+        publishes together at the next cycle.
+        """
 
         if not isinstance(selections, Mapping) or not selections:
             raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
@@ -189,14 +194,28 @@ class AutonomyCycleHost:
                         raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
                     current[plugin_id] = definition
                 requested[step] = tuple(current.values())
-            for step, selected in requested.items():
-                if self.step(step) is None:
-                    self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
-                self.step(step).plugin_manager.select(selected)
+            self._arm_request_id += 1
+            previous: dict[str, tuple[Any, ...]] = {}
+            try:
+                for step, selected in requested.items():
+                    if self.step(step) is None:
+                        self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
+                    runner = self.step(step)
+                    previous[step] = runner.plugin_manager.selected
+                    runner.plugin_manager.select(selected)
+                    if runner.plugin_manager.selected != tuple(item for item, _ in runner.applied):
+                        runner.prepare_selection()
+            except Exception as exc:  # noqa: BLE001 - plugin import and construction
+                for item, selected in previous.items():
+                    self.step(item).discard_selection()
+                    self.step(item).plugin_manager.select(selected)
+                self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
+                return {"ok": False, "status": "failed", "error": self._selection_error,
+                        "arming": self.selection_status()}
+            for step in requested:
                 self._pending_activations.pop(step, None)
                 self._armed_steps.add(step)
             self._selection_error = None
-            self._arm_request_id += 1
             state = self.selection_status()
             return {"ok": True, "status": state["status"], "arming": state}
 
@@ -235,7 +254,8 @@ class AutonomyCycleHost:
         phase = "prepare"
         try:
             for step in changed:
-                self.step(step).prepare_selection()
+                if not self.step(step).selection_prepared:
+                    self.step(step).prepare_selection()
             phase = "commit"
             for step in changed:
                 self.step(step).commit_selection(self.shared_memory)

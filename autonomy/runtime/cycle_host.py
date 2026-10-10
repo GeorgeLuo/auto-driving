@@ -55,7 +55,7 @@ LIVE_SELECTION_STEPS = ARMING_STEPS
 
 
 # A status read waits this long for a running cycle, then answers with the
-# step reports from before it, so a slow plugin never hides the host.
+# step reports from the last refresh, so a slow plugin never hides the host.
 STATUS_WAIT_S = 0.05
 
 
@@ -91,11 +91,16 @@ class AutonomyCycleHost:
         self._applied_decision: dict[str, Any] | None = None
         self._cycle_in_progress: dict[str, Any] | None = None
         self._step_reports: dict[str, Any] = {}
+        self._step_reports_wanted = False
         self._selection: dict[str, Any] | None = None
         self.plugin_catalog = PluginCatalogAPI(
             self.catalog, arm=self.arm, selection_status=self.selection_status,
             applied_decision=self.applied_decision,
         )
+        # A host whose cycles run back to back may never free the lock for a
+        # status read, so its steps and arming are reported from the start.
+        self._refresh_step_reports()
+        self.selection_status()
 
     @classmethod
     def from_runtime(cls, runtime_root: Path, *, target: ControlTarget | None = None) -> "AutonomyCycleHost":
@@ -116,6 +121,7 @@ class AutonomyCycleHost:
         with self._lock:
             self._attach_catalog(runner)
             self.cycle.steps = replace(self.cycle.steps, **{require_step(step): runner})
+            self._refresh_step_reports()
 
     def _attach_catalog(self, runner: Any) -> None:
         manager = getattr(runner, "plugin_manager", None)
@@ -221,9 +227,7 @@ class AutonomyCycleHost:
 
     def selection_status(self) -> dict[str, Any]:
         if not self._lock.acquire(timeout=STATUS_WAIT_S):
-            if self._selection is not None:
-                return deepcopy(self._selection)
-            self._lock.acquire()
+            return deepcopy(self._selection)
         try:
             requested, applied = {}, {}
             pending = False
@@ -277,6 +281,8 @@ class AutonomyCycleHost:
                 raise
         finally:
             self._record_applied_decision()
+            self._refresh_step_reports()
+            self.selection_status()
 
     def use_applied_decision(self, identity: Mapping[str, Any]) -> None:
         """Seed the decision identity published until a restaged selection applies."""
@@ -367,6 +373,9 @@ class AutonomyCycleHost:
                     traceback.format_exception_only(type(exc), exc)
                 ).strip()
                 raise
+            finally:
+                if self._step_reports_wanted:
+                    self._refresh_step_reports()
             self._cycle_in_progress = None
             return result
 
@@ -473,28 +482,38 @@ class AutonomyCycleHost:
         }
 
     def _report_steps(self) -> dict[str, Any]:
-        """Each step's report; during a running cycle, the reports from before it."""
+        """Each step's report; during a running cycle, the last refreshed reports.
+
+        A read the running cycle turns away asks it to refresh them as it ends.
+        """
 
         if not self._lock.acquire(timeout=STATUS_WAIT_S):
+            self._step_reports_wanted = True
             return deepcopy(self._step_reports)
         try:
-            steps: dict[str, Any] = {}
-            for step in STEPS:
-                runner = getattr(self.cycle.steps, step)
-                report = getattr(runner, "status", None)
-                if runner is None:
-                    steps[step] = None
-                elif callable(report):
-                    try:
-                        steps[step] = report()
-                    except Exception as exc:  # noqa: BLE001 - status must not fail the host
-                        steps[step] = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
-                else:
-                    steps[step] = {"runner": type(runner).__name__}
-            self._step_reports = steps
-            return deepcopy(steps)
+            return deepcopy(self._refresh_step_reports())
         finally:
             self._lock.release()
+
+    def _refresh_step_reports(self) -> dict[str, Any]:
+        """Collect each step's report; the caller holds the cycle lock or owns the host."""
+
+        steps: dict[str, Any] = {}
+        for step in STEPS:
+            runner = getattr(self.cycle.steps, step)
+            report = getattr(runner, "status", None)
+            if runner is None:
+                steps[step] = None
+            elif callable(report):
+                try:
+                    steps[step] = report()
+                except Exception as exc:  # noqa: BLE001 - status must not fail the host
+                    steps[step] = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+            else:
+                steps[step] = {"runner": type(runner).__name__}
+        self._step_reports = steps
+        self._step_reports_wanted = False
+        return steps
 
     def reset_memory(self) -> dict[str, Any] | None:
         """Reset the memory step when present.
@@ -516,6 +535,7 @@ class AutonomyCycleHost:
             fresh = memory.reset(self.shared_memory)
             self.shared_memory.clear()
             self.shared_memory.update(fresh)
+            self._refresh_step_reports()
             return memory.report()
 
 

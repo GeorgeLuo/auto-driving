@@ -303,28 +303,40 @@ class CycleHostStepTests(unittest.TestCase):
         recording = _RecordingProposal()
 
         def slow_proposal(context, observation):
-            if context.frame_id == "frame_2":
+            if context.frame_id != "frame_1":
                 entered.set()
                 release.wait(5.0)
             return recording(context, observation)
 
         host, _ = _host(proposal=slow_proposal)
         host.run(DecisionFrameContext("frame_1", 0, 1_000))
-        before = host.status()["steps"]
-        cycle = threading.Thread(target=host.run, args=(DecisionFrameContext("frame_2", 1, 2_000),))
-        cycle.start()
-        try:
-            self.assertTrue(entered.wait(5.0))
-            started = time.monotonic()
-            status = host.status()
-            self.assertLess(time.monotonic() - started, 1.0)
-            self.assertEqual(status["cycle_in_progress"]["frame_id"], "frame_2")
-            self.assertEqual(status["steps"], before)
-        finally:
-            release.set()
-            cycle.join(5.0)
+
+        def busy_status(frame_id: str, index: int) -> dict:
+            """Read status while ``frame_id`` holds the cycle, then let it finish."""
+            entered.clear()
+            release.clear()
+            cycle = threading.Thread(
+                target=host.run, args=(DecisionFrameContext(frame_id, index, 1_000 * (index + 1)),)
+            )
+            cycle.start()
+            try:
+                self.assertTrue(entered.wait(5.0))
+                started = time.monotonic()
+                status = host.status()
+                self.assertLess(time.monotonic() - started, 1.0)
+                self.assertEqual(status["cycle_in_progress"]["frame_id"], frame_id)
+                return status["steps"]
+            finally:
+                release.set()
+                cycle.join(5.0)
+
+        # Back-to-back cycles never freed the lock for a read, yet the steps report.
+        steps = busy_status("frame_2", 1)
+        self.assertEqual(steps["action"]["plugin_ids"], list(host.steps.action.plugin_ids))
+        # The turned-away read had frame_2 refresh the counters as it ended.
+        self.assertEqual(busy_status("frame_3", 2)["action"]["run_count"], 2)
         self.assertIsNone(host.status()["cycle_in_progress"])
-        self.assertEqual(host.status()["cycle_count"], 2)
+        self.assertEqual(host.status()["cycle_count"], 3)
 
 
 if __name__ == "__main__":

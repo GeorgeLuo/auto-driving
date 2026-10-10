@@ -183,8 +183,8 @@ name alone does not identify a vehicle.
 Otherwise the id must be discoverable; `--timeout-s` bounds each discovery
 probe. `--dry-run` checks resolution without writing an activation or making a
 new id known offline. Existing perception identity metadata remains usable.
-Older memory or decision activations without provider metadata require a
-matching identity in another step or discovery on the next update.
+Older step activations without provider metadata require a matching identity
+in another step or discovery on the next update.
 
 Every step update records `metadata.controller_bundle` with `root_dir`,
 `autonomy_dir`, `implementations_dir`, `runtime_dir`, and `release`.

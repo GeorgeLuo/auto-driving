@@ -103,6 +103,16 @@ class LiveCommandsTests(unittest.TestCase):
                 failed = [gate for gate in report["gates"] if not gate["passed"]]
                 self.assertEqual(result.returncode, 0, failed)
 
+    def test_viability_of_an_idle_host_exits_2_before_measuring(self) -> None:
+        started = time.monotonic()
+        result = self.automa("perception", "viability", "--no-record", "--json")
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["error"], "no_fresh_frames")
+        self.assertIn("is not processing frames", payload["message"])
+        self.assertIn(START_HOST, payload["message"])
+
     def test_memory_reset_is_confirmed_while_the_session_refills_memory(self) -> None:
         self.observe()
         result = self.automa("memory", "reset", "--json")

@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from .paths import ROOT, display_path
+from autonomy.runtime.client import RuntimeClient
+
 from .host_publications import fetch_observation_publication
 from .runtime_hosts import RuntimeHostError, runtime_base_url, staged_connection
 
@@ -25,6 +27,7 @@ DEFAULT_SAMPLE_PERIOD_S = 0.25
 REQUIRED_MIN_FRESH_HZ = 2.0
 REQUIRED_CADENCE_FRACTION = 0.90
 REQUIRED_P95_AGE_MS = 1000.0
+FRESH_FRAME_WAIT_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -41,27 +44,64 @@ def _resolve_viability_host(
 ) -> tuple[str | None, CommandResult | None]:
     """The runtime host's base URL, resolved before creating a report directory or sampling.
 
+    The host must be processing frames: a measurement of a host whose latest
+    frame does not advance would only fail every gate after the full duration.
     Preflight failures exit 2. JSON mode returns the shared error envelope;
     measured gate failures remain step-specific reports with exit 1.
     """
 
     try:
-        return runtime_base_url(vehicle_id), None
+        base_url = runtime_base_url(vehicle_id)
     except RuntimeHostError as exc:
-        message = str(exc)
+        error, message = "no_runtime_host", str(exc)
+    else:
+        message = _stalled_frames_message(vehicle_id, base_url)
+        if message is None:
+            return base_url, None
+        error = "no_fresh_frames"
     if json_output:
         message = json.dumps(
             {
                 "schema": "vehicle_step_viability_error_v0",
                 "vehicle_id": vehicle_id,
                 "step": step,
-                "error": "no_runtime_host",
+                "error": error,
                 "message": message,
             },
             indent=2,
             sort_keys=True,
         )
     return None, CommandResult(2, message)
+
+
+def _stalled_frames_message(vehicle_id: str, base_url: str) -> str | None:
+    """Why the host is not processing frames, or None once its latest frame advances."""
+
+    def latest() -> tuple[str | None, str | None]:
+        try:
+            frame = fetch_observation_publication(base_url, timeout_s=FRESH_FRAME_WAIT_S).get("frame")
+        except Exception as exc:  # noqa: BLE001 - reported as the preflight failure
+            return None, f"{type(exc).__name__}: {exc}"
+        return (frame.get("frame_id") if isinstance(frame, dict) else None), None
+
+    first, error = latest()
+    deadline = time.monotonic() + FRESH_FRAME_WAIT_S
+    while error is None and time.monotonic() < deadline:
+        time.sleep(0.1)
+        frame_id, error = latest()
+        if frame_id is not None and frame_id != first:
+            return None
+    try:
+        session = RuntimeClient(base_url, timeout_s=FRESH_FRAME_WAIT_S).host_status().get("session") or {}
+    except Exception:  # noqa: BLE001 - the session status only adds context
+        session = {}
+    return "\n".join([
+        f"{vehicle_id}'s host at {base_url} is not processing frames: "
+        + (error or f"its latest frame stayed {first or 'none'} for {FRESH_FRAME_WAIT_S:g} s")
+        + f" (session: {session.get('status', 'unknown')}).",
+        "Viability measures a host that is processing frames; start a run if none is active.",
+        f"Run: ./cli/automa vehicles automation run --id {vehicle_id} --observe-only",
+    ])
 
 
 def run_perception_viability_measurement(

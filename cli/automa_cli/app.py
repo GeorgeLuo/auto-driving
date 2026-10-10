@@ -278,8 +278,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of decision cycles to complete. 0 means an unbounded background "
-            "run; stop it with vehicles automation stop."
+            "Number of decision cycles to complete; a run that applies control needs one. "
+            "0 (unbounded) is allowed only with --observe-only; stop it with vehicles automation stop."
         ),
     )
     automation_run.add_argument(
@@ -391,8 +391,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of decision cycles to complete. 0 means an unbounded background "
-            "run; stop it with vehicles automation stop."
+            "Number of decision cycles to complete; a run that applies control needs one. "
+            "0 (unbounded) is allowed only with --observe-only; stop it with vehicles automation stop."
         ),
     )
     automation_restart.add_argument(

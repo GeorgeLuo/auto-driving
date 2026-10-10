@@ -31,6 +31,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             ):
                 result = start_vehicle_automation_background(
                     vehicle_id="chase-sim-chaser",
+                    take_control=False,
                     startup_wait_s=0.1,
                 )
 
@@ -114,6 +115,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             ):
                 result = start_vehicle_automation_background(
                     vehicle_id="chase-sim-chaser",
+                    take_control=False,
                     open_view=True,
                     startup_wait_s=1.0,
                 )
@@ -151,8 +153,8 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         "status": "running",
                         "pid": 45454,
                         "run_id": "run-current",
-                        "action_policy": "autonomy",
-                        "control_application": "shared_execution",
+                        "action_policy": "observe_only",
+                        "control_application": "not_applied",
                     }
                 ),
                 encoding="utf-8",
@@ -186,6 +188,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             ):
                 result = start_vehicle_automation_background(
                     vehicle_id="chase-sim-chaser",
+                    take_control=False,
                     open_view=True,
                 )
 

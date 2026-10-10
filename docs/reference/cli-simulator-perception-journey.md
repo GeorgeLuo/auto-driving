@@ -71,7 +71,8 @@ same live worker generation. `--open-view` is explicit. A browser-launch
 failure leaves the healthy worker running and prints the URL for manual use.
 
 `--num-decisions 0` starts an unbounded background worker; the launch command returns
-once the correlated view is ready. Use `automation stop` to stop the worker.
+once the correlated view is ready and prints `automation stop`, which stops the worker.
+Only `--observe-only` runs unbounded: a run that applies control needs `--num-decisions N`.
 Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 

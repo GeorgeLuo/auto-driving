@@ -178,6 +178,21 @@ def _decision_summary(identity: Any) -> dict[str, Any]:
     }
 
 
+def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: int) -> RunConfiguration:
+    """The run a start requests; a run that applies control is always bounded."""
+
+    if take_control and num_decisions == 0:
+        raise ValueError(
+            "A run that applies control needs --num-decisions N (N > 0); "
+            "only --observe-only runs unbounded."
+        )
+    return RunConfiguration(
+        mode="autonomy" if take_control else "observe_only",
+        interval_s=interval_s,
+        num_decisions=num_decisions,
+    )
+
+
 def run_vehicle_automation(
     *,
     vehicle_id: str,
@@ -190,10 +205,8 @@ def run_vehicle_automation(
     output: TextIO | None = None,
 ) -> CommandResult:
     try:
-        configuration = RunConfiguration(
-            mode="autonomy" if take_control else "observe_only",
-            interval_s=interval_s,
-            num_decisions=num_decisions,
+        configuration = _run_configuration(
+            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -252,10 +265,8 @@ def start_vehicle_automation_background(
     startup_wait_s: float = 20.0,
 ) -> CommandResult:
     try:
-        configuration = RunConfiguration(
-            mode="autonomy" if take_control else "observe_only",
-            interval_s=interval_s,
-            num_decisions=num_decisions,
+        configuration = _run_configuration(
+            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -491,8 +502,8 @@ def start_vehicle_automation_background(
             f"First frame: {startup.get('frame_id', 'captured')}",
             (
                 "Startup phases: "
-                f"capture={capture_phase.get('duration_ms', 'unknown')}ms, "
-                f"perception={perception_phase.get('duration_ms', 'unknown')}ms, "
+                f"capture={_duration_label(capture_phase)}, "
+                f"perception={_duration_label(perception_phase)}, "
                 "view=current-generation correlated"
             ),
             f"Runtime view: {startup.get('view_url')}",
@@ -501,6 +512,7 @@ def start_vehicle_automation_background(
         if isinstance(capture_lag, int) and capture_lag > 0:
             lines.append(f"Capture lag: {capture_lag} frames")
         lines.append("Ready for: inspect perception and stop automation")
+        lines.append(f"Stop: ./cli/automa vehicles automation stop --id {vehicle_id}")
         if open_view:
             lines.append(_open_view_message(str(startup.get("view_url"))))
         exit_code = 0
@@ -772,6 +784,11 @@ def _view_ready_for_inspection(view: dict[str, Any]) -> bool:
     return perception_view_ready(view)
 
 
+def _duration_label(phase: dict[str, Any]) -> str:
+    value = phase.get("duration_ms")
+    return f"{value}ms" if isinstance(value, (int, float)) else "not reported"
+
+
 def _open_view_message(url: str) -> str:
     """Attempt the explicit browser launch without weakening worker readiness."""
 
@@ -1024,6 +1041,10 @@ def restart_vehicle_automation(
     open_view: bool = False,
     wait_s: float = 3.0,
 ) -> CommandResult:
+    try:
+        _run_configuration(take_control=take_control, interval_s=interval_s, num_decisions=num_decisions)
+    except (TypeError, ValueError) as exc:
+        return CommandResult(2, str(exc))
     bundle = bundle_paths(vehicle_id)
     problems = bundle_activation_problems(bundle, vehicle_id)
     if problems:

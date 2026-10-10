@@ -91,6 +91,31 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 child.terminate()
                 child.wait(timeout=5)
 
+    def test_an_unbounded_control_run_is_refused_before_anything_stops(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            try:
+                paths = write_runtime_fixture(runtime_root, VEHICLE_ID, pid=child.pid)
+                process = paths.automation_process.read_bytes()
+                for command in ("run", "restart"):
+                    with self.subTest(command=command):
+                        result = run_automa(
+                            "vehicles", "automation", command, "--id", VEHICLE_ID,
+                            runtime_root=runtime_root, check=False,
+                        )
+                        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                        self.assertIn(
+                            "A run that applies control needs --num-decisions N (N > 0); "
+                            "only --observe-only runs unbounded.",
+                            result.stdout,
+                        )
+                self.assertIsNone(child.poll())
+                self.assertEqual(paths.automation_process.read_bytes(), process)
+            finally:
+                child.terminate()
+                child.wait(timeout=5)
+
     def test_perception_readiness_rejects_old_memory_and_explicit_restage_recovers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"

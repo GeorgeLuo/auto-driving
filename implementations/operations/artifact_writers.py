@@ -38,7 +38,7 @@ def write_contact_sheet(path: Path, results: list[dict[str, Any]]) -> None:
         before_path = Path(result["before_capture"]["path"])
         after_path = Path(result["after_capture"]["path"])
         diff_path = Path(result["diff_path"])
-        status = "PASS" if result["passed"] else "FAIL"
+        status = {True: "PASS", False: "FAIL"}.get(result["passed"], "DRY RUN")
         comparison = result["comparison"]
 
         tiles = [

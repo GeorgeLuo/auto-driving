@@ -313,9 +313,11 @@ Stop or restart the worker:
 Useful run options:
 
 - `--num-decisions N` bounds the number of completed decision cycles and stops
-  movement afterward. `--num-decisions 0` starts an unbounded
-  background worker; the launch command returns after readiness. Use
-  `vehicles automation stop` to stop it. Ctrl-C in a terminal stream stops
+  movement afterward. A run that applies control needs it: `run` and `restart`
+  refuse `--num-decisions 0` unless `--observe-only` is set. An observe-only
+  `--num-decisions 0` starts an unbounded background worker; the launch command
+  returns after readiness and prints its stop command,
+  `vehicles automation stop`. Ctrl-C in a terminal stream stops
   that stream, not the worker.
 - `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds on both hosts.
 - `--interval-s 0` captures as quickly as the vehicle interface allows.
@@ -728,7 +730,8 @@ startup setting is `AUTONOMY_CAPTURE_INTERVAL_S`; rename any custom
 `AUTONOMY_OBSERVATION_INTERVAL_S` override when updating.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
 Run configuration and automation status use `num_decisions` (zero means
-unbounded); host session status reports `processed_decisions`.
+unbounded, which the CLI starts only with `--observe-only`); host session status
+reports `processed_decisions`.
 
 This change updates the physical harness and vendor HTTP API. Install both
 layers before using the shared commands on PiCar:
@@ -775,7 +778,8 @@ combination and scores whether the command produced a visible change. A live
 check acquires that vehicle's control target and sends movement pulses, so
 raise the vehicle or clear its path first. `--dry-run` only captures frames:
 it does not acquire control or send pulses, and it does not switch simulator
-playback.
+playback. A dry run reports the captured frame pairs unscored and exits 0; a
+live check exits 1 when a check fails.
 
 ```sh
 ./cli/automa vehicles operation startup-check --id piracer
@@ -784,6 +788,7 @@ playback.
 
 Results are written under `lab/runs/startup-check/<run-id>/`, including the
 plan, report, summary, before/after frames, diffs, and contact sheet.
+`report.json` lists the control `acquire` and `release` events of a live check.
 
 ## Generated Runtime State
 

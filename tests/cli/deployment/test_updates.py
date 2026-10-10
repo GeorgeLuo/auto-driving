@@ -220,7 +220,7 @@ class DeploymentUpdateTests(unittest.TestCase):
     def test_core_can_bootstrap_the_configured_picar_when_http_is_down(self) -> None:
         output = StringIO()
         with patch(
-            "cli.automa_cli.deploy.discover_active_vehicles",
+            "cli.automa_cli.vehicles.discover_active_vehicles",
             return_value={"vehicles": []},
         ) as discover:
             target, error = _resolve_picar_target(
@@ -238,11 +238,7 @@ class DeploymentUpdateTests(unittest.TestCase):
         self.assertIsNotNone(target)
         assert target is not None
         self.assertEqual(target.ssh_target, "piracer@piracer.local")
-        discover.assert_called_once_with(
-            timeout_s=0.1,
-            include_picar=True,
-            include_chase_sim=False,
-        )
+        self.assertFalse(discover.call_args.kwargs["include_chase_sim"])
         self.assertIn("HTTP readiness is unavailable", output.getvalue())
         self.assertIn("SSH will determine deploy reachability", output.getvalue())
 

@@ -48,7 +48,7 @@ from .step_activations import (
     format_activation_problems,
     read_bundle_activation,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, is_chase_vehicle_id
+from .vehicles import discover_vehicle, is_chase_vehicle_id
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -637,13 +637,10 @@ def _resolve_picar_target(
         _emit(output, f"Skipping active vehicle discovery for id {vehicle_id!r}.")
     else:
         _emit(output, f"Discovering active vehicles for id {vehicle_id!r}...")
-        payload = discover_active_vehicles(
-            timeout_s=timeout_s,
-            include_picar=True,
-            include_chase_sim=False,
+        found_vehicle, error = discover_vehicle(
+            vehicle_id, timeout_s=timeout_s, include_chase_sim=False
         )
-        found_vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-        if error:
+        if found_vehicle is None:
             if allow_offline_default and vehicle_id == get_default_picar_id():
                 default_base_url = get_default_picar_base_url()
                 vehicle = {
@@ -664,8 +661,6 @@ def _resolve_picar_target(
                 )
             else:
                 return None, CommandResult(2, error)
-        elif found_vehicle is None:
-            return None, CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
         else:
             vehicle = found_vehicle
 

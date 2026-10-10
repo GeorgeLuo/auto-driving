@@ -43,12 +43,7 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .paths import display_path, safe_path_part
-from .vehicles import (
-    DEFAULT_READINESS_TIMEOUT_S,
-    discover_active_vehicles,
-    find_vehicle_by_id,
-    format_active_vehicles,
-)
+from .vehicles import DEFAULT_READINESS_TIMEOUT_S, discover_vehicle
 
 # Steps whose packaged plugins are staged with `vehicles update <step>`.
 GENERIC_UPDATE_STEPS = ("observation", "proposal", "plan", "action")
@@ -232,22 +227,7 @@ def staging_vehicle(
         return vehicle, None
 
     _emit(output, f"Discovering active vehicles for id {vehicle_id!r}...")
-    payload = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-    if vehicle is None:
-        return None, "\n\n".join(
-            [
-                error or f"Vehicle {vehicle_id!r} was not found.",
-                "Discovery:",
-                format_active_vehicles(payload, include_inactive=True),
-            ]
-        )
-    return vehicle, None
+    return discover_vehicle(vehicle_id, timeout_s=timeout_s)
 
 
 def _offline_sim_vehicle(vehicle_id: str) -> dict[str, Any] | None:

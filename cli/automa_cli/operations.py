@@ -14,11 +14,7 @@ from implementations.operations import (
 )
 from .paths import ROOT, display_path
 from .vehicle_access import create_vehicle_access
-from .vehicles import (
-    discover_active_vehicles,
-    find_vehicle_by_id,
-    format_active_vehicles,
-)
+from .vehicles import discover_vehicle
 
 
 OPERATION_OUTPUT_ROOT = Path(
@@ -42,26 +38,9 @@ def run_vehicle_startup_check(
     dry_run: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
+    vehicle, error = discover_vehicle(vehicle_id, timeout_s=timeout_s)
     if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+        return CommandResult(2, error)
 
     preparation: dict[str, Any] | None = None
     try:

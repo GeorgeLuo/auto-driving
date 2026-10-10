@@ -182,6 +182,33 @@ def find_vehicle_by_id(
     return matches[0], None
 
 
+def discover_vehicle(
+    vehicle_id: str,
+    *,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+    include_picar: bool = True,
+    include_chase_sim: bool = True,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Discover ``vehicle_id``, or say what discovery saw and why each other candidate did not answer."""
+
+    payload = discover_active_vehicles(
+        timeout_s=timeout_s,
+        include_picar=include_picar,
+        include_chase_sim=include_chase_sim,
+        include_inactive=True,
+    )
+    vehicle, error = find_vehicle_by_id(payload, vehicle_id)
+    if vehicle is not None:
+        return vehicle, None
+    return None, "\n\n".join(
+        [
+            error or f"Vehicle {vehicle_id!r} was not found.",
+            "Discovery:",
+            format_active_vehicles(payload, include_inactive=True),
+        ]
+    )
+
+
 def get_vehicle_status(
     *,
     vehicle_id: str | None = None,
@@ -1397,6 +1424,8 @@ def _get(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[bool, str]:
         exc.close()
         return False, f"GET {url} returned HTTP {exc.code}"
     except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            return False, f"GET {url} did not answer within {timeout_s:g} s"
         return False, f"GET {url} failed: {exc.reason}"
     except TimeoutError:
-        return False, f"GET {url} timed out"
+        return False, f"GET {url} did not answer within {timeout_s:g} s"

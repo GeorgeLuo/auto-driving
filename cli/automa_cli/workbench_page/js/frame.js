@@ -180,13 +180,17 @@ function bindFloatingFrame(root) {
     });
   }
 
+  function close() {
+    state.closed = true;
+    apply();
+    syncRecall();
+  }
+
   if (closeButton) {
     closeButton.addEventListener("click", function (event) {
       event.preventDefault();
       event.stopPropagation();
-      state.closed = true;
-      apply();
-      syncRecall();
+      close();
     });
   }
 
@@ -201,6 +205,7 @@ function bindFloatingFrame(root) {
   apply();
   floatingFrames[root.id] = {
     restore: restore,
+    close: close,
     isMinimized: function () { return state.minimized; },
     isClosed: function () { return state.closed; }
   };
@@ -384,14 +389,15 @@ function drawOverlay() {
 Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
   button.addEventListener("click", function () {
     var frame = floatingFrames[button.getAttribute("data-recall")];
-    if (frame) frame.restore();
+    if (!frame) return;
+    if (frame.isClosed() || frame.isMinimized()) frame.restore();
+    else frame.close();
   });
 });
 syncRecall();
 elements.overlayToggle.addEventListener("click", function () {
   var next = elements.overlayToggle.value === "off" ? "on" : "off";
   elements.overlayToggle.value = next;
-  elements.overlayToggle.textContent = next === "on" ? "overlays" : "image";
   elements.overlayToggle.setAttribute("aria-pressed", next === "on" ? "true" : "false");
   drawOverlay();
 });

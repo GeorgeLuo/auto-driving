@@ -1,16 +1,9 @@
-"""Read-only adapter from PiCar decision publications to RuntimeViewServer.
-
-A Chase automation worker serves the same decision page itself; ``decision
-live`` points at it rather than adapting anything.
-"""
+"""Read-only adapter from a runtime host's decision publications to RuntimeViewServer."""
 
 from __future__ import annotations
 
-import threading
 import time
-import webbrowser
-from dataclasses import dataclass
-from typing import Any, TextIO
+from typing import Any
 
 from autonomy.decision_cycle.memory.interface import (
     MEMORY_REPORT_SCHEMA,
@@ -18,85 +11,25 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryPluginReport,
     MemoryReport,
 )
-from .bundles import controller_bundle_paths
-from .chase_observation import chase_automation_dir
 from .decision import (
-    RUNTIME_ROOT,
-    CommandResult,
     DecisionSurfaceError,
-    accept_picar_decision_publication,
-    load_decision_identity,
-    picar_decision_view_frame,
+    accept_decision_publication,
+    decision_view_frame,
 )
-from .decision_view import (
-    build_decision_host_telemetry_capture,
-    get_decision_view_status,
-    project_decision_with_host_telemetry,
-    unavailable_host_telemetry_panel,
-)
-from .picar_observation import (
-    fetch_autonomy_status,
+from .decision_view import unavailable_host_telemetry_panel
+from .host_publications import (
     fetch_decision_publication,
     fetch_observation_frame,
     frame_id_from_headers,
     HostTelemetryError,
-    fetch_host_telemetry_capture,
     fetch_host_telemetry_latest,
     fetch_host_telemetry_records,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    picar_decision_identity,
-    picar_observation_dir,
-    picar_base_url,
+    decision_publication_identity,
 )
-from .paths import safe_path_part
 from .runtime_view import RuntimeViewServer
-from .vehicles import (
-    discover_active_vehicles,
-    find_vehicle_by_id,
-    format_active_vehicles,
-    is_chase_vehicle_id,
-)
-
-
-@dataclass(frozen=True)
-class _ResolvedPicarVehicle:
-    vehicle_id: str
-    base_url: str
-
-
-def _resolve_picar_vehicle(
-    vehicle_id: str,
-    *,
-    timeout_s: float,
-) -> tuple[_ResolvedPicarVehicle | None, str | None]:
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=False,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return None, "\n\n".join(
-            [
-                error,
-                "Discovery:",
-                format_active_vehicles(discovery, include_inactive=True),
-            ]
-        )
-    if vehicle is None:
-        return None, f"Vehicle {vehicle_id!r} was not found."
-    if vehicle.get("provider") != "picar":
-        return None, (
-            f"Vehicle {vehicle_id!r} is provider {vehicle.get('provider')!r}; "
-            "live decision view supports chase-sim and picar."
-        )
-    base_url = picar_base_url(vehicle)
-    if not base_url:
-        return None, f"Vehicle {vehicle_id!r} has no PiCar base URL."
-    return _ResolvedPicarVehicle(vehicle_id, base_url), None
 
 
 def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
@@ -108,8 +41,10 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _frame_record(normalized: dict[str, Any], *, action_policy: str | None) -> dict[str, Any]:
+def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
     cycle = normalized["decision"]["cycle"]
+    # The mode the host ran this cycle under; it applies control only in autonomy.
+    mode = normalized["decision"]["application"]["mode"]
     proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
     source = proposal.get("source") if isinstance(proposal, dict) else None
     observation = source.get("observation") if isinstance(source, dict) else None
@@ -197,11 +132,9 @@ def _frame_record(normalized: dict[str, Any], *, action_policy: str | None) -> d
             if isinstance(observation_value, dict)
             else None
         ),
-        "action_policy": action_policy,
-        "control_source": "onboard",
-        "control_application": (
-            "shared_execution" if action_policy == "autonomy" else "not_applied"
-        ),
+        "action_policy": mode,
+        "control_source": "runtime_host",
+        "control_application": "shared_execution" if mode == "autonomy" else "not_applied",
     }
 
 
@@ -211,22 +144,22 @@ def _accepted_pair(
     vehicle_id: str,
     timeout_s: float,
 ) -> tuple[dict[str, Any], tuple[bytes, str]]:
-    """Read image first and accept only an exact PiCar decision/image pair."""
+    """Read image first and accept only an exact decision/image pair."""
 
     deadline = time.monotonic() + min(1.0, max(0.2, float(timeout_s)))
-    last_error = "matched PiCar decision image is unavailable"
+    last_error = "matched decision image is unavailable"
     while time.monotonic() < deadline:
         image_bytes, image_headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
         image_frame_id = frame_id_from_headers(image_headers)
         publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
         try:
-            normalized = accept_picar_decision_publication(
+            normalized = accept_decision_publication(
                 publication,
                 vehicle_id=vehicle_id,
                 now_ms=int(time.time() * 1000),
             )
         except DecisionSurfaceError as exc:
-            # PiCar and the CLI may have a few milliseconds of clock skew.
+            # The host and the CLI may have a few milliseconds of clock skew.
             # Keep the future-dated rejection fail-closed, but retry the
             # read-only pair while the published cycle becomes current.
             if exc.details.get("reason") != "future_dated":
@@ -243,13 +176,13 @@ def _accepted_pair(
             continue
         content_type = image_headers.get("content-type", "").split(";", 1)[0].strip()
         if content_type not in {"image/jpeg", "image/png"}:
-            raise ValueError(f"unsupported PiCar decision image type {content_type!r}")
+            raise ValueError(f"unsupported decision image type {content_type!r}")
         return normalized, (image_bytes, content_type)
     raise ConnectionError(last_error)
 
 
-class PicarDecisionViewAdapter:
-    """Publish accepted PiCar transactions through the shared decision view."""
+class DecisionViewAdapter:
+    """Publish a runtime host's accepted transactions through the shared decision view."""
 
     def __init__(
         self,
@@ -258,31 +191,28 @@ class PicarDecisionViewAdapter:
         base_url: str,
         view_server: RuntimeViewServer,
         timeout_s: float,
-        action_policy: str | None = None,
     ) -> None:
         self.vehicle_id = vehicle_id
         self.base_url = base_url
         self.view_server = view_server
         self.timeout_s = timeout_s
-        # The execution mode of the run publishing these frames; None when unknown.
-        self.action_policy = action_policy
 
     def publish_frame(
         self,
         normalized: dict[str, Any],
         image: tuple[bytes, str],
     ) -> bool:
-        self.view_server.decision.adopt_provider(_provider_identity(normalized))
-        frame_record = _frame_record(normalized, action_policy=self.action_policy)
-        stream_frame = picar_decision_view_frame(normalized)
+        self.view_server.decision.adopt(_provider_identity(normalized))
+        frame_record = _frame_record(normalized)
+        report = decision_view_frame(normalized)
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,
             normalized_decision=normalized,
             vehicle_id=self.vehicle_id,
             timeout_s=self.timeout_s,
         )
-        published = self.view_server.decision.publish_provider_transaction(
-            stream_frame=stream_frame,
+        published = self.view_server.decision.publish(
+            report=report,
             frame_record=frame_record,
             image=image,
         )
@@ -290,7 +220,7 @@ class PicarDecisionViewAdapter:
             self.view_server.decision.invalidate_latest()
             return False
 
-        # Keep the PiCar decision, perception, and memory pages on one
+        # Keep the decision, perception, and memory pages on one
         # RuntimeViewServer session. The decision image is already the exact
         # matched image, so do not fetch a second potentially different frame.
         try:
@@ -316,146 +246,6 @@ class PicarDecisionViewAdapter:
         return self.publish_frame(normalized, image)
 
 
-def run_live_decision_monitor(
-    *,
-    vehicle_id: str,
-    port: int = 0,
-    open_browser: bool = False,
-    timeout_s: float = 2.0,
-    output: TextIO | None = None,
-) -> CommandResult:
-    """Open the live decision page for Chase or PiCar."""
-
-    if not 0 <= int(port) <= 65535:
-        return CommandResult(2, "--port must be between 0 and 65535.")
-    if is_chase_vehicle_id(vehicle_id):
-        return _chase_decision_view(vehicle_id, open_browser=open_browser)
-    return _picar_decision_view(
-        vehicle_id,
-        port=port,
-        open_browser=open_browser,
-        timeout_s=timeout_s,
-        output=output,
-    )
-
-
-def _picar_action_policy(base_url: str, timeout_s: float) -> str | None:
-    """The onboard host's execution mode, or None when it reports none."""
-
-    try:
-        autonomy = fetch_autonomy_status(base_url, timeout_s=timeout_s).get("autonomy")
-    except ConnectionError:
-        return None
-    execution = autonomy.get("execution") if isinstance(autonomy, dict) else None
-    mode = execution.get("mode") if isinstance(execution, dict) else None
-    return mode if isinstance(mode, str) else None
-
-
-def _picar_decision_view(
-    vehicle_id: str,
-    *,
-    port: int,
-    open_browser: bool,
-    timeout_s: float,
-    output: TextIO | None,
-) -> CommandResult:
-    """Serve the shared RuntimeViewServer decision page from the PiCar's
-    publications until Ctrl-C."""
-
-    try:
-        resolved, error = _resolve_picar_vehicle(
-            vehicle_id,
-            timeout_s=max(0.1, float(timeout_s)),
-        )
-    except (OSError, TypeError, ValueError) as exc:
-        return CommandResult(2, f"Vehicle discovery failed: {type(exc).__name__}: {exc}")
-    if error is not None or resolved is None:
-        return CommandResult(2, error or f"Vehicle {vehicle_id!r} could not be resolved.")
-
-    server: RuntimeViewServer | None = None
-    try:
-        normalized, image = _accepted_pair(
-            resolved.base_url,
-            vehicle_id=resolved.vehicle_id,
-            timeout_s=timeout_s,
-        )
-        server = RuntimeViewServer(
-            vehicle_id=resolved.vehicle_id,
-            automation_dir=picar_observation_dir(vehicle_id),
-            port=port,
-            run_id=normalized["run_id"],
-            decision_provider_identity=_provider_identity(normalized),
-        ).start()
-        adapter = PicarDecisionViewAdapter(
-            vehicle_id=resolved.vehicle_id,
-            base_url=resolved.base_url,
-            view_server=server,
-            timeout_s=max(0.1, float(timeout_s)),
-            action_policy=_picar_action_policy(resolved.base_url, timeout_s),
-        )
-        if not adapter.publish_frame(normalized, image):
-            return CommandResult(2, "PiCar decision transaction was rejected")
-        page_path = server.decision.page_url()
-        if page_path is None or server.url is None:
-            return CommandResult(2, "PiCar decision view did not expose a generation URL")
-        view_url = f"{server.url.rstrip('/')}{page_path}"
-        if output is not None:
-            print(
-                f"Live decision view: {view_url}\n"
-                f"Vehicle: {resolved.vehicle_id} (picar onboard host {resolved.base_url})\n"
-                "Read-only decision view; no vehicle commands are sent. Ctrl-C stops it.",
-                file=output,
-                flush=True,
-            )
-        if open_browser and not webbrowser.open(view_url, new=2) and output is not None:
-            print(f"Open the view manually: {view_url}", file=output, flush=True)
-        while True:
-            adapter.action_policy = _picar_action_policy(resolved.base_url, timeout_s)
-            try:
-                adapter.refresh()
-            except Exception:  # noqa: BLE001 - every incomplete refresh fails closed
-                server.decision.invalidate_latest()
-            threading.Event().wait(0.2)
-    except KeyboardInterrupt:
-        return CommandResult(0, "Live decision view stopped.")
-    except (OSError, ValueError, TypeError, ConnectionError) as exc:
-        return CommandResult(2, f"live decision view unavailable: {type(exc).__name__}: {exc}")
-    finally:
-        if server is not None:
-            server.stop()
-
-
-def _chase_decision_view(vehicle_id: str, *, open_browser: bool) -> CommandResult:
-    """The decision page the running Chase automation worker serves."""
-
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    try:
-        identity = load_decision_identity(bundle)
-    except DecisionSurfaceError as exc:
-        return CommandResult(exc.exit_code, exc.message_text)
-    view = get_decision_view_status(
-        automation_dir=chase_automation_dir(vehicle_id),
-        vehicle_id=vehicle_id,
-        activation=identity,
-    )
-    if not view.get("available"):
-        return CommandResult(
-            2,
-            f"Live decision view unavailable for {vehicle_id}: {view.get('reason')}.\n"
-            f"Start it: ./cli/automa vehicles automation run --id {vehicle_id} --observe-only",
-        )
-    view_url = str(view["url"])
-    lines = [
-        f"Live decision view: {view_url}",
-        f"Vehicle: {vehicle_id} (chase-sim automation worker)",
-        "Read-only decision view; no vehicle commands are sent. "
-        "The automation worker serves it until it stops.",
-    ]
-    if open_browser and not webbrowser.open(view_url, new=2):
-        lines.append(f"Open the view manually: {view_url}")
-    return CommandResult(0, "\n".join(lines))
-
-
 def read_host_telemetry_panel(
     base_url: str,
     *,
@@ -464,7 +254,7 @@ def read_host_telemetry_panel(
     timeout_s: float = 3.0,
     now_ms: int | None = None,
 ) -> dict[str, Any]:
-    """Fetch the PiCar record and join it to the exact decision identity."""
+    """Fetch the host's record and join it to the exact decision identity."""
 
     effective_now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     try:
@@ -491,7 +281,7 @@ def read_host_telemetry_panel(
         except HostTelemetryError as latest_error:
             if latest_error.reason != "identity_mismatch":
                 raise
-            decision_identity = picar_decision_identity(normalized_decision)
+            decision_identity = decision_publication_identity(normalized_decision)
             sequence = (raw.get("host_tick") or {}).get("sequence")
             if type(sequence) is not int or sequence < 1:
                 raise latest_error
@@ -693,46 +483,3 @@ def _host_record_matches_identity(
             "completed_at_ms": source_frame.get("completed_at_ms"),
         },
     } == decision_identity
-
-
-def read_host_telemetry_capture(
-    base_url: str,
-    *,
-    normalized_decision: dict[str, Any],
-    vehicle_id: str,
-    after_sequence: int = 0,
-    limit: int = 128,
-    timeout_s: float = 3.0,
-    now_ms: int | None = None,
-) -> dict[str, Any]:
-    return fetch_host_telemetry_capture(
-        base_url,
-        normalized_decision=normalized_decision,
-        vehicle_id=vehicle_id,
-        after_sequence=after_sequence,
-        limit=limit,
-        now_ms=now_ms,
-        timeout_s=timeout_s,
-    )
-
-
-def project_live_decision_payload(
-    decision_payload: dict[str, Any],
-    host_telemetry_panel: dict[str, Any],
-) -> dict[str, Any]:
-    return project_decision_with_host_telemetry(decision_payload, host_telemetry_panel)
-
-
-def build_live_decision_capture(
-    *,
-    decision_payload: dict[str, Any],
-    host_telemetry_panel: dict[str, Any],
-    records_result: dict[str, Any] | None = None,
-    vehicle_id: str | None = None,
-) -> dict[str, Any]:
-    return build_decision_host_telemetry_capture(
-        decision_payload=decision_payload,
-        panel=host_telemetry_panel,
-        records_result=records_result,
-        vehicle_id=vehicle_id,
-    )

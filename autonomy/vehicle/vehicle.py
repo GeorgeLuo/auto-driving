@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -169,6 +170,10 @@ class CarInterface(Protocol):
     def capabilities(self) -> VehicleCapabilities:
         ...
 
+    def prepare_for_external_control(self) -> dict[str, Any]:
+        """Take the vehicle's external control input. Return the preparation receipt."""
+        ...
+
     def stop(self) -> None:
         ...
 
@@ -186,5 +191,36 @@ class CarInterface(Protocol):
 
     def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         ...
+
+
+def run_vehicle_pulse(car: CarInterface, pulse: VehiclePulse) -> dict[str, Any]:
+    """Send the car's action, hold it, stop, then wait out any settle time.
+
+    Each car still owns ``execute_action`` and ``stop``. Chase and PiCar share
+    this sequence, including the same receipt.
+    """
+
+    started_ms = int(time.time() * 1000)
+    try:
+        command = car.execute_action(
+            pulse.action,
+            throttle=pulse.throttle,
+            recording=pulse.recording,
+        )
+        time.sleep(pulse.duration_s)
+    finally:
+        car.stop()
+
+    if pulse.settle_s > 0:
+        time.sleep(pulse.settle_s)
+
+    return {
+        "label": pulse.label,
+        "pulse": pulse.to_dict(),
+        "command": command,
+        "started_at_ms": started_ms,
+        "completed_at_ms": int(time.time() * 1000),
+    }
+
 
 VEHICLE_ACTION_FIELDS = ("forward", "reverse", "steering")

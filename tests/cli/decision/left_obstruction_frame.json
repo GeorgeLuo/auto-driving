@@ -1,0 +1,49 @@
+{
+  "frame_id": "frame_001",
+  "frame_index": 1,
+  "observation": {
+    "artifacts": {},
+    "created_at_ms": 1000,
+    "metadata": {},
+    "observation_id": "obs_001",
+    "perception_plugin_id": "lightweight_observer",
+    "perception_schema": "perception_text_v0",
+    "schema": "decision_observation_v1",
+    "sensor_frame": {},
+    "signals": [],
+    "summary": [
+      "line"
+    ],
+    "things": []
+  },
+  "timestamp_ms": 1000,
+  "evidence": [
+    {
+      "confidence": 0.8,
+      "kind": "floor_boundary",
+      "label": "floor_boundary",
+      "location": {
+        "bbox_xyxy_norm": [
+          0.0,
+          0.0,
+          0.2,
+          0.5
+        ],
+        "frame": "image",
+        "polygon_xy_norm": null,
+        "zone": "left"
+      },
+      "properties": {},
+      "origin": {
+        "coordinate_frame": "image",
+        "observed_id": "ev_001",
+        "frame_id": "frame_001",
+        "observation_id": "obs_001",
+        "observed_at_ms": 1000,
+        "source_plugin_id": "src",
+        "updated_at_ms": 1000
+      },
+      "record_id": "thing:1:a"
+    }
+  ]
+}

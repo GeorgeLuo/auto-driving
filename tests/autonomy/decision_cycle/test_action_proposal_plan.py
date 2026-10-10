@@ -239,7 +239,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.authority.host_application.status, "unavailable")
         self.assertEqual(
-            result.authority.authorized_output["reason"], "hold-idle"
+            result.authority.authorized_output["reason"], "no-selected-command"
         )
         self.assertFalse(result.authority.proposed_applied)
         self.assertEqual(control.steering, 0.0)

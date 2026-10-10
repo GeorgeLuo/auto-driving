@@ -4,9 +4,8 @@ The decision tools (stream, apply, inspect, view) read the three decision
 steps' records together. ``DecisionRecords`` holds them and answers the
 questions the tools ask of a frame (its status, source, plan, and authority).
 ``DecisionRunners`` builds the three steps' runners from activation payloads
-and runs them for one frame, as the cycle would after memory. It uses the
-same staged-bundle loader as step info and the automation worker; recorded
-bundle metadata selects staged plugin code rather than workspace code.
+and runs them for one frame, as the cycle would after memory. A payload a
+vehicle recorded runs on the controller release it names, as in every replay.
 """
 
 from __future__ import annotations
@@ -30,7 +29,7 @@ from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.steps import builtin_activation
 from autonomy.runtime.control import AutonomyControl
 
-from .step_hosting import load_staged_runner
+from .inspection_runs import recorded_runner
 
 
 @dataclass(frozen=True)
@@ -121,9 +120,9 @@ class DecisionRunners:
             return activation
 
         return cls(
-            load_staged_runner(activation_for("proposal")),
-            load_staged_runner(activation_for("plan")),
-            load_staged_runner(activation_for("action")),
+            recorded_runner(activation_for("proposal")),
+            recorded_runner(activation_for("plan")),
+            recorded_runner(activation_for("action")),
         )
 
     @classmethod

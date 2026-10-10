@@ -14,8 +14,8 @@ class ChaseControlTarget:
     def __init__(self, car: ChaseSimCar) -> None:
         self.car = car
 
-    def acquire(self) -> None:
-        self.car.prepare_for_external_control()
+    def acquire(self) -> dict[str, Any]:
+        return self.car.prepare_for_external_control()
 
     def write(self, control: AutonomyControl) -> dict[str, Any]:
         return self.car.execute_action(

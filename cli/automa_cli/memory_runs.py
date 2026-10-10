@@ -10,36 +10,21 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_COUNT
-from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from implementations.decision_cycle.catalog import selection_activation
+from autonomy.runtime.client import RuntimeClient
 
-from .chase_observation import chase_automation_dir
-from .inspection_runs import recorded_selection, selection_record
 from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
-from .paths import ROOT, display_path, safe_path_part
-from .picar_observation import picar_base_url, post_memory_reset
-from .streaming import _live_plugins, _probe_chase_step, probe_live_memory
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
-from .workbench_frames import run_frame
-from .workbench_source import (
-    WORKBENCH_DEFAULT_MAX_FRAMES,
-    SourceValidationError,
-    normalize_image_directory,
-    normalize_image_file,
-    read_image_manifest,
-)
+from .paths import ROOT, display_path
+from .runtime_hosts import runtime_base_url
+from .streaming import _live_plugins, _live_step_fields, probe_live_memory
+from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
+from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
 INSPECT_ROOT = Path(
     os.environ.get("AUTOMA_MEMORY_INSPECT_ROOT", ROOT / "runtime" / "memory-inspections")
@@ -74,54 +59,27 @@ def inspect_memory(
     activation, error = _selected_memory(preset, plugins)
     if error is not None:
         return error
-    path = Path(source).expanduser()
     try:
-        if max_frames <= 0:
-            raise SourceValidationError("max_frames must be greater than zero")
-        image_source = (
-            normalize_image_file(path)
-            if path.is_file()
-            else normalize_image_directory(path, max_frames=max_frames)
-        )
-        _manifest_path, source_manifest = (
-            read_image_manifest(image_source.source_path)
-            if path.is_dir()
-            else (None, None)
-        )
+        image_source, manifest = read_replay_source(source, max_frames=max_frames)
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read memory inspect source: {exc}")
+    overridden = preset is not None or plugins is not None
     try:
-        source_manifest = source_manifest or {}
-        perception_activation = (
-            recorded_selection("perception", source_manifest) or selection_activation("perception")
+        replay = StepReplay(
+            manifest, steps=("perception", "observation", "memory"),
+            overrides={"memory": activation} if overridden else None,
         )
-        if preset is None and plugins is None:
-            activation = recorded_selection("memory", source_manifest) or activation
-        perception_runner = PerceptionRunner.from_activation(perception_activation)
-        memory_step = MemoryRunner.from_activation(activation)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
 
-    shared_memory: dict[str, Any] = {}
     frames: list[dict[str, Any]] = []
     for frame in image_source.frames:
-        seen: dict[str, Observation | None] = {}
-
-        def memory(context: DecisionFrameContext, observation: Observation | None) -> dict[str, Any]:
-            seen["observation"] = observation
-            return memory_step(context, observation)
-
         try:
-            outcome = run_frame(
-                frame,
-                steps={"perception": perception_runner, "memory": memory},
-                shared_memory=shared_memory,
-            )
+            result = replay.run(frame).result
         except Exception as exc:  # Plugins are third-party code; name the frame that broke.
             return CommandResult(
                 2, f"Memory inspect failed at {frame.frame_id}: {type(exc).__name__}: {exc}"
             )
-        result = outcome.result
         frames.append(
             {
                 "frame_id": frame.frame_id,
@@ -131,11 +89,13 @@ def inspect_memory(
                 "absence_reason": frame.absence_reason,
                 "plugins": plugin_summaries(result.memory),
                 "evidence_publisher": evidence_publisher(result.memory),
-                "observation": _observation_counts(seen.get("observation")),
+                "observation": _observation_counts(result.observation),
+                "steps": replay.step_payloads(),
             }
         )
 
-    run_id = _inspect_run_id(image_source.source_id)
+    run_id = inspect_run_id(image_source.source_id)
+    selections = replay.selection_records()
     report = {
         "schema": MEMORY_INSPECT_SCHEMA,
         "run_id": run_id,
@@ -145,32 +105,16 @@ def inspect_memory(
             "source_id": image_source.source_id,
             "frame_count": len(frames),
         },
-        "perception": {
-            **selection_record(perception_activation),
-            "plugins": list(perception_activation.plugins),
-        },
-        "memory": {**selection_record(activation), "plugins": list(activation.plugins)},
+        "perception": selections["perception"],
+        "memory": selections["memory"],
         "frames": frames,
-        "final": memory_step.report(),
+        "final": replay.runners["memory"].report(),
         "run_dir": None,
     }
     if record:
         run_dir = INSPECT_ROOT / run_id
         try:
-            run_dir.mkdir(parents=True, exist_ok=False)
-            report["run_dir"] = str(run_dir)
-            frames_dir = run_dir / "frames"
-            frames_dir.mkdir()
-            for frame, recorded_frame in zip(image_source.frames, report["frames"]):
-                if frame.image_path is not None:
-                    relative = (
-                        Path("frames") / f"frame_{frame.position:06d}{frame.image_path.suffix.lower()}"
-                    )
-                    shutil.copyfile(frame.image_path, run_dir / relative)
-                    recorded_frame["image_path"] = relative.as_posix()
-            (run_dir / "report.json").write_text(
-                json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-            )
+            record_inspect_run(run_dir, report, image_source)
         except OSError as exc:
             return CommandResult(2, f"Could not record memory inspect run {run_dir}: {exc}")
     if json_output:
@@ -186,11 +130,6 @@ def _observation_counts(observation: Observation | None) -> dict[str, Any] | Non
         "things": len(observation.things),
         "signals": len(observation.signals),
     }
-
-
-def _inspect_run_id(source_id: str) -> str:
-    stamp = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
-    return f"inspect-{safe_path_part(source_id)}-{stamp}"
 
 
 def _format_inspect_report(report: dict[str, Any]) -> str:
@@ -230,99 +169,42 @@ def reset_vehicle_memory(
     *,
     vehicle_id: str,
     timeout_s: float = 3.0,
-    wait_s: float = 5.0,
     json_output: bool = False,
 ) -> CommandResult:
-    """Reset live memory on the Chase automation worker or the PiCar onboard host.
+    """Reset live memory on the vehicle's runtime host.
 
-    The reset is confirmed when the live probe afterwards shows every applied
-    plugin's ledger empty (``ledger_is_empty``); ``nonempty_plugin_ids`` names
-    any that still hold records. Operators can check with ``info memory``,
-    ``stream memory``, or the Memory map.
+    The host answers with the memory step's status under the same lock as
+    its cycles, before any later frame refills memory. The reset is confirmed
+    when, in that answer, every applied plugin started a new epoch or holds
+    no records; ``unconfirmed_plugin_ids`` names any that did neither.
+    Operators can check with ``info memory``, ``stream memory``, or the
+    Memory map.
     """
 
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-
-    provider = vehicle.get("provider")
-    before = probe_live_memory(
-        vehicle_id=vehicle_id,
-        vehicle=vehicle,
-        timeout_s=timeout_s,
-    )
-    if before.get("status") == "absent":
+    before = probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s)
+    if before.get("status") != "live":
         return CommandResult(
             2,
             "\n".join(
                 [
-                    f"No live memory step to reset for {vehicle_id!r}.",
-                    str(before.get("error") or "Memory component is absent."),
-                ]
-            ),
-        )
-    if before.get("status") not in {"live", "error"}:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Cannot reset memory for {vehicle_id!r}: live status is {before.get('status')!r}.",
-                    str(before.get("error") or "Start automation (Chase) or deploy autonomy (Pi) first."),
+                    f"Cannot reset memory for {vehicle_id!r}: live memory is {before.get('status')!r}.",
+                    str(before.get("error") or "The runtime host reported no memory step."),
                 ]
             ),
         )
 
     try:
-        if provider == "picar":
-            reset_payload = _reset_picar_memory(
-                vehicle_id=vehicle_id,
-                vehicle=vehicle,
-                timeout_s=timeout_s,
-            )
-        elif provider == "chase-sim":
-            reset_payload = _reset_chase_memory(
-                vehicle_id=vehicle_id,
-                before=before,
-                wait_s=wait_s,
-            )
-        else:
-            return CommandResult(
-                2,
-                f"Vehicle {vehicle_id!r} is provider {provider!r}; memory reset supports picar and chase-sim.",
-            )
-    except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+        base_url = runtime_base_url(vehicle_id)
+        reset_payload = RuntimeClient(base_url, timeout_s=timeout_s).reset_memory()
+    except RuntimeError as exc:
         return CommandResult(2, f"Memory reset failed for {vehicle_id}: {exc}")
 
-    after = probe_live_memory(
-        vehicle_id=vehicle_id,
-        vehicle=vehicle,
-        timeout_s=timeout_s,
-    )
-    payload = {
+    payload: dict[str, Any] = {
         "schema": MEMORY_RESET_SCHEMA,
         "vehicle_id": vehicle_id,
-        "provider": provider,
         "ok": bool(reset_payload.get("ok")),
         "reset": reset_payload,
         "before": before,
-        "after": after,
     }
     if not payload["ok"]:
         if json_output:
@@ -337,15 +219,22 @@ def reset_vehicle_memory(
             ),
         )
 
-    # Operator-facing confirmation: every applied plugin's ledger is empty.
-    nonempty = [entry["plugin_id"] for entry in _live_plugins(after) if not ledger_is_empty(entry)]
-    confirmed = after.get("status") == "live" and not nonempty
-    payload["confirmed_empty"] = confirmed
-    payload["nonempty_plugin_ids"] = nonempty
-    if json_output:
-        return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
+    step = reset_payload.get("memory") if isinstance(reset_payload.get("memory"), dict) else {}
+    after = {"status": "live", **_live_step_fields("memory", step)}
+    payload["after"] = after
     before_plugins = {entry["plugin_id"]: entry for entry in _live_plugins(before)}
     after_plugins = {entry["plugin_id"]: entry for entry in _live_plugins(after)}
+    unconfirmed = [
+        plugin_id
+        for plugin_id, now in after_plugins.items()
+        if not ledger_is_empty(now)
+        and now.get(EPOCH_ID) == before_plugins.get(plugin_id, {}).get(EPOCH_ID)
+    ]
+    confirmed = bool(step) and not unconfirmed
+    payload["confirmed"] = confirmed
+    payload["unconfirmed_plugin_ids"] = unconfirmed
+    if json_output:
+        return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
     lines = [
         f"Reset memory: {vehicle_id}",
         f"Plugins: {', '.join(after.get('plugin_ids') or before.get('plugin_ids') or []) or '—'}",
@@ -367,124 +256,11 @@ def reset_vehicle_memory(
         ]
     )
     if not confirmed:
-        detail = f" Still holding records: {', '.join(nonempty)}." if nonempty else ""
-        lines.append(f"Warning: live probe did not confirm an empty memory after reset.{detail}")
+        detail = (
+            f" Same epoch and still holding records: {', '.join(unconfirmed)}."
+            if unconfirmed
+            else " The host answered without the memory step's status."
+        )
+        lines.append(f"Warning: the host's answer does not confirm the reset.{detail}")
         return CommandResult(2, "\n".join(lines))
     return CommandResult(0, "\n".join(lines))
-
-
-def _reset_picar_memory(
-    *,
-    vehicle_id: str,
-    vehicle: dict[str, Any],
-    timeout_s: float,
-) -> dict[str, Any]:
-    base_url = picar_base_url(vehicle)
-    if not base_url:
-        raise ValueError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
-    payload = post_memory_reset(base_url, timeout_s=timeout_s)
-    if payload.get("ok") is True:
-        return payload
-    # HTTP non-2xx may still carry structured JSON.
-    if payload.get("http_status") in {200, 201} and payload.get("status") == "reset":
-        payload["ok"] = True
-        return payload
-    payload.setdefault("ok", False)
-    payload.setdefault(
-        "error",
-        payload.get("error")
-        or f"POST /autonomy/memory/reset returned HTTP {payload.get('http_status')}",
-    )
-    return payload
-
-
-def _reset_chase_memory(
-    *,
-    vehicle_id: str,
-    before: dict[str, Any],
-    wait_s: float,
-) -> dict[str, Any]:
-    automation_dir = chase_automation_dir(vehicle_id)
-    if not automation_dir.exists():
-        raise ValueError(
-            f"No automation runtime for {vehicle_id!r}. "
-            f"Run: ./cli/automa vehicles automation run --id {vehicle_id}"
-        )
-    request_path = automation_dir / "memory_reset.request.json"
-    result_path = automation_dir / "memory_reset.result.json"
-    if result_path.exists():
-        result_path.unlink()
-    token = f"reset-{int(time.time() * 1000)}"
-    request = {
-        "schema": "automa_memory_reset_request_v0",
-        "token": token,
-        "requested_at_ms": int(time.time() * 1000),
-        "vehicle_id": vehicle_id,
-    }
-    request_path.write_text(json.dumps(request, indent=2, sort_keys=True), encoding="utf-8")
-
-    deadline = time.monotonic() + max(0.2, float(wait_s))
-    while time.monotonic() < deadline:
-        if result_path.exists():
-            try:
-                result = json.loads(result_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                time.sleep(0.05)
-                continue
-            if isinstance(result, dict) and result.get("token") == token:
-                try:
-                    request_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                return result
-        # Fallback: detect reset via live probe when worker updated state.
-        # This is already the Chase file protocol. Avoid general vehicle
-        # discovery here: it can outlast the acknowledgement deadline and
-        # hide a result the worker has already written.
-        live = _probe_chase_step("memory", vehicle_id=vehicle_id)
-        if _probe_shows_reset(before, live):
-            try:
-                request_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            return {
-                "ok": True,
-                "status": "reset",
-                "token": token,
-                "detected_via": "live_probe",
-                "memory": {
-                    "plugin_ids": live.get("plugin_ids"),
-                    "plugins": live.get("plugins"),
-                    "evidence_publisher": live.get("evidence_publisher"),
-                    "reset_count": live.get("reset_count"),
-                },
-            }
-        time.sleep(0.05)
-
-    try:
-        request_path.unlink(missing_ok=True)
-    except OSError:
-        pass
-    raise TimeoutError(
-        f"Automation worker did not acknowledge memory reset within {wait_s}s. "
-        "Is the worker running?"
-    )
-
-
-def _probe_shows_reset(before: dict[str, Any], live: dict[str, Any]) -> bool:
-    """Whether a live probe shows a reset since ``before``.
-
-    A reset shows when some plugin reports an epoch other than the one it
-    reported before, and every plugin's ledger is empty.
-    """
-
-    if live.get("status") != "live":
-        return False
-    plugins = _live_plugins(live)
-    before_epochs = {entry["plugin_id"]: entry.get(EPOCH_ID) for entry in _live_plugins(before)}
-    epoch_changed = any(
-        entry.get(EPOCH_ID) not in {None, before_epochs.get(entry["plugin_id"])}
-        for entry in plugins
-    )
-    return epoch_changed and all(ledger_is_empty(entry) for entry in plugins)
-

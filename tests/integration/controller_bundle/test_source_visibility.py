@@ -12,7 +12,7 @@ class SourceVisibilityTests(unittest.TestCase):
     def test_generated_runtime_ignore_does_not_hide_runtime_source_packages(self) -> None:
         for source_path in (
             "autonomy/runtime/control.py",
-            "implementations/runtime/donkeycar/donkey_part.py",
+            "implementations/runtime/picar/donkey_part.py",
         ):
             result = subprocess.run(
                 ["git", "check-ignore", "-q", source_path],

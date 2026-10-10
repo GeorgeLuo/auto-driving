@@ -1,8 +1,9 @@
 """The run record and terminal lines every vehicle's automation run shares.
 
-A Chase run hosts the decision cycle in the CLI worker; a PiCar run hosts it
-onboard while the CLI monitors it. Both write this ``state.json`` record and
-print these lines, so a run reads the same on either vehicle.
+Every vehicle's runtime host executes the decision cycle while the CLI
+monitors it (``runtime_monitor``), writing this ``state.json`` record and
+printing these lines. A recording also appends the same ``manifest.json``,
+which replay loads.
 """
 from __future__ import annotations
 
@@ -12,29 +13,21 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.runtime.session import RunConfiguration
-
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
 
 RUN_STATE_SCHEMA = "automa_automation_run_state_v0"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
-# Where wheel commands come from during a run: Chase's WebSocket input, the
-# simulator's own source while observing, or the PiCar's onboard host.
-CONTROL_SOURCE_LABELS = {
-    "external_ws": "external WS",
-    "preserved_current": "preserved current simulator source",
-    "onboard": "onboard Donkey host",
-}
+# Every vehicle's runtime host owns its wheel commands during a run.
+CONTROL_SOURCE_LABELS = {"runtime_host": "vehicle runtime host"}
 
 
 def timestamp_ms() -> int:
     return int(time.time() * 1000)
 
 
-def control_source(configuration: RunConfiguration, *, onboard: bool) -> str:
-    if onboard:
-        return "onboard"
-    return "external_ws" if configuration.mode == "autonomy" else "preserved_current"
+def control_source(configuration: RunConfiguration) -> str:
+    return "runtime_host"
 
 
 def control_application(configuration: RunConfiguration) -> str:
@@ -75,6 +68,7 @@ def new_run_state(
         "action_policy": configuration.mode,
         "control_application": control_application(configuration),
         "recording": record,
+        "recorded_count": 0,
         "run_dir": display_path(run_dir) if run_dir is not None else None,
         "latest": {
             "front_camera": None if record else display_path(front_camera_path),
@@ -183,10 +177,18 @@ def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
 def record_host_status(
     state: dict[str, Any], host_status: dict[str, Any], *, activations: dict[str, Path]
 ) -> None:
-    """Record the steps, and each staged step's report, from one host status."""
+    """Record the steps, each staged step's report, and the decision the host applied."""
 
     steps = host_status.get("steps") if isinstance(host_status.get("steps"), dict) else {}
     state["steps"] = step_status(host_status)
+    applied = host_status.get("applied_decision")
+    if isinstance(applied, dict) and applied.get("generation_id") and isinstance(applied.get("steps"), dict):
+        state["decision"].update(
+            generation_id=applied["generation_id"], steps=applied["steps"],
+            published=applied["steps"].get("proposal") is not None,
+        )
+    if "arming" in host_status:
+        state["arming"] = host_status["arming"]
     for step, path in activations.items():
         state[step] = {"activation": display_path(path), "status": steps.get(step) or "absent"}
 
@@ -266,6 +268,8 @@ def finish_run(
 ) -> None:
     """Close the run's view and record how the run ended."""
 
+    if status == "completed" and state["recording"] and state["recorded_count"] != state["processed_count"]:
+        status, error = "error", "Recording count does not match completed decisions"
     state["status"] = status
     if stop_reason is not None:
         state["stop_reason"] = stop_reason
@@ -305,6 +309,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
                 f"Control source: {state['control_source']}",
                 f"Action policy: {state['action_policy']}",
                 f"Recording: {'on' if state['recording'] else 'off'}",
+                *([f"Decisions recorded: {state['recorded_count']}"] if state["recording"] else []),
                 f"State: {display_path(state_path)}",
                 f"Latest perception: {state['latest']['perception_text']}",
                 "Ready for: inspect stopped deployment",

@@ -14,13 +14,9 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.session import RunConfiguration
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from implementations.runtime.donkeycar import (
-    DEFAULT_INTERVAL_S,
-    AutonomyPilotPart,
-    DonkeyControlTarget,
-    ONBOARD_OBSERVATION_STATE_SCHEMA,
-    create_host,
-)
+from autonomy.runtime.frame_loop import ONBOARD_OBSERVATION_STATE_SCHEMA
+from autonomy.runtime.session import DEFAULT_INTERVAL_S
+from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
 
 
 def _pushy_host(**steps) -> AutonomyCycleHost:
@@ -36,9 +32,13 @@ def _pushy_host(**steps) -> AutonomyCycleHost:
 
 class _ExplodingHost:
     execution = ControlExecution(DonkeyControlTarget())
+    last_context = None
 
     def status(self) -> dict:
         return {"steps": {}, "last_cycle": None}
+
+    def register_status_provider(self, name, provider) -> None:
+        pass
 
     def run(self, context: DecisionFrameContext):
         del context
@@ -245,7 +245,6 @@ class RuntimeCycleHostTests(unittest.TestCase):
     def test_observation_status_provider_does_not_reenter_host_status(self) -> None:
         host = create_host(steps=decision_steps())
         part = AutonomyPilotPart(host=host, interval_s=0.0)
-        host.register_status_provider("observation", part.observation_status)
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
 
@@ -269,11 +268,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
         snippet = source[source.index(marker) : source.index(marker) + 1600]
         self.assertIn("interval_s=capture_interval_s", snippet)
         self.assertIn("source_id=source_id if telemetry_store is not None else None", snippet)
-        self.assertIn("decision_activations=decision_activations", snippet)
-        self.assertIn("generation_id=generation_id", snippet)
+        self.assertIn("**loop_options", snippet)
+        self.assertIn("staged_runtime(", source)
         self.assertIn("run_id=run_id if telemetry_store is not None else None", snippet)
-        self.assertIn("autonomy_controller.observation_publisher = autonomy_part", snippet)
-        self.assertIn("autonomy_controller.autonomy_host = host", snippet)
         self.assertNotIn("run_condition", snippet)
         self.assertIn("AUTONOMY_CAPTURE_INTERVAL_S", source)
         self.assertEqual(DEFAULT_INTERVAL_S, 0.25)

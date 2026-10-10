@@ -11,6 +11,7 @@ from .vehicle import (
     VehicleCapabilities,
     VehiclePulse,
     clamp_unit,
+    run_vehicle_pulse,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "VehicleCapabilities",
     "VehiclePulse",
     "clamp_unit",
+    "run_vehicle_pulse",
 ]

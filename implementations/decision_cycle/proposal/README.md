@@ -9,7 +9,6 @@ them lives in `autonomy/decision_cycle/proposal/`.
 | Path | Holds |
 |---|---|
 | `catalog.py` | `PROPOSAL_PLUGINS`: one entry per plugin, with its `spec`, description and default config. `DEFAULT_PROPOSAL_PLUGINS` is the default selection. |
-| `inspection.py` | Left and right obstruction scenarios for the selected plugins, which `automa vehicles decision inspect` runs side by side. |
 | `plugins/` | One folder per plugin, named for its `plugin_id`. See `plugins/README.md`. |
 
 ## Catalog and selection

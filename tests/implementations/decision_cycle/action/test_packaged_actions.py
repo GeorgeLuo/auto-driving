@@ -99,8 +99,8 @@ def _run(
 
 class PackagedCatalogTests(unittest.TestCase):
     def test_action_catalog_offers_hold_and_mode(self) -> None:
-        self.assertEqual(sorted(step_plugins("action")), ["hold", "mode"])
-        self.assertEqual(packaged_activation("action").plugins, ("hold",))
+        self.assertEqual(sorted(step_plugins("action")), ["hold", "mode", "selected"])
+        self.assertEqual(packaged_activation("action").plugins, ("selected",))
         self.assertEqual(packaged_activation("proposal").plugins, ("avoid_recent_obstruction",))
 
 

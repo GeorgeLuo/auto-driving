@@ -13,7 +13,7 @@ import numpy as np
 
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import onboard_automation
+from cli.automa_cli import runtime_monitor
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.integration.automation_pipeline.cadence_fixtures import CaptureClock, GatedPerception
 
@@ -21,7 +21,6 @@ from tests.integration.automation_pipeline.cadence_fixtures import CaptureClock,
 def _part(perception: GatedPerception, clock: CaptureClock, interval_s: float) -> AutonomyPilotPart:
     host = create_host(steps=replace(decision_steps(), perception=perception))
     part = AutonomyPilotPart(host=host, interval_s=interval_s, monotonic=clock, run_id="cadence-test")
-    host.register_status_provider("observation", part.observation_status)
     return part
 
 
@@ -117,13 +116,30 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
         class RuntimeClient:
+            base_url = "http://picar.invalid"
             polls = 0
 
-            def start(self, configuration):
-                part.start(configuration)
+            def host_status(self):
+                return {"autonomy": part.host.status()}
+
+            def start(self, configuration, *, record=False):
+                if record:
+                    part.recording_root = root / "host-runs"
+                    part.vehicle_id = "picar-test"
+                    part.recording_root.mkdir(parents=True, exist_ok=True)
+                # Frame 3 is the third decision. A bound of 3 would end the
+                # session inside that poll, and a recorded terminal session is
+                # drained before the monitor reads the live publication.
+                status = part.start(replace(configuration, num_decisions=0), record=record)
                 part.run(image_array=image, mode="user")
                 part.wait_for_cycle()
-                return {"ok": True, "host_run_id": part.run_id}
+                return {"ok": True, "host_run_id": part.run_id, "session": status}
+
+            def read_recording(self, run_id, *, after):
+                return part.host.recording.read(run_id=run_id, after=after)
+
+            def stop(self):
+                return {"ok": True, "session": part.stop()}
 
             def status(self):
                 self.polls += 1
@@ -136,10 +152,9 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                         part.run(image_array=np.full_like(image, value), mode="user")
                     perception.release[1].set()
                     part.wait_for_cycle()
+                elif self.polls >= 3 and part.host.run_state == "running":
+                    part.host.stop(reason="completed")
                 return {"ok": True, "host_run_id": part.run_id, "session": part.host.session_status()}
-
-            def stop(self):
-                return {"ok": True, "session": part.stop()}
 
         def frame(*_args, **_kwargs):
             jpeg, publication = part.publish_latest_frame_jpeg()
@@ -159,15 +174,14 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 # Substitute HTTP reads and lifecycle transport only. Host, workers,
                 # publications, monitor polling, loopback view and records are real.
                 with (
-                    patch.object(onboard_automation, "OnboardRuntimeClient", return_value=RuntimeClient()),
-                    patch.object(onboard_automation, "fetch_autonomy_status", side_effect=lambda *_a, **_kw: {"autonomy": part.host.status()}),
-                    patch.object(onboard_automation, "fetch_observation_publication", side_effect=publication),
-                    patch.object(onboard_automation, "fetch_observation_frame", side_effect=frame),
+                    patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
+                    patch.object(runtime_monitor, "fetch_observation_publication", side_effect=publication),
+                    patch.object(runtime_monitor, "fetch_observation_frame", side_effect=frame),
                     patch("cli.automa_cli.decision_live.fetch_observation_frame", side_effect=frame),
                     patch("cli.automa_cli.decision_live.fetch_decision_publication", side_effect=lambda *_a, **_kw: part.publish_decision_latest()),
                 ):
                     started = time.monotonic()
-                    code, message = onboard_automation.monitor_onboard_runtime(
+                    code, message = runtime_monitor.monitor_runtime(
                         vehicle_id="picar-test", base_url="http://picar.invalid", automation_dir=root,
                         perception={"preset": "gated", "plugins": [], "activation": "perception/active.json"},
                         decision={"generation_id": "test", "steps": {}, "published": False},
@@ -182,11 +196,13 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 self.assertEqual(state["num_decisions"], 3)
                 self.assertEqual(state["session"]["configuration"]["interval_s"], 10.0)
                 self.assertEqual(state["last_frame"]["skipped_since_previous"], 1)
-                records = [json.loads(p.read_text()) for p in (root / "runs" / part.run_id).glob("perception/*/perception.json")]
+                recording_id = state["session"]["recording"]["run_id"]
+                records = [json.loads(p.read_text()) for p in (root / "runs" / recording_id).glob("perception/*/perception.json")]
                 records.sort(key=lambda record: record["frame_index"])
-                # The monitor missed a completed decision, not a dropped capture.
-                self.assertEqual([record["frame_index"] for record in records], [0, 3])
-                self.assertEqual([record["skipped_since_previous"] for record in records], [0, 1])
+                # Live samples are the latest publication at each poll, so frame 1
+                # is absent from `seen`. The recording keeps that completed decision.
+                self.assertEqual([record["frame_index"] for record in records], [0, 1, 3])
+                self.assertEqual([record["skipped_since_previous"] for record in records], [0, 0, 1])
                 self.assertIn("skipped_since_previous=1", output.getvalue())
                 self.assertIn("Frames superseded before decision: 1", message)
             finally:

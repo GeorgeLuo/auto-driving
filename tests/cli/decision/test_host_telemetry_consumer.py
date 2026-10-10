@@ -10,27 +10,33 @@ import unittest
 from unittest.mock import patch
 
 from cli.automa_cli.decision_live import (
-    PicarDecisionViewAdapter,
+    DecisionViewAdapter,
     _accepted_pair,
     read_host_telemetry_panel,
 )
-from autonomy.decision_cycle.action.result import ACTION_RESULT_SCHEMA
-from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA
 from cli.automa_cli.decision import DecisionSurfaceError
-from cli.automa_cli.picar_observation import (
+from cli.automa_cli.decision_records import DecisionRunners
+from cli.automa_cli.host_publications import (
     DECISION_PUBLICATION_SCHEMA,
     HOST_TELEMETRY_SCHEMA,
-    build_host_telemetry_capture,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    normalize_picar_decision_publication,
-    picar_decision_identity,
+    normalize_decision_publication,
+    decision_publication_identity,
+)
+from tests.cli.decision.decision_surfaces_fixtures import (
+    frame_inputs,
+    left_obstruction_frame,
+    packaged_decision_steps,
+    packaged_identity,
+    vehicle_report_for_records,
 )
 
 
 NOW_MS = 10_000
-GENERATION_ID = "decision:0123456789abcdef"
+_PACKAGED_IDENTITY = packaged_identity("hold")
+GENERATION_ID = _PACKAGED_IDENTITY["generation_id"]
 
 
 def _record(
@@ -91,39 +97,42 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         "captured_at_ms": 8_000,
         "completed_at_ms": 8_500,
     }
-
-    return {
-        "decision": {
-            "vehicle_id": "piracer",
+    recorded = left_obstruction_frame()
+    records = DecisionRunners.from_payloads(packaged_decision_steps("hold")).run(
+        frame_id=frame["frame_id"],
+        frame_index=frame["frame_index"],
+        timestamp_ms=frame["captured_at_ms"],
+        **frame_inputs(recorded),
+    )
+    report = vehicle_report_for_records(
+        records,
+        vehicle_id="piracer",
+        run_id="run-1",
+        generation_id=GENERATION_ID,
+        frame_id=frame["frame_id"],
+        frame_index=frame["frame_index"],
+        timestamp_ms=frame["captured_at_ms"],
+        published_at_ms=9_500,
+        values={
             "source_id": "donkeycar:piracer",
-            "run_id": "run-1",
-            "generation_id": GENERATION_ID,
-            "frame_id": frame["frame_id"],
-            "frame_index": frame["frame_index"],
-            "timestamp_ms": frame["captured_at_ms"],
-            "published_at_ms": 9_500,
-            "activation": {"generation_id": GENERATION_ID, "steps": {}},
-            "source_frame": copy.deepcopy(frame),
-            "cycle": {"proposal": {"source": {"source_frame": copy.deepcopy(frame)}}},
-        }
-    }
+            "activation": {
+                "generation_id": GENERATION_ID,
+                "steps": _PACKAGED_IDENTITY["steps"],
+            },
+            "source_frame": {
+                "frame_id": frame["frame_id"],
+                "frame_index": frame["frame_index"],
+                "captured_at_ms": frame["captured_at_ms"],
+                "completed_at_ms": frame["completed_at_ms"],
+            },
+            "stale_after_ms": 1_500,
+        },
+    )
+    return {"decision": report}
 
 
 def _physical_publication() -> dict:
     decision = _decision()["decision"]
-    decision["cycle"] = {
-        "proposal": {
-            "schema": PROPOSAL_RESULT_SCHEMA,
-            "status": "ok",
-            "frame_id": "frame-1",
-            "source": {
-                "frame_id": "frame-1",
-                "frame_index": 1,
-                "timestamp_ms": 8_000,
-            },
-        },
-        "action": {"schema": ACTION_RESULT_SCHEMA, "status": "ok", "frame_id": "frame-1"},
-    }
     return {
         "schema": DECISION_PUBLICATION_SCHEMA,
         "status": "ready",
@@ -131,14 +140,14 @@ def _physical_publication() -> dict:
         "reason": "",
         "read_at_ms": 9_500,
         "result_age_ms": 500,
-        "stale_after_ms": 1_500,
+        "stale_after_ms": decision["values"]["stale_after_ms"],
         "decision": decision,
     }
 
 
 class HostTelemetryConsumerTests(unittest.TestCase):
     def test_physical_decision_adapter_preserves_provider_identity(self) -> None:
-        normalized = normalize_picar_decision_publication(
+        normalized = normalize_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -147,12 +156,12 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(normalized["frame_id"], "frame-1")
         self.assertEqual(normalized["result_age_ms"], 500)
         self.assertEqual(
-            picar_decision_identity(normalized)["source_frame"]["frame_id"],
+            decision_publication_identity(normalized)["source_frame"]["frame_id"],
             "frame-1",
         )
 
     def test_live_view_adapter_joins_against_physical_publication(self) -> None:
-        normalized = normalize_picar_decision_publication(
+        normalized = normalize_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -161,8 +170,12 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         class FakeDecisionView:
             def __init__(self) -> None:
                 self.kwargs = None
+                self.provider = None
 
-            def publish_provider_transaction(self, **kwargs):
+            def adopt(self, identity) -> None:
+                self.provider = identity
+
+            def publish(self, **kwargs):
                 self.kwargs = kwargs
                 return True
 
@@ -189,7 +202,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                 "cli.automa_cli.decision_live.read_host_telemetry_panel",
                 return_value=joined,
             ) as read_panel:
-                adapter = PicarDecisionViewAdapter(
+                adapter = DecisionViewAdapter(
                     vehicle_id="piracer",
                     base_url="http://piracer.local:8887",
                     view_server=view,
@@ -206,7 +219,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     def test_live_view_uses_matching_history_when_latest_frame_has_advanced(
         self,
     ) -> None:
-        normalized = normalize_picar_decision_publication(
+        normalized = normalize_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -243,7 +256,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(records.call_args.kwargs["after_sequence"], 0)
 
     def test_live_view_exposes_contiguous_history_coverage_separately(self) -> None:
-        normalized = normalize_picar_decision_publication(
+        normalized = normalize_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -288,7 +301,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(records.call_args.kwargs["after_sequence"], 0)
 
     def test_live_view_retries_history_when_latest_point_has_not_arrived(self) -> None:
-        normalized = normalize_picar_decision_publication(
+        normalized = normalize_decision_publication(
             _physical_publication(),
             vehicle_id="piracer",
             now_ms=NOW_MS,
@@ -327,7 +340,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
     def test_live_view_retries_a_small_provider_clock_skew(self) -> None:
         future_error = DecisionSurfaceError(
-            "picar_decision_unavailable",
+            "decision_publication_unavailable",
             "future",
             details={"reason": "future_dated"},
         )
@@ -342,7 +355,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             "cli.automa_cli.decision_live.fetch_decision_publication",
             side_effect=[{}, {}],
         ), patch(
-            "cli.automa_cli.decision_live.accept_picar_decision_publication",
+            "cli.automa_cli.decision_live.accept_decision_publication",
             side_effect=[future_error, normalized],
         ), patch(
             "cli.automa_cli.decision_live.time.time",
@@ -390,7 +403,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         self.assertTrue(joined["joined"])
         self.assertEqual(joined["status"], "healthy")
-        self.assertEqual(joined["identity"], picar_decision_identity(_decision()))
+        self.assertEqual(joined["identity"], decision_publication_identity(_decision()))
         self.assertNotIn("authority", joined)
         self.assertNotIn("host_application", joined)
 
@@ -554,29 +567,6 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(
             evicted_result["coverage"]["coverage_reason"], "history_evicted"
         )
-
-    def test_capture_keeps_telemetry_out_of_authority(self) -> None:
-        point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
-        joined = join_host_telemetry_to_decision(point, _decision())
-        records = normalize_host_telemetry_records(
-            {
-                "schema": "automa_host_boundary_telemetry_records_v0",
-                "status": "healthy",
-                "records": [_record()],
-                "coverage": {"complete": True, "baseline": True},
-            },
-            now_ms=NOW_MS,
-            vehicle_id="piracer",
-        )
-        capture = build_host_telemetry_capture(
-            joined_point=joined,
-            records_result=records,
-            vehicle_id="piracer",
-        )
-        self.assertEqual(capture["schema"], "automa_host_boundary_telemetry_capture_v0")
-        self.assertIn("host_telemetry", capture)
-        self.assertNotIn("authority", capture)
-        self.assertNotIn("host_application", capture["host_telemetry"])
 
 
 if __name__ == "__main__":

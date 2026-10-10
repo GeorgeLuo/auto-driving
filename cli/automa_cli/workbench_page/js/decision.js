@@ -13,8 +13,8 @@ function renderDecision() {
     setText("decisionProposed", null);
     setText("decisionAuthority", null);
     setText("decisionReason", null);
-    elements.decisionSource.textContent = "No decision cycle yet.";
-    elements.decisionCandidates.textContent = "No decision cycle yet.";
+    elements.decisionSource.textContent = "";
+    elements.decisionCandidates.textContent = "";
     return;
   }
   var plan = cycle.plan || {};
@@ -37,7 +37,7 @@ function renderDecision() {
     (candidate.source_refs || []).forEach(function (source) { sourceRefs.push(source); });
   });
   elements.decisionSource.textContent = sourceRefs.length
-    ? JSON.stringify(sourceRefs, null, 2) : "No source references.";
+    ? JSON.stringify(sourceRefs, null, 2) : "";
   elements.decisionCandidates.textContent = candidates.length
     ? candidates.map(function (candidate) {
       return [
@@ -46,5 +46,5 @@ function renderDecision() {
         "reason=" + text(candidate.reason, "—"),
         "command=" + JSON.stringify(candidate.command || null)
       ].join("\n");
-    }).join("\n\n") : "No candidate proposals.";
+    }).join("\n\n") : "";
 }

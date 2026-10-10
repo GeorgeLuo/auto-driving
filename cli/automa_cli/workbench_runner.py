@@ -13,13 +13,14 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
-from autonomy.decision_cycle.steps import step_runner
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, STEP_PRESETS
+from autonomy.plugins import LocalPluginCatalog
+from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
-from .inspection_runs import recorded_selections, replay_step
+from .inspection_runs import recorded_runner, recorded_selections, replay_step
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -143,6 +144,15 @@ class ImageReplayRunner:
         self._catalogs: dict[str, PluginCatalog] = {
             step: packaged_plugin_catalog(step) for step in SELECTABLE_STEPS
         }
+        self.catalog = LocalPluginCatalog(
+            definition for step, catalog in self._catalogs.items()
+            for definition in catalog.resolver.list(step)
+        )
+        self._catalogs = {
+            step: PluginCatalog(step, self.catalog, catalog.defaults)
+            for step, catalog in self._catalogs.items()
+        }
+        self.plugin_catalog = PluginCatalogAPI(self.catalog)
         self._activations = self._initial_activations(activations)
         self._default_activations = dict(self._activations)
         self._selection_overrides = set(activations or {}) | set(self.step_factories)
@@ -154,6 +164,10 @@ class ImageReplayRunner:
 
     def state(self) -> dict[str, Any]:
         with self._lock:
+            for step in SELECTABLE_STEPS:
+                self._state[f"{step}_plugin_catalog"] = self._catalogs[step].to_dict(
+                    active_ids=self._state[f"active_{step}_plugin_ids"],
+                )
             return copy.deepcopy(self._state)
 
     @staticmethod
@@ -660,7 +674,7 @@ class ImageReplayRunner:
         for step in STEPS:
             if step in recorded and step not in self._selection_overrides:
                 activation = recorded[step]
-                steps[step] = step_runner(activation) if activation is not None else None
+                steps[step] = recorded_runner(activation) if activation is not None else None
                 if step in SELECTABLE_STEPS:
                     self._activations[step] = activation or self._catalogs[step].activation([])
             elif step in SELECTABLE_STEPS:

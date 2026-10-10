@@ -9,19 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from .chase_observation import (
-    ChaseStateError,
-    chase_automation_dir,
-    read_chase_record,
-    read_chase_state,
-)
 from .paths import ROOT, display_path
-from .picar_observation import (
-    fetch_observation_publication,
-    picar_base_url,
-)
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles
+from autonomy.runtime.client import RuntimeClient
 
+from .host_publications import fetch_observation_publication
+from .runtime_hosts import RuntimeHostError, runtime_base_url, staged_connection
 
 PERCEPTION_VIABILITY_OUTPUT_ROOT = Path(
     os.environ.get(
@@ -35,9 +27,7 @@ DEFAULT_SAMPLE_PERIOD_S = 0.25
 REQUIRED_MIN_FRESH_HZ = 2.0
 REQUIRED_CADENCE_FRACTION = 0.90
 REQUIRED_P95_AGE_MS = 1000.0
-# Modes that leave the decision unapplied: the PiCar's user drive mode and
-# the Chase worker's observe_only action policy.
-_UNAPPLIED_MODES = frozenset({None, "user", "observe_only"})
+FRESH_FRAME_WAIT_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -46,67 +36,72 @@ class CommandResult:
     message: str
 
 
-def _resolve_viability_vehicle(
+def _resolve_viability_host(
     *,
     step: str,
     vehicle_id: str,
-    timeout_s: float,
     json_output: bool,
-) -> tuple[dict[str, Any] | None, CommandResult | None]:
-    """Resolve both steps before creating a report directory or sampling.
+) -> tuple[str | None, CommandResult | None]:
+    """The runtime host's base URL, resolved before creating a report directory or sampling.
 
+    The host must be processing frames: a measurement of a host whose latest
+    frame does not advance would only fail every gate after the full duration.
     Preflight failures exit 2. JSON mode returns the shared error envelope;
     measured gate failures remain step-specific reports with exit 1.
     """
 
-    def failure(error: str, message: str) -> tuple[None, CommandResult]:
-        if json_output:
-            message = json.dumps(
-                {
-                    "schema": "vehicle_step_viability_error_v0",
-                    "vehicle_id": vehicle_id,
-                    "step": step,
-                    "error": error,
-                    "message": message,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-        return None, CommandResult(2, message)
+    try:
+        base_url = runtime_base_url(vehicle_id)
+    except RuntimeHostError as exc:
+        error, message = "no_runtime_host", str(exc)
+    else:
+        message = _stalled_frames_message(vehicle_id, base_url)
+        if message is None:
+            return base_url, None
+        error = "no_fresh_frames"
+    if json_output:
+        message = json.dumps(
+            {
+                "schema": "vehicle_step_viability_error_v0",
+                "vehicle_id": vehicle_id,
+                "step": step,
+                "error": error,
+                "message": message,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    return None, CommandResult(2, message)
 
-    discovery = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
-    if error:
-        return failure(
-            "unknown_vehicle",
-            "\n\n".join(
-                [
-                    error,
-                    "Discovery:",
-                    format_active_vehicles(discovery, include_inactive=True),
-                ]
-            ),
-        )
-    if vehicle is None:
-        return failure("unknown_vehicle", f"Vehicle {vehicle_id!r} was not found.")
-    provider = vehicle.get("provider")
-    if provider not in ("chase-sim", "picar"):
-        return failure(
-            "unsupported_provider",
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; "
-            f"{step} viability measures picar and chase-sim vehicles.",
-        )
-    if provider == "picar" and not picar_base_url(vehicle):
-        return failure(
-            "missing_connection",
-            f"Vehicle {vehicle_id!r} has no PiCar base URL.",
-        )
-    return vehicle, None
+
+def _stalled_frames_message(vehicle_id: str, base_url: str) -> str | None:
+    """Why the host is not processing frames, or None once its latest frame advances."""
+
+    def latest() -> tuple[str | None, str | None]:
+        try:
+            frame = fetch_observation_publication(base_url, timeout_s=FRESH_FRAME_WAIT_S).get("frame")
+        except Exception as exc:  # noqa: BLE001 - reported as the preflight failure
+            return None, f"{type(exc).__name__}: {exc}"
+        return (frame.get("frame_id") if isinstance(frame, dict) else None), None
+
+    first, error = latest()
+    deadline = time.monotonic() + FRESH_FRAME_WAIT_S
+    while error is None and time.monotonic() < deadline:
+        time.sleep(0.1)
+        frame_id, error = latest()
+        if frame_id is not None and frame_id != first:
+            return None
+    try:
+        session = RuntimeClient(base_url, timeout_s=FRESH_FRAME_WAIT_S).host_status().get("session") or {}
+    except Exception:  # noqa: BLE001 - the session status only adds context
+        session = {}
+    return "\n".join([
+        f"{vehicle_id}'s host at {base_url} is not processing frames: "
+        + (error or f"its latest frame stayed {first or 'none'} for {FRESH_FRAME_WAIT_S:g} s")
+        + f" (session: {session.get('status', 'unknown')}).",
+        "Viability measures a host that is processing frames; start a run if none is active.",
+        f"Run: ./cli/automa vehicles automation run --id {vehicle_id} --observe-only",
+    ])
 
 
 def run_perception_viability_measurement(
@@ -118,33 +113,23 @@ def run_perception_viability_measurement(
     record: bool = True,
     json_output: bool = False,
     output: TextIO | None = None,
-    fetch_publication: Callable[[str], dict[str, Any]] | None = None,
-    sample_host_metrics: Callable[[], dict[str, Any]] | None = None,
 ) -> CommandResult:
     """Health-check perception cadence and freshness on a vehicle.
 
-    A PiCar's onboard publication and a Chase worker's latest cycle are
-    polled the same way; only the PiCar adds ssh host metrics. Any other
-    provider is refused.
+    The runtime host's observation publication is polled the same way for
+    every vehicle; host RSS/CPU are added when the staged connection names an
+    ``ssh_target``.
     """
-    vehicle, failure = _resolve_viability_vehicle(
+    base_url, failure = _resolve_viability_host(
         step="perception",
         vehicle_id=vehicle_id,
-        timeout_s=timeout_s,
         json_output=json_output,
     )
     if failure is not None:
         return failure
-    assert vehicle is not None
-    base_url = picar_base_url(vehicle)
-    if fetch_publication is not None:
-        get_pub = fetch_publication
-    elif vehicle.get("provider") == "chase-sim":
-        get_pub = lambda _url: _chase_worker_publication(vehicle_id)
-    else:
-        get_pub = lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
-    endpoint = base_url or f"chase-sim automation worker {display_path(chase_automation_dir(vehicle_id))}"
-    host_sampler = sample_host_metrics or _ssh_host_sampler(vehicle)
+    assert base_url is not None
+    endpoint = base_url
+    host_sampler = _ssh_host_sampler(vehicle_id)
 
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
@@ -175,7 +160,7 @@ def run_perception_viability_measurement(
         now = time.monotonic()
         wall_ms = int(time.time() * 1000)
         try:
-            publication = get_pub(base_url)
+            publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
             sample = _extract_perception_sample(publication, wall_ms=wall_ms, mono_s=now - started)
             frame_id = sample.get("frame_id")
             if frame_id is not None:
@@ -235,8 +220,7 @@ def run_perception_viability_measurement(
         "requirements": {
             "min_fresh_results_per_s": REQUIRED_MIN_FRESH_HZ,
             "max_p95_result_age_ms": REQUIRED_P95_AGE_MS,
-            "control_must_remain_zero": True,
-            "mode_must_remain_user": True,
+            "control_must_not_be_applied": True,
         },
         "metrics": metrics,
         "gates": gates,
@@ -270,38 +254,8 @@ def run_perception_viability_measurement(
     return CommandResult(exit_code, _format_perception_report(report))
 
 
-def _chase_worker_publication(vehicle_id: str) -> dict[str, Any]:
-    """The Chase worker's latest cycle in the onboard publication's shape.
-
-    Health is ``healthy`` when the worker's perception probe is live, and the
-    probe's status otherwise; the mode is the worker's action policy.
-    """
-
-    from .streaming import probe_live_perception
-
-    probe = probe_live_perception(vehicle_id=vehicle_id, vehicle={"provider": "chase-sim"})
-    try:
-        state = read_chase_state(vehicle_id)
-    except ChaseStateError:
-        state = {}
-    record = read_chase_record(vehicle_id) or {}
-    return {
-        "health": "healthy" if probe.get("status") == "live" else probe.get("status"),
-        "mode": state.get("action_policy"),
-        "preset": probe.get("preset"),
-        "frame": {"frame_id": probe.get("frame_id")},
-        "processed_count": state.get("processed_count"),
-        "skipped_count": state.get("skipped_count"),
-        "interval_s": state.get("interval_s"),
-        "duration_ms": record.get("cycle_duration_ms"),
-        "result_age_ms": probe.get("age_ms"),
-        "control": record.get("control"),
-    }
-
-
-def _ssh_host_sampler(vehicle: dict[str, Any]) -> Callable[[], dict[str, Any]] | None:
-    connection = vehicle.get("connection")
-    target = connection.get("ssh_target") if isinstance(connection, dict) else None
+def _ssh_host_sampler(vehicle_id: str) -> Callable[[], dict[str, Any]] | None:
+    target = staged_connection(vehicle_id).get("ssh_target")
     if not target:
         return None
     return lambda: _sample_pi_process_metrics(ssh_target=str(target))
@@ -314,7 +268,7 @@ def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mon
         "t_s": round(mono_s, 3),
         "wall_ms": wall_ms,
         "health": publication.get("health"),
-        "mode": publication.get("mode") or publication.get("drive_mode"),
+        "mode": publication.get("mode"),
         "preset": publication.get("preset"),
         "frame_id": frame.get("frame_id"),
         "processed_count": publication.get("processed_count"),
@@ -325,6 +279,7 @@ def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mon
         "control_steering": control.get("steering"),
         "control_throttle": control.get("throttle"),
         "control_reason": control.get("reason"),
+        "control_applied": control.get("applied"),
     }
 
 
@@ -348,12 +303,9 @@ def _compute_perception_metrics(
         for s in samples
         if isinstance(s.get("skipped_count"), int)
     ]
-    control_zero = all(
-        float(s.get("control_steering") or 0.0) == 0.0
-        and float(s.get("control_throttle") or 0.0) == 0.0
-        for s in healthy
-    ) if healthy else False
-    mode_user = all((s.get("mode") in _UNAPPLIED_MODES) for s in healthy) if healthy else False
+    # The host reports whether each cycle's control reached the vehicle,
+    # whatever its mode; a parked measurement must never apply control.
+    never_applied = all(s.get("control_applied") is False for s in healthy) if healthy else False
 
     processed_delta = (
         (processeds[-1] - processeds[0]) if len(processeds) >= 2 else 0
@@ -381,8 +333,8 @@ def _compute_perception_metrics(
         "skipped_count_delta": skipped_delta,
         "result_age_ms": _distribution(ages),
         "duration_ms": _distribution(durations),
-        "control_always_zero": control_zero,
-        "mode_always_user": mode_user,
+        "control_never_applied": never_applied,
+        "modes_seen": sorted({str(s.get("mode")) for s in healthy}),
         "presets_seen": sorted(
             {str(s.get("preset")) for s in healthy if s.get("preset")}
         ),
@@ -435,14 +387,12 @@ def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
             "detail": f"p95_result_age_ms={p95_age} required<={REQUIRED_P95_AGE_MS}",
         },
         {
-            "id": "control_always_zero",
-            "passed": bool(metrics.get("control_always_zero")),
-            "detail": f"control_always_zero={metrics.get('control_always_zero')}",
-        },
-        {
-            "id": "mode_always_user",
-            "passed": bool(metrics.get("mode_always_user")),
-            "detail": f"mode_always_user={metrics.get('mode_always_user')}",
+            "id": "control_never_applied",
+            "passed": bool(metrics.get("control_never_applied")),
+            "detail": (
+                f"control_never_applied={metrics.get('control_never_applied')} "
+                f"modes_seen={metrics.get('modes_seen')}"
+            ),
         },
         {
             "id": "healthy_samples_present",
@@ -530,8 +480,7 @@ def _format_perception_report(report: dict[str, Any]) -> str:
         f"processed_results_per_s: {metrics.get('processed_results_per_s')}",
         f"result_age_ms p50/p95: {_dist_pair(metrics.get('result_age_ms'))}",
         f"duration_ms p50/p95: {_dist_pair(metrics.get('duration_ms'))}",
-        f"control_always_zero: {metrics.get('control_always_zero')}",
-        f"mode_always_user: {metrics.get('mode_always_user')}",
+        f"control_never_applied: {metrics.get('control_never_applied')}  modes: {metrics.get('modes_seen')}",
         f"host rss_mb p50/max: {_dist_pair(metrics.get('host', {}).get('rss_mb'), keys=('p50','max'))}",
         f"host cpu_percent p50/max: {_dist_pair(metrics.get('host', {}).get('cpu_percent'), keys=('p50','max'))}",
         "",
@@ -565,8 +514,8 @@ def _format_perception_markdown(report: dict[str, Any]) -> str:
         f"- result_age_ms: `{metrics.get('result_age_ms')}`",
         f"- duration_ms: `{metrics.get('duration_ms')}`",
         f"- skipped_count_delta: {metrics.get('skipped_count_delta')}",
-        f"- control_always_zero: {metrics.get('control_always_zero')}",
-        f"- mode_always_user: {metrics.get('mode_always_user')}",
+        f"- control_never_applied: {metrics.get('control_never_applied')}",
+        f"- modes_seen: {metrics.get('modes_seen')}",
         f"- host: `{metrics.get('host')}`",
         "",
         "## Gates",
@@ -613,31 +562,23 @@ def run_memory_viability_measurement(
     record: bool = True,
     json_output: bool = False,
     output: TextIO | None = None,
-    probe: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> CommandResult:
     """Health-check memory on a vehicle.
 
-    The live memory step of a PiCar or a Chase worker is polled for a
-    bounded interval. Each sample keeps every applied plugin's ledger and the
-    evidence publisher. Each plugin must keep one epoch, and the health
-    values the plugins report must be known. Any other provider is refused.
+    The runtime host's live memory step is polled for a bounded interval.
+    Each sample keeps every applied plugin's ledger and the evidence
+    publisher. Each plugin must keep one epoch, and the health values the
+    plugins report must be known.
     """
-    vehicle, failure = _resolve_viability_vehicle(
+    base_url, failure = _resolve_viability_host(
         step="memory",
         vehicle_id=vehicle_id,
-        timeout_s=timeout_s,
         json_output=json_output,
     )
     if failure is not None:
         return failure
-    assert vehicle is not None
     from .streaming import probe_live_memory
 
-    get_probe = probe or (
-        lambda target: probe_live_memory(
-            vehicle_id=vehicle_id, vehicle=target, timeout_s=timeout_s
-        )
-    )
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
     run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -661,7 +602,11 @@ def run_memory_viability_measurement(
         wall_ms = int(time.time() * 1000)
         try:
             samples.append(
-                _extract_memory_sample(get_probe(vehicle), wall_ms=wall_ms, mono_s=now - started)
+                _extract_memory_sample(
+                    probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s),
+                    wall_ms=wall_ms,
+                    mono_s=now - started,
+                )
             )
         except Exception as exc:
             samples.append(

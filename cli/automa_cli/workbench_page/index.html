@@ -3,10 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Automa Decision Playback Workbench</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+  <title>Automa Workbench</title>
   <link rel="stylesheet" href="/static/workbench.css">
 </head>
 <body>
@@ -14,7 +11,6 @@
     <aside class="sidebar">
       <div class="sidebar-brand">
         <span class="brand">Workbench</span>
-        <span class="kicker">SETUP</span>
       </div>
       <div class="sidebar-scroll">
         <details class="sidebar-group" open>
@@ -38,28 +34,28 @@
             <span>Plugins</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </summary>
-          <div class="sidebar-group-body">
-            <span class="kicker">perception</span>
-            <span id="perceptionPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
-            <span id="perceptionPluginOrder" class="plugin-order muted help"></span>
-            <div id="perceptionPluginCatalog" class="plugin-catalog">
-              <p class="muted help">Packaged plugins will appear here.</p>
-            </div>
-            <div id="perceptionPluginDigest" class="digest muted"></div>
-            <span class="kicker">memory</span>
-            <span id="memoryPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
-            <span id="memoryPluginOrder" class="plugin-order muted help"></span>
-            <div id="memoryPluginCatalog" class="plugin-catalog">
-              <p class="muted help">Packaged plugins will appear here.</p>
-            </div>
-            <div id="memoryPluginDigest" class="digest muted"></div>
-            <span class="kicker">proposal</span>
-            <span id="proposalPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
-            <span id="proposalPluginOrder" class="plugin-order muted help"></span>
-            <div id="proposalPluginCatalog" class="plugin-catalog">
-              <p class="muted help">Packaged plugins will appear here.</p>
-            </div>
-            <div id="proposalPluginDigest" class="digest muted"></div>
+          <div class="sidebar-group-body plugin-sections">
+            <section class="plugin-section">
+              <span class="kicker">perception</span>
+              <span id="perceptionPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+              <span id="perceptionPluginOrder" class="plugin-order muted help"></span>
+              <div id="perceptionPluginCatalog" class="plugin-catalog"></div>
+              <div id="perceptionPluginDigest" class="digest muted"></div>
+            </section>
+            <section class="plugin-section">
+              <span class="kicker">memory</span>
+              <span id="memoryPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+              <span id="memoryPluginOrder" class="plugin-order muted help"></span>
+              <div id="memoryPluginCatalog" class="plugin-catalog"></div>
+              <div id="memoryPluginDigest" class="digest muted"></div>
+            </section>
+            <section class="plugin-section">
+              <span class="kicker">proposal</span>
+              <span id="proposalPluginSelectionSummary" class="plugin-selection-summary muted">no catalog</span>
+              <span id="proposalPluginOrder" class="plugin-order muted help"></span>
+              <div id="proposalPluginCatalog" class="plugin-catalog"></div>
+              <div id="proposalPluginDigest" class="digest muted"></div>
+            </section>
           </div>
         </details>
       </div>
@@ -73,7 +69,7 @@
       </div>
       <section class="viewer-panel">
         <div class="viewer" id="viewerStage">
-          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.</div>
+          <div id="emptyState" class="empty-state"></div>
           <div id="viewerFrame" class="viewer-frame" hidden>
             <img id="frameImage" alt="Current replay frame">
             <canvas id="overlayCanvas" aria-hidden="true"></canvas>
@@ -108,6 +104,8 @@
             </button>
           </div>
           <div class="playback-meta">
+            <button type="button" id="loopToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle loop playback">loop</button>
+            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
             <select id="cadence" class="cadence-select" aria-label="Replay cadence">
               <option value="0">as fast as possible</option>
               <option value="100">100 ms</option>
@@ -116,8 +114,6 @@
               <option value="1000">1 second</option>
               <option value="realtime">realtime</option>
             </select>
-            <button type="button" id="loopToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle loop playback">loop</button>
-            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
             <span id="progressText" class="muted">0 / 0</span>
           </div>
         </div>
@@ -160,10 +156,10 @@
                 <pre id="memoryDropsText"></pre>
               </details>
               <input id="memorySearch" class="inline-edit memory-search" type="search" autocomplete="off" placeholder="Search..." aria-label="Filter memory records">
-              <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
+              <div id="memoryRecords" class="record-list"></div>
               <details class="help-details">
                 <summary>Selected record</summary>
-                <pre id="memorySelected">Select a server-produced memory record to inspect its origin.</pre>
+                <pre id="memorySelected"></pre>
               </details>
             </div>
           </article>
@@ -188,7 +184,7 @@
                 <div class="metric"><div class="label">Plugin runs</div><div id="perceptionPluginRuns" class="value">—</div></div>
                 <div class="metric"><div class="label">Things / signals</div><div id="perceptionCounts" class="value">—</div></div>
               </div>
-              <pre id="perceptionLines">No perception output yet.</pre>
+              <pre id="perceptionLines"></pre>
             </div>
           </article>
           <article class="float-frame" id="decisionFrame" data-frame-anchor="tl" data-frame-width="330" data-frame-height="300">
@@ -218,11 +214,11 @@
               </dl>
               <details class="help-details">
                 <summary>Source references</summary>
-                <pre id="decisionSource">No decision cycle yet.</pre>
+                <pre id="decisionSource"></pre>
               </details>
               <details class="help-details">
                 <summary>Candidate proposals</summary>
-                <pre id="decisionCandidates">No decision cycle yet.</pre>
+                <pre id="decisionCandidates"></pre>
               </details>
             </div>
           </article>

@@ -2,16 +2,20 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
+
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.evidence import RetainedEvidence
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
+from autonomy.runtime.report import report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
-from cli.automa_cli.decision import (
-    strict_decode_apply_evidence,
-    strict_decode_apply_observation,
-)
 from cli.automa_cli.decision_records import DecisionRecords, DecisionRunners
 from cli.automa_cli.step_activations import (
     decision_generation_id,
@@ -21,10 +25,26 @@ from cli.automa_cli.step_activations import (
 )
 
 
-SOURCES = Path(__file__).resolve().parents[1] / "sources" / "json"
-ACTIVE_RUN = SOURCES / "apply_active_left"
-NO_MEM_RUN = SOURCES / "apply_no_memory"
-TWO_FRAME_RUN = SOURCES / "apply_two_frames"
+LEFT_OBSTRUCTION_FRAME = Path(__file__).with_name("left_obstruction_frame.json")
+# The freshness ceiling these fixtures publish with their reports.
+STALE_AFTER_MS = 30_000
+
+
+def left_obstruction_frame() -> dict:
+    """One recorded frame: its observation and the retained evidence of a left obstruction."""
+
+    return json.loads(LEFT_OBSTRUCTION_FRAME.read_text(encoding="utf-8"))
+
+
+def frame_inputs(frame: dict) -> dict:
+    """The observation and shared memory a decision cycle reads for ``frame``."""
+
+    return {
+        "observation": Observation.from_dict(frame["observation"]),
+        "shared_memory": {
+            EVIDENCE_KEY: tuple(RetainedEvidence.from_dict(record) for record in frame["evidence"]),
+        },
+    }
 
 
 def packaged_decision_steps(action: str = "hold") -> dict:
@@ -46,16 +66,80 @@ def packaged_identity(action: str = "hold") -> dict:
     }
 
 
+def host_result_for_records(
+    records: DecisionRecords,
+    *,
+    frame_id: str,
+    frame_index: int,
+    timestamp_ms: int,
+    mode: str = "observe_only",
+) -> SimpleNamespace:
+    """A host cycle result whose application the shared report can publish."""
+
+    control = records.control or AutonomyControl()
+    return SimpleNamespace(
+        context=DecisionFrameContext(
+            frame_id=frame_id,
+            frame_index=frame_index,
+            timestamp_ms=timestamp_ms,
+            mode=mode,
+        ),
+        proposal=records.proposal,
+        plan=records.plan,
+        action=records.action,
+        application=ControlApplication(
+            frame_id=frame_id,
+            mode=mode,
+            applied=False,
+            reason=control.reason or "not-applied",
+            control=control,
+        ),
+    )
+
+
+def vehicle_report_for_records(
+    records: DecisionRecords,
+    *,
+    vehicle_id: str,
+    run_id: str,
+    generation_id: str,
+    frame_id: str,
+    frame_index: int,
+    timestamp_ms: int,
+    published_at_ms: int | None = None,
+    mode: str = "observe_only",
+    values: dict | None = None,
+) -> dict:
+    """The ``vehicle_report_v0`` both viewers accept for these decision records."""
+
+    report_values = {"stale_after_ms": STALE_AFTER_MS}
+    if values:
+        report_values.update(values)
+    return report_from_host_result(
+        host_result_for_records(
+            records,
+            frame_id=frame_id,
+            frame_index=frame_index,
+            timestamp_ms=timestamp_ms,
+            mode=mode,
+        ),
+        vehicle_id=vehicle_id,
+        run_id=run_id,
+        generation_id=generation_id,
+        published_at_ms=timestamp_ms if published_at_ms is None else published_at_ms,
+        values=report_values,
+    ).to_dict()
+
+
 def sample_records(action: str = "hold") -> DecisionRecords:
     """One frame of the packaged decision steps over the recorded left evidence."""
 
-    frame = json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0]
+    frame = left_obstruction_frame()
     return DecisionRunners.from_payloads(packaged_decision_steps(action)).run(
         frame_id="frame_001",
         frame_index=1,
         timestamp_ms=1000,
-        observation=strict_decode_apply_observation(frame["observation"]),
-        shared_memory={EVIDENCE_KEY: strict_decode_apply_evidence(frame["evidence"])},
+        **frame_inputs(frame),
     )
 
 
@@ -69,19 +153,16 @@ class DecisionSurfaceFixture:
             {"AUTOMA_RUNTIME_ROOT": str(self.runtime_root)},
         )
         self._env_patch.start()
-        # decision module reads RUNTIME_ROOT at import time; rebind for tests.
-        import cli.automa_cli.decision as decision_mod
-        import cli.automa_cli.proposal as proposal_mod
+        # runtime_hosts reads RUNTIME_ROOT at import time; rebind for tests.
+        import cli.automa_cli.runtime_hosts as runtime_hosts_mod
 
-        self._decision_mod = decision_mod
-        self._old_runtime = decision_mod.RUNTIME_ROOT
-        decision_mod.RUNTIME_ROOT = self.runtime_root
-        self._proposal_root_patch = patch.object(proposal_mod, "RUNTIME_ROOT", self.runtime_root)
-        self._proposal_root_patch.start()
+        self._root_patches = [patch.object(runtime_hosts_mod, "RUNTIME_ROOT", self.runtime_root)]
+        for root_patch in self._root_patches:
+            root_patch.start()
 
     def tearDown(self) -> None:
-        self._proposal_root_patch.stop()
-        self._decision_mod.RUNTIME_ROOT = self._old_runtime
+        for root_patch in self._root_patches:
+            root_patch.stop()
         self._env_patch.stop()
         self._tmp.cleanup()
 
@@ -123,8 +204,29 @@ class DecisionSurfaceFixture:
         published_at_ms: int = 2_000,
         action: str = "hold",
     ) -> dict:
-        cycle = self._sample_cycle(action).to_dict()
+        records = self._sample_cycle(action)
         identity = packaged_identity(action)
+        report = vehicle_report_for_records(
+            records,
+            vehicle_id="piracer",
+            run_id="donkey-run-fixture",
+            generation_id=identity["generation_id"],
+            frame_id="frame_001",
+            frame_index=1,
+            timestamp_ms=1_000,
+            published_at_ms=published_at_ms,
+            values={
+                "source_id": "donkeycar:piracer",
+                "activation": identity,
+                "source_frame": {
+                    "frame_id": "frame_001",
+                    "frame_index": 1,
+                    "captured_at_ms": 1_000,
+                    "completed_at_ms": published_at_ms,
+                },
+                "stale_after_ms": 1_000,
+            },
+        )
         return {
             "schema": "automa_physical_decision_publication_v0",
             "ok": True,
@@ -133,16 +235,5 @@ class DecisionSurfaceFixture:
             "read_at_ms": published_at_ms,
             "result_age_ms": 0,
             "stale_after_ms": 1_000,
-            "decision": {
-                "vehicle_id": "piracer",
-                "source_id": "donkeycar:piracer",
-                "run_id": "donkey-run-fixture",
-                "generation_id": identity["generation_id"],
-                "frame_id": "frame_001",
-                "frame_index": 1,
-                "timestamp_ms": 1_000,
-                "published_at_ms": published_at_ms,
-                "activation": identity,
-                "cycle": cycle,
-            },
+            "decision": report,
         }

@@ -40,21 +40,26 @@ class DecisionCommandTests(unittest.TestCase):
                 }
 
             before_info = snapshot_files()
-            info = run_automa(
-                "vehicles", "info", "proposal", *vehicle,
-                runtime_root=runtime_root,
+            unstaged = run_automa(
+                "vehicles", "info", "plan", *vehicle, runtime_root=runtime_root, check=False,
             )
-            self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
-            payload = json.loads(info.stdout)
-            self.assertEqual(payload["schema"], "vehicle_proposal_info_v1")
-            self.assertEqual(payload["activation"]["plugins"], ["avoid_recent_obstruction"])
-            self.assertEqual(payload["decision"]["authority"]["gate_id"], "mode")
-            self.assertFalse(payload["published_view"]["available"])
-            # No worker runs, so the engine probe has no proposal step to report.
-            self.assertEqual(payload["live"]["schema"], "vehicle_proposal_live_v1")
-            self.assertEqual(payload["live"]["status"], "unavailable")
-            self.assertEqual(before_info, snapshot_files())
+            self.assertEqual(unstaged.returncode, 2, unstaged.stdout)
+            self.assertIn("./cli/automa vehicles update plan --id", unstaged.stdout)
 
+            for step, plugins in (("proposal", ["avoid_recent_obstruction"]), ("action", ["mode"])):
+                info = run_automa("vehicles", "info", step, *vehicle, runtime_root=runtime_root)
+                self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
+                payload = json.loads(info.stdout)
+                self.assertEqual(payload["schema"], f"vehicle_{step}_info_v1")
+                self.assertEqual(payload["activation"]["plugins"], plugins)
+                self.assertEqual(payload["decision"]["plugins"]["action"], ["mode"])
+                self.assertEqual(payload["decision"]["authority"]["gate_id"], "mode")
+                # No runtime host runs, so the probe has no step to report.
+                self.assertEqual(payload["live"]["schema"], f"vehicle_{step}_live_v1")
+                self.assertEqual(payload["live"]["status"], "unavailable")
+                # Only the proposal runner describes a schema.
+                self.assertEqual("proposal_schema" in payload, step == "proposal")
+            self.assertEqual(before_info, snapshot_files())
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

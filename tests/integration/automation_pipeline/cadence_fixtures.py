@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 
+from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA, PerceptionText
 
@@ -30,6 +31,13 @@ class GatedPerception:
         for index, event in enumerate(self.release):
             if index not in blocked:
                 event.set()
+        # Recording names the selection this stand-in applied.
+        self.plugin_ids = ("test.gated-perception",)
+        self.activation = step_activation(
+            "perception",
+            list(self.plugin_ids),
+            {"test.gated-perception": "tests.integration.automation_pipeline.cadence_fixtures:GatedPerception"},
+        )
 
     def __call__(self, context: DecisionFrameContext) -> PerceptionText:
         index = len(self.contexts)

@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
+from autonomy.plugins import add_uploaded_source_root
+from autonomy.runtime.recording import UPLOADED_SOURCES_DIR
 from .inspection_runs import recorded_selection, recorded_selections
 
 
@@ -135,6 +137,9 @@ def normalize_image_directory(
         raise SourceValidationError(f"source path is not a directory: {source_path}")
 
     manifest_path, manifest = read_image_manifest(source_path)
+    if (source_path / UPLOADED_SOURCES_DIR).is_dir():
+        # Replay imports the uploaded plugins a recording ran from the sources it carries.
+        add_uploaded_source_root(source_path / UPLOADED_SOURCES_DIR)
     if (
         manifest is not None
         and "frames" not in manifest
@@ -496,10 +501,13 @@ def _build_frame(
             metadata[key] = value
     if "steps" in entry:
         try:
-            recorded_selections(entry)
+            selections = recorded_selections(entry, source_root=source_path)
         except (TypeError, ValueError) as exc:
             raise SourceValidationError(f"frame {position} has invalid recorded selections: {exc}") from exc
-        metadata["steps"] = copy.deepcopy(entry["steps"])
+        metadata["steps"] = {
+            step: activation.to_payload() if activation is not None else None
+            for step, activation in selections.items()
+        }
     return ReplayFrame(
         source_id=source_id,
         frame_id=frame_id,

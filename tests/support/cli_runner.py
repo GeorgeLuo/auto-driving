@@ -10,13 +10,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 AUTOMA_PATH = WORKSPACE_ROOT / "cli" / "automa"
 
 
-def run_automa(
-    *args: str,
-    runtime_root: Path | None = None,
-    extra_env: dict[str, str] | None = None,
-    check: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    """Run the public Automa executable in an isolated subprocess."""
+def _automa_env(runtime_root: Path | None, extra_env: dict[str, str] | None) -> dict[str, str]:
     env = {
         **os.environ,
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -32,11 +26,36 @@ def run_automa(
         env["PYTHONPATH"] = os.pathsep.join(
             filter(None, (offline_path, env.get("PYTHONPATH")))
         )
+    return env
 
+
+def start_automa(
+    *args: str,
+    runtime_root: Path | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.Popen[str]:
+    """Start the public Automa executable for a command that runs until stopped."""
+    return subprocess.Popen(
+        [sys.executable, str(AUTOMA_PATH), *args],
+        cwd=WORKSPACE_ROOT,
+        env=_automa_env(runtime_root, extra_env),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+
+def run_automa(
+    *args: str,
+    runtime_root: Path | None = None,
+    extra_env: dict[str, str] | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Run the public Automa executable in an isolated subprocess."""
     result = subprocess.run(
         [sys.executable, str(AUTOMA_PATH), *args],
         cwd=WORKSPACE_ROOT,
-        env=env,
+        env=_automa_env(runtime_root, extra_env),
         capture_output=True,
         text=True,
         check=False,

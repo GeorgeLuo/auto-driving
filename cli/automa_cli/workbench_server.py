@@ -27,6 +27,8 @@ from .workbench_contract import (
     WORKBENCH_SERVER_SCHEMA,
 )
 from .workbench_source import SourceValidationError
+from .plugin_catalog import serve_plugin_catalog
+from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 WORKBENCH_PAGE_DIR = Path(__file__).with_name("workbench_page")
@@ -271,6 +273,10 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         self._handle_get(include_body=False)
 
     def _handle_get(self, *, include_body: bool) -> None:
+        if urlparse(self.path).path == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, getattr(self.server.workbench.runner, "plugin_catalog", None),
+                                 include_body=include_body)
+            return
         request = urlparse(self.path)
         if request.path in {"/", "/index.html"}:
             self._serve_html(include_body=include_body)
@@ -362,6 +368,9 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request = urlparse(self.path)
+        if request.path == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, getattr(self.server.workbench.runner, "plugin_catalog", None))
+            return
         if request.path != "/api/action":
             self._send_json(
                 404,

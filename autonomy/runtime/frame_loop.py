@@ -1002,20 +1002,14 @@ class FrameLoop:
                 )
                 control = cycle_result.control
                 cycle_dict = cycle_result.to_dict()
-                self._record_current_cycle(cycle_result, failed=False)
                 applied = self.host.applied_decision()
-                if (
-                    isinstance(applied, dict)
-                    and applied.get("generation_id") != self.generation_id
-                ):
-                    self._write_applied_decision(applied)
                 completed_at_ms = cycle_result.completed_at_ms
                 duration_ms = cycle_result.duration_ms
                 status = "ok"
                 error = None
             except Exception as exc:
                 logger.exception("Autonomy decision cycle failed for frame %s", frame_id)
-                self._record_current_cycle(None, failed=True)
+                applied = None
                 control = AutonomyControl(reason="observation-cycle-error")
                 if isinstance(exc, MemoryUpdateError):
                     with self._lock:
@@ -1028,43 +1022,48 @@ class FrameLoop:
                 status = "error"
                 error = f"{type(exc).__name__}: {exc}"
 
-            decision_publication, decision_error = self._capture_decision_publication(
-                frame_id=frame_id,
-                frame_index=frame_index,
-                timestamp_ms_value=captured_at_ms,
-                published_at_ms=completed_at_ms,
-                status=status,
-            )
-
             control_dict = (
                 cycle_result.control_record() if cycle_dict is not None else {
                     **control.to_dict(), "applied": False,
                     "application": self.host.execution.status()["application"],
                 }
             )
-            latest = LatestObservationState(
-                frame_id=frame_id,
-                frame_index=frame_index,
-                captured_at_ms=captured_at_ms,
-                completed_at_ms=completed_at_ms,
-                mode=mode_name,
-                status=status,
-                image=camera.image,
-                control=deepcopy(control_dict),
-                cycle=cycle_dict,
-                error=error,
-                duration_ms=duration_ms,
-                skipped_since_previous=skipped_since_previous,
-                preset=self.preset,
-                decision_publication=decision_publication,
-                decision_error=decision_error,
-                context=(
-                    self.host.last_context.to_dict()
-                    if self.host.last_context is not None
-                    and self.host.last_context.frame_id == frame_id else None
-                ),
-            )
+            # Readers must see one completed cycle and its matching report.
+            # Plugin execution above stays outside the publication lock.
             with self._lock:
+                self._record_current_cycle(cycle_result if cycle_dict is not None else None, failed=status != "ok")
+                if isinstance(applied, dict) and applied.get("generation_id") != self.generation_id:
+                    self._write_applied_decision(applied)
+                decision_publication, decision_error = self._capture_decision_publication(
+                    frame_id=frame_id,
+                    frame_index=frame_index,
+                    timestamp_ms_value=captured_at_ms,
+                    published_at_ms=completed_at_ms,
+                    status=status,
+                )
+
+                latest = LatestObservationState(
+                    frame_id=frame_id,
+                    frame_index=frame_index,
+                    captured_at_ms=captured_at_ms,
+                    completed_at_ms=completed_at_ms,
+                    mode=mode_name,
+                    status=status,
+                    image=camera.image,
+                    control=deepcopy(control_dict),
+                    cycle=cycle_dict,
+                    error=error,
+                    duration_ms=duration_ms,
+                    skipped_since_previous=skipped_since_previous,
+                    preset=self.preset,
+                    decision_publication=decision_publication,
+                    decision_error=decision_error,
+                    context=(
+                        self.host.last_context.to_dict()
+                        if self.host.last_context is not None
+                        and self.host.last_context.frame_id == frame_id else None
+                    ),
+                )
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict
                 self.latest_state = latest

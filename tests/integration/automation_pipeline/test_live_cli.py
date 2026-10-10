@@ -125,6 +125,50 @@ class LiveCommandsTests(unittest.TestCase):
         self.assertIsNotNone(decision["decision"]["cycle"]["proposal"])
         self.assertIn("evidence", decision)
 
+    def test_a_stream_poll_during_cycle_publication_receives_a_coherent_decision(self) -> None:
+        self.observe()
+        loop = self.host.loop
+        publishing = threading.Event()
+        release = threading.Event()
+        reading = threading.Event()
+        returned = threading.Event()
+        capture = loop._capture_decision_publication
+        publish = loop.publish_decision_latest
+
+        def pause_publication(**kwargs):
+            if not publishing.is_set():
+                publishing.set()
+                if not release.wait(10):
+                    raise TimeoutError("the test never released the completed cycle")
+            return capture(**kwargs)
+
+        def read_publication(**kwargs):
+            reading.set()
+            result = publish(**kwargs)
+            returned.set()
+            return result
+
+        with patch.object(loop, "_capture_decision_publication", side_effect=pause_publication), \
+                patch.object(loop, "publish_decision_latest", side_effect=read_publication):
+            try:
+                self.assertTrue(publishing.wait(10), "the host never completed another cycle")
+                stream = start_automa(
+                    "vehicles", "stream", "proposal", "--id", VEHICLE_ID,
+                    "--once", "--json", runtime_root=self.runtime_root,
+                )
+                self.addCleanup(stream.stdout.close)
+                self.addCleanup(stream.wait, 10)
+                self.addCleanup(stream.terminate)
+                self.assertTrue(reading.wait(10), "the CLI never polled the decision route")
+                self.assertFalse(returned.wait(0.1), "the decision route exposed a partly published cycle")
+            finally:
+                release.set()
+            output, _ = stream.communicate(timeout=10)
+        self.assertEqual(stream.returncode, 0, output)
+        decision = json.loads(output)
+        self.assertEqual(decision["frame_id"], decision["record"]["frame_id"])
+        self.assertEqual(decision["plugins"], ["avoid_recent_obstruction"])
+
     def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
         self.observe()
         with patch("cli.automa_cli.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):

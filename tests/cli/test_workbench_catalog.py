@@ -414,6 +414,16 @@ class WorkbenchStartingSelectionTests(unittest.TestCase):
                 )
                 runner.dispatch("reset", run_id=run_id)
 
+    def test_proposal_starts_from_its_default_or_given_preset(self) -> None:
+        with image_source(1) as root:
+            for activations in (None, {"proposal": selection_activation("proposal", preset="obstruction_avoidance")}):
+                runner = ImageReplayRunner(root, activations=activations, cadence_ms=0)
+                runner.start()
+                state = runner.wait(10)
+                self.assertEqual(state["phase"], "completed")
+                self.assertEqual(state["active_proposal_plugin_ids"], ["avoid_recent_obstruction"])
+                self.assertEqual(state["machine_detail"]["pipeline"]["proposal_preset"], "obstruction_avoidance")
+
     def test_memory_starts_from_its_given_activation(self) -> None:
         with image_source(2) as root:
             runner = ImageReplayRunner(

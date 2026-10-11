@@ -1,4 +1,4 @@
-"""Reference avoid_recent_obstruction proposal plugin (M006-04).
+"""Steer-away proposal from retained obstruction evidence.
 
 Reads retained evidence from shared memory at ``evidence_key`` (by default
 the key ``bounded_evidence`` publishes). It accepts records by kind and

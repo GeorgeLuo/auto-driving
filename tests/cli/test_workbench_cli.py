@@ -23,6 +23,7 @@ class WorkbenchTests(unittest.TestCase):
         # Each step's selection, as the inspect commands print it.
         self.assertIn("perception: lightweight_observer (frame, floor_plane)", result.stdout)
         self.assertIn("memory: recency_ledger (bounded_evidence)", result.stdout)
+        self.assertIn("proposal: obstruction_avoidance (avoid_recent_obstruction)", result.stdout)
 
     def test_cli_replay_takes_each_steps_preset_or_plugins(self) -> None:
         with image_source(1) as root:
@@ -30,11 +31,13 @@ class WorkbenchTests(unittest.TestCase):
                 "vehicles", "workbench", "replay", str(root), "--cadence-ms", "0",
                 "--perception-preset", "obstruction_observer",
                 "--memory-plugin", "bounded_evidence",
+                "--proposal-preset", "obstruction_avoidance",
             )
             plugins = run_automa(
                 "vehicles", "workbench", "replay", str(root), "--cadence-ms", "0",
                 "--perception-plugin", "floor_plane", "--perception-plugin", "frame",
                 "--memory-preset", "recency_ledger",
+                "--proposal-plugin", "avoid_recent_obstruction",
             )
         self.assertIn(
             "perception: obstruction_observer (frame, floor_plane, multi_obstruction_tracks)",
@@ -43,6 +46,8 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("memory: recency_ledger (bounded_evidence)", preset.stdout)
         self.assertIn("perception: custom (floor_plane, frame)", plugins.stdout)
         self.assertIn("memory: recency_ledger (bounded_evidence)", plugins.stdout)
+        for result in (preset, plugins):
+            self.assertIn("proposal: obstruction_avoidance (avoid_recent_obstruction)", result.stdout)
 
     def test_cli_replay_rejects_mixed_removed_or_unknown_selections(self) -> None:
         with image_source(1) as root:
@@ -51,6 +56,9 @@ class WorkbenchTests(unittest.TestCase):
                  "not allowed with argument --perception-preset"),
                 (("--memory-preset", "recency_ledger", "--memory-plugin", "bounded_evidence"),
                  "not allowed with argument --memory-preset"),
+                (("--proposal-preset", "obstruction_avoidance", "--proposal-plugin", "avoid_recent_obstruction"),
+                 "not allowed with argument --proposal-preset"),
+                (("--proposal-preset", "missing"), "invalid choice: 'missing'"),
                 (("--plugin", "frame"), "unrecognized arguments: --plugin"),
                 (("--memory-plugin", "missing"), "unknown memory plugin(s) missing"),
             ):

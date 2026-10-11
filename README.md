@@ -118,13 +118,14 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
 | `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
-| `vehicles update observation\|proposal\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
+| `vehicles update observation\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
+| `vehicles update proposal` | Packages code and stages a proposal preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default preset `obstruction_avoidance`). |
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
 | `vehicles plugins arm` | Loads perception, memory and proposal plugins on the host and applies them at its next cycle, without restarting automation. An import or construction error fails the command (exit 2) and keeps the previous selection. Repeat `--plugin` with `--step`, or use a JSON `--selection` map to arm several steps together. |
 | `vehicles plugins status` | Reads available, requested and applied revisions; exits 2 while the last arm failed. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
-| `vehicles info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception and memory also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
-| `vehicles proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame. A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
+| `vehicles info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory and proposal also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
+| `vehicles proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame. A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's; proposal also accepts `--preset`. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Starts, stops or inspects a run on the vehicle's runtime host. |
 | `vehicles stream perception` | Displays rolling latest perception from the runtime host's `/autonomy/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
@@ -515,7 +516,12 @@ not save executable configs or an image inventory.
 
 `--plugin` selects packaged proposal plugins by catalog key, in order, with
 their default configs from `implementations/decision_cycle/proposal/catalog.py`.
-Proposal has no presets; without `--plugin` it stages its default plugins.
+Proposal follows perception and memory: `--preset obstruction_avoidance`
+selects its default recipe; without either flag it stages that default preset.
+Its default business logic is reached through
+[`proposal/presets.py`](implementations/decision_cycle/proposal/presets.py),
+[`proposal/catalog.py`](implementations/decision_cycle/proposal/catalog.py), and
+[`plugins/avoid_recent_obstruction/plugin.py`](implementations/decision_cycle/proposal/plugins/avoid_recent_obstruction/plugin.py).
 
 `vehicles info proposal` reports the staged plugins and the available ones,
 the staged runner's `proposal_schema_v1` contract, and the plan and action
@@ -549,9 +555,9 @@ decision frames until it restarts:
 The workbench reads the same recorded frame order and timing. `vehicles
 workbench replay` starts each step from `--perception-preset` or
 `--perception-plugin`, `--memory-preset` or `--memory-plugin`, and
-`--proposal-plugin`, as the inspect and update commands take them. With no
-flag, a step uses its default preset; proposal has no presets and uses its
-default plugins. The CLI and page show each step's preset, where it has one,
+`--proposal-preset` or `--proposal-plugin`, as the inspect and update commands
+take them. With no flag, a step uses its default preset: proposal uses
+`obstruction_avoidance`. The CLI and page show each step's preset, where it has one,
 and ordered plugins.
 The page's catalog lists available plugins; its separate **Run order** shows
 execution order. Newly checked plugins run last, and retained plugins keep
@@ -580,7 +586,7 @@ For workbench API integrations, `GET /api/state` reports schema
 `workbench_image_replay_state_v3`. Read `<step>_plugin_catalog` for availability
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
-`custom` (null for proposal, which has no presets). The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
+`custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
 plugins that were applied. Each frame's `memory_plugins` lists every applied
 memory plugin's health, record count, and epoch, and
 `memory_evidence_publisher` names the plugin whose evidence the step published.

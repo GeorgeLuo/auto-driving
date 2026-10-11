@@ -61,5 +61,36 @@ class DecisionCommandTests(unittest.TestCase):
                 self.assertEqual("proposal_schema" in payload, step == "proposal")
             self.assertEqual(before_info, snapshot_files())
 
+    def test_proposal_preset_and_plugin_selection_follow_memory_patterns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            activation_path = runtime_root / "chase-sim-chaser/bundle/runtime/proposal/active.json"
+
+            def update(*flags, check=True):
+                return run_automa("vehicles", "update", "proposal", "--id", "chase-sim-chaser",
+                                  *flags, "--json", runtime_root=runtime_root, check=check)
+
+            dry = json.loads(update("--dry-run").stdout)
+            self.assertEqual(dry["preset"], "obstruction_avoidance")
+            self.assertFalse(activation_path.exists())
+            default = json.loads(update().stdout)
+            self.assertEqual(default["manifest"]["metadata"]["preset"], "obstruction_avoidance")
+            tuned = json.loads(activation_path.read_text())
+            tuned["plugin_configs"]["avoid_recent_obstruction"]["steer_magnitude"] = 0.25
+            activation_path.write_text(json.dumps(tuned))
+            selected = json.loads(update("--plugin", "avoid_recent_obstruction").stdout)
+            self.assertEqual(selected["manifest"]["plugin_configs"]["avoid_recent_obstruction"]["steer_magnitude"], 0.25)
+            reset = json.loads(update("--preset", "obstruction_avoidance").stdout)
+            self.assertEqual(reset["manifest"]["plugin_configs"]["avoid_recent_obstruction"]["steer_magnitude"], 1.0)
+            info = json.loads(run_automa("vehicles", "info", "proposal", "--id", "chase-sim-chaser",
+                                         "--json", runtime_root=runtime_root).stdout)
+            self.assertEqual(info["activation"]["preset"], "obstruction_avoidance")
+            before = activation_path.read_bytes()
+            for flags in (("--preset", "unknown"),
+                          ("--preset", "obstruction_avoidance", "--plugin", "avoid_recent_obstruction")):
+                self.assertEqual(update(*flags, check=False).returncode, 2)
+                self.assertEqual(activation_path.read_bytes(), before)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

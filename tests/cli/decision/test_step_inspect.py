@@ -73,6 +73,20 @@ class DecisionStepInspectTests(unittest.TestCase):
         self.assertEqual(replayed["source"]["frame_count"], 3)
         self.assertEqual(replayed["selections"]["action"]["plugins"], ["mode"])
 
+    def test_proposal_preset_overrides_a_recorded_disabled_selection(self) -> None:
+        with patch.dict(os.environ, {"AUTOMA_PROPOSAL_INSPECT_ROOT": str(self.tmp / "inspections")}):
+            recorded = self.inspect("proposal", plugins=[], record=True)
+        run_dir = Path(recorded["run_dir"])
+        restored = self.inspect("proposal", source=run_dir)
+        self.assertEqual(restored["selections"]["proposal"]["plugins"], [])
+        overridden = self.inspect("proposal", source=run_dir, preset="obstruction_avoidance")
+        self.assertEqual(overridden["selections"]["proposal"]["plugins"], ["avoid_recent_obstruction"])
+        self.assertEqual(overridden["selections"]["proposal"]["preset"], "obstruction_avoidance")
+        self.assertEqual(len(overridden["frames"][0]["record"]["candidates"]), 1)
+        cli = run_automa("vehicles", "proposal", "inspect", str(run_dir),
+                         "--preset", "obstruction_avoidance", "--json")
+        self.assertEqual(json.loads(cli.stdout)["selections"]["proposal"]["plugins"], ["avoid_recent_obstruction"])
+
     def test_cli_has_a_group_per_step_and_no_decision_command(self) -> None:
         for step in DECISION_STEPS:
             with self.subTest(step=step):

@@ -50,6 +50,7 @@ def run_workbench_replay(
     perception_plugins: Sequence[str] | None = None,
     memory_preset: str | None = None,
     memory_plugins: Sequence[str] | None = None,
+    proposal_preset: str | None = None,
     proposal_plugins: Sequence[str] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
@@ -74,7 +75,7 @@ def run_workbench_replay(
         for step, preset, plugins in (
             ("perception", perception_preset, perception_plugins),
             ("memory", memory_preset, memory_plugins),
-            ("proposal", None, proposal_plugins),
+            ("proposal", proposal_preset, proposal_plugins),
         ):
             if preset is not None or plugins is not None:
                 activations[step] = step_selection(step, preset=preset, plugins=plugins)

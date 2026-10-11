@@ -10,6 +10,7 @@ from unittest import mock
 
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.plugins import DuplicatePluginIdError
 from cli.automa_cli import app
 from implementations.decision_cycle import catalog
@@ -55,8 +56,8 @@ class DeclaredIdTests(unittest.TestCase):
 
 
 class PresetActivationTests(unittest.TestCase):
-    def test_perception_and_memory_are_the_steps_with_presets(self) -> None:
-        self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory"))
+    def test_perception_memory_and_proposal_are_the_steps_with_presets(self) -> None:
+        self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory", "proposal"))
         self.assertEqual(set(catalog.DEFAULT_STEP_PRESETS), set(catalog.STEP_PRESETS))
         for step in catalog.STEPS:
             if step not in catalog.STEP_PRESETS:
@@ -81,7 +82,7 @@ class PresetActivationTests(unittest.TestCase):
                         )
 
     def test_every_preset_builds_its_steps_runner(self) -> None:
-        runners = {"perception": PerceptionRunner, "memory": MemoryRunner}
+        runners = {"perception": PerceptionRunner, "memory": MemoryRunner, "proposal": ProposalRunner}
         for step, presets in catalog.STEP_PRESETS.items():
             for name in presets:
                 with self.subTest(step=step, preset=name):
@@ -107,6 +108,8 @@ class PresetActivationTests(unittest.TestCase):
             return catalog.selection_activation(step, plugins=plugins).metadata["preset"]
 
         self.assertEqual(label("memory", ["bounded_evidence"]), "recency_ledger")
+        self.assertEqual(label("proposal", ["avoid_recent_obstruction"]), "obstruction_avoidance")
+        self.assertEqual(label("proposal", []), catalog.CUSTOM_PRESET)
         self.assertEqual(label("perception", ["frame", "floor_plane"]), "lightweight_observer")
         # Order matters, an empty list is no preset, and a preset with config
         # overrides is not equalled by its plugin list alone.

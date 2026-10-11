@@ -3,9 +3,8 @@
 The workbench offers every packaged plugin of the steps whose selection the
 operator can change: perception, memory and proposal. A selection is checked
 and built by ``step_selection``, the activation the CLI stages for that step:
-perception and memory select a preset or a plugin list, so a preset given on
-the command line keeps its plugin configs; proposal has no presets and selects
-a plugin list. Listing a catalog does not construct plugins; construction
+perception, memory and proposal select a preset or a plugin list, so a preset
+given on the command line keeps its plugin configs. Listing a catalog does not construct plugins; construction
 happens only after the operator selects plugins for a replay.
 """
 

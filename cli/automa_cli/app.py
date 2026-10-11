@@ -25,7 +25,7 @@ from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from autonomy.runtime.session import DEFAULT_INTERVAL_S
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS
 from implementations.decision_cycle.memory.presets import (
     DEFAULT_MEMORY_PRESET,
     available_memory_preset_ids,
@@ -33,6 +33,11 @@ from implementations.decision_cycle.memory.presets import (
 from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
     available_perception_preset_ids,
+)
+
+from implementations.decision_cycle.proposal.presets import (
+    DEFAULT_PROPOSAL_PRESET,
+    available_proposal_preset_ids,
 )
 
 from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
@@ -735,7 +740,7 @@ def build_parser() -> argparse.ArgumentParser:
                 f"perception, memory or decision-step inspect run) through perception, observation "
                 f"and memory, then proposal, plan and action, frame by frame, and report the "
                 f"{step_name} record after each. A recording restores every step's selection, "
-                f"restaged per frame as recorded; --plugin overrides {step_name}. Otherwise each "
+                f"restaged per frame as recorded; explicit selections override {step_name}. Otherwise each "
                 f"step uses its default. Recorded frames replay with their recorded drive mode."
             ),
         )
@@ -744,7 +749,15 @@ def build_parser() -> argparse.ArgumentParser:
             type=Path,
             help="Image file, directory of images, or recorded run.",
         )
-        step_inspect.add_argument(
+        step_selection = step_inspect.add_mutually_exclusive_group()
+        if step_name in STEP_PRESETS:
+            step_selection.add_argument(
+                "--preset", choices=sorted(STEP_PRESETS[step_name]),
+                help=f"Override the recorded {step_name} selection with a packaged preset.",
+            )
+        else:
+            step_inspect.set_defaults(preset=None)
+        step_selection.add_argument(
             "--plugin",
             dest="plugins",
             action="append",
@@ -843,11 +856,9 @@ def build_parser() -> argparse.ArgumentParser:
             "local image directory. The server owns source ordering, perception, "
             "observation, bounded memory, decision state, and any selected "
             "packaged plugins. Recorded perception and memory runs preserve frame order "
-            "and timestamps. Perception and memory each start from a packaged preset "
+            "and timestamps. Perception, memory and proposal each start from a packaged preset "
             "or an ordered plugin list, as the inspect and update commands take "
-            "them; a preset keeps its plugin configs. Proposal has no presets and "
-            "starts from an ordered plugin list, as vehicles update proposal takes "
-            "it, or its default plugins. Page checkboxes retain the order "
+            "them; a preset keeps its plugin configs. Page checkboxes retain the order "
             "of selected plugins and append newly checked plugins. A changed ordered "
             "selection uses default configs for that step; the other steps keep their "
             "selections and configs. The same ordered selection keeps the current "
@@ -892,13 +903,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PLUGIN_ID",
         help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
     )
-    workbench_replay.add_argument(
+    workbench_replay_proposal = workbench_replay.add_mutually_exclusive_group()
+    workbench_replay_proposal.add_argument(
+        "--proposal-preset", default=None, choices=available_proposal_preset_ids(),
+        help=f"Packaged proposal preset to replay (default: {DEFAULT_PROPOSAL_PRESET}).",
+    )
+    workbench_replay_proposal.add_argument(
         "--proposal-plugin",
         action="append",
         dest="proposal_plugins",
         default=None,
         metavar="PLUGIN_ID",
-        help="Packaged proposal plugin to select instead of the default plugins; repeat to select several in order.",
+        help="Packaged proposal plugin to select instead of a preset; repeat to select several in order.",
     )
     workbench_replay.add_argument(
         "--cadence-ms",
@@ -1373,7 +1389,9 @@ def build_parser() -> argparse.ArgumentParser:
             description=(
                 f"Stage packaged {step_name} plugins in the local controller bundle "
                 f"(runtime/{step_name}/active.json). Repeat --plugin to select several, "
-                "in order; omit it for the step's default selection."
+                "in order; omit it for the step's default selection. "
+                + (f"--preset selects a named recipe (default: {DEFAULT_STEP_PRESETS[step_name]})."
+                   if step_name in STEP_PRESETS else "")
             ),
         )
         step_parser.add_argument(
@@ -1388,7 +1406,15 @@ def build_parser() -> argparse.ArgumentParser:
             default=DEFAULT_READINESS_TIMEOUT_S,
             help=_STAGING_DISCOVERY_TIMEOUT_HELP,
         )
-        step_parser.add_argument(
+        step_selection = step_parser.add_mutually_exclusive_group()
+        if step_name in STEP_PRESETS:
+            step_selection.add_argument(
+                "--preset", choices=sorted(STEP_PRESETS[step_name]),
+                help=f"Packaged {step_name} preset to activate (default: {DEFAULT_STEP_PRESETS[step_name]}).",
+            )
+        else:
+            step_parser.set_defaults(preset=None)
+        step_selection.add_argument(
             "--plugin",
             action="append",
             dest="plugins",
@@ -1695,7 +1721,7 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
                 "- perception   stage local vehicle perception code",
                 "- observation  stage observation plugins",
                 "- memory       stage memory plugins",
-                "- proposal     stage proposal plugins",
+                "- proposal     stage a proposal preset or plugin selection",
                 "- plan         stage the plan plugin",
                 "- action       stage the action plugin (hold or mode)",
                 "- help         show this summary",
@@ -2066,6 +2092,7 @@ def _handle_vehicles_decision_step_inspect(args: argparse.Namespace) -> int:
     result = inspect_decision_step(
         args.step,
         source=str(args.source),
+        preset=args.preset,
         plugins=args.plugins,
         frame=args.frame,
         record=args.record,
@@ -2167,6 +2194,7 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
         perception_plugins=args.perception_plugins,
         memory_preset=args.memory_preset,
         memory_plugins=args.memory_plugins,
+        proposal_preset=args.proposal_preset,
         proposal_plugins=args.proposal_plugins,
         cadence_ms=args.cadence_ms,
         pace=args.pace,
@@ -2351,6 +2379,7 @@ def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
         vehicle_id=args.vehicle_id,
         step=args.step,
         plugins=args.plugins,
+        preset=args.preset,
         runtime_root=VEHICLES_RUNTIME_ROOT,
         timeout_s=args.timeout_s,
         dry_run=args.dry_run,

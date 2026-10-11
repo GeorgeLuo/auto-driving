@@ -32,7 +32,9 @@ from autonomy.decision_cycle.steps import builtin_activation, step_runner
 from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import (
+    STEP_PRESETS,
     packaged_activation,
+    selection_activation,
     step_plugins,
 )
 from implementations.vehicle.chase_sim import ChaseSimCar
@@ -506,6 +508,7 @@ def update_vehicle_step(
     vehicle_id: str,
     step: str,
     plugins: list[str] | None = None,
+    preset: str | None = None,
     runtime_root: Path,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     dry_run: bool = False,
@@ -513,12 +516,15 @@ def update_vehicle_step(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> tuple[int, str]:
-    """Stage packaged ``plugins`` for ``step`` (its default selection when omitted)."""
+    """Stage a preset or plugin list; use the step's default when omitted."""
 
     require_step(step)
 
     try:
-        activation = packaged_activation(step, plugins)
+        if preset is not None and step not in STEP_PRESETS:
+            raise ValueError(f"{step} has no presets; select its plugins instead")
+        activation = (selection_activation(step, preset=preset, plugins=plugins)
+                      if step in STEP_PRESETS else packaged_activation(step, plugins))
         # Construct the runner once so a selection that cannot load is never staged.
         step_runner(activation)
     except DuplicatePluginIdError:
@@ -541,7 +547,8 @@ def update_vehicle_step(
 
     bundle = vehicle_bundle(vehicle_id, runtime_root)
     previous = valid_bundle_activation(bundle, step)
-    activation = keep_staged_configs(bundle, activation)
+    if step not in STEP_PRESETS or plugins:
+        activation = keep_staged_configs(bundle, activation)
     path = bundle_activation_path(bundle, step)
     release: dict[str, Any] | None = None
     if not dry_run:
@@ -551,6 +558,7 @@ def update_vehicle_step(
         "schema": "vehicle_step_update_v0",
         "vehicle_id": vehicle_id,
         "step": step,
+        **({"preset": activation.metadata["preset"]} if step in STEP_PRESETS else {}),
         "plugins": list(activation.plugins),
         "dry_run": dry_run,
         "activation": display_path(path),
@@ -565,6 +573,7 @@ def update_vehicle_step(
     return 0, "\n".join(
         [
             f"{verb} {step}: {vehicle_id} -> {', '.join(activation.plugins) or '(no plugins)'}",
+            *([f"Preset: {activation.metadata['preset']}"] if step in STEP_PRESETS else []),
             f"Activation: {display_path(path)}",
             *format_apply_staged(payload["apply"]),
         ]

@@ -127,13 +127,13 @@ class RuntimeViewServer:
         page_url = self.decision.page_url()
         if page_url is not None:
             if compact:
-                return f'<a class="nav" href="{page_url}">Decision</a>'
-            return f'<a href="{page_url}">Decision</a>'
+                return f'<a class="nav" href="{page_url}">Action</a>'
+            return f'<a href="{page_url}">Action</a>'
         if compact:
             return (
-                '<span class="nav unavailable" title="Decision view unavailable">Decision</span>'
+                '<span class="nav unavailable" title="Action view unavailable">Action</span>'
             )
-        return '<span class="decision-unavailable">Decision view unavailable</span>'
+        return '<span class="decision-unavailable">Action view unavailable</span>'
 
     def stop(self) -> None:
         httpd = self._httpd

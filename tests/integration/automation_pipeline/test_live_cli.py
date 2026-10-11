@@ -106,8 +106,8 @@ class LiveCommandsTests(unittest.TestCase):
 
         threading.Thread(target=collect, daemon=True).start()
         page = _wait(
-            lambda: next((line.split()[2] for line in lines if line.startswith("decision view: http")), None),
-            timeout_s=20, message="the proposal stream printed no decision view",
+            lambda: next((line.split()[2] for line in lines if line.startswith("action view: http")), None),
+            timeout_s=20, message="the proposal stream printed no action view",
         )
         with urlopen(page, timeout=5) as response:
             self.assertEqual(response.headers.get_content_type(), "text/html")

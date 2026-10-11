@@ -146,7 +146,7 @@ class PerceptionViewTests(unittest.TestCase):
 
                 with urlopen(f"{server.url}", timeout=1.0) as response:
                     runtime_html = response.read().decode("utf-8")
-                self.assertIn("Decision view unavailable", runtime_html)
+                self.assertIn("Action view unavailable", runtime_html)
                 self.assertNotIn('href="/decision"', runtime_html)
 
                 with urlopen(f"{server.url}favicon.ico", timeout=1.0) as response:

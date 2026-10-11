@@ -129,7 +129,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles automation ...` | Starts, stops or inspects a run on the vehicle's runtime host. |
 | `vehicles stream perception` | Displays rolling latest perception from the runtime host's `/autonomy/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
 | `vehicles stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
-| `vehicles stream proposal\|plan\|action` | Prints that step's record from the latest cycle the vehicle's runtime host published, with its age, generation and plugins; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `vehicle_<step>_stream_v1`. A running terminal stream also serves the local decision view below. |
+| `vehicles stream proposal\|plan\|action` | Prints that step's record from the latest cycle the vehicle's runtime host published, with its age, generation and plugins; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `vehicle_<step>_stream_v1`. A running terminal stream also serves the local action view below. |
 | `vehicles memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
 | `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
 | `vehicles memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
@@ -160,10 +160,10 @@ Terminal streams show the same probe verdict and reason, and perception labels
 the publication's health separately from that verdict.
 
 Every running terminal stream (perception, memory, proposal, plan, action)
-also serves a `/decision` page and prints its URL as `decision view:`. The page
-pairs the host's latest decision with its frame, the retained evidence its
+also serves a `/decision` page and prints its URL as `action view:`. The page
+pairs the host's latest accepted cycle with its frame, the retained evidence its
 proposals read, the candidates, the plan's selection, the action's authorized
-command and how the host applied it. When no matched decision can be read, the
+command and how the host applied it. When no matched cycle can be read, the
 line gives the reason, and the `/perception` and `/memory` pages still follow
 the observation.
 
@@ -533,7 +533,7 @@ running worker applies a changed plugin list at its next frame and changed
 plugin configs when it restarts; a stopped one uses the selection the next time
 it starts. Proposals are part of the decision generation: once the worker runs
 the new selection it publishes under the restaged generation, and an open
-decision view follows it. The generation changes after the cycle confirms
+action view follows it. The generation changes after the cycle confirms
 which plugins were applied. A plugin load or removal-reset failure keeps the
 old applied selection and generation, and publishing is refused while they
 differ from the staged decision. After a config restage it publishes no

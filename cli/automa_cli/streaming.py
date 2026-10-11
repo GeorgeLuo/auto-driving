@@ -260,8 +260,8 @@ class _ViewFeed:
 
         page = self.server.decision.page_url() if self.server is not None else None
         if self.server is None or self.server.url is None or page is None:
-            return _view_line("decision view", None, self.error or self.decision_error or "no decision yet")
-        line = f"decision view: {self.server.url.rstrip('/')}{page}"
+            return _view_line("action view", None, self.error or self.decision_error or "no action yet")
+        line = f"action view: {self.server.url.rstrip('/')}{page}"
         return f"{line}  (latest unavailable: {self.decision_error})" if self.decision_error else line
 
     def publish(self, publication: dict[str, Any] | None) -> None:
@@ -269,7 +269,7 @@ class _ViewFeed:
             return
         try:
             published = self.decision.refresh()
-            self.decision_error = None if published else "the view rejected the host's decision"
+            self.decision_error = None if published else "the view rejected the host's cycle"
         except Exception as exc:  # noqa: BLE001 - the decision page is observational
             self.server.decision.invalidate_latest()
             self.decision_error = f"{type(exc).__name__}: {exc}"

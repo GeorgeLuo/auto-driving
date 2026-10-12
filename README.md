@@ -143,6 +143,19 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 With `--plugin`, each `update` step keeps the staged config of every plugin that stays selected. When a restage changes a plugin's spec or config, the command names those plugins and prints the `--restart` command that applies them, since a running host only adopts a changed plugin list live.
 
+The runtime viewer's **Plugins** table refreshes every 500 ms. Revision columns
+are hidden by default; **Show revisions** reveals them for debugging. **Enabled**
+means the plugin is in the host's applied selection; it changes after adoption,
+while requested and applied revisions show pending selection changes. A
+stopped session can still have enabled plugins. The table reports selections
+for all six steps; live selection changes remain limited to perception,
+memory, and proposal. **Origin** identifies the available entry as packaged or
+uploaded, independently of which revision is applied. Uploads add rows or
+replace an available revision without editing the packaged catalog files.
+Enabled uses green and red dots, with an amber **Unknown** dot when selection
+data is unavailable. A polling failure marks the last rows as a stale snapshot
+until a successful refresh. Messages above the table appear only for errors.
+
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins
 upload` and `plugins status` print the host run beside the catalog version. A
 restart onto a new release clears them: `update autonomy --restart` on a PiCar,

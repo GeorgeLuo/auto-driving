@@ -11,10 +11,13 @@
     color: #ededed;
     --muted: #8c8c8c;
     --line: rgba(255, 255, 255, 0.14);
+    --green: #3ecf8e;
+    --amber: #e6b325;
+    --red: #ef6b6b;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   body { margin: 0; background: #0a0a0a; letter-spacing: -0.01em; }
-  main { max-width: 960px; margin: 28px auto; padding: 16px; }
+  main { max-width: 1200px; margin: 28px auto; padding: 16px; }
   a.nav {
     display: inline-flex;
     align-items: center;
@@ -28,45 +31,101 @@
     text-decoration: none;
   }
   a.nav:hover { background: rgba(255, 255, 255, 0.05); color: #ededed; }
-  h1 { margin: 0 0 10px; font-size: 13px; font-weight: 500; }
-  #status { margin: 0; color: var(--muted); font-family: var(--mono); font-size: 12px; }
-  table { width: 100%; margin-top: 14px; text-align: left; border-collapse: collapse; }
+  .heading { display: flex; align-items: center; justify-content: space-between; }
+  h1 { margin: 0; font-size: 13px; font-weight: 500; }
+  .revision-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; cursor: pointer; }
+  .revision-toggle:hover { color: #ededed; }
+  #status { margin: 0; color: var(--red); font-size: 12px; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; min-width: 790px; margin-top: 14px; text-align: left; border-collapse: collapse; table-layout: fixed; }
+  table.show-revisions { min-width: 1120px; }
+  table:not(.show-revisions) .revision { display: none; }
+  col.step { width: 100px; }
+  col.plugin { width: 230px; }
+  col.enabled { width: 72px; }
+  col.origin { width: 90px; }
+  col.revision { width: 110px; }
   th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
   th { color: var(--muted); font-size: 11px; font-weight: 500; }
   td { color: #ededed; font-family: var(--mono); font-size: 12px; }
+  table.stale tbody { opacity: 0.6; }
+  td.enabled { font-family: inherit; white-space: nowrap; }
+  .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+  .status-dot.live { background: var(--green); }
+  .status-dot.error { background: var(--red); }
+  td:nth-child(1), td:nth-child(4) { white-space: nowrap; }
   td:nth-child(-n + 2) { color: var(--muted); font-family: inherit; }
 </style>
 <main>
   <a class="nav" href="/">Automa</a>
-  <h1>Plugins</h1>
-  <p id="status" role="status">Loading catalog…</p>
-  <table><thead><tr><th>Step</th><th>Plugin</th><th>Available revision</th><th>Requested revision</th><th>Applied revision</th><th>Source</th></tr></thead>
-    <tbody id="plugins"></tbody></table>
+  <div class="heading"><h1>Plugins</h1><label class="revision-toggle"><input type="checkbox" id="revisions" aria-controls="catalog">Show revisions</label></div>
+  <p id="status" role="alert" hidden></p>
+  <div class="table-scroll"><table id="catalog">
+    <colgroup><col class="step"><col class="plugin"><col class="enabled"><col class="origin"><col class="revision"><col class="revision"><col class="revision"><col></colgroup>
+    <thead><tr><th>Step</th><th>Plugin</th><th>Enabled</th><th>Origin</th><th class="revision">Available revision</th><th class="revision">Requested revision</th><th class="revision">Applied revision</th><th>Source</th></tr></thead>
+    <tbody id="plugins"></tbody></table></div>
 </main>
 <script>
+  document.getElementById('revisions').onchange = function () {
+    document.getElementById('catalog').classList.toggle('show-revisions', this.checked);
+  };
+  function enabledDot(state) {
+    const dot = document.createElement('span');
+    dot.className = 'status-dot' + (state === 'Enabled' ? ' live' : state === 'Disabled' ? ' error' : '');
+    dot.role = 'img';
+    dot.ariaLabel = state;
+    dot.title = state;
+    return dot;
+  }
   async function refresh() {
     try {
-      const response = await fetch('/api/plugins');
+      const response = await fetch('/api/plugins', { cache: 'no-store' });
       const catalog = await response.json();
-      if (!catalog.ok) throw new Error(catalog.error);
+      if (!response.ok || !catalog.ok) throw new Error(catalog.error || `HTTP ${response.status}`);
       const arming = catalog.arming;
-      document.getElementById('status').textContent = 'Catalog ' + catalog.catalog_version +
-        (arming ? ' · Arming: ' + arming.status + (arming.error ? ' · ' + arming.error : '') : '');
+      const status = document.getElementById('status');
+      status.textContent = arming?.error ? 'Plugin selection failed · ' + arming.error : '';
+      status.hidden = !arming?.error;
       function selectedRevision(name, plugin) {
         const selected = arming?.[name]?.[plugin.step]?.find(item => item.id === plugin.id);
-        return selected ? selected.metadata.revision || 'packaged' : '—';
+        return selected ? selected.metadata?.revision || 'packaged' : '—';
       }
       const rows = catalog.plugins.map(plugin => {
         const row = document.createElement('tr');
         const metadata = plugin.metadata || {};
-        [plugin.step, plugin.id, metadata.revision || 'packaged', selectedRevision('requested', plugin),
-          selectedRevision('applied', plugin), metadata.filename || plugin.entrypoint].forEach(value => {
-          const cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell);
+        const applied = arming?.applied?.[plugin.step];
+        const enabled = Array.isArray(applied)
+          ? (applied.some(item => item.id === plugin.id) ? 'Enabled' : 'Disabled')
+          : 'Unknown';
+        row.dataset.step = plugin.step;
+        row.dataset.pluginId = plugin.id;
+        [plugin.step, plugin.id, enabled, metadata.revision ? 'uploaded' : 'packaged',
+          metadata.revision || 'packaged', selectedRevision('requested', plugin),
+          selectedRevision('applied', plugin), metadata.filename || plugin.entrypoint].forEach((value, index) => {
+          const cell = document.createElement('td');
+          if (index === 2) {
+            cell.className = 'enabled';
+            cell.appendChild(enabledDot(value));
+          } else {
+            if (index >= 4 && index <= 6) cell.className = 'revision';
+            cell.textContent = value;
+          }
+          row.appendChild(cell);
         });
         return row;
       });
       document.getElementById('plugins').replaceChildren(...rows);
-    } catch (error) { document.getElementById('status').textContent = error.message; }
+      document.getElementById('catalog').classList.remove('stale');
+    } catch (error) {
+      const table = document.getElementById('catalog');
+      table.classList.add('stale');
+      for (const cell of table.querySelectorAll('td.enabled')) cell.replaceChildren(enabledDot('Unknown'));
+      const status = document.getElementById('status');
+      status.hidden = false;
+      status.textContent = 'Catalog unavailable · ' + error.message +
+        (document.getElementById('plugins').children.length ? ' · Showing stale snapshot' : '') +
+        ' · Retrying automatically';
+    }
     setTimeout(refresh, 500);
   }
   refresh();

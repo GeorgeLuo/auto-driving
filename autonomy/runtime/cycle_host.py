@@ -231,14 +231,14 @@ class AutonomyCycleHost:
         try:
             requested, applied = {}, {}
             pending = False
-            for step in LIVE_SELECTION_STEPS:
+            for step in STEPS:
                 runner = self.step(step)
                 manager = getattr(runner, "plugin_manager", None)
                 selected = manager.selected if manager else ()
                 loaded = tuple(item for item, _ in runner.applied) if manager else ()
                 requested[step] = [describe_plugin(item) for item in selected]
                 applied[step] = [describe_plugin(item) for item in loaded]
-                pending |= selected != loaded
+                pending |= step in LIVE_SELECTION_STEPS and selected != loaded
             self._selection = {
                 "status": "failed" if self._selection_error else "requested" if pending else "applied",
                 "request_id": self._arm_request_id, "error": self._selection_error,

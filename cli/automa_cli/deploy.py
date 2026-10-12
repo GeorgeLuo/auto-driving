@@ -14,12 +14,9 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from implementations.decision_cycle.perception.presets import (
-    DEFAULT_PERCEPTION_PRESET,
-)
-from autonomy.decision_cycle.activation import STEPS
+from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
+from implementations.decision_cycle.catalog import selection_activation
 from implementations.vehicle.picar.defaults import (
     get_default_picar_base_url,
     get_default_picar_id,
@@ -382,6 +379,7 @@ def update_vehicle_autonomy(
             deploy_files=[preview_dir / f"{step}-active.json" for step in STEPS]
             + [preview_dir / "identity.json"],
         )
+        defaults = {step: selection_activation(step) for step in STEPS}
         payload = _autonomy_update_payload(
             target=target,
             dry_run=True,
@@ -391,8 +389,8 @@ def update_vehicle_autonomy(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
-            perception_preset=DEFAULT_PERCEPTION_PRESET,
-            steps={step: list(DEFAULT_STEP_PLUGINS[step]) for step in STEPS},
+            presets=activation_presets(defaults),
+            steps={step: list(activation.plugins) for step, activation in defaults.items()},
             generation_id=None,
             runtime_verification=None,
         )
@@ -447,7 +445,6 @@ def update_vehicle_autonomy(
         if code != 0:
             return CommandResult(code, f"Restart failed with exit code {code}.")
 
-    perception_preset = str(activations["perception"].metadata.get("preset"))
     deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
     generation_id = decision_generation_id(
         {step: activations.get(step) for step in ("proposal", "plan", "action")}
@@ -478,7 +475,7 @@ def update_vehicle_autonomy(
         commands=commands,
         restart=restart,
         drive_args=drive_args,
-        perception_preset=perception_preset,
+        presets=activation_presets(activations),
         steps=deployed_steps,
         generation_id=generation_id,
         runtime_verification=runtime_verification,
@@ -498,8 +495,7 @@ def update_vehicle_autonomy(
                 f"Autonomy updated: {vehicle_id} -> {target.ssh_target}",
                 f"Release: {release_id}",
                 f"Tree SHA-256: {release['tree_sha256']}",
-                f"Perception: {payload['activation']['perception_preset']}",
-                *_step_lines(payload["activation"]["steps"]),
+                *_step_lines(payload["activation"]["steps"], payload["activation"]["presets"]),
                 f"Decision generation: {payload['activation']['generation_id']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
                 *verified_lines,
@@ -569,6 +565,7 @@ def _update_local_autonomy(
         "vehicle_id": vehicle_id,
         "dry_run": False,
         "release": summary,
+        "presets": activation_presets(activations),
         "steps": steps,
         "generation_id": decision_generation_id(
             {step: activations.get(step) for step in ("proposal", "plan", "action")}
@@ -590,7 +587,7 @@ def _update_local_autonomy(
         f"Autonomy updated: {vehicle_id} (local host)",
         f"Release: {summary['archive']}",
         f"Archive SHA-256: {summary['archive_sha256']}",
-        *_step_lines(steps),
+        *_step_lines(steps, payload["presets"]),
         f"Decision generation: {payload['generation_id']}",
         host_line,
     ]))
@@ -810,7 +807,7 @@ def _autonomy_update_payload(
     commands: list[tuple[str, list[str]]],
     restart: bool,
     drive_args: str | None,
-    perception_preset: str,
+    presets: dict[str, str],
     steps: dict[str, list[str]],
     generation_id: str | None,
     runtime_verification: dict[str, Any] | None,
@@ -849,7 +846,7 @@ def _autonomy_update_payload(
         "release_id": release_id,
         "release": release_activation_summary(release) if release is not None else None,
         "activation": {
-            "perception_preset": perception_preset,
+            "presets": presets,
             "steps": steps,
             "generation_id": generation_id,
         },
@@ -978,13 +975,9 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
             "outcome: plan only; no files written and no remote connection attempted",
             f"source tree SHA-256: {payload['source']['tree_sha256']}",
             f"source files: {payload['source']['file_count']}",
-            (
-                f"activation defaults: perception={payload['activation']['perception_preset']} "
-                + " ".join(
-                    f"{step}={','.join(plugins) or '-'}"
-                    for step, plugins in payload["activation"]["steps"].items()
-                    if step != "perception"
-                )
+            "activation defaults: " + " ".join(
+                f"{step}={payload['activation']['presets'].get(step) or ','.join(plugins) or '-'}"
+                for step, plugins in payload["activation"]["steps"].items()
             ),
             "planned commands:",
             *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
@@ -1075,12 +1068,14 @@ def _verify_picar_autonomy_runtime(
     return verification
 
 
-def _step_lines(steps: dict[str, list[str]]) -> list[str]:
-    return [
-        f"{step.capitalize()}: {', '.join(plugins) or '(no plugins)'}"
-        for step, plugins in steps.items()
-        if step != "perception"
-    ]
+def _step_lines(steps: dict[str, list[str]], presets: dict[str, str]) -> list[str]:
+    lines = []
+    for step, plugins in steps.items():
+        listed = ", ".join(plugins)
+        preset = presets.get(step)
+        selection = f"{preset} ({listed or 'no plugins'})" if preset else listed or "(no plugins)"
+        lines.append(f"{step.capitalize()}: {selection}")
+    return lines
 
 
 def inspect_picar_autonomy_runtime(

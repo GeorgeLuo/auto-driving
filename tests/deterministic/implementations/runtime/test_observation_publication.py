@@ -9,7 +9,11 @@ import numpy as np
 from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.execution import ControlExecution
-from implementations.decision_cycle.catalog import packaged_activation
+from implementations.decision_cycle.catalog import (
+    DEFAULT_STEP_PRESETS,
+    packaged_activation,
+    selection_activation,
+)
 from autonomy.runtime.frame_loop import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
@@ -37,23 +41,19 @@ class ObservationPublicationTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=create_host(steps=decision_steps()),
             interval_s=0.0,
-            preset="lightweight_observer",
+            presets={"perception": "lightweight_observer"},
         )
         payload = part.publish_latest(now_ms=1_000)
         self.assertEqual(payload["schema"], OBSERVATION_PUBLICATION_SCHEMA)
         self.assertEqual(payload["health"], "warming")
         self.assertFalse(payload["ok"])
         self.assertIsNone(payload["frame"])
-        self.assertEqual(payload["preset"], "lightweight_observer")
+        self.assertEqual(payload["presets"], {"perception": "lightweight_observer"})
         self.assertEqual(payload["latest_json_path"], LATEST_JSON_PATH)
         self.assertEqual(payload["latest_frame_path"], LATEST_FRAME_PATH)
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
-        part = AutonomyPilotPart(
-            host=create_host(steps=decision_steps()),
-            interval_s=0.0,
-            preset="test-observer",
-        )
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
         image = np.zeros((8, 12, 3), dtype=np.uint8)
         image[:, :] = (10, 20, 30)
         part.run(image_array=image, mode="user")
@@ -67,12 +67,30 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["control"]["throttle"], 0.0)
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
         self.assertTrue(payload["frame"]["has_image"])
-        self.assertEqual(payload["preset"], "test-observer")
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
         self.assertEqual(payload["control"]["reason"], "no-selected-command")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
+
+    def test_presets_follow_the_activations_each_frame_applied(self) -> None:
+        """Regression: the runtime reported only perception's preset, fixed at start,
+        so memory's and proposal's presets, and any restaged preset, never showed."""
+
+        activations = {step: selection_activation(step) for step in DECISION_STEPS}
+        part = AutonomyPilotPart(
+            host=create_host(steps=decision_steps(activations)),
+            interval_s=0.0,
+            presets={"perception": "started-with"},
+        )
+        self.assertEqual(part.publish_latest(now_ms=1_000)["presets"], {"perception": "started-with"})
+
+        part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
+        applied = {"proposal": DEFAULT_STEP_PRESETS["proposal"]}
+        self.assertEqual(payload["presets"], applied)
+        self.assertEqual(part.observation_status()["presets"], applied)
 
     def test_publication_includes_the_memory_report_when_step_present(self) -> None:
         from autonomy.decision_cycle.context import DecisionFrameContext
@@ -118,7 +136,7 @@ class ObservationPublicationTests(unittest.TestCase):
             }
 
         host = create_host(steps=DecisionSteps(memory=remember))
-        part = AutonomyPilotPart(host=host, interval_s=0.0, preset="test")
+        part = AutonomyPilotPart(host=host, interval_s=0.0)
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)

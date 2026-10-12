@@ -27,6 +27,7 @@ from .host_publications import (
     fetch_observation_frame,
     fetch_observation_publication,
     perception_text_from_publication,
+    presets_text,
     publication_to_frame_record,
 )
 from .plugin_catalog import PluginCatalogClient
@@ -326,7 +327,7 @@ def _probe_perception(
     health = str(publication.get("health") or "unknown")
     probe.update(
         health=health,
-        preset=publication.get("preset"),
+        presets=publication.get("presets"),
         mode=publication.get("mode"),
         interval_s=publication.get("interval_s"),
         frames_captured=publication.get("frames_captured"),
@@ -418,7 +419,7 @@ def _perception_screen(
         f"host: {base_url}",
         f"status: {live.get('status', 'unknown')}",
         *([f"error: {live['error']}"] if live.get("error") else []),
-        f"preset: {_shown(publication.get('preset'))}  mode: {_shown(publication.get('mode'))}",
+        f"presets: {presets_text(publication.get('presets'))}  mode: {_shown(publication.get('mode'))}",
         (
             f"control: steering={_shown(control.get('steering'))}  "
             f"throttle={_shown(control.get('throttle'))}  reason={_shown(control.get('reason'))}"

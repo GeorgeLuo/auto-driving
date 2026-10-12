@@ -31,6 +31,7 @@ from .host_publications import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_observation_publication,
+    presets_text,
 )
 from .runtime_hosts import RuntimeHostError, runtime_base_url
 
@@ -199,7 +200,7 @@ def _format_live_observation(live: dict[str, Any]) -> str:
     return "\n".join([
         "Live observation:",
         f"- health: {live.get('health', 'unknown')}  age_ms={live.get('result_age_ms', 'unknown')}",
-        f"- preset: {live.get('preset', 'unknown')}  mode: {live.get('mode', 'unknown')}",
+        f"- presets: {presets_text(live.get('presets'))}  mode: {live.get('mode', 'unknown')}",
         f"- frame: {frame.get('frame_id', 'none')}  duration_ms={live.get('duration_ms', 'unknown')}",
         (
             f"- control: steering={control.get('steering', 'unknown')} "
@@ -229,7 +230,7 @@ def _live_observation_info(vehicle_id: str, *, timeout_s: float) -> dict[str, An
         "ok": publication.get("ok"),
         "result_age_ms": publication.get("result_age_ms"),
         "duration_ms": publication.get("duration_ms"),
-        "preset": publication.get("preset"),
+        "presets": publication.get("presets"),
         "mode": publication.get("mode"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),

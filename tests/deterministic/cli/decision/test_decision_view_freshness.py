@@ -6,6 +6,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from unittest.mock import patch
+from cli.automa_cli.decision_view import MAX_RETAINED_TRANSACTIONS, DecisionViewError
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.shared.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
@@ -261,3 +262,24 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertNotIn("current_image", error)
                 self.assertNotIn(replacement_payload["transaction_id"], body)
                 self.assertNotIn(replacement_payload["current_image"]["sha256"], body)
+
+    def test_only_the_latest_transactions_keep_their_images(self) -> None:
+        stream_frame = self._accepted_frame()
+        view = self.server.decision
+        generation = view.generation_id
+        published = []
+        for index in range(MAX_RETAINED_TRANSACTIONS + 1):
+            _, image = self._publish_exact_transaction(
+                image_name=f"frame-{index}.png",
+                image_color=(index, 80, 150),
+                stream_frame=stream_frame,
+            )
+            latest = view.latest_payload(generation=generation, now_ms=stream_frame["published_at_ms"])
+            published.append((latest["transaction_id"], image))
+        self.assertEqual(len(dict(published)), MAX_RETAINED_TRANSACTIONS + 1)
+
+        with self.assertRaises(DecisionViewError) as evicted:
+            view.image_response(generation=generation, transaction_id=published[0][0])
+        self.assertEqual((evicted.exception.status_code, evicted.exception.reason), (404, "image_unavailable"))
+        for transaction_id, image in published[1:]:
+            self.assertEqual(view.image_response(generation=generation, transaction_id=transaction_id)[0], image)

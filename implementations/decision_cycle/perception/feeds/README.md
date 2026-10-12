@@ -17,4 +17,4 @@ turns a camera reading into a `CameraFrame`.
 1. Add a module here with the input type, a helper that builds its
    `PerceptionPluginInput`, and the provider function.
 2. Plugins declare that input in their `inputs`.
-3. Add a test next to `tests/implementations/decision_cycle/perception/test_camera_feed.py`.
+3. Add a test next to `tests/deterministic/implementations/decision_cycle/perception/test_camera_feed.py`.

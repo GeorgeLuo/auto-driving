@@ -12,11 +12,11 @@ python3 -m qca analyze .
 python3 -m qca analyze path/to/file.py
 python3 -m qca analyze path/to/dir
 python3 -m qca analyze src tests
-python3 -m qca analyze qca tests/qca --python
-python3 -m qca analyze qca/analyzer.py tests/qca --python
-python3 -m qca analyze --ref HEAD qca tests/qca
+python3 -m qca analyze qca tests/deterministic/qca --python
+python3 -m qca analyze qca/analyzer.py tests/deterministic/qca --python
+python3 -m qca analyze --ref HEAD qca tests/deterministic/qca
 python3 -m qca diff --base <base-ref> --head <head-ref>
-python3 -m qca diff --base <base-ref> --head <head-ref> --python qca tests/qca
+python3 -m qca diff --base <base-ref> --head <head-ref> --python qca tests/deterministic/qca
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --markdown report.md
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --html report.html
 python3 -m qca render report.json --html report.html

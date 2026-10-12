@@ -24,7 +24,12 @@ from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL, L
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tests/run.py",
-        description="Run the repository-owned deterministic test suite.",
+        description="Run the in-process deterministic suite, or the systems suite.",
+    )
+    parser.add_argument(
+        "--systems",
+        action="store_true",
+        help="Run tests/systems, the tests that start another program.",
     )
     parser.add_argument(
         "--durations",
@@ -35,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--live-sim",
         action="store_true",
-        help="Ensure the Chase simulator is usable, then include live simulator smoke tests.",
+        help="Ensure the Chase simulator is usable, then run the systems suite with its live simulator smoke test.",
     )
     parser.add_argument(
         "--sim-timeout-ms",
@@ -46,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--live-pi",
         action="store_true",
-        help="Include the read-only Pi connectivity and autonomy activation smoke test.",
+        help="Run the systems suite, including the read-only Pi connectivity and autonomy activation smoke test.",
     )
     parser.add_argument(
         "--picar-url",
@@ -162,9 +167,10 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return 2
 
+    suite_name = "systems" if args.systems or args.live_sim or args.live_pi else "deterministic"
     loader = unittest.defaultTestLoader
     suite = loader.discover(
-        str(TESTS_DIR),
+        str(TESTS_DIR / suite_name),
         pattern="test_*.py",
         top_level_dir=str(ROOT),
     )

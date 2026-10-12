@@ -35,21 +35,22 @@ Use the CLI from the repository root:
 ./cli/automa simulators help
 ```
 
-Run the offline test harness:
+Run the deterministic test suite. GitHub runs this same command. It calls code in-process and does not start another program:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 ```
 
-Include the live Chase simulator smoke test:
+Run the systems suite, the tests that start another program:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
+```
+
+Include the live Chase simulator smoke test, or check a powered-on Pi without moving it. Both commands run the systems suite:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
-```
-
-Check a powered-on Pi without moving it:
-
-```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi
 ```
 

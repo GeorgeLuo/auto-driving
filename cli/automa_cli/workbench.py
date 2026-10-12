@@ -182,7 +182,7 @@ def _format_workbench_status(
 def _selection_text(preset: Any, plugin_ids: Any) -> str:
     """A step's selection as the inspect commands print it: preset (plugins).
 
-    A step without presets prints its plugins alone.
+    Before the pipeline reports a preset, the plugins print alone.
     """
 
     plugins = ", ".join(str(item) for item in plugin_ids or []) or "none"

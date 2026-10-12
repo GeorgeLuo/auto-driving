@@ -28,7 +28,8 @@ from autonomy.vehicle import (
 from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    recorded_runner, recorded_selection, recorded_selections, replay_step, selection_record,
+    recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
+    selection_record,
 )
 from .paths import ROOT, display_path, safe_path_part
 from .perception import ensure_local_perception_runtime
@@ -303,7 +304,7 @@ def _inspect_images(
                 if plugins is None and preset is None:
                     selections = recorded_selections(frame.metadata)
                     if "perception" in selections:
-                        activation = selections["perception"] or selection_activation("perception", plugins=[])
+                        activation = replayed_selection("perception", selections["perception"])
                         runner = replay_step(runner, activation, shared_memory)
                 frame_id = frame.frame_id
                 frame_index = frame.frame_index

@@ -108,8 +108,12 @@ class PresetActivationTests(unittest.TestCase):
             return catalog.selection_activation(step, plugins=plugins).metadata["preset"]
 
         self.assertEqual(label("memory", ["bounded_evidence"]), "recency_ledger")
-        self.assertEqual(label("proposal", ["avoid_recent_obstruction"]), "obstruction_avoidance")
-        self.assertEqual(label("proposal", []), catalog.CUSTOM_PRESET)
+        for step in ("perception", "memory", "proposal"):
+            with self.subTest(step=step):
+                default = catalog.DEFAULT_STEP_PRESETS[step]
+                plugins = catalog.STEP_PRESETS[step][default]["plugins"]
+                self.assertEqual(label(step, plugins), default)
+                self.assertEqual(label(step, []), catalog.CUSTOM_PRESET)
         self.assertEqual(label("perception", ["frame", "floor_plane"]), "lightweight_observer")
         # Order matters, an empty list is no preset, and a preset with config
         # overrides is not equalled by its plugin list alone.

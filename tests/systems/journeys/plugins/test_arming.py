@@ -20,49 +20,9 @@ from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
-from tests.shared.integration.plugin_flow_fixtures import frame
+from tests.shared.integration.plugin_flow_fixtures import frame, write_plugin
 from tests.support.cli_runner import run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
-
-
-def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
-    """Self-contained plugins with runtime dependencies across the three steps."""
-    if step == "perception":
-        source = (
-            "from dataclasses import replace\n"
-            "from implementations.decision_cycle.perception.plugins.frame.plugin import FrameObservationPlugin\n"
-            "class Prototype(FrameObservationPlugin):\n"
-            f"    plugin_id = {plugin_id!r}\n"
-            "    def perceive(self, inputs):\n"
-            f"        inputs.shared_memory['prototype.perception'] = {revision}\n"
-            "        result = super().perceive(inputs)\n"
-            f"        return replace(result, measurements={{**result.measurements, 'revision': {revision}}})\n"
-        )
-    elif step == "memory":
-        source = (
-            "class Prototype:\n"
-            f"    plugin_id = {plugin_id!r}\n"
-            "    def update(self, context, observation):\n"
-            "        memory = context.shared_memory\n"
-            "        prior = memory.get('prototype.memory', {})\n"
-            f"        memory['prototype.memory'] = {{'revision': {revision}, 'perception': memory['prototype.perception'], 'count': prior.get('count', 0) + 1}}\n"
-            "    def reset(self, shared_memory):\n"
-            "        shared_memory.pop('prototype.memory', None)\n"
-            "    def status(self, shared_memory):\n"
-            "        return dict((shared_memory or {}).get('prototype.memory', {}))\n"
-        )
-    else:
-        source = (
-            "from autonomy.decision_cycle.proposal.values import ActionProposal\n"
-            "class Prototype:\n"
-            f"    plugin_id = {plugin_id!r}\n"
-            "    def propose(self, source, shared_memory):\n"
-            "        memory = dict(shared_memory.get('prototype.memory', {}))\n"
-            "        return ActionProposal(plugin_id=self.plugin_id, frame_id=source.frame_id,\n"
-            f"            lifecycle='inactive', freshness='none', confidence=0.0, reason='prototype revision {revision}',\n"
-            f"            command=None, metadata={{'revision': {revision}, 'memory': memory}})\n"
-        )
-    file.write_text(source)
 
 
 def upload(base, file, step, plugin_id, *, arm=False, check=True):

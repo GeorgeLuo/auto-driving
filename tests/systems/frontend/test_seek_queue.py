@@ -5,7 +5,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[4]
+from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")

@@ -5,18 +5,18 @@ import subprocess
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[4]
+from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
-class PerceptionStateTests(unittest.TestCase):
-    def test_absent_frame_is_distinct_from_no_output_and_completed_perception(self) -> None:
+class RuntimeViewMemoryTests(unittest.TestCase):
+    def test_memory_and_perception_pages_show_every_plugin_and_the_publisher(self) -> None:
         result = subprocess.run(
-            ["node", str(Path(__file__).with_name("perception_state.js"))],
+            ["node", str(Path(__file__).with_name("runtime_view_memory.js"))],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("perception state ok", result.stdout)
+        self.assertIn("runtime view memory ok", result.stdout)

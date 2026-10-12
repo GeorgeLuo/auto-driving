@@ -4,7 +4,7 @@ Tests are split into two paths.
 
 `deterministic/` is the suite GitHub runs. A test here calls code in this process. It does not start another program. The top-level directories match the codebase: `autonomy`, `implementations`, `cli`, and `qca`. In-process integration tests also live under `integration/`.
 
-`systems/` is everything else. These tests start another program, such as `cli/automa`, a fresh Python, `node`, Chrome, or `git`. A file that contains both kinds of test is split, and each half keeps the same relative path.
+`systems/` is everything else. These tests start another program, such as `cli/automa`, a fresh Python, `node`, Chrome, or `git`. They are grouped by the surface they drive, not by codebase package.
 
 `shared/` holds fixtures both suites import. `support/` is the mechanics package both suites use: the command runner, fakes, and the offline `sitecustomize`. Neither one is a suite.
 
@@ -28,7 +28,22 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 ## Where a test goes
 
-Put an in-process test under `deterministic/`, next to the codebase package it exercises. A test that starts a program goes under `systems/` at the same relative path. A fixture both suites import goes under `shared/` at that same relative path.
+File a test by what its behavior needs, not by what its setup happens to call.
+
+A test that runs in this process goes under `deterministic/`, next to the codebase package it exercises. An in-process test that crosses packages goes under `deterministic/integration/`. Setup alone does not make a systems test: if only the arrangement starts a program, arrange it in-process instead.
+
+A test whose behavior needs another program goes under `systems/`, in the group for the surface it drives:
+
+| Group | Covers | Starts |
+|---|---|---|
+| `commands/<family>/` | One `automa` command family: `automation`, `decision`, `deployment`, `help`, `memory`, `perception`, `simulators`, `vehicles`, or `workbench` | `cli/automa` |
+| `journeys/` | Flows that cross commands and hosts: the automation pipeline, plugin upload and arming, and the runtime host lifecycle | `cli/automa`, runtime hosts, and Chromium for one upload test |
+| `frontend/` | Workbench page scripts in `cli/automa_cli/workbench_page/js/`. Each test keeps its `.js` driver beside it | `node`; skipped when it is missing |
+| `packaging/` | Fresh-interpreter import order, source visibility, and the Pi installer, service, and runner scripts | A fresh Python, `bash`, and `git` |
+| `qca/` | The QCA analyzer against a scratch repository | `git` |
+| `live/` | Bounded checks against a real simulator or Pi | Only with `--live-sim` or `--live-pi` |
+
+A fixture both suites import goes under `shared/`, at the path of the deterministic code it serves.
 
 For new or materially changed tests, name a concrete regression and the observable behavior that would catch it.
 

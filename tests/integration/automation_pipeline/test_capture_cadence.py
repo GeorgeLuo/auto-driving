@@ -93,7 +93,14 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                 perception.wait_started(0)
                 state_path = root / "chase-sim-chaser/bundle/runtime/automation/state.json"
                 deadline = time.monotonic() + 2.0
-                while json.loads(state_path.read_text())["frames_captured"] != 1:
+                while True:
+                    # Perception can start before the CLI publishes its first state.
+                    try:
+                        state = json.loads(state_path.read_text())
+                    except FileNotFoundError:
+                        state = {}
+                    if state.get("frames_captured") == 1:
+                        break
                     self.assertLess(time.monotonic(), deadline, "capture was not published")
                     time.sleep(0.01)
                 perception.release[0].set()

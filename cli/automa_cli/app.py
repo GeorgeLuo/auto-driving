@@ -278,8 +278,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of decision cycles to complete; a run that applies control needs one. "
-            "0 (unbounded) is allowed only with --observe-only; stop it with vehicles automation stop."
+            "Number of decision cycles to complete. Movement requires a positive count "
+            "unless --unbounded is set; 0 remains unbounded with --observe-only."
+        ),
+    )
+    automation_run.add_argument(
+        "--unbounded",
+        action="store_true",
+        help=(
+            "Run until stopped, overriding --num-decisions. "
+            "Stop with vehicles automation stop."
         ),
     )
     automation_run.add_argument(
@@ -391,8 +399,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Number of decision cycles to complete; a run that applies control needs one. "
-            "0 (unbounded) is allowed only with --observe-only; stop it with vehicles automation stop."
+            "Number of decision cycles to complete. Movement requires a positive count "
+            "unless --unbounded is set; 0 remains unbounded with --observe-only."
+        ),
+    )
+    automation_restart.add_argument(
+        "--unbounded",
+        action="store_true",
+        help=(
+            "Run until stopped, overriding --num-decisions. "
+            "Stop with vehicles automation stop."
         ),
     )
     automation_restart.add_argument(
@@ -1910,6 +1926,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
             timeout_s=args.timeout_s,
             interval_s=args.interval_s,
             num_decisions=args.num_decisions,
+            unbounded=args.unbounded,
             take_control=not args.observe_only,
             record=args.record,
             verbose=args.verbose,
@@ -1921,6 +1938,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
             timeout_s=args.timeout_s,
             interval_s=args.interval_s,
             num_decisions=args.num_decisions,
+            unbounded=args.unbounded,
             take_control=not args.observe_only,
             record=args.record,
             verbose=args.verbose,
@@ -1969,6 +1987,7 @@ def _handle_vehicles_automation_restart(args: argparse.Namespace) -> int:
         timeout_s=args.timeout_s,
         interval_s=args.interval_s,
         num_decisions=args.num_decisions,
+        unbounded=args.unbounded,
         take_control=not args.observe_only,
         record=args.record,
         verbose=args.verbose,

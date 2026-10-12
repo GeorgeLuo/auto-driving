@@ -329,12 +329,14 @@ Stop or restart the worker:
 Useful run options:
 
 - `--num-decisions N` bounds the number of completed decision cycles and stops
-  movement afterward. A run that applies control needs it: `run` and `restart`
-  refuse `--num-decisions 0` unless `--observe-only` is set. An observe-only
-  `--num-decisions 0` starts an unbounded background worker; the launch command
-  returns after readiness and prints its stop command,
-  `vehicles automation stop`. Ctrl-C in a terminal stream stops
-  that stream, not the worker.
+  movement afterward. Movement-enabled `run` and `restart` require a positive
+  count unless `--unbounded` is set. Observation-only runs still accept zero.
+- `--unbounded` runs until stopped, overriding `--num-decisions` on either
+  vehicle and in either mode. For example:
+  `./cli/automa vehicles automation run --id chase-sim-chaser --unbounded --open-view`.
+  The launch command returns after readiness and prints
+  `vehicles automation stop`. Ctrl-C in a terminal stream stops that stream,
+  not the worker.
 - `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds on both hosts.
 - `--interval-s 0` captures as quickly as the vehicle interface allows.
 - Decisions consume the newest pending capture as soon as the previous cycle finishes.
@@ -749,7 +751,7 @@ startup setting is `AUTONOMY_CAPTURE_INTERVAL_S`; rename any custom
 `AUTONOMY_OBSERVATION_INTERVAL_S` override when updating.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
 Run configuration and automation status use `num_decisions` (zero means
-unbounded, which the CLI starts only with `--observe-only`); host session status
+unbounded, explicitly requested with `--unbounded` for movement-enabled runs); host session status
 reports `processed_decisions`.
 
 This change updates the physical harness and vendor HTTP API. Install both

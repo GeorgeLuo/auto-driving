@@ -281,6 +281,8 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(state["status"], "stopped", state.get("error"))
                 self.assertGreater(state["recorded_count"], 0)
                 self.assertEqual(state["recorded_count"], state["processed_count"])
+                # The CLI exports beside the host's history, never into it.
+                self.assertEqual(Path(state["run_dir"]).resolve().parent, (automation_dir / "runs").resolve())
                 exported = json.loads((Path(state["run_dir"]) / "manifest.json").read_text())
                 host_manifest = automation_dir / "host-runs" / Path(state["run_dir"]).name / "manifest.json"
                 self.assertEqual(exported, json.loads(host_manifest.read_text()))

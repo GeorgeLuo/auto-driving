@@ -15,7 +15,7 @@ from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin impor
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
 from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.workbench import ReplayActionError
-from tests.deterministic.cli.workbench_fixtures import (
+from tests.shared.cli.workbench_fixtures import (
     FixtureMapper,
     ImageReplayRunner,
     _wait_until,

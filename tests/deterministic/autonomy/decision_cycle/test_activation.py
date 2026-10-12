@@ -17,7 +17,7 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 
-SPEC = "tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
+SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 
 
 def _payload(step: str = "memory", **overrides) -> dict:

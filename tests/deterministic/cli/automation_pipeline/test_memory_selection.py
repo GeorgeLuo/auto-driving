@@ -11,7 +11,7 @@ from cli.automa_cli.step_activations import replace_metadata
 from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import BoundedEvidenceLedger
-from tests.deterministic.cli.automation_pipeline.pipeline_fixtures import (
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     VEHICLE_ID,
     _SlowMapper,
     _write_activations,

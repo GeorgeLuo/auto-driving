@@ -27,7 +27,7 @@ from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, proposal_runner
 
-RECORDING_SPEC = "tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
+RECORDING_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 STATE_KEY = "recording_test.state"
 
 

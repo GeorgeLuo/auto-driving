@@ -10,7 +10,7 @@ from cli.automa_cli import memory_runs
 from cli.automa_cli.memory_runs import inspect_memory
 from cli.automa_cli.memory_report import plugin_summaries
 from cli.automa_cli.workbench_runner import ImageReplayRunner
-from tests.deterministic.cli.memory.frame_fixtures import write_frames
+from tests.shared.cli.memory.frame_fixtures import write_frames
 
 
 class WorkbenchAgreesWithInspectTests(unittest.TestCase):

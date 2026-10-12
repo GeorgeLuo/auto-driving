@@ -7,7 +7,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.interface import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.activation import read_step_activation
-from tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures import (
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )

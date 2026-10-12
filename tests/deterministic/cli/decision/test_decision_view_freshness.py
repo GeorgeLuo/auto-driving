@@ -8,7 +8,7 @@ from urllib.request import urlopen
 from unittest.mock import patch
 from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.runtime_view import RuntimeViewServer
-from tests.deterministic.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
+from tests.shared.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import (
     LiveRuntimeDecisionViewFixture,
 )

@@ -10,7 +10,6 @@ import time
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import urlopen
 from playwright.sync_api import sync_playwright, expect
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -25,17 +24,12 @@ from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
-from tests.deterministic.cli.workbench_fixtures import (
-    ImageReplayRunner, _wait_until, image_source, perception_activations,
+from tests.shared.cli.workbench_fixtures import (
+    ImageReplayRunner, _wait_until, get_json, image_source, perception_activations,
     post_action, serve_workbench,
 )
-from tests.deterministic.cli.automation_pipeline.pipeline_fixtures import chase_runtime
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.support.cli_runner import AUTOMA_PATH, run_automa
-
-
-def get_json(base: str, route: str) -> dict:
-    with urlopen(base.rstrip("/") + route, timeout=3) as response:
-        return json.load(response)
 
 
 def upload(base: str, file: Path, plugin_id: str, *, step: str = "perception", check=True):

@@ -7,7 +7,7 @@ from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.perception import update_vehicle_perception
-from tests.deterministic.cli.automation_pipeline.pipeline_fixtures import (
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     VEHICLE_ID,
     _SlowMapper,
     _write_activations,

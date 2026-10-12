@@ -12,7 +12,7 @@ from cli.automa_cli.automation import (
     start_vehicle_automation_background,
     stop_vehicle_automation,
 )
-from tests.deterministic.cli.automation_pipeline.pipeline_fixtures import (
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     _ExitedProcess,
     _RunningProcess,
 )

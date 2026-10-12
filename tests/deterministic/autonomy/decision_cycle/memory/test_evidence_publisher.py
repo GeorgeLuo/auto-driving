@@ -11,7 +11,7 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.plugins import PluginManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures import (
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
     RECORDING_SPEC,
     _RecordingMemory,
 )

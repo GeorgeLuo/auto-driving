@@ -9,7 +9,7 @@ from implementations.decision_cycle.catalog import selection_activation, step_pl
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 from cli.automa_cli.workbench_plugins import packaged_plugin_catalog
 from cli.automa_cli.workbench import ReplayActionError
-from tests.deterministic.cli.workbench_fixtures import (
+from tests.shared.cli.workbench_fixtures import (
     DecisionFixtureMapper,
     ImageReplayRunner,
     _wait_until,

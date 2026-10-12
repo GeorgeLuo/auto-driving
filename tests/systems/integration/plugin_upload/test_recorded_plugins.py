@@ -4,37 +4,22 @@ from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id, step_activation
+from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import uploaded_source
-from autonomy.runtime.plugin_loader import load_runner
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
-from tests.deterministic.cli.workbench_fixtures import ImageReplayRunner, _wait_until, image_source, post_action, serve_workbench
-from tests.systems.integration.plugin_arming.test_flows import frame, upload, write_plugin
-from tests.systems.integration.plugin_upload.test_flows import get_json
+from tests.shared.cli.workbench_fixtures import image_source
+from tests.shared.integration.plugin_flow_fixtures import candidate, frame, replay
+from tests.systems.integration.plugin_arming.test_flows import upload, write_plugin
 from tests.support.cli_runner import run_automa
-
-
-def replay(test, recording: Path):
-    runner = ImageReplayRunner(recording, cadence_ms=30000, loop=True)
-    base = serve_workbench(test, runner)
-    response = post_action(base, {"action": "start"})["state"]
-    _wait_until(lambda: get_json(base, "/api/state")["current_frame"] is not None)
-    post_action(base, {"action": "seek", "run_id": response["run_id"], "position": 0})
-    return base, response["run_id"]
-
-
-def candidate(state, plugin_id):
-    return next(item for item in state["steps"]["decision"]["proposal"]["candidates"] if item["plugin_id"] == plugin_id)
 
 
 class RecordedPluginFlows(unittest.TestCase):
@@ -114,39 +99,6 @@ class RecordedPluginFlows(unittest.TestCase):
                     catalog = polled["perception_plugin_catalog"]["plugins"]
                     self.assertIn("unselected", [item["id"] for item in catalog])
                     self.assertTrue(all(not item["active"] for item in catalog))
-
-    def test_bundle_initialization_and_same_spec_source_transition_use_recorded_code(self):
-        with image_source(1) as root:
-            host = create_picar_host(steps=decision_steps())
-            self.addCleanup(host.close)
-            recording = RunRecording(root / "runs", vehicle_id="picar")
-            host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
-            for index, module in enumerate(("implementations.bundle_only", "implementations.bundle_only", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin")):
-                bundle = root / f"bundle-{index}"
-                source = bundle / (module.replace(".", "/") + ".py")
-                source.parent.mkdir(parents=True)
-                for directory in (bundle / "implementations", *source.parent.parents):
-                    if directory.is_relative_to(bundle) and directory != bundle:
-                        (directory / "__init__.py").touch()
-                source.write_text(
-                    "from autonomy.decision_cycle.proposal.values import ActionProposal\n"
-                    "class AvoidRecentObstruction:\n"
-                    "    plugin_id = 'recorded'\n"
-                    "    def propose(self, source, shared_memory):\n"
-                    "        return ActionProposal(plugin_id=self.plugin_id, frame_id=source.frame_id,\n"
-                    f"            lifecycle='inactive', freshness='none', confidence=0.0, reason='bundle {index}',\n"
-                    f"            command=None, metadata={{'bundle': {index}}})\n"
-                )
-                activation = step_activation("proposal", ["recorded"], {"recorded": f"{module}:AvoidRecentObstruction"},
-                                             metadata={"controller_bundle": {"root_dir": str(bundle)}})
-                host.set_step("proposal", load_runner(activation))
-                result = host.run(frame(root, index))
-                self.assertEqual(result.proposal.candidates[0].metadata["bundle"], index)
-            host.close()
-            base, run_id = replay(self, recording.root)
-            for index in range(3):
-                state = post_action(base, {"action": "seek", "run_id": run_id, "position": index})["state"]
-                self.assertEqual(candidate(state, "recorded")["metadata"]["bundle"], index)
 
 
 if __name__ == "__main__":

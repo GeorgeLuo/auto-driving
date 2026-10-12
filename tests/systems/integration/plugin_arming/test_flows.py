@@ -11,17 +11,16 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.request import urlopen
 
-from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.runtime_hosts import stop_chase_host
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
-from tests.deterministic.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
+from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
+from tests.shared.integration.plugin_flow_fixtures import frame
 from tests.support.cli_runner import run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
@@ -92,16 +91,6 @@ def selected(state, phase, step):
 
 def proposal(result, plugin_id):
     return next(item for item in result.proposal.candidates if item.plugin_id == plugin_id)
-
-
-def frame(root, index):
-    now = int(time.time() * 1000)
-    reading = SensorReading(sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
-                            captured_at_ms=now, path=str(next(root.glob("*.png"))),
-                            metadata={"content_type": "image/png"})
-    sensor = SensorFrame(read_id=f"frame-{index}", readings={FRONT_CAMERA_SENSOR_ID: reading},
-                         started_at_ms=now, completed_at_ms=now)
-    return DecisionFrameContext(f"frame-{index}", index, now, sensor_frame=sensor)
 
 
 class PluginArmingFlows(unittest.TestCase):

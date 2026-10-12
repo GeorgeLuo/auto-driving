@@ -16,7 +16,7 @@ from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
     BoundedEvidenceLedger,
 )
-from tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
 
 # Selection order of ``two_plugin_runner``: the publisher first, so the last
 # plugin in the list is not the one that published ``EVIDENCE_KEY``.

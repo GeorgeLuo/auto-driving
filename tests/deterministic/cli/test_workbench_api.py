@@ -6,7 +6,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from cli.automa_cli.workbench import WorkbenchServer
-from tests.deterministic.cli.workbench_fixtures import (
+from tests.shared.cli.workbench_fixtures import (
     FixtureMapper,
     ImageReplayRunner,
     _wait_until,

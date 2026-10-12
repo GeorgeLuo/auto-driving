@@ -11,7 +11,7 @@ from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bund
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, stage_activation
 from implementations.decision_cycle.catalog import packaged_activation
-from tests.deterministic.cli.automation_pipeline.pipeline_fixtures import (
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     VEHICLE_ID,
     _SlowMapper,
     _write_activations,

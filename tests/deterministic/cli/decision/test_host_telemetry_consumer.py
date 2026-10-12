@@ -25,7 +25,7 @@ from cli.automa_cli.host_publications import (
     normalize_decision_publication,
     decision_publication_identity,
 )
-from tests.deterministic.cli.decision.decision_surfaces_fixtures import (
+from tests.shared.cli.decision.decision_surfaces_fixtures import (
     frame_inputs,
     left_obstruction_frame,
     packaged_decision_steps,

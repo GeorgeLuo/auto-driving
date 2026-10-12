@@ -82,7 +82,7 @@ class _ConfigurableIdMemory(_RecordingMemory):
     """Allows activation to declare a custom plugin_id (including multibyte)."""
 
 
-RECORDING_SPEC = "tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
+RECORDING_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 
 
 def _valid_payload(plugin_id: str = "recording_test") -> dict:

@@ -6,7 +6,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.runner import DEFAULT_MAX_DIAGNOSTIC_CHARS, MemoryRunner
 from autonomy.decision_cycle.activation import read_step_activation
-from tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures import (
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
     _write_payload,
 )

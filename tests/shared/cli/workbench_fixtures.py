@@ -65,6 +65,11 @@ def post_action(base: str, payload: dict[str, object], *, timeout: float = 2) ->
     return json.loads(response.read())
 
 
+def get_json(base: str, route: str) -> dict:
+    with urlopen(base.rstrip("/") + route, timeout=3) as response:
+        return json.load(response)
+
+
 class ImageReplayRunner(ProductionImageReplayRunner):
     """Deterministic tests default loop off so wait() can observe completed."""
 

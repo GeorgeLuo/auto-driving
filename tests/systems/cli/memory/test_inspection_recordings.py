@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from implementations.decision_cycle.catalog import selection_activation
-from tests.deterministic.cli.memory.frame_fixtures import write_frames
+from tests.shared.cli.memory.frame_fixtures import write_frames
 from tests.support.cli_runner import run_automa
 
 

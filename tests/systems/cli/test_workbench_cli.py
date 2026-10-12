@@ -1,7 +1,7 @@
 from __future__ import annotations
 import unittest
 from tests.support.cli_runner import run_automa
-from tests.deterministic.cli.workbench_fixtures import image_source
+from tests.shared.cli.workbench_fixtures import image_source
 
 
 class WorkbenchTests(unittest.TestCase):

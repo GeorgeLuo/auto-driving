@@ -12,7 +12,7 @@ import importlib
 import unittest
 from pathlib import Path
 
-from tests.deterministic.cli.controller_bundle.loading_inventory import (
+from tests.shared.cli.controller_bundle.loading_inventory import (
     LEGACY_EXPORTS,
     LEGACY_MODULES,
     LEGACY_SPECS,

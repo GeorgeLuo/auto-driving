@@ -11,67 +11,21 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-from autonomy.runtime.client import RuntimeClient
-from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.bundles import controller_bundle_paths
-from cli.automa_cli.streaming import _read_publication, _ViewFeed, probe_live_memory
-from implementations.decision_cycle.catalog import packaged_activation
-from tests.deterministic.cli.automation_pipeline.pipeline_fixtures import (
-    VEHICLE_ID,
-    _write_activations,
-    chase_runtime,
-    staged_runners,
-)
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import VEHICLE_ID
+from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until as _wait
 from tests.support.cli_runner import run_automa, start_automa
 
 START_HOST = f"Run: ./cli/automa vehicles automation run --id {VEHICLE_ID} --observe-only"
 
 
-def _wait(predicate, *, timeout_s: float = 10.0, message: str):
-    deadline = time.monotonic() + timeout_s
-    while not (value := predicate()):
-        if time.monotonic() > deadline:
-            raise AssertionError(message)
-        time.sleep(0.05)
-    return value
-
-
-def _stage(runtime_root: Path) -> None:
-    bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
-    _write_activations(bundle)
-    path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(packaged_activation("memory", ["bounded_evidence"]).to_payload()), encoding="utf-8")
-
-
-class LiveCommandsTests(unittest.TestCase):
-    def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.runtime_root = Path(tmp.name) / "vehicles"
-        _stage(self.runtime_root)
-        stack = ExitStack()
-        self.addCleanup(stack.close)
-        stack.enter_context(staged_runners())
-        self.host = stack.enter_context(chase_runtime(self.runtime_root))
-        self.client = RuntimeClient(self.host.base_url, timeout_s=3.0)
-
+class LiveCommandsTests(LiveHostTestCase):
     def automa(self, *args: str):
         return run_automa("vehicles", *args, "--id", VEHICLE_ID, runtime_root=self.runtime_root, check=False)
-
-    def observe(self, mode: str = "observe_only") -> None:
-        self.client.start(RunConfiguration(mode=mode, interval_s=0.1, num_decisions=0))
-        self.addCleanup(self.client.stop)
-        _wait(
-            lambda: any(plugin["record_count"] for plugin in probe_live_memory(vehicle_id=VEHICLE_ID)["plugins"]),
-            message="the session never filled memory",
-        )
 
     def test_streams_are_live_only_while_a_session_runs(self) -> None:
         idle = self.automa("stream", "perception", "--once", "--json")
@@ -169,17 +123,6 @@ class LiveCommandsTests(unittest.TestCase):
         self.assertEqual(decision["frame_id"], decision["record"]["frame_id"])
         self.assertEqual(decision["plugins"], ["avoid_recent_obstruction"])
 
-    def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
-        self.observe()
-        with patch("cli.automa_cli.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):
-            feed = _ViewFeed(VEHICLE_ID, base_url=self.host.base_url, timeout_s=3.0)
-        self.addCleanup(feed.stop)
-        feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
-        publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
-        feed.publish(publication)
-        self.assertIn("ConnectionError: decision route down", feed.decision_line())
-        with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:
-            self.assertEqual(json.load(response)["frame"]["frame_id"], publication["frame"]["frame_id"])
 
     def test_perception_info_reports_the_hosts_latest_observation(self) -> None:
         self.observe()

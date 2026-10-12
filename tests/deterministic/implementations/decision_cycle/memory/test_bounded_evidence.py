@@ -26,7 +26,7 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.reduction impo
     namespaced_record_id,
     reduce_evidence,
 )
-from tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
 
 
 def _observation(

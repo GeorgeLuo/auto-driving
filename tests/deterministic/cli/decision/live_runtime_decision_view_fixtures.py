@@ -10,7 +10,7 @@ from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
-from tests.deterministic.cli.decision.decision_surfaces_fixtures import (
+from tests.shared.cli.decision.decision_surfaces_fixtures import (
     frame_inputs,
     left_obstruction_frame,
     packaged_decision_steps,

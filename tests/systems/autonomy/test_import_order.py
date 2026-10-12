@@ -19,7 +19,7 @@ import importlib
 import sys
 from pathlib import Path
 
-from tests.deterministic.cli.controller_bundle.loading_inventory import LEGACY_EXPORTS
+from tests.shared.cli.controller_bundle.loading_inventory import LEGACY_EXPORTS
 
 PREFIXES = ("autonomy", "implementations")
 modules = sorted(

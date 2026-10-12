@@ -19,7 +19,7 @@ from cli.automa_cli.step_activations import (
     update_vehicle_step,
     vehicle_bundle,
 )
-from tests.deterministic.cli.decision.decision_surfaces_fixtures import (
+from tests.shared.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
     packaged_decision_steps,
 )

@@ -2,11 +2,11 @@
 
 Tests are split into two paths.
 
-`deterministic/` is the suite GitHub runs. A test here calls code in this process. It does not start another program. The top-level directories match the codebase: `autonomy`, `implementations`, `cli`, and `qca`.
+`deterministic/` is the suite GitHub runs. A test here calls code in this process. It does not start another program. The top-level directories match the codebase: `autonomy`, `implementations`, `cli`, and `qca`. In-process integration tests also live under `integration/`.
 
-`systems/` is everything else. These tests start another program, such as `cli/automa`, a fresh Python, `node`, Chrome, or `git`. Files keep the layout they had before the split, including mixed files that also call code in-process. That layout is temporary.
+`systems/` is everything else. These tests start another program, such as `cli/automa`, a fresh Python, `node`, Chrome, or `git`. A file that contains both kinds of test is split, and each half keeps the same relative path.
 
-`support/` is shared by both paths. It is not a third suite.
+`shared/` holds fixtures both suites import. `support/` is the mechanics package both suites use: the command runner, fakes, and the offline `sitecustomize`. Neither one is a suite.
 
 Run the deterministic suite from the repository root:
 
@@ -28,7 +28,7 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 ## Where a test goes
 
-Put an in-process test under `deterministic/`, next to the codebase package it exercises. A test that starts a program goes under `systems/` until that directory is sorted.
+Put an in-process test under `deterministic/`, next to the codebase package it exercises. A test that starts a program goes under `systems/` at the same relative path. A fixture both suites import goes under `shared/` at that same relative path.
 
 For new or materially changed tests, name a concrete regression and the observable behavior that would catch it.
 

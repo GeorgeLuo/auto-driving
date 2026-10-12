@@ -144,7 +144,7 @@ class ObservationPublicationTests(unittest.TestCase):
         from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
             BoundedEvidenceLedger,
         )
-        from tests.deterministic.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+        from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
 
         def observe(context, perception):
             return Observation(

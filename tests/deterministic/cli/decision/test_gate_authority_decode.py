@@ -13,7 +13,7 @@ from cli.automa_cli.decision import (
 )
 from cli.automa_cli.decision_records import DecisionRunners
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from tests.deterministic.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
+from tests.shared.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
 
 
 def _left_obstruction() -> tuple[RetainedEvidence, ...]:

@@ -22,7 +22,7 @@ from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bund
 from cli.automa_cli.staged_bundle import StagedBundleImport
 from cli.automa_cli.step_hosting import BUNDLE_PREFIXES, load_staged_runner
 from implementations.decision_cycle.catalog import packaged_activation
-from tests.deterministic.cli.controller_bundle.loading_inventory import (
+from tests.shared.cli.controller_bundle.loading_inventory import (
     LEGACY_EXPORTS,
     LEGACY_MODULES,
     LEGACY_SPECS,

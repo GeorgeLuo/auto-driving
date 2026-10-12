@@ -120,7 +120,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
 | `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
 | `vehicles update perception\|memory\|proposal` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger` and `obstruction_avoidance`). |
-| `vehicles update observation\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
+| `vehicles update observation\|plan\|action` | Packages code and stages that step's plugins locally (repeatable `--plugin`; without it, the step's default plugins and configs). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
 | `vehicles plugins arm` | Loads perception, memory and proposal plugins on the host and applies them at its next cycle, without restarting automation. An import or construction error fails the command (exit 2) and keeps the previous selection. Repeat `--plugin` with `--step`, or use a JSON `--selection` map to arm several steps together. |
 | `vehicles plugins status` | Reads available, requested and applied revisions; exits 2 while the last arm failed. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |

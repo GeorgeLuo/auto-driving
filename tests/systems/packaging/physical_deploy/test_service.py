@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import subprocess
 import unittest
-from pathlib import Path
+
+from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 
 
-ROOT = Path(__file__).resolve().parents[4]
 SERVICE_DIR = ROOT / "deploy" / "targets" / "donkeycar" / "systemd"
 LAUNCHER = ROOT / "deploy" / "targets" / "donkeycar" / "app" / "automa_drive.sh"
 

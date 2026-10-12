@@ -8,9 +8,7 @@ from PIL import Image
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.support.cli_runner import run_automa
 from tests.support.runtime_fixtures import write_runtime_fixture
-
-
-ROOT = Path(__file__).resolve().parents[4]
+from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 
 
 class PerceptionCommandTests(unittest.TestCase):

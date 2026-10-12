@@ -22,7 +22,7 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
-from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, proposal_runner
@@ -337,6 +337,46 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertEqual(busy_status("frame_3", 2)["action"]["run_count"], 2)
         self.assertIsNone(host.status()["cycle_in_progress"])
         self.assertEqual(host.status()["cycle_count"], 3)
+
+
+def _uploaded_proposal(plugin_id: str, *, constructor: str = "pass") -> bytes:
+    return (
+        "from autonomy.decision_cycle.proposal.values import ActionProposal\n"
+        "class Prototype:\n"
+        f"    plugin_id = {plugin_id!r}\n"
+        "    def __init__(self):\n"
+        f"        {constructor}\n"
+        "    def propose(self, source, shared_memory):\n"
+        "        return ActionProposal(plugin_id=self.plugin_id, frame_id=source.frame_id,\n"
+        "            lifecycle='inactive', freshness='none', confidence=0.0, reason='uploaded',\n"
+        "            command=None, metadata={})\n"
+    ).encode()
+
+
+class CycleHostArmingTests(unittest.TestCase):
+    def test_a_plugin_that_fails_to_construct_keeps_the_previous_selection(self) -> None:
+        host = AutonomyCycleHost(steps=decision_steps())
+        for plugin_id, constructor in (("working", "pass"), ("broken", "raise RuntimeError('cannot construct')")):
+            host.catalog.upload(
+                step="proposal", plugin_id=plugin_id, entrypoint="prototype:Prototype",
+                source=_uploaded_proposal(plugin_id, constructor=constructor),
+            )
+        self.assertTrue(host.arm({"proposal": ["working"]})["ok"])
+
+        failed = host.arm({"proposal": ["broken"]})
+
+        self.assertEqual((failed["ok"], failed["status"]), (False, "failed"))
+        self.assertRegex(failed["error"], r"^proposal: .*cannot construct")
+        result = host.run(DecisionFrameContext("frame_1", 0, 1_000))
+        self.assertEqual([item.plugin_id for item in result.proposal.candidates], ["working"])
+
+    def test_an_unreadable_staged_activation_keeps_the_current_selection(self) -> None:
+        loaded = packaged_activation("proposal")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "active.json"
+            self.assertIsNone(sync_live_selection(None, path, loaded))
+            path.write_text('{"schema": ', encoding="utf-8")
+            self.assertIsNone(sync_live_selection(None, path, loaded))
 
 
 if __name__ == "__main__":

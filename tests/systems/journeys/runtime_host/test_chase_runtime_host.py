@@ -11,8 +11,7 @@ from pathlib import Path
 from autonomy.runtime.client import RuntimeClient
 from tests.shared.implementations.runtime.wait import wait_until as _wait
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
-
-ROOT = Path(__file__).resolve().parents[4]
+from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 
 
 class ChaseRuntimeHostTests(unittest.TestCase):

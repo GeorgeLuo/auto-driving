@@ -10,9 +10,9 @@ from __future__ import annotations
 import subprocess
 import sys
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
+
 
 _SCRIPT = """
 import importlib

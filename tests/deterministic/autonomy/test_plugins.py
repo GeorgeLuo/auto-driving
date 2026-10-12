@@ -13,6 +13,7 @@ from autonomy.plugins import (
     declared_plugin_id,
     plugin_report,
     replace_selection,
+    uploaded_source,
 )
 
 
@@ -321,6 +322,19 @@ class PluginSelectionRuntimeTests(unittest.TestCase):
         self.assertIs(runtime.applied[0][1], instances["added"])
         self.assertEqual(manager.selected_ids, ("later",))
 
+    def test_a_preparation_is_stale_once_the_selection_changes(self) -> None:
+        manager = PluginManager.from_specs(
+            "perception",
+            {"kept": "implementations.example:kept", "added": "implementations.example:added"},
+        )
+        manager.select(("kept",))
+        runtime = PluginSelectionRuntime(manager)
+        self.assertFalse(runtime.prepared)
+        runtime.prepare(load=lambda definition: object())
+        self.assertTrue(runtime.prepared)
+        manager.select(("added",))
+        self.assertFalse(runtime.prepared)
+
 
 class PluginReportTests(unittest.TestCase):
     def test_report_separates_selected_from_applied_records(self) -> None:
@@ -403,6 +417,57 @@ class PluginReportTests(unittest.TestCase):
                 },
             ],
         )
+
+
+def _source(revision: int) -> bytes:
+    return f"class Plugin:\n    plugin_id = 'revision-{revision}'\n".encode()
+
+
+class UploadedSourceTests(unittest.TestCase):
+    def test_source_that_does_not_compile_is_refused_with_its_line(self) -> None:
+        catalog = LocalPluginCatalog()
+        with self.assertRaisesRegex(ValueError, r"^broken\.py:2: "):
+            catalog.upload(
+                step="proposal", plugin_id="broken", entrypoint="broken:Plugin",
+                source=b"class Plugin:\n    def (\n", filename="broken.py",
+            )
+        self.assertEqual(catalog.snapshot(), (0, ()))
+
+    def test_each_revision_keeps_its_source_and_imports_by_content(self) -> None:
+        catalog = LocalPluginCatalog()
+
+        def upload(revision: int) -> PluginDefinition:
+            return catalog.upload(
+                step="proposal", plugin_id="uploaded", entrypoint="prototype:Plugin", source=_source(revision),
+            )
+
+        first = upload(1)
+        again = upload(1)
+        second = upload(2)
+        self.assertEqual(again.metadata, first.metadata)
+        self.assertNotEqual(second.metadata["source_file"], first.metadata["source_file"])
+        self.assertEqual(catalog.version, 3)
+        self.assertEqual(catalog.resolve("proposal", "uploaded"), second)
+        # A selection that still names the first revision keeps running its code.
+        self.assertEqual(uploaded_source(first.metadata["source_file"]).read_bytes(), _source(1))
+        self.assertEqual(declared_plugin_id(first.executable_entrypoint), "revision-1")
+        self.assertEqual(declared_plugin_id(second.executable_entrypoint), "revision-2")
+
+    def test_a_failed_import_leaves_no_partial_module(self) -> None:
+        catalog = LocalPluginCatalog()
+        definition = catalog.upload(
+            step="proposal", plugin_id="failing", entrypoint="failing:Plugin",
+            source=b"raise RuntimeError('import failed')\nclass Plugin:\n    plugin_id = 'failing'\n",
+        )
+        for attempt in (1, 2):
+            with self.subTest(attempt=attempt), self.assertRaisesRegex(RuntimeError, "import failed"):
+                declared_plugin_id(definition.executable_entrypoint)
+
+    def test_an_unknown_source_or_unnamed_plugin_is_refused(self) -> None:
+        with self.assertRaisesRegex(PluginManagementError, "is not available here"):
+            uploaded_source(f"{'0' * 64}.py")
+        with self.assertRaisesRegex(PluginManagementError, "plugin plugin_id must be a non-empty string"):
+            _definition(" ")
 
 
 if __name__ == "__main__":

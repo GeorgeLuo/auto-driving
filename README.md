@@ -87,8 +87,9 @@ directory:
 - `implementations/` contains concrete vehicle adapters, perception plugins,
   runtime hosts, and bounded operations.
 - `cli/` contains the `automa` command and its implementation.
-- `tests/` mirrors production ownership and contains deterministic, integration,
-  CLI, and explicitly opt-in live validation.
+- `tests/` holds the in-process `deterministic/` suite that CI runs and the
+  local-only `systems/` suite, which starts other programs and holds the
+  explicitly opt-in live checks.
 - `deploy/targets/donkeycar/` contains the physical harness, pinned DonkeyCar
   source manifest, and local vendor patch.
 - `frontend/donkeycar/` contains the optional local DonkeyCar control frontend.

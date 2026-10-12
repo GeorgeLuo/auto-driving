@@ -22,20 +22,7 @@ from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from autonomy.runtime.session import DEFAULT_INTERVAL_S
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS
-from implementations.decision_cycle.memory.presets import (
-    DEFAULT_MEMORY_PRESET,
-    available_memory_preset_ids,
-)
-from implementations.decision_cycle.perception.presets import (
-    DEFAULT_PERCEPTION_PRESET,
-    available_perception_preset_ids,
-)
-
-from implementations.decision_cycle.proposal.presets import (
-    DEFAULT_PROPOSAL_PRESET,
-    available_proposal_preset_ids,
-)
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, SELECTABLE_STEPS, STEP_PRESETS
 
 from .step_activations import update_vehicle_step
 from .runtime_hosts import RUNTIME_ROOT as VEHICLES_RUNTIME_ROOT
@@ -688,21 +675,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Image file, recorded perception or memory run, or directory of images.",
     )
-    memory_inspect_selection = memory_inspect.add_mutually_exclusive_group()
-    memory_inspect_selection.add_argument(
-        "--preset",
-        choices=available_memory_preset_ids(),
-        default=None,
-        help=f"Override memory with this preset (without a recorded selection: {DEFAULT_MEMORY_PRESET}).",
-    )
-    memory_inspect_selection.add_argument(
-        "--plugin",
-        dest="plugins",
-        action="append",
-        default=None,
-        metavar="PLUGIN",
-        help="Inspect these packaged memory plugins, in order, with their default configs. Repeatable.",
-    )
+    _add_selection_args(memory_inspect, "memory", verb="inspect", fallback="the recorded selection, else ")
     memory_inspect.add_argument(
         "--record",
         action="store_true",
@@ -743,22 +716,7 @@ def build_parser() -> argparse.ArgumentParser:
             type=Path,
             help="Image file, directory of images, or recorded run.",
         )
-        step_selection = step_inspect.add_mutually_exclusive_group()
-        if step_name in STEP_PRESETS:
-            step_selection.add_argument(
-                "--preset", choices=sorted(STEP_PRESETS[step_name]),
-                help=f"Override the recorded {step_name} selection with a packaged preset.",
-            )
-        else:
-            step_inspect.set_defaults(preset=None)
-        step_selection.add_argument(
-            "--plugin",
-            dest="plugins",
-            action="append",
-            default=None,
-            metavar="PLUGIN",
-            help=f"Inspect these packaged {step_name} plugins, in order, with their default configs. Repeatable.",
-        )
+        _add_selection_args(step_inspect, step_name, verb="inspect", fallback="the recorded selection, else ")
         step_inspect.add_argument(
             "--frame",
             type=int,
@@ -867,49 +825,8 @@ def build_parser() -> argparse.ArgumentParser:
         "source_dir",
         help="Directory containing supported images and optional ordered manifest.",
     )
-    workbench_replay_perception = workbench_replay.add_mutually_exclusive_group()
-    workbench_replay_perception.add_argument(
-        "--perception-preset",
-        default=None,
-        choices=available_perception_preset_ids(),
-        help=f"Packaged perception preset to replay (default: {DEFAULT_PERCEPTION_PRESET}).",
-    )
-    workbench_replay_perception.add_argument(
-        "--perception-plugin",
-        action="append",
-        dest="perception_plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged perception plugin to select instead of a preset; repeat to select several in order.",
-    )
-    workbench_replay_memory = workbench_replay.add_mutually_exclusive_group()
-    workbench_replay_memory.add_argument(
-        "--memory-preset",
-        default=None,
-        choices=available_memory_preset_ids(),
-        help=f"Packaged memory preset to replay (default: {DEFAULT_MEMORY_PRESET}).",
-    )
-    workbench_replay_memory.add_argument(
-        "--memory-plugin",
-        action="append",
-        dest="memory_plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
-    )
-    workbench_replay_proposal = workbench_replay.add_mutually_exclusive_group()
-    workbench_replay_proposal.add_argument(
-        "--proposal-preset", default=None, choices=available_proposal_preset_ids(),
-        help=f"Packaged proposal preset to replay (default: {DEFAULT_PROPOSAL_PRESET}).",
-    )
-    workbench_replay_proposal.add_argument(
-        "--proposal-plugin",
-        action="append",
-        dest="proposal_plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged proposal plugin to select instead of a preset; repeat to select several in order.",
-    )
+    for step_name in SELECTABLE_STEPS:
+        _add_selection_args(workbench_replay, step_name, verb="replay", flag_prefix=f"{step_name}-")
     workbench_replay.add_argument(
         "--cadence-ms",
         type=int,
@@ -1057,20 +974,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Image file, recorded perception or memory run, or directory of images. Omit to read a live vehicle.",
     )
-    perception_inspect_selection = perception_inspect.add_mutually_exclusive_group()
-    perception_inspect_selection.add_argument(
-        "--preset",
-        choices=available_perception_preset_ids(),
-        default=None,
-        help="Inspect one packaged perception preset instead of the recorded or staged selection.",
-    )
-    perception_inspect_selection.add_argument(
-        "--plugin",
-        dest="plugins",
-        action="append",
-        default=None,
-        metavar="PLUGIN",
-        help="Inspect these packaged perception plugins, in order, with their default configs. Repeatable.",
+    _add_selection_args(
+        perception_inspect, "perception", verb="inspect", fallback="the recorded or staged selection, else ",
     )
     perception_inspect.add_argument(
         "--id",
@@ -1319,10 +1224,7 @@ def build_parser() -> argparse.ArgumentParser:
             help=f"Stage {step_name} plugins in the local controller bundle.",
             description=(
                 f"Stage packaged {step_name} plugins in the local controller bundle "
-                f"(runtime/{step_name}/active.json). Repeat --plugin to select several, "
-                "in order; omit it for the step's default selection. "
-                + (f"--preset selects a named recipe (default: {DEFAULT_STEP_PRESETS[step_name]})."
-                   if step_name in STEP_PRESETS else "")
+                f"(runtime/{step_name}/active.json). Omit a selection to stage the step's default."
             ),
         )
         step_parser.add_argument(
@@ -1337,25 +1239,7 @@ def build_parser() -> argparse.ArgumentParser:
             default=DEFAULT_READINESS_TIMEOUT_S,
             help=_STAGING_DISCOVERY_TIMEOUT_HELP,
         )
-        step_selection = step_parser.add_mutually_exclusive_group()
-        if step_name in STEP_PRESETS:
-            step_selection.add_argument(
-                "--preset", choices=sorted(STEP_PRESETS[step_name]),
-                help=f"Packaged {step_name} preset to activate (default: {DEFAULT_STEP_PRESETS[step_name]}).",
-            )
-        else:
-            step_parser.set_defaults(preset=None)
-        step_selection.add_argument(
-            "--plugin",
-            action="append",
-            dest="plugins",
-            default=None,
-            metavar="PLUGIN_ID",
-            help=(
-                f"Packaged {step_name} plugin to select "
-                f"(default: {', '.join(DEFAULT_STEP_PLUGINS[step_name]) or 'none'})."
-            ),
-        )
+        _add_selection_args(step_parser, step_name, verb="stage")
         step_parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -1427,6 +1311,47 @@ def build_parser() -> argparse.ArgumentParser:
     )
     simulators_ensure.set_defaults(handler=_handle_simulators_ensure)
     return parser
+
+
+def _add_selection_args(
+    parser: argparse.ArgumentParser,
+    step: str,
+    *,
+    verb: str,
+    fallback: str = "",
+    flag_prefix: str = "",
+) -> None:
+    """Add a step's mutually exclusive ``--preset``/``--plugin`` selection.
+
+    Steps without presets take only ``--plugin`` and parse ``preset`` as None.
+    ``flag_prefix`` names one step among several on a command, such as
+    ``--memory-preset``; ``fallback`` precedes the default in the help text.
+    """
+    dest = flag_prefix.replace("-", "_")
+    group = parser.add_mutually_exclusive_group()
+    if step in STEP_PRESETS:
+        group.add_argument(
+            f"--{flag_prefix}preset",
+            dest=f"{dest}preset",
+            choices=sorted(STEP_PRESETS[step]),
+            default=None,
+            help=f"Packaged {step} preset to {verb} (default: {fallback}{DEFAULT_STEP_PRESETS[step]}).",
+        )
+        plugin_help = f"Packaged {step} plugin to {verb} instead of a preset"
+    else:
+        parser.set_defaults(**{f"{dest}preset": None})
+        plugin_help = (
+            f"Packaged {step} plugin to {verb} "
+            f"(default: {fallback}{', '.join(DEFAULT_STEP_PLUGINS[step]) or 'none'})"
+        )
+    group.add_argument(
+        f"--{flag_prefix}plugin",
+        action="append",
+        dest=f"{dest}plugins",
+        default=None,
+        metavar="PLUGIN_ID",
+        help=f"{plugin_help}; repeat to select several in order.",
+    )
 
 
 def _handle_plugins_help(args: argparse.Namespace) -> int:

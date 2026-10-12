@@ -1,1 +1,0 @@
-"""Physical deployment integration tests."""

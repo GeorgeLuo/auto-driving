@@ -11,7 +11,9 @@
    outside the requested scope.
 4. Add or update focused tests when the changed behavior can regress.
 5. Run the narrowest useful checks first, then any broader check justified by
-   the touched surface.
+   the touched surface. CI runs only the deterministic test suite; when a
+   change reaches code a systems group drives, run
+   `python3 tests/run.py --systems <group>` and list it under Validation.
 6. Review the final diff for accidental files, generated artifacts, secrets,
    unrelated cleanup, and missing validation.
 

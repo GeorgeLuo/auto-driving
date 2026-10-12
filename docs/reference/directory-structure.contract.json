@@ -242,37 +242,25 @@
         "path": "tests/",
         "category": "verification",
         "commit_policy": "source",
-        "responsibility": "Repository-owned tests organized by production ownership, cross-layer integration, and explicit live-system boundaries.",
+        "responsibility": "Repository-owned tests, split into the in-process suite CI runs and local-only tests that start other programs.",
         "children": [
           {
-            "path": "tests/autonomy/",
+            "path": "tests/deterministic/",
             "category": "verification",
             "commit_policy": "source",
-            "responsibility": "Direct stable-kernel contract and invariant tests."
+            "responsibility": "In-process tests that CI runs, placed beside the production package they exercise, with cross-package tests under integration/."
           },
           {
-            "path": "tests/implementations/",
+            "path": "tests/systems/",
             "category": "verification",
             "commit_policy": "source",
-            "responsibility": "Concrete adapter, plugin, operation, and runtime-host behavior tests."
+            "responsibility": "Local-only tests that start another program, grouped by the surface they drive, including bounded live checks that need an explicit flag."
           },
           {
-            "path": "tests/cli/",
-            "category": "verification",
+            "path": "tests/shared/",
+            "category": "verification-support",
             "commit_policy": "source",
-            "responsibility": "Black-box Automa command behavior grouped by operator command family."
-          },
-          {
-            "path": "tests/integration/",
-            "category": "verification",
-            "commit_policy": "source",
-            "responsibility": "Deterministic compatibility checks spanning multiple production ownership boundaries."
-          },
-          {
-            "path": "tests/live/",
-            "category": "verification",
-            "commit_policy": "source",
-            "responsibility": "Bounded live-system checks that are never enabled by the flagless runner."
+            "responsibility": "Fixtures imported by both suites, placed at the path of the deterministic code they serve."
           },
           {
             "path": "tests/support/",

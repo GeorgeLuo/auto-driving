@@ -1,1 +1,0 @@
-"""Perception contract tests."""

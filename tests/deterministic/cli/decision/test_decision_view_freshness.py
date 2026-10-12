@@ -1,0 +1,285 @@
+from __future__ import annotations
+import json
+import threading
+import unittest
+from urllib.error import HTTPError
+from urllib.parse import urlparse
+from urllib.request import urlopen
+from unittest.mock import patch
+from cli.automa_cli.decision_view import MAX_RETAINED_TRANSACTIONS, DecisionViewError
+from cli.automa_cli.loopback_http import LoopbackHTTPRequestHandler
+from cli.automa_cli.runtime_view import RuntimeViewServer
+from tests.shared.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
+from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import (
+    LiveRuntimeDecisionViewFixture,
+)
+
+
+class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.TestCase):
+    def test_rejected_publication_does_not_serve_cached_success(self) -> None:
+        stream_frame, _expected_image = self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        frame_record = {
+            "frame_id": stream_frame["frame_id"],
+            "frame_index": stream_frame["frame_index"],
+            "captured_at_ms": stream_frame["timestamp_ms"],
+            "run_id": "run-live",
+        }
+        rejected_frame = {**stream_frame, "cycle": None}
+        self.assertFalse(
+            self.server.decision.publish(
+                report=rejected_frame,
+                frame_record=frame_record,
+                image=self.server.perception.frame(stream_frame["frame_id"]),
+            )
+        )
+
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(caught.exception.code, 503)
+        error = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertEqual(error["reason"], "decision_warming")
+        self.assertNotIn("transaction_id", error)
+
+        recovered, _ = self._publish_exact_transaction(image_name="recovered-frame.png")
+        with urlopen(
+            f"{self.server.url}api/decision/latest?generation={generation}",
+            timeout=1.0,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(payload["status"], "current")
+        self.assertEqual(payload["decision"]["frame_id"], recovered["frame_id"])
+
+    def test_reader_bypass_invalidation_preserves_warming_contract(self) -> None:
+        self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+
+        self.server.decision.invalidate_latest()
+
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(caught.exception.code, 503)
+        error = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertEqual(error["status"], "unavailable")
+        self.assertEqual(error["reason"], "decision_warming")
+        self.assertNotIn("transaction_id", error)
+
+    def test_slow_image_response_does_not_hold_decision_view_lock(self) -> None:
+        """A delayed public image response cannot block the next publication."""
+
+        _stream_frame, expected_image = self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        payload = self.server.decision.latest_payload(generation=generation)
+        image_url = f"{self.server.url.rstrip('/')}{payload['current_image']['url']}"
+
+        send_started = threading.Event()
+        release_send = threading.Event()
+        publish_done = threading.Event()
+        reader_result: dict[str, object] = {}
+        publish_errors: list[BaseException] = []
+        original_send = LoopbackHTTPRequestHandler._send
+
+        def delayed_send(
+            handler,
+            status: int,
+            body: bytes,
+            content_type: str,
+            *,
+            include_body: bool = True,
+        ) -> None:
+            if urlparse(handler.path).path == "/api/decision/image":
+                send_started.set()
+                if not release_send.wait(timeout=2.0):
+                    raise AssertionError(
+                        "test did not release the deliberately slow reader"
+                    )
+            original_send(
+                handler,
+                status,
+                body,
+                content_type,
+                include_body=include_body,
+            )
+
+        def read_image() -> None:
+            try:
+                with urlopen(image_url, timeout=3.0) as response:
+                    reader_result["body"] = response.read()
+            except BaseException as exc:  # noqa: BLE001 - surface thread failures
+                reader_result["error"] = exc
+
+        def publish_next() -> None:
+            try:
+                self._publish_exact_transaction(
+                    image_name="decision-frame-next.png",
+                    image_color=(210, 40, 30),
+                )
+            except BaseException as exc:  # noqa: BLE001 - surface thread failures
+                publish_errors.append(exc)
+            finally:
+                publish_done.set()
+
+        reader = threading.Thread(target=read_image, daemon=True)
+        publisher = threading.Thread(target=publish_next, daemon=True)
+        try:
+            with patch.object(LoopbackHTTPRequestHandler, "_send", new=delayed_send):
+                reader.start()
+                self.assertTrue(send_started.wait(timeout=1.0))
+                publisher.start()
+                self.assertTrue(
+                    publish_done.wait(timeout=1.0),
+                    "publication blocked behind the delayed HTTP response",
+                )
+        finally:
+            release_send.set()
+            reader.join(timeout=2.0)
+            publisher.join(timeout=2.0)
+
+        self.assertFalse(publish_errors, publish_errors)
+        self.assertNotIn("error", reader_result)
+        self.assertEqual(reader_result.get("body"), expected_image)
+
+    def test_view_names_its_generation_page_while_warming(self) -> None:
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        health = self.server.decision.health_payload()
+        self.assertTrue(health["available"])
+        self.assertEqual(health["status"], "warming")
+        self.assertEqual(self.server.decision.page_url(), f"/decision?generation={generation}")
+
+    def test_stale_decision_is_unavailable_through_api(self) -> None:
+        stream_frame, _expected_image = self._publish_exact_transaction()
+        generation = self.server.decision.generation_id
+        self.assertIsNotNone(generation)
+        stale_now = (
+            stream_frame["published_at_ms"]
+            + STALE_AFTER_MS
+            + 1
+        )
+        with patch("cli.automa_cli.decision_view._now_ms", return_value=stale_now):
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(
+                    f"{self.server.url}api/decision/latest?generation={generation}",
+                    timeout=1.0,
+                )
+        self.assertEqual(caught.exception.code, 503)
+        error = json.loads(caught.exception.read().decode("utf-8"))
+        self.assertEqual(error["reason"], "decision_stale")
+
+    def test_adopted_generation_moves_the_view_and_names_it_to_old_sessions(self) -> None:
+        self._publish_exact_transaction()
+        old_generation = self.server.decision.generation_id
+        # The host applies a new decision generation; the view follows it.
+        self.activation = {**self.activation, "generation_id": "f" * 64}
+        self.server.decision.adopt(self._producer())
+        new_generation = self.server.decision.generation_id
+        self.assertNotEqual(new_generation, old_generation)
+
+        with self.assertRaises(HTTPError) as rejected:
+            urlopen(
+                f"{self.server.url}api/decision/latest?generation={old_generation}",
+                timeout=1.0,
+            )
+        self.assertEqual(rejected.exception.code, 409)
+        error = json.loads(rejected.exception.read().decode("utf-8"))
+        self.assertEqual(error["generation_id"], new_generation)
+        self.assertEqual(error["identity"]["run_id"], "run-live")
+
+        self._publish_exact_transaction()
+        with urlopen(
+            f"{self.server.url}api/decision/latest?generation={new_generation}",
+            timeout=1.0,
+        ) as response:
+            self.assertEqual(json.loads(response.read().decode("utf-8"))["status"], "current")
+        self.assertEqual(self.server.decision.page_url(), f"/decision?generation={new_generation}")
+
+    def test_old_session_cannot_attach_to_same_port_replacement(self) -> None:
+        self._publish_exact_transaction()
+        old_url = self.server.url
+        old_generation = self.server.decision.generation_id
+        self.assertIsNotNone(old_url)
+        self.assertIsNotNone(old_generation)
+        old_latest_url = f"{old_url}api/decision/latest?generation={old_generation}"
+        with urlopen(old_latest_url, timeout=1.0) as response:
+            old_payload = json.loads(response.read().decode("utf-8"))
+        old_image_url = f"{old_url.rstrip('/')}{old_payload['current_image']['url']}"
+        old_port = urlparse(old_url).port
+        self.assertIsNotNone(old_port)
+
+        self.server.stop()
+        replacement = RuntimeViewServer(
+            vehicle_id="chase-sim-chaser",
+            automation_dir=self.automation_dir,
+            port=old_port,
+            run_id="run-replacement",
+            decision_identity=self._producer("run-replacement"),
+        ).start()
+        self.addCleanup(replacement.stop)
+        replacement_frame, replacement_image = self._publish_exact_transaction(
+            server=replacement,
+            run_id="run-replacement",
+            image_name="replacement-frame.png",
+            image_color=(210, 40, 30),
+        )
+        new_generation = replacement.decision.generation_id
+        self.assertIsNotNone(new_generation)
+        self.assertNotEqual(old_generation, new_generation)
+
+        new_latest_url = (
+            f"{replacement.url}api/decision/latest?generation={new_generation}"
+        )
+        with urlopen(new_latest_url, timeout=1.0) as response:
+            replacement_payload = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(replacement_payload["decision"]["run_id"], "run-replacement")
+        self.assertEqual(
+            replacement_payload["decision"]["frame_id"], replacement_frame["frame_id"]
+        )
+        with urlopen(
+            f"{replacement.url.rstrip('/')}{replacement_payload['current_image']['url']}",
+            timeout=1.0,
+        ) as response:
+            self.assertEqual(response.read(), replacement_image)
+
+        for old_session_url in (old_latest_url, old_image_url):
+            with self.subTest(old_session_url=old_session_url):
+                with self.assertRaises(HTTPError) as rejected:
+                    urlopen(old_session_url, timeout=1.0)
+                self.assertEqual(rejected.exception.code, 409)
+                body = rejected.exception.read().decode("utf-8")
+                error = json.loads(body)
+                self.assertEqual(error["status"], "unavailable")
+                self.assertEqual(error["reason"], "generation_mismatch")
+                self.assertNotIn("transaction_id", error)
+                self.assertNotIn("current_image", error)
+                self.assertNotIn(replacement_payload["transaction_id"], body)
+                self.assertNotIn(replacement_payload["current_image"]["sha256"], body)
+
+    def test_only_the_latest_transactions_keep_their_images(self) -> None:
+        stream_frame = self._accepted_frame()
+        view = self.server.decision
+        generation = view.generation_id
+        published = []
+        for index in range(MAX_RETAINED_TRANSACTIONS + 1):
+            _, image = self._publish_exact_transaction(
+                image_name=f"frame-{index}.png",
+                image_color=(index, 80, 150),
+                stream_frame=stream_frame,
+            )
+            latest = view.latest_payload(generation=generation, now_ms=stream_frame["published_at_ms"])
+            published.append((latest["transaction_id"], image))
+        self.assertEqual(len(dict(published)), MAX_RETAINED_TRANSACTIONS + 1)
+
+        with self.assertRaises(DecisionViewError) as evicted:
+            view.image_response(generation=generation, transaction_id=published[0][0])
+        self.assertEqual((evicted.exception.status_code, evicted.exception.reason), (404, "image_unavailable"))
+        for transaction_id, image in published[1:]:
+            self.assertEqual(view.image_response(generation=generation, transaction_id=transaction_id)[0], image)

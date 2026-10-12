@@ -1,1 +1,0 @@
-"""Vehicle discovery command tests."""

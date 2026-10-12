@@ -35,21 +35,22 @@ Use the CLI from the repository root:
 ./cli/automa simulators help
 ```
 
-Run the offline test harness:
+Run the deterministic test suite. GitHub runs this same command. It calls code in-process and does not start another program:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 ```
 
-Include the live Chase simulator smoke test:
+Run the systems suite, the tests that start another program:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
+```
+
+Include the live Chase simulator smoke test, or check a powered-on Pi without moving it. Both commands run the systems suite:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
-```
-
-Check a powered-on Pi without moving it:
-
-```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi
 ```
 
@@ -86,8 +87,9 @@ directory:
 - `implementations/` contains concrete vehicle adapters, perception plugins,
   runtime hosts, and bounded operations.
 - `cli/` contains the `automa` command and its implementation.
-- `tests/` mirrors production ownership and contains deterministic, integration,
-  CLI, and explicitly opt-in live validation.
+- `tests/` holds the in-process `deterministic/` suite that CI runs and the
+  local-only `systems/` suite, which starts other programs and holds the
+  explicitly opt-in live checks.
 - `deploy/targets/donkeycar/` contains the physical harness, pinned DonkeyCar
   source manifest, and local vendor patch.
 - `frontend/donkeycar/` contains the optional local DonkeyCar control frontend.
@@ -344,8 +346,11 @@ Useful run options:
 - `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps every completed decision and its exact camera image, capture
   time, and applied step configurations. Both vehicles commit these artifacts
-  before counting the decision. PiCar recordings are copied from the onboard
-  run in order and drained on completion or stop; later manual observations
+  before counting the decision. The host owns its history under
+  `runtime/automation/host-runs/`; the CLI exports it under
+  `runtime/automation/runs/`. Separate directories keep the local Chase host
+  and CLI from overwriting each other's manifests. PiCar recordings are copied
+  from the onboard run in order and drained on completion or stop; later manual observations
   stay outside the recording. A successful recorded run reports matching
   `Decisions recorded` and `Decisions completed` counts.
 - `--log` persists worker output to `automation.log`.

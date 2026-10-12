@@ -20,11 +20,34 @@ from automa_cli.deploy import inspect_picar_autonomy_runtime
 from automa_cli.simulators import ensure_simulator
 from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL, LOCAL_CAR_BASE_URL_ENV
 
+SYSTEMS_GROUPS = ("commands", "journeys", "frontend", "packaging", "qca", "live")
+# Audit events that start another program, mapped to the index of their argv.
+SPAWN_EVENTS = {
+    "subprocess.Popen": 1,
+    "os.system": 0,
+    "os.exec": 1,
+    "os.posix_spawn": 1,
+    "os.spawn": 2,
+    "os.fork": None,
+    "os.forkpty": None,
+    "pty.spawn": 0,
+}
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tests/run.py",
-        description="Run the repository-owned deterministic test suite.",
+        description="Run the in-process deterministic suite, or the systems suite.",
+    )
+    parser.add_argument(
+        "--systems",
+        nargs="*",
+        choices=SYSTEMS_GROUPS,
+        metavar="GROUP",
+        help=(
+            "Run tests/systems, the tests that start another program. "
+            f"Name groups to run only those: {', '.join(SYSTEMS_GROUPS)}."
+        ),
     )
     parser.add_argument(
         "--durations",
@@ -35,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--live-sim",
         action="store_true",
-        help="Ensure the Chase simulator is usable, then include live simulator smoke tests.",
+        help="Ensure the Chase simulator is usable, then run the systems suite with its live simulator smoke test.",
     )
     parser.add_argument(
         "--sim-timeout-ms",
@@ -46,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--live-pi",
         action="store_true",
-        help="Include the read-only Pi connectivity and autonomy activation smoke test.",
+        help="Run the systems suite, including the read-only Pi connectivity and autonomy activation smoke test.",
     )
     parser.add_argument(
         "--picar-url",
@@ -141,6 +164,22 @@ class TimedResult(unittest.TextTestResult):
         super().stopTest(test)
 
 
+def forbid_spawns() -> None:
+    """Fail a deterministic test that starts another program."""
+
+    def hook(event: str, args: tuple) -> None:
+        if event not in SPAWN_EVENTS:
+            return
+        index = SPAWN_EVENTS[event]
+        argv = "" if index is None else f" {args[index]!r}"
+        raise RuntimeError(
+            f"{event}{argv}: deterministic tests run in this process; "
+            "a test that starts a program belongs in tests/systems/"
+        )
+
+    sys.addaudithook(hook)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -162,13 +201,22 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return 2
 
+    deterministic = args.systems is None and not (args.live_sim or args.live_pi)
+    if deterministic:
+        directories = [TESTS_DIR / "deterministic"]
+    elif args.systems:
+        directories = [TESTS_DIR / "systems" / group for group in dict.fromkeys(args.systems)]
+    else:
+        directories = [TESTS_DIR / "systems"]
     loader = unittest.defaultTestLoader
-    suite = loader.discover(
-        str(TESTS_DIR),
-        pattern="test_*.py",
-        top_level_dir=str(ROOT),
+    suite = unittest.TestSuite(
+        loader.discover(str(directory), pattern="test_*.py", top_level_dir=str(ROOT))
+        for directory in directories
     )
-    result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(suite)
+    runner = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult)
+    if deterministic:
+        forbid_spawns()
+    result = runner.run(suite)
     if args.durations > 0:
         print("\nSlowest tests (including setup and cleanup):", file=sys.stderr)
         for seconds, name in sorted(result.timings, reverse=True)[: args.durations]:

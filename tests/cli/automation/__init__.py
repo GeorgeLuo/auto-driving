@@ -1,1 +1,0 @@
-"""Automation command tests."""

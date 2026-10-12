@@ -26,7 +26,6 @@ from autonomy.vehicle import (
     SensorReadRequest,
 )
 from implementations.decision_cycle.catalog import selection_activation
-from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
 from .inspection_runs import (
     recorded_runner, recorded_selection, recorded_selections, replay_step, selection_record,
@@ -83,10 +82,6 @@ def inspect_perception(
     live read.
     """
 
-    if preset is not None and plugins:
-        return CommandResult(2, "Choose either --preset or --plugin, not both.")
-    if preset is not None and preset not in PERCEPTION_PRESETS:
-        return CommandResult(2, f"Unknown perception preset {preset!r}.")
     if max_frames <= 0:
         return _unreadable_source("max_frames must be greater than zero")
     if source is not None:

@@ -20,7 +20,7 @@ from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, id
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
-from implementations.decision_cycle.catalog import STEP_PRESETS, packaged_activation, selection_activation
+from implementations.decision_cycle.catalog import selection_activation
 
 from .decision import (
     CommandResult,
@@ -446,12 +446,8 @@ def inspect_decision_step(
         return CommandResult(2, f"--frame {frame} is outside the source's {count} frames (0-{count - 1}).")
     try:
         overrides = None
-        if preset is not None and step not in STEP_PRESETS:
-            raise ValueError(f"{step} has no presets; select its plugins instead")
         if preset is not None or plugins is not None:
-            activation = (selection_activation(step, preset=preset, plugins=plugins)
-                          if step in STEP_PRESETS else packaged_activation(step, plugins))
-            overrides = {step: activation}
+            overrides = {step: selection_activation(step, preset=preset, plugins=plugins)}
         replay = StepReplay(manifest, steps=_REPLAY_STEPS, overrides=overrides)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")

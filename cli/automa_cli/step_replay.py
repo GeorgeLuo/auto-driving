@@ -17,9 +17,7 @@ from typing import Any
 
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.steps import builtin_activation
-from implementations.decision_cycle.catalog import (
-    DEFAULT_STEP_PRESETS, packaged_activation, selection_activation,
-)
+from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
     recorded_runner, recorded_selection, recorded_selections, replay_step, selection_record,
@@ -58,13 +56,11 @@ def read_replay_source(source: str | Path, *, max_frames: int) -> tuple[ImageSou
 def default_selection(step: str) -> StepActivation | None:
     """The selection inspect uses for a step its source did not record.
 
-    That is the step's default preset, else the built-in a vehicle runs when
-    the step is unstaged, else the step's default packaged plugins.
+    That is the built-in a vehicle runs when the step is unstaged, else the
+    step's default selection.
     """
 
-    if step in DEFAULT_STEP_PRESETS:
-        return selection_activation(step)
-    return builtin_activation(step) or packaged_activation(step)
+    return builtin_activation(step) or selection_activation(step)
 
 
 class StepReplay:

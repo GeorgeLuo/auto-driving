@@ -81,7 +81,7 @@ class PerceptionRunTests(unittest.TestCase):
             live_option = inspect_perception(image, frames=3, vehicle_id="piracer")
 
         self.assertEqual(both.exit_code, 2)
-        self.assertIn("either --preset or --plugin", both.message)
+        self.assertIn("preset or plugins, not both", both.message)
         self.assertEqual(live_option.exit_code, 2)
         self.assertIn("--id, --frames", live_option.message)
 

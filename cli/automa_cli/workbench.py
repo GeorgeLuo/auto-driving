@@ -14,6 +14,8 @@ import webbrowser
 from collections.abc import Sequence
 from typing import Any, TextIO
 
+from implementations.decision_cycle.catalog import selection_activation
+
 from .perception_runs import CommandResult
 from .workbench_contract import (
     ReplayActionError,
@@ -30,7 +32,6 @@ from .workbench_plugins import (
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
-    step_selection,
 )
 from .workbench_server import WorkbenchServer
 from .workbench_source import (
@@ -78,7 +79,7 @@ def run_workbench_replay(
             ("proposal", proposal_preset, proposal_plugins),
         ):
             if preset is not None or plugins is not None:
-                activations[step] = step_selection(step, preset=preset, plugins=plugins)
+                activations[step] = selection_activation(step, preset=preset, plugins=plugins)
     except ValueError as exc:
         return CommandResult(2, f"Workbench replay failed: {exc}")
     if open_browser:

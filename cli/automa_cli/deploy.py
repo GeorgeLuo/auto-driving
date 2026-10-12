@@ -36,15 +36,13 @@ from .donkeycar_vendor import (
     ensure_donkeycar_vendor,
     load_donkeycar_vendor_manifest,
 )
-from .memory import ensure_vehicle_memory_activation
 from .paths import display_path, safe_path_part
-from .perception import ensure_vehicle_perception_activation
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
     bundle_activation_problems,
     decision_generation_id,
-    ensure_builtin_activations,
+    ensure_step_activations,
     format_activation_problems,
     read_bundle_activation,
 )
@@ -394,7 +392,7 @@ def update_vehicle_autonomy(
             restart=restart,
             drive_args=drive_args,
             perception_preset=DEFAULT_PERCEPTION_PRESET,
-            steps={step: list(DEFAULT_STEP_PLUGINS[step]) for step in STEPS if step != "proposal"},
+            steps={step: list(DEFAULT_STEP_PLUGINS[step]) for step in STEPS},
             generation_id=None,
             runtime_verification=None,
         )
@@ -409,18 +407,9 @@ def update_vehicle_autonomy(
         return CommandResult(2, format_activation_problems(problems))
 
     release = sync_controller_bundle(bundle, output=output)
-    perception_activation_path = ensure_vehicle_perception_activation(
-        vehicle=dict(target.vehicle),
-        preset=DEFAULT_PERCEPTION_PRESET,
-        bundle=bundle,
-        release=release,
+    ensure_step_activations(
+        vehicle_id=vehicle_id, bundle=bundle, release=release, vehicle=dict(target.vehicle),
     )
-    ensure_vehicle_memory_activation(
-        vehicle_id=vehicle_id,
-        bundle=bundle,
-        release=release,
-    )
-    ensure_builtin_activations(vehicle_id=vehicle_id, bundle=bundle, release=release)
     activations = {
         step: activation
         for step in STEPS
@@ -458,11 +447,7 @@ def update_vehicle_autonomy(
         if code != 0:
             return CommandResult(code, f"Restart failed with exit code {code}.")
 
-    perception_preset = str(
-        activations["perception"].metadata.get("preset")
-        if "perception" in activations
-        else perception_activation_path.name
-    )
+    perception_preset = str(activations["perception"].metadata.get("preset"))
     deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
     generation_id = decision_generation_id(
         {step: activations.get(step) for step in ("proposal", "plan", "action")}
@@ -562,11 +547,7 @@ def _update_local_autonomy(
     try:
         vehicle = staged_vehicle(vehicle_id)
         release = sync_controller_bundle(bundle, output=output)
-        ensure_vehicle_perception_activation(
-            vehicle=vehicle, preset=DEFAULT_PERCEPTION_PRESET, bundle=bundle, release=release,
-        )
-        ensure_vehicle_memory_activation(vehicle_id=vehicle_id, bundle=bundle, release=release)
-        ensure_builtin_activations(vehicle_id=vehicle_id, bundle=bundle, release=release)
+        ensure_step_activations(vehicle_id=vehicle_id, bundle=bundle, release=release, vehicle=vehicle)
         _, summary = release_code_dir(vehicle_id, release["archive"]["sha256"])
     except RuntimeHostError as exc:
         return CommandResult(2, str(exc))

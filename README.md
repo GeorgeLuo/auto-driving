@@ -673,14 +673,13 @@ startup.
 
 ### Physical Activation State
 
-The first physical autonomy deployment creates the default
-`lightweight_observer` perception activation, built-in observation/plan/action
-activations, and `bounded_evidence` memory activation when none exist. No
-proposal is staged by default, so the cycle holds. A named perception preset
-is rebuilt from the current catalog, including its configs; custom perception
-activations and all other staged steps keep their selection, specs and configs,
-including named memory presets. Every deployed step records the same release
-and bundle paths. The Pi loads those activations. The Donkey assembly runs the
+The first physical autonomy deployment stages each step's default where
+nothing is staged: the `lightweight_observer` perception, `recency_ledger`
+memory and `obstruction_avoidance` proposal presets, and the built-in
+observation/plan/action plugins. A selection staged as a named preset is
+rebuilt from the current catalog, including its configs; any other staged
+selection keeps its plugins, specs and configs. Every deployed step records the
+same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop samples its
 camera memory at the configured capture cadence and publishes it on
 `/autonomy/camera/latest` without waiting for decisions. The native camera and

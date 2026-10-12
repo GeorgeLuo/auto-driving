@@ -144,42 +144,6 @@ def get_vehicle_perception_info(
     return CommandResult(0, _format_perception_info(payload))
 
 
-def ensure_vehicle_perception_activation(
-    *,
-    vehicle: dict[str, Any],
-    preset: str,
-    bundle: dict[str, str],
-    release: dict[str, Any],
-) -> Path:
-    """Stage perception for deploy through the shared activation writers.
-
-    A named preset is rebuilt from the catalog with ``stage_activation``,
-    so a deployed preset picks up the catalog's plugin list. A custom
-    selection keeps its plugins and ``refresh_release`` records ``release``.
-    With nothing staged, or a preset name this catalog does not know,
-    ``preset`` is staged.
-    """
-
-    if preset not in PERCEPTION_PRESETS:
-        raise ValueError(f"unknown perception preset: {preset}")
-
-    existing = read_bundle_activation(bundle, "perception")
-    existing_preset = _activation_preset(existing)
-    if existing is not None and existing_preset == CUSTOM_PRESET:
-        path = refresh_release(bundle, "perception", release)
-        if path is None:
-            raise ValueError("custom perception activation disappeared before its release was recorded")
-        return path
-    selected = existing_preset if existing_preset in PERCEPTION_PRESETS else preset
-    return stage_activation(
-        bundle,
-        selection_activation("perception", preset=selected),
-        vehicle_id=_vehicle_id(vehicle),
-        release=release,
-        vehicle=vehicle,
-    )
-
-
 def _vehicle_id(vehicle: dict[str, Any]) -> str | None:
     vehicle_id = vehicle.get("vehicle_id")
     return vehicle_id if isinstance(vehicle_id, str) else None

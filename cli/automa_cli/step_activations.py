@@ -32,7 +32,7 @@ from autonomy.decision_cycle.steps import builtin_activation, step_runner
 from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import (
-    packaged_activation,
+    STEP_PRESETS,
     selection_activation,
     step_plugins,
 )
@@ -45,10 +45,6 @@ from .bundles import (
 )
 from .paths import display_path, safe_path_part
 from .vehicles import DEFAULT_READINESS_TIMEOUT_S, discover_vehicle
-
-# Steps a vehicle runs with their built-in plugin when nothing is staged.
-BUILTIN_STEPS = ("observation", "plan", "action")
-
 
 def vehicle_bundle(vehicle_id: str, runtime_root: Path) -> dict[str, str]:
     return controller_bundle_paths(Path(runtime_root) / safe_path_part(vehicle_id))
@@ -413,30 +409,37 @@ def refresh_release(bundle: dict[str, str], step: str, release: dict[str, Any]) 
     )
 
 
-def ensure_builtin_activations(
+def ensure_step_activations(
     *,
     vehicle_id: str,
     bundle: dict[str, str],
     release: dict[str, Any],
+    vehicle: dict[str, Any] | None = None,
 ) -> dict[str, Path]:
-    """Stage the built-in observation, plan, and action plugins where nothing is staged.
+    """Stage every step a deploy ships, recording ``release`` on each.
 
-    Existing activations keep their selection and record ``release``. Without
-    a proposal activation the vehicle proposes nothing and holds.
+    A selection staged as a named preset is rebuilt from the catalog, so the
+    deploy ships the preset's current plugins and configs. Any other staged
+    selection keeps its plugins and configs. A step with nothing staged gets
+    its default selection.
     """
 
     paths: dict[str, Path] = {}
-    for step in BUILTIN_STEPS:
-        path = refresh_release(bundle, step, release)
-        if path is None:
-            path = stage_activation(
-                bundle,
-                packaged_activation(step),
-                vehicle_id=vehicle_id,
-                release=release,
-            )
-        paths[step] = path
-    refresh_release(bundle, "proposal", release)
+    for step in STEPS:
+        existing = read_bundle_activation(bundle, step)
+        preset = existing.metadata.get("preset") if existing is not None else None
+        named = isinstance(preset, str) and preset in STEP_PRESETS.get(step, {})
+        if existing is not None and not named:
+            refresh_release(bundle, step, release)
+            paths[step] = bundle_activation_path(bundle, step)
+            continue
+        paths[step] = stage_activation(
+            bundle,
+            selection_activation(step, preset=preset),
+            vehicle_id=vehicle_id,
+            release=release,
+            vehicle=vehicle,
+        )
     return paths
 
 
@@ -574,7 +577,6 @@ def update_vehicle_step(
 
 
 __all__ = [
-    "BUILTIN_STEPS",
     "absent_step_error",
     "apply_staged",
     "format_apply_staged",
@@ -583,7 +585,7 @@ __all__ = [
     "decision_activations",
     "decision_generation_id",
     "decision_identity",
-    "ensure_builtin_activations",
+    "ensure_step_activations",
     "format_activation_problems",
     "proposal_plugin_ids",
     "CONTROLLER_BUNDLE_KEYS",

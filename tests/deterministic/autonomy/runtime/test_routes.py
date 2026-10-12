@@ -4,9 +4,12 @@ from __future__ import annotations
 import json
 import threading
 import unittest
+from dataclasses import replace
 
 import numpy as np
 
+from autonomy.decision_cycle.activation import step_activation
+from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.frame_loop import FrameLoop
@@ -24,9 +27,12 @@ class _Target:
         pass
 
 
-def _routes(**kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
+RECORDING_MEMORY = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
+
+
+def _routes(steps=None, **kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
     loop = FrameLoop(
-        host=AutonomyCycleHost(steps=decision_steps(), target=_Target()),
+        host=AutonomyCycleHost(steps=steps or decision_steps(), target=_Target()),
         interval_s=0.0, vehicle_id="test-car", runtime="test", run_id="test-run",
     )
     return loop, RuntimeRoutes(loop, **kwargs)
@@ -104,6 +110,20 @@ class RuntimeRoutesTests(unittest.TestCase):
         status, payload = _json(routes.handle("POST", "/autonomy/memory/reset", b""))
         self.assertEqual((status, payload["status"]), (503, "absent"))
         self.assertEqual(payload["schema"], "automa_memory_reset_v0")
+
+    def test_memory_reset_reports_the_step_and_a_step_that_cannot_reset_is_a_server_error(self) -> None:
+        memory = MemoryRunner.from_activation(
+            step_activation("memory", ["recording_test"], {"recording_test": RECORDING_MEMORY})
+        )
+        _, routes = _routes(steps=replace(decision_steps(), memory=memory))
+        status, payload = _json(routes.handle("POST", "/autonomy/memory/reset", b""))
+        self.assertEqual((status, payload["status"]), (200, "reset"))
+        self.assertEqual(payload["memory"]["plugin_ids"], ["recording_test"])
+
+        _, routes = _routes(steps=replace(decision_steps(), memory=lambda context, observation: None))
+        status, payload = _json(routes.handle("POST", "/autonomy/memory/reset", b""))
+        self.assertEqual((status, payload["status"]), (500, "error"))
+        self.assertEqual(payload["error"], "TypeError: configured memory step does not support reset")
 
     def test_catalog_reads_and_rejects_malformed_writes(self) -> None:
         _, routes = _routes()

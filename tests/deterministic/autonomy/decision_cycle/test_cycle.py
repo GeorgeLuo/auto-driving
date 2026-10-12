@@ -10,8 +10,8 @@ from autonomy.decision_cycle.perception.interface import (
     PerceptionText,
 )
 from autonomy.runtime.control import AutonomyControl
-from autonomy.decision_cycle.steps import decision_steps
-from tests.support.action_fixtures import fixed_action_runner, plan_runner
+from autonomy.decision_cycle.steps import decision_steps, snapshot_step_activations
+from tests.support.action_fixtures import fixed_action_runner, plan_runner, proposal_runner
 
 
 class DecisionCycleTests(unittest.TestCase):
@@ -183,6 +183,17 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.to_dict()["memory"], report)
         result.to_dict()["memory"]["plugins"][0]["state"]["record_count"] = 9
         self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
+
+
+class StepSnapshotTests(unittest.TestCase):
+    def test_absent_steps_and_runners_with_nothing_applied_snapshot_as_none(self) -> None:
+        steps = DecisionSteps(proposal=proposal_runner({}), plan=decision_steps().plan)
+
+        snapshot = snapshot_step_activations(steps)
+
+        self.assertEqual(snapshot["plan"]["plugins"], ["highest_confidence"])
+        self.assertEqual({step: value for step, value in snapshot.items() if step != "plan"},
+                         dict.fromkeys(("perception", "observation", "memory", "proposal", "action")))
 
 
 if __name__ == "__main__":

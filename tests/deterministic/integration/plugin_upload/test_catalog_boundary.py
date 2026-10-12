@@ -13,7 +13,6 @@ from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.runtime.picar import create_host
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, get_json, image_source, serve_workbench
 from tests.shared.integration.plugin_flow_fixtures import write_plugin
-from tests.systems.journeys.plugins.test_upload import upload
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime, _write_activations
 from cli.automa_cli.bundles import controller_bundle_paths
 
@@ -35,13 +34,17 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                 with self.subTest(endpoint=base):
                     file = root / "prototype.py"
                     write_plugin(file, "proposal", "existing", 1)
-                    upload(base, file, "existing", step="proposal")
-                    before = get_json(base, "/api/plugins")
                     payloads = (
                         {"step": "proposal", "plugin_id": "intruder", "entrypoint": "prototype:Prototype",
                          "source_base64": base64.b64encode(file.read_bytes()).decode()},
                         {"operation": "arm", "selections": {"proposal": ["existing"]}},
                     )
+                    # The request `automa vehicles plugins upload` sends: JSON with no Origin.
+                    request = Request(base + "api/plugins", data=json.dumps({**payloads[0], "plugin_id": "existing"}).encode(),
+                                      headers={"Content-Type": "application/json"})
+                    with urlopen(request, timeout=3) as response:
+                        self.assertEqual(json.load(response)["status"], "uploaded")
+                    before = get_json(base, "/api/plugins")
                     for payload in payloads:
                         requests = [
                             ({"Origin": "https://attacker.example", "Content-Type": "text/plain"}, 403),
@@ -64,7 +67,7 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                                 self.assertFalse(failure["ok"])
                                 self.assertEqual(failure["status"], "failed")
                                 self.assertEqual(get_json(base, "/api/plugins"), before)
-                    # CLI JSON was accepted above; same-origin browser JSON is also accepted.
+                    # CLI-shaped JSON was accepted above; same-origin browser JSON is also accepted.
                     request = Request(base + "api/plugins", data=json.dumps({**payloads[0], "plugin_id": "browser"}).encode(),
                                       headers={"Origin": base.rstrip("/"), "Content-Type": "application/json; charset=utf-8"})
                     with urlopen(request, timeout=3) as response:

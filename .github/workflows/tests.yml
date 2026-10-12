@@ -42,6 +42,10 @@ jobs:
       - name: Check generated documentation
         run: python3 docs/render_markdown.py --check
 
+      - name: Check tests for undefined names
+        run: |
+          if python3 -m pyflakes tests | grep "undefined name"; then exit 1; fi
+
       - name: Run deterministic tests with coverage
         run: |
           python3 -m coverage run tests/run.py

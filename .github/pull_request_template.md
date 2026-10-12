@@ -7,7 +7,9 @@
 
 ## Validation
 
-<!-- List the focused commands and their results. -->
+<!-- List the focused commands and their results, including any
+     `python3 tests/run.py --systems <group>` runs. CI runs only the
+     deterministic suite. -->
 
 ## Risks and follow-up
 

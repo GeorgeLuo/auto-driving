@@ -24,7 +24,21 @@ python3 -m playwright install chromium
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
 ```
 
-The browser install is only for the systems test that opens Chromium. CI does not install a browser and does not run this suite.
+The browser install is only for the systems test that opens Chromium. CI does not install a browser and does not run this suite. Name one or more groups to run only those, for example `python3 tests/run.py --systems journeys frontend`.
+
+The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite.
+
+## Before pushing
+
+CI does not run `systems/`. Run the groups that drive the code you changed, and list them under Validation in the pull request:
+
+| Change touches | Run |
+|---|---|
+| `cli/automa_cli/` | `--systems commands` |
+| `autonomy/runtime/`, `autonomy/plugins.py`, `implementations/runtime/`, the plugin catalog, or the workbench | `--systems journeys` |
+| `cli/automa_cli/workbench_page/js/` | `--systems frontend` |
+| `deploy/`, the release bundle, or the import surface | `--systems packaging` |
+| `qca/` | `--systems qca` |
 
 ## Where a test goes
 

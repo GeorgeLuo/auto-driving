@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import time
 import webbrowser
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
 from implementations.decision_cycle.catalog import selection_activation
@@ -47,12 +47,7 @@ from .workbench_source import (
 def run_workbench_replay(
     source_dir: str | os.PathLike[str],
     *,
-    perception_preset: str | None = None,
-    perception_plugins: Sequence[str] | None = None,
-    memory_preset: str | None = None,
-    memory_plugins: Sequence[str] | None = None,
-    proposal_preset: str | None = None,
-    proposal_plugins: Sequence[str] | None = None,
+    selections: Mapping[str, tuple[str | None, Sequence[str] | None]] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -65,7 +60,7 @@ def run_workbench_replay(
     """Run one CLI replay, optionally keeping the loopback workbench alive.
 
     Recorded frames restore their executable step selections. Explicit CLI
-    selections override the named steps; an unrecorded step uses its packaged
+    ``selections``, a ``(preset, plugins)`` pair by step, override those steps; an unrecorded step uses its packaged
     default. Page selections override that step for the replay pass, retaining
     configs when the selected IDs are unchanged. Offline replay computes the
     action's authorization without host delivery.
@@ -73,11 +68,7 @@ def run_workbench_replay(
 
     try:
         activations = {}
-        for step, preset, plugins in (
-            ("perception", perception_preset, perception_plugins),
-            ("memory", memory_preset, memory_plugins),
-            ("proposal", proposal_preset, proposal_plugins),
-        ):
+        for step, (preset, plugins) in (selections or {}).items():
             if preset is not None or plugins is not None:
                 activations[step] = selection_activation(step, preset=preset, plugins=plugins)
     except ValueError as exc:

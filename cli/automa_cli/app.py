@@ -1997,12 +1997,10 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
 def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
-        perception_preset=args.perception_preset,
-        perception_plugins=args.perception_plugins,
-        memory_preset=args.memory_preset,
-        memory_plugins=args.memory_plugins,
-        proposal_preset=args.proposal_preset,
-        proposal_plugins=args.proposal_plugins,
+        selections={
+            step: (getattr(args, f"{step}_preset"), getattr(args, f"{step}_plugins"))
+            for step in SELECTABLE_STEPS
+        },
         cadence_ms=args.cadence_ms,
         pace=args.pace,
         max_frames=args.max_frames,

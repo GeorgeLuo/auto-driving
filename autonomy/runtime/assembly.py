@@ -62,5 +62,7 @@ def staged_runtime(
         "decision_activations": applied["steps"],
         "generation_id": applied["generation_id"],
         "preset": perception.metadata.get("preset") if perception is not None else None,
-        "recording_root": runtime_root / "automation" / "runs",
+        # The CLI exports recordings under automation/runs. Keep the host's
+        # authoritative history separate, even when both processes are local.
+        "recording_root": runtime_root / "automation" / "host-runs",
     }

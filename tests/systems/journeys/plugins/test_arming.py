@@ -232,7 +232,7 @@ class PluginArmingFlows(unittest.TestCase):
 
             cli("update", "perception", "--id", "chase-sim-chaser", "--preset", "lightweight_observer")
             try:
-                cli("automation", "run", "--id", "chase-sim-chaser", "--observe-only", "--num-decisions", "0")
+                cli("automation", "run", "--id", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
                 original = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
                 before = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
                 file = root / "proposal.py"
@@ -276,6 +276,17 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(current["decision"]["generation_id"], streamed["generation_id"])
                     self.assertNotEqual(streamed["generation_id"], before["applied_decision"]["generation_id"])
                 cli("automation", "stop", "--id", "chase-sim-chaser")
+                automation_dir = runtime / "chase-sim-chaser" / "bundle/runtime/automation"
+                state = json.loads((automation_dir / "state.json").read_text())
+                self.assertEqual(state["status"], "stopped", state.get("error"))
+                self.assertGreater(state["recorded_count"], 0)
+                self.assertEqual(state["recorded_count"], state["processed_count"])
+                # The CLI exports beside the host's history, never into it.
+                self.assertEqual(Path(state["run_dir"]).resolve().parent, (automation_dir / "runs").resolve())
+                exported = json.loads((Path(state["run_dir"]) / "manifest.json").read_text())
+                host_manifest = automation_dir / "host-runs" / Path(state["run_dir"]).name / "manifest.json"
+                self.assertEqual(exported, json.loads(host_manifest.read_text()))
+                self.assertEqual(len(exported["frames"]), state["recorded_count"])
                 # The host outlives the run and keeps the armed catalog, like a PiCar's.
                 after = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
                 self.assertEqual(selected(after, "applied", "proposal")[0], receipt["plugin"])

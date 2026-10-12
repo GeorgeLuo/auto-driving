@@ -345,8 +345,11 @@ Useful run options:
 - `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps every completed decision and its exact camera image, capture
   time, and applied step configurations. Both vehicles commit these artifacts
-  before counting the decision. PiCar recordings are copied from the onboard
-  run in order and drained on completion or stop; later manual observations
+  before counting the decision. The host owns its history under
+  `runtime/automation/host-runs/`; the CLI exports it under
+  `runtime/automation/runs/`. Separate directories keep the local Chase host
+  and CLI from overwriting each other's manifests. PiCar recordings are copied
+  from the onboard run in order and drained on completion or stop; later manual observations
   stay outside the recording. A successful recorded run reports matching
   `Decisions recorded` and `Decisions completed` counts.
 - `--log` persists worker output to `automation.log`.

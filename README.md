@@ -119,10 +119,8 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 |---|---|
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
 | `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
-| `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
+| `vehicles update perception\|memory\|proposal` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger` and `obstruction_avoidance`). |
 | `vehicles update observation\|plan\|action` | Packages code and stages that step's plugins locally (`--plugin`, repeatable). |
-| `vehicles update proposal` | Packages code and stages a proposal preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default preset `obstruction_avoidance`). |
-| `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
 | `vehicles plugins arm` | Loads perception, memory and proposal plugins on the host and applies them at its next cycle, without restarting automation. An import or construction error fails the command (exit 2) and keeps the previous selection. Repeat `--plugin` with `--step`, or use a JSON `--selection` map to arm several steps together. |
 | `vehicles plugins status` | Reads available, requested and applied revisions; exits 2 while the last arm failed. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
@@ -216,16 +214,12 @@ archive from `runtime/vehicles/<id>/bundle/releases/` and ignores whatever is
 staged now. If the archive is gone, replay exits 2 naming the release and
 `vehicles update autonomy`.
 
-Perception additionally reports Chase readiness after staging. Its
-`--timeout-s` also bounds each live readiness check and simulator operation;
-it is not a deadline for the entire update command. Perception `--restart`
-requires live discovery even when a local identity exists.
-
-For every step, an unknown-vehicle failure under `--json` returns
-`vehicle_step_update_error_v0` with `vehicle_id`, `step`, `error: unknown_vehicle`,
-and the discovery diagnostic in `message`; the command exits 2 and stages
-nothing. This resolution error is shared even though successful update payloads
-contain different step-specific results, such as perception readiness.
+Every step's update returns the same `vehicle_step_update_v0` payload under
+`--json`: `step`, `preset`, `plugins`, the staged `manifest`, and the `apply`
+commands. Staging does not check readiness; `vehicles status` does. An
+unknown-vehicle failure under `--json` returns `vehicle_step_update_error_v0`
+with `vehicle_id`, `step`, `error: unknown_vehicle`, and the discovery
+diagnostic in `message`; the command exits 2 and stages nothing.
 
 Use `help` at a command-group level and `--help` for final command options:
 
@@ -270,8 +264,7 @@ the affected step's `vehicles update <step>` command. Restage that step with
 your intended selection, then check status again. Every command that reads
 staged documents checks them first and prints the same step, path, reason, and
 restage command: startup and restart before launching or stopping a worker,
-`vehicles update perception` and `vehicles update autonomy` before packaging or
-writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and
+`vehicles update autonomy` before packaging or writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and
 `vehicles perception inspect` before reporting. An invalid optional step blocks startup;
 an absent optional step keeps its built-in or empty behavior.
 

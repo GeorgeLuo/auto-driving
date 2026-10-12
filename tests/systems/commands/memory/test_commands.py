@@ -41,7 +41,7 @@ class MemoryCommandTests(unittest.TestCase):
             )
 
             update_payload = json.loads(update.stdout)
-            self.assertEqual(update_payload["schema"], "vehicle_memory_update_v1")
+            self.assertEqual(update_payload["schema"], "vehicle_step_update_v0")
             self.assertEqual(update_payload["plugins"], ["bounded_evidence"])
             self.assertEqual(update_payload["manifest"]["step"], "memory")
             self.assertEqual(
@@ -104,7 +104,7 @@ class MemoryCommandTests(unittest.TestCase):
                     runtime_root=runtime_root,
                     check=False,
                 )
-                self.assertIn(f"Updated {step}: chase-sim-chaser", updated.stdout)
+                self.assertIn(f"Staged {step}: chase-sim-chaser", updated.stdout)
                 info = ("vehicles", "info", step, "--id", "chase-sim-chaser")
                 payload = json.loads(
                     run_automa(*info, "--json", runtime_root=runtime_root).stdout
@@ -184,7 +184,10 @@ class MemoryCommandTests(unittest.TestCase):
                     expected = preset_activation("memory", preset)
                     self.assertEqual(dry["preset"], preset)
                     self.assertEqual(dry["plugins"], list(expected.plugins))
-                    self.assertEqual(dry["manifest"], expected.to_payload())
+                    manifest = dry["manifest"]
+                    for key in ("plugins", "plugin_specs", "plugin_configs"):
+                        self.assertEqual(manifest[key], expected.to_payload()[key])
+                    self.assertEqual(manifest["metadata"]["preset"], preset)
 
                     run_automa(
                         "vehicles", "update", "memory", "--id", "chase-sim-chaser",

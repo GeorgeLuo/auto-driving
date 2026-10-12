@@ -156,14 +156,14 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
         payload = json.loads(result.stdout)
-        self.assertEqual(payload["schema"], "vehicle_perception_update_v0")
+        self.assertEqual(payload["schema"], "vehicle_step_update_v0")
         self.assertTrue(payload["dry_run"])
         self.assertEqual(payload["vehicle_id"], "chase-sim-chaser")
         self.assertEqual(payload["preset"], DEFAULT_PERCEPTION_PRESET)
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "chase-sim")
         self.assertTrue(
-            payload["would_write"]["bundle_root"].endswith(
-                "vehicles/chase-sim-chaser/bundle"
+            payload["activation"].endswith(
+                "vehicles/chase-sim-chaser/bundle/runtime/perception/active.json"
             )
         )
 

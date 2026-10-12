@@ -46,8 +46,6 @@ from .bundles import (
 from .paths import display_path, safe_path_part
 from .vehicles import DEFAULT_READINESS_TIMEOUT_S, discover_vehicle
 
-# Steps whose packaged plugins are staged with `vehicles update <step>`.
-GENERIC_UPDATE_STEPS = ("observation", "proposal", "plan", "action")
 # Steps a vehicle runs with their built-in plugin when nothing is staged.
 BUILTIN_STEPS = ("observation", "plan", "action")
 
@@ -205,7 +203,6 @@ def staging_vehicle(
     *,
     runtime_root: Path,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    offline: bool = True,
     output: TextIO | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The vehicle every ``vehicles update <step>`` stages for, or why it is unknown.
@@ -214,15 +211,12 @@ def staging_vehicle(
     step are known without discovery. Identity must match the requested id;
     directory names alone do not establish it. The newest valid matching
     record supplies the connection. Any other id must be discoverable.
-    ``offline=False`` always discovers, for commands that need the live vehicle.
     ``timeout_s`` bounds each discovery probe, not the whole update command.
     """
 
-    vehicle = None
-    if offline:
-        vehicle = _offline_sim_vehicle(vehicle_id) or _offline_staged_vehicle(
-            vehicle_bundle(vehicle_id, runtime_root), vehicle_id
-        )
+    vehicle = _offline_sim_vehicle(vehicle_id) or _offline_staged_vehicle(
+        vehicle_bundle(vehicle_id, runtime_root), vehicle_id
+    )
     if vehicle is not None:
         _emit(output, "Using local vehicle metadata; network liveness is not required for local staging.")
         return vehicle, None
@@ -549,26 +543,29 @@ def update_vehicle_step(
     release: dict[str, Any] | None = None
     if not dry_run:
         release = sync_controller_bundle(bundle, output=output if verbose else None)
-        path = stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
+    # A dry run reports the document it would write, provenance included.
+    staged = staged_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
+    if not dry_run:
+        write_step_activation(path, staged)
     payload = {
         "schema": "vehicle_step_update_v0",
         "vehicle_id": vehicle_id,
         "step": step,
-        "preset": activation.metadata.get("preset"),
-        "plugins": list(activation.plugins),
+        "preset": staged.metadata.get("preset"),
+        "plugins": list(staged.plugins),
         "dry_run": dry_run,
         "activation": display_path(path),
-        "manifest": activation.to_payload(),
+        "manifest": staged.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
         "apply": apply_staged(vehicle_id, vehicle.get("provider"), step,
-                              changed=changed_plugins(previous, activation)),
+                              changed=changed_plugins(previous, staged)),
     }
     if json_output:
         return 0, json.dumps(payload, indent=2, sort_keys=True)
     verb = "Would stage" if dry_run else "Staged"
     return 0, "\n".join(
         [
-            f"{verb} {step}: {vehicle_id} -> {', '.join(activation.plugins) or '(no plugins)'}",
+            f"{verb} {step}: {vehicle_id} -> {', '.join(staged.plugins) or '(no plugins)'}",
             *([f"Preset: {payload['preset']}"] if payload["preset"] is not None else []),
             f"Activation: {display_path(path)}",
             *format_apply_staged(payload["apply"]),
@@ -578,7 +575,6 @@ def update_vehicle_step(
 
 __all__ = [
     "BUILTIN_STEPS",
-    "GENERIC_UPDATE_STEPS",
     "absent_step_error",
     "apply_staged",
     "format_apply_staged",

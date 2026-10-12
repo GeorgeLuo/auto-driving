@@ -17,10 +17,7 @@ from .automation import (
 )
 from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision_steps import get_vehicle_step_info, inspect_decision_step, stream_vehicle_step
-from .memory import (
-    get_vehicle_memory_info,
-    update_vehicle_memory,
-)
+from .memory import get_vehicle_memory_info
 from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
@@ -40,12 +37,9 @@ from implementations.decision_cycle.proposal.presets import (
     available_proposal_preset_ids,
 )
 
-from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
+from .step_activations import update_vehicle_step
 from .runtime_hosts import RUNTIME_ROOT as VEHICLES_RUNTIME_ROOT
-from .perception import (
-    get_vehicle_perception_info,
-    update_vehicle_perception,
-)
+from .perception import get_vehicle_perception_info
 from .perception_runs import (
     inspect_perception,
 )
@@ -1319,70 +1313,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     autonomy.set_defaults(handler=_handle_vehicles_update_autonomy)
 
-    perception = update_commands.add_parser(
-        "perception",
-        help="Stage a perception preset or plugins in a vehicle's local controller bundle.",
-        description=(
-            "Stage a perception preset or plugin list in a local vehicle bundle. "
-            "Absent observation, plan and action activations receive their built-in "
-            "plugins; existing selections are preserved, and proposals and memory "
-            "are staged separately. For Chase, the result checks passive capture "
-            "and staged activations for observation-only automation."
-        ),
-    )
-    perception.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help=_STAGING_VEHICLE_ID_HELP,
-    )
-    perception.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=(
-            _STAGING_DISCOVERY_TIMEOUT_HELP + " Also bounds each Chase readiness "
-            "check after staging and live simulator operations with --restart."
-        ),
-    )
-    perception_selection = perception.add_mutually_exclusive_group()
-    perception_selection.add_argument(
-        "--preset",
-        default=None,
-        choices=available_perception_preset_ids(),
-        help=f"Packaged perception preset to activate (default: {DEFAULT_PERCEPTION_PRESET}).",
-    )
-    perception_selection.add_argument(
-        "--plugin",
-        action="append",
-        dest="plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged perception plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
-    )
-    perception.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the activation manifest without writing it.",
-    )
-    perception.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable perception update payload.",
-    )
-    perception.add_argument(
-        "--restart",
-        action="store_true",
-        help="Discover the live simulator, re-prepare its WS controller, and capture a sample perception; local identity metadata does not bypass discovery.",
-    )
-    perception.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print step-by-step activation, controller preparation, and sample perception details.",
-    )
-    perception.set_defaults(handler=_handle_vehicles_update_perception)
-
-    for step_name in GENERIC_UPDATE_STEPS:
+    for step_name in STEPS:
         step_parser = update_commands.add_parser(
             step_name,
             help=f"Stage {step_name} plugins in the local controller bundle.",
@@ -1441,55 +1372,6 @@ def build_parser() -> argparse.ArgumentParser:
             help="Print controller release packaging details.",
         )
         step_parser.set_defaults(handler=_handle_vehicles_update_step, step=step_name)
-
-    memory = update_commands.add_parser(
-        "memory",
-        help="Stage memory plugins in the local controller bundle.",
-        description="Stage memory plugins in the local controller bundle.",
-    )
-    memory.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help=_STAGING_VEHICLE_ID_HELP,
-    )
-    memory.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=_STAGING_DISCOVERY_TIMEOUT_HELP,
-    )
-    memory_selection = memory.add_mutually_exclusive_group()
-    memory_selection.add_argument(
-        "--preset",
-        default=None,
-        choices=available_memory_preset_ids(),
-        help=f"Packaged memory preset to activate (default: {DEFAULT_MEMORY_PRESET}).",
-    )
-    memory_selection.add_argument(
-        "--plugin",
-        action="append",
-        dest="plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged memory plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
-    )
-    memory.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the activation manifest without writing it.",
-    )
-    memory.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable memory update payload.",
-    )
-    memory.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print controller release packaging details.",
-    )
-    memory.set_defaults(handler=_handle_vehicles_update_memory)
 
     simulators = subcommands.add_parser("simulators", help="Prepare and inspect simulator environments.")
     simulators.set_defaults(handler=_handle_simulators_help)
@@ -1718,9 +1600,9 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
                 "",
                 "- core         deploy the DonkeyCar harness to a PiCar",
                 "- autonomy     package staged steps as a release for the vehicle's host",
-                "- perception   stage local vehicle perception code",
+                "- perception   stage a perception preset or plugin selection",
                 "- observation  stage observation plugins",
-                "- memory       stage memory plugins",
+                "- memory       stage a memory preset or plugin selection",
                 "- proposal     stage a proposal preset or plugin selection",
                 "- plan         stage the plan plugin",
                 "- action       stage the action plugin (hold or mode)",
@@ -2279,29 +2161,6 @@ def _handle_vehicles_info_step(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_update_memory(args: argparse.Namespace) -> int:
-    if not _validate_timeout_input(
-        args.timeout_s,
-        command="automa vehicles update memory",
-        json_output=args.json,
-        human_stream=sys.stdout,
-    ):
-        return 2
-    result = update_vehicle_memory(
-        vehicle_id=args.vehicle_id,
-        preset=args.preset,
-        plugins=args.plugins,
-        timeout_s=args.timeout_s,
-        dry_run=args.dry_run,
-        json_output=args.json,
-        verbose=args.verbose,
-        output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 def _handle_vehicles_perception_inspect(args: argparse.Namespace) -> int:
     result = inspect_perception(
         args.source,
@@ -2335,38 +2194,6 @@ def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-
-
-
-
-
-
-
-
-def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
-    if not _validate_timeout_input(
-        args.timeout_s,
-        command="automa vehicles update perception",
-        json_output=args.json,
-        human_stream=sys.stdout,
-    ):
-        return 2
-    result = update_vehicle_perception(
-        vehicle_id=args.vehicle_id,
-        preset=args.preset,
-        plugins=args.plugins,
-        timeout_s=args.timeout_s,
-        restart=args.restart,
-        dry_run=args.dry_run,
-        json_output=args.json,
-        verbose=args.verbose,
-        output=sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
@@ -2385,7 +2212,8 @@ def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
         json_output=args.json,
         verbose=args.verbose,
-        output=sys.stdout,
+        # Progress stays off stdout when stdout carries the JSON payload.
+        output=sys.stderr if args.json else sys.stdout,
     )
     if message:
         print(message)

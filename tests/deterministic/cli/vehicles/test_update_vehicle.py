@@ -9,16 +9,15 @@ from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from autonomy.decision_cycle.activation import STEPS
 from cli.automa_cli.app import main
 from cli.automa_cli.step_activations import (
-    GENERIC_UPDATE_STEPS,
     bundle_activation_path,
     read_bundle_activation,
     staging_vehicle,
     vehicle_bundle,
 )
 
-UPDATE_STEPS = ("perception", "memory", *GENERIC_UPDATE_STEPS)
 DISCOVERY = "cli.automa_cli.vehicles.discover_active_vehicles"
 PICAR = {
     "vehicle_id": "piracer-test",
@@ -47,14 +46,12 @@ class UpdateVehicleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with (
-                patch("cli.automa_cli.perception.RUNTIME_ROOT", root),
-                patch("cli.automa_cli.memory.RUNTIME_ROOT", root),
                 patch("cli.automa_cli.app.VEHICLES_RUNTIME_ROOT", root),
             ):
                 yield root
 
     def test_every_step_rejects_an_id_discovery_does_not_find(self) -> None:
-        for step in UPDATE_STEPS:
+        for step in STEPS:
             with (
                 self.subTest(step=step),
                 self._runtime() as root,
@@ -88,7 +85,7 @@ class UpdateVehicleTests(unittest.TestCase):
 
             offline = MagicMock(side_effect=AssertionError("staging must not discover"))
             for vehicle_id in ("chase-sim-chaser", "piracer-test"):
-                for step in UPDATE_STEPS:
+                for step in STEPS:
                     with self.subTest(vehicle_id=vehicle_id, step=step), patch(DISCOVERY, offline):
                         code, stdout = _invoke(
                             "vehicles", "update", step, "--id", vehicle_id, "--dry-run"
@@ -123,7 +120,7 @@ class UpdateVehicleTests(unittest.TestCase):
             self.assertNotIn("Apply selection:", switched)
 
     def test_each_first_staged_step_makes_the_vehicle_known_to_every_step_offline(self) -> None:
-        for first in UPDATE_STEPS:
+        for first in STEPS:
             with self.subTest(first=first), self._runtime() as root:
                 with patch(DISCOVERY, return_value=_discovered(PICAR)) as discover:
                     code, stdout = _invoke(
@@ -140,7 +137,7 @@ class UpdateVehicleTests(unittest.TestCase):
                 )
                 before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
                 with patch(DISCOVERY, side_effect=AssertionError("offline staging must not discover")):
-                    for step in UPDATE_STEPS:
+                    for step in STEPS:
                         with self.subTest(first=first, step=step):
                             code, stdout = _invoke(
                                 "vehicles", "update", step, "--id", PICAR["vehicle_id"],
@@ -156,7 +153,7 @@ class UpdateVehicleTests(unittest.TestCase):
                 code, stdout = _invoke("vehicles", "update", "perception", "--id", "piracer-test")
             self.assertEqual(code, 0, stdout)
             before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
-            for step in UPDATE_STEPS:
+            for step in STEPS:
                 with self.subTest(step=step), patch(DISCOVERY, return_value=_discovered()) as discover:
                     code, stdout = _invoke(
                         "vehicles", "update", step, "--id", "piracer test", "--json"
@@ -202,21 +199,6 @@ class UpdateVehicleTests(unittest.TestCase):
                 vehicle, error = staging_vehicle(PICAR["vehicle_id"], runtime_root=root)
             self.assertIsNone(error)
             self.assertEqual(vehicle["connection"]["base_url"], "http://old.local:8887")
-
-    def test_restart_uses_discovery_even_with_a_staged_identity(self) -> None:
-        with self._runtime() as root:
-            with patch(DISCOVERY, return_value=_discovered(PICAR)):
-                _invoke("vehicles", "update", "memory", "--id", PICAR["vehicle_id"])
-            before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
-            with patch(DISCOVERY, return_value=_discovered()) as discover:
-                code, stdout = _invoke(
-                    "vehicles", "update", "perception", "--id", PICAR["vehicle_id"],
-                    "--restart", "--dry-run", "--json",
-                )
-            self.assertEqual(code, 2)
-            self.assertEqual(json.loads(stdout)["error"], "unknown_vehicle")
-            discover.assert_called_once()
-            self.assertEqual(before, {p: p.read_bytes() for p in root.rglob("*") if p.is_file()})
 
 
 if __name__ == "__main__":

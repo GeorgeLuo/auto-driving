@@ -3,38 +3,19 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS
+from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, update_vehicle_step
 
 
 class PerceptionCommandTests(unittest.TestCase):
 
 
     def test_update_perception_and_memory_share_staging_provenance(self) -> None:
-        from unittest.mock import patch
-
-        from cli.automa_cli import memory as memory_module
-        from cli.automa_cli import perception as perception_module
-
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            with (
-                patch.object(perception_module, "RUNTIME_ROOT", runtime_root),
-                patch.object(memory_module, "RUNTIME_ROOT", runtime_root),
-                patch.object(
-                    perception_module,
-                    "get_vehicle_status",
-                    return_value={
-                        "vehicle_id": "chase-sim-chaser",
-                        "layers": {},
-                        "readiness": {},
-                    },
-                ),
-            ):
-                perception_module.update_vehicle_perception(
-                    vehicle_id="chase-sim-chaser", timeout_s=0.2, json_output=True,
-                )
-                memory_module.update_vehicle_memory(
-                    vehicle_id="chase-sim-chaser", timeout_s=0.2, json_output=True,
+            for step in ("perception", "memory"):
+                update_vehicle_step(
+                    vehicle_id="chase-sim-chaser", step=step, runtime_root=runtime_root,
+                    timeout_s=0.2, json_output=True,
                 )
             perception = json.loads(
                 (runtime_root / "chase-sim-chaser/bundle/runtime/perception/active.json").read_text()

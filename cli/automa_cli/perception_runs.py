@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
@@ -32,7 +31,7 @@ from .inspection_runs import (
     selection_record,
 )
 from .paths import ROOT, display_path, safe_path_part
-from .perception import ensure_local_perception_runtime
+from .perception import live_perception_selection
 from .perception_evaluation import evaluate_perception_frames
 from .step_hosting import load_staged_runner
 from .vehicle_access import create_vehicle_access
@@ -150,17 +149,9 @@ def _inspect_vehicle(
 
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
-        prepared_runtime = ensure_local_perception_runtime(
-            vehicle=vehicle, preset=preset, plugins=plugins
-        )
-        manifest = prepared_runtime["manifest"]
-        activation = step_activation_from_payload(manifest, step="perception")
+        activation = live_perception_selection(vehicle, preset=preset, plugins=plugins)
         runner = load_staged_runner(activation)
-        perception_record = {
-            **_perception_record(activation),
-            "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
-            "bundle_refreshed": prepared_runtime["refreshed"],
-        }
+        perception_record = _perception_record(activation)
     except Exception as exc:
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 

@@ -409,11 +409,10 @@ A recording restores its perception selection, frame identity and timestamps;
 `--preset` or `--plugin` overrides the selection. Without a recording, a live
 read uses the vehicle's staged selection and images use the default preset.
 
-Live inspection refreshes the local code bundle when workspace source changes.
-It rebuilds a staged named perception preset from the current catalog, including
-its configs; a `custom` activation keeps its selection, specs and configs.
-An explicit inspection selection runs from that bundle without saving the
-override to the vehicle's activation.
+Live inspection writes nothing to the vehicle: it neither stages a selection
+nor repackages the code bundle. Any selection it runs, staged or explicit, runs
+the vehicle's bundle code when the vehicle has a bundle. Stage a selection with
+`vehicles update perception`, as for memory and proposal.
 
 Both inspection commands read recorded frames the same way: equal timestamps
 are allowed at millisecond resolution, frame indices preserve ordering and

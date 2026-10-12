@@ -41,7 +41,6 @@ class PerceptionInspectBundleTests(unittest.TestCase):
                     things = report["frames"][0]["perception"]["things"]
                     frame = next(item for item in things if item["thing_id"] == "front_camera_frame")
                     self.assertEqual(frame["label"], "staged camera frame")
-                    self.assertFalse(report["perception"]["bundle_refreshed"])
                     self.assertEqual(activation_path.read_bytes(), staged)
 
 

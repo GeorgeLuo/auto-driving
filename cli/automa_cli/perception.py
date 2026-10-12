@@ -4,27 +4,20 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 from autonomy.decision_cycle.activation import StepActivation
-from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
-from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
+from implementations.decision_cycle.catalog import selection_activation
 
-from .bundles import (
-    controller_bundle_source_summary,
-    controller_bundle_paths,
-    sync_controller_bundle,
-)
+from .bundles import controller_bundle_paths
 from .step_activations import (
     bundle_activation_problems,
     format_activation_problems,
     read_bundle_activation,
-    refresh_release,
-    stage_activation,
     staged_activation,
 )
 from .step_schema import format_staged_step, staged_step_info
-from .paths import display_path, safe_path_part
+from .paths import safe_path_part
 from .perception_view import get_perception_view_status
 from .view_discovery import discover_runtime_view
 from .host_publications import (
@@ -46,77 +39,38 @@ class CommandResult:
     message: str
 
 
-def ensure_local_perception_runtime(
-    *,
+def live_perception_selection(
     vehicle: dict[str, Any],
+    *,
     preset: str | None = None,
     plugins: list[str] | None = None,
-    output: TextIO | None = None,
-) -> dict[str, Any]:
-    """Ensure a vehicle's local bundle reflects the current controller source.
+) -> StepActivation:
+    """The perception selection a live inspect of ``vehicle`` runs; nothing is written.
 
-    A named preset is rebuilt from the catalog through ``stage_activation``,
-    so its plugin list tracks the preset. A custom selection is kept, and
-    ``refresh_release`` records a repackaged bundle on it. With nothing
-    staged, the default preset is staged. ``preset`` or ``plugins`` select
-    what the returned manifest runs without restaging; ``update perception``
-    stages a selection.
+    An explicit ``preset`` or ``plugins`` wins, then the vehicle's staged
+    selection, then the default preset. Like the staged selection, the others
+    run the vehicle's bundle code when it has a bundle, else the installed
+    package.
     """
 
     vehicle_id = str(vehicle.get("vehicle_id") or "vehicle")
-
     bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
     if problems:
         raise ValueError(format_activation_problems(problems))
-    existing = read_bundle_activation(bundle, "perception")
-    existing_preset = _activation_preset(existing)
-    release_summary = _activation_release(existing)
-
-    source = controller_bundle_source_summary()
-    staged_tree = release_summary.get("tree_sha256") if release_summary is not None else None
-    bundle_present = Path(bundle["autonomy_dir"]).is_dir() and Path(bundle["implementations_dir"]).is_dir()
-    refreshed = not bundle_present or staged_tree != source["tree_sha256"]
-    release = sync_controller_bundle(bundle, output=output) if refreshed else None
-
-    if existing is not None and existing_preset == CUSTOM_PRESET:
-        if release is not None:
-            refresh_release(bundle, "perception", release)
-    else:
-        staged_preset = existing_preset if existing_preset in PERCEPTION_PRESETS else None
-        stage_activation(
-            bundle,
-            selection_activation("perception", preset=staged_preset),
-            vehicle_id=_vehicle_id(vehicle),
-            release=release,
-            vehicle=vehicle,
-            release_summary=None if release is not None else release_summary,
-        )
-
     staged = read_bundle_activation(bundle, "perception")
-    if staged is None:
-        raise ValueError(f"perception activation was not staged: {display_path(manifest_path)}")
-    staged_payload = staged.to_payload()
-    manifest = staged_payload
-    if preset is not None or plugins:
-        manifest = staged_activation(
-            bundle,
-            selection_activation("perception", preset=preset, plugins=plugins),
-            vehicle_id=_vehicle_id(vehicle),
-            vehicle=vehicle,
-            release_summary=_activation_release(staged),
-        ).to_payload()
-
-    return {
-        "vehicle_id": vehicle_id,
-        "preset": _manifest_preset(manifest),
-        "bundle": bundle,
-        "manifest": manifest,
-        "manifest_path": manifest_path,
-        "refreshed": refreshed,
-        "source": source,
-    }
+    if staged is not None and preset is None and plugins is None:
+        return staged
+    selection = selection_activation("perception", preset=preset, plugins=plugins)
+    if not (Path(bundle["autonomy_dir"]).is_dir() and Path(bundle["implementations_dir"]).is_dir()):
+        return selection
+    return staged_activation(
+        bundle,
+        selection,
+        vehicle_id=_vehicle_id(vehicle),
+        vehicle=vehicle,
+        release_summary=_activation_release(staged),
+    )
 
 
 def get_vehicle_perception_info(
@@ -150,13 +104,6 @@ def _vehicle_id(vehicle: dict[str, Any]) -> str | None:
     return vehicle_id if isinstance(vehicle_id, str) else None
 
 
-def _activation_preset(activation: StepActivation | None) -> str | None:
-    if activation is None:
-        return None
-    preset = activation.metadata.get("preset")
-    return preset if isinstance(preset, str) else None
-
-
 def _activation_release(activation: StepActivation | None) -> dict[str, Any] | None:
     if activation is None:
         return None
@@ -165,11 +112,6 @@ def _activation_release(activation: StepActivation | None) -> dict[str, Any] | N
         return None
     release = bundle.get("release")
     return dict(release) if isinstance(release, dict) else None
-
-
-def _manifest_preset(manifest: dict[str, Any]) -> str | None:
-    preset = (manifest.get("metadata") or {}).get("preset")
-    return preset if isinstance(preset, str) else None
 
 
 def _format_perception_info(payload: dict[str, Any]) -> str:

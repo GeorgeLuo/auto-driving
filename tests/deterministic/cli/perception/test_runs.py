@@ -9,18 +9,21 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli import perception as perception_module
+from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.memory_runs import inspect_memory
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
     inspect_perception,
     perceive_sensor_frame,
 )
+from cli.automa_cli.step_activations import stage_activation
 from cli.automa_cli.vehicle_access import VehicleAccess
 from cli.automa_cli.workbench_source import normalize_image_directory
-from implementations.decision_cycle.catalog import preset_activation, step_plugins
+from implementations.decision_cycle.catalog import preset_activation, selection_activation, step_plugins
 
 
 class FakeFrameCar:
@@ -140,9 +143,10 @@ class PerceptionRunTests(unittest.TestCase):
             )
             self.assertGreaterEqual(record["duration_ms"], 5000.0)
 
-    def test_named_runtime_refreshes_plugin_definition_but_custom_runtime_is_preserved(
-        self,
-    ) -> None:
+    def test_live_selection_reads_the_staged_one_and_writes_nothing(self) -> None:
+        """Regression: live inspect staged the default preset, rebuilt a named
+        one and synced the bundle, so inspecting a vehicle changed what it runs."""
+
         vehicle = {
             "vehicle_id": "chase-sim-test",
             "vehicle_kind": "chase-sim-ws",
@@ -150,35 +154,41 @@ class PerceptionRunTests(unittest.TestCase):
             "connection": {"ws_url": "ws://example.invalid/ws"},
         }
         with tempfile.TemporaryDirectory() as tmp:
+            bundle = controller_bundle_paths(Path(tmp) / "chase-sim-test")
+            path = Path(bundle["perception_runtime_dir"]) / "active.json"
             with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
-                first = perception_module.ensure_local_perception_runtime(vehicle=vehicle)
-                activation_path = first["manifest_path"]
-                stale = json.loads(activation_path.read_text(encoding="utf-8"))
-                stale["metadata"]["preset"] = "visual_observer"
-                stale["plugins"].append("vlm_prep")
-                activation_path.write_text(json.dumps(stale), encoding="utf-8")
+                default = perception_module.live_perception_selection(vehicle)
+                self.assertFalse(path.exists())
 
-                refreshed = perception_module.ensure_local_perception_runtime(
-                    vehicle=vehicle
+                # A label the catalog's preset no longer matches runs as staged.
+                listed = selection_activation("perception", plugins=["frame", "vlm_prep"])
+                stale = step_activation(
+                    "perception", listed.plugins, listed.plugin_specs, listed.plugin_configs,
+                    metadata={"preset": "visual_observer"},
                 )
-                refreshed_plugins = refreshed["manifest"]["plugins"]
-                self.assertEqual(
-                    refreshed_plugins, ["frame", "floor_plane", "motion_tracks"]
-                )
-                self.assertFalse(refreshed["refreshed"])
+                stage_activation(bundle, stale, vehicle_id="chase-sim-test")
+                staged_bytes = path.read_bytes()
+                staged = perception_module.live_perception_selection(vehicle)
+                for directory in ("autonomy_dir", "implementations_dir"):
+                    Path(bundle[directory]).mkdir(parents=True)
+                chosen = perception_module.live_perception_selection(vehicle, plugins=["frame"])
+                self.assertEqual(path.read_bytes(), staged_bytes)
 
-                custom = refreshed["manifest"]
-                custom["metadata"]["preset"] = "custom"
-                custom["plugins"] = ["frame"]
-                activation_path.write_text(json.dumps(custom), encoding="utf-8")
-                preserved = perception_module.ensure_local_perception_runtime(
-                    vehicle=vehicle
-                )
-
-        self.assertEqual(preserved["manifest"]["metadata"]["preset"], "custom")
-        self.assertEqual(preserved["manifest"]["plugins"], ["frame"])
+        self.assertEqual(default.metadata["preset"], "lightweight_observer")
+        self.assertNotIn("controller_bundle", default.metadata)
+        self.assertEqual((staged.metadata["preset"], staged.plugins), ("visual_observer", ("frame", "vlm_prep")))
+        self.assertEqual(chosen.plugins, ("frame",))
+        self.assertEqual(chosen.metadata["preset"], "custom")
+        # An explicit selection runs the vehicle's bundle code, like the staged one.
+        self.assertEqual(
+            chosen.metadata["controller_bundle"]["root_dir"],
+            staged.metadata["controller_bundle"]["root_dir"],
+        )
 
     def test_invalid_staged_runtime_names_its_restage_command_and_is_kept(self) -> None:
+        """Regression: an explicit selection ran over an invalid staged
+        activation without naming the command that restages it."""
+
         vehicle = {
             "vehicle_id": "chase-sim-test",
             "vehicle_kind": "chase-sim-ws",
@@ -191,7 +201,7 @@ class PerceptionRunTests(unittest.TestCase):
             path.write_text('{"schema":"automa_perception_activation_v0"}', encoding="utf-8")
             with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
                 with self.assertRaises(ValueError) as raised:
-                    perception_module.ensure_local_perception_runtime(vehicle=vehicle, preset="visual_observer")
+                    perception_module.live_perception_selection(vehicle, preset="visual_observer")
             self.assertEqual(path.read_text(encoding="utf-8"), '{"schema":"automa_perception_activation_v0"}')
 
         self.assertIn("Invalid perception activation:", str(raised.exception))
@@ -199,30 +209,6 @@ class PerceptionRunTests(unittest.TestCase):
             "Restage with your intended selection: ./cli/automa vehicles update perception --id chase-sim-test",
             str(raised.exception),
         )
-
-    def test_explicit_selection_runs_without_restaging_the_vehicle(self) -> None:
-        vehicle = {
-            "vehicle_id": "chase-sim-test",
-            "vehicle_kind": "chase-sim-ws",
-            "provider": "chase-sim",
-            "connection": {"ws_url": "ws://example.invalid/ws"},
-        }
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(perception_module, "RUNTIME_ROOT", Path(tmp)):
-                chosen = perception_module.ensure_local_perception_runtime(
-                    vehicle=vehicle, plugins=["frame", "classical_regions"]
-                )
-                staged = json.loads(chosen["manifest_path"].read_text(encoding="utf-8"))
-                kept = perception_module.ensure_local_perception_runtime(vehicle=vehicle)
-
-        self.assertEqual(chosen["manifest"]["plugins"], ["frame", "classical_regions"])
-        self.assertEqual(chosen["manifest"]["metadata"]["preset"], "custom")
-        self.assertEqual(
-            chosen["manifest"]["metadata"]["controller_bundle"]["release"],
-            staged["metadata"]["controller_bundle"]["release"],
-        )
-        self.assertEqual(staged["metadata"]["preset"], "lightweight_observer")
-        self.assertEqual(kept["manifest"]["metadata"]["preset"], "lightweight_observer")
 
     def test_inspect_manifest_remaps_archived_frame_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -335,27 +321,14 @@ class PerceptionRunTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = {
-                "bundle": {
-                    "root_dir": str(root / "bundle"),
-                    "runtime_dir": str(root / "bundle" / "runtime"),
-                },
-                "manifest": {
-                    **preset_activation(
-                        "perception", "lightweight_observer"
-                    ).to_payload(),
-                },
-                "source": {"tree_sha256": "test-tree"},
-                "refreshed": False,
-            }
             with (
                 patch(
                     "cli.automa_cli.perception_runs.discover_active_vehicles",
                     return_value=discovery,
                 ),
                 patch(
-                    "cli.automa_cli.perception_runs.ensure_local_perception_runtime",
-                    return_value=runtime,
+                    "cli.automa_cli.perception_runs.live_perception_selection",
+                    return_value=preset_activation("perception", "lightweight_observer"),
                 ),
                 patch(
                     "cli.automa_cli.perception_runs.load_staged_runner",

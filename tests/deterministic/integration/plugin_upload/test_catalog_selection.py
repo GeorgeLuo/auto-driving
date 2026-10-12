@@ -21,8 +21,14 @@ class CatalogSelectionTests(unittest.TestCase):
     def test_both_hosts_report_applied_selections_for_every_step_without_expanding_arming(self):
         activations = default_activations()
         for vehicle in ("chase", "picar"):
-            with self.subTest(vehicle=vehicle), image_source(1) as root, closing(create_chase_host(ChaseSimCar(), steps=decision_steps(activations))
-                        if vehicle == "chase" else create_picar_host(steps=decision_steps(activations))) as host:
+            with (
+                self.subTest(vehicle=vehicle),
+                image_source(1) as root,
+                closing(
+                    create_chase_host(ChaseSimCar(), steps=decision_steps(activations))
+                    if vehicle == "chase" else create_picar_host(steps=decision_steps(activations))
+                ) as host,
+            ):
                 host.follow_activations(activations, root / "runtime")
                 snapshot = host.plugin_catalog()
                 self.assertEqual(set(snapshot["arming"]["applied"]), set(STEPS))

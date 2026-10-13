@@ -45,7 +45,7 @@ from .perception_runs import (
     inspect_perception,
 )
 from .workbench import run_workbench_replay
-from .plugin_catalog import arm_plugins, list_plugins, upload_plugin
+from .plugin_catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from autonomy.runtime.plugin_catalog import ARMING_STEPS
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
@@ -90,10 +90,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
 
-    plugins = vehicle_commands.add_parser("plugins", help="Upload, arm and inspect plugins in a live catalog.")
+    plugins = vehicle_commands.add_parser("plugins", help="Upload, arm, disarm and inspect plugins in a live catalog.")
     plugins.set_defaults(handler=_handle_plugins_help)
     plugin_commands = plugins.add_subparsers(dest="plugin_command")
-    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming and catalog inspection usage.")
+    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming, disarming and catalog inspection usage.")
     plugins_help.set_defaults(handler=_handle_plugins_help)
     listing = plugin_commands.add_parser("status", aliases=["list"], help="Show live catalog availability and plugin revisions (list is an alias).")
     listing_target = listing.add_mutually_exclusive_group(required=True)
@@ -132,6 +132,22 @@ def build_parser() -> argparse.ArgumentParser:
     arm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to add/update; repeat in the desired append order with --step.")
     arm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
     arm.set_defaults(handler=_handle_plugin_arm)
+
+    disarm = plugin_commands.add_parser(
+        "disarm", help="Deselect plugins without deleting them from the live catalog.",
+        description="Deselect perception, memory or proposal plugins on an existing runtime host. The host resets disarmed instances and applies the selection at its next cycle; retained plugins keep their state. Catalog entries remain available to arm again.",
+        epilog="Use --step with repeatable --plugin IDs, --selection with a JSON step-to-ID-list map, or --all to clear one step (with --step) or all supported steps. Empty batch lists remove nothing. Disarming does not start or stop automation, change control mode, or edit staged activations.",
+    )
+    disarm_target = disarm.add_mutually_exclusive_group(required=True)
+    disarm_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose runtime host receives the request.")
+    disarm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
+    disarm_input = disarm.add_mutually_exclusive_group()
+    disarm.add_argument("--step", choices=ARMING_STEPS, help="Step whose plugins to disarm; combine with --plugin or --all.")
+    disarm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to plugin-ID lists to disarm together.")
+    disarm_input.add_argument("--all", dest="all_plugins", action="store_true", help="Disarm every plugin in --step, or in all supported steps without it.")
+    disarm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to disarm from --step; repeat to name several.")
+    disarm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
+    disarm.set_defaults(handler=_handle_plugin_disarm)
 
     active = vehicle_commands.add_parser(
         "active",
@@ -1526,9 +1542,10 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "automa vehicles plugins commands", "",
         "- upload  store a file and register an available plugin revision",
         "- arm     add/update named plugins together on a runtime host",
+        "- disarm  deselect named plugins or clear supported steps on a runtime host",
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
-        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; neither upload nor arm starts automation.",
+        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
         "Use ./cli/automa vehicles status --id <vehicle> for the next startup action when no host is running.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
@@ -1540,8 +1557,12 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "Arming supports perception, memory and proposal. New IDs append; existing IDs update in place.",
         "Other plugins retain their definitions/configs. The host loads the selection before answering;",
         "a load error exits 2 and keeps the previous selection. A loaded selection applies at the next cycle.",
-        "Status distinguishes available, requested and applied revisions, and exits 2 while the last arm failed.",
-        "Arming does not start automation or change control mode. Workbench catalogs support upload only.", "",
+        "Status distinguishes available, requested and applied revisions, and exits 2 while the last selection request failed.",
+        "Disarming supports the same steps. Use --step with --plugin IDs, or --selection for grouped removals.",
+        "Use disarm --all to clear them all, or disarm --step <step> --all to clear one step.",
+        "The next cycle resets disarmed instances; catalog entries remain available to arm again.",
+        "Arm and disarm change the current host only; staged selections are restored on host restart.",
+        "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",
         "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
         "Detailed help: ./cli/automa vehicles plugins <command> --help",
     ]))
@@ -1569,6 +1590,19 @@ def _handle_plugin_arm(args: argparse.Namespace) -> int:
         return 2
     result = arm_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step,
                          plugins=args.plugins, selection=args.selection, json_output=args.json_output)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugin_disarm(args: argparse.Namespace) -> int:
+    named = bool(args.step and args.plugins)
+    if args.selection and (args.step or args.plugins) or args.all_plugins and args.plugins or not (
+            args.selection or args.all_plugins or named):
+        print("Use --step with --plugin IDs, --selection alone, or --all with an optional --step.")
+        return 2
+    result = disarm_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step,
+                            plugins=args.plugins, selection=args.selection,
+                            all_plugins=args.all_plugins, json_output=args.json_output)
     print(result.message)
     return result.exit_code
 
@@ -1624,7 +1658,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- active       discover vehicle endpoints (not worker/deployment state)",
                 "- status       inspect simulator, deployment, worker, and view layers",
                 "- update       stage controller selections or deploy vehicle code",
-                "- plugins      upload, arm and inspect plugins in a live catalog",
+                "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",

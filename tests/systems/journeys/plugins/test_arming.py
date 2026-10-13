@@ -275,6 +275,36 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
                     self.assertEqual(current["decision"]["generation_id"], streamed["generation_id"])
                     self.assertNotEqual(streamed["generation_id"], before["applied_decision"]["generation_id"])
+                disarmed = json.loads(cli("plugins", "disarm", "--id", "chase-sim-chaser",
+                                          "--step", "proposal", "--plugin", "prototype", "--json").stdout)
+                self.assertTrue(disarmed["ok"])
+                deadline = time.monotonic() + 5
+                while True:
+                    shown = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
+                    if shown["arming"]["status"] == "applied":
+                        break
+                    self.assertLess(time.monotonic(), deadline, shown)
+                    time.sleep(0.05)
+                self.assertEqual(selected(shown, "applied", "proposal"), [])
+                self.assertIn(receipt["plugin"], shown["plugins"])
+                streamed = json.loads(cli("stream", "proposal", "--id", "chase-sim-chaser", "--once", "--json").stdout)
+                self.assertEqual(streamed["plugins"], [])
+                self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
+                deadline = time.monotonic() + 5
+                while True:
+                    with urlopen(view_url + "/api/health", timeout=3) as response:
+                        health = json.load(response)["decision"]
+                    if (health["identity"] or {}).get("producer_generation_id") == streamed["generation_id"]:
+                        break
+                    self.assertLess(time.monotonic(), deadline, health)
+                    time.sleep(0.05)
+                with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
+                    viewed = json.load(response)
+                self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"], [])
+                current = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
+                self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
+                self.assertEqual(current["state"]["pid"], original["state"]["pid"])
+                self.assertEqual(current["state"]["action_policy"], "observe_only")
                 cli("automation", "stop", "--id", "chase-sim-chaser")
                 automation_dir = runtime / "chase-sim-chaser" / "bundle/runtime/automation"
                 state = json.loads((automation_dir / "state.json").read_text())
@@ -287,9 +317,9 @@ class PluginArmingFlows(unittest.TestCase):
                 host_manifest = automation_dir / "host-runs" / Path(state["run_dir"]).name / "manifest.json"
                 self.assertEqual(exported, json.loads(host_manifest.read_text()))
                 self.assertEqual(len(exported["frames"]), state["recorded_count"])
-                # The host outlives the run and keeps the armed catalog, like a PiCar's.
+                # The host outlives the run and keeps live deselections, like a PiCar's.
                 after = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
-                self.assertEqual(selected(after, "applied", "proposal")[0], receipt["plugin"])
+                self.assertEqual(selected(after, "applied", "proposal"), [])
             finally:
                 cli("automation", "stop", "--id", "chase-sim-chaser", check=False)
                 with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime):

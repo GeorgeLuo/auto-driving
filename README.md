@@ -124,7 +124,8 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles update memory` | Packages code and stages a vehicle memory preset or plugin selection locally (`--preset`, or `--plugin` repeatable; default preset `recency_ledger`). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
 | `vehicles plugins arm` | Loads perception, memory and proposal plugins on the host and applies them at its next cycle, without restarting automation. An import or construction error fails the command (exit 2) and keeps the previous selection. Repeat `--plugin` with `--step`, or use a JSON `--selection` map to arm several steps together. |
-| `vehicles plugins status` | Reads available, requested and applied revisions; exits 2 while the last arm failed. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
+| `vehicles plugins disarm` | Deselects named perception, memory and proposal plugins on an existing host. Use `--step` with repeatable `--plugin`, a JSON `--selection` map for grouped removals, or `--all` to clear one step (with `--step`) or all three. The next cycle resets disarmed instances; catalog entries remain available. |
+| `vehicles plugins status` | Reads available, requested and applied revisions; exits 2 while the last selection request failed. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `vehicles info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception and memory also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
 | `vehicles proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame. A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
@@ -148,6 +149,34 @@ upload` and `plugins status` print the host run beside the catalog version. A
 restart onto a new release clears them: `update autonomy --restart` on a PiCar,
 and on a simulator vehicle the next `automation run` after a restage, which
 moves an idle host onto the latest release. Upload them again after either.
+
+`plugins arm` and `plugins disarm` change the existing host's selections without
+starting or stopping automation or changing control mode. They leave staged
+activations unchanged; a host restart restores staged selections. Both accept
+`--id <vehicle>` or `--url <runtime-url>`. Workbench catalogs support upload only.
+
+```sh
+./cli/automa vehicles plugins disarm --id chase-sim-chaser --step proposal --plugin avoid_recent_obstruction
+./cli/automa vehicles plugins disarm --id chase-sim-chaser --step memory --all
+./cli/automa vehicles plugins disarm --id chase-sim-chaser --all
+./cli/automa vehicles plugins disarm --id chase-sim-chaser --selection removals.json --json
+```
+
+For grouped disarming, `removals.json` is a step-to-ID-list map, for example
+`{"perception": ["floor_plane"], "proposal": ["avoid_recent_obstruction"]}`.
+Empty lists remove nothing; omitted steps stay selected. `--all` is the explicit
+clear operation and cannot be combined with `--plugin` or `--selection`.
+Unknown plugin IDs fail the whole request; already inactive catalog IDs are
+successful no-ops. Disarmed instances follow the existing reset lifecycle,
+which can clear their tracking or memory state. Re-arming creates fresh
+instances, while plugins that remain selected keep their state.
+
+Human output reports `Disarming: requested`, `applied`, or `failed`, followed by
+requested and applied selections and a status command. `--json` returns
+`automa_plugin_disarm_v0`, retaining the shared `arming` selection state.
+Exit 0 acknowledges the request; the next cycle applies it. Exit 2 reports a
+failure. When no session is running, changes remain requested until a cycle
+runs; status never presents a pending deselection as applied.
 
 `stream perception` and `stream memory` take the same flags. By default each
 refresh redraws the terminal view and updates the local view whose URL it

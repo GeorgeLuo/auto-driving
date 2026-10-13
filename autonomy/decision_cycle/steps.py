@@ -76,8 +76,7 @@ def snapshot_runner_activation(runner: Any, step: str) -> StepActivation | None:
     if not hasattr(runner, "applied"):
         return replace(loaded, plugins=tuple(runner.plugin_ids)) if loaded is not None else None
     definitions = [definition for definition, _ in runner.applied]
-    if not definitions and loaded is None:
-        return None
+    # A runner with nothing applied is disabled, so recordings replay it empty.
     loaded = loaded or step_activation(step, [], {})
     specs, configs = dict(loaded.plugin_specs), dict(loaded.plugin_configs)
     for item in definitions:
@@ -105,8 +104,6 @@ def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
         activation = snapshot_runner_activation(runner, step)
         if activation is not None:
             snapshot[step] = activation.to_payload()
-        elif hasattr(runner, "applied"):
-            snapshot[step] = None
     return snapshot
 
 

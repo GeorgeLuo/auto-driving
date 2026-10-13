@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS, STEP_PRESETS
 from tests.support.cli_runner import run_automa
 
 DISCOVERY = "cli.automa_cli.vehicles.discover_active_vehicles"
@@ -41,6 +42,23 @@ class UpdateVehicleTests(unittest.TestCase):
                 self.assertEqual(result.stderr, "")
                 self.assertEqual(list(root.iterdir()), [])
 
+
+    def test_every_selectable_step_parses_its_selection_into_the_shared_update(self) -> None:
+        """Regression: perception, memory and proposal each wired their own
+        selection arguments to their own update path."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for step in SELECTABLE_STEPS:
+                preset = sorted(STEP_PRESETS[step])[-1]
+                with self.subTest(step=step):
+                    payload = json.loads(run_automa(
+                        "vehicles", "update", step, "--id", "chase-sim-chaser",
+                        "--preset", preset, "--dry-run", "--json", runtime_root=root,
+                    ).stdout)
+                    self.assertEqual(payload["schema"], "vehicle_step_update_v0")
+                    self.assertEqual((payload["step"], payload["preset"]), (step, preset))
+            self.assertEqual(list(root.iterdir()), [])
 
     def test_physical_memory_staging_supports_offline_cli_updates_of_every_step(self) -> None:
         # Exercise the public executable and real discovery HTTP boundary.

@@ -47,6 +47,10 @@ class WorkbenchTests(unittest.TestCase):
                     # other steps that this request did not select.
                     self.assertEqual(selections(named.stdout), implicit)
                     self.assertEqual(selections(selected.stdout), implicit)
+            # A non-default preset reaches its step alone; perception is the
+            # step with more than one preset.
+            chosen = selections(run_automa(*command, "--perception-preset", "sim_debug").stdout)
+            self.assertEqual(chosen, {**implicit, "perception": "perception: sim_debug (frame, sim_color_targets)"})
 
     def test_cli_replay_rejects_mixed_removed_or_unknown_selections(self) -> None:
         with image_source(1) as root:

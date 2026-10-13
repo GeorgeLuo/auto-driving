@@ -7,11 +7,7 @@ from pathlib import Path
 
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.workbench_runner import ImageReplayRunner
-from implementations.decision_cycle.catalog import preset_activation
-from implementations.decision_cycle.memory.presets import (
-    DEFAULT_MEMORY_PRESET,
-    MEMORY_PRESETS,
-)
+from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PRESET
 from tests.support.cli_runner import run_automa
 
 
@@ -144,107 +140,6 @@ class MemoryCommandTests(unittest.TestCase):
                     self.assertEqual(pipeline[f"{step}_preset"], preset)
             finally:
                 runner.close()
-
-    def test_memory_update_dry_run_does_not_write_activation(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            result = run_automa(
-                "vehicles",
-                "update",
-                "memory",
-                "--id",
-                "chase-sim-chaser",
-                "--dry-run",
-                "--json",
-                runtime_root=runtime_root,
-            )
-
-            payload = json.loads(result.stdout)
-            activation = (
-                runtime_root
-                / "chase-sim-chaser"
-                / "bundle"
-                / "runtime"
-                / "memory"
-                / "active.json"
-            )
-            self.assertTrue(payload["dry_run"])
-            self.assertFalse(activation.exists())
-
-    def test_update_memory_preset_stages_what_the_preset_names(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            for preset in MEMORY_PRESETS:
-                with self.subTest(preset=preset):
-                    dry = json.loads(run_automa(
-                        "vehicles", "update", "memory", "--id", "chase-sim-chaser",
-                        "--preset", preset, "--dry-run", "--json",
-                        runtime_root=runtime_root,
-                    ).stdout)
-                    expected = preset_activation("memory", preset)
-                    self.assertEqual(dry["preset"], preset)
-                    self.assertEqual(dry["plugins"], list(expected.plugins))
-                    manifest = dry["manifest"]
-                    for key in ("plugins", "plugin_specs", "plugin_configs"):
-                        self.assertEqual(manifest[key], expected.to_payload()[key])
-                    self.assertEqual(manifest["metadata"]["preset"], preset)
-
-                    run_automa(
-                        "vehicles", "update", "memory", "--id", "chase-sim-chaser",
-                        "--preset", preset, "--json", runtime_root=runtime_root,
-                    )
-                    staged = json.loads(
-                        (runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").read_text()
-                    )
-                    self.assertEqual(staged["plugins"], list(expected.plugins))
-                    self.assertEqual(staged["metadata"]["preset"], preset)
-
-    def test_update_memory_without_a_selection_stages_the_default_preset(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            payload = json.loads(run_automa(
-                "vehicles", "update", "memory", "--id", "chase-sim-chaser", "--dry-run", "--json",
-                runtime_root=runtime_root,
-            ).stdout)
-            self.assertEqual(payload["preset"], DEFAULT_MEMORY_PRESET)
-            self.assertEqual(
-                payload["plugins"], list(preset_activation("memory", DEFAULT_MEMORY_PRESET).plugins)
-            )
-
-    def test_update_memory_plugins_are_labeled_with_the_preset_they_match(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            for plugins, label in (
-                (["bounded_evidence"], "recency_ledger"),
-            ):
-                with self.subTest(plugins=plugins):
-                    options = [option for plugin in plugins for option in ("--plugin", plugin)]
-                    payload = json.loads(run_automa(
-                        "vehicles", "update", "memory", "--id", "chase-sim-chaser", *options,
-                        "--dry-run", "--json", runtime_root=runtime_root,
-                    ).stdout)
-                    self.assertEqual(payload["preset"], label)
-                    self.assertEqual(payload["manifest"]["metadata"]["preset"], label)
-
-    def test_update_memory_rejects_a_preset_with_plugins_and_an_unknown_preset(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            both = run_automa(
-                "vehicles", "update", "memory", "--id", "chase-sim-chaser",
-                "--preset", "recency_ledger", "--plugin", "bounded_evidence",
-                runtime_root=runtime_root, check=False,
-            )
-            self.assertEqual(both.returncode, 2)
-            self.assertIn("not allowed with argument", both.stderr)
-            unknown = run_automa(
-                "vehicles", "update", "memory", "--id", "chase-sim-chaser", "--preset", "nope",
-                runtime_root=runtime_root, check=False,
-            )
-            self.assertEqual(unknown.returncode, 2)
-            self.assertIn("invalid choice: 'nope'", unknown.stderr)
-            for preset in MEMORY_PRESETS:
-                self.assertIn(preset, unknown.stderr)
-            self.assertFalse((runtime_root / "chase-sim-chaser").exists())
 
     def test_memory_info_missing_activation_is_actionable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

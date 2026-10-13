@@ -1,9 +1,10 @@
-"""Automation run treats every decision-cycle step by one rule."""
+"""Automation run and status treat every decision-cycle step by one rule."""
 
 from __future__ import annotations
 
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from collections.abc import Iterator
@@ -13,7 +14,7 @@ from unittest import mock
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
 from cli.automa_cli.app import main
-from cli.automa_cli.automation import run_vehicle_automation
+from cli.automa_cli.automation import _collect_automation_status, run_vehicle_automation
 from tests.support.runtime_fixtures import write_json
 
 VEHICLE = "chase-sim-chaser"
@@ -52,6 +53,10 @@ class StepFairnessTests(unittest.TestCase):
                     )
                 yield root
 
+    def _status(self) -> dict:
+        (status,) = _collect_automation_status(vehicle_id=VEHICLE, view_timeout_s=0)
+        return status
+
     def test_a_run_starts_with_any_single_step_staged(self) -> None:
         """Regression: a run was refused unless perception was staged, and it
         passed perception apart from the memory and proposal activations."""
@@ -72,6 +77,54 @@ class StepFairnessTests(unittest.TestCase):
                     {name: item["source"] for name, item in selections.items()},
                     {**UNSTAGED, step: "staged"},
                 )
+
+    def test_status_reports_every_step_by_where_its_selection_comes_from(self) -> None:
+        """Regression: status reported perception's staged document and the
+        decision steps' plugins, and never memory or observation."""
+
+        for step in STEPS:
+            with self.subTest(step=step), self._runtime(step):
+                status = self._status()
+                code, human = _invoke("vehicles", "automation", "status", "--id", VEHICLE)
+            self.assertEqual(code, 0, human)
+            steps = status["steps"]
+            self.assertEqual({name: item["source"] for name, item in steps.items()}, {**UNSTAGED, step: "staged"})
+            self.assertIn("  steps: staged\n", human)
+            for name, item in steps.items():
+                self.assertEqual(set(item), {"activation", "source", "preset", "plugins"})
+                self.assertTrue(item["activation"].endswith(f"bundle/runtime/{name}/active.json"))
+                self.assertIn(f"\n    {name}: ", human)
+            self.assertNotIn("\n  perception:", human)
+
+    def test_status_reports_every_step_as_the_running_host_applied_it(self) -> None:
+        """Regression: status showed perception's staged document while the
+        host ran, and the decision steps as the host applied them."""
+
+        applied = {step: {"plugin_ids": [f"{step}_plugin"], "preset": f"{step}_preset", "last_error": None} for step in STEPS}
+        with self._runtime("perception", "proposal") as root:
+            automation = root / VEHICLE / "bundle/runtime/automation"
+            write_json(automation / "process.json", {"pid": os.getpid()})
+            write_json(automation / "state.json", {"pid": os.getpid(), "status": "running", "steps": {**applied, "cycle_count": 3}})
+            status = self._status()
+            code, human = _invoke("vehicles", "automation", "status", "--id", VEHICLE)
+
+        self.assertEqual(code, 0, human)
+        self.assertEqual(list(status["steps"]), list(STEPS))
+        for step, item in status["steps"].items():
+            self.assertEqual(
+                (item["source"], item["preset"], item["plugins"]), ("applied", f"{step}_preset", [f"{step}_plugin"])
+            )
+            self.assertIn(f"\n    {step}: {step}_preset ({step}_plugin)\n", human)
+        self.assertIn("  steps: applied by the running host\n", human)
+
+    def test_deployed_needs_a_release_and_no_particular_step(self) -> None:
+        """Regression: a vehicle was deployed only once perception was staged."""
+
+        for staged in ((), ("memory",), ("proposal",), ("perception",)):
+            with self.subTest(staged=staged), self._runtime(*staged):
+                self.assertTrue(self._status()["deployed"])
+        with self._runtime(released=False):
+            self.assertFalse(self._status()["deployed"])
 
 
 if __name__ == "__main__":

@@ -172,8 +172,7 @@ class VehicleStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["next_action"]["command"],
-            "./cli/automa vehicles update perception "
-            "--id chase-sim-chaser --preset lightweight_observer",
+            "./cli/automa vehicles update autonomy --id chase-sim-chaser",
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 
@@ -410,7 +409,7 @@ class VehicleStatusTests(unittest.TestCase):
 
         payload["next_action"] = {
             "reason": "automation_not_deployed",
-            "command": "./cli/automa vehicles update perception",
+            "command": "./cli/automa vehicles update autonomy",
             "external_change": None,
             "expected_state": "automation_deployment=deployed",
         }

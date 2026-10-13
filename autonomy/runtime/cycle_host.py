@@ -272,10 +272,10 @@ class AutonomyCycleHost:
             self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
             for item in changed:
                 self.step(item).discard_selection()
-            # Preserve the existing staged perception/memory stop policy and
-            # do not execute a cycle after a partially committed reset failure.
-            armed = step in self._armed_steps
-            if (phase == "commit" and armed) or (not armed and step in ("perception", "memory")):
+            # Every step, armed or staged, follows one rule: a failed prepare
+            # changed nothing, so the applied plugins keep running; a failed
+            # commit may have reset part of the group, so no cycle runs.
+            if phase == "commit":
                 if step == "memory":
                     raise MemoryUpdateError(f"{type(exc).__name__}: {exc}") from exc
                 raise

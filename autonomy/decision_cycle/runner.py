@@ -273,7 +273,9 @@ class StepRunner(Generic[PluginT]):
         A selection that fails to load or validate keeps the applied plugins
         and is recorded as ``last_error``, so a bad edit cannot stop the cycle.
         Perception and memory call ``apply_selection`` instead: a selection
-        they cannot load stops the step, with the applied plugins kept.
+        they cannot load stops the step, with the applied plugins kept. Under a
+        cycle host neither applies: the host adopts the group before the
+        cycle by one rule for every step.
         """
 
         try:

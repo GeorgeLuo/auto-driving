@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import copy
-import io
 import json
 import tempfile
 import unittest
@@ -12,7 +11,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.app import main
 from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activation_path, vehicle_bundle
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
@@ -22,6 +20,7 @@ from implementations.decision_cycle.catalog import (
     preset_activation,
     selection_activation,
 )
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 
 VEHICLE = "chase-sim-chaser"
@@ -29,13 +28,8 @@ SELECTION_FIELDS = ("plugins", "plugin_specs", "plugin_configs")
 
 
 def _invoke(*args: str) -> tuple[int, str, str]:
-    stdout, stderr = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        try:
-            code = main(list(args))
-        except SystemExit as exc:
-            code = exc.code
-    return code, stdout.getvalue(), stderr.getvalue()
+    result = invoke_automa(*args, check=False)
+    return result.returncode, result.stdout, result.stderr
 
 
 class StepSelectionTests(unittest.TestCase):

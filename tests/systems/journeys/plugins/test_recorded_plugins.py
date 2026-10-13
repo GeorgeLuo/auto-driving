@@ -17,8 +17,7 @@ from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
 from tests.shared.cli.workbench_fixtures import get_json, image_source, post_action
-from tests.shared.integration.plugin_flow_fixtures import candidate, frame, replay, write_plugin
-from tests.systems.journeys.plugins.test_arming import upload
+from tests.shared.integration.plugin_flow_fixtures import candidate, frame, replay, upload, write_plugin
 from tests.support.cli_runner import run_automa
 
 

@@ -26,6 +26,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
 
 The browser install is only for the systems test that opens Chromium. CI does not install a browser and does not run this suite. Name one or more groups to run only those, for example `python3 tests/run.py --systems journeys frontend`.
 
+Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
+
 The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite.
 
 ## Before pushing
@@ -45,6 +47,8 @@ CI does not run `systems/`. Run the groups that drive the code you changed, and 
 File a test by what its behavior needs, not by what its setup happens to call.
 
 A test that runs in this process goes under `deterministic/`, next to the codebase package it exercises. An in-process test that crosses packages goes under `deterministic/integration/`. Setup alone does not make a systems test: if only the arrangement starts a program, arrange it in-process instead.
+
+Calling `automa` does not make a systems test either. Starting `cli/automa` costs about two seconds per command, so a test that needs only a command's exit code and output runs it with `invoke_automa` from `shared/cli/invoke.py`, which returns what `run_automa` does without starting a program. Keep `run_automa` for a test of the executable itself or of a command that must run in its own process.
 
 A test whose behavior needs another program goes under `systems/`, in the group for the surface it drives:
 

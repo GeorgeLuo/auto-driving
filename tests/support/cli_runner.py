@@ -61,6 +61,13 @@ def run_automa(
         check=False,
         timeout=30,
     )
+    return checked_result(result, args, check)
+
+
+def checked_result(
+    result: subprocess.CompletedProcess[str], args: tuple[str, ...], check: bool
+) -> subprocess.CompletedProcess[str]:
+    """Raise with the command's output when a checked command failed."""
     if check and result.returncode != 0:
         raise AssertionError(
             "\n".join(

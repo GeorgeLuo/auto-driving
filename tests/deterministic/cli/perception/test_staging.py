@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import json
 import tempfile
 import unittest
 from pathlib import Path
+
 from cli.automa_cli.bundles import (
     controller_bundle_paths,
     release_activation_summary,
@@ -10,7 +12,7 @@ from cli.automa_cli.bundles import (
 )
 from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS
 from implementations.decision_cycle.catalog import preset_activation
-from tests.support.cli_runner import run_automa
+from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_json
 
 
@@ -83,7 +85,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 ),
             )
 
-            json_result = run_automa(
+            json_result = invoke_automa(
                 "vehicles",
                 "info",
                 "perception",
@@ -92,7 +94,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 "--json",
                 runtime_root=runtime_root,
             )
-            text_result = run_automa(
+            text_result = invoke_automa(
                 "vehicles",
                 "info",
                 "perception",
@@ -156,7 +158,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 ),
             )
 
-            result = run_automa(
+            result = invoke_automa(
                 "vehicles",
                 "update",
                 "perception",
@@ -173,3 +175,6 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["preset"], "visual_observer")
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "picar")
 
+
+if __name__ == "__main__":
+    unittest.main()

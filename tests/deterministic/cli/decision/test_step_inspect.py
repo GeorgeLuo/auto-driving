@@ -12,6 +12,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS
 from cli.automa_cli.decision_steps import inspect_decision_step
 from cli.automa_cli.step_replay import StepReplay
 from implementations.decision_cycle.catalog import SELECTABLE_STEPS
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 
@@ -82,6 +83,16 @@ class DecisionStepInspectTests(unittest.TestCase):
             with self.subTest(step=step):
                 self.assertEqual(replay.activations[step].plugins, ())
                 self.assertIsNotNone(replay.runners[step])
+
+    def test_cli_has_a_group_per_step_and_no_decision_command(self) -> None:
+        for step in DECISION_STEPS:
+            with self.subTest(step=step):
+                flags = invoke_automa("vehicles", step, "inspect", "--help").stdout
+                for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames"):
+                    self.assertIn(flag, flags)
+        removed = invoke_automa("vehicles", "decision", "help", check=False)
+        self.assertEqual(removed.returncode, 2)
+        self.assertIn("invalid choice: 'decision'", removed.stderr)
 
 
 if __name__ == "__main__":

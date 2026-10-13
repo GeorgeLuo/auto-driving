@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import unittest
-from tests.support.cli_runner import run_automa
+
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 
 
 class WorkbenchTests(unittest.TestCase):
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
         with image_source(1) as root:
-            result = run_automa(
+            result = invoke_automa(
                 "vehicles",
                 "workbench",
                 "replay",
@@ -37,19 +39,19 @@ class WorkbenchTests(unittest.TestCase):
 
         with image_source(1) as root:
             command = ("vehicles", "workbench", "replay", str(root), "--cadence-ms", "0")
-            implicit = selections(run_automa(*command).stdout)
+            implicit = selections(invoke_automa(*command).stdout)
             for step, preset, plugins in cases:
                 with self.subTest(step=step):
-                    named = run_automa(*command, f"--{step}-preset", preset)
+                    named = invoke_automa(*command, f"--{step}-preset", preset)
                     flags = tuple(arg for plugin in plugins for arg in (f"--{step}-plugin", plugin))
-                    selected = run_automa(*command, *flags)
+                    selected = invoke_automa(*command, *flags)
                     # Both explicit inputs match the default, including the
                     # other steps that this request did not select.
                     self.assertEqual(selections(named.stdout), implicit)
                     self.assertEqual(selections(selected.stdout), implicit)
             # A non-default preset reaches its step alone; perception is the
             # step with more than one preset.
-            chosen = selections(run_automa(*command, "--perception-preset", "sim_debug").stdout)
+            chosen = selections(invoke_automa(*command, "--perception-preset", "sim_debug").stdout)
             self.assertEqual(chosen, {**implicit, "perception": "perception: sim_debug (frame, sim_color_targets)"})
 
     def test_cli_replay_rejects_mixed_removed_or_unknown_selections(self) -> None:
@@ -65,8 +67,12 @@ class WorkbenchTests(unittest.TestCase):
                 (("--plugin", "frame"), "unrecognized arguments: --plugin"),
                 (("--memory-plugin", "missing"), "unknown memory plugin(s) missing"),
             ):
-                result = run_automa(
+                result = invoke_automa(
                     "vehicles", "workbench", "replay", str(root), *args, check=False
                 )
                 self.assertEqual(result.returncode, 2, args)
                 self.assertIn(message, result.stdout + result.stderr, args)
+
+
+if __name__ == "__main__":
+    unittest.main()

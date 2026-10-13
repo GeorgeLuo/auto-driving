@@ -8,14 +8,14 @@ from pathlib import Path
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PRESET
-from tests.support.cli_runner import run_automa
+from tests.shared.cli.invoke import invoke_automa
 
 
 class MemoryCommandTests(unittest.TestCase):
     def test_memory_update_and_info_use_catalog_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            update = run_automa(
+            update = invoke_automa(
                 "vehicles",
                 "update",
                 "memory",
@@ -26,7 +26,7 @@ class MemoryCommandTests(unittest.TestCase):
                 "--json",
                 runtime_root=runtime_root,
             )
-            info = run_automa(
+            info = invoke_automa(
                 "vehicles",
                 "info",
                 "memory",
@@ -73,12 +73,12 @@ class MemoryCommandTests(unittest.TestCase):
     def test_info_lists_staged_plugins_without_loading_unselected_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            run_automa("vehicles", "update", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
+            invoke_automa("vehicles", "update", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
             path = runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json"
             activation = json.loads(path.read_text())
             activation["plugin_specs"]["missing"] = "implementations.memory.not_installed:Plugin"
             path.write_text(json.dumps(activation))
-            info = run_automa(
+            info = invoke_automa(
                 "vehicles", "info", "memory", "--id", "chase-sim-chaser", "--json",
                 runtime_root=runtime_root,
             )
@@ -91,7 +91,7 @@ class MemoryCommandTests(unittest.TestCase):
             staged = {}
             presets = {}
             for step in ("perception", "memory"):
-                updated = run_automa(
+                updated = invoke_automa(
                     "vehicles",
                     "update",
                     step,
@@ -103,9 +103,9 @@ class MemoryCommandTests(unittest.TestCase):
                 self.assertIn(f"Staged {step}: chase-sim-chaser", updated.stdout)
                 info = ("vehicles", "info", step, "--id", "chase-sim-chaser")
                 payload = json.loads(
-                    run_automa(*info, "--json", runtime_root=runtime_root).stdout
+                    invoke_automa(*info, "--json", runtime_root=runtime_root).stdout
                 )
-                text = run_automa(*info, runtime_root=runtime_root).stdout.splitlines()
+                text = invoke_automa(*info, runtime_root=runtime_root).stdout.splitlines()
                 activation = payload["activation"]
                 preset = activation["preset"]
                 self.assertEqual(
@@ -144,7 +144,7 @@ class MemoryCommandTests(unittest.TestCase):
     def test_memory_info_missing_activation_is_actionable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            result = run_automa(
+            result = invoke_automa(
                 "vehicles",
                 "info",
                 "memory",

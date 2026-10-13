@@ -251,8 +251,8 @@ operator's current simulator session:
 ./cli/automa vehicles status --id chase-sim-chaser
 ```
 
-The memory update stages the Memory view's ledger; without a memory activation,
-the live cycle has no memory plugins. Each update replaces only its named
+The memory update stages the Memory view's ledger; without a memory or
+perception activation, the live cycle runs no plugins for that step. Each update replaces only its named
 step's selection/configs. For an existing tuned deployment, use your intended
 selection instead of copying these default presets; a preset/plugin selection
 uses its packaged configs.

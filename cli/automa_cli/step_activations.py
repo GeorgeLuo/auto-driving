@@ -23,6 +23,7 @@ from autonomy.decision_cycle.activation import (
     STEPS,
     StepActivation,
     activation_generation_id,
+    activation_presets,
     read_step_activation_if_present,
     require_step,
     step_activation_path,
@@ -441,6 +442,45 @@ def ensure_step_activations(
             vehicle=vehicle,
         )
     return paths
+
+
+def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """What a start runs for every step, and where each selection comes from.
+
+    A step runs its staged activation, else its built-in, else nothing. An
+    unreadable document is ``invalid``; its update command restages it.
+    """
+
+    selections: dict[str, dict[str, Any]] = {}
+    for step in STEPS:
+        path = display_path(bundle_activation_path(bundle, step))
+        try:
+            staged = read_bundle_activation(bundle, step)
+        except (OSError, ValueError, TypeError):
+            selections[step] = {"activation": path, "source": "invalid", "preset": None, "plugins": []}
+            continue
+        activation = staged or builtin_activation(step)
+        selections[step] = {
+            "activation": path,
+            "source": "staged" if staged is not None else "builtin" if activation is not None else "none",
+            "preset": activation_presets({step: activation}).get(step),
+            "plugins": list(activation.plugins) if activation is not None else [],
+        }
+    return selections
+
+
+def selection_label(preset: str | None, plugins: list[str]) -> str:
+    """A selection as deploy, run and status print it: its preset and plugins."""
+
+    listed = ", ".join(plugins)
+    return f"{preset} ({listed or 'no plugins'})" if preset else listed or "(no plugins)"
+
+
+def step_lines(steps: dict[str, list[str]], presets: dict[str, str]) -> list[str]:
+    return [
+        f"{step.capitalize()}: {selection_label(presets.get(step), plugins)}"
+        for step, plugins in steps.items()
+    ]
 
 
 def decision_activations(bundle: dict[str, str]) -> dict[str, StepActivation | None]:

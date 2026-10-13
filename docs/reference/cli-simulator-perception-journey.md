@@ -53,9 +53,9 @@ Use either `--chase-url` or the compatibility option `--chase-ws-url`, not
 both. When neither is supplied, Automa uses `CHASE_UI_WS_URL` when set and
 otherwise connects to `http://localhost:5050`.
 
-`update memory` stages the memory preset. Without it, an otherwise fresh cycle
-has no memory plugins. `update perception` stages the observer. Each update
-writes only its own step; absent observation, plan and action activations run
+`update memory` stages the memory preset and `update perception` the observer.
+Without them, an otherwise fresh cycle runs no memory or perception plugins,
+and `automation run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
 their built-in plugins. Neither update command starts a worker, applies
 movement, or requires a live simulator. `vehicles status` reports whether the
 run command is ready.

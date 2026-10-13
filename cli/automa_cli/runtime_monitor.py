@@ -55,8 +55,7 @@ def _host_status(client: RuntimeClient) -> dict[str, Any]:
 
 
 def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
-                            perception: dict[str, Any], decision: dict[str, Any],
-                            step_activations: dict[str, Path],
+                            selections: dict[str, dict[str, Any]], decision: dict[str, Any],
                             configuration: RunConfiguration, timeout_s: float,
                             record: bool, verbose: bool, output: TextIO | None) -> tuple[int, str]:
     client = RuntimeClient(base_url, timeout_s=timeout_s)
@@ -75,11 +74,11 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         front_camera_path=automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg",
         run_dir=None, published_view={"status": "starting", "available": False, "url": None},
     )
-    state.update(perception=perception, decision=decision)
+    state.update(selections=selections, decision=decision)
     try:
         host = _host_status(client)
         capture_base, skipped_base = _observation_counts(host)
-        record_host_status(state, host, activations=step_activations)
+        record_host_status(state, host)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
         recording = response.get("session", {}).get("recording")
@@ -120,7 +119,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                 frames_captured=max(0, capture_count - capture_base),
                 skipped_count=max(0, skipped_count - skipped_base),
             )
-            record_host_status(state, host, activations=step_activations)
+            record_host_status(state, host)
             _sync_recording(client, state, run_dir=run_dir, recording_id=recording_id)
             # A terminal session is drained before manual observations can replace
             # its final decision in the live latest-only publication.

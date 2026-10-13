@@ -42,6 +42,7 @@ from .step_activations import (
     ensure_step_activations,
     format_activation_problems,
     read_bundle_activation,
+    step_lines,
 )
 from .vehicles import discover_vehicle, is_chase_vehicle_id
 
@@ -495,7 +496,7 @@ def update_vehicle_autonomy(
                 f"Autonomy updated: {vehicle_id} -> {target.ssh_target}",
                 f"Release: {release_id}",
                 f"Tree SHA-256: {release['tree_sha256']}",
-                *_step_lines(payload["activation"]["steps"], payload["activation"]["presets"]),
+                *step_lines(payload["activation"]["steps"], payload["activation"]["presets"]),
                 f"Decision generation: {payload['activation']['generation_id']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
                 *verified_lines,
@@ -587,7 +588,7 @@ def _update_local_autonomy(
         f"Autonomy updated: {vehicle_id} (local host)",
         f"Release: {summary['archive']}",
         f"Archive SHA-256: {summary['archive_sha256']}",
-        *_step_lines(steps, payload["presets"]),
+        *step_lines(steps, payload["presets"]),
         f"Decision generation: {payload['generation_id']}",
         host_line,
     ]))
@@ -1066,16 +1067,6 @@ def _verify_picar_autonomy_runtime(
             f"{status_url} reported mode {mode!r}; expected 'manual' for idle smoke verification"
         )
     return verification
-
-
-def _step_lines(steps: dict[str, list[str]], presets: dict[str, str]) -> list[str]:
-    lines = []
-    for step, plugins in steps.items():
-        listed = ", ".join(plugins)
-        preset = presets.get(step)
-        selection = f"{preset} ({listed or 'no plugins'})" if preset else listed or "(no plugins)"
-        lines.append(f"{step.capitalize()}: {selection}")
-    return lines
 
 
 def inspect_picar_autonomy_runtime(

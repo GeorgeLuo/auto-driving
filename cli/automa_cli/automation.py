@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, read_step_activation
+from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -34,10 +34,10 @@ from .runtime_hosts import (
 )
 from .runtime_monitor import monitor_runtime
 from .step_activations import (
-    bundle_activation_path,
     bundle_activation_problems,
     decision_identity,
     format_activation_problems,
+    staged_selections,
 )
 from .run_record import (
     control_application,
@@ -45,7 +45,6 @@ from .run_record import (
     decision_record,
     failed_readiness,
     new_run_state,
-    perception_record,
     stopped_readiness,
 )
 from .view_discovery import discover_runtime_view
@@ -213,24 +212,13 @@ def run_vehicle_automation(
         return CommandResult(2, str(exc))
     # Every vehicle runs its staged steps on its runtime host: a PiCar's Donkey
     # service or a local Chase host, each from its controller release.
+    # Each step runs its staged selection, else its built-in, else nothing.
     bundle = bundle_paths(vehicle_id)
-    manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    if not manifest_path.exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No active perception preset found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(manifest_path)}",
-                    f"Run: ./cli/automa vehicles update perception --id {vehicle_id}",
-                ]
-            ),
-        )
     problems = bundle_activation_problems(bundle, vehicle_id)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
     try:
-        perception_activation = read_step_activation(manifest_path, "perception")
+        selections = staged_selections(bundle)
         identity = decision_identity(bundle)
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
@@ -241,11 +229,8 @@ def run_vehicle_automation(
     code, message = monitor_runtime(
         vehicle_id=vehicle_id, base_url=base_url,
         automation_dir=Path(bundle["runtime_dir"]) / "automation",
-        perception=perception_record(manifest_path, perception_activation),
+        selections=selections,
         decision=decision_record(identity),
-        step_activations={
-            step: bundle_activation_path(bundle, step) for step in ("memory", "proposal")
-        },
         configuration=configuration, timeout_s=timeout_s, record=record,
         verbose=verbose, output=output,
     )

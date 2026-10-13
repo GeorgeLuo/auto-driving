@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import Any, ClassVar, Generic, TypeVar
 
-from autonomy.decision_cycle.activation import StepActivation, require_step
+from autonomy.decision_cycle.activation import StepActivation, activation_presets, require_step
 from autonomy.plugins import (
     PluginDefinition,
     PluginManager,
@@ -315,6 +315,7 @@ class StepRunner(Generic[PluginT]):
                     if self.activation is not None and self.activation.source_path
                     else None
                 ),
+                "preset": activation_presets({self.step: self.activation}).get(self.step),
                 "available_plugins": sorted(self.plugin_manager.available_ids),
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),

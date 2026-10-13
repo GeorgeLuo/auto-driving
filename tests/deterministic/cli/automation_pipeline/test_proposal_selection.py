@@ -102,7 +102,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
 
         self.assertNotEqual(staged["generation_id"], startup)
         self.assertEqual(applied, [("avoid_recent_obstruction",), (), (), ()])
-        self.assertEqual(state["proposal"]["status"]["plugin_ids"], [])
+        self.assertEqual(state["selections"]["proposal"]["status"]["plugin_ids"], [])
         self.assertEqual(state["decision"]["generation_id"], staged["generation_id"])
         self.assertEqual(state["last_frame"]["generation_id"], staged["generation_id"])
         self.assertEqual(view["identity"]["producer_generation_id"], staged["generation_id"])
@@ -121,7 +121,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 )
                 self.assertNotEqual(staged["generation_id"], startup)
                 self.assertEqual(applied, [("avoid_recent_obstruction",)] * 4)
-                report = state["proposal"]["status"]["plugin_report"]
+                report = state["selections"]["proposal"]["status"]["plugin_report"]
                 self.assertEqual(report["applied_plugin_ids"], ["avoid_recent_obstruction"])
                 self.assertEqual(state["decision"]["generation_id"], startup)
                 self.assertEqual(view["identity"]["producer_generation_id"], startup)

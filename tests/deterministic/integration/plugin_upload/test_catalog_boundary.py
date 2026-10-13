@@ -18,7 +18,7 @@ from cli.automa_cli.bundles import controller_bundle_paths
 
 
 class CatalogWriteBoundaryFlows(unittest.TestCase):
-    def test_browser_and_form_requests_cannot_upload_or_arm_through_host_viewer_or_workbench(self):
+    def test_browser_and_form_requests_cannot_upload_arm_or_disarm_through_host_viewer_or_workbench(self):
         with image_source(1) as root:
             host = create_host(steps=decision_steps())
             self.addCleanup(host.close)
@@ -38,6 +38,7 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                         {"step": "proposal", "plugin_id": "intruder", "entrypoint": "prototype:Prototype",
                          "source_base64": base64.b64encode(file.read_bytes()).decode()},
                         {"operation": "arm", "selections": {"proposal": ["existing"]}},
+                        {"operation": "disarm", "selections": {"proposal": []}, "all": True},
                     )
                     # The request `automa vehicles plugins upload` sends: JSON with no Origin.
                     request = Request(base + "api/plugins", data=json.dumps({**payloads[0], "plugin_id": "existing"}).encode(),

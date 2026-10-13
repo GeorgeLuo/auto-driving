@@ -93,7 +93,7 @@ class AutonomyCycleHost:
         self._step_reports_wanted = False
         self._selection: dict[str, Any] | None = None
         self.plugin_catalog = PluginCatalogAPI(
-            self.catalog, arm=self.arm, selection_status=self.selection_status,
+            self.catalog, arm=self.arm, disarm=self.disarm, selection_status=self.selection_status,
             applied_decision=self.applied_decision,
         )
         # A host whose cycles run back to back may never free the lock for a
@@ -199,30 +199,69 @@ class AutonomyCycleHost:
                         raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
                     current[plugin_id] = definition
                 requested[step] = tuple(current.values())
-            self._arm_request_id += 1
-            previous: dict[str, tuple[Any, ...]] = {}
-            try:
-                for step, selected in requested.items():
-                    if self.step(step) is None:
-                        self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
-                    runner = self.step(step)
-                    previous[step] = runner.plugin_manager.selected
-                    runner.plugin_manager.select(selected)
-                    if runner.plugin_manager.selected != tuple(item for item, _ in runner.applied):
-                        runner.prepare_selection()
-            except Exception as exc:  # noqa: BLE001 - plugin import and construction
-                for item, selected in previous.items():
-                    self.step(item).discard_selection()
-                    self.step(item).plugin_manager.select(selected)
-                self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
-                return {"ok": False, "status": "failed", "error": self._selection_error,
-                        "arming": self.selection_status()}
-            for step in requested:
-                self._pending_activations.pop(step, None)
-                self._armed_steps.add(step)
-            self._selection_error = None
-            state = self.selection_status()
-            return {"ok": True, "status": state["status"], "arming": state}
+            return self._request_selection(requested)
+
+    def disarm(self, selections: Mapping[str, Any], *, all_plugins: bool = False) -> dict[str, Any]:
+        """Deselect named plugins, or clear steps, without deleting catalog entries."""
+
+        if not isinstance(all_plugins, bool):
+            raise ValueError("disarming all must be a boolean")
+        if not isinstance(selections, Mapping) or not selections:
+            raise ValueError("disarming requires a selection map of steps to ordered plugin IDs")
+        with self._lock:
+            _, available = self.catalog.snapshot()
+            known = {(item.step, item.plugin_id) for item in available}
+            requested = {}
+            for step, ids in selections.items():
+                if step not in LIVE_SELECTION_STEPS:
+                    raise ValueError(f"disarming supports {', '.join(LIVE_SELECTION_STEPS)}, not {step!r}")
+                if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
+                    raise ValueError(f"{step} selection must be an ordered list of plugin IDs")
+                if all_plugins and ids:
+                    raise ValueError("disarming all cannot include plugin IDs")
+                runner = self.step(step)
+                manager = getattr(runner, "plugin_manager", None)
+                if runner is not None and manager is None:
+                    raise ValueError(f"{step} runner does not support catalog disarming")
+                for plugin_id in ids:
+                    if (step, plugin_id) not in known:
+                        raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
+                if runner is None:
+                    continue
+                current = manager.selected
+                removed = set(ids)
+                requested[step] = () if all_plugins else tuple(
+                    item for item in current if item.plugin_id not in removed
+                )
+            return self._request_selection(requested)
+
+    def _request_selection(self, requested: Mapping[str, tuple[Any, ...]]) -> dict[str, Any]:
+        """Prepare an explicit selection group while the caller holds the host lock."""
+
+        self._arm_request_id += 1
+        previous: dict[str, tuple[Any, ...]] = {}
+        try:
+            for step, selected in requested.items():
+                if self.step(step) is None:
+                    self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
+                runner = self.step(step)
+                previous[step] = runner.plugin_manager.selected
+                runner.plugin_manager.select(selected)
+                if runner.plugin_manager.selected != tuple(item for item, _ in runner.applied):
+                    runner.prepare_selection()
+        except Exception as exc:  # noqa: BLE001 - plugin import and construction
+            for item, selected in previous.items():
+                self.step(item).discard_selection()
+                self.step(item).plugin_manager.select(selected)
+            self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
+            return {"ok": False, "status": "failed", "error": self._selection_error,
+                    "arming": self.selection_status()}
+        for step in requested:
+            self._pending_activations.pop(step, None)
+            self._armed_steps.add(step)
+        self._selection_error = None
+        state = self.selection_status()
+        return {"ok": True, "status": state["status"], "arming": state}
 
     def selection_status(self) -> dict[str, Any]:
         if not self._lock.acquire(timeout=STATUS_WAIT_S):

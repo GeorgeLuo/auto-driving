@@ -1,4 +1,4 @@
-"""CLI upload, arming and status, plus shared HTTP transport for live catalogs."""
+"""CLI upload, arming, disarming and status, plus shared HTTP transport for live catalogs."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 
-from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, catalog_write_error
+from autonomy.runtime.plugin_catalog import ARMING_STEPS, PLUGIN_CATALOG_PATH, catalog_write_error
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0
@@ -148,6 +148,30 @@ def arm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = N
                    recovery=recovery, json_output=json_output)
 
 
+def disarm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = None,
+                   plugins: list[str] | None = None, selection: Path | None = None,
+                   all_plugins: bool = False, json_output: bool = False) -> CommandResult:
+    endpoint = url
+    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, vehicle_id)
+    try:
+        if selection is not None:
+            selections = json.loads(selection.read_text())
+        elif all_plugins:
+            selections = {name: [] for name in ((step,) if step else ARMING_STEPS)}
+        else:
+            selections = {step: plugins}
+        recovery = _catalog_recovery(url, vehicle_id)
+        endpoint = url or catalog_url(vehicle_id)
+        result = PluginCatalogClient(endpoint)(
+            {"operation": "disarm", "selections": selections, "all": all_plugins}, timeout_s=ARM_TIMEOUT_S,
+        )
+        recovery = f"./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+        result = {"ok": False, "status": "failed", "error": str(exc)}
+    return _result(result, operation="disarm", url=endpoint, vehicle_id=vehicle_id, step=step,
+                   recovery=recovery, json_output=json_output)
+
+
 def list_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = None,
                  json_output: bool = False) -> CommandResult:
     endpoint = url
@@ -187,11 +211,14 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
     """Render the same target, outcome and recovery in human and JSON output."""
 
     ok = bool(result.get("ok"))
-    # A selection the host could not load fails status too, until an arm succeeds.
+    # A failed selection change also fails status until a request succeeds.
     exit_code = 0 if ok and (result.get("arming") or {}).get("status") != "failed" else 2
     if operation == "arm":
         label, state = "Arming", result.get("status", "failed")
         message = "Plugin selection loaded; the host applies it at its next cycle."
+    elif operation == "disarm":
+        label, state = "Disarming", result.get("status", "failed")
+        message = "Plugin deselection prepared; the host applies it at its next cycle."
     elif result.get("upload"):
         label, state = "Arming", result.get("status", "failed")
         message = "Plugin uploaded and loaded; the host applies it at its next cycle."
@@ -205,9 +232,9 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
         message = result.get("error", "Catalog request failed.")
     result = {
         **result,
-        "schema": {"upload": "automa_plugin_upload_v0", "arm": "automa_plugin_arm_v0", "status": "automa_plugin_catalog_v0"}[operation],
+        "schema": {"upload": "automa_plugin_upload_v0", "arm": "automa_plugin_arm_v0", "disarm": "automa_plugin_disarm_v0", "status": "automa_plugin_catalog_v0"}[operation],
         "vehicle_id": vehicle_id, "url": url, "step": step,
-        "outcome": {"status": state if operation == "arm" or result.get("upload") else "ok" if ok else state,
+        "outcome": {"status": state if operation in ("arm", "disarm") or result.get("upload") else "ok" if ok else state,
                     "message": message, "recovery": recovery},
     }
     if json_output:
@@ -242,7 +269,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
         lines.extend(entries or ["(none)"])
     arming = result.get("arming")
     if arming:
-        lines.append(f"Request: {arming['request_id']}" if label == "Arming"
+        lines.append(f"Request: {arming['request_id']}" if label in ("Arming", "Disarming")
                      else f"Arming: {arming['status']} (request {arming['request_id']})")
         for name in ("requested", "applied"):
             for selected_step, definitions in arming[name].items():

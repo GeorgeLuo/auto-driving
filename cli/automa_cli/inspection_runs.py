@@ -17,6 +17,7 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.runtime.recording import recorded_selections
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS, selection_activation
 
 from .runtime_hosts import release_code_dir
 
@@ -40,6 +41,17 @@ def replay_step(runner: Any, activation: StepActivation | None, shared_memory: d
     if runner is not None:
         runner.reset(shared_memory)
     return replacement
+
+
+def replayed_selection(step: str, recorded: StepActivation | None) -> StepActivation | None:
+    """A recorded selection as replay runs it.
+
+    A selectable step the recording disabled replays with no plugins.
+    """
+
+    if recorded is None and step in SELECTABLE_STEPS:
+        return selection_activation(step, plugins=[])
+    return recorded
 
 
 def recorded_release(activation: StepActivation) -> tuple[str, str] | None:

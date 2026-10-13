@@ -17,8 +17,8 @@ from typing import Any
 from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.runtime.client import RuntimeClient
+from implementations.decision_cycle.catalog import selection_activation
 
-from .memory import _selected_memory
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
 from .paths import ROOT, display_path
 from .runtime_hosts import runtime_base_url
@@ -56,19 +56,15 @@ def inspect_memory(
     only; live frames come from ``perception inspect --record``.
     """
 
-    activation, error = _selected_memory(preset, plugins)
-    if error is not None:
-        return error
     try:
         image_source, manifest = read_replay_source(source, max_frames=max_frames)
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read memory inspect source: {exc}")
-    overridden = preset is not None or plugins is not None
     try:
-        replay = StepReplay(
-            manifest, steps=("perception", "observation", "memory"),
-            overrides={"memory": activation} if overridden else None,
-        )
+        overrides = None
+        if preset is not None or plugins is not None:
+            overrides = {"memory": selection_activation("memory", preset=preset, plugins=plugins)}
+        replay = StepReplay(manifest, steps=("perception", "observation", "memory"), overrides=overrides)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
 

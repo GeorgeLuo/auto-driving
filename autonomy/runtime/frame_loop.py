@@ -20,7 +20,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
-from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
+from autonomy.decision_cycle.activation import (
+    DECISION_STEPS,
+    activation_generation_id,
+    activation_presets,
+)
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
@@ -124,7 +128,7 @@ class LatestObservationState:
     error: str | None = None
     duration_ms: int = 0
     skipped_since_previous: int = 0
-    preset: str | None = None
+    presets: dict[str, str] = field(default_factory=dict)
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
     context: dict[str, Any] | None = None
@@ -145,7 +149,7 @@ class LatestObservationState:
             "has_image": self.image is not None,
             "duration_ms": self.duration_ms,
             "skipped_since_previous": self.skipped_since_previous,
-            "preset": self.preset,
+            "presets": dict(self.presets),
             "cycle_schema": None if self.cycle is None else self.cycle.get("schema"),
             "perception_status": None if not isinstance(perception, dict) else perception.get("status"),
         }
@@ -190,7 +194,7 @@ class FrameLoop:
         host: AutonomyCycleHost,
         interval_s: float = DEFAULT_INTERVAL_S,
         monotonic: Callable[[], float] | None = None,
-        preset: str | None = None,
+        presets: dict[str, str] | None = None,
         vehicle_id: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
@@ -210,7 +214,8 @@ class FrameLoop:
         self.frame_prefix = frame_prefix or runtime
         self.recording_root = recording_root
         self.interval_s = float(interval_s)
-        self.preset = preset
+        # Each step's preset label, refreshed from every frame's applied activations.
+        self.presets = dict(presets or {})
         self._monotonic = monotonic or time.monotonic
         self._lock = threading.RLock()
         self.frame_index = 0
@@ -296,7 +301,7 @@ class FrameLoop:
                 "frames_captured": self.frames_captured,
                 "perception_inflight": self._decision_inflight,
                 "memory_update_halted": self._memory_update_halted,
-                "preset": self.preset,
+                "presets": dict(self.presets),
                 "latest": latest,
                 "latest_camera_frame_id": None if camera is None else camera.frame_id,
                 "latest_json_path": LATEST_JSON_PATH,
@@ -603,7 +608,7 @@ class FrameLoop:
         processed_count = self.processed_count
         skipped_count = self.skipped_count
         interval_s = self.interval_s
-        preset = self.preset
+        presets = dict(self.presets)
         generation_id = self.generation_id
         threshold_ms = stale_after_ms(interval_s)
 
@@ -624,7 +629,7 @@ class FrameLoop:
                 "frames_captured": self.frames_captured,
                 "processed_count": processed_count,
                 "skipped_count": skipped_count,
-                "preset": preset,
+                "presets": presets,
                 "generation_id": generation_id,
                 "frame": None,
                 "control": None,
@@ -672,7 +677,7 @@ class FrameLoop:
             "frames_captured": self.frames_captured,
             "processed_count": processed_count,
             "skipped_count": skipped_count,
-            "preset": preset or latest.preset,
+            "presets": dict(latest.presets),
             "generation_id": generation_id,
             "step_activations": deepcopy(selections),
             "context": {
@@ -1042,6 +1047,14 @@ class FrameLoop:
                     status=status,
                 )
 
+                context = (
+                    self.host.last_context.to_dict()
+                    if self.host.last_context is not None
+                    and self.host.last_context.frame_id == frame_id else None
+                )
+                applied_steps = ((context or {}).get("metadata") or {}).get("step_activations")
+                if isinstance(applied_steps, dict):
+                    self.presets = activation_presets(applied_steps)
                 latest = LatestObservationState(
                     frame_id=frame_id,
                     frame_index=frame_index,
@@ -1055,14 +1068,10 @@ class FrameLoop:
                     error=error,
                     duration_ms=duration_ms,
                     skipped_since_previous=skipped_since_previous,
-                    preset=self.preset,
+                    presets=dict(self.presets),
                     decision_publication=decision_publication,
                     decision_error=decision_error,
-                    context=(
-                        self.host.last_context.to_dict()
-                        if self.host.last_context is not None
-                        and self.host.last_context.frame_id == frame_id else None
-                    ),
+                    context=context,
                 )
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict

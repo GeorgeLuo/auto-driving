@@ -17,12 +17,11 @@ from typing import Any
 
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.steps import builtin_activation
-from implementations.decision_cycle.catalog import (
-    DEFAULT_STEP_PRESETS, packaged_activation, selection_activation,
-)
+from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    recorded_runner, recorded_selection, recorded_selections, replay_step, selection_record,
+    recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
+    selection_record,
 )
 from .paths import safe_path_part
 from .workbench_frames import FrameOutcome, run_frame
@@ -34,10 +33,6 @@ from .workbench_source import (
     normalize_image_file,
     read_image_manifest,
 )
-
-# A recording that disabled one of these steps replays it with no plugins.
-_EMPTY_WHEN_DISABLED = ("perception", "memory")
-
 
 def read_replay_source(source: str | Path, *, max_frames: int) -> tuple[ImageSource, dict[str, Any]]:
     """The source's frames and its manifest (empty for plain images).
@@ -58,13 +53,11 @@ def read_replay_source(source: str | Path, *, max_frames: int) -> tuple[ImageSou
 def default_selection(step: str) -> StepActivation | None:
     """The selection inspect uses for a step its source did not record.
 
-    That is the step's default preset, else the built-in a vehicle runs when
-    the step is unstaged, else the step's default packaged plugins.
+    That is the built-in a vehicle runs when the step is unstaged, else the
+    step's default selection.
     """
 
-    if step in DEFAULT_STEP_PRESETS:
-        return selection_activation(step)
-    return builtin_activation(step) or packaged_activation(step)
+    return builtin_activation(step) or selection_activation(step)
 
 
 class StepReplay:
@@ -90,7 +83,7 @@ class StepReplay:
             if step in self.overrides:
                 self.activations[step] = self.overrides[step]
             elif step in recorded:
-                self.activations[step] = _restored(step, recorded[step])
+                self.activations[step] = replayed_selection(step, recorded[step])
             else:
                 self.activations[step] = recorded_selection(step, manifest) or default_selection(step)
         self.runners = {
@@ -104,7 +97,7 @@ class StepReplay:
         for step in self.activations:
             if step not in selections or step in self.overrides:
                 continue
-            activation = _restored(step, selections[step])
+            activation = replayed_selection(step, selections[step])
             self.runners[step] = replay_step(self.runners[step], activation, self.shared_memory)
             self.activations[step] = activation
         return run_frame(frame, steps=self.runners, shared_memory=self.shared_memory)
@@ -125,12 +118,6 @@ class StepReplay:
             if activation is not None else None
             for step, activation in self.activations.items()
         }
-
-
-def _restored(step: str, activation: StepActivation | None) -> StepActivation | None:
-    if activation is None and step in _EMPTY_WHEN_DISABLED:
-        return selection_activation(step, plugins=[])
-    return activation
 
 
 def inspect_run_id(source_id: str) -> str:

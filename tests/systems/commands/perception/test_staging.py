@@ -9,8 +9,7 @@ from cli.automa_cli.bundles import (
     sync_controller_bundle,
 )
 from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS
-from implementations.decision_cycle.catalog import CUSTOM_PRESET, preset_activation
-from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
+from implementations.decision_cycle.catalog import preset_activation
 from tests.support.cli_runner import run_automa
 from tests.support.runtime_fixtures import write_json
 
@@ -139,34 +138,6 @@ class PerceptionCommandTests(unittest.TestCase):
             text_result.stdout,
         )
 
-    def test_perception_update_dry_run_json_does_not_require_live_simulator(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            result = run_automa(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--dry-run",
-                "--json",
-                runtime_root=runtime_root,
-            )
-
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["schema"], "vehicle_perception_update_v0")
-        self.assertTrue(payload["dry_run"])
-        self.assertEqual(payload["vehicle_id"], "chase-sim-chaser")
-        self.assertEqual(payload["preset"], DEFAULT_PERCEPTION_PRESET)
-        self.assertEqual(payload["manifest"]["metadata"]["provider"], "chase-sim")
-        self.assertTrue(
-            payload["would_write"]["bundle_root"].endswith(
-                "vehicles/chase-sim-chaser/bundle"
-            )
-        )
-
     def test_physical_perception_staging_reuses_local_metadata_while_offline(
         self,
     ) -> None:
@@ -201,66 +172,4 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["vehicle_id"], "piracer")
         self.assertEqual(payload["preset"], "visual_observer")
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "picar")
-
-    def test_perception_update_plugins_stages_a_custom_selection(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            result = run_automa(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--plugin",
-                "frame",
-                "--plugin",
-                "classical_regions",
-                "--dry-run",
-                "--json",
-                runtime_root=runtime_root,
-            )
-
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["preset"], CUSTOM_PRESET)
-        self.assertEqual(payload["manifest"]["plugins"], ["frame", "classical_regions"])
-        metadata = payload["manifest"]["metadata"]
-        self.assertEqual(metadata["preset"], CUSTOM_PRESET)
-        self.assertNotIn("preset_description", metadata)
-        self.assertNotIn("source_dir", metadata)
-        self.assertNotIn("workspace_source_dir", metadata)
-        self.assertEqual(set(metadata["controller_bundle"]), set(CONTROLLER_BUNDLE_KEYS))
-
-    def test_perception_update_rejects_a_preset_with_plugins_and_unknown_plugins(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            both = run_automa(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--preset",
-                "visual_observer",
-                "--plugin",
-                "frame",
-                "--dry-run",
-                runtime_root=runtime_root,
-                check=False,
-            )
-            unknown = run_automa(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--plugin",
-                "no_such_plugin",
-                "--dry-run",
-                runtime_root=runtime_root,
-                check=False,
-            )
-
-        self.assertNotEqual(both.returncode, 0)
-        self.assertNotEqual(unknown.returncode, 0)
-        self.assertIn("no_such_plugin", unknown.stdout + unknown.stderr)
 

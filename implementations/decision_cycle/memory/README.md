@@ -28,8 +28,29 @@ equals, else `custom`. `automa vehicles update memory --preset NAME` stages one.
 |---|---|
 | `recency_ledger` (default) | `bounded_evidence` |
 
+## Finding the default business logic
+
+Start at [presets.py](presets.py): `DEFAULT_MEMORY_PRESET` selects
+`recency_ledger`, which lists `bounded_evidence`. [catalog.py](catalog.py)
+names that plugin's entrypoint and default settings, its record, age and size
+bounds. [plugins/bounded_evidence/plugin.py](plugins/bounded_evidence/plugin.py)
+holds `BoundedEvidenceLedger`, which keeps its ledger at `LEDGER_KEY` in the
+host map and publishes the retained records at `EVIDENCE_KEY`. The ledger and
+its reduction live in [shared/evidence_ledger/](shared/evidence_ledger/).
+
+## Framework boundary
+
+As in perception and proposal, `autonomy/decision_cycle/memory/` owns the
+plugin protocol (`plugin.py`), composition and failure policy (`interface.py`),
+and step execution (`runner.py`). Memory's `evidence.py` defines the retained
+evidence records, `publication.py` the key later steps read them at, and
+`errors.py` the update failure that stops the cycle. Those types belong to the
+memory contract, rather than to a concrete retention strategy.
+
 Memory plugins read the shared map and the observation, not the camera feed:
-the framework hands them a frame context without `sensor_frame`. Obstruction
-tracking is perception's work: the `multi_obstruction_tracks` perception plugin
-keeps track history in the map and emits tracked things, and `bounded_evidence`
-retains them for the `avoid_recent_obstruction` proposal plugin.
+the framework hands them a frame context without `sensor_frame`. Memory needs
+no `feeds/` directory. Obstruction tracking is perception's work: the
+`multi_obstruction_tracks` perception plugin keeps track history in the map and
+emits tracked things, and `bounded_evidence` retains them for the
+`avoid_recent_obstruction` proposal plugin. Library code shared by multiple
+memory plugins belongs in `shared/`, as in perception and proposal.

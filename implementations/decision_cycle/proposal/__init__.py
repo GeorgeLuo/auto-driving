@@ -1,1 +1,1 @@
-"""Concrete proposal plugins, their catalog, and inspection scenarios."""
+"""Concrete proposal plugins, their catalog, and presets."""

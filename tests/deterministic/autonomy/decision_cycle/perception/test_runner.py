@@ -249,7 +249,7 @@ class PluginRunnerTests(unittest.TestCase):
         )
         self.assertEqual(mapper.plugins, {})
 
-    def test_manager_selection_is_applied_at_the_next_perception_frame(self) -> None:
+    def test_manager_selection_is_applied_by_apply_selection(self) -> None:
         manager = PluginManager.from_specs(
             "perception",
             {
@@ -268,6 +268,7 @@ class PluginRunnerTests(unittest.TestCase):
 
         manager.add("unavailable")
         self.assertEqual(mapper.plugin_ids, ("working",))
+        mapper.apply_selection()
         second = mapper.perceive(
             build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
         )
@@ -278,6 +279,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertIs(mapper.plugins["working"], working)
 
         manager.remove("working")
+        mapper.apply_selection()
         third = mapper.perceive(
             build_perception_request(_sensor_frame(_array_reading(), "frame-3"))
         )
@@ -288,7 +290,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(working.reset_count, 1)
 
 
-    def test_selection_change_during_perceive_applies_on_the_next_frame(self) -> None:
+    def test_selection_change_during_perceive_waits_for_apply_selection(self) -> None:
         manager = PluginManager.from_specs(
             "perception",
             {
@@ -303,8 +305,14 @@ class PluginRunnerTests(unittest.TestCase):
             first = mapper.perceive(
                 build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
             )
+            # The plugin deselected itself; frames run the applied plugins
+            # until the selection is applied.
             second = mapper.perceive(
                 build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
+            )
+            mapper.apply_selection()
+            third = mapper.perceive(
+                build_perception_request(_sensor_frame(_array_reading(), "frame-3"))
             )
 
             self.assertEqual(
@@ -312,7 +320,11 @@ class PluginRunnerTests(unittest.TestCase):
                 ["selection_changing", "working"],
             )
             self.assertEqual(
-                [run.plugin_id for run in second.plugin_runs], ["working"]
+                [run.plugin_id for run in second.plugin_runs],
+                ["selection_changing", "working"],
+            )
+            self.assertEqual(
+                [run.plugin_id for run in third.plugin_runs], ["working"]
             )
         finally:
             SelectionChangingPlugin.manager = None
@@ -401,6 +413,7 @@ class PluginRunnerTests(unittest.TestCase):
         )
         self.assertEqual(waiting["last_plugin_runs"][0]["plugin_id"], "working")
 
+        step.apply_selection()
         failed = step(
             DecisionFrameContext(
                 frame_id="frame-2",

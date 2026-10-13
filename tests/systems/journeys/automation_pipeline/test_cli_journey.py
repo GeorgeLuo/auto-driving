@@ -124,7 +124,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
                 )
 
-                update = run_automa(
+                run_automa(
                     "vehicles",
                     "update",
                     "perception",
@@ -135,10 +135,12 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     runtime_root=runtime_root,
                     extra_env=env,
                 )
-                self.assertIn(
-                    "Ready for: observation-only automation",
-                    update.stdout,
-                )
+                staged = json.loads(run_automa(
+                    "vehicles", "status", "--id", "chase-sim-chaser", "--json",
+                    runtime_root=runtime_root, extra_env=env,
+                ).stdout)
+                self.assertEqual(staged["layers"]["automation_deployment"]["state"], "deployed")
+                self.assertEqual(staged["next_action"]["reason"], "worker_stopped")
 
                 try:
                     run = run_automa(

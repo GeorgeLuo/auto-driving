@@ -212,7 +212,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         with self._runtime_lock:
             if context.shared_memory is not None:
                 self._shared_memory = context.shared_memory
-            self.apply_selection(context.shared_memory)
             started = time.perf_counter()
             self.last_error = None
             try:

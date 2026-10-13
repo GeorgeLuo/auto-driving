@@ -736,10 +736,7 @@ def _vehicle_next_action(
         return (
             action(
                 "automation_not_deployed",
-                command=(
-                    "./cli/automa vehicles update perception "
-                    f"--id {vehicle_id} --preset lightweight_observer"
-                ),
+                command=f"./cli/automa vehicles update autonomy --id {vehicle_id}",
                 expected_state="automation_deployment=deployed",
             ),
             "automation_deployment",

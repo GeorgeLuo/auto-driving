@@ -14,7 +14,7 @@ from typing import Any, Callable
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from implementations.decision_cycle.catalog import CUSTOM_PRESET, STEP_PRESETS
+from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 
@@ -37,7 +37,6 @@ from .workbench_plugins import (
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
-    step_selection,
 )
 from .workbench_source import (
     ImageSource,
@@ -179,20 +178,15 @@ class ImageReplayRunner:
         given = dict(activations or {})
         selected: dict[str, StepActivation] = {}
         for step in SELECTABLE_STEPS:
-            activation = given[step] if step in given else step_selection(step)
+            activation = given[step] if step in given else selection_activation(step)
             if activation.step != step:
                 raise ValueError(f"activation for {activation.step!r} given as {step!r}")
             selected[step] = activation
         return selected
 
-    def _selection_preset(self, step: str) -> str | None:
-        """The preset the step's selection came from or equals, else ``custom``.
+    def _selection_preset(self, step: str) -> str:
+        """The preset the step's selection came from or equals, else ``custom``."""
 
-        ``None`` for a step without presets.
-        """
-
-        if step not in STEP_PRESETS:
-            return None
         return str(self._activations[step].metadata.get("preset", CUSTOM_PRESET))
 
     def _plugin_configuration(self) -> dict[str, Any]:

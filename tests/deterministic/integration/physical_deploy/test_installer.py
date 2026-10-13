@@ -6,10 +6,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from autonomy.decision_cycle.activation import STEPS
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.deploy import PicarTarget, _verify_picar_autonomy_runtime
-from cli.automa_cli.perception import ensure_vehicle_perception_activation
-from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
+from cli.automa_cli.step_activations import ensure_step_activations, stage_activation
+from implementations.decision_cycle.catalog import (
+    DEFAULT_STEP_PLUGINS,
+    DEFAULT_STEP_PRESETS,
+    SELECTABLE_STEPS,
+    STEP_PRESETS,
+    selection_activation,
+)
 
 TARGET = PicarTarget(
     vehicle_id="piracer",
@@ -42,30 +49,52 @@ def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
 
 
 class PhysicalDeployTests(unittest.TestCase):
-    def test_named_perception_activation_is_refreshed_from_current_catalog(self) -> None:
+    def test_deploy_stages_every_step_and_rebuilds_named_presets_from_the_catalog(self) -> None:
+        """Regression: deploy staged no proposal, so a fresh vehicle held instead of proposing."""
+
+        def staged(paths: dict[str, Path], step: str) -> dict:
+            return json.loads(paths[step].read_text(encoding="utf-8"))
+
         with tempfile.TemporaryDirectory() as tmp:
             bundle = controller_bundle_paths(Path(tmp) / "runtime" / "vehicles" / "piracer")
             release = sync_controller_bundle(bundle, output=None)
-            activation_path = ensure_vehicle_perception_activation(
-                vehicle=dict(TARGET.vehicle),
-                preset="visual_observer",
-                bundle=bundle,
-                release=release,
+            ensure = lambda: ensure_step_activations(  # noqa: E731
+                vehicle_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.vehicle),
             )
-            stale = json.loads(activation_path.read_text(encoding="utf-8"))
-            stale["plugins"] = ["frame"]
-            activation_path.write_text(json.dumps(stale), encoding="utf-8")
+            paths = ensure()
+            self.assertEqual(set(paths), set(STEPS))
+            for step in STEPS:
+                with self.subTest(step=step, staged="default"):
+                    self.assertEqual(staged(paths, step)["plugins"], list(DEFAULT_STEP_PLUGINS[step]))
+                    self.assertEqual(
+                        staged(paths, step)["metadata"].get("preset"), DEFAULT_STEP_PRESETS.get(step),
+                    )
 
-            refreshed_path = ensure_vehicle_perception_activation(
-                vehicle=dict(TARGET.vehicle),
-                preset="lightweight_observer",
-                bundle=bundle,
-                release=release,
-            )
-            refreshed = json.loads(refreshed_path.read_text(encoding="utf-8"))
+            for step in SELECTABLE_STEPS:
+                stale = staged(paths, step)
+                stale["plugins"] = []
+                paths[step].write_text(json.dumps(stale), encoding="utf-8")
+            stage_activation(bundle, selection_activation("action", plugins=["hold"]), vehicle_id="piracer")
+            paths = ensure()
+            for step in SELECTABLE_STEPS:
+                with self.subTest(step=step, staged="named preset"):
+                    self.assertEqual(
+                        staged(paths, step)["plugins"],
+                        list(STEP_PRESETS[step][DEFAULT_STEP_PRESETS[step]]["plugins"]),
+                    )
 
-        self.assertEqual(refreshed["metadata"]["preset"], "visual_observer")
-        self.assertEqual(refreshed["plugins"], PERCEPTION_PRESETS["visual_observer"]["plugins"])
+            custom = selection_activation("proposal", plugins=[])
+            self.assertEqual(custom.metadata["preset"], "custom")
+            stage_activation(bundle, custom, vehicle_id="piracer")
+            paths = ensure()
+            self.assertEqual(staged(paths, "proposal")["plugins"], [])
+            self.assertEqual(staged(paths, "action")["plugins"], ["hold"])
+            for step in STEPS:
+                with self.subTest(step=step, staged="release"):
+                    self.assertEqual(
+                        staged(paths, step)["metadata"]["controller_bundle"]["release"]["archive_sha256"],
+                        release["archive"]["sha256"],
+                    )
 
     def test_runtime_verification_requires_every_deployed_step_and_manual_mode(self) -> None:
         expected = {"memory": ["bounded_evidence"], "action": ["hold"]}

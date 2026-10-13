@@ -15,6 +15,7 @@ from typing import Any
 from autonomy.runtime.session import RunConfiguration
 from .paths import display_path
 from .runtime_view import RuntimeViewServer
+from .step_activations import step_lines
 
 RUN_STATE_SCHEMA = "automa_automation_run_state_v0"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
@@ -135,14 +136,6 @@ def failed_readiness(blocking_layer: str) -> dict[str, Any]:
     return _readiness("blocked", "inspect perception", {}, blocking_layer)
 
 
-def perception_record(activation_path: Path, activation: Any) -> dict[str, Any]:
-    return {
-        "activation": display_path(activation_path),
-        "preset": activation.metadata.get("preset"),
-        "plugins": list(activation.plugins),
-    }
-
-
 def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
     return {
         "generation_id": identity["generation_id"],
@@ -155,7 +148,7 @@ def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
 
 
 def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
-    """Each step's plugin IDs and last error, without the per-cycle records."""
+    """Each step's plugin IDs, preset and last error, without the per-cycle records."""
 
     steps = host_status.get("steps") if isinstance(host_status.get("steps"), dict) else {}
     return {
@@ -164,6 +157,7 @@ def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(item, dict)
             else {
                 "plugin_ids": item.get("plugin_ids"),
+                "preset": item.get("preset"),
                 "last_error": item.get("last_error"),
             }
         )
@@ -174,10 +168,8 @@ def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def record_host_status(
-    state: dict[str, Any], host_status: dict[str, Any], *, activations: dict[str, Path]
-) -> None:
-    """Record the steps, each staged step's report, and the decision the host applied."""
+def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> None:
+    """Record the steps, each selection's report, and the decision the host applied."""
 
     steps = host_status.get("steps") if isinstance(host_status.get("steps"), dict) else {}
     state["steps"] = step_status(host_status)
@@ -189,17 +181,20 @@ def record_host_status(
         )
     if "arming" in host_status:
         state["arming"] = host_status["arming"]
-    for step, path in activations.items():
-        state[step] = {"activation": display_path(path), "status": steps.get(step) or "absent"}
+    for step, selection in state["selections"].items():
+        selection["status"] = steps.get(step) or "absent"
 
 
 def startup_lines(state: dict[str, Any]) -> list[str]:
-    perception = state["perception"]
+    selections = state["selections"]
     view = state["published_view"]
     source = state["control_source"]
     return [
         f"Automation running: {state['vehicle_id']}",
-        f"Perception: {perception['preset'] or ', '.join(perception['plugins']) or '(none)'}",
+        *step_lines(
+            {step: selection["plugins"] for step, selection in selections.items()},
+            {step: selection["preset"] for step, selection in selections.items() if selection["preset"]},
+        ),
         (
             f"Recording: {state['run_dir']}"
             if state["run_dir"] is not None

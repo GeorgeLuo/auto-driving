@@ -23,6 +23,7 @@ from autonomy.decision_cycle.activation import (
     STEPS,
     StepActivation,
     activation_generation_id,
+    activation_presets,
     read_step_activation_if_present,
     require_step,
     step_activation_path,
@@ -32,7 +33,8 @@ from autonomy.decision_cycle.steps import builtin_activation, step_runner
 from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import (
-    packaged_activation,
+    STEP_PRESETS,
+    selection_activation,
     step_plugins,
 )
 from implementations.vehicle.chase_sim import ChaseSimCar
@@ -44,12 +46,6 @@ from .bundles import (
 )
 from .paths import display_path, safe_path_part
 from .vehicles import DEFAULT_READINESS_TIMEOUT_S, discover_vehicle
-
-# Steps whose packaged plugins are staged with `vehicles update <step>`.
-GENERIC_UPDATE_STEPS = ("observation", "proposal", "plan", "action")
-# Steps a vehicle runs with their built-in plugin when nothing is staged.
-BUILTIN_STEPS = ("observation", "plan", "action")
-
 
 def vehicle_bundle(vehicle_id: str, runtime_root: Path) -> dict[str, str]:
     return controller_bundle_paths(Path(runtime_root) / safe_path_part(vehicle_id))
@@ -204,7 +200,6 @@ def staging_vehicle(
     *,
     runtime_root: Path,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    offline: bool = True,
     output: TextIO | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The vehicle every ``vehicles update <step>`` stages for, or why it is unknown.
@@ -213,15 +208,12 @@ def staging_vehicle(
     step are known without discovery. Identity must match the requested id;
     directory names alone do not establish it. The newest valid matching
     record supplies the connection. Any other id must be discoverable.
-    ``offline=False`` always discovers, for commands that need the live vehicle.
     ``timeout_s`` bounds each discovery probe, not the whole update command.
     """
 
-    vehicle = None
-    if offline:
-        vehicle = _offline_sim_vehicle(vehicle_id) or _offline_staged_vehicle(
-            vehicle_bundle(vehicle_id, runtime_root), vehicle_id
-        )
+    vehicle = _offline_sim_vehicle(vehicle_id) or _offline_staged_vehicle(
+        vehicle_bundle(vehicle_id, runtime_root), vehicle_id
+    )
     if vehicle is not None:
         _emit(output, "Using local vehicle metadata; network liveness is not required for local staging.")
         return vehicle, None
@@ -418,31 +410,77 @@ def refresh_release(bundle: dict[str, str], step: str, release: dict[str, Any]) 
     )
 
 
-def ensure_builtin_activations(
+def ensure_step_activations(
     *,
     vehicle_id: str,
     bundle: dict[str, str],
     release: dict[str, Any],
+    vehicle: dict[str, Any] | None = None,
 ) -> dict[str, Path]:
-    """Stage the built-in observation, plan, and action plugins where nothing is staged.
+    """Stage every step a deploy ships, recording ``release`` on each.
 
-    Existing activations keep their selection and record ``release``. Without
-    a proposal activation the vehicle proposes nothing and holds.
+    A selection staged as a named preset is rebuilt from the catalog, so the
+    deploy ships the preset's current plugins and configs. Any other staged
+    selection keeps its plugins and configs. A step with nothing staged gets
+    its default selection.
     """
 
     paths: dict[str, Path] = {}
-    for step in BUILTIN_STEPS:
-        path = refresh_release(bundle, step, release)
-        if path is None:
-            path = stage_activation(
-                bundle,
-                packaged_activation(step),
-                vehicle_id=vehicle_id,
-                release=release,
-            )
-        paths[step] = path
-    refresh_release(bundle, "proposal", release)
+    for step in STEPS:
+        existing = read_bundle_activation(bundle, step)
+        preset = existing.metadata.get("preset") if existing is not None else None
+        named = isinstance(preset, str) and preset in STEP_PRESETS.get(step, {})
+        if existing is not None and not named:
+            refresh_release(bundle, step, release)
+            paths[step] = bundle_activation_path(bundle, step)
+            continue
+        paths[step] = stage_activation(
+            bundle,
+            selection_activation(step, preset=preset),
+            vehicle_id=vehicle_id,
+            release=release,
+            vehicle=vehicle,
+        )
     return paths
+
+
+def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """What a start runs for every step, and where each selection comes from.
+
+    A step runs its staged activation, else its built-in, else nothing. An
+    unreadable document is ``invalid``; its update command restages it.
+    """
+
+    selections: dict[str, dict[str, Any]] = {}
+    for step in STEPS:
+        path = display_path(bundle_activation_path(bundle, step))
+        try:
+            staged = read_bundle_activation(bundle, step)
+        except (OSError, ValueError, TypeError):
+            selections[step] = {"activation": path, "source": "invalid", "preset": None, "plugins": []}
+            continue
+        activation = staged or builtin_activation(step)
+        selections[step] = {
+            "activation": path,
+            "source": "staged" if staged is not None else "builtin" if activation is not None else "none",
+            "preset": activation_presets({step: activation}).get(step),
+            "plugins": list(activation.plugins) if activation is not None else [],
+        }
+    return selections
+
+
+def selection_label(preset: str | None, plugins: list[str]) -> str:
+    """A selection as deploy, run and status print it: its preset and plugins."""
+
+    listed = ", ".join(plugins)
+    return f"{preset} ({listed or 'no plugins'})" if preset else listed or "(no plugins)"
+
+
+def step_lines(steps: dict[str, list[str]], presets: dict[str, str]) -> list[str]:
+    return [
+        f"{step.capitalize()}: {selection_label(presets.get(step), plugins)}"
+        for step, plugins in steps.items()
+    ]
 
 
 def decision_activations(bundle: dict[str, str]) -> dict[str, StepActivation | None]:
@@ -506,6 +544,7 @@ def update_vehicle_step(
     vehicle_id: str,
     step: str,
     plugins: list[str] | None = None,
+    preset: str | None = None,
     runtime_root: Path,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     dry_run: bool = False,
@@ -513,12 +552,12 @@ def update_vehicle_step(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> tuple[int, str]:
-    """Stage packaged ``plugins`` for ``step`` (its default selection when omitted)."""
+    """Stage a preset or plugin list; use the step's default when omitted."""
 
     require_step(step)
 
     try:
-        activation = packaged_activation(step, plugins)
+        activation = selection_activation(step, preset=preset, plugins=plugins)
         # Construct the runner once so a selection that cannot load is never staged.
         step_runner(activation)
     except DuplicatePluginIdError:
@@ -541,30 +580,36 @@ def update_vehicle_step(
 
     bundle = vehicle_bundle(vehicle_id, runtime_root)
     previous = valid_bundle_activation(bundle, step)
-    activation = keep_staged_configs(bundle, activation)
+    if plugins is not None:
+        activation = keep_staged_configs(bundle, activation)
     path = bundle_activation_path(bundle, step)
     release: dict[str, Any] | None = None
     if not dry_run:
         release = sync_controller_bundle(bundle, output=output if verbose else None)
-        path = stage_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
+    # A dry run reports the document it would write, provenance included.
+    staged = staged_activation(bundle, activation, vehicle_id=vehicle_id, release=release, vehicle=vehicle)
+    if not dry_run:
+        write_step_activation(path, staged)
     payload = {
         "schema": "vehicle_step_update_v0",
         "vehicle_id": vehicle_id,
         "step": step,
-        "plugins": list(activation.plugins),
+        "preset": staged.metadata.get("preset"),
+        "plugins": list(staged.plugins),
         "dry_run": dry_run,
         "activation": display_path(path),
-        "manifest": activation.to_payload(),
+        "manifest": staged.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
         "apply": apply_staged(vehicle_id, vehicle.get("provider"), step,
-                              changed=changed_plugins(previous, activation)),
+                              changed=changed_plugins(previous, staged)),
     }
     if json_output:
         return 0, json.dumps(payload, indent=2, sort_keys=True)
     verb = "Would stage" if dry_run else "Staged"
     return 0, "\n".join(
         [
-            f"{verb} {step}: {vehicle_id} -> {', '.join(activation.plugins) or '(no plugins)'}",
+            f"{verb} {step}: {vehicle_id} -> {', '.join(staged.plugins) or '(no plugins)'}",
+            *([f"Preset: {payload['preset']}"] if payload["preset"] is not None else []),
             f"Activation: {display_path(path)}",
             *format_apply_staged(payload["apply"]),
         ]
@@ -572,8 +617,6 @@ def update_vehicle_step(
 
 
 __all__ = [
-    "BUILTIN_STEPS",
-    "GENERIC_UPDATE_STEPS",
     "absent_step_error",
     "apply_staged",
     "format_apply_staged",
@@ -582,7 +625,7 @@ __all__ = [
     "decision_activations",
     "decision_generation_id",
     "decision_identity",
-    "ensure_builtin_activations",
+    "ensure_step_activations",
     "format_activation_problems",
     "proposal_plugin_ids",
     "CONTROLLER_BUNDLE_KEYS",

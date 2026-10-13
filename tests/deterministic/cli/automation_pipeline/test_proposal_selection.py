@@ -21,7 +21,7 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
 
 
 class AutomationProposalSelectionTests(unittest.TestCase):
-    def run_with_restage(self, restaged=None, *, reject_reset=False, before_run=None):
+    def run_with_restage(self, restaged=None, *, before_run=None):
         """Run four frames on a host started from the startup stage.
 
         ``before_run`` is staged once the host is up and before the run starts;
@@ -44,11 +44,6 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             def wrap_proposal(step_name, step):
                 if step_name != "proposal":
                     return
-                if reject_reset:
-                    def failing_reset(shared_memory=None):
-                        raise RuntimeError("proposal reset unavailable")
-
-                    step.plugins["avoid_recent_obstruction"].reset = failing_reset
                 run = step.run
 
                 def run_with_cli_restage(**kwargs):
@@ -102,30 +97,24 @@ class AutomationProposalSelectionTests(unittest.TestCase):
 
         self.assertNotEqual(staged["generation_id"], startup)
         self.assertEqual(applied, [("avoid_recent_obstruction",), (), (), ()])
-        self.assertEqual(state["proposal"]["status"]["plugin_ids"], [])
+        self.assertEqual(state["selections"]["proposal"]["status"]["plugin_ids"], [])
         self.assertEqual(state["decision"]["generation_id"], staged["generation_id"])
         self.assertEqual(state["last_frame"]["generation_id"], staged["generation_id"])
         self.assertEqual(view["identity"]["producer_generation_id"], staged["generation_id"])
 
-    def test_restages_the_host_cannot_apply_keep_the_startup_generation(self):
-        cases = {
-            "config change waits for a restart": (packaged_activation(
-                "proposal", config_overrides={"avoid_recent_obstruction": {"steer_magnitude": 0.5}}
-            ), False),
-            "failed plugin reset": (packaged_activation("proposal", []), True),
-        }
-        for name, (restaged, reject_reset) in cases.items():
-            with self.subTest(name):
-                startup, staged, applied, state, view = self.run_with_restage(
-                    restaged, reject_reset=reject_reset,
-                )
-                self.assertNotEqual(staged["generation_id"], startup)
-                self.assertEqual(applied, [("avoid_recent_obstruction",)] * 4)
-                report = state["proposal"]["status"]["plugin_report"]
-                self.assertEqual(report["applied_plugin_ids"], ["avoid_recent_obstruction"])
-                self.assertEqual(state["decision"]["generation_id"], startup)
-                self.assertEqual(view["identity"]["producer_generation_id"], startup)
-                self.assertEqual(state["last_frame"]["generation_id"], startup)
+    def test_a_config_restage_keeps_the_startup_generation_until_a_restart(self):
+        # A failed reset now stops the cycle for every step; see
+        # test_shared_selection's one-rule test.
+        startup, staged, applied, state, view = self.run_with_restage(packaged_activation(
+            "proposal", config_overrides={"avoid_recent_obstruction": {"steer_magnitude": 0.5}}
+        ))
+        self.assertNotEqual(staged["generation_id"], startup)
+        self.assertEqual(applied, [("avoid_recent_obstruction",)] * 4)
+        report = state["selections"]["proposal"]["status"]["plugin_report"]
+        self.assertEqual(report["applied_plugin_ids"], ["avoid_recent_obstruction"])
+        self.assertEqual(state["decision"]["generation_id"], startup)
+        self.assertEqual(view["identity"]["producer_generation_id"], startup)
+        self.assertEqual(state["last_frame"]["generation_id"], startup)
 
 if __name__ == "__main__":
     unittest.main()

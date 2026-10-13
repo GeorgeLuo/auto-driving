@@ -116,7 +116,9 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 child.terminate()
                 child.wait(timeout=5)
 
-    def test_perception_readiness_rejects_old_memory_and_explicit_restage_recovers(self) -> None:
+    def test_staging_one_step_leaves_old_memory_for_status_and_explicit_restage_recovers(self) -> None:
+        """Regression: staging another step must not replace or hide an invalid memory document."""
+
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
             path = runtime_root / VEHICLE_ID / "bundle/runtime/memory/active.json"
@@ -124,17 +126,19 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             original = json.dumps({"schema": "automa_memory_activation_v0"})
             path.write_text(original, encoding="utf-8")
             env = {"CHASE_UI_WS_URL": ws_url}
-            update = run_automa(
+            run_automa(
                 "vehicles", "update", "perception", "--id", VEHICLE_ID,
                 "--preset", "lightweight_observer", "--json",
-                runtime_root=runtime_root, extra_env=env, check=False,
+                runtime_root=runtime_root, extra_env=env,
             )
-            self.assertEqual(update.returncode, 2, update.stdout + update.stderr)
-            payload = json.loads(update.stdout)
-            self.assertEqual(payload["readiness"]["status"], "blocked")
-            self.assertEqual(payload["readiness"]["blocking_layer"], "automation_deployment")
-            self.assertEqual(payload["next_action"]["reason"], "step_activation_invalid")
             self.assertEqual(path.read_text(encoding="utf-8"), original)
+            blocked = json.loads(run_automa(
+                "vehicles", "status", "--id", VEHICLE_ID, "--json",
+                runtime_root=runtime_root, extra_env=env, check=False,
+            ).stdout)
+            self.assertEqual(blocked["readiness"]["status"], "blocked")
+            self.assertEqual(blocked["readiness"]["blocking_layer"], "automation_deployment")
+            self.assertEqual(blocked["next_action"]["reason"], "step_activation_invalid")
             automation = json.loads(run_automa(
                 "vehicles", "automation", "status", "--id", VEHICLE_ID, "--json",
                 runtime_root=runtime_root, extra_env=env,
@@ -151,34 +155,6 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             ).stdout)
             self.assertEqual(status["layers"]["automation_deployment"]["state"], "deployed")
             self.assertEqual(status["next_action"]["reason"], "worker_stopped")
-
-    def test_perception_update_diagnoses_invalid_steps_it_refreshes_before_writing(self) -> None:
-        for step in ("observation", "proposal", "plan", "action"):
-            for contents in ('{"schema":"retired"}', '{"broken":'):
-                with self.subTest(step=step, contents=contents), tempfile.TemporaryDirectory() as tmp:
-                    runtime_root = Path(tmp) / "vehicles"
-                    bundle = runtime_root / VEHICLE_ID / "bundle"
-                    path = bundle / "runtime" / step / "active.json"
-                    path.parent.mkdir(parents=True)
-                    path.write_text(contents, encoding="utf-8")
-                    for flags in ([], ["--json"]):
-                        result = run_automa(
-                            "vehicles", "update", "perception", "--id", VEHICLE_ID, *flags,
-                            runtime_root=runtime_root, check=False,
-                        )
-                        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-                        self.assertEqual(result.stderr, "")
-                        if flags:
-                            payload = json.loads(result.stdout)
-                            self.assertEqual(payload["error"], "invalid_activation")
-                            problem = payload["activation_problems"][0]
-                            self.assertEqual(problem["step"], step)
-                            self.assertIn(f"vehicles update {step}", problem["command"])
-                        else:
-                            self.assertIn(f"vehicles update {step}", result.stdout)
-                        self.assertEqual(path.read_text(encoding="utf-8"), contents)
-                        self.assertFalse((bundle / "runtime/perception/active.json").exists())
-                        self.assertFalse((bundle / "releases").exists())
 
     def test_info_and_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
         with fake_metrics_ui_server() as ws_url:

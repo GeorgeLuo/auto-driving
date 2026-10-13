@@ -10,7 +10,10 @@ from unittest import mock
 
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.plugins import DuplicatePluginIdError
+from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
+from autonomy.runtime.plugin_catalog import ARMING_STEPS
 from cli.automa_cli import app
 from implementations.decision_cycle import catalog
 
@@ -55,8 +58,8 @@ class DeclaredIdTests(unittest.TestCase):
 
 
 class PresetActivationTests(unittest.TestCase):
-    def test_perception_and_memory_are_the_steps_with_presets(self) -> None:
-        self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory"))
+    def test_perception_memory_and_proposal_are_the_steps_with_presets(self) -> None:
+        self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory", "proposal"))
         self.assertEqual(set(catalog.DEFAULT_STEP_PRESETS), set(catalog.STEP_PRESETS))
         for step in catalog.STEPS:
             if step not in catalog.STEP_PRESETS:
@@ -81,7 +84,7 @@ class PresetActivationTests(unittest.TestCase):
                         )
 
     def test_every_preset_builds_its_steps_runner(self) -> None:
-        runners = {"perception": PerceptionRunner, "memory": MemoryRunner}
+        runners = {"perception": PerceptionRunner, "memory": MemoryRunner, "proposal": ProposalRunner}
         for step, presets in catalog.STEP_PRESETS.items():
             for name in presets:
                 with self.subTest(step=step, preset=name):
@@ -107,6 +110,12 @@ class PresetActivationTests(unittest.TestCase):
             return catalog.selection_activation(step, plugins=plugins).metadata["preset"]
 
         self.assertEqual(label("memory", ["bounded_evidence"]), "recency_ledger")
+        for step in ("perception", "memory", "proposal"):
+            with self.subTest(step=step):
+                default = catalog.DEFAULT_STEP_PRESETS[step]
+                plugins = catalog.STEP_PRESETS[step][default]["plugins"]
+                self.assertEqual(label(step, plugins), default)
+                self.assertEqual(label(step, []), catalog.CUSTOM_PRESET)
         self.assertEqual(label("perception", ["frame", "floor_plane"]), "lightweight_observer")
         # Order matters, an empty list is no preset, and a preset with config
         # overrides is not equalled by its plugin list alone.
@@ -115,6 +124,27 @@ class PresetActivationTests(unittest.TestCase):
         self.assertEqual(
             label("perception", ["frame", "floor_plane", "multi_obstruction_tracks"]), catalog.CUSTOM_PRESET
         )
+
+    def test_steps_without_presets_select_plugins_else_their_default(self) -> None:
+        """Regression: observation, plan and action were selected through
+        ``default_activations`` and ``workbench_plugins.step_selection``, apart
+        from the steps with presets."""
+
+        for step in ("observation", "plan", "action"):
+            with self.subTest(step=step):
+                default = catalog.selection_activation(step)
+                self.assertEqual(default.plugins, catalog.DEFAULT_STEP_PLUGINS[step])
+                self.assertNotIn("preset", default.metadata)
+                self.assertEqual(catalog.selection_activation(step, plugins=[]).plugins, ())
+                with self.assertRaisesRegex(ValueError, f"{step} has no presets"):
+                    catalog.selection_activation(step, preset="anything")
+
+    def test_the_runtime_arms_exactly_the_selectable_steps(self) -> None:
+        """Regression: the runtime's arming steps were a literal apart from the
+        catalog's selectable steps, so the two could name different steps."""
+
+        self.assertEqual(ARMING_STEPS, catalog.SELECTABLE_STEPS)
+        self.assertEqual(LIVE_SELECTION_STEPS, catalog.SELECTABLE_STEPS)
 
     def test_selection_errors_name_the_step(self) -> None:
         with self.assertRaisesRegex(ValueError, r"unknown memory preset 'nope'; known: .*recency_ledger"):

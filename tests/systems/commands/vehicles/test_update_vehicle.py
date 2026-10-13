@@ -8,10 +8,10 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from cli.automa_cli.step_activations import GENERIC_UPDATE_STEPS
+from autonomy.decision_cycle.activation import STEPS
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS, STEP_PRESETS
 from tests.support.cli_runner import run_automa
 
-UPDATE_STEPS = ("perception", "memory", *GENERIC_UPDATE_STEPS)
 DISCOVERY = "cli.automa_cli.vehicles.discover_active_vehicles"
 PICAR = {
     "vehicle_id": "piracer-test",
@@ -26,7 +26,7 @@ class UpdateVehicleTests(unittest.TestCase):
 
 
     def test_unknown_vehicle_json_is_transferable_between_all_step_commands(self) -> None:
-        for step in UPDATE_STEPS:
+        for step in STEPS:
             with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 result = run_automa(
@@ -42,6 +42,23 @@ class UpdateVehicleTests(unittest.TestCase):
                 self.assertEqual(result.stderr, "")
                 self.assertEqual(list(root.iterdir()), [])
 
+
+    def test_every_selectable_step_parses_its_selection_into_the_shared_update(self) -> None:
+        """Regression: perception, memory and proposal each wired their own
+        selection arguments to their own update path."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for step in SELECTABLE_STEPS:
+                preset = sorted(STEP_PRESETS[step])[-1]
+                with self.subTest(step=step):
+                    payload = json.loads(run_automa(
+                        "vehicles", "update", step, "--id", "chase-sim-chaser",
+                        "--preset", preset, "--dry-run", "--json", runtime_root=root,
+                    ).stdout)
+                    self.assertEqual(payload["schema"], "vehicle_step_update_v0")
+                    self.assertEqual((payload["step"], payload["preset"]), (step, preset))
+            self.assertEqual(list(root.iterdir()), [])
 
     def test_physical_memory_staging_supports_offline_cli_updates_of_every_step(self) -> None:
         # Exercise the public executable and real discovery HTTP boundary.
@@ -79,7 +96,7 @@ class UpdateVehicleTests(unittest.TestCase):
                 server.server_close()
                 worker.join(2)
                 before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
-                for step in UPDATE_STEPS:
+                for step in STEPS:
                     with self.subTest(step=step):
                         result = run_automa(
                             "vehicles", "update", step, "--id", "parity-pi",
@@ -124,15 +141,12 @@ class UpdateVehicleTests(unittest.TestCase):
         self.assertIn("Vehicle 'slow-pi' was not found among discoverable vehicles.", result.stdout)
         self.assertIn(f"GET {base_url}/autonomy/status did not answer within 0.2 s", result.stdout)
 
-    def test_help_explains_the_shared_identity_rule_and_perception_restart(self) -> None:
-        for step in UPDATE_STEPS:
+    def test_help_explains_the_shared_identity_rule(self) -> None:
+        for step in STEPS:
             with self.subTest(step=step):
                 help_text = " ".join(run_automa("vehicles", "update", step, "--help").stdout.split())
                 self.assertIn("matching identity metadata in any staged step", help_text)
                 self.assertIn("for each vehicle discovery probe", help_text)
-                if step == "perception":
-                    self.assertIn("local identity metadata does not bypass discovery", help_text)
-                    self.assertIn("Chase readiness check after staging", help_text)
 
 
 if __name__ == "__main__":

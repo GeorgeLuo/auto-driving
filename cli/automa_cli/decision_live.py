@@ -127,11 +127,6 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
             if evidence_value is not None
             else None
         ),
-        "preset": (
-            observation_value.get("perception_plugin_id")
-            if isinstance(observation_value, dict)
-            else None
-        ),
         "action_policy": mode,
         "control_source": "runtime_host",
         "control_application": "shared_execution" if mode == "autonomy" else "not_applied",

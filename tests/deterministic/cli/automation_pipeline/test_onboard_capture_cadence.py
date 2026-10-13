@@ -183,9 +183,9 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     started = time.monotonic()
                     code, message = runtime_monitor.monitor_runtime(
                         vehicle_id="picar-test", base_url="http://picar.invalid", automation_dir=root,
-                        perception={"preset": "gated", "plugins": [], "activation": "perception/active.json"},
+                        selections={"perception": {"preset": "gated", "plugins": [], "activation": "perception/active.json"}},
                         decision={"generation_id": "test", "steps": {}, "published": False},
-                        step_activations={}, configuration=RunConfiguration(mode="observe_only", interval_s=10.0, num_decisions=3),
+                        configuration=RunConfiguration(mode="observe_only", interval_s=10.0, num_decisions=3),
                         timeout_s=0.2, record=True, verbose=True, output=output,
                     )
                 self.assertEqual(code, 0, message)

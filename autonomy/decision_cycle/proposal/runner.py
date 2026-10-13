@@ -314,7 +314,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             return ProposalResult(frame_id=frame_id, status="error", reason=reason, source=source)
 
         with self._runtime_lock:
-            self.refresh_selection(shared_memory)
             self.run_count += 1
             self._execution_records = {}
             if isinstance(observation, Observation):

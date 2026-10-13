@@ -6,9 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from implementations.decision_cycle.perception.presets import (
-    DEFAULT_PERCEPTION_PRESET,
-)
+from autonomy.decision_cycle.activation import STEPS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS, selection_activation
 from tests.support.cli_runner import run_automa
 
 
@@ -156,12 +155,12 @@ class DeploymentUpdateTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_autonomy_update_v0")
         self.assertTrue(payload["release_id"].endswith("-preview"))
         self.assertTrue(payload["source"]["tree_sha256"])
+        # The plan shows what deploy stages on a fresh vehicle: every step's default.
+        self.assertEqual(payload["activation"]["presets"], DEFAULT_STEP_PRESETS)
         self.assertEqual(
-            payload["activation"]["perception_preset"],
-            DEFAULT_PERCEPTION_PRESET,
+            payload["activation"]["steps"],
+            {step: list(selection_activation(step).plugins) for step in STEPS},
         )
-        self.assertEqual(payload["activation"]["steps"]["action"], ["selected"])
-        self.assertEqual(payload["activation"]["steps"]["memory"], ["bounded_evidence"])
         self.assertTrue(payload["restart_requested"])
         self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey runtime service")
         self.assertIn("systemd/control.sh", payload["commands"][-1]["command"])

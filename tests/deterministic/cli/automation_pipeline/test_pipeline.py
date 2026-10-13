@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 from cli.automa_cli.automation import run_vehicle_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.perception import update_vehicle_perception
+from cli.automa_cli.step_activations import update_vehicle_step
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     VEHICLE_ID,
     _SlowMapper,
@@ -14,21 +14,6 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     chase_runtime,
     staged_runners,
 )
-
-
-_READY_STATUS = {
-    "layers": {
-        name: {"state": state}
-        for name, state in {
-            "simulator_server": "reachable",
-            "simulator_frontend": "connected",
-            "chase_game": "ready",
-            "vehicle": "discoverable",
-            "passive_capture": "available",
-            "automation_deployment": "deployed",
-        }.items()
-    },
-}
 
 
 class AutomationLivePipelineTests(unittest.TestCase):
@@ -50,20 +35,20 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     result = perceive(request)
                     applied_selections.append(tuple(mapper.plugin_ids))
                     if len(applied_selections) == 1:
-                        cli_updates.append(update_vehicle_perception(
-                            vehicle_id=VEHICLE_ID, plugins=["frame", "floor_plane"], json_output=True,
+                        cli_updates.append(update_vehicle_step(
+                            vehicle_id=VEHICLE_ID, step="perception", plugins=["frame", "floor_plane"],
+                            runtime_root=runtime_root, json_output=True,
                         ))
                     elif len(applied_selections) == 2:
-                        cli_updates.append(update_vehicle_perception(
-                            vehicle_id=VEHICLE_ID, plugins=["floor_plane"], json_output=True,
+                        cli_updates.append(update_vehicle_step(
+                            vehicle_id=VEHICLE_ID, step="perception", plugins=["floor_plane"],
+                            runtime_root=runtime_root, json_output=True,
                         ))
                     return result
 
                 mapper.perceive = perceive_with_cli_updates
 
             with (
-                patch("cli.automa_cli.perception.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.perception.get_vehicle_status", return_value=_READY_STATUS),
                 staged_runners(wrap=wrap_perception),
                 chase_runtime(runtime_root),
             ):
@@ -76,7 +61,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 applied_selections,
                 [("frame",), ("frame", "floor_plane"), ("floor_plane",)],
             )
-            self.assertEqual([update.exit_code for update in cli_updates], [0, 0])
+            self.assertEqual([code for code, _ in cli_updates], [0, 0])
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
             state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["steps"]["perception"]["plugin_ids"], ["floor_plane"])

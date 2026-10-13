@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from cli.automa_cli.decision_steps import inspect_decision_step
+from cli.automa_cli.step_replay import StepReplay
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 
@@ -71,6 +73,15 @@ class DecisionStepInspectTests(unittest.TestCase):
         replayed = self.inspect("proposal", source=run_dir)
         self.assertEqual(replayed["source"]["frame_count"], 3)
         self.assertEqual(replayed["selections"]["action"]["plugins"], ["mode"])
+
+    def test_a_recording_that_disabled_a_selectable_step_replays_it_empty(self) -> None:
+        """Regression: a disabled proposal replayed without a runner, unlike perception and memory."""
+
+        replay = StepReplay({"steps": dict.fromkeys(SELECTABLE_STEPS)}, steps=SELECTABLE_STEPS)
+        for step in SELECTABLE_STEPS:
+            with self.subTest(step=step):
+                self.assertEqual(replay.activations[step].plugins, ())
+                self.assertIsNotNone(replay.runners[step])
 
 
 if __name__ == "__main__":

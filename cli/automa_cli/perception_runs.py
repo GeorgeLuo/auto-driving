@@ -18,6 +18,7 @@ from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
+from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     SensorFrame,
@@ -176,7 +177,7 @@ def _inspect_vehicle(
             frame_records: list[dict[str, Any]] = []
             for index in range(frame_count):
                 frame_id = f"frame_{index:06d}"
-                started = time.perf_counter()
+                started = clock()
                 sensor_frame = access.car.read_sensors(
                     SensorReadRequest(
                         output_dir=frames_dir,
@@ -441,14 +442,14 @@ def perceive_sensor_frame(
 
     With ``result_dir`` the plugins write their outputs there and the frame's
     ``perception.json`` and ``perception.txt`` are saved beside them. ``started``
-    is a ``time.perf_counter()`` reading that begins ``duration_ms`` earlier
+    is a ``timing.clock()`` reading that begins ``duration_ms`` earlier
     than this call, for callers that time the sensor read too.
     ``absence_reason`` records a gap and resets temporal state without invoking
     plugins, matching the memory and workbench replay boundary.
     """
 
     if started is None:
-        started = time.perf_counter()
+        started = clock()
     if absence_reason is not None:
         # Match replay's gap boundary: tracks cannot bridge an absent frame.
         runner.reset(shared_memory)
@@ -468,7 +469,7 @@ def perceive_sensor_frame(
             metadata=metadata,
             output_dir=result_dir,
         )
-    duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+    duration_ms = elapsed_ms(started)
     record = _frame_record(
         frame_id=frame_id,
         frame_index=frame_index,

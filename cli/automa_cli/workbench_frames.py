@@ -136,6 +136,10 @@ def run_frame(
             },
         )
 
+    if callable(getattr(perception_step, "timing", None)):
+        # The cycle reads each step's timing from its slot; this one is the runner's.
+        perceive.timing = perception_step.timing
+
     def observe(
         current: DecisionFrameContext,
         perception: PerceptionText | None,

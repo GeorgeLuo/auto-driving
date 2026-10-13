@@ -24,13 +24,13 @@ from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Callable
 
 from autonomy.decision_cycle.action.result import ActionResult
-from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.timing import clock, cycle_timing, elapsed_ms
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 
@@ -72,9 +72,9 @@ class DecisionCycleResult:
     ``memory`` is the memory step's report of plugin state, for diagnostics;
     plugins read what memory published in the host map.
 
-    ``duration_ms`` is the wall-clock total, ``completed_at_ms - started_at_ms``.
-    ``timing`` is the monotonic span of ``run`` and of each step, with each
-    applied plugin's duration copied from that step's plugin report.
+    ``timing`` is ``cycle_timing``: the cycle's monotonic total and each
+    step's and plugin's duration. ``duration_ms`` is that total; a result
+    built without timing falls back to ``completed_at_ms - started_at_ms``.
     """
 
     context: DecisionFrameContext
@@ -92,7 +92,9 @@ class DecisionCycleResult:
     schema: str = DECISION_CYCLE_RESULT_SCHEMA
 
     @property
-    def duration_ms(self) -> int:
+    def duration_ms(self) -> float | int:
+        if self.timing is not None:
+            return self.timing["duration_ms"]
         return self.completed_at_ms - self.started_at_ms
 
     def control_record(self) -> dict[str, Any]:
@@ -137,72 +139,44 @@ class DecisionCycle:
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
         steps = self.steps
         started_at_ms = timestamp_ms()
-        started = time.perf_counter()
-        spans: dict[str, dict[str, Any]] = {}
-
-        def run_step(name: str, runner: Any, call: Callable[[], Any]) -> Any:
-            if runner is None:
-                spans[name] = {"duration_ms": None, "plugins": []}
-                return None
-            step_started = time.perf_counter()
-            try:
-                return call()
-            finally:
-                spans[name] = {
-                    "duration_ms": _span_ms(step_started),
-                    "plugins": _timing_plugins(runner),
-                }
-
-        perception = run_step(
+        started = clock()
+        perception = _checked(
             "perception",
-            steps.perception,
-            lambda: _checked("perception", steps.perception(context), PerceptionText),
+            steps.perception(context) if steps.perception else None,
+            PerceptionText,
         )
-        observation = run_step(
+        observation = _checked(
             "observation",
-            steps.observation,
-            lambda: _checked(
-                "observation", steps.observation(context, perception), Observation
-            ),
+            steps.observation(context, perception) if steps.observation else None,
+            Observation,
         )
-
-        def _memory() -> dict[str, Any] | None:
+        try:
+            # Memory plugins write the host map; the step returns a report.
+            memory = steps.memory(context, observation) if steps.memory else None
+            if memory is not None and not isinstance(memory, dict):
+                raise TypeError("memory step must return a report dict or None")
+        except MemoryUpdateError:
+            raise
+        except Exception as exc:
             try:
-                # Memory plugins write the host map; the step returns a report.
-                memory = steps.memory(context, observation)
-                if memory is not None and not isinstance(memory, dict):
-                    raise TypeError("memory step must return a report dict or None")
-                return memory
-            except MemoryUpdateError:
-                raise
-            except Exception as exc:
-                try:
-                    detail = str(exc)
-                except Exception:
-                    detail = "unprintable error"
-                raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
-
-        memory = run_step("memory", steps.memory, _memory)
-        proposal = run_step(
+                detail = str(exc)
+            except Exception:
+                detail = "unprintable error"
+            raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
+        proposal = _checked(
             "proposal",
-            steps.proposal,
-            lambda: _checked(
-                "proposal", steps.proposal(context, observation), ProposalResult
-            ),
+            steps.proposal(context, observation) if steps.proposal else None,
+            ProposalResult,
         )
-        plan = run_step(
+        plan = _checked(
             "plan",
-            steps.plan,
-            lambda: _checked("plan", steps.plan(context, proposal), ActionPlan),
+            steps.plan(context, proposal) if steps.plan else None,
+            ActionPlan,
         )
-        action = run_step(
+        action = _checked(
             "action",
-            steps.action,
-            lambda: _checked(
-                "action",
-                steps.action(context, proposal, plan),
-                ActionResult,
-            ),
+            steps.action(context, proposal, plan) if steps.action else None,
+            ActionResult,
         )
         control = (
             action.control
@@ -220,34 +194,8 @@ class DecisionCycle:
             control=control,
             started_at_ms=started_at_ms,
             completed_at_ms=timestamp_ms(),
-            timing={
-                "duration_ms": _span_ms(started),
-                "steps": {name: spans[name] for name in STEPS},
-            },
+            timing=cycle_timing(elapsed_ms(started), steps),
         )
-
-
-def _span_ms(started: float) -> float:
-    return round((time.perf_counter() - started) * 1000.0, 3)
-
-
-def _timing_plugins(runner: Any) -> list[dict[str, Any]]:
-    """The step's plugin report, reduced to identity, duration, and error."""
-
-    report_for = getattr(runner, "plugin_report", None)
-    if not callable(report_for):
-        return []
-    payload = report_for()
-    plugins = payload.get("plugins") if isinstance(payload, dict) else ()
-    return [
-        {
-            "plugin_id": item.get("plugin_id"),
-            "duration_ms": item.get("duration_ms"),
-            "error": item.get("error"),
-        }
-        for item in plugins
-        if isinstance(item, dict)
-    ]
 
 
 def _checked(step: str, record: Any, record_type: type) -> Any:

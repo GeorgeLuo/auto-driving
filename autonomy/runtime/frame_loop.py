@@ -126,7 +126,7 @@ class LatestObservationState:
     control: dict[str, Any]
     cycle: dict[str, Any] | None
     error: str | None = None
-    duration_ms: int = 0
+    duration_ms: float = 0
     skipped_since_previous: int = 0
     presets: dict[str, str] = field(default_factory=dict)
     decision_publication: dict[str, Any] | None = None

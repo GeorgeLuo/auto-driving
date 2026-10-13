@@ -1263,6 +1263,7 @@ class ImageReplayRunner:
             "memory_evidence_publisher": evidence_publisher(memory),
             "memory_effects": _memory_effects(previous_memory, memory),
             "duration_ms": result.duration_ms,
+            "timing": copy.deepcopy(result.timing),
         }
 
     def _upsert_timeline_locked(self, detail: dict[str, Any]) -> None:
@@ -1293,6 +1294,7 @@ class ImageReplayRunner:
             "memory_effects": copy.deepcopy(detail["memory_effects"]),
             "decision": self._decision_timeline_item(detail["steps"]["decision"]),
             "duration_ms": detail["duration_ms"],
+            "timing": copy.deepcopy(detail.get("timing")),
         }
 
     def _decision_step_plugins(self) -> dict[str, list[str]]:

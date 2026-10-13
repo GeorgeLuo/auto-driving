@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -26,20 +25,15 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
     def __call__(
         self, context: DecisionFrameContext, perception: PerceptionText | None
     ) -> Observation | None:
-        with self._runtime_lock:
+        with self._runtime_lock, self._timed_step(), self._timed_single() as plugin:
             self.run_count += 1
-            definition, plugin = self.applied[0]
-            started = time.perf_counter()
             try:
-                try:
-                    observation = plugin.observe(context, perception)
-                    if observation is not None and not isinstance(observation, Observation):
-                        raise TypeError("observation plugin must return an Observation or None")
-                except Exception as exc:
-                    self.failure_count += 1
-                    self.last_error = describe_exception(exc)
-                    raise
-                self.last_error = None
-                return observation
-            finally:
-                self.note_plugin(definition.plugin_id, started, self.last_error)
+                observation = plugin.observe(context, perception)
+                if observation is not None and not isinstance(observation, Observation):
+                    raise TypeError("observation plugin must return an Observation or None")
+            except Exception as exc:
+                self.failure_count += 1
+                self.last_error = describe_exception(exc)
+                raise
+            self.last_error = None
+            return observation

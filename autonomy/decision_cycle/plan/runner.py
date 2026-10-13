@@ -9,7 +9,6 @@ candidates.
 
 from __future__ import annotations
 
-import time
 from typing import ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -31,16 +30,13 @@ class PlanRunner(StepRunner[PlanPlugin]):
     def __call__(
         self, context: DecisionFrameContext, proposal: ProposalResult | None
     ) -> ActionPlan | None:
-        if proposal is not None and proposal.status != "ok":
-            with self._runtime_lock:
-                self._plugin_notes.clear()
-            return None
-        candidates = proposal.candidates if proposal is not None else ()
-        with self._runtime_lock:
+        with self._runtime_lock, self._timed_step():
+            # A failed proposal skips the plugin; its record stays null.
+            if proposal is not None and proposal.status != "ok":
+                return None
+            candidates = proposal.candidates if proposal is not None else ()
             self.run_count += 1
-            definition, plugin = self.applied[0]
-            started = time.perf_counter()
-            try:
+            with self._timed_single() as plugin:
                 try:
                     plan = plugin.plan(
                         tuple(candidates),
@@ -54,8 +50,6 @@ class PlanRunner(StepRunner[PlanPlugin]):
                     return None
                 self.last_error = None
                 return plan
-            finally:
-                self.note_plugin(definition.plugin_id, started, self.last_error)
 
 
 def _check_plan(plan: object, plugin_id: str, frame_id: str, candidates) -> None:

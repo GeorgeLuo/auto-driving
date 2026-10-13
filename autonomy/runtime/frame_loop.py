@@ -637,6 +637,7 @@ class FrameLoop:
                 "status": health,
                 "error": None,
                 "duration_ms": None,
+                "timing": None,
                 "perception": None,
                 "observation": None,
                 "memory": None,
@@ -656,6 +657,7 @@ class FrameLoop:
 
         perception = None if latest.cycle is None else deepcopy(latest.cycle.get("perception"))
         observation = None if latest.cycle is None else deepcopy(latest.cycle.get("observation"))
+        timing = None if latest.cycle is None else deepcopy(latest.cycle.get("timing"))
         # Republish the memory report through the cycle publication.
         memory = None if latest.cycle is None else deepcopy(latest.cycle.get("memory"))
         context = latest.context or (latest.cycle or {}).get("context") or {}
@@ -697,6 +699,7 @@ class FrameLoop:
             "status": latest.status,
             "error": latest.error,
             "duration_ms": latest.duration_ms,
+            "timing": timing,
             "skipped_since_previous": latest.skipped_since_previous,
             "perception": perception,
             "observation": observation,

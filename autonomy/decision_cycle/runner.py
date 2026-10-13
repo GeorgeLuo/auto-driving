@@ -32,6 +32,7 @@ through the hooks ``StepRunner`` names, not by reimplementing the surface.
 from __future__ import annotations
 
 import inspect
+import time
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
@@ -120,6 +121,7 @@ class StepRunner(Generic[PluginT]):
       state the step publishes with its plugins. They run under the lock the
       public selection methods take.
     - ``_reset_plugin``: how one plugin resets.
+    - ``note_plugin``: one plugin's duration and error, kept for ``_plugin_records``.
     - ``_plugin_records``: each plugin's timing and error in ``plugin_report``.
     - ``status``: extend ``super().status()`` with the step's own fields.
 
@@ -147,6 +149,7 @@ class StepRunner(Generic[PluginT]):
         self.last_error: str | None = None
         self.run_count = 0
         self.failure_count = 0
+        self._plugin_notes: dict[str, dict[str, Any]] = {}
         self.apply_selection()
 
     @classmethod
@@ -260,6 +263,7 @@ class StepRunner(Generic[PluginT]):
             for _definition, plugin in self.applied:
                 self._reset_plugin(plugin, shared_memory)
             self.last_error = None
+            self._plugin_notes.clear()
 
     def _reset_plugin(self, plugin: PluginT, shared_memory: SharedMemory | None) -> None:
         reset_plugin(plugin, shared_memory)
@@ -272,11 +276,27 @@ class StepRunner(Generic[PluginT]):
         with self._runtime_lock:
             return build_plugin_report(self.plugin_manager, self.applied, self._plugin_records())
 
+    def note_plugin(self, plugin_id: str, started: float, error: str | None) -> None:
+        """Remember one plugin invocation for the next ``plugin_report``.
+
+        ``started`` is a ``time.perf_counter`` reading taken before the call.
+        The caller holds the runtime lock. A later ``reset`` clears the note.
+        """
+
+        self._plugin_notes[plugin_id] = {
+            "plugin_id": plugin_id,
+            "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
+            "error": error,
+        }
+
     def _plugin_records(self) -> list[dict[str, Any]]:
         """Each applied plugin's ``plugin_id``, ``duration_ms`` and ``error``."""
 
         return [
-            {"plugin_id": definition.plugin_id, "duration_ms": None, "error": self.last_error}
+            self._plugin_notes.get(
+                definition.plugin_id,
+                {"plugin_id": definition.plugin_id, "duration_ms": None, "error": self.last_error},
+            )
             for definition, _plugin in self.applied
         ]
 

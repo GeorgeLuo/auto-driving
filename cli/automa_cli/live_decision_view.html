@@ -372,6 +372,29 @@
       statusDot.className = `status-dot ${mode || ""}`;
     }
 
+    const STEP_NAMES = ["perception", "observation", "memory", "proposal", "plan", "action"];
+
+    function msText(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "—";
+      return String(Math.round(number * 1000) / 1000);
+    }
+
+    function formatMs(value) {
+      const text = msText(value);
+      return text === "—" ? text : `${text} ms`;
+    }
+
+    function stepTimingText(step) {
+      const plugins = Array.isArray(step?.plugins) ? step.plugins : [];
+      if (step?.duration_ms == null || !plugins.length) return "—";
+      const parts = plugins
+        .filter((plugin) => plugin && plugin.plugin_id)
+        .map((plugin) => `${plugin.plugin_id} ${msText(plugin.duration_ms)}`);
+      if (!parts.length) return "—";
+      return `${msText(step.duration_ms)} ms · ${parts.join(" · ")}`;
+    }
+
     function appendMetric(container, name, value) {
       const term = document.createElement("dt");
       term.textContent = name;
@@ -480,6 +503,11 @@
       const cycleMetrics = document.getElementById("cycleMetrics");
       cycleMetrics.replaceChildren();
       appendMetric(cycleMetrics, "Frame", latest.current_image?.frame_id);
+      appendMetric(cycleMetrics, "Cycle", formatMs(decision.timing?.duration_ms));
+      for (const name of STEP_NAMES) {
+        const label = name.charAt(0).toUpperCase() + name.slice(1);
+        appendMetric(cycleMetrics, label, stepTimingText(decision.timing?.steps?.[name]));
+      }
       appendMetric(cycleMetrics, "Status", cycle.action?.status || latest.status);
       appendMetric(cycleMetrics, "Proposal", candidate?.reason || plan.status || "—");
       appendMetric(cycleMetrics, "Freshness", candidate?.freshness || candidate?.lifecycle || "—");

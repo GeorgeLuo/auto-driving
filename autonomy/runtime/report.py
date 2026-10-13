@@ -6,7 +6,9 @@ that only one vehicle has goes in ``values``. ``report_from_host_result``
 builds that document from a completed host cycle and the control application
 recorded after the cycle. Each vehicle transports the document itself.
 
-``cycle`` is the proposal, plan, and action records. ``plan`` is null when
+``cycle`` is the proposal, plan, and action records. ``timing`` is the
+monotonic span of the cycle and of each step, with each plugin's duration.
+``plan`` is null when
 planning did not produce a record, which is how a failed cycle is represented.
 The key stays required. Proposal and action stay objects, so the existing
 typed cycle check can still reconstruct them.
@@ -20,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
+from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.execution import require_mode
 
 REPORT_SCHEMA = "vehicle_report_v0"
@@ -34,10 +37,14 @@ REPORT_EXACT_KEYS = frozenset(
         "timestamp_ms",
         "published_at_ms",
         "cycle",
+        "timing",
         "application",
         "values",
     }
 )
+TIMING_EXACT_KEYS = frozenset({"duration_ms", "steps"})
+TIMING_STEP_EXACT_KEYS = frozenset({"duration_ms", "plugins"})
+TIMING_PLUGIN_EXACT_KEYS = frozenset({"plugin_id", "duration_ms", "error"})
 CYCLE_EXACT_KEYS = frozenset({"proposal", "plan", "action"})
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
 
@@ -84,6 +91,81 @@ def _unit(value: object, *, field: str) -> float:
     if not math.isfinite(number) or number < -1.0 or number > 1.0:
         raise ValueError(f"{field} must be a finite number in [-1, 1]")
     return number
+
+
+def _finite_number(value: object, *, field: str, allow_null: bool = False) -> float | int | None:
+    if allow_null and value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or (
+        type(value) is float and not math.isfinite(value)
+    ):
+        expected = "a finite number or null" if allow_null else "a finite number"
+        raise ValueError(f"{field} must be {expected}")
+    return value
+
+
+def _timing_plugin(payload: object, *, field: str) -> dict[str, Any]:
+    if type(payload) is not dict:
+        raise ValueError(f"{field} must be an object")
+    _exact_keys(payload, TIMING_PLUGIN_EXACT_KEYS, field=field)
+    return {
+        "plugin_id": require_ascii_id(payload["plugin_id"], field_name=f"{field}.plugin_id"),
+        "duration_ms": _finite_number(
+            payload["duration_ms"], field=f"{field}.duration_ms", allow_null=True
+        ),
+        "error": _timing_error(payload["error"], field=f"{field}.error"),
+    }
+
+
+def _timing_error(value: object, *, field: str) -> str | None:
+    if value is None:
+        return None
+    if type(value) is not str:
+        raise ValueError(f"{field} must be a string or null")
+    return value
+
+
+def _timing_step(payload: object, *, field: str) -> dict[str, Any]:
+    if type(payload) is not dict:
+        raise ValueError(f"{field} must be an object")
+    _exact_keys(payload, TIMING_STEP_EXACT_KEYS, field=field)
+    plugins = payload["plugins"]
+    if type(plugins) is not list:
+        raise ValueError(f"{field}.plugins must be a list")
+    return {
+        "duration_ms": _finite_number(
+            payload["duration_ms"], field=f"{field}.duration_ms", allow_null=True
+        ),
+        "plugins": [
+            _timing_plugin(item, field=f"{field}.plugins[{index}]")
+            for index, item in enumerate(plugins)
+        ],
+    }
+
+
+def require_timing(payload: object) -> dict[str, Any]:
+    """The cycle's monotonic spans: one total, and one record per step."""
+
+    if type(payload) is not dict:
+        raise ValueError("timing must be an object")
+    _exact_keys(payload, TIMING_EXACT_KEYS, field="timing")
+    steps = payload["steps"]
+    if type(steps) is not dict:
+        raise ValueError("timing.steps must be an object")
+    _exact_keys(steps, frozenset(STEPS), field="timing.steps")
+    return {
+        "duration_ms": _finite_number(payload["duration_ms"], field="timing.duration_ms"),
+        "steps": {step: _timing_step(steps[step], field=f"timing.steps.{step}") for step in STEPS},
+    }
+
+
+def empty_timing() -> dict[str, Any]:
+    """A report timing for a host result that did not record one."""
+
+    return {
+        "duration_ms": 0.0,
+        "steps": {step: {"duration_ms": None, "plugins": []} for step in STEPS},
+    }
 
 
 def _cycle_record(record: object, *, key: str) -> Any:
@@ -151,6 +233,7 @@ class VehicleReport:
     timestamp_ms: int
     published_at_ms: int
     cycle: dict[str, Any]
+    timing: dict[str, Any]
     application: ReportApplication
     values: dict[str, Any]
     schema: str = REPORT_SCHEMA
@@ -188,6 +271,7 @@ class VehicleReport:
             for key in ("proposal", "plan", "action")
         }
         object.__setattr__(self, "cycle", cycle)
+        object.__setattr__(self, "timing", require_timing(self.timing))
         if not isinstance(self.application, ReportApplication):
             raise TypeError("application must be ReportApplication")
         if not isinstance(self.values, Mapping):
@@ -208,6 +292,7 @@ class VehicleReport:
             "timestamp_ms": self.timestamp_ms,
             "published_at_ms": self.published_at_ms,
             "cycle": _json_copy(self.cycle, field="cycle"),
+            "timing": _json_copy(self.timing, field="timing"),
             "application": self.application.to_dict(),
             "values": _json_copy(self.values, field="values"),
         }
@@ -227,6 +312,7 @@ class VehicleReport:
             timestamp_ms=payload["timestamp_ms"],
             published_at_ms=payload["published_at_ms"],
             cycle=payload["cycle"],
+            timing=payload["timing"],
             application=ReportApplication.from_dict(payload["application"]),
             values=payload["values"],
         )
@@ -319,6 +405,7 @@ def report_from_host_result(
             "plan": None if plan is None else _export_record(plan, field="cycle.plan"),
             "action": _export_record(action, field="cycle.action"),
         },
+        timing=empty_timing() if getattr(result, "timing", None) is None else result.timing,
         application=ReportApplication(
             applied=application.applied,
             mode=application.mode,

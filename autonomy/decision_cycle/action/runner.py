@@ -11,6 +11,7 @@ host-reported application envelope recorded in the authority.
 
 from __future__ import annotations
 
+import time
 from typing import ClassVar
 
 from autonomy.decision_cycle.action.hold import HoldAction
@@ -55,15 +56,19 @@ class ActionRunner(StepRunner[ActionPlugin]):
             error_reason = None
         with self._runtime_lock:
             self.run_count += 1
-            plugin = self._single()
-            return self._decide(
-                plugin,
-                frame_id=context.frame_id,
-                plan=plan if error_reason is None else None,
-                mode=mode,
-                error_reason=error_reason,
-                host_application=host_application,
-            )
+            definition, plugin = self.applied[0]
+            started = time.perf_counter()
+            try:
+                return self._decide(
+                    plugin,
+                    frame_id=context.frame_id,
+                    plan=plan if error_reason is None else None,
+                    mode=mode,
+                    error_reason=error_reason,
+                    host_application=host_application,
+                )
+            finally:
+                self.note_plugin(definition.plugin_id, started, self.last_error)
 
     def _decide(
         self,

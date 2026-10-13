@@ -578,6 +578,19 @@
       }
     }
 
+    function formatMs(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "—";
+      return `${Math.round(number * 1000) / 1000} ms`;
+    }
+
+    function cycleTimingText(cycle) {
+      const timed = cycle?.timing?.duration_ms;
+      if (timed != null && Number.isFinite(Number(timed))) return `${Number(timed)} ms`;
+      const fallback = cycle?.cycle_duration_ms ?? cycle?.perception_duration_ms;
+      return formatMs(fallback);
+    }
+
     function appendMetric(container, name, value) {
       const term = document.createElement("dt");
       term.textContent = name;
@@ -638,7 +651,8 @@
       appendMetric(metrics, "Overlay source", latest.overlay?.source_frame_id || "pending");
       appendMetric(metrics, "Overlay lag", overlayLagText(latest.overlay));
       appendMetric(metrics, "Result age", formatAge(latest.overlay?.result_age_ms));
-      appendMetric(metrics, "Perception", `${latest.cycle?.perception_duration_ms ?? "?"} ms`);
+      appendMetric(metrics, "Cycle", cycleTimingText(latest.cycle));
+      appendMetric(metrics, "Step", formatMs(latest.cycle?.timing?.steps?.perception?.duration_ms));
       appendMetric(metrics, "Confidence", Number(latest.perception?.confidence || 0).toFixed(3));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");
       appendMetric(metrics, "Memory keys", memoryKeysText(latest.memory));

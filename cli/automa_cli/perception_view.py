@@ -307,6 +307,7 @@ def _publication_payload(
         "cycle": {
             "cycle_duration_ms": source.get("cycle_duration_ms"),
             "perception_duration_ms": source.get("perception_duration_ms"),
+            "timing": source.get("timing") if isinstance(source.get("timing"), dict) else None,
             "control_source": source.get("control_source"),
             "control_application": source.get("control_application"),
             "action_policy": source.get("action_policy"),

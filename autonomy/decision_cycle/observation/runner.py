@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -27,13 +28,18 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
     ) -> Observation | None:
         with self._runtime_lock:
             self.run_count += 1
+            definition, plugin = self.applied[0]
+            started = time.perf_counter()
             try:
-                observation = self._single().observe(context, perception)
-                if observation is not None and not isinstance(observation, Observation):
-                    raise TypeError("observation plugin must return an Observation or None")
-            except Exception as exc:
-                self.failure_count += 1
-                self.last_error = describe_exception(exc)
-                raise
-            self.last_error = None
-            return observation
+                try:
+                    observation = plugin.observe(context, perception)
+                    if observation is not None and not isinstance(observation, Observation):
+                        raise TypeError("observation plugin must return an Observation or None")
+                except Exception as exc:
+                    self.failure_count += 1
+                    self.last_error = describe_exception(exc)
+                    raise
+                self.last_error = None
+                return observation
+            finally:
+                self.note_plugin(definition.plugin_id, started, self.last_error)

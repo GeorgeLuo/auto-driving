@@ -9,6 +9,7 @@ candidates.
 
 from __future__ import annotations
 
+import time
 from typing import ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -31,24 +32,30 @@ class PlanRunner(StepRunner[PlanPlugin]):
         self, context: DecisionFrameContext, proposal: ProposalResult | None
     ) -> ActionPlan | None:
         if proposal is not None and proposal.status != "ok":
+            with self._runtime_lock:
+                self._plugin_notes.clear()
             return None
         candidates = proposal.candidates if proposal is not None else ()
         with self._runtime_lock:
             self.run_count += 1
-            plugin = self._single()
+            definition, plugin = self.applied[0]
+            started = time.perf_counter()
             try:
-                plan = plugin.plan(
-                    tuple(candidates),
-                    frame_id=context.frame_id,
-                    timestamp_ms=context.timestamp_ms,
-                )
-                _check_plan(plan, plugin.plugin_id, context.frame_id, candidates)
-            except Exception as exc:  # noqa: BLE001 - a failed plan fails the action closed
-                self.failure_count += 1
-                self.last_error = describe_exception(exc)
-                return None
-            self.last_error = None
-            return plan
+                try:
+                    plan = plugin.plan(
+                        tuple(candidates),
+                        frame_id=context.frame_id,
+                        timestamp_ms=context.timestamp_ms,
+                    )
+                    _check_plan(plan, plugin.plugin_id, context.frame_id, candidates)
+                except Exception as exc:  # noqa: BLE001 - a failed plan fails the action closed
+                    self.failure_count += 1
+                    self.last_error = describe_exception(exc)
+                    return None
+                self.last_error = None
+                return plan
+            finally:
+                self.note_plugin(definition.plugin_id, started, self.last_error)
 
 
 def _check_plan(plan: object, plugin_id: str, frame_id: str, candidates) -> None:

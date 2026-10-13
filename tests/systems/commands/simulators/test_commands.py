@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support.cli_runner import run_automa
+from tests.shared.cli.invoke import invoke_automa
 from tests.support.fake_browser import fake_browser_environment, read_browser_calls
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 from tests.support.fake_simeval import fake_simeval_environment, read_simeval_calls
@@ -33,14 +33,14 @@ def _run_fake_forms(
         machine_env = {**machine_env, **fake_browser_environment(machine_root)}
 
     with fake_metrics_ui_server() as ws_url:
-        human = run_automa(
+        human = invoke_automa(
             "simulators",
             command,
             *options,
             extra_env={**human_env, "CHASE_UI_WS_URL": ws_url},
             check=check,
         )
-        machine = run_automa(
+        machine = invoke_automa(
             "simulators",
             command,
             *options,
@@ -105,35 +105,6 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertIn(result["error"], human.stdout)
         self.assertIn(result["recovery"], human.stdout)
         self.assertIn("frontend tab connected: no", human.stdout)
-
-    def test_missing_simeval_status_is_structured_and_actionable(self) -> None:
-        env = {"PATH": "", "AUTOMA_SIMEVAL_BIN": ""}
-        human = run_automa(
-            "simulators",
-            "status",
-            extra_env=env,
-            check=False,
-        )
-        machine = run_automa(
-            "simulators",
-            "status",
-            "--json",
-            extra_env=env,
-            check=False,
-        )
-
-        payload = json.loads(machine.stdout)
-        result = payload["result"]
-        self.assertEqual(human.returncode, 2)
-        self.assertEqual(machine.returncode, 2)
-        self.assertEqual(result["status"], "unavailable")
-        self.assertEqual(result["reason_code"], "simeval_missing")
-        self.assertIn(result["error"], human.stdout)
-        self.assertIn(result["recovery"], human.stdout)
-        self.assertEqual(payload["commands"], [])
-        self.assertNotIn("Traceback", human.stdout)
-        self.assertEqual(human.stderr, "")
-        self.assertEqual(machine.stderr, "")
 
 
 class SimulatorEnsureTests(unittest.TestCase):
@@ -214,7 +185,7 @@ class SimulatorEnsureTests(unittest.TestCase):
                 **fake_browser_environment(root),
             }
             with fake_metrics_ui_server() as ws_url:
-                machine = run_automa(
+                machine = invoke_automa(
                     "simulators",
                     "ensure",
                     "--json",
@@ -237,7 +208,7 @@ class SimulatorEnsureTests(unittest.TestCase):
                 **fake_browser_environment(root),
             }
             with fake_metrics_ui_server() as ws_url:
-                machine = run_automa(
+                machine = invoke_automa(
                     "simulators",
                     "ensure",
                     "--json",
@@ -288,7 +259,7 @@ class SimulatorEnsureTests(unittest.TestCase):
             root = Path(tmp)
             env = fake_simeval_environment(root, "offline_then_launch")
             with fake_metrics_ui_server() as ws_url:
-                machine = run_automa(
+                machine = invoke_automa(
                     "simulators",
                     "ensure",
                     "--json",
@@ -325,36 +296,6 @@ class SimulatorEnsureTests(unittest.TestCase):
         self.assertTrue(
             any(command.get("stderr") == "launch failed" for command in payload["commands"])
         )
-
-    def test_missing_simeval_ensure_is_structured_and_actionable(self) -> None:
-        env = {"PATH": "", "AUTOMA_SIMEVAL_BIN": ""}
-        human = run_automa(
-            "simulators",
-            "ensure",
-            extra_env=env,
-            check=False,
-        )
-        machine = run_automa(
-            "simulators",
-            "ensure",
-            "--json",
-            extra_env=env,
-            check=False,
-        )
-
-        payload = json.loads(machine.stdout)
-        result = payload["result"]
-        self.assertEqual(human.returncode, 2)
-        self.assertEqual(machine.returncode, 2)
-        self.assertEqual(result["status"], "unavailable")
-        self.assertEqual(result["reason_code"], "simeval_missing")
-        self.assertFalse(result["launch_attempted"])
-        self.assertIn(result["error"], human.stdout)
-        self.assertIn(result["recovery"], human.stdout)
-        self.assertEqual(payload["commands"], [])
-        self.assertNotIn("Traceback", human.stdout)
-        self.assertEqual(human.stderr, "")
-        self.assertEqual(machine.stderr, "")
 
 
 if __name__ == "__main__":

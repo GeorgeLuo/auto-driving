@@ -10,21 +10,25 @@ from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
-from tests.shared.integration.plugin_flow_fixtures import frame, write_plugin
-from tests.systems.journeys.plugins import test_arming
-from tests.systems.journeys.plugins.test_arming import arm_step, catalog, selected, upload
-from tests.support.cli_runner import run_automa
+from tests.shared.integration.plugin_flow_fixtures import (
+    arm_step,
+    catalog,
+    frame,
+    plugin_host,
+    selected,
+    upload,
+    write_plugin,
+)
+from tests.shared.cli.invoke import invoke_automa
 
 
 class PluginDisarmingFlows(unittest.TestCase):
-    host = test_arming.PluginArmingFlows.host
-
     def disarm(self, base, *args, check=True):
-        return run_automa("vehicles", "plugins", "disarm", "--url", base, *args, check=check)
+        return invoke_automa("vehicles", "plugins", "disarm", "--url", base, *args, check=check)
 
     def test_named_removal_keeps_catalog_order_and_retained_instances(self):
         for vehicle in ("chase", "picar"):
-            with self.subTest(vehicle=vehicle), image_source(1) as root, self.host(root, vehicle) as (host, base):
+            with self.subTest(vehicle=vehicle), image_source(1) as root, plugin_host(root, vehicle) as (host, base):
                 for name in ("first", "second", "third"):
                     file = root / f"{name}.py"
                     write_plugin(file, "proposal", name, 1)
@@ -55,7 +59,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertIsNot(rearmed["second"], instances["second"])
 
     def test_retained_memory_history_survives_proposal_deselection(self):
-        with image_source(1) as root, self.host(root) as (host, base):
+        with image_source(1) as root, plugin_host(root) as (host, base):
             for step, name in (("perception", "prototype-perception"), ("memory", "prototype-memory"),
                                ("proposal", "first"), ("proposal", "second")):
                 file = root / f"{name}.py"
@@ -72,7 +76,7 @@ class PluginDisarmingFlows(unittest.TestCase):
 
     def test_clear_step_and_all_steps_without_changing_session_or_catalog(self):
         for vehicle in ("chase", "picar"):
-            with self.subTest(vehicle=vehicle), image_source(1) as root, self.host(root, vehicle) as (host, base):
+            with self.subTest(vehicle=vehicle), image_source(1) as root, plugin_host(root, vehicle) as (host, base):
                 for step in ("perception", "memory", "proposal"):
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
@@ -104,7 +108,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertIn("Disarming: applied", self.disarm(base, "--all").stdout)
 
     def test_batch_empty_and_inactive_ids_are_noops_and_rapid_requests_compose(self):
-        with image_source(1) as root, self.host(root) as (host, base):
+        with image_source(1) as root, plugin_host(root) as (host, base):
             for name in ("first", "second", "third"):
                 file = root / f"{name}.py"
                 write_plugin(file, "proposal", name, 1)
@@ -128,7 +132,7 @@ class PluginDisarmingFlows(unittest.TestCase):
             self.assertEqual(after["arming"]["applied"], before["arming"]["applied"])
 
     def test_invalid_requests_leave_the_whole_selection_unchanged(self):
-        with image_source(1) as root, self.host(root, activations={
+        with image_source(1) as root, plugin_host(root, activations={
                 "perception": packaged_activation("perception", ["frame"]),
         }) as (host, base):
             before = catalog(base)
@@ -156,7 +160,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertEqual(catalog(base), before)
 
     def test_clear_absent_runners_does_not_create_them(self):
-        with image_source(1) as root, self.host(root) as (host, base):
+        with image_source(1) as root, plugin_host(root) as (host, base):
             absent = [step for step in ("perception", "memory", "proposal") if host.step(step) is None]
             self.assertTrue(absent)
             receipt = json.loads(self.disarm(base, "--all", "--json").stdout)
@@ -165,7 +169,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertIsNone(host.step(step))
 
     def test_request_does_not_start_or_change_running_or_completed_sessions(self):
-        with image_source(1) as root, self.host(root, activations={
+        with image_source(1) as root, plugin_host(root, activations={
                 "perception": packaged_activation("perception", ["frame"]),
         }) as (host, base):
             for index, phase in enumerate(("stopped", "running", "completed"), start=1):
@@ -180,7 +184,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 host.run(frame(root, index * 2 + 1))
 
     def test_reset_failure_is_reported_and_stops_before_plugins_execute(self):
-        with image_source(1) as root, self.host(root, activations={
+        with image_source(1) as root, plugin_host(root, activations={
                 "perception": packaged_activation("perception", ["frame"]),
         }) as (host, base):
             host.start(RunConfiguration(mode="observe_only", num_decisions=10))
@@ -192,7 +196,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "reset refused"):
                         host.run(frame(root, 2))
                     cycle.assert_not_called()
-                result = run_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
+                result = invoke_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
                 self.assertEqual(result.returncode, 2)
                 shown = json.loads(result.stdout)
                 self.assertEqual(shown["arming"]["status"], "failed")
@@ -200,7 +204,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertEqual(host.session_status()["status"], "error")
 
     def test_failed_group_preparation_restores_every_requested_selection(self):
-        with image_source(1) as root, self.host(root, activations={
+        with image_source(1) as root, plugin_host(root, activations={
                 "perception": packaged_activation("perception", ["frame"]),
         }) as (host, base):
             file = root / "proposal.py"
@@ -222,7 +226,7 @@ class PluginDisarmingFlows(unittest.TestCase):
     def test_partial_reset_failure_reports_applied_truth_and_skips_the_cycle(self):
         from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 
-        with image_source(1) as root, self.host(root, activations={
+        with image_source(1) as root, plugin_host(root, activations={
                 "perception": packaged_activation("perception", ["frame"]),
                 "memory": packaged_activation("memory", ["bounded_evidence"]),
         }) as (host, base):
@@ -234,7 +238,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                     with self.assertRaisesRegex(MemoryUpdateError, "memory reset refused"):
                         host.run(frame(root, 2))
                     cycle.assert_not_called()
-                result = run_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
+                result = invoke_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
                 self.assertEqual(result.returncode, 2)
                 shown = json.loads(result.stdout)
                 self.assertEqual(selected(shown, "applied", "perception"), [])

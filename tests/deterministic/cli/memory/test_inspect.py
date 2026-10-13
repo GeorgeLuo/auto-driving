@@ -11,6 +11,7 @@ from cli.automa_cli.memory_runs import inspect_memory
 from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 SUMMARY_KEYS = {"plugin_id", "health", "record_count", "epoch_id"}
@@ -31,7 +32,6 @@ class MemoryInspectTests(unittest.TestCase):
         result = inspect_memory(str(source or self.frames), json_output=True, **options)
         self.assertEqual(result.exit_code, 0, result.message)
         return json.loads(result.message)
-
 
     def test_reports_each_frames_summary_in_source_order(self) -> None:
         report = self.inspect()
@@ -184,6 +184,17 @@ class MemoryInspectTests(unittest.TestCase):
         empty.mkdir()
         self.assertEqual(inspect_memory(str(empty)).exit_code, 2)
         self.assertFalse(self.root.exists())
+
+    def test_help_lists_inspect_and_not_replay(self) -> None:
+        listing = invoke_automa("vehicles", "memory", "help").stdout
+        self.assertIn("inspect", listing)
+        for removed in ("replay", "enable", "disable"):
+            self.assertNotIn(removed, listing)
+        flags = invoke_automa("vehicles", "memory", "inspect", "--help").stdout
+        for flag in ("--preset", "--plugin", "--record", "--json"):
+            self.assertIn(flag, flags)
+        for live in ("--id", "--frames", "--interval-s", "--timeout-s"):
+            self.assertNotIn(live, flags)
 
 
 if __name__ == "__main__":

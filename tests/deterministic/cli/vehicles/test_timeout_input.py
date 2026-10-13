@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import contextlib
-import io
 import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import STEPS
-from cli.automa_cli.app import main
+from tests.shared.cli.invoke import invoke_automa
 
 
 INVALID_TIMEOUTS = ("0", "-1", "nan", "-nan", "inf", "+inf", "-inf")
@@ -18,11 +16,8 @@ TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 
 
 def _invoke(*args: str) -> tuple[int, str, str]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = main(list(args))
-    return code, stdout.getvalue(), stderr.getvalue()
+    result = invoke_automa(*args, check=False)
+    return result.returncode, result.stdout, result.stderr
 
 
 def _timeout_args(value: str) -> tuple[str, ...]:

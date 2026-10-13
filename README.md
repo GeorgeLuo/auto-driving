@@ -47,6 +47,8 @@ Run the systems suite, the tests that start another program:
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
 ```
 
+Before pushing, run only the tests your change reaches. [`tests/README.md`](tests/README.md#validating-a-change) explains how to choose them with a group and `-k`.
+
 Include the live Chase simulator smoke test, or check a powered-on Pi without moving it. Both commands run the systems suite:
 
 ```sh

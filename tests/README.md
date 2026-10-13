@@ -30,17 +30,29 @@ Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.me
 
 The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite.
 
-## Before pushing
+## Validating a change
 
-CI does not run `systems/`. Run the groups that drive the code you changed, and list them under Validation in the pull request:
+Run the tests your change reaches, not every suite. `commands` and `journeys` together take about ten minutes, and most changes reach a few of their modules.
+
+1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
+2. Before pushing, run the whole deterministic suite once. It takes two to three minutes, and CI runs the same command.
+3. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
 | Change touches | Run |
 |---|---|
-| `cli/automa_cli/` | `--systems commands` |
-| `autonomy/runtime/`, `autonomy/plugins.py`, `implementations/runtime/`, the plugin catalog, or the workbench | `--systems journeys` |
+| One `automa` command family in `cli/automa_cli/` | `--systems commands -k commands.<family>`, plus the journeys that call that command |
+| Plugin upload, arming, disarming, or the plugin catalog | `--systems journeys -k journeys.plugins` |
+| Automation runs, streams, recordings, or replay | `--systems journeys -k automation_pipeline` |
+| The Chase runtime host | `--systems journeys -k runtime_host` |
 | `cli/automa_cli/workbench_page/js/` | `--systems frontend` |
 | `deploy/`, the release bundle, or the import surface | `--systems packaging` |
 | `qca/` | `--systems qca` |
+
+To find the tests that call a command, search for its words, for example `git grep -l '"disarm"' -- tests/systems`, then select those modules with `-k`.
+
+Run a whole group only when the change reaches code that most of its tests go through. For `commands`, that is `cli/automa` or `cli/automa_cli/app.py`. For `journeys`, it is the runtime host loop in `autonomy/runtime/` or the runtime view. A change to `tests/run.py`, `tests/support/`, or a `tests/shared/` fixture that systems tests import needs every group that uses it.
+
+List each command you ran and its result under Validation in the pull request. Do not rerun a check that passed unless the code it covers has changed since. After merging `main`, rerun only the tests the merged changes reach. If a test outside your change fails, run it alone with `-k`, and on `main`, before treating it as yours, and report it either way.
 
 ## Where a test goes
 

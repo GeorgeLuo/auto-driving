@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import json
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from cli.automa_cli.runtime_view import RuntimeViewServer
+from implementations.runtime.chase_sim import create_host as create_chase_host
+from implementations.runtime.picar import create_host as create_picar_host
+from implementations.vehicle.chase_sim import ChaseSimCar
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import (
     ImageReplayRunner,
     _wait_until,
@@ -30,6 +38,50 @@ def frame(root, index):
         completed_at_ms=now,
     )
     return DecisionFrameContext(f"frame-{index}", index, now, sensor_frame=sensor)
+
+
+@contextmanager
+def plugin_host(root, vehicle="chase", activations=None):
+    """A vehicle host in this process, with its catalog served at the yielded URL."""
+    steps = decision_steps(activations)
+    host = (create_chase_host(ChaseSimCar(), steps=steps) if vehicle == "chase"
+            else create_picar_host(steps=steps))
+    host.follow_activations(activations or {}, root / "runtime")
+    view = RuntimeViewServer(vehicle_id=vehicle, automation_dir=root / "automation",
+                             port=0, plugin_catalog=host.plugin_catalog).start()
+    try:
+        yield host, view.url
+    finally:
+        view.stop()
+        host.close()
+
+
+def upload(base, file, step, plugin_id, *, arm=False, check=True):
+    command = ["vehicles", "plugins", "upload", "--url", base, "--file", str(file),
+               "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json"]
+    if arm:
+        command.append("--arm")
+    result = invoke_automa(*command, check=check)
+    return result, json.loads(result.stdout)
+
+
+def catalog(base):
+    return json.loads(invoke_automa("vehicles", "plugins", "status", "--url", base, "--json").stdout)
+
+
+def arm_step(base, step, *ids):
+    command = ["vehicles", "plugins", "arm", "--url", base, "--step", step, "--json"]
+    for plugin_id in ids:
+        command.extend(["--plugin", plugin_id])
+    return json.loads(invoke_automa(*command).stdout)
+
+
+def selected(state, phase, step):
+    return state["arming"][phase][step]
+
+
+def proposal(result, plugin_id):
+    return next(item for item in result.proposal.candidates if item.plugin_id == plugin_id)
 
 
 def replay(test, recording: Path):

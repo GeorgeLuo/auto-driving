@@ -13,8 +13,8 @@ from unittest import mock
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
-from cli.automa_cli.app import main
 from cli.automa_cli.automation import _collect_automation_status, run_vehicle_automation
+from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_json
 
 VEHICLE = "chase-sim-chaser"
@@ -23,10 +23,8 @@ UNAVAILABLE_VIEW = {"schema": "automa_perception_view_v1", "available": False, "
 
 
 def _invoke(*args: str) -> tuple[int, str]:
-    stdout = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
-        code = main(list(args))
-    return code, stdout.getvalue()
+    result = invoke_automa(*args, check=False)
+    return result.returncode, result.stdout
 
 
 class StepFairnessTests(unittest.TestCase):

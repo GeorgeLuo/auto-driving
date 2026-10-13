@@ -18,6 +18,7 @@ from unittest import mock
 
 from cli.automa_cli import bundles
 from cli.automa_cli.runtime_hosts import stop_chase_host
+from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import WORKSPACE_ROOT, run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
@@ -55,7 +56,9 @@ class ReplayByReleaseTests(unittest.TestCase):
             env = {"CHASE_UI_WS_URL": ws_url}
 
             def automa(*args: str, check: bool = True):
-                return run_automa("vehicles", *args, runtime_root=runtime_root, extra_env=env, check=check)
+                # Only the run needs its own process; it starts the worker.
+                run = run_automa if args[:2] == ("automation", "run") else invoke_automa
+                return run("vehicles", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
             automa("update", "perception", "--id", VEHICLE_ID, "--plugin", "frame")
             release = _package_release_with_frame_label(runtime_root, Path(tmp) / "source", "release camera frame")
@@ -88,7 +91,11 @@ class ReplayByReleaseTests(unittest.TestCase):
             env = {"CHASE_UI_WS_URL": ws_url}
 
             def automa(*args: str, check: bool = True):
-                return run_automa("vehicles", *args, runtime_root=runtime_root, extra_env=env, check=check)
+                # The run starts the worker. A process keeps each uploaded
+                # module it imports, so replays also get their own process.
+                own_process = args[:2] == ("automation", "run") or args[0] == "perception"
+                run = run_automa if own_process else invoke_automa
+                return run("vehicles", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
             automa("update", "perception", "--id", VEHICLE_ID, "--plugin", "frame")
             bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / VEHICLE_ID))

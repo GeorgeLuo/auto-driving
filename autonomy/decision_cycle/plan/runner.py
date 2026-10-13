@@ -34,7 +34,6 @@ class PlanRunner(StepRunner[PlanPlugin]):
             return None
         candidates = proposal.candidates if proposal is not None else ()
         with self._runtime_lock:
-            self.refresh_selection(context.shared_memory)
             self.run_count += 1
             plugin = self._single()
             try:

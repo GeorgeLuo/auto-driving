@@ -7,8 +7,11 @@ plugins when the cycle calls it. Every runner can be built from a
 ``StepActivation`` and exposes the same selection and report surface:
 ``plugins``, the applied plugins by selected plugin ID in selection order, and
 their ``plugin_ids``;
-``prepare_selection``/``commit_selection``/``discard_selection`` to change the
-selection between cycles (each call also picks up the manager's selection);
+``prepare_selection``/``commit_selection``/``discard_selection`` and
+``apply_selection`` to change the selection between cycles. These are the only
+way a changed manager selection takes effect: a step call runs the applied
+plugins and never applies a selection itself, so a running host's
+``_adopt_selection`` is the one place that decides what a failed change does;
 ``plugin_report`` and ``status`` for diagnostics; and
 ``reset(shared_memory)`` to start a new epoch. ``reset`` resets every applied
 plugin with the host map, and a plugin whose reset raises follows the step's
@@ -31,7 +34,6 @@ from __future__ import annotations
 import inspect
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any, ClassVar, Generic, TypeVar
@@ -145,7 +147,6 @@ class StepRunner(Generic[PluginT]):
         self.last_error: str | None = None
         self.run_count = 0
         self.failure_count = 0
-        self._selection_held = 0
         self.apply_selection()
 
     @classmethod
@@ -235,21 +236,8 @@ class StepRunner(Generic[PluginT]):
         """Prepare and commit the manager's selection; a failure raises."""
 
         with self._runtime_lock:
-            if self._selection_held:
-                return
             self._prepare_selection()
             self._commit_selection(shared_memory)
-
-    @contextmanager
-    def hold_selection(self):
-        """Keep a host's prepared group fixed throughout one cycle."""
-
-        with self._runtime_lock:
-            self._selection_held += 1
-            try:
-                yield
-            finally:
-                self._selection_held -= 1
 
     def adopt_activation(self, activation: StepActivation) -> None:
         """Record a staged document only after its definitions have applied."""
@@ -266,22 +254,6 @@ class StepRunner(Generic[PluginT]):
 
     def _discard_selection(self) -> None:
         self._selection_runtime.discard()
-
-    def refresh_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        """Apply the manager's current selection before a call.
-
-        A selection that fails to load or validate keeps the applied plugins
-        and is recorded as ``last_error``, so a bad edit cannot stop the cycle.
-        Perception and memory call ``apply_selection`` instead: a selection
-        they cannot load stops the step, with the applied plugins kept. Under a
-        cycle host neither applies: the host adopts the group before the
-        cycle by one rule for every step.
-        """
-
-        try:
-            self.apply_selection(shared_memory)
-        except Exception as exc:  # noqa: BLE001 - keep the applied plugins
-            self.last_error = describe_exception(exc)
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         with self._runtime_lock:

@@ -269,8 +269,6 @@ class PerceptionRunner(StepRunner[Any]):
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
         with self._runtime_lock:
-            # Core snapshots the manager's selection once for this sensor frame.
-            self.apply_selection(request.shared_memory)
             self.run_count += 1
             try:
                 output = self._perceive_selected(request)

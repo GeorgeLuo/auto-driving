@@ -16,7 +16,6 @@ import threading
 import traceback
 from collections.abc import Mapping
 from copy import deepcopy
-from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
@@ -154,8 +153,8 @@ class AutonomyCycleHost:
     def sync_selection(self) -> dict[str, StepActivation]:
         """Select each watched step's restaged plugin IDs before the next frame.
 
-        Returns the activation each changed step now requests. The runner
-        applies the selection during its next call.
+        Returns the activation each changed step now requests.
+        ``_adopt_selection`` applies it before the next cycle.
         """
 
         with self._lock:
@@ -334,13 +333,8 @@ class AutonomyCycleHost:
                 self.shared_memory = context.shared_memory
             try:
                 self.sync_selection()
-                with ExitStack() as selections:
-                    for step in LIVE_SELECTION_STEPS:
-                        runner = self.step(step)
-                        if runner is not None and hasattr(runner, "hold_selection"):
-                            selections.enter_context(runner.hold_selection())
-                    self._adopt_selection()
-                    result = self.cycle.run(context)
+                self._adopt_selection()
+                result = self.cycle.run(context)
                 result = replace(result, context=self._record_frame_context(result.context))
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))

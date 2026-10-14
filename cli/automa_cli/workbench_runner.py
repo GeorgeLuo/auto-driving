@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
 from autonomy.plugins import LocalPluginCatalog
@@ -661,6 +662,21 @@ class ImageReplayRunner:
             round((position / total) * 100.0, 2) if total else 0.0
         )
 
+    def _store_recorded_activation(self, step: str, activation: StepActivation | None) -> None:
+        """Keep a selectable step's panel activation aligned with a recording.
+
+        A clearable step the recording left empty shows no plugins. A
+        one-plugin step left empty is not stored as an empty activation.
+        """
+
+        if step not in SELECTABLE_STEPS:
+            return
+        if activation is None:
+            if step in CLEARABLE_STEPS:
+                self._activations[step] = self._catalogs[step].activation([])
+            return
+        self._activations[step] = activation
+
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, Any]:
         """Restore the first frame's selections before constructing any selectable step."""
         recorded = recorded_selections(first_frame.metadata) if first_frame else {}
@@ -669,8 +685,7 @@ class ImageReplayRunner:
             if step in recorded and step not in self._selection_overrides:
                 activation = recorded[step]
                 steps[step] = recorded_runner(activation) if activation is not None else None
-                if step in SELECTABLE_STEPS:
-                    self._activations[step] = activation or self._catalogs[step].activation([])
+                self._store_recorded_activation(step, activation)
             elif step in SELECTABLE_STEPS:
                 if step not in self._selection_overrides:
                     self._activations[step] = self._default_activations[step]
@@ -942,8 +957,7 @@ class ImageReplayRunner:
                         if step in self._selection_overrides:
                             continue
                         steps[step] = replay_step(steps.get(step), activation, self._shared_memory)
-                        if step in SELECTABLE_STEPS:
-                            self._activations[step] = activation or self._catalogs[step].activation([])
+                        self._store_recorded_activation(step, activation)
                     self._apply_plugin_configuration_locked()
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result

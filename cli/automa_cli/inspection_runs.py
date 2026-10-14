@@ -15,9 +15,10 @@ from typing import Any
 from autonomy.decision_cycle.activation import (
     StepActivation, step_activation,
 )
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.runtime.recording import recorded_selections
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS, selection_activation
+from implementations.decision_cycle.catalog import selection_activation
 
 from .runtime_hosts import release_code_dir
 
@@ -46,10 +47,11 @@ def replay_step(runner: Any, activation: StepActivation | None, shared_memory: d
 def replayed_selection(step: str, recorded: StepActivation | None) -> StepActivation | None:
     """A recorded selection as replay runs it.
 
-    A selectable step the recording disabled replays with no plugins.
+    A clearable step the recording left empty replays with no plugins. A
+    one-plugin step left empty stays absent.
     """
 
-    if recorded is None and step in SELECTABLE_STEPS:
+    if recorded is None and step in CLEARABLE_STEPS:
         return selection_activation(step, plugins=[])
     return recorded
 

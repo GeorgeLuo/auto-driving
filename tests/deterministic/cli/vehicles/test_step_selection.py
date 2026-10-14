@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activation_path, vehicle_bundle
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
@@ -193,8 +194,8 @@ class StepSelectionTests(unittest.TestCase):
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step):
                     recorded = copy.deepcopy(original)
-                    # Plan runs one plugin, so a recording cannot leave it empty.
-                    clearable = step != "plan"
+                    # A one-plugin step cannot be left empty by a recording.
+                    clearable = step in CLEARABLE_STEPS
                     for frame in recorded["frames"]:
                         if clearable:
                             frame["steps"][step]["plugins"] = []

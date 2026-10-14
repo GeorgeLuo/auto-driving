@@ -1619,6 +1619,9 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "perception_completed_at_ms": completed_at_ms,
         "perception_duration_ms": duration_ms,
         "cycle_duration_ms": duration_ms,
+        "timing": deepcopy(publication.get("timing"))
+        if isinstance(publication.get("timing"), dict)
+        else None,
         "skipped_since_previous": publication.get("skipped_since_previous"),
         "perception": perception if isinstance(perception, dict) else None,
         "observation": observation if isinstance(observation, dict) else None,
@@ -1627,7 +1630,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "generation_id": publication.get("generation_id"),
         "step_activations": deepcopy(publication.get("step_activations")),
         "context": deepcopy(publication.get("context")),
-        "preset": publication.get("preset"),
+        "presets": deepcopy(publication.get("presets")),
         "health": publication.get("health"),
         "result_age_ms": publication.get("result_age_ms"),
         "action_policy": publication.get("mode"),
@@ -1636,6 +1639,14 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
             "shared_execution" if publication.get("mode") == "autonomy" else "not_applied"
         ),
     }
+
+
+def presets_text(presets: object) -> str:
+    """``step=preset`` pairs for each step a runtime reports a preset for."""
+
+    if not isinstance(presets, dict) or not presets:
+        return "none"
+    return " ".join(f"{step}={preset}" for step, preset in presets.items())
 
 
 def perception_text_from_publication(publication: dict[str, Any]) -> str:

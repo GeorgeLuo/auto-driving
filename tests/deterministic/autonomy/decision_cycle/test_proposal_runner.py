@@ -238,6 +238,7 @@ class ProposalRunnerTests(unittest.TestCase):
         self.assertIs(second.shared_memory, shared_memory)
 
         runner.plugin_manager.select(["second", "first"])
+        runner.apply_selection(shared_memory)
         runner.run(
             frame_id="frame_002", frame_index=1, timestamp_ms=2, shared_memory=shared_memory,
         )

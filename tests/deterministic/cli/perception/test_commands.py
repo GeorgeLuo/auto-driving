@@ -1,19 +1,22 @@
 from __future__ import annotations
+
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
+
 from PIL import Image
+
 from cli.automa_cli.runtime_view import RuntimeViewServer
-from tests.support.cli_runner import run_automa
-from tests.support.runtime_fixtures import write_runtime_fixture
+from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
+from tests.support.runtime_fixtures import write_runtime_fixture
 
 
 class PerceptionCommandTests(unittest.TestCase):
     def test_perception_replay_is_not_retained_as_an_alias(self) -> None:
-        result = run_automa(
+        result = invoke_automa(
             "vehicles",
             "perception",
             "replay",
@@ -33,7 +36,7 @@ class PerceptionCommandTests(unittest.TestCase):
             Image.new("RGB", (32, 24), (30, 40, 50)).save(frames / "000.png")
             Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
             inspect_root = root / "applies"
-            result = run_automa(
+            result = invoke_automa(
                 "vehicles",
                 "perception",
                 "inspect",
@@ -59,7 +62,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 manifest_bundle_root=ROOT,
             )
 
-            result = run_automa(
+            result = invoke_automa(
                 "vehicles",
                 "info",
                 "perception",
@@ -121,7 +124,7 @@ class PerceptionCommandTests(unittest.TestCase):
             server.perception.publish_perception(frame_record=frame_record)
             expected_url = server.url
             try:
-                text_result = run_automa(
+                text_result = invoke_automa(
                     "vehicles",
                     "info",
                     "perception",
@@ -129,7 +132,7 @@ class PerceptionCommandTests(unittest.TestCase):
                     vehicle_id,
                     runtime_root=runtime_root,
                 )
-                json_result = run_automa(
+                json_result = invoke_automa(
                     "vehicles",
                     "info",
                     "perception",
@@ -146,3 +149,6 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(payload["published_view"]["url"], expected_url)
         self.assertIn("Perception view: http://127.0.0.1:", text_result.stdout)
 
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,4 +1,4 @@
-"""Packaged proposal plugins and the proposal step's default selection."""
+"""Packaged proposal plugins."""
 
 from __future__ import annotations
 
@@ -22,4 +22,3 @@ PROPOSAL_PLUGINS: tuple[dict[str, Any], ...] = (
         },
     },
 )
-DEFAULT_PROPOSAL_PLUGINS: tuple[str, ...] = ("avoid_recent_obstruction",)

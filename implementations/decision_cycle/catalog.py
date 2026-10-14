@@ -7,9 +7,10 @@ packaged plugins declare the same one, since this directory's owner resolves
 such conflicts. ``DEFAULT_STEP_PLUGINS`` is each step's default selection. ``packaged_activation`` builds a
 ``StepActivation`` that makes every packaged plugin of the step available,
 selects the requested ones in order, and applies config overrides.
-Perception and memory have presets, ``STEP_PRESETS``: ``preset_activation``
-builds an activation from a named preset of a step, and
-``selection_activation`` from a preset or a plugin list.
+Perception, memory and proposal have presets, ``STEP_PRESETS``; they are the
+``SELECTABLE_STEPS``. ``preset_activation`` builds an activation from a named
+preset of a step. ``selection_activation`` is every step's selection: a
+preset or a plugin list, else the step's default.
 """
 
 from __future__ import annotations
@@ -36,9 +37,11 @@ from implementations.decision_cycle.perception.presets import (
     DEFAULT_PERCEPTION_PRESET,
     PERCEPTION_PRESETS,
 )
-from implementations.decision_cycle.proposal.catalog import (
+from implementations.decision_cycle.proposal.catalog import PROPOSAL_PLUGINS
+from implementations.decision_cycle.proposal.presets import (
     DEFAULT_PROPOSAL_PLUGINS,
-    PROPOSAL_PLUGINS,
+    DEFAULT_PROPOSAL_PRESET,
+    PROPOSAL_PRESETS,
 )
 
 STEP_PLUGINS: dict[str, tuple[dict[str, Any], ...]] = {
@@ -76,11 +79,15 @@ assert tuple(STEP_PLUGINS) == STEPS
 STEP_PRESETS: dict[str, dict[str, dict[str, Any]]] = {
     "perception": PERCEPTION_PRESETS,
     "memory": MEMORY_PRESETS,
+    "proposal": PROPOSAL_PRESETS,
 }
 DEFAULT_STEP_PRESETS: dict[str, str] = {
     "perception": DEFAULT_PERCEPTION_PRESET,
     "memory": DEFAULT_MEMORY_PRESET,
+    "proposal": DEFAULT_PROPOSAL_PRESET,
 }
+# The steps an operator selects by preset or plugin list.
+SELECTABLE_STEPS: tuple[str, ...] = tuple(STEP_PRESETS)
 # The ``preset`` metadata of a selection that equals no preset.
 CUSTOM_PRESET = "custom"
 
@@ -142,7 +149,7 @@ def packaged_activation(
 
 
 def step_presets(step: str) -> dict[str, dict[str, Any]]:
-    """The named presets of ``step``; only perception and memory have them."""
+    """The named presets of ``step``; only perception, memory and proposal have them."""
 
     require_step(step)
     try:
@@ -193,18 +200,15 @@ def selection_activation(
 
     A plugin list, which may be empty, is labeled with the preset it equals,
     else ``custom``; with neither argument the step's default preset applies.
+    A step without presets takes a plugin list, else its default plugins.
     """
 
     if preset is not None and plugins is not None:
         raise ValueError(f"choose either a {step} preset or plugins, not both")
+    if preset is None and require_step(step) not in STEP_PRESETS:
+        return packaged_activation(step, plugins)
     if plugins is not None:
         return packaged_activation(
             step, plugins, metadata={"preset": plugin_list_preset(step, plugins)}
         )
     return preset_activation(step, preset or DEFAULT_STEP_PRESETS[step])
-
-
-def default_activations() -> dict[str, StepActivation]:
-    """Every step's default packaged activation."""
-
-    return {step: packaged_activation(step) for step in STEPS}

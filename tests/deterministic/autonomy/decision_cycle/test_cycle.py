@@ -186,14 +186,18 @@ class DecisionCycleTests(unittest.TestCase):
 
 
 class StepSnapshotTests(unittest.TestCase):
-    def test_absent_steps_and_runners_with_nothing_applied_snapshot_as_none(self) -> None:
+    def test_absent_steps_snapshot_as_none_and_empty_runners_as_disabled(self) -> None:
+        """A disarmed step keeps its runner with nothing applied; it must
+        record as disabled so streams and replays run it empty."""
+
         steps = DecisionSteps(proposal=proposal_runner({}), plan=decision_steps().plan)
 
         snapshot = snapshot_step_activations(steps)
 
         self.assertEqual(snapshot["plan"]["plugins"], ["highest_confidence"])
-        self.assertEqual({step: value for step, value in snapshot.items() if step != "plan"},
-                         dict.fromkeys(("perception", "observation", "memory", "proposal", "action")))
+        self.assertEqual(snapshot["proposal"]["plugins"], [])
+        self.assertEqual({step: value for step, value in snapshot.items() if step not in ("plan", "proposal")},
+                         dict.fromkeys(("perception", "observation", "memory", "action")))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
     DecisionCycle,
@@ -136,7 +137,7 @@ class DecisionStageFlowTests(unittest.TestCase):
         with patch(
             "autonomy.decision_cycle.cycle.timestamp_ms",
             side_effect=(1_000, 1_007),
-        ):
+        ), patch("autonomy.decision_cycle.cycle.elapsed_ms", return_value=6.5):
             result = cycle.run(context)
 
         self.assertEqual(
@@ -155,7 +156,20 @@ class DecisionStageFlowTests(unittest.TestCase):
         self.assertIs(result.observation, observation)
         self.assertIs(result.memory, memory)
         self.assertIs(result.control, control)
-        self.assertEqual(result.duration_ms, 7)
+        self.assertEqual((result.started_at_ms, result.completed_at_ms), (1_000, 1_007))
+        # The duration is the cycle's monotonic total, not the timestamp difference.
+        self.assertEqual(result.duration_ms, 6.5)
+        # The cycle times each step call; plain callables keep no plugin records.
+        self.assertEqual(
+            result.timing,
+            {
+                "duration_ms": 6.5,
+                "steps": [
+                    {"step": step, "duration_ms": 6.5, "plugins": []}
+                    for step in STEPS
+                ],
+            },
+        )
 
         serialized = result.to_dict()
         self.assertEqual(serialized["schema"], DECISION_CYCLE_RESULT_SCHEMA)

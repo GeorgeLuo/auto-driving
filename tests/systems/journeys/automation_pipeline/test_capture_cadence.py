@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from autonomy.runtime.client import RuntimeClient
 from cli.automa_cli.runtime_hosts import stop_chase_host
+from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import run_automa
 from tests.support import fake_metrics_ui
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
@@ -41,7 +42,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             root = Path(tmp)
             env = {"CHASE_UI_WS_URL": ws_url}
             # Staging builds the controller release the car's runtime host runs.
-            run_automa(
+            invoke_automa(
                 "vehicles", "update", "perception", "--id", "chase-sim-chaser",
                 "--plugin", "frame", runtime_root=root, extra_env=env,
             )

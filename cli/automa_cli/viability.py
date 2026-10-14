@@ -269,7 +269,7 @@ def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mon
         "wall_ms": wall_ms,
         "health": publication.get("health"),
         "mode": publication.get("mode"),
-        "preset": publication.get("preset"),
+        "presets": publication.get("presets"),
         "frame_id": frame.get("frame_id"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),
@@ -281,6 +281,15 @@ def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mon
         "control_reason": control.get("reason"),
         "control_applied": control.get("applied"),
     }
+
+
+def _presets_seen(samples: list[dict[str, Any]]) -> dict[str, list[str]]:
+    seen: dict[str, set[str]] = {}
+    for sample in samples:
+        presets = sample.get("presets")
+        for step, preset in (presets.items() if isinstance(presets, dict) else ()):
+            seen.setdefault(str(step), set()).add(str(preset))
+    return {step: sorted(names) for step, names in seen.items()}
 
 
 def _compute_perception_metrics(
@@ -335,9 +344,7 @@ def _compute_perception_metrics(
         "duration_ms": _distribution(durations),
         "control_never_applied": never_applied,
         "modes_seen": sorted({str(s.get("mode")) for s in healthy}),
-        "presets_seen": sorted(
-            {str(s.get("preset")) for s in healthy if s.get("preset")}
-        ),
+        "presets_seen": _presets_seen(healthy),
         "host": {
             "sample_count": len(host_samples),
             "rss_mb": _distribution(rss),
@@ -644,7 +651,8 @@ def run_memory_viability_measurement(
         "samples": samples,
         "limits": [
             "Polls the live memory step's status; does not instrument the runtime loop.",
-            "Update duration is the step's own last_duration_ms, not the cycle's wall time.",
+            "Update duration is the memory step's time in the host's last cycle, "
+            "not the cycle's total.",
             "Health and epoch come from each plugin's ledger summary; a plugin that keeps "
             "no ledger reports none and adds nothing to health_is_known.",
         ],

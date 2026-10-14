@@ -17,36 +17,21 @@ from .automation import (
 )
 from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision_steps import get_vehicle_step_info, inspect_decision_step, stream_vehicle_step
-from .memory import (
-    get_vehicle_memory_info,
-    update_vehicle_memory,
-)
+from .memory import get_vehicle_memory_info
 from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from autonomy.runtime.session import DEFAULT_INTERVAL_S
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
-from implementations.decision_cycle.memory.presets import (
-    DEFAULT_MEMORY_PRESET,
-    available_memory_preset_ids,
-)
-from implementations.decision_cycle.perception.presets import (
-    DEFAULT_PERCEPTION_PRESET,
-    available_perception_preset_ids,
-)
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, SELECTABLE_STEPS, STEP_PRESETS
 
-from .step_activations import GENERIC_UPDATE_STEPS, update_vehicle_step
+from .step_activations import update_vehicle_step
 from .runtime_hosts import RUNTIME_ROOT as VEHICLES_RUNTIME_ROOT
-from .perception import (
-    get_vehicle_perception_info,
-    update_vehicle_perception,
-)
+from .perception import get_vehicle_perception_info
 from .perception_runs import (
     inspect_perception,
 )
 from .workbench import run_workbench_replay
-from .plugin_catalog import arm_plugins, list_plugins, upload_plugin
-from autonomy.runtime.plugin_catalog import ARMING_STEPS
+from .plugin_catalog import ONE_PLUGIN_STEPS, arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
@@ -90,10 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
 
-    plugins = vehicle_commands.add_parser("plugins", help="Upload, arm and inspect plugins in a live catalog.")
+    plugins = vehicle_commands.add_parser("plugins", help="Upload, arm, disarm and inspect plugins in a live catalog.")
     plugins.set_defaults(handler=_handle_plugins_help)
     plugin_commands = plugins.add_subparsers(dest="plugin_command")
-    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming and catalog inspection usage.")
+    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming, disarming and catalog inspection usage.")
     plugins_help.set_defaults(handler=_handle_plugins_help)
     listing = plugin_commands.add_parser("status", aliases=["list"], help="Show live catalog availability and plugin revisions (list is an alias).")
     listing_target = listing.add_mutually_exclusive_group(required=True)
@@ -120,18 +105,34 @@ def build_parser() -> argparse.ArgumentParser:
 
     arm = plugin_commands.add_parser(
         "arm", help="Add/update uploaded or packaged plugins without restarting automation.",
-        description="Request the latest catalog definitions together. New IDs append; existing IDs update in place. The host loads them before answering: an import or construction error exits 2 and keeps the previous selection. A loaded selection applies at the host's next cycle.",
+        description=f"Request the latest catalog definitions together. New IDs append; existing IDs update in place; on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. The host loads them before answering: an import or construction error exits 2 and keeps the previous selection. A loaded selection applies at the host's next cycle.",
         epilog="With --selection, use a JSON map such as {\"perception\": [\"prototype\"], \"memory\": [\"helper\"]}. Arming never starts automation or changes its control mode.",
     )
     arm_target = arm.add_mutually_exclusive_group(required=True)
     arm_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose runtime host receives the request.")
     arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
     arm_input = arm.add_mutually_exclusive_group(required=True)
-    arm_input.add_argument("--step", choices=ARMING_STEPS, help="Step receiving the ordered --plugin IDs.")
+    arm_input.add_argument("--step", choices=STEPS, help="Step receiving the ordered --plugin IDs.")
     arm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to ordered plugin-ID lists; arm the group together.")
     arm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to add/update; repeat in the desired append order with --step.")
     arm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
     arm.set_defaults(handler=_handle_plugin_arm)
+
+    disarm = plugin_commands.add_parser(
+        "disarm", help="Deselect plugins without deleting them from the live catalog.",
+        description=f"Deselect plugins on an existing runtime host. A one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) keeps its plugin; arm a replacement instead. The host resets disarmed instances and applies the selection at its next cycle; retained plugins keep their state. Catalog entries remain available to arm again.",
+        epilog="Use --step with repeatable --plugin IDs, --selection with a JSON step-to-ID-list map, or --all to clear one step (with --step) or every step that can run without plugins. Empty batch lists remove nothing. Disarming does not start or stop automation, change control mode, or edit staged activations.",
+    )
+    disarm_target = disarm.add_mutually_exclusive_group(required=True)
+    disarm_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose runtime host receives the request.")
+    disarm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
+    disarm_input = disarm.add_mutually_exclusive_group()
+    disarm.add_argument("--step", choices=STEPS, help="Step whose plugins to disarm; combine with --plugin or --all.")
+    disarm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to plugin-ID lists to disarm together.")
+    disarm_input.add_argument("--all", dest="all_plugins", action="store_true", help="Disarm every plugin in --step, or in every step that can run without plugins.")
+    disarm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to disarm from --step; repeat to name several.")
+    disarm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
+    disarm.set_defaults(handler=_handle_plugin_disarm)
 
     active = vehicle_commands.add_parser(
         "active",
@@ -705,21 +706,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Image file, recorded perception or memory run, or directory of images.",
     )
-    memory_inspect_selection = memory_inspect.add_mutually_exclusive_group()
-    memory_inspect_selection.add_argument(
-        "--preset",
-        choices=available_memory_preset_ids(),
-        default=None,
-        help=f"Override memory with this preset (without a recorded selection: {DEFAULT_MEMORY_PRESET}).",
-    )
-    memory_inspect_selection.add_argument(
-        "--plugin",
-        dest="plugins",
-        action="append",
-        default=None,
-        metavar="PLUGIN",
-        help="Inspect these packaged memory plugins, in order, with their default configs. Repeatable.",
-    )
+    _add_selection_args(memory_inspect, "memory", verb="inspect", fallback="the recorded selection, else ")
     memory_inspect.add_argument(
         "--record",
         action="store_true",
@@ -751,7 +738,7 @@ def build_parser() -> argparse.ArgumentParser:
                 f"perception, memory or decision-step inspect run) through perception, observation "
                 f"and memory, then proposal, plan and action, frame by frame, and report the "
                 f"{step_name} record after each. A recording restores every step's selection, "
-                f"restaged per frame as recorded; --plugin overrides {step_name}. Otherwise each "
+                f"restaged per frame as recorded; explicit selections override {step_name}. Otherwise each "
                 f"step uses its default. Recorded frames replay with their recorded drive mode."
             ),
         )
@@ -760,14 +747,7 @@ def build_parser() -> argparse.ArgumentParser:
             type=Path,
             help="Image file, directory of images, or recorded run.",
         )
-        step_inspect.add_argument(
-            "--plugin",
-            dest="plugins",
-            action="append",
-            default=None,
-            metavar="PLUGIN",
-            help=f"Inspect these packaged {step_name} plugins, in order, with their default configs. Repeatable.",
-        )
+        _add_selection_args(step_inspect, step_name, verb="inspect", fallback="the recorded selection, else ")
         step_inspect.add_argument(
             "--frame",
             type=int,
@@ -859,11 +839,9 @@ def build_parser() -> argparse.ArgumentParser:
             "local image directory. The server owns source ordering, perception, "
             "observation, bounded memory, decision state, and any selected "
             "packaged plugins. Recorded perception and memory runs preserve frame order "
-            "and timestamps. Perception and memory each start from a packaged preset "
+            "and timestamps. Perception, memory and proposal each start from a packaged preset "
             "or an ordered plugin list, as the inspect and update commands take "
-            "them; a preset keeps its plugin configs. Proposal has no presets and "
-            "starts from an ordered plugin list, as vehicles update proposal takes "
-            "it, or its default plugins. Page checkboxes retain the order "
+            "them; a preset keeps its plugin configs. Page checkboxes retain the order "
             "of selected plugins and append newly checked plugins. A changed ordered "
             "selection uses default configs for that step; the other steps keep their "
             "selections and configs. The same ordered selection keeps the current "
@@ -878,44 +856,8 @@ def build_parser() -> argparse.ArgumentParser:
         "source_dir",
         help="Directory containing supported images and optional ordered manifest.",
     )
-    workbench_replay_perception = workbench_replay.add_mutually_exclusive_group()
-    workbench_replay_perception.add_argument(
-        "--perception-preset",
-        default=None,
-        choices=available_perception_preset_ids(),
-        help=f"Packaged perception preset to replay (default: {DEFAULT_PERCEPTION_PRESET}).",
-    )
-    workbench_replay_perception.add_argument(
-        "--perception-plugin",
-        action="append",
-        dest="perception_plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged perception plugin to select instead of a preset; repeat to select several in order.",
-    )
-    workbench_replay_memory = workbench_replay.add_mutually_exclusive_group()
-    workbench_replay_memory.add_argument(
-        "--memory-preset",
-        default=None,
-        choices=available_memory_preset_ids(),
-        help=f"Packaged memory preset to replay (default: {DEFAULT_MEMORY_PRESET}).",
-    )
-    workbench_replay_memory.add_argument(
-        "--memory-plugin",
-        action="append",
-        dest="memory_plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged memory plugin to select instead of a preset; repeat to select several in order.",
-    )
-    workbench_replay.add_argument(
-        "--proposal-plugin",
-        action="append",
-        dest="proposal_plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged proposal plugin to select instead of the default plugins; repeat to select several in order.",
-    )
+    for step_name in SELECTABLE_STEPS:
+        _add_selection_args(workbench_replay, step_name, verb="replay", flag_prefix=f"{step_name}-")
     workbench_replay.add_argument(
         "--cadence-ms",
         type=int,
@@ -1063,20 +1005,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Image file, recorded perception or memory run, or directory of images. Omit to read a live vehicle.",
     )
-    perception_inspect_selection = perception_inspect.add_mutually_exclusive_group()
-    perception_inspect_selection.add_argument(
-        "--preset",
-        choices=available_perception_preset_ids(),
-        default=None,
-        help="Inspect one packaged perception preset instead of the recorded or staged selection.",
-    )
-    perception_inspect_selection.add_argument(
-        "--plugin",
-        dest="plugins",
-        action="append",
-        default=None,
-        metavar="PLUGIN",
-        help="Inspect these packaged perception plugins, in order, with their default configs. Repeatable.",
+    _add_selection_args(
+        perception_inspect, "perception", verb="inspect", fallback="the recorded or staged selection, else ",
     )
     perception_inspect.add_argument(
         "--id",
@@ -1299,7 +1229,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Restart the vehicle's host (the PiCar's Donkey service or the simulator worker) "
             "onto the release. Without it, "
             "a running runtime selects restaged plugins on its next frame; changed plugin "
-            "specs or configs, plan, and action need a restart."
+            "specs or configs need a restart."
         ),
     )
     autonomy.add_argument(
@@ -1319,77 +1249,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     autonomy.set_defaults(handler=_handle_vehicles_update_autonomy)
 
-    perception = update_commands.add_parser(
-        "perception",
-        help="Stage a perception preset or plugins in a vehicle's local controller bundle.",
-        description=(
-            "Stage a perception preset or plugin list in a local vehicle bundle. "
-            "Absent observation, plan and action activations receive their built-in "
-            "plugins; existing selections are preserved, and proposals and memory "
-            "are staged separately. For Chase, the result checks passive capture "
-            "and staged activations for observation-only automation."
-        ),
-    )
-    perception.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help=_STAGING_VEHICLE_ID_HELP,
-    )
-    perception.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=(
-            _STAGING_DISCOVERY_TIMEOUT_HELP + " Also bounds each Chase readiness "
-            "check after staging and live simulator operations with --restart."
-        ),
-    )
-    perception_selection = perception.add_mutually_exclusive_group()
-    perception_selection.add_argument(
-        "--preset",
-        default=None,
-        choices=available_perception_preset_ids(),
-        help=f"Packaged perception preset to activate (default: {DEFAULT_PERCEPTION_PRESET}).",
-    )
-    perception_selection.add_argument(
-        "--plugin",
-        action="append",
-        dest="plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged perception plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
-    )
-    perception.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the activation manifest without writing it.",
-    )
-    perception.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable perception update payload.",
-    )
-    perception.add_argument(
-        "--restart",
-        action="store_true",
-        help="Discover the live simulator, re-prepare its WS controller, and capture a sample perception; local identity metadata does not bypass discovery.",
-    )
-    perception.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print step-by-step activation, controller preparation, and sample perception details.",
-    )
-    perception.set_defaults(handler=_handle_vehicles_update_perception)
-
-    for step_name in GENERIC_UPDATE_STEPS:
+    for step_name in STEPS:
         step_parser = update_commands.add_parser(
             step_name,
             help=f"Stage {step_name} plugins in the local controller bundle.",
             description=(
                 f"Stage packaged {step_name} plugins in the local controller bundle "
-                f"(runtime/{step_name}/active.json). Repeat --plugin to select several, "
-                "in order; omit it for the step's default selection."
+                f"(runtime/{step_name}/active.json). Omit a selection to stage the step's default."
             ),
         )
         step_parser.add_argument(
@@ -1404,17 +1270,7 @@ def build_parser() -> argparse.ArgumentParser:
             default=DEFAULT_READINESS_TIMEOUT_S,
             help=_STAGING_DISCOVERY_TIMEOUT_HELP,
         )
-        step_parser.add_argument(
-            "--plugin",
-            action="append",
-            dest="plugins",
-            default=None,
-            metavar="PLUGIN_ID",
-            help=(
-                f"Packaged {step_name} plugin to select "
-                f"(default: {', '.join(DEFAULT_STEP_PLUGINS[step_name]) or 'none'})."
-            ),
-        )
+        _add_selection_args(step_parser, step_name, verb="stage")
         step_parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -1431,55 +1287,6 @@ def build_parser() -> argparse.ArgumentParser:
             help="Print controller release packaging details.",
         )
         step_parser.set_defaults(handler=_handle_vehicles_update_step, step=step_name)
-
-    memory = update_commands.add_parser(
-        "memory",
-        help="Stage memory plugins in the local controller bundle.",
-        description="Stage memory plugins in the local controller bundle.",
-    )
-    memory.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help=_STAGING_VEHICLE_ID_HELP,
-    )
-    memory.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=_STAGING_DISCOVERY_TIMEOUT_HELP,
-    )
-    memory_selection = memory.add_mutually_exclusive_group()
-    memory_selection.add_argument(
-        "--preset",
-        default=None,
-        choices=available_memory_preset_ids(),
-        help=f"Packaged memory preset to activate (default: {DEFAULT_MEMORY_PRESET}).",
-    )
-    memory_selection.add_argument(
-        "--plugin",
-        action="append",
-        dest="plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="Packaged memory plugin to select instead of a preset; repeat to select several in order. Staged plugins keep their configs.",
-    )
-    memory.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the activation manifest without writing it.",
-    )
-    memory.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable memory update payload.",
-    )
-    memory.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print controller release packaging details.",
-    )
-    memory.set_defaults(handler=_handle_vehicles_update_memory)
 
     simulators = subcommands.add_parser("simulators", help="Prepare and inspect simulator environments.")
     simulators.set_defaults(handler=_handle_simulators_help)
@@ -1537,14 +1344,56 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_selection_args(
+    parser: argparse.ArgumentParser,
+    step: str,
+    *,
+    verb: str,
+    fallback: str = "",
+    flag_prefix: str = "",
+) -> None:
+    """Add a step's mutually exclusive ``--preset``/``--plugin`` selection.
+
+    Steps without presets take only ``--plugin`` and parse ``preset`` as None.
+    ``flag_prefix`` names one step among several on a command, such as
+    ``--memory-preset``; ``fallback`` precedes the default in the help text.
+    """
+    dest = flag_prefix.replace("-", "_")
+    group = parser.add_mutually_exclusive_group()
+    if step in STEP_PRESETS:
+        group.add_argument(
+            f"--{flag_prefix}preset",
+            dest=f"{dest}preset",
+            choices=sorted(STEP_PRESETS[step]),
+            default=None,
+            help=f"Packaged {step} preset to {verb} (default: {fallback}{DEFAULT_STEP_PRESETS[step]}).",
+        )
+        plugin_help = f"Packaged {step} plugin to {verb} instead of a preset"
+    else:
+        parser.set_defaults(**{f"{dest}preset": None})
+        plugin_help = (
+            f"Packaged {step} plugin to {verb} "
+            f"(default: {fallback}{', '.join(DEFAULT_STEP_PLUGINS[step]) or 'none'})"
+        )
+    group.add_argument(
+        f"--{flag_prefix}plugin",
+        action="append",
+        dest=f"{dest}plugins",
+        default=None,
+        metavar="PLUGIN_ID",
+        help=f"{plugin_help}; repeat to select several in order.",
+    )
+
+
 def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa vehicles plugins commands", "",
         "- upload  store a file and register an available plugin revision",
         "- arm     add/update named plugins together on a runtime host",
+        "- disarm  deselect named plugins or clear steps on a runtime host",
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
-        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; neither upload nor arm starts automation.",
+        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
         "Use ./cli/automa vehicles status --id <vehicle> for the next startup action when no host is running.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
@@ -1553,11 +1402,17 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "Upload refuses source that does not compile; imports and dependencies load when armed.",
         "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.", "",
         "Use upload --arm for one-command registration and arming; it calls the same operation as arm.",
-        "Arming supports perception, memory and proposal. New IDs append; existing IDs update in place.",
+        "Arming supports every step. New IDs append; existing IDs update in place.",
+        f"On a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the armed ID replaces the plugin.",
         "Other plugins retain their definitions/configs. The host loads the selection before answering;",
         "a load error exits 2 and keeps the previous selection. A loaded selection applies at the next cycle.",
-        "Status distinguishes available, requested and applied revisions, and exits 2 while the last arm failed.",
-        "Arming does not start automation or change control mode. Workbench catalogs support upload only.", "",
+        "Status distinguishes available, requested and applied revisions, and exits 2 while the last selection request failed.",
+        "Disarming supports the same steps; a one-plugin step keeps its plugin. Use --step with --plugin IDs,",
+        "or --selection for grouped removals. Use disarm --all to clear every step that can run without",
+        "plugins, or disarm --step <step> --all to clear one step.",
+        "The next cycle resets disarmed instances; catalog entries remain available to arm again.",
+        "Arm and disarm change the current host only; staged selections are restored on host restart.",
+        "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",
         "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
         "Detailed help: ./cli/automa vehicles plugins <command> --help",
     ]))
@@ -1585,6 +1440,19 @@ def _handle_plugin_arm(args: argparse.Namespace) -> int:
         return 2
     result = arm_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step,
                          plugins=args.plugins, selection=args.selection, json_output=args.json_output)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugin_disarm(args: argparse.Namespace) -> int:
+    named = bool(args.step and args.plugins)
+    if args.selection and (args.step or args.plugins) or args.all_plugins and args.plugins or not (
+            args.selection or args.all_plugins or named):
+        print("Use --step with --plugin IDs, --selection alone, or --all with an optional --step.")
+        return 2
+    result = disarm_plugins(url=args.url, vehicle_id=args.vehicle_id, step=args.step,
+                            plugins=args.plugins, selection=args.selection,
+                            all_plugins=args.all_plugins, json_output=args.json_output)
     print(result.message)
     return result.exit_code
 
@@ -1640,7 +1508,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- active       discover vehicle endpoints (not worker/deployment state)",
                 "- status       inspect simulator, deployment, worker, and view layers",
                 "- update       stage controller selections or deploy vehicle code",
-                "- plugins      upload, arm and inspect plugins in a live catalog",
+                "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
@@ -1708,10 +1576,10 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
                 "",
                 "- core         deploy the DonkeyCar harness to a PiCar",
                 "- autonomy     package staged steps as a release for the vehicle's host",
-                "- perception   stage local vehicle perception code",
+                "- perception   stage a perception preset or plugin selection",
                 "- observation  stage observation plugins",
-                "- memory       stage memory plugins",
-                "- proposal     stage proposal plugins",
+                "- memory       stage a memory preset or plugin selection",
+                "- proposal     stage a proposal preset or plugin selection",
                 "- plan         stage the plan plugin",
                 "- action       stage the action plugin (hold or mode)",
                 "- help         show this summary",
@@ -2085,6 +1953,7 @@ def _handle_vehicles_decision_step_inspect(args: argparse.Namespace) -> int:
     result = inspect_decision_step(
         args.step,
         source=str(args.source),
+        preset=args.preset,
         plugins=args.plugins,
         frame=args.frame,
         record=args.record,
@@ -2182,11 +2051,10 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
 def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
-        perception_preset=args.perception_preset,
-        perception_plugins=args.perception_plugins,
-        memory_preset=args.memory_preset,
-        memory_plugins=args.memory_plugins,
-        proposal_plugins=args.proposal_plugins,
+        selections={
+            step: (getattr(args, f"{step}_preset"), getattr(args, f"{step}_plugins"))
+            for step in SELECTABLE_STEPS
+        },
         cadence_ms=args.cadence_ms,
         pace=args.pace,
         max_frames=args.max_frames,
@@ -2270,29 +2138,6 @@ def _handle_vehicles_info_step(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_update_memory(args: argparse.Namespace) -> int:
-    if not _validate_timeout_input(
-        args.timeout_s,
-        command="automa vehicles update memory",
-        json_output=args.json,
-        human_stream=sys.stdout,
-    ):
-        return 2
-    result = update_vehicle_memory(
-        vehicle_id=args.vehicle_id,
-        preset=args.preset,
-        plugins=args.plugins,
-        timeout_s=args.timeout_s,
-        dry_run=args.dry_run,
-        json_output=args.json,
-        verbose=args.verbose,
-        output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 def _handle_vehicles_perception_inspect(args: argparse.Namespace) -> int:
     result = inspect_perception(
         args.source,
@@ -2326,38 +2171,6 @@ def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-
-
-
-
-
-
-
-
-def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
-    if not _validate_timeout_input(
-        args.timeout_s,
-        command="automa vehicles update perception",
-        json_output=args.json,
-        human_stream=sys.stdout,
-    ):
-        return 2
-    result = update_vehicle_perception(
-        vehicle_id=args.vehicle_id,
-        preset=args.preset,
-        plugins=args.plugins,
-        timeout_s=args.timeout_s,
-        restart=args.restart,
-        dry_run=args.dry_run,
-        json_output=args.json,
-        verbose=args.verbose,
-        output=sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
@@ -2370,12 +2183,14 @@ def _handle_vehicles_update_step(args: argparse.Namespace) -> int:
         vehicle_id=args.vehicle_id,
         step=args.step,
         plugins=args.plugins,
+        preset=args.preset,
         runtime_root=VEHICLES_RUNTIME_ROOT,
         timeout_s=args.timeout_s,
         dry_run=args.dry_run,
         json_output=args.json,
         verbose=args.verbose,
-        output=sys.stdout,
+        # Progress stays off stdout when stdout carries the JSON payload.
+        output=sys.stderr if args.json else sys.stdout,
     )
     if message:
         print(message)

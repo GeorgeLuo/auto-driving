@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import io
 import json
 import tempfile
@@ -15,7 +16,11 @@ from cli.automa_cli.run_record import control_application, control_source
 
 
 VEHICLE_ID = "picar-test"
-PERCEPTION = {"activation": "perception/active.json", "preset": "lane-preset", "plugins": ["lanes"]}
+SELECTIONS = {
+    "perception": {"activation": "perception/active.json", "source": "staged", "preset": "lane-preset", "plugins": ["lanes"]},
+    "memory": {"activation": "memory/active.json", "source": "staged", "preset": None, "plugins": ["recent"]},
+    "proposal": {"activation": "proposal/active.json", "source": "none", "preset": None, "plugins": []},
+}
 DECISION = {
     "generation_id": "gen-1",
     "steps": {"proposal": {"plugins": ["follow"]}},
@@ -128,12 +133,8 @@ class RuntimeMonitorTests(unittest.TestCase):
                 vehicle_id=VEHICLE_ID,
                 base_url=client.base_url,
                 automation_dir=automation_dir,
-                perception=dict(PERCEPTION),
+                selections=copy.deepcopy(SELECTIONS),
                 decision=dict(DECISION),
-                step_activations={
-                    "memory": automation_dir.parent / "memory" / "active.json",
-                    "proposal": automation_dir.parent / "proposal" / "active.json",
-                },
                 configuration=RunConfiguration(mode="autonomy", interval_s=0.0, num_decisions=2),
                 timeout_s=1.0,
                 record=False,
@@ -160,7 +161,9 @@ class RuntimeMonitorTests(unittest.TestCase):
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
                 f"Automation running: {VEHICLE_ID}",
-                "Perception: lane-preset",
+                "Perception: lane-preset (lanes)",
+                "Memory: recent",
+                "Proposal: (no plugins)",
                 "Recording: off; latest frame and perception are overwritten each iteration",
                 "Control source: vehicle runtime host",
                 "Action policy: autonomy",
@@ -169,7 +172,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 "donkey_frame_000000: signals=1 things=0 action=steer-left",
             ],
         )
-        self.assertRegex(lines[6], r"^Runtime view: http://")
+        self.assertRegex(lines[8], r"^Runtime view: http://")
         self.assertEqual(code, 0)
         self.assertEqual(
             message.splitlines()[:6],
@@ -190,8 +193,13 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["readiness"]["ready_for"], "inspect stopped deployment")
         self.assertEqual(state["control_application"], "shared_execution")
         self.assertEqual(state["execution"]["mode"], "manual")
-        self.assertEqual(state["steps"]["memory"], {"plugin_ids": ["recent"], "last_error": None})
-        self.assertEqual(state["proposal"]["status"], "absent")
+        self.assertEqual(
+            state["steps"]["memory"], {"plugin_ids": ["recent"], "preset": None, "last_error": None}
+        )
+        # Every selection records its step's host report, or that the host has none.
+        self.assertEqual(state["selections"]["memory"]["status"]["plugin_ids"], ["recent"])
+        self.assertEqual(state["selections"]["perception"]["status"], "absent")
+        self.assertEqual(state["selections"]["proposal"]["status"], "absent")
         self.assertEqual(state["last_frame"]["frame_id"], "donkey_frame_000001")
         self.assertEqual(state["last_frame"]["capture_to_perception_ms"], 40)
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")

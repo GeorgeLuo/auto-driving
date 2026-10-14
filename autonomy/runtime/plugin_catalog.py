@@ -1,4 +1,4 @@
-"""Shared upload, arming and status behind local and onboard transports."""
+"""Shared upload, arming, disarming and status behind local and onboard transports."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from typing import Any, Callable, Mapping
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 
 PLUGIN_CATALOG_PATH = "/api/plugins"
-ARMING_STEPS = ("perception", "memory", "proposal")
 
 
 def _field(payload: Mapping[str, Any], name: str) -> Any:
@@ -38,10 +37,11 @@ def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
 
 
 class PluginCatalogAPI:
-    def __init__(self, catalog: LocalPluginCatalog, *, arm: Callable | None = None,
+    def __init__(self, catalog: LocalPluginCatalog, *, arm: Callable | None = None, disarm: Callable | None = None,
                  selection_status: Callable | None = None, applied_decision: Callable | None = None) -> None:
         self.catalog = catalog
         self.arm = arm
+        self.disarm = disarm
         self.selection_status = selection_status
         self.applied_decision = applied_decision
 
@@ -54,6 +54,10 @@ class PluginCatalogAPI:
                     if self.arm is None:
                         raise ValueError("arming requires a vehicle runtime host; this catalog supports upload only")
                     return self.arm(_field(payload, "selections"))
+                if payload.get("operation") == "disarm":
+                    if self.disarm is None:
+                        raise ValueError("disarming requires a vehicle runtime host; this catalog supports upload only")
+                    return self.disarm(_field(payload, "selections"), all_plugins=payload.get("all", False))
                 definition = self.catalog.upload(
                     step=_field(payload, "step"), plugin_id=_field(payload, "plugin_id"),
                     entrypoint=_field(payload, "entrypoint"),

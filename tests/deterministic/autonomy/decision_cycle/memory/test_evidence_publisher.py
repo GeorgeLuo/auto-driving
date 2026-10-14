@@ -181,6 +181,7 @@ class EvidencePublisherTests(unittest.TestCase):
         self.assertEqual(_update(runner, shared)["evidence_publisher"], "evidence")
 
         manager.select(("recording_test",))
+        runner.apply_selection(shared)
         report = _update(runner, shared, "f2")
 
         self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], ["recording_test"])

@@ -65,7 +65,6 @@ function selectedPluginIdsFromView(panel) {
 }
 function renderPluginSummary(panel, catalog, plugins, active) {
   var pipeline = state && state.machine_detail && state.machine_detail.pipeline;
-  // A step without presets (proposal) reports none; its summary starts at the counts.
   var preset = panel.draft !== null ? "selection pending" : pipeline && pipeline[panel.presetKey];
   var counts = active.length + " active · " + plugins.length + " available";
   setText(panel.summaryId, preset ? preset + " · " + counts : counts);

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ from cli.automa_cli.vehicles import (
     _probe_picar,
     format_active_vehicles,
 )
+from tests.shared.cli.invoke import invoke_automa
 
 
 class VehicleDiscoveryTests(unittest.TestCase):
@@ -20,7 +22,6 @@ class VehicleDiscoveryTests(unittest.TestCase):
             [(candidate.url, candidate.source) for candidate in candidates],
             [("http://piracer.local:8887", "default")],
         )
-
 
     def test_picar_probe_distinguishes_a_reachable_host_without_a_server(self) -> None:
         with (
@@ -82,6 +83,16 @@ class VehicleDiscoveryTests(unittest.TestCase):
         self.assertFalse(result.active)
         self.assertIn("TCP listener is reachable", result.error or "")
         self.assertEqual(result.diagnostics["runtime_state"], "http_unhealthy")
+
+    def test_scenario_first_time_discovery_can_return_machine_readable_empty_listing(self) -> None:
+        result = invoke_automa("vehicles", "active", "--no-picar", "--no-sim", "--json")
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["schema"], "automa_vehicle_discovery_v0")
+        self.assertEqual(payload["active_count"], 0)
+        self.assertEqual(payload["vehicles"], [])
+        self.assertEqual(payload["discovery"]["candidate_count"], 0)
+        self.assertEqual(payload["inactive"], [])
 
 
 if __name__ == "__main__":

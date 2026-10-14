@@ -46,6 +46,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(set(perception_step.plugin_manager.available_ids), packaged)
         original = perception_step.plugins["frame"]
         perception_step.plugin_manager.add("floor_plane")
+        perception_step.apply_selection()
         perception_step.perceive(PerceptionRequest(SensorFrame(
             read_id="test", readings={}, started_at_ms=100, completed_at_ms=100,
         )))

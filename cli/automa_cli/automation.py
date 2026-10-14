@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, read_step_activation
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
@@ -34,10 +33,11 @@ from .runtime_hosts import (
 )
 from .runtime_monitor import monitor_runtime
 from .step_activations import (
-    bundle_activation_path,
     bundle_activation_problems,
     decision_identity,
     format_activation_problems,
+    selection_label,
+    staged_selections,
 )
 from .run_record import (
     control_application,
@@ -45,7 +45,6 @@ from .run_record import (
     decision_record,
     failed_readiness,
     new_run_state,
-    perception_record,
     stopped_readiness,
 )
 from .view_discovery import discover_runtime_view
@@ -159,24 +158,36 @@ def _host_runtime_status(
             ),
         },
         "published_view": view,
+        "steps": autonomy.get("steps"),
         "applied_decision": autonomy.get("applied_decision"),
     }
 
 
 def _decision_summary(identity: Any) -> dict[str, Any]:
-    """Whether a decision identity is deployed, its generation, and each step's plugins."""
+    """Whether a decision identity is deployed, and its generation."""
 
     if not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict):
         return {"deployed": False}
-    return {
-        "deployed": True,
-        "generation_id": identity.get("generation_id"),
-        "plugins": {
-            step: (identity["steps"][step] or {}).get("plugins") or []
-            for step in DECISION_STEPS
-            if step in identity["steps"]
-        },
-    }
+    return {"deployed": True, "generation_id": identity.get("generation_id")}
+
+
+def _applied_selections(
+    selections: dict[str, dict[str, Any]], steps: Any,
+) -> dict[str, dict[str, Any]] | None:
+    """``selections`` as a running host reports applying them, when it reports its steps."""
+
+    if not isinstance(steps, dict) or not any(step in steps for step in selections):
+        return None
+    applied = {}
+    for step, selection in selections.items():
+        report = steps.get(step) if isinstance(steps.get(step), dict) else {}
+        applied[step] = {
+            **selection,
+            "source": "applied",
+            "preset": report.get("preset"),
+            "plugins": list(report.get("plugin_ids") or []),
+        }
+    return applied
 
 
 def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: int,
@@ -219,24 +230,13 @@ def run_vehicle_automation(
         return CommandResult(2, str(exc))
     # Every vehicle runs its staged steps on its runtime host: a PiCar's Donkey
     # service or a local Chase host, each from its controller release.
+    # Each step runs its staged selection, else its built-in, else nothing.
     bundle = bundle_paths(vehicle_id)
-    manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    if not manifest_path.exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No active perception preset found for {vehicle_id!r}.",
-                    f"Expected activation: {display_path(manifest_path)}",
-                    f"Run: ./cli/automa vehicles update perception --id {vehicle_id}",
-                ]
-            ),
-        )
     problems = bundle_activation_problems(bundle, vehicle_id)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
     try:
-        perception_activation = read_step_activation(manifest_path, "perception")
+        selections = staged_selections(bundle)
         identity = decision_identity(bundle)
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
@@ -247,11 +247,8 @@ def run_vehicle_automation(
     code, message = monitor_runtime(
         vehicle_id=vehicle_id, base_url=base_url,
         automation_dir=Path(bundle["runtime_dir"]) / "automation",
-        perception=perception_record(manifest_path, perception_activation),
+        selections=selections,
         decision=decision_record(identity),
-        step_activations={
-            step: bundle_activation_path(bundle, step) for step in ("memory", "proposal")
-        },
         configuration=configuration, timeout_s=timeout_s, record=record,
         verbose=verbose, output=output,
     )
@@ -859,18 +856,14 @@ def get_vehicle_automation_status(
             "expected_bundle": display_path(
                 runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id) / "bundle"
             ),
-            "recovery": (
-                f"./cli/automa vehicles update perception --id {vehicle_id}"
-            ),
+            "recovery": runtime_hosts.update_command(vehicle_id),
         }
     elif not vehicles:
         payload["outcome"] = {
             "status": "empty",
             "message": "No deployed automation runtimes found.",
             "expected_bundle": None,
-            "recovery": (
-                "./cli/automa vehicles update perception --id <vehicle_id>"
-            ),
+            "recovery": runtime_hosts.update_command("<vehicle_id>"),
         }
     elif any(_automation_status_needs_attention(vehicle) for vehicle in vehicles):
         payload["outcome"] = {
@@ -1123,12 +1116,10 @@ def _collect_automation_status(
         bundle = controller_bundle_paths(vehicle_runtime_dir)
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
-        perception_manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
         process_path = automation_dir / "process.json"
         state_path = automation_dir / "state.json"
         latest_perception_path = automation_dir / "latest_perception.txt"
 
-        perception_manifest = _read_json(perception_manifest_path)
         process = _read_json(process_path)
         state = _read_json(state_path)
         process = process if isinstance(process, dict) else {}
@@ -1208,40 +1199,31 @@ def _collect_automation_status(
         completed_at_ms = _int_or_none(last_frame.get("perception_completed_at_ms"))
         generated_at_ms = _timestamp_ms()
 
-        perception = {}
-        if isinstance(perception_manifest, dict):
-            metadata = perception_manifest.get("metadata")
-            perception = {
-                "preset": metadata.get("preset") if isinstance(metadata, dict) else None,
-                "plugins": perception_manifest.get("plugins")
-                if isinstance(perception_manifest.get("plugins"), list)
-                else [],
-            }
-
-        # A running monitor records the decision its host applied. Otherwise the
-        # staged steps are what a start deploys; unstaged ones run their built-ins.
+        # A running monitor records the steps and decision its host applied.
+        # Otherwise the staged steps are what a start deploys; unstaged ones
+        # run their built-ins or nothing.
+        selections = staged_selections(bundle)
         try:
             identity = state.get("decision") if pid_alive else None
             decision = _decision_summary(identity) if identity else _decision_summary(decision_identity(bundle))
         except (OSError, TypeError, ValueError):
             decision = {"deployed": False}
+        try:
+            runtime_hosts.release_manifest(vehicle_name)
+            released = True
+        except RuntimeHostError:
+            released = False
 
         statuses.append(
             {
                 "vehicle_id": vehicle_name,
                 "activation_problems": activation_problems,
-                "deployed": bundle_root.exists()
-                and perception_manifest_path.exists()
-                and decision["deployed"]
-                and not activation_problems,
+                "deployed": released and decision["deployed"] and not activation_problems,
                 "bundle_root": display_path(bundle_root),
                 "automation_runtime_exists": automation_dir.exists(),
                 "automation_dir": display_path(automation_dir),
-                "perception": {
-                    "deployed": perception_manifest_path.exists(),
-                    "activation": display_path(perception_manifest_path),
-                    **perception,
-                },
+                "steps": _applied_selections(selections, state.get("steps") if pid_alive else None)
+                or selections,
                 "decision": {
                     "activation": display_path(Path(bundle["runtime_dir"])),
                     **decision,
@@ -1313,6 +1295,7 @@ def _collect_automation_status(
                 vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5
             )
             applied = host.pop("applied_decision")
+            statuses[-1]["steps"] = _applied_selections(selections, host.pop("steps")) or selections
             statuses[-1].update(host)
             if applied:
                 statuses[-1]["decision"].update(_decision_summary(applied))
@@ -1350,7 +1333,6 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
     for item in vehicles:
         if not isinstance(item, dict):
             continue
-        perception = item.get("perception") if isinstance(item.get("perception"), dict) else {}
         decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
         process = item.get("process") if isinstance(item.get("process"), dict) else {}
         state = item.get("state") if isinstance(item.get("state"), dict) else {}
@@ -1361,7 +1343,7 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
                 "",
                 str(item.get("vehicle_id", "unknown")),
                 f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
-                f"  perception: {_perception_label(perception)}",
+                *_selection_lines(item.get("steps")),
                 f"  decision: {_decision_label(decision)}",
                 f"  worker: {_worker_label(process, state)}",
                 f"  run: {_run_label(state)}",
@@ -1388,22 +1370,25 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _perception_label(perception: dict[str, Any]) -> str:
-    if not perception.get("deployed"):
-        return f"not deployed; expected {perception.get('activation', 'unknown')}"
-    preset = perception.get("preset") or "unknown"
-    plugins = ", ".join(perception.get("plugins") or []) or "no plugins"
-    return f"{preset} ({plugins})"
+def _selection_lines(selections: Any) -> list[str]:
+    """Every step's selection, under where the selections come from."""
+
+    if not isinstance(selections, dict):
+        return []
+    applied = any(item.get("source") == "applied" for item in selections.values())
+    return [
+        f"  steps: {'applied by the running host' if applied else 'staged'}",
+        *(
+            f"    {step}: {selection_label(item.get('preset'), item.get('plugins') or [])}"
+            for step, item in selections.items()
+        ),
+    ]
 
 
 def _decision_label(decision: dict[str, Any]) -> str:
     if not decision.get("deployed"):
         return f"not deployed; expected {decision.get('activation', 'unknown')}"
-    plugins = decision.get("plugins") if isinstance(decision.get("plugins"), dict) else {}
-    described = " ".join(
-        f"{step}={','.join(ids) or '-'}" for step, ids in plugins.items()
-    )
-    return f"{described or 'unknown'} ({decision.get('generation_id') or 'no generation'})"
+    return str(decision.get("generation_id") or "no generation")
 
 
 def _worker_label(process: dict[str, Any], state: dict[str, Any]) -> str:

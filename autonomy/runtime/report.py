@@ -10,6 +10,10 @@ recorded after the cycle. Each vehicle transports the document itself.
 planning did not produce a record, which is how a failed cycle is represented.
 The key stays required. Proposal and action stay objects, so the existing
 typed cycle check can still reconstruct them.
+
+``values["timing"]`` is the cycle's ``timing`` record from
+``autonomy.decision_cycle.timing``: its total and each step's and plugin's
+duration. A report from a host that does not record it has no such key.
 """
 
 from __future__ import annotations
@@ -291,7 +295,8 @@ def report_from_host_result(
     ``result`` is the host's cycle result: its frame context, proposal, plan,
     and action, plus the ``ControlApplication`` recorded after the cycle.
     The application is the host's write, not the action step's earlier
-    authority envelope.
+    authority envelope. The result's ``timing``, when it has one, goes in
+    ``values["timing"]``.
     """
 
     context = getattr(result, "context", None)
@@ -304,6 +309,10 @@ def report_from_host_result(
         raise TypeError("host result must include its control application")
     plan = getattr(result, "plan", None)
     control = application.control
+    values = {} if values is None else dict(values)
+    timing = getattr(result, "timing", None)
+    if timing is not None:
+        values["timing"] = timing
     return VehicleReport(
         vehicle_id=vehicle_id,
         run_id=run_id,
@@ -326,5 +335,5 @@ def report_from_host_result(
             steering=control.steering,
             throttle=control.throttle,
         ),
-        values={} if values is None else dict(values),
+        values=values,
     )

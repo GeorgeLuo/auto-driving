@@ -190,13 +190,20 @@ def _applied_selections(
     return applied
 
 
-def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: int) -> RunConfiguration:
-    """The run a start requests; a run that applies control is always bounded."""
+def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: int,
+                       unbounded: bool = False) -> RunConfiguration:
+    """Movement runs require a positive bound or an explicit unbounded opt-in."""
 
-    if take_control and num_decisions == 0:
+    # Refuse what the runtime refuses before --unbounded replaces the count.
+    if type(num_decisions) is not int or num_decisions < 0:
+        raise ValueError("num_decisions must be a nonnegative integer")
+    if unbounded:
+        num_decisions = 0
+
+    if take_control and num_decisions == 0 and not unbounded:
         raise ValueError(
             "A run that applies control needs --num-decisions N (N > 0); "
-            "only --observe-only runs unbounded."
+            "use --unbounded to run until stopped."
         )
     return RunConfiguration(
         mode="autonomy" if take_control else "observe_only",
@@ -211,6 +218,7 @@ def run_vehicle_automation(
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     interval_s: float = DEFAULT_INTERVAL_S,
     num_decisions: int = 0,
+    unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -218,7 +226,8 @@ def run_vehicle_automation(
 ) -> CommandResult:
     try:
         configuration = _run_configuration(
-            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions
+            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions,
+            unbounded=unbounded,
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -255,6 +264,7 @@ def start_vehicle_automation_background(
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     interval_s: float = DEFAULT_INTERVAL_S,
     num_decisions: int = 0,
+    unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -264,7 +274,8 @@ def start_vehicle_automation_background(
 ) -> CommandResult:
     try:
         configuration = _run_configuration(
-            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions
+            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions,
+            unbounded=unbounded,
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -406,6 +417,8 @@ def start_vehicle_automation_background(
         str(configuration.num_decisions),
         "--foreground",
     ]
+    if unbounded:
+        command.append("--unbounded")
     if not take_control:
         command.append("--observe-only")
     if record:
@@ -1017,6 +1030,7 @@ def restart_vehicle_automation(
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     interval_s: float = DEFAULT_INTERVAL_S,
     num_decisions: int = 0,
+    unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
@@ -1025,7 +1039,8 @@ def restart_vehicle_automation(
     wait_s: float = 3.0,
 ) -> CommandResult:
     try:
-        _run_configuration(take_control=take_control, interval_s=interval_s, num_decisions=num_decisions)
+        _run_configuration(take_control=take_control, interval_s=interval_s,
+                           num_decisions=num_decisions, unbounded=unbounded)
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
     bundle = bundle_paths(vehicle_id)
@@ -1050,6 +1065,7 @@ def restart_vehicle_automation(
         timeout_s=timeout_s,
         interval_s=interval_s,
         num_decisions=num_decisions,
+        unbounded=unbounded,
         take_control=take_control,
         record=record,
         verbose=verbose,

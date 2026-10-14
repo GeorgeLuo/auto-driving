@@ -37,7 +37,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 child.terminate()
                 child.wait(timeout=5)
 
-    def test_an_unbounded_control_run_is_refused_before_anything_stops(self) -> None:
+    def test_a_control_run_without_a_bound_or_opt_in_is_refused_before_anything_stops(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
@@ -53,7 +53,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                         self.assertIn(
                             "A run that applies control needs --num-decisions N (N > 0); "
-                            "only --observe-only runs unbounded.",
+                            "use --unbounded to run until stopped.",
                             result.stdout,
                         )
                 self.assertIsNone(child.poll())

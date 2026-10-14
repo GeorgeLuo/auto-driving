@@ -23,6 +23,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             timestamp_ms=1,
             status="idle",
             candidates=(_active_proposal(),),
+            selector_id="highest_confidence",
             selected_proposal_id=None,
             contributions=(),
         )

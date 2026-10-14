@@ -16,7 +16,6 @@ from typing import Any
 
 from autonomy.decision_cycle.plan.values import (
     ACTION_PLAN_SCHEMA,
-    SELECTOR_ID,
     ActionPlan,
     PlanContribution,
 )
@@ -540,7 +539,7 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
             candidates=candidates,
             selected_proposal_id=payload.get("selected_proposal_id"),
             contributions=tuple(contributions),
-            selector_id=str(payload.get("selector_id") or SELECTOR_ID),
+            selector_id=str(payload["selector_id"]),
             metadata=dict(payload.get("metadata") or {}),
             plan_id=str(payload.get("plan_id") or ""),
             schema=str(payload.get("schema") or ACTION_PLAN_SCHEMA),

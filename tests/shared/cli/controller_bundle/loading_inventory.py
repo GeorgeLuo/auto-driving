@@ -74,7 +74,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.observation.values", "Observation", "autonomy.decision_cycle.observation.values", "Observation"),
     ("autonomy.decision_cycle.proposal.values", "ProposedVehicleCommand", "autonomy.decision_cycle.proposal.values", "ProposedVehicleCommand"),
     ("autonomy.decision_cycle.memory.evidence", "RetainedEvidence", "autonomy.decision_cycle.memory.evidence", "RetainedEvidence"),
-    ("autonomy.decision_cycle.plan.values", "SELECTOR_ID", "autonomy.decision_cycle.plan.values", "SELECTOR_ID"),
     ("autonomy.decision_cycle.action.values", "AUTHORITY_RESULT_SCHEMA", "autonomy.decision_cycle.action.values", "AUTHORITY_RESULT_SCHEMA"),
     ("autonomy.decision_cycle.action.result", "ACTION_RESULT_SCHEMA", "autonomy.decision_cycle.action.result", "ACTION_RESULT_SCHEMA"),
     ("autonomy.decision_cycle.action.values", "AuthorityResult", "autonomy.decision_cycle.action.values", "AuthorityResult"),

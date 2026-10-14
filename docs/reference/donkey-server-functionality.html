@@ -456,7 +456,7 @@
         </div>
         <div class="node output">
           <h3>Autonomy Activation</h3>
-          <p>At startup, each <code>runtime/&lt;step&gt;/active.json</code> selects that step's plugins; observation, plan, and action fall back to their built-ins (action: <code>hold</code>). The validated mode remains manual <code>user</code>.</p>
+          <p>At startup, each <code>runtime/&lt;step&gt;/active.json</code> selects that step's plugins. Without one, observation and action fall back to their built-ins (action: <code>selected</code>); the other steps stay empty, and with no plan the action holds. The validated mode remains manual <code>user</code>.</p>
         </div>
         <div class="node warning">
           <h3>Joystick Override</h3>

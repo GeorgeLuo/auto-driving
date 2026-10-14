@@ -14,7 +14,7 @@ function node() {
     addEventListener(name, handler) { this.events[name] = handler; },
     querySelectorAll(selector) {
       const inputs = this.children.flatMap((child) => child.children || [])
-        .filter((child) => child.type === "checkbox");
+        .filter((child) => child.type === "checkbox" || child.type === "radio");
       return selector.endsWith(":checked") ? inputs.filter((input) => input.checked) : inputs;
     }
   };
@@ -77,7 +77,7 @@ if (mode === "order") {
   assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second", "first"]);
   assert.equal(panel.queued, null);
 } else if (mode === "state") {
-  for (const step of ["perception", "memory", "proposal"]) {
+  for (const step of Object.keys(ctx.pluginPanels)) {
     const originalInputs = inputs(step);
     const original = ctx.state["active_" + step + "_plugin_ids"].slice();
     ctx.state["active_" + step + "_plugin_ids"] = [];
@@ -96,8 +96,9 @@ if (mode === "order") {
   assert.deepEqual(Array.from(ctx.pluginPanels.perception.draft),
     [...snapshot.active_perception_plugin_ids, "frame"]);
 } else if (mode === "visibility") {
-  for (const step of ["perception", "memory", "proposal"]) {
+  for (const step of Object.keys(ctx.pluginPanels)) {
     const panel = ctx.pluginPanels[step];
+    const catalog = snapshot[step + "_plugin_catalog"];
     const preset = snapshot.machine_detail.pipeline[step + "_preset"];
     if (preset) {
       assert(elements[panel.summaryId].textContent.includes(preset),
@@ -108,15 +109,32 @@ if (mode === "order") {
     }
     assert.equal(elements[step + "PluginOrder"].textContent,
       "Run order: " + snapshot["active_" + step + "_plugin_ids"].join(" → "));
-    toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
-    assert(elements[panel.summaryId].textContent.includes("selection pending"));
-    ctx.revertPluginDraft(step);
-    ctx.actionInFlight = false;
-    ctx.renderPlugins();
+    if (catalog && catalog.single_plugin) {
+      const before = sent.length;
+      toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
+      assert.equal(panel.queued, null, "a single-plugin panel does not queue an empty draft");
+      assert.equal(sent.length, before);
+      assert.deepEqual(checked(step), snapshot["active_" + step + "_plugin_ids"]);
+      assert.equal(elements[panel.summaryId].textContent.includes("selection pending"), false);
+    } else {
+      toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
+      assert(elements[panel.summaryId].textContent.includes("selection pending"));
+      ctx.revertPluginDraft(step);
+      ctx.actionInFlight = false;
+      ctx.renderPlugins();
+    }
   }
-  for (const step of ["memory", "proposal"]) {
-    accept(step, [], step === "proposal" ? null : "custom");
-    assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
+  for (const step of Object.keys(ctx.pluginPanels)) {
+    const catalog = snapshot[step + "_plugin_catalog"];
+    if (catalog && catalog.single_plugin) {
+      ctx.state["active_" + step + "_plugin_ids"] = [];
+      delete ctx.state.machine_detail.pipeline[step + "_preset"];
+      ctx.renderPlugins();
+      assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
+    } else if (step !== "perception") {
+      accept(step, [], step === "proposal" ? null : "custom");
+      assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
+    }
   }
 } else {
   throw new Error("unknown test mode " + mode);

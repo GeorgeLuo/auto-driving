@@ -44,13 +44,10 @@ from autonomy.runtime.execution import ControlExecution, ControlTarget
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import RunRecording
 from autonomy.plugins import LocalPluginCatalog, PluginManager
-from autonomy.runtime.plugin_catalog import ARMING_STEPS, PluginCatalogAPI, describe_plugin
+from autonomy.runtime.plugin_catalog import PluginCatalogAPI, describe_plugin
 from autonomy.shared_memory import SharedMemory
 
 IDLE_REASON = "cycle-idle"
-# Steps whose restaged plugin selection a running host applies between frames.
-# Other steps, and changed specs or configs, take effect on a restart.
-LIVE_SELECTION_STEPS = ARMING_STEPS
 
 
 # A status read waits this long for a running cycle, then answers with the
@@ -140,7 +137,7 @@ class AutonomyCycleHost:
 
         from autonomy.decision_cycle.activation import step_activation_path
 
-        for step in LIVE_SELECTION_STEPS:
+        for step in STEPS:
             if step in activations:
                 self.watch_selection(step, step_activation_path(runtime_root, step), activations[step])
         loaded = snapshot_step_activations(self.steps)
@@ -172,6 +169,7 @@ class AutonomyCycleHost:
     def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
         """Add/update named definitions from one catalog snapshot and load them now.
 
+        A step that runs exactly one plugin swaps it for the named definition.
         Loading between cycles answers the request with any import or
         construction error and keeps the previous selection. A loaded group
         publishes together at the next cycle.
@@ -184,15 +182,14 @@ class AutonomyCycleHost:
             definitions = {(item.step, item.plugin_id): item for item in available}
             requested = {}
             for step, ids in selections.items():
-                if step not in LIVE_SELECTION_STEPS:
-                    raise ValueError(f"arming supports {', '.join(LIVE_SELECTION_STEPS)}, not {step!r}")
                 if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
                     raise ValueError(f"{step} selection must be an ordered list of plugin IDs")
                 runner = self.step(step)
                 manager = getattr(runner, "plugin_manager", None)
                 if runner is not None and manager is None:
                     raise ValueError(f"{step} runner does not support catalog arming")
-                current = {item.plugin_id: item for item in manager.selected} if manager else {}
+                swap = getattr(runner if runner is not None else STEP_RUNNERS[step], "single_plugin", False)
+                current = {item.plugin_id: item for item in manager.selected} if manager and not swap else {}
                 for plugin_id in ids:
                     definition = definitions.get((step, plugin_id))
                     if definition is None:
@@ -213,8 +210,6 @@ class AutonomyCycleHost:
             known = {(item.step, item.plugin_id) for item in available}
             requested = {}
             for step, ids in selections.items():
-                if step not in LIVE_SELECTION_STEPS:
-                    raise ValueError(f"disarming supports {', '.join(LIVE_SELECTION_STEPS)}, not {step!r}")
                 if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
                     raise ValueError(f"{step} selection must be an ordered list of plugin IDs")
                 if all_plugins and ids:
@@ -269,7 +264,7 @@ class AutonomyCycleHost:
         try:
             requested, applied = {}, {}
             pending = False
-            for step in LIVE_SELECTION_STEPS:
+            for step in STEPS:
                 runner = self.step(step)
                 manager = getattr(runner, "plugin_manager", None)
                 selected = manager.selected if manager else ()
@@ -289,7 +284,7 @@ class AutonomyCycleHost:
     def _adopt_selection(self) -> None:
         """Prepare the whole requested group before any step publishes it."""
 
-        changed = [step for step in LIVE_SELECTION_STEPS if hasattr(self.step(step), "plugin_manager")
+        changed = [step for step in STEPS if hasattr(self.step(step), "plugin_manager")
                    and self.step(step).plugin_manager.selected != tuple(item for item, _ in self.step(step).applied)]
         if not changed:
             return

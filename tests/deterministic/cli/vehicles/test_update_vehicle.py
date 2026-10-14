@@ -120,6 +120,20 @@ class UpdateVehicleTests(unittest.TestCase):
             )
             self.assertNotIn("Apply selection:", switched)
 
+    def test_a_one_plugin_step_restaged_to_another_packaged_plugin_applies_live(self) -> None:
+        with self._runtime(), patch(DISCOVERY, return_value=_discovered(PICAR)):
+            def update(*args: str) -> str:
+                code, stdout = _invoke("vehicles", "update", "action", "--id", "piracer-test", *args)
+                self.assertEqual(code, 0, stdout)
+                return stdout
+
+            update()
+            apply = json.loads(update("--plugin", "hold", "--json"))["apply"]
+            self.assertEqual((apply["live_selection"], apply["changed_plugins"]), (True, []))
+            self.assertEqual(apply["selection_command"], "./cli/automa vehicles update autonomy --id piracer-test")
+            self.assertIn("Apply selection: ./cli/automa vehicles update autonomy --id piracer-test\n",
+                          update("--plugin", "selected"))
+
     def test_each_first_staged_step_makes_the_vehicle_known_to_every_step_offline(self) -> None:
         for first in STEPS:
             with self.subTest(first=first), self._runtime() as root:

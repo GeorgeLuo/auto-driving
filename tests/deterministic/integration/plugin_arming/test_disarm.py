@@ -137,7 +137,7 @@ class PluginDisarmingFlows(unittest.TestCase):
         }) as (host, base):
             before = catalog(base)
             bad_maps = ({"perception": ["frame"], "proposal": ["missing"]},
-                        {"plan": []}, {"perception": "frame"}, {"memory": [7]}, {}, [])
+                        {"steering": []}, {"perception": "frame"}, {"memory": [7]}, {}, [])
             file = root / "removals.json"
             for selections in bad_maps:
                 with self.subTest(selections=selections):
@@ -158,6 +158,16 @@ class PluginDisarmingFlows(unittest.TestCase):
                 result = PluginCatalogClient(base)({"operation": "disarm", "selections": {"memory": []}, "all": value})
                 self.assertFalse(result["ok"])
                 self.assertEqual(catalog(base), before)
+
+    def test_a_one_plugin_step_keeps_its_plugin(self):
+        with image_source(1) as root, plugin_host(root) as (host, base):
+            before = selected(catalog(base), "applied", "plan")
+            result = self.disarm(base, "--step", "plan", "--plugin", "highest_confidence", "--json", check=False)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(json.loads(result.stdout)["outcome"]["message"],
+                             "plan: ValueError: the plan step runs exactly one plugin; 0 selected")
+            host.run(frame(root, 1))
+            self.assertEqual(host.plugin_catalog()["arming"]["applied"]["plan"], before)
 
     def test_clear_absent_runners_does_not_create_them(self):
         with image_source(1) as root, plugin_host(root) as (host, base):

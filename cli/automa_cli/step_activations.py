@@ -30,7 +30,6 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 from autonomy.decision_cycle.steps import builtin_activation, step_runner
-from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import (
     STEP_PRESETS,
@@ -151,16 +150,16 @@ def format_activation_problems(problems: list[dict[str, str]]) -> str:
 def apply_staged(vehicle_id: str, provider: Any, step: str, *, changed: list[str] | None = None) -> dict[str, Any]:
     """How a vehicle's running autonomy picks up ``step`` as ``vehicles update`` staged it.
 
-    Every host selects a restaged live-selection step's plugins on its next
-    frame. A Chase host reads the local runtime directory, so nothing needs to
-    run (``selection_command`` is ``None``); a PiCar reads the copy ``vehicles
-    update autonomy`` installs onboard. Other steps, and changed plugin specs
-    or configs, take effect after ``restart_command``, the same for every
-    vehicle: package a release and restart the host onto it. ``changed``
-    names the plugins whose spec or config this restage changed.
+    Every host selects a restaged step's plugins on its next frame. A Chase
+    host reads the local runtime directory, so nothing needs to run
+    (``selection_command`` is ``None``); a PiCar reads the copy ``vehicles
+    update autonomy`` installs onboard. Changed plugin specs or configs take
+    effect after ``restart_command``, the same for every vehicle: package a
+    release and restart the host onto it. ``changed`` names the plugins whose
+    spec or config this restage changed.
     """
 
-    live = step in LIVE_SELECTION_STEPS and not changed
+    live = not changed
     install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
     selection = install if provider == "picar" else None
     restart = f"{install} --restart"

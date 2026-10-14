@@ -102,7 +102,7 @@ def candidate(state, plugin_id):
 
 
 def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
-    """Self-contained plugins with runtime dependencies across the three steps."""
+    """Self-contained plugins with runtime dependencies, one per step."""
     if step == "perception":
         source = (
             "from dataclasses import replace\n"
@@ -127,7 +127,7 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
             "    def status(self, shared_memory):\n"
             "        return dict((shared_memory or {}).get('prototype.memory', {}))\n"
         )
-    else:
+    elif step == "proposal":
         source = (
             "from autonomy.decision_cycle.proposal.values import ActionProposal\n"
             "class Prototype:\n"
@@ -137,5 +137,18 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
             "        return ActionProposal(plugin_id=self.plugin_id, frame_id=source.frame_id,\n"
             f"            lifecycle='inactive', freshness='none', confidence=0.0, reason='prototype revision {revision}',\n"
             f"            command=None, metadata={{'revision': {revision}, 'memory': memory}})\n"
+        )
+    else:
+        # One-plugin steps reuse the packaged plugin under the prototype's id.
+        base = {
+            "observation": ("autonomy.decision_cycle.observation.perception_summary", "PerceptionSummary"),
+            "plan": ("autonomy.decision_cycle.plan.highest_confidence", "HighestConfidencePlan"),
+            "action": ("autonomy.decision_cycle.action.selected", "SelectedAction"),
+        }[step]
+        source = (
+            f"from {base[0]} import {base[1]}\n"
+            f"class Prototype({base[1]}):\n"
+            f"    plugin_id = {plugin_id!r}\n"
+            f"    revision = {revision}\n"
         )
     file.write_text(source)

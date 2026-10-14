@@ -13,6 +13,9 @@ One folder per plugin, named for its `plugin_id`. For example, the
   `DuplicatePluginIdError`.
 - Register a plugin with one entry in `../catalog.py`: its `spec`
   (`module.path:Class`), a description, and its default config.
+- Name ordered plugin selections and configuration recipes in `../presets.py`,
+  as in perception and memory. `DEFAULT_PROPOSAL_PRESET` chooses the default;
+  the catalog lists available plugins independently of that selection.
 - Return one `ActionProposal` each cycle, under the plugin's own `plugin_id`
   and the source's `frame_id`. With nothing to propose, return an `inactive`
   candidate with a reason. The constructor supplies `proposal_id` from those

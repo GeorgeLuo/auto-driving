@@ -10,7 +10,7 @@ from PIL import Image
 
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from cli.automa_cli.workbench_source import normalize_image_directory
-from tests.support.cli_runner import run_automa
+from tests.shared.cli.invoke import invoke_automa
 
 
 def frame_sequence(frames: list[dict]) -> list[tuple]:
@@ -40,7 +40,7 @@ class InspectionSourceTests(unittest.TestCase):
         }
 
     def inspect(self, step: str, source: Path, *flags: str, exit_code: int = 0) -> dict:
-        result = run_automa(
+        result = invoke_automa(
             "vehicles",
             step,
             "inspect",
@@ -181,7 +181,7 @@ class InspectionSourceTests(unittest.TestCase):
         )
         for step in ("perception", "memory"):
             with self.subTest(step=step):
-                result = run_automa(
+                result = invoke_automa(
                     "vehicles",
                     step,
                     "inspect",
@@ -196,7 +196,7 @@ class InspectionSourceTests(unittest.TestCase):
                 self.assertFalse((self.root / step).exists())
                 report = self.inspect(step, self.source, "--max-frames", str(count))
                 self.assertEqual(len(report["frames"]), count)
-                help_text = run_automa("vehicles", step, "inspect", "--help").stdout
+                help_text = invoke_automa("vehicles", step, "inspect", "--help").stdout
                 self.assertIn("--max-frames", help_text)
 
     def test_operation_captures_keep_before_after_order_for_all_consumers(self) -> None:
@@ -230,7 +230,7 @@ class InspectionSourceTests(unittest.TestCase):
         (self.source / "a.png").write_bytes(b"not an image")
         for step in ("perception", "memory"):
             with self.subTest(step=step):
-                result = run_automa(
+                result = invoke_automa(
                     "vehicles",
                     step,
                     "inspect",
@@ -244,3 +244,7 @@ class InspectionSourceTests(unittest.TestCase):
                 self.assertIn(f"Could not read {step} inspect source:", result.stdout)
                 self.assertIn("not decodable", result.stdout)
                 self.assertFalse((self.root / step).exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

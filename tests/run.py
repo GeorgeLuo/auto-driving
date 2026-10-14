@@ -50,6 +50,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "-k",
+        dest="patterns",
+        action="append",
+        metavar="PATTERN",
+        help=(
+            "Run only the tests whose ID (module.Class.method) matches PATTERN, as "
+            "unittest's -k does: a substring, or a glob when it contains *. Repeatable."
+        ),
+    )
+    parser.add_argument(
         "--durations",
         type=int,
         default=10,
@@ -208,7 +218,11 @@ def main(argv: list[str] | None = None) -> int:
         directories = [TESTS_DIR / "systems" / group for group in dict.fromkeys(args.systems)]
     else:
         directories = [TESTS_DIR / "systems"]
-    loader = unittest.defaultTestLoader
+    loader = unittest.TestLoader()
+    if args.patterns:
+        loader.testNamePatterns = [
+            pattern if "*" in pattern else f"*{pattern}*" for pattern in args.patterns
+        ]
     suite = unittest.TestSuite(
         loader.discover(str(directory), pattern="test_*.py", top_level_dir=str(ROOT))
         for directory in directories
@@ -217,6 +231,9 @@ def main(argv: list[str] | None = None) -> int:
     if deterministic:
         forbid_spawns()
     result = runner.run(suite)
+    if args.patterns and not result.testsRun:
+        print(f"No tests match -k {' -k '.join(args.patterns)}.", file=sys.stderr)
+        return 1
     if args.durations > 0:
         print("\nSlowest tests (including setup and cleanup):", file=sys.stderr)
         for seconds, name in sorted(result.timings, reverse=True)[: args.durations]:

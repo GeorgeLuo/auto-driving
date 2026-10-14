@@ -102,4 +102,4 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             self.assertEqual(len(steps), 1)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation/state.json").read_text())
             self.assertEqual(state["processed_count"], 5)
-            self.assertEqual(state["memory"]["status"]["plugin_ids"], ["bounded_evidence"])
+            self.assertEqual(state["selections"]["memory"]["status"]["plugin_ids"], ["bounded_evidence"])

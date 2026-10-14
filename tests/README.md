@@ -26,19 +26,33 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
 
 The browser install is only for the systems test that opens Chromium. CI does not install a browser and does not run this suite. Name one or more groups to run only those, for example `python3 tests/run.py --systems journeys frontend`.
 
+Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
+
 The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite.
 
-## Before pushing
+## Validating a change
 
-CI does not run `systems/`. Run the groups that drive the code you changed, and list them under Validation in the pull request:
+Run the tests your change reaches, not every suite. `commands` and `journeys` together take about two minutes, and most changes reach a few of their modules.
+
+1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
+2. Before pushing, run the whole deterministic suite once. It takes three to four minutes, and CI runs the same command.
+3. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
 | Change touches | Run |
 |---|---|
-| `cli/automa_cli/` | `--systems commands` |
-| `autonomy/runtime/`, `autonomy/plugins.py`, `implementations/runtime/`, the plugin catalog, or the workbench | `--systems journeys` |
+| One `automa` command family in `cli/automa_cli/` | The journeys that call that command, plus `--systems commands -k commands.<family>` for `automation`, `help`, or `simulators` |
+| Plugin upload, arming, disarming, or the plugin catalog | `--systems journeys -k journeys.plugins` |
+| Automation runs, streams, recordings, or replay | `--systems journeys -k automation_pipeline` |
+| The Chase runtime host | `--systems journeys -k runtime_host` |
 | `cli/automa_cli/workbench_page/js/` | `--systems frontend` |
 | `deploy/`, the release bundle, or the import surface | `--systems packaging` |
 | `qca/` | `--systems qca` |
+
+To find the tests that call a command, search for its words, for example `git grep -l '"disarm"' -- tests/systems`, then select those modules with `-k`.
+
+Run a whole group only when the change reaches code that most of its tests go through. For `commands`, that is `cli/automa` or `cli/automa_cli/app.py`. For `journeys`, it is the runtime host loop in `autonomy/runtime/` or the runtime view. A change to `tests/run.py`, `tests/support/`, or a `tests/shared/` fixture that systems tests import needs every group that uses it.
+
+List each command you ran and its result under Validation in the pull request. Do not rerun a check that passed unless the code it covers has changed since. After merging `main`, rerun only the tests the merged changes reach. If a test outside your change fails, run it alone with `-k`, and on `main`, before treating it as yours, and report it either way.
 
 ## Where a test goes
 
@@ -46,11 +60,13 @@ File a test by what its behavior needs, not by what its setup happens to call.
 
 A test that runs in this process goes under `deterministic/`, next to the codebase package it exercises. An in-process test that crosses packages goes under `deterministic/integration/`. Setup alone does not make a systems test: if only the arrangement starts a program, arrange it in-process instead.
 
+Calling `automa` does not make a systems test either. Starting `cli/automa` costs about two seconds per command, so a test that needs only a command's exit code and output runs it with `invoke_automa` from `shared/cli/invoke.py`, which returns what `run_automa` does without starting a program. Keep `run_automa` for a test of the executable itself or of a command that must run in its own process, such as `automation run`, which starts the worker. A systems test that needs one such command runs its other commands with `invoke_automa`. `invoke_automa` shares this process's imported modules, so a command whose result depends on a fresh import, such as replaying an uploaded plugin after its source is removed, needs `run_automa`. A module that reads an environment variable when it is imported needs an entry in `IMPORT_TIME_ENV` there, or commands run in this process miss a test's value.
+
 A test whose behavior needs another program goes under `systems/`, in the group for the surface it drives:
 
 | Group | Covers | Starts |
 |---|---|---|
-| `commands/<family>/` | One `automa` command family: `automation`, `decision`, `deployment`, `help`, `memory`, `perception`, `simulators`, `vehicles`, or `workbench` | `cli/automa` |
+| `commands/<family>/` | `automa` commands whose behavior needs another program: `help` through the executable, `simulators` against a fake `simeval`, and `automation` recovery around a running process | `cli/automa`, `simeval`, or a child process |
 | `journeys/` | Flows that cross commands and hosts: the automation pipeline, plugin upload and arming, and the runtime host lifecycle | `cli/automa`, runtime hosts, and Chromium for one upload test |
 | `frontend/` | Workbench page scripts in `cli/automa_cli/workbench_page/js/`. Each test keeps its `.js` driver beside it | `node`; skipped when it is missing |
 | `packaging/` | Fresh-interpreter import order, source visibility, and the Pi installer, service, and runner scripts | A fresh Python, `bash`, and `git` |

@@ -25,11 +25,10 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
     def __call__(
         self, context: DecisionFrameContext, perception: PerceptionText | None
     ) -> Observation | None:
-        with self._runtime_lock:
-            self.refresh_selection(context.shared_memory)
+        with self._runtime_lock, self._timed_single() as plugin:
             self.run_count += 1
             try:
-                observation = self._single().observe(context, perception)
+                observation = plugin.observe(context, perception)
                 if observation is not None and not isinstance(observation, Observation):
                     raise TypeError("observation plugin must return an Observation or None")
             except Exception as exc:

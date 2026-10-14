@@ -1,12 +1,11 @@
 """Live catalog listing and selection for the replay workbench.
 
-The workbench offers every packaged plugin of the steps whose selection the
-operator can change: perception, memory and proposal. A selection is checked
-and built by ``step_selection``, the activation the CLI stages for that step:
-perception and memory select a preset or a plugin list, so a preset given on
-the command line keeps its plugin configs; proposal has no presets and selects
-a plugin list. Listing a catalog does not construct plugins; construction
-happens only after the operator selects plugins for a replay.
+The workbench offers every packaged plugin of the ``SELECTABLE_STEPS``:
+perception, memory and proposal. A selection is built by the catalog's
+``selection_activation``, the activation the CLI stages for that step, so a
+preset given on the command line keeps its plugin configs. Listing a catalog
+does not construct plugins; construction happens only after the operator
+selects plugins for a replay.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from autonomy.decision_cycle.steps import step_runner
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
-    STEP_PRESETS,
+    SELECTABLE_STEPS,
     packaged_activation,
     plugin_list_preset,
     selection_activation,
@@ -30,27 +29,6 @@ from implementations.decision_cycle.catalog import (
 
 
 PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog_v1"
-SELECTABLE_STEPS = ("perception", "memory", "proposal")
-
-
-def step_selection(
-    step: str,
-    *,
-    preset: str | None = None,
-    plugins: Sequence[str] | None = None,
-) -> StepActivation:
-    """The activation the CLI stages for this selection of ``step``.
-
-    A step with presets takes a preset or an ordered plugin list, and its
-    default preset with neither. A step without presets takes an ordered
-    plugin list, and its default plugins without one.
-    """
-
-    if step in STEP_PRESETS:
-        return selection_activation(step, preset=preset, plugins=plugins)
-    if preset is not None:
-        raise ValueError(f"{step} has no presets; select its plugins instead")
-    return packaged_activation(step, plugins)
 
 
 class PluginCatalogError(ValueError):
@@ -156,12 +134,11 @@ class PluginCatalog:
         try:
             definitions = self.resolver.list(self.step)
             return replace(
-                step_selection(self.step, plugins=[]),
+                selection_activation(self.step, plugins=[]),
                 plugins=tuple(active_ids),
                 plugin_specs={item.plugin_id: item.executable_entrypoint for item in definitions},
                 plugin_configs={item.plugin_id: dict(item.config) for item in definitions if item.config},
-                metadata={"preset": plugin_list_preset(self.step, active_ids)}
-                if self.step in STEP_PRESETS else {},
+                metadata={"preset": plugin_list_preset(self.step, active_ids)},
             )
         except ValueError as exc:
             raise PluginCatalogError(str(exc)) from exc
@@ -207,5 +184,4 @@ __all__ = [
     "PluginDescriptor",
     "SELECTABLE_STEPS",
     "packaged_plugin_catalog",
-    "step_selection",
 ]

@@ -16,7 +16,6 @@ import threading
 import traceback
 from collections.abc import Mapping
 from copy import deepcopy
-from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
@@ -94,7 +93,7 @@ class AutonomyCycleHost:
         self._step_reports_wanted = False
         self._selection: dict[str, Any] | None = None
         self.plugin_catalog = PluginCatalogAPI(
-            self.catalog, arm=self.arm, selection_status=self.selection_status,
+            self.catalog, arm=self.arm, disarm=self.disarm, selection_status=self.selection_status,
             applied_decision=self.applied_decision,
         )
         # A host whose cycles run back to back may never free the lock for a
@@ -154,8 +153,8 @@ class AutonomyCycleHost:
     def sync_selection(self) -> dict[str, StepActivation]:
         """Select each watched step's restaged plugin IDs before the next frame.
 
-        Returns the activation each changed step now requests. The runner
-        applies the selection during its next call.
+        Returns the activation each changed step now requests.
+        ``_adopt_selection`` applies it before the next cycle.
         """
 
         with self._lock:
@@ -200,30 +199,69 @@ class AutonomyCycleHost:
                         raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
                     current[plugin_id] = definition
                 requested[step] = tuple(current.values())
-            self._arm_request_id += 1
-            previous: dict[str, tuple[Any, ...]] = {}
-            try:
-                for step, selected in requested.items():
-                    if self.step(step) is None:
-                        self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
-                    runner = self.step(step)
-                    previous[step] = runner.plugin_manager.selected
-                    runner.plugin_manager.select(selected)
-                    if runner.plugin_manager.selected != tuple(item for item, _ in runner.applied):
-                        runner.prepare_selection()
-            except Exception as exc:  # noqa: BLE001 - plugin import and construction
-                for item, selected in previous.items():
-                    self.step(item).discard_selection()
-                    self.step(item).plugin_manager.select(selected)
-                self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
-                return {"ok": False, "status": "failed", "error": self._selection_error,
-                        "arming": self.selection_status()}
-            for step in requested:
-                self._pending_activations.pop(step, None)
-                self._armed_steps.add(step)
-            self._selection_error = None
-            state = self.selection_status()
-            return {"ok": True, "status": state["status"], "arming": state}
+            return self._request_selection(requested)
+
+    def disarm(self, selections: Mapping[str, Any], *, all_plugins: bool = False) -> dict[str, Any]:
+        """Deselect named plugins, or clear steps, without deleting catalog entries."""
+
+        if not isinstance(all_plugins, bool):
+            raise ValueError("disarming all must be a boolean")
+        if not isinstance(selections, Mapping) or not selections:
+            raise ValueError("disarming requires a selection map of steps to ordered plugin IDs")
+        with self._lock:
+            _, available = self.catalog.snapshot()
+            known = {(item.step, item.plugin_id) for item in available}
+            requested = {}
+            for step, ids in selections.items():
+                if step not in LIVE_SELECTION_STEPS:
+                    raise ValueError(f"disarming supports {', '.join(LIVE_SELECTION_STEPS)}, not {step!r}")
+                if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
+                    raise ValueError(f"{step} selection must be an ordered list of plugin IDs")
+                if all_plugins and ids:
+                    raise ValueError("disarming all cannot include plugin IDs")
+                runner = self.step(step)
+                manager = getattr(runner, "plugin_manager", None)
+                if runner is not None and manager is None:
+                    raise ValueError(f"{step} runner does not support catalog disarming")
+                for plugin_id in ids:
+                    if (step, plugin_id) not in known:
+                        raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
+                if runner is None:
+                    continue
+                current = manager.selected
+                removed = set(ids)
+                requested[step] = () if all_plugins else tuple(
+                    item for item in current if item.plugin_id not in removed
+                )
+            return self._request_selection(requested)
+
+    def _request_selection(self, requested: Mapping[str, tuple[Any, ...]]) -> dict[str, Any]:
+        """Prepare an explicit selection group while the caller holds the host lock."""
+
+        self._arm_request_id += 1
+        previous: dict[str, tuple[Any, ...]] = {}
+        try:
+            for step, selected in requested.items():
+                if self.step(step) is None:
+                    self.set_step(step, STEP_RUNNERS[step](PluginManager(step, self.catalog)))
+                runner = self.step(step)
+                previous[step] = runner.plugin_manager.selected
+                runner.plugin_manager.select(selected)
+                if runner.plugin_manager.selected != tuple(item for item, _ in runner.applied):
+                    runner.prepare_selection()
+        except Exception as exc:  # noqa: BLE001 - plugin import and construction
+            for item, selected in previous.items():
+                self.step(item).discard_selection()
+                self.step(item).plugin_manager.select(selected)
+            self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
+            return {"ok": False, "status": "failed", "error": self._selection_error,
+                    "arming": self.selection_status()}
+        for step in requested:
+            self._pending_activations.pop(step, None)
+            self._armed_steps.add(step)
+        self._selection_error = None
+        state = self.selection_status()
+        return {"ok": True, "status": state["status"], "arming": state}
 
     def selection_status(self) -> dict[str, Any]:
         if not self._lock.acquire(timeout=STATUS_WAIT_S):
@@ -272,10 +310,10 @@ class AutonomyCycleHost:
             self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
             for item in changed:
                 self.step(item).discard_selection()
-            # Preserve the existing staged perception/memory stop policy and
-            # do not execute a cycle after a partially committed reset failure.
-            armed = step in self._armed_steps
-            if (phase == "commit" and armed) or (not armed and step in ("perception", "memory")):
+            # Every step, armed or staged, follows one rule: a failed prepare
+            # changed nothing, so the applied plugins keep running; a failed
+            # commit may have reset part of the group, so no cycle runs.
+            if phase == "commit":
                 if step == "memory":
                     raise MemoryUpdateError(f"{type(exc).__name__}: {exc}") from exc
                 raise
@@ -334,13 +372,8 @@ class AutonomyCycleHost:
                 self.shared_memory = context.shared_memory
             try:
                 self.sync_selection()
-                with ExitStack() as selections:
-                    for step in LIVE_SELECTION_STEPS:
-                        runner = self.step(step)
-                        if runner is not None and hasattr(runner, "hold_selection"):
-                            selections.enter_context(runner.hold_selection())
-                    self._adopt_selection()
-                    result = self.cycle.run(context)
+                self._adopt_selection()
+                result = self.cycle.run(context)
                 result = replace(result, context=self._record_frame_context(result.context))
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))

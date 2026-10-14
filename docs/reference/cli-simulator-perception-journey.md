@@ -53,16 +53,12 @@ Use either `--chase-url` or the compatibility option `--chase-ws-url`, not
 both. When neither is supplied, Automa uses `CHASE_UI_WS_URL` when set and
 otherwise connects to `http://localhost:5050`.
 
-`update memory` stages the memory preset. Without it, an otherwise fresh cycle
-has no memory plugins. `update perception` stages the observer and fills absent
-observation, plan and action activations with their built-in plugins. Existing
-selections are preserved; proposals are staged separately. An incompatible
-existing observation, plan, action or proposal activation must be restaged
-before updating perception, which refreshes their release metadata.
-Neither update command starts a worker or applies movement. For the primary
-Chase path, the perception update rechecks the same environment and
-passive-capture prerequisites used by automation, then reports whether the run
-command is ready. Memory staging does not require a live simulator.
+`update memory` stages the memory preset and `update perception` the observer.
+Without them, an otherwise fresh cycle runs no memory or perception plugins,
+and `automation run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
+their built-in plugins. Neither update command starts a worker, applies
+movement, or requires a live simulator. `vehicles status` reports whether the
+run command is ready.
 
 `automation run --observe-only` preserves the current scenario, playback
 state, control source, and input. It succeeds only after one camera frame, the
@@ -237,7 +233,7 @@ blocked. Run the command as printed, or perform the named external change.
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
 | Deployment absent | Run the printed `vehicles update perception` command; stage memory separately when you want its ledger |
-| Staged step invalid (including a retired schema) | Status, startup, `vehicles info`, and the perception and autonomy updates identify its step, activation path, and restage command. Run its `vehicles update <step>` command with your intended selection, then rerun status. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
+| Staged step invalid (including a retired schema) | Status, startup, `vehicles info`, and the autonomy update identify its step, activation path, and restage command. Run its `vehicles update <step>` command with your intended selection, then rerun status. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
 | Worker stopped | Run the printed observation-only `automation run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 

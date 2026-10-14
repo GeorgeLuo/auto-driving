@@ -7,15 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision_cycle.activation import read_step_activation
+from autonomy.decision_cycle.activation import STEPS, read_step_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.deploy import PicarTarget, _REMOTE_AUTONOMY_INSTALL_SCRIPT, _write_remote_activation_files
-from cli.automa_cli.memory import ensure_vehicle_memory_activation
-from cli.automa_cli.perception import ensure_vehicle_perception_activation
 from cli.automa_cli.step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
-    ensure_builtin_activations,
+    ensure_step_activations,
 )
 
 TARGET = PicarTarget(
@@ -41,15 +39,10 @@ class PhysicalDeployTests(unittest.TestCase):
             vehicle_runtime = root / "runtime" / "vehicles" / "piracer"
             bundle = controller_bundle_paths(vehicle_runtime)
             release = sync_controller_bundle(bundle, output=None)
-            ensure_vehicle_perception_activation(
-                vehicle=dict(TARGET.vehicle),
-                preset="lightweight_observer",
-                bundle=bundle,
-                release=release,
+            ensure_step_activations(
+                vehicle_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.vehicle),
             )
-            ensure_vehicle_memory_activation(vehicle_id="piracer", bundle=bundle, release=release)
-            ensure_builtin_activations(vehicle_id="piracer", bundle=bundle, release=release)
-            steps = ("perception", "memory", "observation", "plan", "action")
+            steps = STEPS
             release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
             for step in steps:
                 staged = json.loads(bundle_activation_path(bundle, step).read_text(encoding="utf-8"))
@@ -104,6 +97,8 @@ class PhysicalDeployTests(unittest.TestCase):
             self.assertEqual(action.plugins, ("selected",))
             memory = read_step_activation(runtime / "memory" / "active.json", "memory")
             self.assertEqual(memory.plugins, ("bounded_evidence",))
+            proposal = read_step_activation(runtime / "proposal" / "active.json", "proposal")
+            self.assertEqual(proposal.metadata["preset"], "obstruction_avoidance")
             self.assertEqual(
                 json.loads((runtime / "identity.json").read_text(encoding="utf-8"))["source_id"],
                 "donkeycar:piracer",

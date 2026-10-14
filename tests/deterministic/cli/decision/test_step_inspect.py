@@ -8,8 +8,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from cli.automa_cli.decision_steps import inspect_decision_step
+from cli.automa_cli.step_replay import StepReplay
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 
@@ -43,6 +46,26 @@ class DecisionStepInspectTests(unittest.TestCase):
                 self.assertIn(f"{step.capitalize()} inspect", text)
                 self.assertIn(f"{step.capitalize()}: status=", text)
 
+    def test_each_frame_carries_every_steps_and_plugins_time(self) -> None:
+        """Regression: no command showed step or plugin time, so a slow plugin was invisible."""
+
+        report = self.inspect("plan")
+        for item in report["frames"]:
+            timing = item["timing"]
+            self.assertEqual([entry["step"] for entry in timing["steps"]], list(STEPS))
+            for entry in timing["steps"]:
+                self.assertEqual(
+                    [plugin["plugin_id"] for plugin in entry["plugins"]],
+                    report["selections"][entry["step"]]["plugins"],
+                )
+                self.assertGreaterEqual(timing["duration_ms"], entry["duration_ms"])
+                for plugin in entry["plugins"]:
+                    self.assertGreaterEqual(entry["duration_ms"], plugin["duration_ms"])
+        text = inspect_decision_step("plan", source=self.frames).message
+        self.assertRegex(
+            text, r"Timing: plan \d+\.\d{3} ms \(highest_confidence \d+\.\d{3} ms\); cycle \d+\.\d{3} ms"
+        )
+
     def test_frame_reports_one_frame_after_replaying_the_ones_before(self) -> None:
         report = self.inspect("plan", frame=2)
         self.assertEqual([item["position"] for item in report["frames"]], [2])
@@ -71,6 +94,25 @@ class DecisionStepInspectTests(unittest.TestCase):
         replayed = self.inspect("proposal", source=run_dir)
         self.assertEqual(replayed["source"]["frame_count"], 3)
         self.assertEqual(replayed["selections"]["action"]["plugins"], ["mode"])
+
+    def test_a_recording_that_disabled_a_selectable_step_replays_it_empty(self) -> None:
+        """Regression: a disabled proposal replayed without a runner, unlike perception and memory."""
+
+        replay = StepReplay({"steps": dict.fromkeys(SELECTABLE_STEPS)}, steps=SELECTABLE_STEPS)
+        for step in SELECTABLE_STEPS:
+            with self.subTest(step=step):
+                self.assertEqual(replay.activations[step].plugins, ())
+                self.assertIsNotNone(replay.runners[step])
+
+    def test_cli_has_a_group_per_step_and_no_decision_command(self) -> None:
+        for step in DECISION_STEPS:
+            with self.subTest(step=step):
+                flags = invoke_automa("vehicles", step, "inspect", "--help").stdout
+                for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames"):
+                    self.assertIn(flag, flags)
+        removed = invoke_automa("vehicles", "decision", "help", check=False)
+        self.assertEqual(removed.returncode, 2)
+        self.assertIn("invalid choice: 'decision'", removed.stderr)
 
 
 if __name__ == "__main__":

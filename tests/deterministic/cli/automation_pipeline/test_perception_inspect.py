@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support.cli_runner import run_automa
+from tests.shared.cli.invoke import invoke_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
 
@@ -14,7 +14,7 @@ class PerceptionInspectBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url}
-            run_automa(
+            invoke_automa(
                 "vehicles", "update", "perception", "--id", "chase-sim-chaser",
                 "--plugin", "frame", runtime_root=runtime_root, extra_env=env,
             )
@@ -32,7 +32,7 @@ class PerceptionInspectBundleTests(unittest.TestCase):
 
             for selection in ((), ("--plugin", "frame"), ("--preset", "sim_debug")):
                 with self.subTest(selection=selection):
-                    result = run_automa(
+                    result = invoke_automa(
                         "vehicles", "perception", "inspect", "--id", "chase-sim-chaser",
                         "--frames", "1", "--interval-s", "0", "--json", *selection,
                         runtime_root=runtime_root, extra_env=env,
@@ -41,7 +41,6 @@ class PerceptionInspectBundleTests(unittest.TestCase):
                     things = report["frames"][0]["perception"]["things"]
                     frame = next(item for item in things if item["thing_id"] == "front_camera_frame")
                     self.assertEqual(frame["label"], "staged camera frame")
-                    self.assertFalse(report["perception"]["bundle_refreshed"])
                     self.assertEqual(activation_path.read_bytes(), staged)
 
 

@@ -136,6 +136,10 @@ def run_frame(
             },
         )
 
+    if callable(getattr(perception_step, "plugin_timing", None)):
+        # The cycle reads each step's plugin timing from its slot; this one is the runner's.
+        perceive.plugin_timing = perception_step.plugin_timing
+
     def observe(
         current: DecisionFrameContext,
         perception: PerceptionText | None,

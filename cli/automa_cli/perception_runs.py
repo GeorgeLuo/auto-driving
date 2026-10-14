@@ -13,12 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
+from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     SensorFrame,
@@ -26,13 +26,13 @@ from autonomy.vehicle import (
     SensorReadRequest,
 )
 from implementations.decision_cycle.catalog import selection_activation
-from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
 
 from .inspection_runs import (
-    recorded_runner, recorded_selection, recorded_selections, replay_step, selection_record,
+    recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
+    selection_record,
 )
 from .paths import ROOT, display_path, safe_path_part
-from .perception import ensure_local_perception_runtime
+from .perception import live_perception_selection
 from .perception_evaluation import evaluate_perception_frames
 from .step_hosting import load_staged_runner
 from .vehicle_access import create_vehicle_access
@@ -83,10 +83,6 @@ def inspect_perception(
     live read.
     """
 
-    if preset is not None and plugins:
-        return CommandResult(2, "Choose either --preset or --plugin, not both.")
-    if preset is not None and preset not in PERCEPTION_PRESETS:
-        return CommandResult(2, f"Unknown perception preset {preset!r}.")
     if max_frames <= 0:
         return _unreadable_source("max_frames must be greater than zero")
     if source is not None:
@@ -154,17 +150,9 @@ def _inspect_vehicle(
 
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
-        prepared_runtime = ensure_local_perception_runtime(
-            vehicle=vehicle, preset=preset, plugins=plugins
-        )
-        manifest = prepared_runtime["manifest"]
-        activation = step_activation_from_payload(manifest, step="perception")
+        activation = live_perception_selection(vehicle, preset=preset, plugins=plugins)
         runner = load_staged_runner(activation)
-        perception_record = {
-            **_perception_record(activation),
-            "source_tree_sha256": prepared_runtime["source"]["tree_sha256"],
-            "bundle_refreshed": prepared_runtime["refreshed"],
-        }
+        perception_record = _perception_record(activation)
     except Exception as exc:
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
@@ -189,7 +177,7 @@ def _inspect_vehicle(
             frame_records: list[dict[str, Any]] = []
             for index in range(frame_count):
                 frame_id = f"frame_{index:06d}"
-                started = time.perf_counter()
+                started = clock()
                 sensor_frame = access.car.read_sensors(
                     SensorReadRequest(
                         output_dir=frames_dir,
@@ -308,7 +296,7 @@ def _inspect_images(
                 if plugins is None and preset is None:
                     selections = recorded_selections(frame.metadata)
                     if "perception" in selections:
-                        activation = selections["perception"] or selection_activation("perception", plugins=[])
+                        activation = replayed_selection("perception", selections["perception"])
                         runner = replay_step(runner, activation, shared_memory)
                 frame_id = frame.frame_id
                 frame_index = frame.frame_index
@@ -454,14 +442,14 @@ def perceive_sensor_frame(
 
     With ``result_dir`` the plugins write their outputs there and the frame's
     ``perception.json`` and ``perception.txt`` are saved beside them. ``started``
-    is a ``time.perf_counter()`` reading that begins ``duration_ms`` earlier
+    is a ``timing.clock()`` reading that begins ``duration_ms`` earlier
     than this call, for callers that time the sensor read too.
     ``absence_reason`` records a gap and resets temporal state without invoking
     plugins, matching the memory and workbench replay boundary.
     """
 
     if started is None:
-        started = time.perf_counter()
+        started = clock()
     if absence_reason is not None:
         # Match replay's gap boundary: tracks cannot bridge an absent frame.
         runner.reset(shared_memory)
@@ -481,7 +469,7 @@ def perceive_sensor_frame(
             metadata=metadata,
             output_dir=result_dir,
         )
-    duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+    duration_ms = elapsed_ms(started)
     record = _frame_record(
         frame_id=frame_id,
         frame_index=frame_index,

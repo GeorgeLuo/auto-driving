@@ -202,6 +202,23 @@ def write_step_activation(path: Path, activation: StepActivation) -> Path:
     return path
 
 
+def activation_presets(
+    activations: Mapping[str, StepActivation | Mapping[str, Any] | None],
+) -> dict[str, str]:
+    """Each step's preset label; steps without one are omitted."""
+
+    presets: dict[str, str] = {}
+    for step, activation in activations.items():
+        if isinstance(activation, StepActivation):
+            metadata: Any = activation.metadata
+        else:
+            metadata = activation.get("metadata") if isinstance(activation, Mapping) else None
+        preset = metadata.get("preset") if isinstance(metadata, Mapping) else None
+        if isinstance(preset, str):
+            presets[step] = preset
+    return presets
+
+
 def activation_generation_id(
     activations: Mapping[str, StepActivation | Mapping[str, Any] | None],
     *,

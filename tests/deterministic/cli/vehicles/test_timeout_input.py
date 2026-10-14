@@ -1,31 +1,23 @@
 from __future__ import annotations
 
-import contextlib
-import io
 import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from cli.automa_cli.app import main
-from cli.automa_cli.step_activations import GENERIC_UPDATE_STEPS
+from autonomy.decision_cycle.activation import STEPS
+from tests.shared.cli.invoke import invoke_automa
 
 
 INVALID_TIMEOUTS = ("0", "-1", "nan", "-nan", "inf", "+inf", "-inf")
-# The other `vehicles update <step>` commands and what each one dispatches to.
-STAGING_CONSUMERS = {
-    "memory": ("cli.automa_cli.app.update_vehicle_memory", SimpleNamespace(exit_code=0, message="ok")),
-    **{step: ("cli.automa_cli.app.update_vehicle_step", (0, "ok")) for step in GENERIC_UPDATE_STEPS},
-}
+# Every `vehicles update <step>` command dispatches to the shared update.
+UPDATE_STEP = "cli.automa_cli.app.update_vehicle_step"
 TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 
 
 def _invoke(*args: str) -> tuple[int, str, str]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = main(list(args))
-    return code, stdout.getvalue(), stderr.getvalue()
+    result = invoke_automa(*args, check=False)
+    return result.returncode, result.stdout, result.stderr
 
 
 def _timeout_args(value: str) -> tuple[str, ...]:
@@ -98,54 +90,12 @@ class TimeoutInputTests(unittest.TestCase):
                 start_automation.assert_not_called()
                 record_result.assert_not_called()
 
-    def test_invalid_perception_values_stop_before_local_staging_and_json_is_machine_readable(self) -> None:
-        for value in INVALID_TIMEOUTS:
-            with self.subTest(value=value):
-                with patch("cli.automa_cli.app.update_vehicle_perception") as update_perception:
-                    code, stdout, stderr = _invoke(
-                        "vehicles",
-                        "update",
-                        "perception",
-                        "--id",
-                        "chase-sim-chaser",
-                        *_timeout_args(value),
-                        "--dry-run",
-                        "--json",
-                    )
+    def test_invalid_values_stop_every_step_update_before_local_staging(self) -> None:
+        """Regression: a non-finite timeout reached discovery for a step that kept its own handler."""
 
-                self.assertEqual(code, 2)
-                self.assertEqual(stderr, "")
-                payload = json.loads(stdout)
-                self.assertEqual(payload["schema"], "automa_cli_error_v1")
-                self.assertEqual(payload["error"], "timeout_invalid")
-                self.assertEqual(payload["exit_code"], 2)
-                self.assertNotIn("vehicle_perception_update_v0", stdout)
-                update_perception.assert_not_called()
-
-    def test_invalid_perception_values_use_the_existing_human_output_channel(self) -> None:
-        for value in INVALID_TIMEOUTS:
-            with self.subTest(value=value):
-                with patch("cli.automa_cli.app.update_vehicle_perception") as update_perception:
-                    code, stdout, stderr = _invoke(
-                        "vehicles",
-                        "update",
-                        "perception",
-                        "--id",
-                        "chase-sim-chaser",
-                        *_timeout_args(value),
-                        "--dry-run",
-                    )
-
-                self.assertEqual(code, 2)
-                self.assertIn("automa vehicles update perception", stdout)
-                self.assertIn(TIMEOUT_MESSAGE, stdout)
-                self.assertEqual(stderr, "")
-                update_perception.assert_not_called()
-
-    def test_invalid_memory_and_generic_step_values_stop_before_local_staging(self) -> None:
-        for step, (consumer, _) in STAGING_CONSUMERS.items():
+        for step in STEPS:
             for value in INVALID_TIMEOUTS:
-                with self.subTest(step=step, value=value), patch(consumer) as update:
+                with self.subTest(step=step, value=value), patch(UPDATE_STEP) as update:
                     code, stdout, stderr = _invoke(
                         "vehicles", "update", step, "--id", "chase-sim-chaser",
                         *_timeout_args(value), "--dry-run", "--json",
@@ -154,14 +104,29 @@ class TimeoutInputTests(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertEqual(stderr, "")
                 payload = json.loads(stdout)
+                self.assertEqual(payload["schema"], "automa_cli_error_v1")
                 self.assertEqual(payload["error"], "timeout_invalid")
+                self.assertEqual(payload["exit_code"], 2)
                 self.assertIn(f"automa vehicles update {step}", payload["message"])
                 update.assert_not_called()
 
-    def test_memory_and_generic_steps_pass_the_discovery_timeout_to_staging(self) -> None:
-        for step, (consumer, result) in STAGING_CONSUMERS.items():
+    def test_invalid_values_use_the_human_output_channel_for_every_step(self) -> None:
+        for step in STEPS:
+            with self.subTest(step=step), patch(UPDATE_STEP) as update:
+                code, stdout, stderr = _invoke(
+                    "vehicles", "update", step, "--id", "chase-sim-chaser", "--timeout-s", "0", "--dry-run",
+                )
+
+            self.assertEqual(code, 2)
+            self.assertIn(f"automa vehicles update {step}", stdout)
+            self.assertIn(TIMEOUT_MESSAGE, stdout)
+            self.assertEqual(stderr, "")
+            update.assert_not_called()
+
+    def test_every_step_update_passes_the_discovery_timeout_to_staging(self) -> None:
+        for step in STEPS:
             for args, expected in ((("--timeout-s", "1.25"), 1.25), ((), 5.0)):
-                with self.subTest(step=step, args=args), patch(consumer, return_value=result) as update:
+                with self.subTest(step=step, args=args), patch(UPDATE_STEP, return_value=(0, "ok")) as update:
                     code, _, _ = _invoke(
                         "vehicles", "update", step, "--id", "chase-sim-chaser", *args, "--dry-run"
                     )
@@ -202,23 +167,6 @@ class TimeoutInputTests(unittest.TestCase):
         self.assertEqual(run_automation.call_args.kwargs["timeout_s"], 1.25)
 
         with patch(
-            "cli.automa_cli.app.update_vehicle_perception",
-            return_value=SimpleNamespace(exit_code=0, message="ok"),
-        ) as update_perception:
-            code, _, _ = _invoke(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--timeout-s",
-                "1.25",
-                "--dry-run",
-            )
-        self.assertEqual(code, 0)
-        self.assertEqual(update_perception.call_args.kwargs["timeout_s"], 1.25)
-
-        with patch(
             "cli.automa_cli.app.get_vehicle_status",
             return_value={"vehicles": []},
         ) as get_status:
@@ -242,21 +190,6 @@ class TimeoutInputTests(unittest.TestCase):
             )
         self.assertEqual(code, 0)
         self.assertEqual(run_automation.call_args.kwargs["timeout_s"], 5.0)
-
-        with patch(
-            "cli.automa_cli.app.update_vehicle_perception",
-            return_value=SimpleNamespace(exit_code=0, message="ok"),
-        ) as update_perception:
-            code, _, _ = _invoke(
-                "vehicles",
-                "update",
-                "perception",
-                "--id",
-                "chase-sim-chaser",
-                "--dry-run",
-            )
-        self.assertEqual(code, 0)
-        self.assertEqual(update_perception.call_args.kwargs["timeout_s"], 5.0)
 
 
 if __name__ == "__main__":

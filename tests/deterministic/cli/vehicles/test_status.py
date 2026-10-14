@@ -12,6 +12,7 @@ from cli.automa_cli.vehicles import (
     get_vehicle_status,
     normalize_chase_url,
 )
+from tests.shared.cli.invoke import invoke_automa
 
 
 def _passive_vehicle() -> dict:
@@ -172,8 +173,7 @@ class VehicleStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["next_action"]["command"],
-            "./cli/automa vehicles update perception "
-            "--id chase-sim-chaser --preset lightweight_observer",
+            "./cli/automa vehicles update autonomy --id chase-sim-chaser",
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 
@@ -181,7 +181,6 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertIn("vehicle: discoverable", human)
         self.assertIn("automation_worker: stopped", human)
         self.assertEqual(human.count("Next action:"), 1)
-
 
     def test_running_observe_only_worker_reports_authority_and_current_view(self) -> None:
         candidate = Candidate(
@@ -410,11 +409,48 @@ class VehicleStatusTests(unittest.TestCase):
 
         payload["next_action"] = {
             "reason": "automation_not_deployed",
-            "command": "./cli/automa vehicles update perception",
+            "command": "./cli/automa vehicles update autonomy",
             "external_change": None,
             "expected_state": "automation_deployment=deployed",
         }
         self.assertEqual(_vehicle_status_exit_code(payload), 0)
+
+    def test_conflicting_explicit_urls_exit_two_before_any_probe(self) -> None:
+        result = invoke_automa(
+            "vehicles",
+            "status",
+            "--chase-url",
+            "http://localhost:5050",
+            "--chase-ws-url",
+            "ws://localhost:5050/ws/control",
+            "--json",
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("cannot be used together", result.stderr)
+
+    def test_active_json_schema_remains_compatible_while_human_copy_is_narrower(self) -> None:
+        result = invoke_automa(
+            "vehicles",
+            "active",
+            "--no-picar",
+            "--no-sim",
+            "--json",
+        )
+        self.assertEqual(
+            json.loads(result.stdout)["schema"],
+            "automa_vehicle_discovery_v0",
+        )
+        human = invoke_automa(
+            "vehicles",
+            "active",
+            "--no-picar",
+            "--no-sim",
+        )
+        self.assertIn("Discoverable vehicles: 0", human.stdout)
+        self.assertNotIn("Active vehicles:", human.stdout)
 
 
 if __name__ == "__main__":

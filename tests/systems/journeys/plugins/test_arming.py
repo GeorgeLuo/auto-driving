@@ -1,4 +1,4 @@
-"""CLI -> catalog -> frame adoption -> publication, on the shared vehicle host."""
+"""Arming through the executable, on an in-process host and on a worker it starts."""
 
 from __future__ import annotations
 
@@ -6,74 +6,34 @@ import json
 import tempfile
 import time
 import unittest
-from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 from urllib.request import urlopen
 
-from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.runtime_hosts import stop_chase_host
-from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.runtime.chase_sim import create_host as create_chase_host
-from implementations.runtime.picar import create_host as create_picar_host
-from implementations.vehicle.chase_sim import ChaseSimCar
-from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
-from tests.shared.integration.plugin_flow_fixtures import frame, write_plugin
+from tests.shared.cli.invoke import invoke_automa
+from tests.shared.cli.workbench_fixtures import image_source
+from tests.shared.integration.plugin_flow_fixtures import (
+    catalog,
+    frame,
+    plugin_host,
+    proposal,
+    selected,
+    upload,
+    write_plugin,
+)
 from tests.support.cli_runner import run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
 
-def upload(base, file, step, plugin_id, *, arm=False, check=True):
-    command = ["vehicles", "plugins", "upload", "--url", base, "--file", str(file),
-               "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json"]
-    if arm:
-        command.append("--arm")
-    result = run_automa(*command, check=check)
-    return result, json.loads(result.stdout)
-
-
-def catalog(base):
-    return json.loads(run_automa("vehicles", "plugins", "status", "--url", base, "--json").stdout)
-
-
-def arm_step(base, step, *ids):
-    command = ["vehicles", "plugins", "arm", "--url", base, "--step", step, "--json"]
-    for plugin_id in ids:
-        command.extend(["--plugin", plugin_id])
-    return json.loads(run_automa(*command).stdout)
-
-
-def selected(state, phase, step):
-    return state["arming"][phase][step]
-
-
-def proposal(result, plugin_id):
-    return next(item for item in result.proposal.candidates if item.plugin_id == plugin_id)
-
-
 class PluginArmingFlows(unittest.TestCase):
-    @contextmanager
-    def host(self, root, vehicle="chase", activations=None):
-        steps = decision_steps(activations)
-        host = (create_chase_host(ChaseSimCar(), steps=steps) if vehicle == "chase"
-                else create_picar_host(steps=steps))
-        host.follow_activations(activations or {}, root / "runtime")
-        view = RuntimeViewServer(vehicle_id=vehicle, automation_dir=root / "automation",
-                                 port=0, plugin_catalog=host.plugin_catalog).start()
-        try:
-            yield host, view.url
-        finally:
-            view.stop()
-            host.close()
-
     def test_grouped_dependencies_adopt_on_one_frame_in_both_vehicle_hosts(self):
         activation = packaged_activation("perception", ["frame", "multi_obstruction_tracks"],
             config_overrides={"multi_obstruction_tracks": {"floor_cutoff_y": 0.88}})
         for vehicle in ("chase", "picar"):
             with (self.subTest(vehicle=vehicle), image_source(1) as root,
-                  self.host(root, vehicle, {"perception": activation}) as (host, base)):
+                  plugin_host(root, vehicle, {"perception": activation}) as (host, base)):
                 before = catalog(base)
                 session = host.session_status()
                 for step in ("perception", "memory", "proposal"):
@@ -87,6 +47,8 @@ class PluginArmingFlows(unittest.TestCase):
                 selection = root / "selection.json"
                 selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in
                                                 ("perception", "memory", "proposal")}))
+                # Through the executable once; the worker journey below covers
+                # upload, status and disarm the same way.
                 receipt = json.loads(run_automa("vehicles", "plugins", "arm", "--url", base,
                                                 "--selection", str(selection), "--json").stdout)
                 self.assertEqual(receipt["status"], "requested")
@@ -104,122 +66,9 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(proposal(result, "prototype-proposal").metadata["memory"],
                                  {"revision": 1, "perception": 1, "count": 1})
                 self.assertEqual(host.session_status()["status"], "stopped")
-                human = run_automa("vehicles", "plugins", "status", "--url", base).stdout
+                human = invoke_automa("vehicles", "plugins", "status", "--url", base).stdout
                 self.assertIn("Arming: applied", human)
                 self.assertIn("Applied proposal: prototype-proposal", human)
-
-    def test_available_requested_and_applied_revisions_stay_independent(self):
-        with image_source(1) as root, self.host(root) as (host, base):
-            file = root / "proposal.py"
-            write_plugin(file, "proposal", "prototype", 1)
-            _, first = upload(base, file, "proposal", "prototype", arm=True)
-            self.assertEqual(first["upload"]["status"], "uploaded")
-            self.assertEqual(first["status"], "requested")
-            self.assertEqual(proposal(host.run(frame(root, 1)), "prototype").metadata["revision"], 1)
-            old_identity = catalog(base)["applied_decision"]
-            write_plugin(file, "proposal", "prototype", 2)
-            _, second = upload(base, file, "proposal", "prototype")
-            available = catalog(base)
-            self.assertEqual(selected(available, "applied", "proposal")[0], first["plugin"])
-            self.assertEqual(available["applied_decision"], old_identity)
-            self.assertEqual(proposal(host.run(frame(root, 2)), "prototype").metadata["revision"], 1)
-            arm_step(base, "proposal", "prototype")
-            write_plugin(file, "proposal", "prototype", 3)
-            _, third = upload(base, file, "proposal", "prototype")
-            queued = catalog(base)
-            self.assertEqual(selected(queued, "requested", "proposal")[0], second["plugin"])
-            self.assertEqual(selected(queued, "applied", "proposal")[0], first["plugin"])
-            self.assertEqual(next(item for item in queued["plugins"] if item["id"] == "prototype"), third["plugin"])
-            self.assertEqual(proposal(host.run(frame(root, 3)), "prototype").metadata["revision"], 2)
-            identity2 = catalog(base)["applied_decision"]
-            self.assertNotEqual(identity2["generation_id"], old_identity["generation_id"])
-            arm_step(base, "proposal", "prototype")
-            self.assertEqual(proposal(host.run(frame(root, 4)), "prototype").metadata["revision"], 3)
-            self.assertNotEqual(catalog(base)["applied_decision"]["generation_id"], identity2["generation_id"])
-
-    def test_rapid_requests_append_in_order_and_rearming_keeps_memory_history(self):
-        with image_source(1) as root, self.host(root) as (host, base):
-            for step, plugin_id in (("perception", "prototype-perception"), ("memory", "prototype-memory"),
-                                    ("proposal", "first"), ("proposal", "second"), ("proposal", "third")):
-                file = root / f"{plugin_id}.py"
-                write_plugin(file, step, plugin_id, 1)
-                upload(base, file, step, plugin_id)
-                arm_step(base, step, plugin_id)
-            queued = catalog(base)
-            self.assertEqual([item["id"] for item in selected(queued, "requested", "proposal")],
-                             ["first", "second", "third"])
-            first = host.run(frame(root, 1))
-            self.assertEqual(proposal(first, "first").metadata["memory"]["count"], 1)
-            identity = catalog(base)["applied_decision"]
-            for step, plugin_id in (("memory", "prototype-memory"), ("proposal", "first")):
-                receipt = arm_step(base, step, plugin_id)
-                self.assertEqual(receipt["status"], "applied")
-            second = host.run(frame(root, 2))
-            self.assertEqual(proposal(second, "first").metadata["memory"]["count"], 2)
-            self.assertEqual(catalog(base)["applied_decision"], identity)
-
-    def test_arming_before_during_and_after_completion_does_not_start_or_change_mode(self):
-        with image_source(1) as root, self.host(root) as (host, base):
-            file = root / "proposal.py"
-            for index, phase in enumerate(("stopped", "running", "completed"), start=1):
-                if phase == "running":
-                    host.start(RunConfiguration(mode="observe_only", num_decisions=1))
-                write_plugin(file, "proposal", "prototype", index)
-                before = host.session_status()
-                _, receipt = upload(base, file, "proposal", "prototype", arm=True)
-                self.assertEqual(receipt["status"], "requested")
-                self.assertEqual(host.session_status(), before)
-                self.assertEqual(host.session_status()["status"], phase)
-                if phase == "completed":
-                    host.start(RunConfiguration(mode="observe_only", num_decisions=1))
-                host.run(frame(root, index))
-                self.assertEqual(catalog(base)["arming"]["status"], "applied")
-                if phase != "stopped":
-                    self.assertEqual(host.session_status()["status"], "completed")
-
-    def test_an_import_failure_fails_the_arm_and_keeps_the_previous_selection(self):
-        with (image_source(1) as root, self.host(root, activations={
-                "perception": packaged_activation("perception", ["frame"]),
-        }) as (host, base)):
-            file = root / "proposal.py"
-            write_plugin(file, "proposal", "prototype-proposal", 1)
-            file.write_text("import not_uploaded_yet\n" + file.read_text())
-            upload(base, file, "proposal", "prototype-proposal")
-            before = catalog(base)
-            for command in (
-                ("arm", "--step", "proposal", "--plugin", "prototype-proposal"),
-                ("upload", "--file", str(file), "--step", "proposal", "--plugin-id", "prototype-proposal",
-                 "--entrypoint", "prototype:Prototype", "--arm"),
-            ):
-                with self.subTest(command=command[0]):
-                    refused = run_automa("vehicles", "plugins", *command, "--url", base, check=False)
-                    self.assertEqual(refused.returncode, 2, refused.stdout)
-                    self.assertIn("Arming: failed", refused.stdout)
-                    self.assertIn("ModuleNotFoundError: No module named 'not_uploaded_yet'", refused.stdout)
-            failed = run_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
-            self.assertEqual(failed.returncode, 2)
-            shown = json.loads(failed.stdout)
-            self.assertEqual(shown["arming"]["status"], "failed")
-            self.assertEqual(shown["arming"]["requested"], before["arming"]["requested"])
-            self.assertEqual(shown["arming"]["applied"], before["arming"]["applied"])
-            self.assertEqual(shown["applied_decision"], before["applied_decision"])
-            host.run(frame(root, 1))
-            write_plugin(file, "proposal", "prototype-proposal", 2)
-            upload(base, file, "proposal", "prototype-proposal", arm=True)
-            self.assertEqual(proposal(host.run(frame(root, 2)), "prototype-proposal").metadata["revision"], 2)
-            self.assertEqual(catalog(base)["arming"]["status"], "applied")
-
-    def test_upload_remains_available_when_composed_arming_fails_on_a_workbench(self):
-        root = self.enterContext(image_source(1))
-        base = serve_workbench(self, ImageReplayRunner(root))
-        file = root / "prototype.py"
-        write_plugin(file, "perception", "prototype", 1)
-        result, receipt = upload(base, file, "perception", "prototype", arm=True, check=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(receipt["upload"]["status"], "uploaded")
-        self.assertEqual(receipt["status"], "failed")
-        self.assertIn("runtime host", receipt["error"])
-        self.assertIn(receipt["plugin"], catalog(base)["plugins"])
 
     def test_cli_worker_view_and_stream_adopt_new_proposals_without_restarting(self):
         with tempfile.TemporaryDirectory() as directory, fake_metrics_ui_server() as ws_url:
@@ -275,6 +124,36 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
                     self.assertEqual(current["decision"]["generation_id"], streamed["generation_id"])
                     self.assertNotEqual(streamed["generation_id"], before["applied_decision"]["generation_id"])
+                disarmed = json.loads(cli("plugins", "disarm", "--id", "chase-sim-chaser",
+                                          "--step", "proposal", "--plugin", "prototype", "--json").stdout)
+                self.assertTrue(disarmed["ok"])
+                deadline = time.monotonic() + 5
+                while True:
+                    shown = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
+                    if shown["arming"]["status"] == "applied":
+                        break
+                    self.assertLess(time.monotonic(), deadline, shown)
+                    time.sleep(0.05)
+                self.assertEqual(selected(shown, "applied", "proposal"), [])
+                self.assertIn(receipt["plugin"], shown["plugins"])
+                streamed = json.loads(cli("stream", "proposal", "--id", "chase-sim-chaser", "--once", "--json").stdout)
+                self.assertEqual(streamed["plugins"], [])
+                self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
+                deadline = time.monotonic() + 5
+                while True:
+                    with urlopen(view_url + "/api/health", timeout=3) as response:
+                        health = json.load(response)["decision"]
+                    if (health["identity"] or {}).get("producer_generation_id") == streamed["generation_id"]:
+                        break
+                    self.assertLess(time.monotonic(), deadline, health)
+                    time.sleep(0.05)
+                with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
+                    viewed = json.load(response)
+                self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"], [])
+                current = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
+                self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
+                self.assertEqual(current["state"]["pid"], original["state"]["pid"])
+                self.assertEqual(current["state"]["action_policy"], "observe_only")
                 cli("automation", "stop", "--id", "chase-sim-chaser")
                 automation_dir = runtime / "chase-sim-chaser" / "bundle/runtime/automation"
                 state = json.loads((automation_dir / "state.json").read_text())
@@ -287,9 +166,9 @@ class PluginArmingFlows(unittest.TestCase):
                 host_manifest = automation_dir / "host-runs" / Path(state["run_dir"]).name / "manifest.json"
                 self.assertEqual(exported, json.loads(host_manifest.read_text()))
                 self.assertEqual(len(exported["frames"]), state["recorded_count"])
-                # The host outlives the run and keeps the armed catalog, like a PiCar's.
+                # The host outlives the run and keeps live deselections, like a PiCar's.
                 after = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
-                self.assertEqual(selected(after, "applied", "proposal")[0], receipt["plugin"])
+                self.assertEqual(selected(after, "applied", "proposal"), [])
             finally:
                 cli("automation", "stop", "--id", "chase-sim-chaser", check=False)
                 with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime):

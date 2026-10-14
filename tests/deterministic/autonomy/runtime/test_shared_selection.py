@@ -7,6 +7,7 @@ drivetrain. One substituted ``load_runner`` covers both.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import sys
 import tempfile
@@ -226,7 +227,7 @@ class SharedSelectionTests(unittest.TestCase):
                     ["avoid_recent_obstruction"],
                 )
 
-    def test_failed_selection_keeps_the_applied_identity(self) -> None:
+    def test_failed_reset_stops_the_cycle_and_keeps_the_applied_identity(self) -> None:
         for vehicle in VEHICLES:
             with self.subTest(vehicle=vehicle):
                 host, path = self._watched_proposal(vehicle)
@@ -239,7 +240,8 @@ class SharedSelectionTests(unittest.TestCase):
 
                 plugin.reset = failing_reset
                 write_step_activation(path, packaged_activation("proposal", []))
-                _frame(host, 0)
+                with self.assertRaisesRegex(RuntimeError, "proposal reset unavailable"):
+                    _frame(host, 0)
                 sink: dict = {}
                 applied = _publish(host, sink)
                 # The requested selection is recorded on the manager, and the
@@ -248,6 +250,36 @@ class SharedSelectionTests(unittest.TestCase):
                 self.assertEqual(list(host.step("proposal").plugin_ids), ["avoid_recent_obstruction"])
                 self.assertEqual(applied["generation_id"], startup)
                 self.assertEqual(sink["generation_id"], startup)
+
+    def test_every_step_follows_one_rule_when_a_restage_fails(self) -> None:
+        """Regression: a staged perception or memory restage stopped on any
+        failure, and a staged proposal restage never stopped."""
+
+        activations = {step: packaged_activation(step) for step in ("perception", "memory", "proposal")}
+        for vehicle in VEHICLES:
+            for step in activations:
+                for phase, method in (("prepare", "validate_selection"), ("commit", "_reset_plugin")):
+                    with self.subTest(vehicle=vehicle, step=step, phase=phase):
+                        host = _open(vehicle, activations, source=INSTALLED_PACKAGE)
+                        runner = host.step(step)
+                        applied = runner.plugin_ids
+                        self.assertTrue(applied)
+                        runner.plugin_manager.select([])
+                        failure = RuntimeError(f"{step} {phase} refused")
+                        with patch.object(runner, method, side_effect=failure):
+                            if phase == "prepare":
+                                # Nothing changed, so the applied plugins run.
+                                _frame(host, 0)
+                                self.assertEqual(host.status()["error_count"], 0)
+                            else:
+                                # A partial reset may have run, so no cycle does.
+                                with self.assertRaisesRegex(RuntimeError, f"{step} {phase} refused"):
+                                    _frame(host, 0)
+                                self.assertEqual(host.status()["error_count"], 1)
+                        self.assertEqual(runner.plugin_ids, applied)
+                        selection = host.selection_status()
+                        self.assertEqual(selection["status"], "failed")
+                        self.assertIn(f"{step} {phase} refused", selection["error"])
 
     def test_recovered_selection_adopts_its_pending_identity(self) -> None:
         for vehicle in VEHICLES:
@@ -279,7 +311,9 @@ class SharedSelectionTests(unittest.TestCase):
                     # An explicit sync must retain the request for run(), too.
                     host.sync_selection()
                     with patch.object(owner, method, side_effect=fail_once, create=True):
-                        _frame(host, 1)
+                        # A failed load keeps running; a failed reset skips the cycle.
+                        with self.assertRaises(RuntimeError) if failure == "reset" else contextlib.nullcontext():
+                            _frame(host, 1)
                         self.assertEqual(host.applied_decision(), previous)
                         self.assertEqual(runner.plugin_manager.selected_ids, replacement.plugins)
                         self.assertNotEqual(runner.plugin_ids, replacement.plugins)

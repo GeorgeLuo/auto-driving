@@ -8,8 +8,9 @@
 ## Validation
 
 <!-- List the focused commands and their results, including any
-     `python3 tests/run.py --systems <group>` runs. CI runs only the
-     deterministic suite. -->
+     `python3 tests/run.py --systems <group> -k <pattern>` runs. CI runs only
+     the deterministic suite. tests/README.md "Validating a change" says
+     which systems tests a change needs. -->
 
 ## Risks and follow-up
 

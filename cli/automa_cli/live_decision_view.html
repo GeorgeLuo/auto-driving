@@ -372,6 +372,22 @@
       statusDot.className = `status-dot ${mode || ""}`;
     }
 
+    function formatMs(value) {
+      const number = Number(value);
+      if (value == null || !Number.isFinite(number)) return "—";
+      return `${Math.round(number * 1000) / 1000} ms`;
+    }
+
+    // One step's time, then each of its plugins' times.
+    function stepTimingText(step) {
+      if (step?.duration_ms == null) return "—";
+      const plugins = Array.isArray(step.plugins) ? step.plugins : [];
+      const parts = plugins
+        .filter((plugin) => plugin?.plugin_id)
+        .map((plugin) => `${plugin.plugin_id} ${formatMs(plugin.duration_ms)}`);
+      return [formatMs(step.duration_ms), ...parts].join(" · ");
+    }
+
     function appendMetric(container, name, value) {
       const term = document.createElement("dt");
       term.textContent = name;
@@ -480,6 +496,13 @@
       const cycleMetrics = document.getElementById("cycleMetrics");
       cycleMetrics.replaceChildren();
       appendMetric(cycleMetrics, "Frame", latest.current_image?.frame_id);
+      // The host publishes its steps in the order they run.
+      const timing = decision.values?.timing;
+      appendMetric(cycleMetrics, "Cycle", formatMs(timing?.duration_ms));
+      for (const step of Array.isArray(timing?.steps) ? timing.steps : []) {
+        const name = String(step?.step || "");
+        appendMetric(cycleMetrics, name.charAt(0).toUpperCase() + name.slice(1), stepTimingText(step));
+      }
       appendMetric(cycleMetrics, "Status", cycle.action?.status || latest.status);
       appendMetric(cycleMetrics, "Proposal", candidate?.reason || plan.status || "—");
       appendMetric(cycleMetrics, "Freshness", candidate?.freshness || candidate?.lifecycle || "—");

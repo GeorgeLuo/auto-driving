@@ -156,16 +156,19 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertEqual(host.status()["error_count"], 1)
             self.assertIn("forced-update-failure", host.status()["last_error"])
 
-    def test_bad_memory_selection_edit_stops_before_later_steps(self) -> None:
+    def test_bad_memory_selection_edit_keeps_the_applied_plugins_running(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = _memory_step(Path(tmp), extra_specs={"missing": "no_such_module:Nope"})
             host, proposal = _host(memory=step)
+            applied = step.plugin_ids
             step.plugin_manager.select(["missing"])
-            with self.assertRaisesRegex(MemoryUpdateError, "no_such_module"):
-                host.run(DecisionFrameContext("frame_x", 0, 1))
-            self.assertIsNone(proposal.last_shared_memory)
-            self.assertEqual(host.status()["error_count"], 1)
-            self.assertIn("no_such_module", host.status()["last_error"])
+            host.run(DecisionFrameContext("frame_x", 0, 1))
+            self.assertEqual(step.plugin_ids, applied)
+            self.assertIsNotNone(proposal.last_shared_memory)
+            self.assertEqual(host.status()["error_count"], 0)
+            selection = host.selection_status()
+            self.assertEqual(selection["status"], "failed")
+            self.assertIn("no_such_module", selection["error"])
 
     def test_default_steps_idle_while_memory_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -30,7 +30,7 @@ class AutonomyPilotPart(FrameLoop):
         host: AutonomyCycleHost,
         interval_s: float = DEFAULT_INTERVAL_S,
         monotonic: Callable[[], float] | None = None,
-        preset: str | None = None,
+        presets: dict[str, str] | None = None,
         vehicle_id: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
@@ -48,7 +48,7 @@ class AutonomyPilotPart(FrameLoop):
         # observing the actual user/pilot/selected values.
         self.host_telemetry = host_telemetry
         super().__init__(
-            host=host, interval_s=interval_s, monotonic=monotonic, preset=preset,
+            host=host, interval_s=interval_s, monotonic=monotonic, presets=presets,
             vehicle_id=vehicle_id, source_id=source_id,
             decision_activations=decision_activations, generation_id=generation_id,
             run_id=run_id or f"donkey-run-{secrets.token_hex(12)}",

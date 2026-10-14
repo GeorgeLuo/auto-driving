@@ -4,6 +4,7 @@ import unittest
 from functools import partial
 from urllib.parse import urlencode
 from urllib.request import urlopen
+from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionEvidenceBatch,
     PerceptionSignal,
@@ -129,6 +130,22 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(restarted["phase"], "running")
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
+
+    def test_each_timeline_frame_carries_every_steps_time(self) -> None:
+        """Regression: perception's slot is a closure, so its time was missing in replay."""
+
+        with image_source(2) as root:
+            runner = ImageReplayRunner(root, cadence_ms=0)
+            runner.start()
+            completed = runner.wait(5)
+            runner.close()
+        for item in completed["timeline"]:
+            timing = item["timing"]
+            self.assertEqual(item["duration_ms"], timing["duration_ms"])
+            self.assertEqual([entry["step"] for entry in timing["steps"]], list(STEPS))
+            for entry in timing["steps"]:
+                self.assertIsInstance(entry["duration_ms"], float, entry)
+                self.assertTrue(entry["plugins"], entry)
 
     def test_sequential_replay_uses_shared_memory_without_legacy_handoff(self) -> None:
         with image_source(2) as root:

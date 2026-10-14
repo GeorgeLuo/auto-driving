@@ -8,9 +8,12 @@ import unittest
 from pathlib import Path
 
 from implementations.decision_cycle.catalog import selection_activation
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
-from tests.support.cli_runner import run_automa
 
+
+# Where the frame was read from, and how long this run took on it.
+UNREPLAYED = ("image_path", "timing")
 
 class InspectionRecordingTests(unittest.TestCase):
     """Move a recording between the public perception and memory commands."""
@@ -26,7 +29,7 @@ class InspectionRecordingTests(unittest.TestCase):
         }
 
     def inspect(self, step: str, source: Path, *options: str, exit_code: int = 0) -> dict:
-        result = run_automa(
+        result = invoke_automa(
             "vehicles",
             step,
             "inspect",
@@ -76,11 +79,11 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(replay["memory"], memory["memory"])
         self.assertEqual(
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in replay["frames"]
             ],
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in memory["frames"]
             ],
         )
@@ -101,13 +104,13 @@ class InspectionRecordingTests(unittest.TestCase):
         )
 
     def test_both_inspect_reports_name_the_perception_selection_alike(self) -> None:
-        perception = run_automa(
+        perception = invoke_automa(
             "vehicles", "perception", "inspect", str(self.frames),
             "--preset", "obstruction_observer", "--record",
             extra_env=self.env,
         ).stdout.splitlines()
         recorded = Path(perception[-1].removeprefix("Recorded: "))
-        memory = run_automa(
+        memory = invoke_automa(
             "vehicles", "memory", "inspect", str(recorded), extra_env=self.env
         ).stdout.splitlines()
 
@@ -172,11 +175,11 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(replay["memory"]["config"], memory_config)
         self.assertEqual(
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in replay["frames"]
             ],
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in recorded["frames"]
             ],
         )

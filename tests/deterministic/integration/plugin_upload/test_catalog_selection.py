@@ -68,6 +68,10 @@ class CatalogSelectionTests(unittest.TestCase):
                     expected = [swaps[step]] if step in swaps else ids(snapshot, "applied", step)
                     self.assertEqual(ids(adopted, "applied", step), expected)
                     self.assertEqual(ran(host, step), expected)
+                # The swapped plan records the plugin that built it.
+                plan = host.last_result.plan
+                self.assertIsNotNone(plan, host.step("plan").last_error)
+                self.assertEqual(plan.selector_id, swaps["plan"])
 
                 for request, error in (
                     ({"operation": "arm", "selections": {"plan": ["highest_confidence", "prototype-plan"]}},

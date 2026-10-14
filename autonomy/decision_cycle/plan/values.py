@@ -26,8 +26,6 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 
 ACTION_PLAN_SCHEMA = "action_plan_v0"
-# Plugin ID of the default plan plugin; a plan records the plugin that built it.
-SELECTOR_ID = "highest_confidence"
 MAX_PLAN_METADATA_BYTES = 1024
 
 
@@ -53,9 +51,10 @@ class ActionPlan:
     timestamp_ms: int
     status: str
     candidates: tuple[ActionProposal, ...]
+    # The plugin ID of the plan plugin that built the plan.
+    selector_id: str
     selected_proposal_id: str | None = None
     contributions: tuple[PlanContribution, ...] = ()
-    selector_id: str = SELECTOR_ID
     metadata: dict[str, Any] = field(default_factory=dict)
     plan_id: str = ""
     schema: str = ACTION_PLAN_SCHEMA

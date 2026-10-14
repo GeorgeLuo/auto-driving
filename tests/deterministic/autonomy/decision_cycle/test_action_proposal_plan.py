@@ -57,6 +57,7 @@ class SelectorTests(unittest.TestCase):
             frame_id="frame_001",
             timestamp_ms=1,
             candidates=[a, b],
+            selector_id="highest_confidence",
         )
         self.assertEqual(plan.status, "selected")
         self.assertEqual(plan.selected_proposal_id, b.proposal_id)
@@ -65,7 +66,10 @@ class SelectorTests(unittest.TestCase):
         a = _active_proposal(plugin_id="aaa", confidence=0.5)
         b = _active_proposal(plugin_id="bbb", confidence=0.5)
         plan = select_highest_confidence_plan(
-            frame_id="frame_001", timestamp_ms=1, candidates=[b, a]
+            frame_id="frame_001",
+            timestamp_ms=1,
+            candidates=[b, a],
+            selector_id="highest_confidence",
         )
         self.assertEqual(plan.selected_proposal_id, a.proposal_id)
 
@@ -178,6 +182,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             frame_id=frame,
             timestamp_ms=9_007_199_254_740_991,
             candidates=candidates,
+            selector_id="highest_confidence",
             metadata=plan_metadata,
         )
         self.assertEqual(len(plan.candidates), 6)

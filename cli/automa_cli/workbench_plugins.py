@@ -1,7 +1,7 @@
 """Live catalog listing and selection for the replay workbench.
 
 The workbench offers every packaged plugin of the ``SELECTABLE_STEPS``:
-perception, memory and proposal. A selection is built by the catalog's
+perception, memory, proposal and plan. A selection is built by the catalog's
 ``selection_activation``, the activation the CLI stages for that step, so a
 preset given on the command line keeps its plugin configs. Listing a catalog
 does not construct plugins; construction happens only after the operator

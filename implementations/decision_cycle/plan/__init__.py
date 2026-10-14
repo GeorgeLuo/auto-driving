@@ -1,1 +1,1 @@
-"""Concrete plan plugins."""
+"""Concrete plan plugins, their catalog, and presets."""

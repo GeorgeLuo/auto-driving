@@ -823,7 +823,7 @@ def build_parser() -> argparse.ArgumentParser:
             "local image directory. The server owns source ordering, perception, "
             "observation, bounded memory, decision state, and any selected "
             "packaged plugins. Recorded perception and memory runs preserve frame order "
-            "and timestamps. Perception, memory and proposal each start from a packaged preset "
+            "and timestamps. Perception, memory, proposal and plan each start from a packaged preset "
             "or an ordered plugin list, as the inspect and update commands take "
             "them; a preset keeps its plugin configs. Page checkboxes retain the order "
             "of selected plugins and append newly checked plugins. A changed ordered "
@@ -1564,7 +1564,7 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
                 "- observation  stage observation plugins",
                 "- memory       stage a memory preset or plugin selection",
                 "- proposal     stage a proposal preset or plugin selection",
-                "- plan         stage the plan plugin",
+                "- plan         stage a plan preset or plugin selection",
                 "- action       stage the action plugin (hold or mode)",
                 "- help         show this summary",
                 "",

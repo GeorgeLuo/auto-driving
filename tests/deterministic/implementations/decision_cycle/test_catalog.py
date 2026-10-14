@@ -10,6 +10,7 @@ from unittest import mock
 
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.plugins import DuplicatePluginIdError
 from cli.automa_cli import app
@@ -56,8 +57,8 @@ class DeclaredIdTests(unittest.TestCase):
 
 
 class PresetActivationTests(unittest.TestCase):
-    def test_perception_memory_and_proposal_are_the_steps_with_presets(self) -> None:
-        self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory", "proposal"))
+    def test_perception_memory_proposal_and_plan_are_the_steps_with_presets(self) -> None:
+        self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory", "proposal", "plan"))
         self.assertEqual(set(catalog.DEFAULT_STEP_PRESETS), set(catalog.STEP_PRESETS))
         for step in catalog.STEPS:
             if step not in catalog.STEP_PRESETS:
@@ -82,7 +83,12 @@ class PresetActivationTests(unittest.TestCase):
                         )
 
     def test_every_preset_builds_its_steps_runner(self) -> None:
-        runners = {"perception": PerceptionRunner, "memory": MemoryRunner, "proposal": ProposalRunner}
+        runners = {
+            "perception": PerceptionRunner,
+            "memory": MemoryRunner,
+            "proposal": ProposalRunner,
+            "plan": PlanRunner,
+        }
         for step, presets in catalog.STEP_PRESETS.items():
             for name in presets:
                 with self.subTest(step=step, preset=name):
@@ -108,7 +114,7 @@ class PresetActivationTests(unittest.TestCase):
             return catalog.selection_activation(step, plugins=plugins).metadata["preset"]
 
         self.assertEqual(label("memory", ["bounded_evidence"]), "recency_ledger")
-        for step in ("perception", "memory", "proposal"):
+        for step in ("perception", "memory", "proposal", "plan"):
             with self.subTest(step=step):
                 default = catalog.DEFAULT_STEP_PRESETS[step]
                 plugins = catalog.STEP_PRESETS[step][default]["plugins"]
@@ -124,11 +130,11 @@ class PresetActivationTests(unittest.TestCase):
         )
 
     def test_steps_without_presets_select_plugins_else_their_default(self) -> None:
-        """Regression: observation, plan and action were selected through
+        """Regression: observation and action were selected through
         ``default_activations`` and ``workbench_plugins.step_selection``, apart
         from the steps with presets."""
 
-        for step in ("observation", "plan", "action"):
+        for step in ("observation", "action"):
             with self.subTest(step=step):
                 default = catalog.selection_activation(step)
                 self.assertEqual(default.plugins, catalog.DEFAULT_STEP_PLUGINS[step])

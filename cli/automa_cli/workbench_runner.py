@@ -690,8 +690,6 @@ class ImageReplayRunner:
                 if step not in self._selection_overrides:
                     self._activations[step] = self._default_activations[step]
                 steps[step] = self._build_step(step)
-            elif step == "plan" and step not in self._selection_overrides:
-                steps[step] = recorded_runner(selection_activation(step))
         return steps
 
     def _build_step(self, step: str) -> Any:

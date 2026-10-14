@@ -145,6 +145,20 @@
                 ]
               },
               {
+                "path": "implementations/decision_cycle/plan/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Plan plugins that select one candidate. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/plan/.",
+                "children": [
+                  {
+                    "path": "implementations/decision_cycle/plan/plugins/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "One folder per plan plugin, named for its plugin_id."
+                  }
+                ]
+              },
+              {
                 "path": "implementations/decision_cycle/action/",
                 "category": "implementation",
                 "commit_policy": "source",

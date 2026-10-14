@@ -1,4 +1,4 @@
-"""Perception, memory and proposal select and stage through one update path."""
+"""Perception, memory, proposal and plan select and stage through one update path."""
 
 from __future__ import annotations
 
@@ -193,14 +193,18 @@ class StepSelectionTests(unittest.TestCase):
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step):
                     recorded = copy.deepcopy(original)
+                    # Plan runs one plugin, so a recording cannot leave it empty.
+                    clearable = step != "plan"
                     for frame in recorded["frames"]:
-                        frame["steps"][step]["plugins"] = []
-                        frame["steps"][step]["metadata"]["preset"] = "custom"
+                        if clearable:
+                            frame["steps"][step]["plugins"] = []
+                            frame["steps"][step]["metadata"]["preset"] = "custom"
                     write_manifest(root, recorded)
                     inspect = ("vehicles", step, "inspect", str(root), "--json")
                     code, stdout, stderr = _invoke(*inspect)
                     self.assertEqual(code, 0, stdout + stderr)
-                    self.assertEqual(json.loads(stdout)["frames"][0]["steps"][step]["plugins"], [])
+                    if clearable:
+                        self.assertEqual(json.loads(stdout)["frames"][0]["steps"][step]["plugins"], [])
                     code, stdout, stderr = _invoke(*inspect, "--preset", DEFAULT_STEP_PRESETS[step])
                     self.assertEqual(code, 0, stdout + stderr)
                     overridden = json.loads(stdout)["frames"][0]["steps"][step]

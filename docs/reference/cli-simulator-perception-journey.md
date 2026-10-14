@@ -156,8 +156,8 @@ selection document:
 ```
 
 The host loads every changed step before publishing any of the group. The
-next cycle sees the adopted perception, memory and proposal selections together.
-Observation, plan and action keep their existing deployment behavior. Arming
+next cycle sees the adopted selections together. Every step arms the same way;
+observation, plan and action run one plugin, so arming one replaces it. Arming
 neither starts automation nor changes its control mode. An idle or completed
 host can accept a request while its catalog exists; it stays requested until the
 next cycle. A Chase worker exiting ends that catalog and its uploaded selections.

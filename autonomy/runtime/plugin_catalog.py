@@ -8,7 +8,6 @@ from typing import Any, Callable, Mapping
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 
 PLUGIN_CATALOG_PATH = "/api/plugins"
-ARMING_STEPS = ("perception", "memory", "proposal")
 
 
 def _field(payload: Mapping[str, Any], name: str) -> Any:

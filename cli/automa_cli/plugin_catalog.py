@@ -12,10 +12,15 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 
-from autonomy.runtime.plugin_catalog import ARMING_STEPS, PLUGIN_CATALOG_PATH, catalog_write_error
+from autonomy.decision_cycle.activation import STEPS
+from autonomy.decision_cycle.steps import STEP_RUNNERS
+from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, catalog_write_error
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0
+# A one-plugin step swaps its plugin when armed and cannot be cleared.
+ONE_PLUGIN_STEPS = tuple(step for step in STEPS if STEP_RUNNERS[step].single_plugin)
+CLEARABLE_STEPS = tuple(step for step in STEPS if step not in ONE_PLUGIN_STEPS)
 
 
 class PluginCatalogClient:
@@ -157,7 +162,7 @@ def disarm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None 
         if selection is not None:
             selections = json.loads(selection.read_text())
         elif all_plugins:
-            selections = {name: [] for name in ((step,) if step else ARMING_STEPS)}
+            selections = {name: [] for name in ((step,) if step else CLEARABLE_STEPS)}
         else:
             selections = {step: plugins}
         recovery = _catalog_recovery(url, vehicle_id)

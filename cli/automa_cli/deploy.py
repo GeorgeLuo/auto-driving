@@ -504,9 +504,8 @@ def update_vehicle_autonomy(
                     []
                     if restart
                     else [
-                        "A running runtime selects restaged perception, memory, and proposal "
-                        "plugins on its next frame; changed plugin specs or configs, plan, "
-                        "and action need --restart."
+                        "A running runtime selects restaged plugins on its next frame; "
+                        "changed plugin specs or configs need --restart."
                     ]
                 ),
             ]

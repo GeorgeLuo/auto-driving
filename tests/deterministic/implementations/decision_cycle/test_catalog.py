@@ -12,8 +12,6 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.plugins import DuplicatePluginIdError
-from autonomy.runtime.cycle_host import LIVE_SELECTION_STEPS
-from autonomy.runtime.plugin_catalog import ARMING_STEPS
 from cli.automa_cli import app
 from implementations.decision_cycle import catalog
 
@@ -138,13 +136,6 @@ class PresetActivationTests(unittest.TestCase):
                 self.assertEqual(catalog.selection_activation(step, plugins=[]).plugins, ())
                 with self.assertRaisesRegex(ValueError, f"{step} has no presets"):
                     catalog.selection_activation(step, preset="anything")
-
-    def test_the_runtime_arms_exactly_the_selectable_steps(self) -> None:
-        """Regression: the runtime's arming steps were a literal apart from the
-        catalog's selectable steps, so the two could name different steps."""
-
-        self.assertEqual(ARMING_STEPS, catalog.SELECTABLE_STEPS)
-        self.assertEqual(LIVE_SELECTION_STEPS, catalog.SELECTABLE_STEPS)
 
     def test_selection_errors_name_the_step(self) -> None:
         with self.assertRaisesRegex(ValueError, r"unknown memory preset 'nope'; known: .*recency_ledger"):

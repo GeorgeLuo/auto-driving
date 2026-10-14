@@ -31,8 +31,7 @@ from .perception_runs import (
     inspect_perception,
 )
 from .workbench import run_workbench_replay
-from .plugin_catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
-from autonomy.runtime.plugin_catalog import ARMING_STEPS
+from .plugin_catalog import ONE_PLUGIN_STEPS, arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
@@ -106,14 +105,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     arm = plugin_commands.add_parser(
         "arm", help="Add/update uploaded or packaged plugins without restarting automation.",
-        description="Request the latest catalog definitions together. New IDs append; existing IDs update in place. The host loads them before answering: an import or construction error exits 2 and keeps the previous selection. A loaded selection applies at the host's next cycle.",
+        description=f"Request the latest catalog definitions together. New IDs append; existing IDs update in place; on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. The host loads them before answering: an import or construction error exits 2 and keeps the previous selection. A loaded selection applies at the host's next cycle.",
         epilog="With --selection, use a JSON map such as {\"perception\": [\"prototype\"], \"memory\": [\"helper\"]}. Arming never starts automation or changes its control mode.",
     )
     arm_target = arm.add_mutually_exclusive_group(required=True)
     arm_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose runtime host receives the request.")
     arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
     arm_input = arm.add_mutually_exclusive_group(required=True)
-    arm_input.add_argument("--step", choices=ARMING_STEPS, help="Step receiving the ordered --plugin IDs.")
+    arm_input.add_argument("--step", choices=STEPS, help="Step receiving the ordered --plugin IDs.")
     arm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to ordered plugin-ID lists; arm the group together.")
     arm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to add/update; repeat in the desired append order with --step.")
     arm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
@@ -121,16 +120,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     disarm = plugin_commands.add_parser(
         "disarm", help="Deselect plugins without deleting them from the live catalog.",
-        description="Deselect perception, memory or proposal plugins on an existing runtime host. The host resets disarmed instances and applies the selection at its next cycle; retained plugins keep their state. Catalog entries remain available to arm again.",
-        epilog="Use --step with repeatable --plugin IDs, --selection with a JSON step-to-ID-list map, or --all to clear one step (with --step) or all supported steps. Empty batch lists remove nothing. Disarming does not start or stop automation, change control mode, or edit staged activations.",
+        description=f"Deselect plugins on an existing runtime host. A one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) keeps its plugin; arm a replacement instead. The host resets disarmed instances and applies the selection at its next cycle; retained plugins keep their state. Catalog entries remain available to arm again.",
+        epilog="Use --step with repeatable --plugin IDs, --selection with a JSON step-to-ID-list map, or --all to clear one step (with --step) or every step that can run without plugins. Empty batch lists remove nothing. Disarming does not start or stop automation, change control mode, or edit staged activations.",
     )
     disarm_target = disarm.add_mutually_exclusive_group(required=True)
     disarm_target.add_argument("--id", dest="vehicle_id", help="Vehicle whose runtime host receives the request.")
     disarm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
     disarm_input = disarm.add_mutually_exclusive_group()
-    disarm.add_argument("--step", choices=ARMING_STEPS, help="Step whose plugins to disarm; combine with --plugin or --all.")
+    disarm.add_argument("--step", choices=STEPS, help="Step whose plugins to disarm; combine with --plugin or --all.")
     disarm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to plugin-ID lists to disarm together.")
-    disarm_input.add_argument("--all", dest="all_plugins", action="store_true", help="Disarm every plugin in --step, or in all supported steps without it.")
+    disarm_input.add_argument("--all", dest="all_plugins", action="store_true", help="Disarm every plugin in --step, or in every step that can run without plugins.")
     disarm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to disarm from --step; repeat to name several.")
     disarm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
     disarm.set_defaults(handler=_handle_plugin_disarm)
@@ -1214,7 +1213,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Restart the vehicle's host (the PiCar's Donkey service or the simulator worker) "
             "onto the release. Without it, "
             "a running runtime selects restaged plugins on its next frame; changed plugin "
-            "specs or configs, plan, and action need a restart."
+            "specs or configs need a restart."
         ),
     )
     autonomy.add_argument(
@@ -1375,7 +1374,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "automa vehicles plugins commands", "",
         "- upload  store a file and register an available plugin revision",
         "- arm     add/update named plugins together on a runtime host",
-        "- disarm  deselect named plugins or clear supported steps on a runtime host",
+        "- disarm  deselect named plugins or clear steps on a runtime host",
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
         "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
@@ -1387,12 +1386,14 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "Upload refuses source that does not compile; imports and dependencies load when armed.",
         "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.", "",
         "Use upload --arm for one-command registration and arming; it calls the same operation as arm.",
-        "Arming supports perception, memory and proposal. New IDs append; existing IDs update in place.",
+        "Arming supports every step. New IDs append; existing IDs update in place.",
+        f"On a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the armed ID replaces the plugin.",
         "Other plugins retain their definitions/configs. The host loads the selection before answering;",
         "a load error exits 2 and keeps the previous selection. A loaded selection applies at the next cycle.",
         "Status distinguishes available, requested and applied revisions, and exits 2 while the last selection request failed.",
-        "Disarming supports the same steps. Use --step with --plugin IDs, or --selection for grouped removals.",
-        "Use disarm --all to clear them all, or disarm --step <step> --all to clear one step.",
+        "Disarming supports the same steps; a one-plugin step keeps its plugin. Use --step with --plugin IDs,",
+        "or --selection for grouped removals. Use disarm --all to clear every step that can run without",
+        "plugins, or disarm --step <step> --all to clear one step.",
         "The next cycle resets disarmed instances; catalog entries remain available to arm again.",
         "Arm and disarm change the current host only; staged selections are restored on host restart.",
         "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",

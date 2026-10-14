@@ -12,7 +12,7 @@ from cli.automa_cli.automation import CommandResult, _run_configuration
 class RunConfigurationTests(unittest.TestCase):
     def test_unbounded_overrides_counts_in_both_modes(self):
         for take_control in (True, False):
-            for count in (0, 3, -1):
+            for count in (0, 3):
                 with self.subTest(take_control=take_control, count=count):
                     configuration = _run_configuration(
                         take_control=take_control, interval_s=.25,
@@ -20,6 +20,13 @@ class RunConfigurationTests(unittest.TestCase):
                     )
                     self.assertEqual(configuration.num_decisions, 0)
                     self.assertEqual(configuration.mode, "autonomy" if take_control else "observe_only")
+            # The runtime refuses a negative count, so --unbounded doesn't accept one.
+            with (
+                self.subTest(take_control=take_control, count=-1),
+                self.assertRaisesRegex(ValueError, "nonnegative"),
+            ):
+                _run_configuration(take_control=take_control, interval_s=.25,
+                                   num_decisions=-1, unbounded=True)
 
     def test_bounded_defaults_and_observation_zero_remain_unchanged(self):
         for take_control in (True, False):

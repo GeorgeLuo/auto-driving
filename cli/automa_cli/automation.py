@@ -194,6 +194,9 @@ def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: 
                        unbounded: bool = False) -> RunConfiguration:
     """Movement runs require a positive bound or an explicit unbounded opt-in."""
 
+    # Refuse what the runtime refuses before --unbounded replaces the count.
+    if type(num_decisions) is not int or num_decisions < 0:
+        raise ValueError("num_decisions must be a nonnegative integer")
     if unbounded:
         num_decisions = 0
 

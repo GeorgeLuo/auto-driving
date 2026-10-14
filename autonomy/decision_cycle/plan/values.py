@@ -26,7 +26,7 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 
 ACTION_PLAN_SCHEMA = "action_plan_v0"
-# Plugin ID of the built-in plan plugin; a plan records the plugin that built it.
+# Plugin ID of the default plan plugin; a plan records the plugin that built it.
 SELECTOR_ID = "highest_confidence"
 MAX_PLAN_METADATA_BYTES = 1024
 

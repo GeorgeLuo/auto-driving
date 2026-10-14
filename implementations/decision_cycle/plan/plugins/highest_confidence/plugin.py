@@ -1,11 +1,11 @@
-"""Built-in plan plugin: select the most confident active candidate.
+"""Plan plugin: select the most confident active candidate.
 
 A candidate is active when its lifecycle is fresh or retained and matches its
 freshness, it is available, it carries a command, and its proposal ID names
 this frame. The active candidate with the highest confidence is selected; equal
 confidence goes to the lower plugin ID. With no active candidate the plan is
-idle. ``HighestConfidencePlan`` is the plan step's default selection and
-records its plugin ID as the plan's ``selector_id``.
+idle. ``HighestConfidencePlan`` records its plugin ID as the plan's
+``selector_id``.
 """
 
 from __future__ import annotations

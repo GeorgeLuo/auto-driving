@@ -84,7 +84,7 @@ class RunnerBoundaryTests(unittest.TestCase):
 
         engine = packaged_decision_chain()
         with patch(
-            "autonomy.decision_cycle.plan.highest_confidence.select_highest_confidence_plan",
+            "implementations.decision_cycle.plan.plugins.highest_confidence.plugin.select_highest_confidence_plan",
             side_effect=ValueError("plan broken"),
         ):
             result = engine.run(

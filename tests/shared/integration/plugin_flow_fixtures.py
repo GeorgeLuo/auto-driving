@@ -9,6 +9,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.runtime_view import RuntimeViewServer
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
@@ -42,11 +43,17 @@ def frame(root, index):
 
 @contextmanager
 def plugin_host(root, vehicle="chase", activations=None):
-    """A vehicle host in this process, with its catalog served at the yielded URL."""
-    steps = decision_steps(activations)
+    """A vehicle host in this process, with its catalog served at the yielded URL.
+
+    Plan has no built-in. The packaged plan is staged unless the caller already
+    named one, so a one-plugin disarm still meets a running plan plugin.
+    """
+    selected = dict(activations or {})
+    selected.setdefault("plan", packaged_activation("plan"))
+    steps = decision_steps(selected)
     host = (create_chase_host(ChaseSimCar(), steps=steps) if vehicle == "chase"
             else create_picar_host(steps=steps))
-    host.follow_activations(activations or {}, root / "runtime")
+    host.follow_activations(selected, root / "runtime")
     view = RuntimeViewServer(vehicle_id=vehicle, automation_dir=root / "automation",
                              port=0, plugin_catalog=host.plugin_catalog).start()
     try:
@@ -142,7 +149,7 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
         # One-plugin steps reuse the packaged plugin under the prototype's id.
         base = {
             "observation": ("autonomy.decision_cycle.observation.perception_summary", "PerceptionSummary"),
-            "plan": ("autonomy.decision_cycle.plan.highest_confidence", "HighestConfidencePlan"),
+            "plan": ("implementations.decision_cycle.plan.plugins.highest_confidence.plugin", "HighestConfidencePlan"),
             "action": ("autonomy.decision_cycle.action.selected", "SelectedAction"),
         }[step]
         source = (

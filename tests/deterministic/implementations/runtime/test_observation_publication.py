@@ -70,7 +70,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Idle host has no perception step; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
-        self.assertEqual(payload["control"]["reason"], "no-selected-command")
+        self.assertEqual(payload["control"]["reason"], "action_plan_invariant_violated")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
     def test_presets_follow_the_activations_each_frame_applied(self) -> None:

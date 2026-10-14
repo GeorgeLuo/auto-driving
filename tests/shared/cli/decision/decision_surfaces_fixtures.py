@@ -48,7 +48,7 @@ def frame_inputs(frame: dict) -> dict:
 
 
 def packaged_decision_steps(action: str = "hold") -> dict:
-    """Step payloads for the packaged proposal, the built-in plan, and ``action``."""
+    """Step payloads for the packaged proposal, plan, and ``action``."""
 
     return {
         step: packaged_activation(step, [action] if step == "action" else None).to_payload()

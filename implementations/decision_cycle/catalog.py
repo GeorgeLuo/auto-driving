@@ -58,7 +58,7 @@ STEP_PLUGINS: dict[str, tuple[dict[str, Any], ...]] = {
     "proposal": PROPOSAL_PLUGINS,
     "plan": (
         {
-            "spec": "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan",
+            "spec": "implementations.decision_cycle.plan.plugins.highest_confidence.plugin:HighestConfidencePlan",
             "description": "Select the most confident active candidate; otherwise plan idle.",
             "default_config": {},
         },

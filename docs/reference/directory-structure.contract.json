@@ -34,7 +34,7 @@
             "path": "autonomy/decision_cycle/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "The decision cycle and its six peer steps. Each step (perception/, observation/, memory/, proposal/, plan/, action/) is a package holding its plugin protocol (plugin.py), its runner (runner.py), and its record values; observation/, plan/, and action/ also hold their built-in plugins. At the root: the cycle ordering and per-step records (cycle.py), the activation document every step shares (activation.py), the runner shape the steps share (runner.py), building runners from activations (steps.py), the cycle input (context.py), the reasons a cycle fails closed (errors.py), and the identifier grammar for proposals and plans (action_identifiers.py)."
+            "responsibility": "The decision cycle and its six peer steps. Each step (perception/, observation/, memory/, proposal/, plan/, action/) is a package holding its plugin protocol (plugin.py), its runner (runner.py), and its record values; observation/ and action/ also hold their built-in plugins. The plan plugin lives under implementations/decision_cycle/plan/. At the root: the cycle ordering and per-step records (cycle.py), the activation document every step shares (activation.py), the runner shape the steps share (runner.py), building runners from activations (steps.py), the cycle input (context.py), the reasons a cycle fails closed (errors.py), and the identifier grammar for proposals and plans (action_identifiers.py)."
           },
           {
             "path": "autonomy/runtime/",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import unittest
-from autonomy.decision_cycle.plan.highest_confidence import select_highest_confidence_plan
+from implementations.decision_cycle.plan.plugins.highest_confidence.plugin import select_highest_confidence_plan
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,

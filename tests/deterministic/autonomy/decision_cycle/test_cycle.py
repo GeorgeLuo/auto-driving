@@ -190,7 +190,7 @@ class StepSnapshotTests(unittest.TestCase):
         """A disarmed step keeps its runner with nothing applied; it must
         record as disabled so streams and replays run it empty."""
 
-        steps = DecisionSteps(proposal=proposal_runner({}), plan=decision_steps().plan)
+        steps = DecisionSteps(proposal=proposal_runner({}), plan=plan_runner())
 
         snapshot = snapshot_step_activations(steps)
 

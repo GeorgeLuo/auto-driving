@@ -42,14 +42,10 @@ def _frame(host, index: int):
 
 
 def _identity(proposal) -> dict:
-    steps = {
-        step: (
-            proposal.to_payload()
-            if step == "proposal"
-            else builtin_activation(step).to_payload()
-        )
-        for step in DECISION_STEPS
-    }
+    steps = {}
+    for step in DECISION_STEPS:
+        activation = proposal if step == "proposal" else builtin_activation(step)
+        steps[step] = activation.to_payload() if activation is not None else None
     return {
         "generation_id": activation_generation_id(steps, prefix="decision"),
         "steps": steps,

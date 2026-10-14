@@ -39,11 +39,16 @@ def fixed_control_steps(
     plugin_id: str = "test",
     **steps: Any,
 ) -> DecisionSteps:
-    """Built-in steps whose action authorizes ``control``; ``steps`` override slots."""
+    """Steps whose action authorizes ``control``; ``steps`` override slots.
 
+    The packaged plan is present so a missing plan does not fail the action closed.
+    """
+
+    plan = steps.pop("plan", None) or plan_runner()
     return replace(
         decision_steps(),
         action=fixed_action_runner(control, plugin_id=plugin_id),
+        plan=plan,
         **steps,
     )
 
@@ -75,7 +80,11 @@ def proposal_runner(
 
 
 def plan_runner() -> PlanRunner:
-    return decision_steps().plan
+    """The packaged highest-confidence plan. Plan has no framework built-in."""
+
+    from implementations.decision_cycle.catalog import packaged_activation
+
+    return PlanRunner.from_activation(packaged_activation("plan"))
 
 
 def action_runner(plugin: Any | None = None) -> ActionRunner:

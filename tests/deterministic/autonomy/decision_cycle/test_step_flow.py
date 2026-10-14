@@ -159,13 +159,13 @@ class DecisionStageFlowTests(unittest.TestCase):
         self.assertEqual((result.started_at_ms, result.completed_at_ms), (1_000, 1_007))
         # The duration is the cycle's monotonic total, not the timestamp difference.
         self.assertEqual(result.duration_ms, 6.5)
-        # Plain callables keep no timing, so every step is listed with null.
+        # The cycle times each step call; plain callables keep no plugin records.
         self.assertEqual(
             result.timing,
             {
                 "duration_ms": 6.5,
                 "steps": [
-                    {"step": step, "duration_ms": None, "plugins": []}
+                    {"step": step, "duration_ms": 6.5, "plugins": []}
                     for step in STEPS
                 ],
             },

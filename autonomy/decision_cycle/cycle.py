@@ -72,8 +72,8 @@ class DecisionCycleResult:
     ``memory`` is the memory step's report of plugin state, for diagnostics;
     plugins read what memory published in the host map.
 
-    ``timing`` is ``cycle_timing``: the cycle's monotonic total and each
-    step's and plugin's duration. ``duration_ms`` is that total; a result
+    ``timing`` is ``cycle_timing``: the cycle's monotonic total, each step
+    call's duration and each plugin's. ``duration_ms`` is that total; a result
     built without timing falls back to ``completed_at_ms - started_at_ms``.
     """
 
@@ -140,19 +140,20 @@ class DecisionCycle:
         steps = self.steps
         started_at_ms = timestamp_ms()
         started = clock()
+        durations: dict[str, float] = {}
         perception = _checked(
             "perception",
-            steps.perception(context) if steps.perception else None,
+            _timed(durations, "perception", steps.perception, context),
             PerceptionText,
         )
         observation = _checked(
             "observation",
-            steps.observation(context, perception) if steps.observation else None,
+            _timed(durations, "observation", steps.observation, context, perception),
             Observation,
         )
         try:
             # Memory plugins write the host map; the step returns a report.
-            memory = steps.memory(context, observation) if steps.memory else None
+            memory = _timed(durations, "memory", steps.memory, context, observation)
             if memory is not None and not isinstance(memory, dict):
                 raise TypeError("memory step must return a report dict or None")
         except MemoryUpdateError:
@@ -165,17 +166,17 @@ class DecisionCycle:
             raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
         proposal = _checked(
             "proposal",
-            steps.proposal(context, observation) if steps.proposal else None,
+            _timed(durations, "proposal", steps.proposal, context, observation),
             ProposalResult,
         )
         plan = _checked(
             "plan",
-            steps.plan(context, proposal) if steps.plan else None,
+            _timed(durations, "plan", steps.plan, context, proposal),
             ActionPlan,
         )
         action = _checked(
             "action",
-            steps.action(context, proposal, plan) if steps.action else None,
+            _timed(durations, "action", steps.action, context, proposal, plan),
             ActionResult,
         )
         control = (
@@ -194,8 +195,19 @@ class DecisionCycle:
             control=control,
             started_at_ms=started_at_ms,
             completed_at_ms=timestamp_ms(),
-            timing=cycle_timing(elapsed_ms(started), steps),
+            timing=cycle_timing(elapsed_ms(started), durations, steps),
         )
+
+
+def _timed(durations: dict[str, float], step: str, run: Any, *args: Any) -> Any:
+    """``run(*args)``, its duration kept in ``durations[step]``; ``None`` for an empty slot."""
+
+    if not run:
+        return None
+    started = clock()
+    record = run(*args)
+    durations[step] = elapsed_ms(started)
+    return record
 
 
 def _checked(step: str, record: Any, record_type: type) -> Any:

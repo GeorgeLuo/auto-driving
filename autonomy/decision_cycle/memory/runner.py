@@ -209,10 +209,11 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         """
 
         memory_context = replace(context, sensor_frame=None)
-        with self._runtime_lock, self._timed_step():
+        with self._runtime_lock:
             if context.shared_memory is not None:
                 self._shared_memory = context.shared_memory
             self.last_error = None
+            self._clear_plugin_records()
             try:
                 for plugin in self.plugins.values():
                     before = _evidence(self._shared_memory)
@@ -249,20 +250,20 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         """
 
         with self._runtime_lock:
-            with self._timed_step():
-                self.last_error = None
-                if shared_memory is not None:
-                    self._shared_memory = shared_memory
-                before = dict(shared_memory) if shared_memory is not None else {}
-                for plugin in self.plugins.values():
-                    failures = plugin.failure_count
-                    evidence = _evidence(self._shared_memory)
-                    self._reset_plugin(plugin, shared_memory)
-                    self._record_plugin(plugin.plugin_id, plugin.last_duration_ms, plugin.last_error)
-                    self._note_evidence(plugin.plugin_id, evidence)
-                    self.failure_count += plugin.failure_count - failures
-                    self.last_error = plugin.last_error or self.last_error
-                self.reset_count += 1
+            self.last_error = None
+            self._clear_plugin_records()
+            if shared_memory is not None:
+                self._shared_memory = shared_memory
+            before = dict(shared_memory) if shared_memory is not None else {}
+            for plugin in self.plugins.values():
+                failures = plugin.failure_count
+                evidence = _evidence(self._shared_memory)
+                self._reset_plugin(plugin, shared_memory)
+                self._record_plugin(plugin.plugin_id, plugin.last_duration_ms, plugin.last_error)
+                self._note_evidence(plugin.plugin_id, evidence)
+                self.failure_count += plugin.failure_count - failures
+                self.last_error = plugin.last_error or self.last_error
+            self.reset_count += 1
             if shared_memory is None:
                 return {}
             return {

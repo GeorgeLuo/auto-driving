@@ -283,8 +283,9 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             self.last_error = reason
             return ProposalResult(frame_id=frame_id, status="error", reason=reason, source=source)
 
-        with self._runtime_lock, self._timed_step():
+        with self._runtime_lock:
             self.run_count += 1
+            self._clear_plugin_records()
             if isinstance(observation, Observation):
                 observation = Observation.from_dict(
                     omit_forbidden_channel_keys(observation.to_dict())

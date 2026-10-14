@@ -25,7 +25,7 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
     def __call__(
         self, context: DecisionFrameContext, perception: PerceptionText | None
     ) -> Observation | None:
-        with self._runtime_lock, self._timed_step(), self._timed_single() as plugin:
+        with self._runtime_lock, self._timed_single() as plugin:
             self.run_count += 1
             try:
                 observation = plugin.observe(context, perception)

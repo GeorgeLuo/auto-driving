@@ -47,7 +47,11 @@ class LiveCommandsTests(LiveHostTestCase):
             with self.subTest(step=step):
                 result = self.automa("stream", step, "--once", "--json")
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual(json.loads(result.stdout)["status"], "live")
+                live = json.loads(result.stdout)
+                self.assertEqual(live["status"], "live")
+                if step == "memory":
+                    # The memory step's time in the host's last cycle.
+                    self.assertIsInstance(live["last_duration_ms"], float)
         terminal = self.automa("stream", "perception", "--once", "--no-clear")
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)

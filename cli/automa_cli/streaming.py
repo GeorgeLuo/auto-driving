@@ -18,6 +18,7 @@ from autonomy.decision_cycle.memory.interface import (
     HEALTH,
     RECORD_COUNT,
 )
+from autonomy.decision_cycle.timing import step_timing
 from .decision_live import DecisionViewAdapter
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .host_publications import (
@@ -586,7 +587,16 @@ def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) 
     runner = steps.get(step) if isinstance(steps.get(step), dict) else None
     if runner is None:
         return {**probe, "status": "absent", "error": absent_step_error(step, vehicle_id)}
-    return {**probe, "status": "live", **_live_step_fields(step, runner)}
+    fields = _live_step_fields(step, runner)
+    if step == "memory":
+        # The host's cycle times each step call; the runner keeps only its
+        # plugins' times.
+        last_cycle = autonomy.get("last_cycle")
+        entry = step_timing(
+            last_cycle.get("timing") if isinstance(last_cycle, dict) else None, step
+        )
+        fields["last_duration_ms"] = entry.get("duration_ms") if entry is not None else None
+    return {**probe, "status": "live", **fields}
 
 
 def _live_step_fields(step: str, status: dict[str, Any]) -> dict[str, Any]:
@@ -604,7 +614,6 @@ def _live_step_fields(step: str, status: dict[str, Any]) -> dict[str, Any]:
         fields.update(
             plugins=_probe_plugins(status),
             evidence_publisher=evidence_publisher(status),
-            last_duration_ms=status.get("last_duration_ms"),
             update_count=status.get("update_count"),
             reset_count=status.get("reset_count"),
         )

@@ -12,7 +12,7 @@ their ``plugin_ids``;
 way a changed manager selection takes effect: a step call runs the applied
 plugins and never applies a selection itself, so a running host's
 ``_adopt_selection`` is the one place that decides what a failed change does;
-``plugin_report``, ``status`` and ``timing`` for diagnostics; and
+``plugin_report``, ``status`` and ``plugin_timing`` for diagnostics; and
 ``reset(shared_memory)`` to start a new epoch. ``reset`` resets every applied
 plugin with the host map, and a plugin whose reset raises follows the step's
 ``FAILURE_POLICY.reset``. Memory's ``reset`` also returns the keys its plugins
@@ -122,13 +122,12 @@ class StepRunner(Generic[PluginT]):
       state the step publishes with its plugins. They run under the lock the
       public selection methods take.
     - ``_reset_plugin``: how one plugin resets.
-    - ``_timed_step``: wraps one step call; sets ``last_duration_ms`` and
-      starts the call with no plugin records. ``_timed_single`` times a
-      ``single_plugin`` step's one plugin.
     - ``_record_plugin``: one plugin's duration and error, measured with
-      ``timing.clock`` where the step invokes it.
+      ``timing.clock`` where the step invokes it. ``_timed_single`` times a
+      ``single_plugin`` step's one plugin. A step call that may skip plugins
+      starts with ``_clear_plugin_records``.
     - ``_plugin_records``: each plugin's timing and error in ``plugin_report``
-      and ``timing``.
+      and ``plugin_timing``.
     - ``status``: extend ``super().status()`` with the step's own fields.
 
     A subclass sets the state its hooks read before calling
@@ -155,7 +154,6 @@ class StepRunner(Generic[PluginT]):
         self.last_error: str | None = None
         self.run_count = 0
         self.failure_count = 0
-        self.last_duration_ms: float | None = None
         self._plugin_runs: dict[str, dict[str, Any]] = {}
         self.apply_selection()
 
@@ -270,8 +268,7 @@ class StepRunner(Generic[PluginT]):
             for _definition, plugin in self.applied:
                 self._reset_plugin(plugin, shared_memory)
             self.last_error = None
-            self.last_duration_ms = None
-            self._plugin_runs.clear()
+            self._clear_plugin_records()
 
     def _reset_plugin(self, plugin: PluginT, shared_memory: SharedMemory | None) -> None:
         reset_plugin(plugin, shared_memory)
@@ -284,30 +281,25 @@ class StepRunner(Generic[PluginT]):
         with self._runtime_lock:
             return build_plugin_report(self.plugin_manager, self.applied, self._plugin_records())
 
-    def timing(self) -> dict[str, Any]:
-        """The last step call's duration and each applied plugin's record.
+    def plugin_timing(self) -> list[dict[str, Any]]:
+        """Each applied plugin's duration and error from the last step call.
 
-        ``DecisionCycle`` copies this into the cycle's ``timing``. It is the
-        same data ``status`` and ``plugin_report`` show, without the catalog.
+        ``DecisionCycle`` copies this into the cycle's ``timing``; the cycle
+        times the step call itself. It is the record ``plugin_report`` shows,
+        without the catalog.
         """
 
         with self._runtime_lock:
-            return {"duration_ms": self.last_duration_ms, "plugins": self._plugin_records()}
+            return self._plugin_records()
 
-    @contextmanager
-    def _timed_step(self) -> Iterator[None]:
-        """Time one step call into ``last_duration_ms``. The caller holds the lock.
+    def _clear_plugin_records(self) -> None:
+        """Start a step call with no plugin records. The caller holds the lock.
 
-        Plugin records start empty, so a plugin the call skips reports a null
-        duration instead of the previous call's.
+        A plugin the call skips then reports a null duration instead of the
+        previous call's.
         """
 
         self._plugin_runs.clear()
-        started = clock()
-        try:
-            yield
-        finally:
-            self.last_duration_ms = elapsed_ms(started)
 
     def _record_plugin(self, plugin_id: str, duration_ms: float | None, error: str | None) -> None:
         """Keep one plugin invocation for ``_plugin_records``. The caller holds the lock.
@@ -352,7 +344,6 @@ class StepRunner(Generic[PluginT]):
                 "run_count": self.run_count,
                 "failure_count": self.failure_count,
                 "last_error": self.last_error,
-                "last_duration_ms": self.last_duration_ms,
             }
 
     @contextmanager

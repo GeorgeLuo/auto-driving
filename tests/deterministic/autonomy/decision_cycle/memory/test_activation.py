@@ -57,7 +57,7 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertNotIn("plugin_spec", status)
             self.assertEqual(status["update_count"], 2)
             self.assertEqual(status["failure_count"], 0)
-            self.assertIsNotNone(status["last_duration_ms"])
+            self.assertIsNotNone(status["plugins"][0]["last_duration_ms"])
             self.assertEqual(status["plugins"][0]["state"]["record_count"], 1)
 
     def test_reset_starts_a_new_empty_epoch_and_returns_the_written_state(self) -> None:

@@ -236,9 +236,9 @@ class PerceptionRunner(StepRunner[Any]):
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
-        # Every consumer perceives here, so the step is timed here.
-        with self._runtime_lock, self._timed_step():
+        with self._runtime_lock:
             self.run_count += 1
+            self._clear_plugin_records()
             try:
                 output = self._perceive_selected(request)
             except Exception as exc:

@@ -30,7 +30,8 @@ class PlanRunner(StepRunner[PlanPlugin]):
     def __call__(
         self, context: DecisionFrameContext, proposal: ProposalResult | None
     ) -> ActionPlan | None:
-        with self._runtime_lock, self._timed_step():
+        with self._runtime_lock:
+            self._clear_plugin_records()
             # A failed proposal skips the plugin; its record stays null.
             if proposal is not None and proposal.status != "ok":
                 return None

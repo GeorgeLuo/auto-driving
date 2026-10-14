@@ -1,4 +1,4 @@
-"""Each cycle's timing: its total, each step's, and each applied plugin's."""
+"""Each cycle's timing: its total, each step call's, and each applied plugin's."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import unittest
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.cycle import DecisionCycle
+from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.runner import ObservationRunner
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.result import ProposalResult
@@ -46,13 +46,29 @@ class CycleTimingTests(unittest.TestCase):
         for entry in timing["steps"]:
             with self.subTest(step=entry["step"]):
                 runner = getattr(self.steps, entry["step"])
+                # The cycle times the step call; the runner keeps only its plugins' times.
+                self.assertEqual(entry["plugins"], runner.plugin_timing())
+                self.assertNotIn("last_duration_ms", runner.status())
                 self.assertEqual(
                     [plugin["plugin_id"] for plugin in entry["plugins"]], list(runner.plugin_ids)
                 )
+                self.assertIsInstance(entry["duration_ms"], float)
                 self.assertGreaterEqual(timing["duration_ms"], entry["duration_ms"])
                 for plugin in entry["plugins"]:
                     self.assertGreaterEqual(entry["duration_ms"], plugin["duration_ms"])
-                self.assertEqual(runner.status()["last_duration_ms"], entry["duration_ms"])
+
+    def test_the_cycle_times_any_step_callable_and_not_an_empty_slot(self) -> None:
+        steps = DecisionSteps(perception=lambda context: None)
+        timing = DecisionCycle(steps).run(_context(0, {})).timing
+
+        [perception, *empty] = timing["steps"]
+        self.assertEqual(perception["step"], "perception")
+        self.assertIsInstance(perception["duration_ms"], float)
+        self.assertEqual(perception["plugins"], [])
+        self.assertEqual(
+            empty,
+            [{"step": step, "duration_ms": None, "plugins": []} for step in STEPS[1:]],
+        )
 
     def test_a_skipped_plan_plugin_has_no_time_for_that_cycle(self) -> None:
         """Regression: a skipped plan kept the previous cycle's time and error."""
@@ -66,17 +82,16 @@ class CycleTimingTests(unittest.TestCase):
         plan = PlanRunner.from_plugins({"raises": Raises()})
         ok = ProposalResult(frame_id="frame_000", status="ok")
         self.assertIsNone(plan(_context(0, {}), ok))
-        [ran] = plan.timing()["plugins"]
+        [ran] = plan.plugin_timing()
         self.assertIsInstance(ran["duration_ms"], float)
         self.assertIn("plan failed", ran["error"])
 
         failed = ProposalResult(frame_id="frame_001", status="error", reason="step_internal_error")
         self.assertIsNone(plan(_context(1, {}), failed))
         self.assertEqual(
-            plan.timing()["plugins"],
+            plan.plugin_timing(),
             [{"plugin_id": "raises", "duration_ms": None, "error": None}],
         )
-        self.assertIsInstance(plan.timing()["duration_ms"], float)
 
     def test_a_raising_plugin_keeps_its_time_and_error(self) -> None:
         class Raises:
@@ -89,14 +104,12 @@ class CycleTimingTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             runner(_context(0, {}), None)
 
-        timing = runner.timing()
-        self.assertIsInstance(timing["duration_ms"], float)
-        [plugin] = timing["plugins"]
+        [plugin] = runner.plugin_timing()
         self.assertEqual(plugin["plugin_id"], "raises")
         self.assertIsInstance(plugin["duration_ms"], float)
         self.assertIn("observation failed", plugin["error"])
 
-    def test_reset_clears_cycle_times_and_memory_reports_its_reset(self) -> None:
+    def test_reset_clears_plugin_times_and_memory_reports_its_reset(self) -> None:
         DecisionCycle(self.steps).run(_context(0, self.shared))
 
         for step in ("perception", "proposal"):
@@ -104,22 +117,20 @@ class CycleTimingTests(unittest.TestCase):
                 runner = getattr(self.steps, step)
                 runner.reset(self.shared)
                 self.assertEqual(
-                    runner.timing()["plugins"],
+                    runner.plugin_timing(),
                     [
                         {"plugin_id": plugin_id, "duration_ms": None, "error": None}
                         for plugin_id in runner.plugin_ids
                     ],
                 )
-                self.assertIsNone(runner.timing()["duration_ms"])
 
         self.steps.memory.reset(self.shared)
-        memory = self.steps.memory.timing()
-        self.assertIsInstance(memory["duration_ms"], float)
+        memory = self.steps.memory.plugin_timing()
         self.assertEqual(
-            [plugin["plugin_id"] for plugin in memory["plugins"]],
+            [plugin["plugin_id"] for plugin in memory],
             list(self.steps.memory.plugin_ids),
         )
-        for plugin in memory["plugins"]:
+        for plugin in memory:
             self.assertIsInstance(plugin["duration_ms"], float)
 
 

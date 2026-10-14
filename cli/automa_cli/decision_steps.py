@@ -19,6 +19,7 @@ from typing import Any, Callable, TextIO
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, idle_output
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.decision_cycle.timing import step_timing
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
 from implementations.decision_cycle.catalog import selection_activation
 
@@ -311,11 +312,7 @@ def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
 def format_step_timing(step: str, timing: dict[str, Any] | None) -> str:
     """``step``'s and its plugins' time in one cycle's ``timing``, then the cycle's."""
 
-    steps = timing.get("steps") if isinstance(timing, dict) else None
-    entry = next(
-        (item for item in steps or () if isinstance(item, dict) and item.get("step") == step),
-        None,
-    )
+    entry = step_timing(timing, step)
     if entry is None:
         return "Timing: none"
     plugins = ", ".join(

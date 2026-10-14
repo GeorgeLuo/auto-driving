@@ -39,7 +39,11 @@ selects the most confident active candidate; with none, the plan is idle.
 ## Framework boundary
 
 `autonomy/decision_cycle/plan/` owns the plugin protocol (`plugin.py`), the
-step runner (`runner.py`), and the plan record (`values.py`). The runner
-checks that a returned plan matches the frame, the plugin ID, and the proposal
-step's candidates. A plugin failure or a plan that fails that check returns no
-plan, and the action step holds.
+step contract (`interface.py`), the step runner (`runner.py`), and the plan
+record (`values.py`). `interface.py` declares `composition_declaration` (one
+plugin; the proposal step's candidates, `frame_id`, and `timestamp_ms` in;
+one `ActionPlan` whose `selector_id` is the plugin ID out) and `FAILURE_POLICY`
+(a plugin error or a plan that fails the runner's check returns no plan and
+the action holds, a reset error propagates, a failed proposal skips the
+plugin). An absent proposal step still calls the plugin with no candidates.
+The runner reads that policy, and `describe_schema()` reports it.

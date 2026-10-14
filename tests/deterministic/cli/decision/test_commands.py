@@ -57,7 +57,7 @@ class DecisionCommandTests(unittest.TestCase):
                 # No runtime host runs, so the probe has no step to report.
                 self.assertEqual(payload["live"]["schema"], f"vehicle_{step}_live_v1")
                 self.assertEqual(payload["live"]["status"], "unavailable")
-                # Only the proposal runner describes a schema.
+                # Proposal's info carries its runner schema; action's does not.
                 self.assertEqual("proposal_schema" in payload, step == "proposal")
             self.assertEqual(before_info, snapshot_files())
 

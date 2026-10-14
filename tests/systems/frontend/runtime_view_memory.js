@@ -129,10 +129,18 @@ async function memoryPage() {
   }]);
   assert.deepEqual(metrics($("ledgerMetrics")), {
     "Plugin": "bounded_evidence", "Health": "healthy", "Epoch": "epoch-b",
-    "Keys": "2/32 filled", "Max age": "5000 ms", "Evidence publisher": "bounded_evidence"
+    "Keys": "2/32 filled", "Max age": "5000 ms", "Update": "—", "Evidence publisher": "bounded_evidence"
   });
   assert.deepEqual(keys(), ["thing:a", "thing:b"]);
   assert.equal($("statusText").textContent, "Live | bounded_evidence: 2 keys");
+
+  // The cycle's memory step time fills the Update row.
+  latest = {
+    ...publication([BOUNDED], "bounded_evidence"),
+    cycle: { timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] } }
+  };
+  await ctx.refresh();
+  assert.equal(metrics($("ledgerMetrics"))["Update"], "1.25 ms");
 
   // Two plugins: both listed, the publisher shown by default.
   latest = publication([BOUNDED, RECORDING], "bounded_evidence");

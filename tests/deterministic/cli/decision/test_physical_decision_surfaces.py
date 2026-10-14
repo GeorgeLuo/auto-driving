@@ -13,7 +13,7 @@ from urllib.request import urlopen
 import numpy as np
 from PIL import Image
 
-from autonomy.decision_cycle.activation import step_activation_path, write_step_activation
+from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.decision import accept_decision_publication, decision_view_frame
@@ -293,6 +293,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             self.assertFalse(authority["proposed_applied"])
             self.assertEqual(authority["authorized_output"]["steering"], 0.0)
             self.assertEqual(authority["authorized_output"]["throttle"], 0.0)
+            # The host's cycle timing reaches the stream as it published it.
+            self.assertEqual([entry["step"] for entry in payload["timing"]["steps"]], list(STEPS))
 
             text_result = invoke_automa(
                 "vehicles", "stream", "action", "--id", vehicle_id, "--once",
@@ -301,6 +303,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             )
             self.assertIn(f"Action stream: {vehicle_id}", text_result.stdout)
             self.assertIn("Authorized as proposed: false", text_result.stdout)
+            self.assertRegex(text_result.stdout, r"Timing: action \d+\.\d{3} ms \(.+\); cycle \d+\.\d{3} ms")
 
             fixture_state["force_expired"] = True
             expired = invoke_automa(

@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from cli.automa_cli.decision_steps import inspect_decision_step
 from cli.automa_cli.step_replay import StepReplay
 from implementations.decision_cycle.catalog import SELECTABLE_STEPS
@@ -45,6 +45,26 @@ class DecisionStepInspectTests(unittest.TestCase):
                 text = inspect_decision_step(step, source=self.frames).message
                 self.assertIn(f"{step.capitalize()} inspect", text)
                 self.assertIn(f"{step.capitalize()}: status=", text)
+
+    def test_each_frame_carries_every_steps_and_plugins_time(self) -> None:
+        """Regression: no command showed step or plugin time, so a slow plugin was invisible."""
+
+        report = self.inspect("plan")
+        for item in report["frames"]:
+            timing = item["timing"]
+            self.assertEqual([entry["step"] for entry in timing["steps"]], list(STEPS))
+            for entry in timing["steps"]:
+                self.assertEqual(
+                    [plugin["plugin_id"] for plugin in entry["plugins"]],
+                    report["selections"][entry["step"]]["plugins"],
+                )
+                self.assertGreaterEqual(timing["duration_ms"], entry["duration_ms"])
+                for plugin in entry["plugins"]:
+                    self.assertGreaterEqual(entry["duration_ms"], plugin["duration_ms"])
+        text = inspect_decision_step("plan", source=self.frames).message
+        self.assertRegex(
+            text, r"Timing: plan \d+\.\d{3} ms \(highest_confidence \d+\.\d{3} ms\); cycle \d+\.\d{3} ms"
+        )
 
     def test_frame_reports_one_frame_after_replaying_the_ones_before(self) -> None:
         report = self.inspect("plan", frame=2)

@@ -7,14 +7,14 @@ plugin's own state summary for diagnostics, and the evidence publisher, the
 plugin whose value ``EVIDENCE_KEY`` holds. Decisions read plugin-published
 keys in the host map, not the report.
 
-``MemoryPluginRuntime`` times and reports one applied plugin. It sits here, in
+``MemoryPluginRuntime`` times and reports one applied plugin; the runner
+copies each plugin's duration and error into its plugin records. It sits here, in
 the runner's file, as perception keeps its per-plugin execution in its own.
 Update and reset failures follow ``FAILURE_POLICY`` in ``interface``.
 """
 
 from __future__ import annotations
 
-import time
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -34,6 +34,7 @@ from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import StepRunner, describe_configuration, describe_plugin
+from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.shared_memory import SharedMemory
 
@@ -70,7 +71,7 @@ class MemoryPluginRuntime:
         self.update(context, observation)
 
     def update(self, context: DecisionFrameContext, observation: Observation | None) -> None:
-        started = time.perf_counter()
+        started = clock()
         if context.shared_memory is not None:
             self._shared_memory = context.shared_memory
         try:
@@ -82,11 +83,11 @@ class MemoryPluginRuntime:
             if FAILURE_POLICY.update == "stop_cycle":
                 raise
         finally:
-            self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+            self.last_duration_ms = elapsed_ms(started)
             self.update_count += 1
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
-        started = time.perf_counter()
+        started = clock()
         if shared_memory is not None:
             self._shared_memory = shared_memory
         try:
@@ -99,7 +100,7 @@ class MemoryPluginRuntime:
             self.last_error = _diagnostic(exc)
             if FAILURE_POLICY.reset == "propagate":
                 raise
-        self.last_duration_ms = (time.perf_counter() - started) * 1000.0
+        self.last_duration_ms = elapsed_ms(started)
         self.reset_count += 1
 
     def plugin_status(self) -> dict[str, Any] | None:
@@ -153,7 +154,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         *,
         provided: Mapping[str, MemoryPlugin] | None = None,
     ) -> None:
-        self.last_duration_ms: float | None = None
         self.reset_count = 0
         # The map the plugins last worked in, and the plugin whose value
         # EVIDENCE_KEY held after the last change the runner saw.
@@ -212,8 +212,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         with self._runtime_lock:
             if context.shared_memory is not None:
                 self._shared_memory = context.shared_memory
-            started = time.perf_counter()
             self.last_error = None
+            self._clear_plugin_records()
             try:
                 for plugin in self.plugins.values():
                     before = _evidence(self._shared_memory)
@@ -221,7 +221,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                         # A missing observation still reaches the plugin when
                         # the declared policy is ``invoke``.
                         if observation is not None or FAILURE_POLICY.missing_input == "invoke":
-                            plugin.update(memory_context, observation)
+                            try:
+                                plugin.update(memory_context, observation)
+                            finally:
+                                self._record_plugin(
+                                    plugin.plugin_id, plugin.last_duration_ms, plugin.last_error
+                                )
                     finally:
                         self._note_evidence(plugin.plugin_id, before)
             except Exception as exc:
@@ -230,7 +235,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 raise
             finally:
                 self.run_count += 1
-                self.last_duration_ms = (time.perf_counter() - started) * 1000.0
             return self._report()
 
     def reset(self, shared_memory: SharedMemory | None = None) -> dict[str, Any]:
@@ -246,8 +250,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         """
 
         with self._runtime_lock:
-            started = time.perf_counter()
             self.last_error = None
+            self._clear_plugin_records()
             if shared_memory is not None:
                 self._shared_memory = shared_memory
             before = dict(shared_memory) if shared_memory is not None else {}
@@ -255,11 +259,11 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 failures = plugin.failure_count
                 evidence = _evidence(self._shared_memory)
                 self._reset_plugin(plugin, shared_memory)
+                self._record_plugin(plugin.plugin_id, plugin.last_duration_ms, plugin.last_error)
                 self._note_evidence(plugin.plugin_id, evidence)
                 self.failure_count += plugin.failure_count - failures
                 self.last_error = plugin.last_error or self.last_error
             self.reset_count += 1
-            self.last_duration_ms = (time.perf_counter() - started) * 1000.0
             if shared_memory is None:
                 return {}
             return {
@@ -352,16 +356,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             evidence_publisher=self.evidence_publisher,
         ).to_dict()
 
-    def _plugin_records(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "plugin_id": plugin.plugin_id,
-                "duration_ms": plugin.last_duration_ms,
-                "error": plugin.last_error,
-            }
-            for plugin in self.plugins.values()
-        ]
-
     def status(self) -> dict[str, Any]:
         with self._runtime_lock:
             return {
@@ -371,7 +365,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 # Live memory readers, including the CLI, read update_count.
                 "update_count": self.update_count,
                 "reset_count": self.reset_count,
-                "last_duration_ms": self.last_duration_ms,
             }
 
 

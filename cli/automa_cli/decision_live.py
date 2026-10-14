@@ -94,10 +94,12 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
             "measurements": {},
             "limits": limits if isinstance(limits, list) else [],
         }
+    timing = normalized["decision"]["values"].get("timing")
     return {
         "frame_id": normalized["frame_id"],
         "frame_index": normalized["frame_index"],
         "captured_at_ms": normalized["timestamp_ms"],
+        "timing": timing if isinstance(timing, dict) else None,
         "run_id": normalized["run_id"],
         "sensor_frame": sensor_frame,
         "perception_completed_at_ms": (

@@ -651,7 +651,8 @@ def run_memory_viability_measurement(
         "samples": samples,
         "limits": [
             "Polls the live memory step's status; does not instrument the runtime loop.",
-            "Update duration is the step's own last_duration_ms, not the cycle's wall time.",
+            "Update duration is the memory step's time in the host's last cycle, "
+            "not the cycle's total.",
             "Health and epoch come from each plugin's ledger summary; a plugin that keeps "
             "no ledger reports none and adds nothing to health_is_known.",
         ],

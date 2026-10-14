@@ -30,25 +30,27 @@ class PlanRunner(StepRunner[PlanPlugin]):
     def __call__(
         self, context: DecisionFrameContext, proposal: ProposalResult | None
     ) -> ActionPlan | None:
-        if proposal is not None and proposal.status != "ok":
-            return None
-        candidates = proposal.candidates if proposal is not None else ()
         with self._runtime_lock:
-            self.run_count += 1
-            plugin = self._single()
-            try:
-                plan = plugin.plan(
-                    tuple(candidates),
-                    frame_id=context.frame_id,
-                    timestamp_ms=context.timestamp_ms,
-                )
-                _check_plan(plan, plugin.plugin_id, context.frame_id, candidates)
-            except Exception as exc:  # noqa: BLE001 - a failed plan fails the action closed
-                self.failure_count += 1
-                self.last_error = describe_exception(exc)
+            self._clear_plugin_records()
+            # A failed proposal skips the plugin; its record stays null.
+            if proposal is not None and proposal.status != "ok":
                 return None
-            self.last_error = None
-            return plan
+            candidates = proposal.candidates if proposal is not None else ()
+            self.run_count += 1
+            with self._timed_single() as plugin:
+                try:
+                    plan = plugin.plan(
+                        tuple(candidates),
+                        frame_id=context.frame_id,
+                        timestamp_ms=context.timestamp_ms,
+                    )
+                    _check_plan(plan, plugin.plugin_id, context.frame_id, candidates)
+                except Exception as exc:  # noqa: BLE001 - a failed plan fails the action closed
+                    self.failure_count += 1
+                    self.last_error = describe_exception(exc)
+                    return None
+                self.last_error = None
+                return plan
 
 
 def _check_plan(plan: object, plugin_id: str, frame_id: str, candidates) -> None:

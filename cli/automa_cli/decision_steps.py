@@ -19,6 +19,7 @@ from typing import Any, Callable, TextIO
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, idle_output
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.decision_cycle.timing import step_timing
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
 from implementations.decision_cycle.catalog import selection_activation
 
@@ -209,6 +210,8 @@ def stream_vehicle_step(
             "freshness": {"age_ms": normalized["result_age_ms"], "max_age_ms": normalized["max_age_ms"]},
             "plugins": list((activation["steps"].get(step) or {}).get("plugins") or []),
             "record": report["cycle"][step],
+            # The cycle's timing; a host that does not publish it leaves None.
+            "timing": report["values"].get("timing"),
             **({"application": report["application"]} if step == "action" else {}),
         }
 
@@ -297,12 +300,35 @@ def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
             f"mode={application.get('mode')} reason={application.get('reason')} "
             f"steering={application.get('steering')} throttle={application.get('throttle')}"
         )
+    lines.append(format_step_timing(step, frame["timing"]))
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
 # One step record as text; the stream and inspect both print it.
 # ---------------------------------------------------------------------------
+
+
+def format_step_timing(step: str, timing: dict[str, Any] | None) -> str:
+    """``step``'s and its plugins' time in one cycle's ``timing``, then the cycle's."""
+
+    entry = step_timing(timing, step)
+    if entry is None:
+        return "Timing: none"
+    plugins = ", ".join(
+        f"{plugin.get('plugin_id')} {_ms(plugin.get('duration_ms'))}"
+        for plugin in entry.get("plugins") or ()
+        if isinstance(plugin, dict)
+    )
+    return (
+        f"Timing: {step} {_ms(entry.get('duration_ms'))}"
+        + (f" ({plugins})" if plugins else "")
+        + f"; cycle {_ms(timing.get('duration_ms'))}"
+    )
+
+
+def _ms(value: Any) -> str:
+    return f"{value:.3f} ms" if isinstance(value, (int, float)) else "-"
 
 
 def format_step_record(step: str, record: dict[str, Any] | None) -> list[str]:
@@ -472,6 +498,7 @@ def inspect_decision_step(
             "absence_reason": replay_frame.absence_reason,
             "record": step_record.to_dict() if step_record is not None else None,
             "plugin_report": outcome.plugin_reports.get(step),
+            "timing": outcome.result.timing,
             "steps": replay.step_payloads(),
         })
 
@@ -518,6 +545,7 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
         if item["absence_reason"]:
             lines.append(f"Absent: {item['absence_reason']}")
         lines.extend(format_step_record(step, item["record"]))
+        lines.append(format_step_timing(step, item["timing"]))
     if report["run_dir"]:
         lines.extend(["", f"Recorded: {display_path(Path(report['run_dir']))}"])
     return "\n".join(lines)

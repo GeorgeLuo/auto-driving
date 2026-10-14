@@ -276,6 +276,12 @@
       statusDot.className = `status-dot ${mode || ""}`;
     }
 
+    function formatMs(value) {
+      const number = Number(value);
+      if (value == null || !Number.isFinite(number)) return "—";
+      return `${Math.round(number * 1000) / 1000} ms`;
+    }
+
     function appendMetric(container, name, value) {
       const term = document.createElement("dt");
       term.textContent = name;
@@ -496,6 +502,8 @@
       const plugin = shownPlugin();
       const state = shownState();
       const publisher = evidencePublisher();
+      const steps = latest?.cycle?.timing?.steps;
+      const memoryTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "memory") : null;
       const fingerprint = [
         latest?.vehicle_id || "",
         latest?.memory ? "report" : "absent",
@@ -506,6 +514,7 @@
         stateKeyCount(state),
         state?.bounds?.max_records ?? "",
         state?.bounds?.max_age_ms ?? "",
+        memoryTiming?.duration_ms ?? "",
       ].join("\0");
       if (fingerprint === lastMetricsFingerprint) return;
       lastMetricsFingerprint = fingerprint;
@@ -521,6 +530,7 @@
         plugin ? `${stateKeyCount(state)}/${state?.bounds?.max_records ?? "?"} filled` : "—"
       );
       appendMetric(ledgerMetrics, "Max age", state?.bounds?.max_age_ms != null ? `${state.bounds.max_age_ms} ms` : "—");
+      appendMetric(ledgerMetrics, "Update", formatMs(memoryTiming?.duration_ms));
       appendMetric(ledgerMetrics, "Evidence publisher", publisher || (latest?.memory ? "none" : "—"));
     }
 

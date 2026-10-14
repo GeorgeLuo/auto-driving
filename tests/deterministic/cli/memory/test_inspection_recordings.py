@@ -12,6 +12,9 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 
+# Where the frame was read from, and how long this run took on it.
+UNREPLAYED = ("image_path", "timing")
+
 class InspectionRecordingTests(unittest.TestCase):
     """Move a recording between the public perception and memory commands."""
 
@@ -76,11 +79,11 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(replay["memory"], memory["memory"])
         self.assertEqual(
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in replay["frames"]
             ],
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in memory["frames"]
             ],
         )
@@ -172,11 +175,11 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(replay["memory"]["config"], memory_config)
         self.assertEqual(
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in replay["frames"]
             ],
             [
-                {key: value for key, value in frame.items() if key != "image_path"}
+                {key: value for key, value in frame.items() if key not in UNREPLAYED}
                 for frame in recorded["frames"]
             ],
         )

@@ -53,9 +53,8 @@ class ActionRunner(StepRunner[ActionPlugin]):
             error_reason = PLAN_MISSING_REASON
         else:
             error_reason = None
-        with self._runtime_lock:
+        with self._runtime_lock, self._timed_single() as plugin:
             self.run_count += 1
-            plugin = self._single()
             return self._decide(
                 plugin,
                 frame_id=context.frame_id,

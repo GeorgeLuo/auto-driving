@@ -91,6 +91,15 @@ class MemoryInspectTests(unittest.TestCase):
         self.assertIn("  recording_test: None, 1 records, epoch epoch-1", text)
         self.assertIn("  Evidence publisher: bounded_evidence", text)
 
+    def test_each_frame_carries_the_memory_steps_and_plugins_time(self) -> None:
+        report = self.inspect(plugins=["bounded_evidence"])
+        for item in report["frames"]:
+            memory = next(entry for entry in item["timing"]["steps"] if entry["step"] == "memory")
+            self.assertEqual([plugin["plugin_id"] for plugin in memory["plugins"]], ["bounded_evidence"])
+            self.assertIsInstance(memory["plugins"][0]["duration_ms"], float)
+        text = inspect_memory(str(self.frames)).message
+        self.assertRegex(text, r"Timing: memory \d+\.\d{3} ms \(bounded_evidence \d+\.\d{3} ms\)")
+
     def test_shows_the_selected_plugins_summary(self) -> None:
         report = self.inspect(plugins=["bounded_evidence"])
         self.assertEqual(report["memory"]["plugins"], ["bounded_evidence"])

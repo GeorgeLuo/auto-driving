@@ -10,7 +10,6 @@ providers, and commit publishes them with the plugins.
 from __future__ import annotations
 
 import importlib
-import time
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -25,6 +24,7 @@ from autonomy.decision_cycle.runner import (
     describe_exception,
     describe_plugin,
 )
+from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.feeds.interface import FeedProvider
@@ -85,14 +85,12 @@ class PerceptionRunner(StepRunner[Any]):
         provided: Mapping[str, Any] | None = None,
     ) -> None:
         self.last_output: PerceptionText | None = None
-        self.last_duration_ms: float | None = None
         self.last_frame_index: int | None = None
         self._feed_providers: dict[str, FeedProvider] = {}
         # Providers a changed selection resolves while it validates, held with
         # the prepared plugins until commit publishes both.
         self._validated_providers: dict[str, FeedProvider] | None = None
         self._pending_providers: dict[str, FeedProvider] | None = None
-        self._execution_runs: tuple[PerceptionPluginRun, ...] = ()
         super().__init__(plugin_manager, provided=provided)
 
     @classmethod
@@ -114,7 +112,6 @@ class PerceptionRunner(StepRunner[Any]):
                 self.reset(context.shared_memory)
                 self.last_frame_index = context.frame_index
                 return None
-            started = time.perf_counter()
             metadata = context.metadata if isinstance(context.metadata, dict) else {}
             # A host that records diagnostics names the directory per frame.
             output_dir = metadata.get(PERCEPTION_OUTPUT_DIR_KEY)
@@ -136,7 +133,6 @@ class PerceptionRunner(StepRunner[Any]):
                     )
                 )
             finally:
-                self.last_duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
                 self.last_frame_index = context.frame_index
             return self.last_output
 
@@ -146,7 +142,6 @@ class PerceptionRunner(StepRunner[Any]):
             return {
                 **super().status(),
                 "last_status": output.status if output is not None else None,
-                "last_duration_ms": self.last_duration_ms,
                 "last_frame_index": self.last_frame_index,
                 "last_thing_count": len(output.things) if output is not None else 0,
                 "last_plugin_runs": (
@@ -169,40 +164,13 @@ class PerceptionRunner(StepRunner[Any]):
 
     def reset(self, shared_memory=None) -> None:
         with self._runtime_lock:
-            self._execution_runs = ()
             self.last_output = None
-            self.last_duration_ms = None
             self.last_frame_index = None
             super().reset(shared_memory)
 
     def describe_schema(self) -> dict[str, Any]:
         with self._runtime_lock:
             return self._describe_schema()
-
-    def _plugin_records(self) -> list[dict[str, Any]]:
-        """Timing and error from the last published execution.
-
-        They stay null before the first run and after reset. Domain run fields
-        stay on the perception result, not in the plugin report.
-        """
-
-        runs = {run.plugin_id: run for run in self._execution_runs}
-        records = []
-        for definition, _plugin in self.applied:
-            run = runs.get(definition.plugin_id)
-            duration_ms = None
-            error = None
-            if run is not None:
-                duration_ms = run.duration_ms
-                error = run.error
-            records.append(
-                {
-                    "plugin_id": definition.plugin_id,
-                    "duration_ms": duration_ms,
-                    "error": error,
-                }
-            )
-        return records
 
     def _describe_schema(self) -> dict[str, Any]:
         feed_consumers: dict[str, list[str]] = {}
@@ -270,6 +238,7 @@ class PerceptionRunner(StepRunner[Any]):
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
         with self._runtime_lock:
             self.run_count += 1
+            self._clear_plugin_records()
             try:
                 output = self._perceive_selected(request)
             except Exception as exc:
@@ -297,6 +266,9 @@ class PerceptionRunner(StepRunner[Any]):
         for definition, plugin in self.applied:
             catalog_id = definition.plugin_id
             execution = self._execute_plugin(plugin, request, catalog_id)
+            # The plugin report keeps timing and error; domain run fields stay
+            # on the perception result.
+            self._record_plugin(catalog_id, execution.duration_ms, execution.error)
             attributed_signals = tuple(
                 replace(signal, source_plugin_id=catalog_id)
                 for signal in execution.batch.signals
@@ -341,7 +313,6 @@ class PerceptionRunner(StepRunner[Any]):
             )
             limits.extend(plugin.contract.limitations)
 
-        self._execution_runs = tuple(plugin_runs)
         return PerceptionText(
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,
@@ -429,7 +400,7 @@ class PerceptionRunner(StepRunner[Any]):
         request: PerceptionRequest,
         catalog_id: str,
     ) -> _PluginExecution:
-        started = time.perf_counter()
+        started = clock()
         diagnostics = PerceptionDiagnosticSink(
             output_dir=request.output_dir,
             plugin_id=catalog_id,
@@ -542,7 +513,7 @@ def _execution(
         status=status,
         batch=batch or PerceptionEvidenceBatch(),
         artifacts=dict(artifacts or {}),
-        duration_ms=round((time.perf_counter() - started) * 1000.0, 3),
+        duration_ms=elapsed_ms(started),
         error=error,
     )
 

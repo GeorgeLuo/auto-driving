@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import (
@@ -319,6 +319,23 @@ class ObservationPublicationTests(unittest.TestCase):
         reset = part.publish_decision_latest(now_ms=completed_at_ms)
         self.assertFalse(reset["ok"])
         self.assertEqual(reset["reason"], "reset")
+
+    def test_both_publications_carry_the_cycles_timing(self) -> None:
+        """Timing rides in the report's values: a required report key rejected hosts without it."""
+
+        part = self._hold_part()
+        part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        assert part.latest_state is not None
+        now_ms = part.latest_state.completed_at_ms
+
+        observation = part.publish_latest(now_ms=now_ms)
+        timing = observation["timing"]
+        self.assertEqual([entry["step"] for entry in timing["steps"]], list(STEPS))
+        self.assertEqual(observation["duration_ms"], timing["duration_ms"])
+        decision = part.publish_decision_latest(now_ms=now_ms)["decision"]
+        self.assertEqual(decision["values"]["timing"], timing)
+        self.assertNotIn("timing", decision)
 
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)

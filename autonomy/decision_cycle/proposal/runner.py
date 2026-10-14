@@ -14,8 +14,6 @@ Plugin failures and missing inputs follow ``FAILURE_POLICY`` in ``interface``;
 
 from __future__ import annotations
 
-import time
-from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any, ClassVar
 
@@ -56,7 +54,8 @@ from autonomy.decision_cycle.runner import (
     describe_exception,
     describe_plugin,
 )
-from autonomy.plugins import PluginDefinition, PluginManager
+from autonomy.decision_cycle.timing import clock, elapsed_ms
+from autonomy.plugins import PluginDefinition
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.shared_memory import SharedMemory
 
@@ -130,39 +129,10 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
     step: ClassVar[str] = "proposal"
     plugin_id: ClassVar[str] = "autonomy.proposal.plugin-runner-v0"
 
-    def __init__(
-        self,
-        plugin_manager: PluginManager,
-        *,
-        provided: Mapping[str, ProposalPlugin] | None = None,
-    ) -> None:
-        self._execution_records: dict[str, dict[str, Any]] = {}
-        super().__init__(plugin_manager, provided=provided)
-
     def validate_plugin(self, plugin: ProposalPlugin, definition: PluginDefinition) -> None:
         require_ascii_id(definition.plugin_id, field_name="plugin_id")
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
-
-    def reset(self, shared_memory: SharedMemory | None = None) -> None:
-        with self._runtime_lock:
-            self._execution_records = {}
-            super().reset(shared_memory)
-
-    def _plugin_records(self) -> list[dict[str, Any]]:
-        """Each applied plugin's last invocation timing and error.
-
-        Isolated candidate errors belong to the plugin record; step failures
-        remain on ``status``. Records are null before invocation and after reset.
-        """
-
-        return [
-            self._execution_records.get(
-                definition.plugin_id,
-                {"plugin_id": definition.plugin_id, "duration_ms": None, "error": None},
-            )
-            for definition, _plugin in self.applied
-        ]
 
     @property
     def evidence_key(self) -> str | None:
@@ -315,7 +285,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
 
         with self._runtime_lock:
             self.run_count += 1
-            self._execution_records = {}
+            self._clear_plugin_records()
             if isinstance(observation, Observation):
                 observation = Observation.from_dict(
                     omit_forbidden_channel_keys(observation.to_dict())
@@ -380,7 +350,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         source: DecisionDataSource,
         shared_memory: SharedMemory,
     ) -> ActionProposal:
-        started = time.perf_counter()
+        started = clock()
         error: str | None = None
         raised: BaseException | None = None
         returned: object = None
@@ -403,9 +373,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             error = describe_exception(exc)
             raise
         finally:
-            self._execution_records[definition.plugin_id] = {
-                "plugin_id": definition.plugin_id,
-                "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
-                "error": error,
-            }
+            # An isolated candidate error belongs to the plugin record; step
+            # failures stay on ``status``.
+            self._record_plugin(definition.plugin_id, elapsed_ms(started), error)
         return candidate

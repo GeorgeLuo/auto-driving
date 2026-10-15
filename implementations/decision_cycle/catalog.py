@@ -8,10 +8,9 @@ such conflicts. ``DEFAULT_STEP_PLUGINS`` is each step's default selection. ``pac
 ``StepActivation`` that makes every packaged plugin of the step available,
 selects the requested ones in order, and applies config overrides.
 Perception, memory, proposal and plan have presets, ``STEP_PRESETS``; they are the
-``SELECTABLE_STEPS``. A missing selection replays with no plugins only for a
-clearable step (``CLEARABLE_STEPS``). ``preset_activation`` builds an activation
-from a named preset of a step. ``selection_activation`` is every step's
-selection: a preset or a plugin list, else the step's default.
+``SELECTABLE_STEPS``. ``preset_activation`` builds an activation from a named
+preset of a step. ``selection_activation`` is every step's selection: a
+preset or a plugin list, else the step's default.
 """
 
 from __future__ import annotations

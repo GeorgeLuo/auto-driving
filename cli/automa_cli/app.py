@@ -31,9 +31,9 @@ from .perception_runs import (
     inspect_perception,
 )
 from .workbench import run_workbench_replay
-from .plugin_catalog import ONE_PLUGIN_STEPS, arm_plugins, disarm_plugins, list_plugins, upload_plugin
+from .plugin_catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from autonomy.decision_cycle.steps import STEP_RUNNERS
+from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, STEP_RUNNERS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .viability import (

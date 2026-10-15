@@ -96,7 +96,7 @@ class DecisionStepInspectTests(unittest.TestCase):
         self.assertEqual(replayed["source"]["frame_count"], 3)
         self.assertEqual(replayed["selections"]["action"]["plugins"], ["mode"])
 
-    def test_a_recording_that_disabled_a_selectable_step_replays_it_empty(self) -> None:
+    def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
         """A clearable step the recording left empty replays with no plugins.
 
         Plan runs one plugin, so a recording that left it empty stays absent.

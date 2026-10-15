@@ -588,14 +588,13 @@ def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) 
     if runner is None:
         return {**probe, "status": "absent", "error": absent_step_error(step, vehicle_id)}
     fields = _live_step_fields(step, runner)
-    if step == "memory":
-        # The host's cycle times each step call; the runner keeps only its
-        # plugins' times.
-        last_cycle = autonomy.get("last_cycle")
-        entry = step_timing(
-            last_cycle.get("timing") if isinstance(last_cycle, dict) else None, step
-        )
-        fields["last_duration_ms"] = entry.get("duration_ms") if entry is not None else None
+    # The host's cycle times each step call; the runner keeps only its
+    # plugins' times.
+    last_cycle = autonomy.get("last_cycle")
+    entry = step_timing(
+        last_cycle.get("timing") if isinstance(last_cycle, dict) else None, step
+    )
+    fields["last_duration_ms"] = entry.get("duration_ms") if entry is not None else None
     return {**probe, "status": "live", **fields}
 
 

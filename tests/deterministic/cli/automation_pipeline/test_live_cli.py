@@ -14,13 +14,28 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.request import urlopen
 
+from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.paths import ROOT
 from cli.automa_cli.streaming import _ViewFeed, _read_publication
+from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import VEHICLE_ID
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage
 
 
 class LiveCommandsTests(LiveHostTestCase):
+
+    def prepare_runtime(self) -> None:
+        # Plan has no built-in, and this host's runtime bundle is not an
+        # extracted release. Stage the packaged plugin so the host runs it,
+        # and name the source tree so `vehicles info plan` can load it.
+        super().prepare_runtime()
+        bundle = controller_bundle_paths(self.runtime_root / VEHICLE_ID)
+        path = Path(bundle["plan_runtime_dir"]) / "active.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(packaged_activation(
+            "plan", metadata={"controller_bundle": {"root_dir": str(ROOT)}},
+        ).to_payload()), encoding="utf-8")
 
     def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
         self.observe()
@@ -50,8 +65,12 @@ class LiveCommandsTests(LiveHostTestCase):
                 live = json.loads(result.stdout)
                 self.assertEqual(live["status"], "live")
                 if step == "memory":
-                    # The memory step's time in the host's last cycle.
+                    # The memory stream reads the live step probe. Perception's
+                    # stream is the observation publication.
                     self.assertIsInstance(live["last_duration_ms"], float)
+        plan = self.automa("info", "plan", "--json")
+        self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
+        self.assertIsInstance(json.loads(plan.stdout)["live"]["last_duration_ms"], float)
         terminal = self.automa("stream", "perception", "--once", "--no-clear")
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)

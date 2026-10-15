@@ -36,7 +36,7 @@ class PluginArmingFlows(unittest.TestCase):
                   plugin_host(root, vehicle, {"perception": activation}) as (host, base)):
                 before = catalog(base)
                 session = host.session_status()
-                for step in ("perception", "memory", "proposal"):
+                for step in ("perception", "memory", "proposal", "plan"):
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
                     upload(base, file, step, f"prototype-{step}")
@@ -46,7 +46,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(available["applied_decision"], before["applied_decision"])
                 selection = root / "selection.json"
                 selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in
-                                                ("perception", "memory", "proposal")}))
+                                                ("perception", "memory", "proposal", "plan")}))
                 # Through the executable once; the worker journey below covers
                 # upload, status and disarm the same way.
                 receipt = json.loads(run_automa("vehicles", "plugins", "arm", "--url", base,

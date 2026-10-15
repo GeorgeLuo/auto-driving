@@ -41,11 +41,14 @@ def stage_runtime(runtime_root: Path) -> None:
 
 
 class LiveHostTestCase(unittest.TestCase):
+    def prepare_runtime(self) -> None:
+        stage_runtime(self.runtime_root)
+
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.runtime_root = Path(tmp.name) / "vehicles"
-        stage_runtime(self.runtime_root)
+        self.prepare_runtime()
         stack = ExitStack()
         self.addCleanup(stack.close)
         stack.enter_context(staged_runners())

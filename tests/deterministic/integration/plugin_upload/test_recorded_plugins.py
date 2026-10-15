@@ -99,7 +99,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
                 host.run(frame(root, 0))
                 originals = set()
-                for step in ("perception", "memory", "proposal"):
+                for step in ("perception", "memory", "proposal", "plan"):
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
                     _, receipt = upload(view.url, file, step, f"prototype-{step}", arm=True)
@@ -153,7 +153,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 upload(base, root / "unselected.py", "perception", "unselected")
                 for _ in range(3):
                     polled = get_json(base, "/api/state")
-                    for step in ("perception", "memory", "proposal"):
+                    for step in ("perception", "memory", "proposal", "plan"):
                         self.assertEqual(polled[f"active_{step}_plugin_ids"], earlier[f"active_{step}_plugin_ids"])
                     self.assertEqual(polled["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
                     self.assertEqual(polled["steps"], earlier["steps"])

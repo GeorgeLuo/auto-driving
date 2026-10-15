@@ -206,7 +206,7 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertEqual(
             {step: item["source"] for step, item in steps.items()},
             {"observation": "builtin", "perception": "staged", "memory": "none",
-             "proposal": "none", "plan": "builtin", "action": "builtin"},
+             "proposal": "none", "plan": "none", "action": "builtin"},
         )
         self.assertEqual(steps["perception"]["preset"], "sim_debug")
         self.assertEqual(steps["action"]["plugins"], ["selected"])
@@ -218,7 +218,7 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertIn("  steps: staged\n", human.stdout)
         self.assertIn(f"    perception: {steps['perception']['preset']} (", human.stdout)
         self.assertIn("    memory: (no plugins)\n", human.stdout)
-        self.assertIn("    plan: highest_confidence\n", human.stdout)
+        self.assertIn("    plan: (no plugins)\n", human.stdout)
         self.assertIn("    action: selected\n", human.stdout)
         self.assertIn(f"  decision: {vehicle['decision']['generation_id']}\n", human.stdout)
         self.assertIn(f"worker: {vehicle['process']['status']}", human.stdout)

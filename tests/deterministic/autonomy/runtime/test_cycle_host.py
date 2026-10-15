@@ -25,7 +25,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
-from tests.support.action_fixtures import action_runner, proposal_runner
+from tests.support.action_fixtures import action_runner, plan_runner, proposal_runner
 
 RECORDING_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 STATE_KEY = "recording_test.state"
@@ -90,10 +90,12 @@ def _memory_step(
 
 def _host(**steps) -> tuple[AutonomyCycleHost, _RecordingProposal]:
     proposal = steps.pop("proposal", None) or _RecordingProposal()
+    plan = steps.pop("plan", None) or plan_runner()
     host = AutonomyCycleHost(
         steps=replace(
             decision_steps(),
             proposal=proposal,
+            plan=plan,
             action=action_runner(_PushyAction()),
             **steps,
         )
@@ -173,7 +175,11 @@ class CycleHostMemoryTests(unittest.TestCase):
     def test_default_steps_idle_while_memory_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             host = AutonomyCycleHost(
-                steps=replace(decision_steps(), memory=_memory_step(Path(tmp)))
+                steps=replace(
+                    decision_steps(),
+                    memory=_memory_step(Path(tmp)),
+                    plan=plan_runner(),
+                )
             )
             result = host.run(DecisionFrameContext("frame_i", 0, 1))
             self.assertEqual(result.control.reason, "no-selected-command")
@@ -253,12 +259,12 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertIsNone(host.steps.memory)
         self.assertEqual(host.steps.observation.plugin_ids, ("perception_summary",))
         self.assertEqual(host.steps.proposal.plugin_ids, ("avoid_recent_obstruction",))
-        self.assertEqual(host.steps.plan.plugin_ids, ("highest_confidence",))
+        self.assertIsNone(host.steps.plan)
         self.assertEqual(host.steps.action.plugin_ids, ("mode",))
         result = host.run(DecisionFrameContext("frame_1", 1, 1, mode="autonomy"))
         self.assertEqual(result.proposal.status, "ok")
         self.assertEqual(result.action.authority.gate_id, "mode")
-        self.assertEqual(result.control.reason, "no_selected_command")
+        self.assertEqual(result.control.reason, "mode-action-error")
 
     def test_action_failure_holds_with_an_error_record_and_recovers(self) -> None:
         action = _FailOnceAction()

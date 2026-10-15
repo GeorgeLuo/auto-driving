@@ -13,9 +13,9 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/plugins.js", "utf8"), ctx);
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) { console.log("FAIL", m, JSON.stringify(a), JSON.stringify(b)); process.exit(1); } };
-const perception = () => ctx.pluginPanels.perception;
-const memory = () => ctx.pluginPanels.memory;
-const toggle = (step, ids) => { ctx.pluginPanels[step].draft = ids; ctx.queuePluginSelection(step, ids); };
+const perception = () => ctx.pluginPanel("perception");
+const memory = () => ctx.pluginPanel("memory");
+const toggle = (step, ids) => { ctx.pluginPanel(step).draft = ids; ctx.queuePluginSelection(step, ids); };
 
 toggle("perception", ["a"]);                      // sent immediately
 toggle("perception", ["a", "b"]);                 // queued

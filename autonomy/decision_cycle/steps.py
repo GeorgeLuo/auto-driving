@@ -1,10 +1,12 @@
 """Build the cycle's steps from activations.
 
-``STEP_RUNNERS`` maps each step to its runner. ``step_runner`` builds the
+``STEP_RUNNERS`` maps each step to its runner. ``ONE_PLUGIN_STEPS`` are the
+runners marked ``single_plugin``; ``CLEARABLE_STEPS`` are the rest, and a
+missing selection replays them with no plugins. ``step_runner`` builds the
 runner for one activation. ``builtin_activation`` is the selection a step uses
-when it has no activation document: the observation, plan, and action steps
-fall back to their built-in plugins; perception, memory, and proposal have no
-default and stay empty. ``load_decision_steps`` reads
+when it has no activation document: observation and action fall back to their
+built-in plugins. Perception, memory, proposal, and plan have no built-in and
+stay empty. ``load_decision_steps`` reads
 ``runtime_root/<step>/active.json`` for every step.
 """
 
@@ -40,14 +42,14 @@ STEP_RUNNERS: dict[str, Any] = {
     "action": ActionRunner,
 }
 
+# A one-plugin step runs exactly one selected plugin and cannot be cleared.
+ONE_PLUGIN_STEPS = tuple(step for step in STEPS if STEP_RUNNERS[step].single_plugin)
+CLEARABLE_STEPS = tuple(step for step in STEPS if step not in ONE_PLUGIN_STEPS)
+
 _BUILTINS = {
     "observation": (
         "perception_summary",
         "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary",
-    ),
-    "plan": (
-        "highest_confidence",
-        "autonomy.decision_cycle.plan.highest_confidence:HighestConfidencePlan",
     ),
     "action": ("selected", "autonomy.decision_cycle.action.selected:SelectedAction"),
 }

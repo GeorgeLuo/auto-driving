@@ -18,12 +18,12 @@ plugin with the host map, and a plugin whose reset raises follows the step's
 ``FAILURE_POLICY.reset``. Memory's ``reset`` also returns the keys its plugins
 wrote, for a host that clears its map at a reset to restore.
 
-Perception, memory, and proposal declare what a plugin failure or a missing
-input does as one ``FailurePolicy``, ``FAILURE_POLICY`` in the step's
-``interface``. Their ``describe_schema`` methods report it under
-``failure_policy``. A step that describes its contract builds the
-``configuration`` and ``plugins``
-entries of that schema with ``describe_configuration`` and ``describe_plugin``.
+Perception, memory, proposal, and plan declare what a plugin failure or a
+missing input does as one ``FailurePolicy``, ``FAILURE_POLICY`` in the step's
+``interface``, and set it as ``failure_policy`` beside their ``schema_name``.
+``describe_schema`` reports those with the step's ``runner``,
+``configuration``, ``plugins``, and ``single_plugin``, and each step adds its
+inputs, output, and composition.
 
 Every step's runner is a ``StepRunner``. A step adds what its plugins need
 through the hooks ``StepRunner`` names, not by reimplementing the surface.
@@ -129,6 +129,10 @@ class StepRunner(Generic[PluginT]):
     - ``_plugin_records``: each plugin's timing and error in ``plugin_report``
       and ``plugin_timing``.
     - ``status``: extend ``super().status()`` with the step's own fields.
+    - ``schema_name`` and ``failure_policy``: the contract ``describe_schema``
+      reports; a step with no ``schema_name`` has none.
+    - ``_describe_schema``: extend ``super()._describe_schema()`` with the
+      step's inputs, output, and composition.
 
     A subclass sets the state its hooks read before calling
     ``super().__init__``, which applies the manager's selection.
@@ -136,6 +140,8 @@ class StepRunner(Generic[PluginT]):
 
     step: ClassVar[str]
     single_plugin: ClassVar[bool] = False
+    schema_name: ClassVar[str | None] = None
+    failure_policy: ClassVar[FailurePolicy | None] = None
 
     def __init__(
         self,
@@ -272,6 +278,27 @@ class StepRunner(Generic[PluginT]):
 
     def _reset_plugin(self, plugin: PluginT, shared_memory: SharedMemory | None) -> None:
         reset_plugin(plugin, shared_memory)
+
+    def describe_schema(self) -> dict[str, Any] | None:
+        """The step's contract, or None when the step declares no schema."""
+
+        if self.schema_name is None:
+            return None
+        with self._runtime_lock:
+            return self._describe_schema()
+
+    def _describe_schema(self) -> dict[str, Any]:
+        applied = self.applied
+        described: dict[str, Any] = {
+            "schema": self.schema_name,
+            "runner": f"{type(self).__module__}:{type(self).__name__}",
+            "configuration": describe_configuration(self.plugin_manager, applied),
+            "plugins": [describe_plugin(definition) for definition, _plugin in applied],
+            "single_plugin": self.single_plugin,
+        }
+        if self.failure_policy is not None:
+            described["failure_policy"] = self.failure_policy.to_dict()
+        return described
 
     # Reports ---------------------------------------------------------------
 

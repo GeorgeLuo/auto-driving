@@ -8,7 +8,7 @@ from dataclasses import replace
 from playwright.sync_api import sync_playwright, expect
 
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
-from cli.automa_cli.plugin_catalog import ONE_PLUGIN_STEPS
+from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import arm_step, frame, plugin_host, upload, write_plugin

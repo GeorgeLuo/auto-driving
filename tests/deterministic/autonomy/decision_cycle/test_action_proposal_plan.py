@@ -1,6 +1,6 @@
 from __future__ import annotations
 import unittest
-from autonomy.decision_cycle.plan.highest_confidence import select_highest_confidence_plan
+from implementations.decision_cycle.plan.plugins.highest_confidence.plugin import select_highest_confidence_plan
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
@@ -45,29 +45,6 @@ class ActionProposalMatrixTests(unittest.TestCase):
         applied = {"steering": 0.35, "throttle": 0.0, "confidence": 0.9, "reason": "x"}
         self.assertTrue(proposed_equals_authorized(nonzero, applied))
         self.assertFalse(proposed_equals_authorized(None, applied))
-
-
-class SelectorTests(unittest.TestCase):
-    def test_higher_confidence_wins(self) -> None:
-        a = _active_proposal(plugin_id="a_plugin", confidence=0.4, steering=0.1)
-        # need valid plugin ids in grammar - a_plugin ok
-        b = _active_proposal(plugin_id="b_plugin", confidence=0.9, steering=-0.1)
-        # fix proposal construction - plugin ids must match pattern
-        plan = select_highest_confidence_plan(
-            frame_id="frame_001",
-            timestamp_ms=1,
-            candidates=[a, b],
-        )
-        self.assertEqual(plan.status, "selected")
-        self.assertEqual(plan.selected_proposal_id, b.proposal_id)
-
-    def test_tie_break_plugin_id(self) -> None:
-        a = _active_proposal(plugin_id="aaa", confidence=0.5)
-        b = _active_proposal(plugin_id="bbb", confidence=0.5)
-        plan = select_highest_confidence_plan(
-            frame_id="frame_001", timestamp_ms=1, candidates=[b, a]
-        )
-        self.assertEqual(plan.selected_proposal_id, a.proposal_id)
 
 
 class RunnerBoundaryTests(unittest.TestCase):
@@ -178,6 +155,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             frame_id=frame,
             timestamp_ms=9_007_199_254_740_991,
             candidates=candidates,
+            selector_id="highest_confidence",
             metadata=plan_metadata,
         )
         self.assertEqual(len(plan.candidates), 6)

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import unittest
+from pathlib import Path
 
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 from tests.shared.cli.workbench_fixtures import (
@@ -15,13 +17,31 @@ from tests.shared.cli.workbench_fixtures import (
     write_manifest,
 )
 
+# A recording that ran no plan. Plan has one packaged plugin, so selecting it
+# is a change only from a recording that ran none.
+NO_PLAN = {"plan": None}
+
+
+def _write_recording(root: Path, images: list[str], steps: dict | None = None) -> None:
+    """A manifest over ``images``; ``steps`` is each frame's recorded selection."""
+    frames = [
+        {"frame_id": f"frame-{index}", "image_path": image, "timestamp_ms": index * 1000}
+        for index, image in enumerate(images)
+    ]
+    if steps is not None:
+        for entry in frames:
+            entry["steps"] = steps
+    write_manifest(root, {"source_id": "selection-fixture", "frames": frames})
+
 
 class SelectionRebuildTests(unittest.TestCase):
 
     def test_each_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
         for phase in ("running", "paused"):
-            for step in ("perception", "memory", "proposal"):
+            for step in SELECTABLE_STEPS:
                 with self.subTest(phase=phase, step=step), image_source(1) as root:
+                    if step == "plan":
+                        _write_recording(root, ["frame_00.png"], NO_PLAN)
                     runner = ImageReplayRunner(
                         root,
                         activations=perception_activations("frame"),
@@ -55,11 +75,17 @@ class SelectionRebuildTests(unittest.TestCase):
                     # The next pass is at zero, but the previous frame is displayed.
                     self.assertEqual(shown["position"], 0)
                     self.assertEqual(shown["timeline"], [])
+                    if step == "plan":
+                        self.assertEqual(shown["active_plan_plugin_ids"], [])
+                        self.assertEqual(
+                            shown["machine_detail"]["pipeline"]["plan_preset"], "custom"
+                        )
                     frame_id = shown["current_frame"]["frame_id"]
                     selected_ids = {
                         "perception": ["frame", "floor_plane"],
                         "memory": ["bounded_evidence"],
                         "proposal": [],
+                        "plan": ["highest_confidence"],
                     }[step]
                     selected = post_action(
                         base,
@@ -86,7 +112,7 @@ class SelectionRebuildTests(unittest.TestCase):
                         if step == "perception"
                         else shown["active_perception_plugin_ids"],
                     )
-                    for other in {"perception", "memory", "proposal"} - {step}:
+                    for other in set(SELECTABLE_STEPS) - {step}:
                         self.assertEqual(
                             selected[f"active_{other}_plugin_ids"],
                             shown[f"active_{other}_plugin_ids"],
@@ -127,23 +153,13 @@ class SelectionRebuildTests(unittest.TestCase):
         self,
     ) -> None:
         tracked = ["frame", "floor_plane", "multi_obstruction_tracks"]
-        for step in ("perception", "memory", "proposal"):
+        for step in SELECTABLE_STEPS:
             with self.subTest(step=step), image_source(0) as root:
                 write_frames(root, count=6)
-                write_manifest(
-                    root,
-                    {
-                        "source_id": "selection-fixture",
-                        "frames": [
-                            {
-                                "frame_id": f"frame-{index}",
-                                "image_path": f"frame_{index}.png",
-                                "timestamp_ms": index * 1000,
-                            }
-                            for index in range(6)
-                        ],
-                    },
-                )
+                images = [f"frame_{index}.png" for index in range(6)]
+                # Memory and proposal are cleared below; plan starts from a
+                # recording that ran none.
+                _write_recording(root, images, NO_PLAN if step == "plan" else None)
                 runner = ImageReplayRunner(
                     root,
                     activations=perception_activations(
@@ -152,7 +168,7 @@ class SelectionRebuildTests(unittest.TestCase):
                     cadence_ms=30000,
                 )
                 base = serve_workbench(self, runner)
-                if step != "perception":
+                if step not in {"perception", "plan"}:
                     post_action(
                         base,
                         {
@@ -185,6 +201,7 @@ class SelectionRebuildTests(unittest.TestCase):
                             "perception": tracked,
                             "memory": ["bounded_evidence"],
                             "proposal": ["avoid_recent_obstruction"],
+                            "plan": ["highest_confidence"],
                         }[step],
                     },
                 )["state"]
@@ -193,6 +210,9 @@ class SelectionRebuildTests(unittest.TestCase):
                 self.assertEqual(len(selected["timeline"]), 2)
                 self.assertNotIn("future-marker", runner._shared_memory)
                 self.assertEqual(runner._steps["memory"].update_count, 2)
+                # The reference replays the default plan, which the selection now matches.
+                if step == "plan":
+                    _write_recording(root, images)
 
                 reference = ImageReplayRunner(
                     root, activations=perception_activations(*tracked), cadence_ms=30000

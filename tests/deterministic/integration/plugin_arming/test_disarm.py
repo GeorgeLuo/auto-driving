@@ -6,6 +6,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
@@ -77,7 +78,7 @@ class PluginDisarmingFlows(unittest.TestCase):
     def test_clear_step_and_all_steps_without_changing_session_or_catalog(self):
         for vehicle in ("chase", "picar"):
             with self.subTest(vehicle=vehicle), image_source(1) as root, plugin_host(root, vehicle) as (host, base):
-                for step in ("perception", "memory", "proposal"):
+                for step in CLEARABLE_STEPS:
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
                     upload(base, file, step, f"prototype-{step}", arm=True)
@@ -99,7 +100,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertEqual(host.session_status(), session)
                 host.run(frame(root, 3))
                 after = catalog(base)
-                for step in ("perception", "memory", "proposal"):
+                for step in CLEARABLE_STEPS:
                     self.assertEqual(selected(after, "requested", step), [])
                     self.assertEqual(selected(after, "applied", step), [])
                 self.assertEqual(after["plugins"], before["plugins"])
@@ -171,7 +172,7 @@ class PluginDisarmingFlows(unittest.TestCase):
 
     def test_clear_absent_runners_does_not_create_them(self):
         with image_source(1) as root, plugin_host(root) as (host, base):
-            absent = [step for step in ("perception", "memory", "proposal") if host.step(step) is None]
+            absent = [step for step in CLEARABLE_STEPS if host.step(step) is None]
             self.assertTrue(absent)
             receipt = json.loads(self.disarm(base, "--all", "--json").stdout)
             self.assertEqual(receipt["status"], "applied")

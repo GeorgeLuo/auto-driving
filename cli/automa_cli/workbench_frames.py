@@ -56,10 +56,14 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
 
 
 def workbench_decision_steps() -> dict[str, Any]:
-    """The same built-in observation, plan, and action used by a vehicle host."""
+    """The built-in observation and action a vehicle host uses.
+
+    Plan has no built-in. The workbench builds an unrecorded plan from the
+    packaged default.
+    """
 
     steps = decision_steps()
-    return {"observation": steps.observation, "plan": steps.plan, "action": steps.action}
+    return {"observation": steps.observation, "action": steps.action}
 
 
 def decision_view(result: Any) -> dict[str, Any] | None:

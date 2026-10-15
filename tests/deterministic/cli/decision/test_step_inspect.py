@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from cli.automa_cli.decision_steps import inspect_decision_step
 from cli.automa_cli.step_replay import StepReplay
 from implementations.decision_cycle.catalog import SELECTABLE_STEPS
@@ -95,14 +96,21 @@ class DecisionStepInspectTests(unittest.TestCase):
         self.assertEqual(replayed["source"]["frame_count"], 3)
         self.assertEqual(replayed["selections"]["action"]["plugins"], ["mode"])
 
-    def test_a_recording_that_disabled_a_selectable_step_replays_it_empty(self) -> None:
-        """Regression: a disabled proposal replayed without a runner, unlike perception and memory."""
+    def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
+        """A clearable step the recording left empty replays with no plugins.
+
+        Plan runs one plugin, so a recording that left it empty stays absent.
+        """
 
         replay = StepReplay({"steps": dict.fromkeys(SELECTABLE_STEPS)}, steps=SELECTABLE_STEPS)
         for step in SELECTABLE_STEPS:
             with self.subTest(step=step):
-                self.assertEqual(replay.activations[step].plugins, ())
-                self.assertIsNotNone(replay.runners[step])
+                if step in CLEARABLE_STEPS:
+                    self.assertEqual(replay.activations[step].plugins, ())
+                    self.assertIsNotNone(replay.runners[step])
+                else:
+                    self.assertIsNone(replay.activations[step])
+                    self.assertIsNone(replay.runners[step])
 
     def test_cli_has_a_group_per_step_and_no_decision_command(self) -> None:
         for step in DECISION_STEPS:

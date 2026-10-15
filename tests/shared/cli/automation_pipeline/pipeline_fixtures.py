@@ -143,7 +143,7 @@ def _write_activations(
     preset: str = "lightweight_observer",
     plugins: list[str] | None = None,
 ) -> None:
-    """Stage perception and the packaged proposals; plan and action run their built-ins."""
+    """Stage perception and the packaged proposals. Plan has no built-in and stays unstaged."""
 
     packaged = preset_activation("perception", preset)
     activation = step_activation(

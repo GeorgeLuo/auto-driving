@@ -372,6 +372,7 @@ class ImageReplayRunner:
                 self._state["adapter"] = image_source.adapter
                 self._state["progress"]["total"] = len(image_source.frames)
                 self._state["machine_detail"] = self._machine_detail()
+                self._apply_plugin_configuration_locked()
                 self._state["phase"] = "running"
                 self._record_action_locked("start", run_id=run_id)
                 self._worker = threading.Thread(
@@ -661,6 +662,15 @@ class ImageReplayRunner:
             round((position / total) * 100.0, 2) if total else 0.0
         )
 
+    def _store_recorded_activation(self, step: str, activation: StepActivation | None) -> None:
+        """Show a selectable step's recorded plugins in its panel, none if it ran none.
+
+        Whether the step runs comes from the recording, not from this activation.
+        """
+
+        if step in SELECTABLE_STEPS:
+            self._activations[step] = activation or self._catalogs[step].activation([])
+
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, Any]:
         """Restore the first frame's selections before constructing any selectable step."""
         recorded = recorded_selections(first_frame.metadata) if first_frame else {}
@@ -669,8 +679,7 @@ class ImageReplayRunner:
             if step in recorded and step not in self._selection_overrides:
                 activation = recorded[step]
                 steps[step] = recorded_runner(activation) if activation is not None else None
-                if step in SELECTABLE_STEPS:
-                    self._activations[step] = activation or self._catalogs[step].activation([])
+                self._store_recorded_activation(step, activation)
             elif step in SELECTABLE_STEPS:
                 if step not in self._selection_overrides:
                     self._activations[step] = self._default_activations[step]
@@ -942,8 +951,7 @@ class ImageReplayRunner:
                         if step in self._selection_overrides:
                             continue
                         steps[step] = replay_step(steps.get(step), activation, self._shared_memory)
-                        if step in SELECTABLE_STEPS:
-                            self._activations[step] = activation or self._catalogs[step].activation([])
+                        self._store_recorded_activation(step, activation)
                     self._apply_plugin_configuration_locked()
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result

@@ -1,4 +1,4 @@
-"""The packaged proposal, the built-in plan, and the hold and mode actions, run as cycle steps."""
+"""The packaged proposal and plan, and the hold and mode actions, run as cycle steps."""
 
 from __future__ import annotations
 
@@ -67,6 +67,7 @@ def _steps(action: str, **activation_overrides):
         decision_steps(
             {
                 "proposal": packaged_activation("proposal", **activation_overrides),
+                "plan": packaged_activation("plan"),
                 "action": packaged_activation("action", [action]),
             }
         ),

@@ -25,9 +25,10 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import builtin_activation, decision_steps
 from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE, CodeSource, load_runner
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from implementations.decision_cycle.catalog import packaged_activation
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS, packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
+from tests.shared.integration.plugin_flow_fixtures import prototype_definition
 
 LAZY_MODULE = "implementations.decision_cycle.proposal.lazy_only"
 VEHICLES = ("chase", "picar")
@@ -42,14 +43,10 @@ def _frame(host, index: int):
 
 
 def _identity(proposal) -> dict:
-    steps = {
-        step: (
-            proposal.to_payload()
-            if step == "proposal"
-            else builtin_activation(step).to_payload()
-        )
-        for step in DECISION_STEPS
-    }
+    steps = {}
+    for step in DECISION_STEPS:
+        activation = proposal if step == "proposal" else builtin_activation(step)
+        steps[step] = activation.to_payload() if activation is not None else None
     return {
         "generation_id": activation_generation_id(steps, prefix="decision"),
         "steps": steps,
@@ -255,7 +252,10 @@ class SharedSelectionTests(unittest.TestCase):
         """Regression: a staged perception or memory restage stopped on any
         failure, and a staged proposal restage never stopped."""
 
-        activations = {step: packaged_activation(step) for step in ("perception", "memory", "proposal")}
+        activations = {step: packaged_activation(step) for step in SELECTABLE_STEPS}
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
         for vehicle in VEHICLES:
             for step in activations:
                 for phase, method in (("prepare", "validate_selection"), ("commit", "_reset_plugin")):
@@ -264,7 +264,9 @@ class SharedSelectionTests(unittest.TestCase):
                         runner = host.step(step)
                         applied = runner.plugin_ids
                         self.assertTrue(applied)
-                        runner.plugin_manager.select([])
+                        # A one-plugin step cannot restage to nothing; it takes a prototype.
+                        selection = [prototype_definition(root, step)] if runner.single_plugin else []
+                        runner.plugin_manager.select(selection)
                         failure = RuntimeError(f"{step} {phase} refused")
                         with patch.object(runner, method, side_effect=failure):
                             if phase == "prepare":

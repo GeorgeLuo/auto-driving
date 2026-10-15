@@ -7,6 +7,7 @@ from pathlib import Path
 
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.workbench_runner import ImageReplayRunner
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS
 from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PRESET
 from tests.shared.cli.invoke import invoke_automa
 
@@ -90,7 +91,7 @@ class MemoryCommandTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             staged = {}
             presets = {}
-            for step in ("perception", "memory"):
+            for step in SELECTABLE_STEPS:
                 updated = invoke_automa(
                     "vehicles",
                     "update",
@@ -120,9 +121,8 @@ class MemoryCommandTests(unittest.TestCase):
                 self.assertEqual(
                     text[2], f"Available plugins: {', '.join(activation['available_plugins'])}"
                 )
-                # Same section titles and failure-policy field names wherever
-                # both steps have the concept. Fold into a broader info
-                # integration check later if the two commands grow a shared test.
+                # Every selectable step declares a schema and reports the same
+                # section titles and failure-policy field names.
                 schema = payload[f"{step}_schema"]
                 self.assertEqual(set(schema["failure_policy"]), {"update", "reset", "missing_input"})
                 self.assertIn("order", schema["composition"])

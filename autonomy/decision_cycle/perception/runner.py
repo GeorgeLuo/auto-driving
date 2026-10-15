@@ -20,7 +20,6 @@ from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.runner import (
     StepRunner,
-    describe_configuration,
     describe_exception,
     describe_plugin,
 )
@@ -77,6 +76,8 @@ class PerceptionRunner(StepRunner[Any]):
 
     step: ClassVar[str] = "perception"
     plugin_id: ClassVar[str] = "autonomy.perception.plugin-runner-v0"
+    schema_name = PERCEPTION_SCHEMA
+    failure_policy = FAILURE_POLICY
 
     def __init__(
         self,
@@ -168,16 +169,11 @@ class PerceptionRunner(StepRunner[Any]):
             self.last_frame_index = None
             super().reset(shared_memory)
 
-    def describe_schema(self) -> dict[str, Any]:
-        with self._runtime_lock:
-            return self._describe_schema()
-
     def _describe_schema(self) -> dict[str, Any]:
         feed_consumers: dict[str, list[str]] = {}
         feed_providers: dict[str, str] = {}
         plugin_schemas = []
-        applied = self.applied
-        for definition, plugin in applied:
+        for definition, plugin in self.applied:
             contract = plugin.contract
             for item in contract.inputs:
                 feed_consumers.setdefault(item.feed_id, []).append(
@@ -188,10 +184,8 @@ class PerceptionRunner(StepRunner[Any]):
                 {**describe_plugin(definition), "contract": contract.to_dict()}
             )
         return {
-            "schema": PERCEPTION_SCHEMA,
+            **super()._describe_schema(),
             "plugin_id": self.plugin_id,
-            "runner": f"{type(self).__module__}:{type(self).__name__}",
-            "configuration": describe_configuration(self.plugin_manager, applied),
             "inputs": [
                 {
                     "feed_id": feed_id,
@@ -232,7 +226,6 @@ class PerceptionRunner(StepRunner[Any]):
                 ],
             },
             "composition": composition_declaration(),
-            "failure_policy": FAILURE_POLICY.to_dict(),
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:

@@ -50,7 +50,6 @@ from autonomy.decision_cycle.proposal.values import (
 )
 from autonomy.decision_cycle.runner import (
     StepRunner,
-    describe_configuration,
     describe_exception,
     describe_plugin,
 )
@@ -128,6 +127,8 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
 
     step: ClassVar[str] = "proposal"
     plugin_id: ClassVar[str] = "autonomy.proposal.plugin-runner-v0"
+    schema_name = PROPOSAL_SCHEMA
+    failure_policy = FAILURE_POLICY
 
     def validate_plugin(self, plugin: ProposalPlugin, definition: PluginDefinition) -> None:
         require_ascii_id(definition.plugin_id, field_name="plugin_id")
@@ -144,90 +145,85 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                 return key
         return None
 
-    def describe_schema(self) -> dict[str, Any]:
+    def _describe_schema(self) -> dict[str, Any]:
         """The step's contract: configuration, inputs, plugins, output, composition, failure."""
 
-        with self._runtime_lock:
-            applied = self.applied
-            return {
-                "schema": PROPOSAL_SCHEMA,
-                "plugin_id": self.plugin_id,
-                "runner": f"{type(self).__module__}:{type(self).__name__}",
-                "configuration": describe_configuration(self.plugin_manager, applied),
-                "inputs": [
-                    {
-                        "name": "observation",
-                        "required": False,
-                        "source": "the cycle's observation, in the source",
-                        "missing_behavior": (
-                            "the source marks it unavailable, or error with the "
-                            "observation step's reason; the plugin is still called"
-                            if FAILURE_POLICY.missing_input == "invoke"
-                            else "the plugin is not called"
-                        ),
-                    },
-                    {
-                        "name": "shared_memory",
-                        "required": False,
-                        "source": "the host map on the frame context, shared by every plugin",
-                        "missing_behavior": "plugins get an empty map, as in offline replay",
-                    },
-                    {
-                        "name": "evidence",
-                        "required": False,
-                        "source": (
-                            "an audit copy, in the source, of the host-map value at the "
-                            "evidence_key the first selected plugin declares"
-                        ),
-                        "missing_behavior": "the source marks it unavailable",
-                    },
-                    {
-                        "name": "capabilities",
-                        "required": False,
-                        "source": "the host's capabilities envelope in context.metadata",
-                        "missing_behavior": "the source holds the default capabilities",
-                    },
-                    {
-                        "name": "prior_host_applied_command",
-                        "required": False,
-                        "source": "the host's last applied command in context.metadata",
-                        "missing_behavior": "the source marks it unavailable",
-                    },
-                ],
-                "plugins": [
-                    {
-                        **describe_plugin(definition),
-                        "evidence_key": _declared_evidence_key(plugin),
-                    }
-                    for definition, plugin in applied
-                ],
-                "output": {
-                    "schema": PROPOSAL_RESULT_SCHEMA,
-                    "records": [
-                        {
-                            "record": "candidates[]",
-                            "meaning": (
-                                f"one {ACTION_PROPOSAL_SCHEMA} per selected plugin, in "
-                                "selection order; a synthetic error candidate when the "
-                                "plugin raises, returns a different type, or returns "
-                                "another plugin or frame identity"
-                            ),
-                        },
-                        {
-                            "record": "source",
-                            "meaning": "the detached decision data source the plugins read",
-                        },
-                    ],
-                    "invalid_candidate_behavior": (
-                        "a lifecycle or size violation fails the step with "
-                        "action_proposal_matrix_violated and no candidates; "
-                        "the plan step does not plan and action fails closed"
+        return {
+            **super()._describe_schema(),
+            "plugin_id": self.plugin_id,
+            "inputs": [
+                {
+                    "name": "observation",
+                    "required": False,
+                    "source": "the cycle's observation, in the source",
+                    "missing_behavior": (
+                        "the source marks it unavailable, or error with the "
+                        "observation step's reason; the plugin is still called"
+                        if FAILURE_POLICY.missing_input == "invoke"
+                        else "the plugin is not called"
                     ),
-                    "error_reasons": sorted(CYCLE_ERROR_REASONS),
                 },
-                "composition": composition_declaration(),
-                "failure_policy": FAILURE_POLICY.to_dict(),
-            }
+                {
+                    "name": "shared_memory",
+                    "required": False,
+                    "source": "the host map on the frame context, shared by every plugin",
+                    "missing_behavior": "plugins get an empty map, as in offline replay",
+                },
+                {
+                    "name": "evidence",
+                    "required": False,
+                    "source": (
+                        "an audit copy, in the source, of the host-map value at the "
+                        "evidence_key the first selected plugin declares"
+                    ),
+                    "missing_behavior": "the source marks it unavailable",
+                },
+                {
+                    "name": "capabilities",
+                    "required": False,
+                    "source": "the host's capabilities envelope in context.metadata",
+                    "missing_behavior": "the source holds the default capabilities",
+                },
+                {
+                    "name": "prior_host_applied_command",
+                    "required": False,
+                    "source": "the host's last applied command in context.metadata",
+                    "missing_behavior": "the source marks it unavailable",
+                },
+            ],
+            "plugins": [
+                {
+                    **describe_plugin(definition),
+                    "evidence_key": _declared_evidence_key(plugin),
+                }
+                for definition, plugin in self.applied
+            ],
+            "output": {
+                "schema": PROPOSAL_RESULT_SCHEMA,
+                "records": [
+                    {
+                        "record": "candidates[]",
+                        "meaning": (
+                            f"one {ACTION_PROPOSAL_SCHEMA} per selected plugin, in "
+                            "selection order; a synthetic error candidate when the "
+                            "plugin raises, returns a different type, or returns "
+                            "another plugin or frame identity"
+                        ),
+                    },
+                    {
+                        "record": "source",
+                        "meaning": "the detached decision data source the plugins read",
+                    },
+                ],
+                "invalid_candidate_behavior": (
+                    "a lifecycle or size violation fails the step with "
+                    "action_proposal_matrix_violated and no candidates; "
+                    "the plan step does not plan and action fails closed"
+                ),
+                "error_reasons": sorted(CYCLE_ERROR_REASONS),
+            },
+            "composition": composition_declaration(),
+        }
 
     def __call__(
         self,

@@ -72,7 +72,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(result.control.reason, "no-selected-command")
+        self.assertEqual(result.control.reason, "action_plan_invariant_violated")
         self.assertEqual(result.action.authority.gate_id, "selected")
         self.assertEqual(host.cycle_count, 1)
         self.assertTrue(
@@ -90,7 +90,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
-        self.assertEqual(control["reason"], "no-selected-command")
+        self.assertEqual(control["reason"], "action_plan_invariant_violated")
         self.assertIsNone(generation)
         self.assertEqual(cycle["schema"], "decision_cycle_result_v1")
         self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")

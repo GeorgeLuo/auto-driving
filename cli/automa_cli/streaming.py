@@ -330,7 +330,6 @@ def _probe_perception(
         health=health,
         presets=publication.get("presets"),
         mode=publication.get("mode"),
-        interval_s=publication.get("interval_s"),
         frames_captured=publication.get("frames_captured"),
         processed_count=publication.get("processed_count"),
         skipped_count=publication.get("skipped_count"),
@@ -404,7 +403,6 @@ def _perception_screen(
     signals = perception.get("signals")
     things = perception.get("things")
     cadence = {
-        "interval_s": publication.get("interval_s"),
         "processed": publication.get("processed_count"),
         "skipped": publication.get("skipped_count"),
         "skipped_since_previous": publication.get("skipped_since_previous"),

@@ -203,7 +203,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         steps = packaged_decision_steps()
         part = AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations_from_payloads(steps))),
-            interval_s=5.0,
             vehicle_id=vehicle_id,
             source_id=f"donkeycar:{vehicle_id}",
             decision_activations=steps,

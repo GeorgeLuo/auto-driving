@@ -75,7 +75,6 @@ def write_runtime_fixture(
             "pid": pid,
             "processed_count": 3,
             "num_decisions": 0,
-            "interval_s": 1.0,
             "recording": False,
             "control_source": "external_ws",
             "action_policy": "cycle_idle",

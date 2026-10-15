@@ -201,7 +201,6 @@ class ModeActionTests(unittest.TestCase):
 
         part = AutonomyPilotPart(
             host=create_host(steps=replace(_steps("mode"), memory=remember)),
-            interval_s=0.0,
         )
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()

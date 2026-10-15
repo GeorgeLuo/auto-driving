@@ -273,7 +273,6 @@ def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mon
         "frame_id": frame.get("frame_id"),
         "processed_count": publication.get("processed_count"),
         "skipped_count": publication.get("skipped_count"),
-        "interval_s": publication.get("interval_s"),
         "duration_ms": publication.get("duration_ms"),
         "result_age_ms": publication.get("result_age_ms"),
         "control_steering": control.get("steering"),
@@ -329,6 +328,8 @@ def _compute_perception_metrics(
 
     rss = [float(s["rss_mb"]) for s in host_samples if _is_number(s.get("rss_mb"))]
     cpu = [float(s["cpu_percent"]) for s in host_samples if _is_number(s.get("cpu_percent"))]
+    last_duration_ms = _last_positive_duration_ms(samples)
+    cycle_hz = (1000.0 / last_duration_ms) if last_duration_ms is not None else None
 
     return {
         "elapsed_s": round(elapsed_s, 3),
@@ -352,12 +353,11 @@ def _compute_perception_metrics(
             "pid": next((s.get("pid") for s in host_samples if s.get("pid")), None),
             "errors": [s.get("error") for s in host_samples if s.get("error")][:5],
         },
-        "configured_interval_s": _first_number(
-            s.get("interval_s") for s in samples
-        ),
+        "cycle_hz": None if cycle_hz is None else round(cycle_hz, 4),
         "dropped_frame_policy": {
             "description": (
-                "Capture runs at interval_s cadence; decisions consume the newest pending frame immediately. "
+                "Capture runs as soon as the previous cycle releases its frame. "
+                "Decisions consume the newest pending frame. "
                 "Captures superseded between decision frames are counted in skipped_count."
             ),
             "skipped_count_delta": skipped_delta,
@@ -367,15 +367,15 @@ def _compute_perception_metrics(
 
 def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     fresh_hz = float(metrics.get("fresh_results_per_s") or 0.0)
-    interval_s = metrics.get("configured_interval_s")
-    configured_hz = (
-        (1.0 / float(interval_s))
-        if _is_number(interval_s) and float(interval_s) > 0
+    cycle_hz = metrics.get("cycle_hz")
+    reported_hz = (
+        float(cycle_hz)
+        if _is_number(cycle_hz) and float(cycle_hz) > 0
         else REQUIRED_MIN_FRESH_HZ
     )
-    # Design target is >=2 Hz, but a configured 0.5s interval caps theoretical rate at 2.0.
-    # Require at least 90% of the lesser of the design target and the configured cadence.
-    required_hz = min(REQUIRED_MIN_FRESH_HZ, configured_hz) * REQUIRED_CADENCE_FRACTION
+    # The achievable rate is the inverse of the last positive cycle duration.
+    # Require at least 90% of the lesser of the design target and that rate.
+    required_hz = min(REQUIRED_MIN_FRESH_HZ, reported_hz) * REQUIRED_CADENCE_FRACTION
     age = metrics.get("result_age_ms") if isinstance(metrics.get("result_age_ms"), dict) else {}
     p95_age = age.get("p95")
     return [
@@ -384,7 +384,7 @@ def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
             "passed": fresh_hz >= required_hz,
             "detail": (
                 f"fresh_results_per_s={fresh_hz} required>={required_hz:.4f} "
-                f"(design_target={REQUIRED_MIN_FRESH_HZ}, configured_hz={configured_hz:.4f}, "
+                f"(design_target={REQUIRED_MIN_FRESH_HZ}, cycle_hz={reported_hz:.4f}, "
                 f"fraction={REQUIRED_CADENCE_FRACTION})"
             ),
         },
@@ -469,10 +469,11 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _first_number(values) -> float | None:
-    for value in values:
-        if _is_number(value):
-            return float(value)
+def _last_positive_duration_ms(samples: list[dict[str, Any]]) -> float | None:
+    for sample in reversed(samples):
+        duration_ms = sample.get("duration_ms")
+        if _is_number(duration_ms) and float(duration_ms) > 0:
+            return float(duration_ms)
     return None
 
 

@@ -49,7 +49,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             try:
                 run = run_automa(
                     "vehicles", "automation", "run", "--id", "chase-sim-chaser",
-                    "--observe-only", "--num-decisions", "3", "--interval-s", "0",
+                    "--observe-only", "--num-decisions", "3",
                     "--foreground", runtime_root=root, extra_env=env,
                 )
             finally:
@@ -77,7 +77,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                 for verb in ("run", "restart"):
                     run = run_automa(
                         "vehicles", "automation", verb, "--id", vehicle,
-                        "--unbounded", "--num-decisions", "1", "--interval-s", "0.05",
+                        "--unbounded", "--num-decisions", "1",
                         runtime_root=root, extra_env=env,
                     )
                     self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

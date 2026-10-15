@@ -135,7 +135,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 automation_dir=automation_dir,
                 selections=copy.deepcopy(SELECTIONS),
                 decision=dict(DECISION),
-                configuration=RunConfiguration(mode="autonomy", interval_s=0.0, num_decisions=2),
+                configuration=RunConfiguration(mode="autonomy", num_decisions=2),
                 timeout_s=1.0,
                 record=False,
                 verbose=False,

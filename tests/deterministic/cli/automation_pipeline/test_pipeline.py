@@ -53,7 +53,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 chase_runtime(runtime_root),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, interval_s=0.4, num_decisions=3, take_control=False,
+                    vehicle_id=VEHICLE_ID, num_decisions=3, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
@@ -87,7 +87,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, interval_s=0.0, num_decisions=1, take_control=False,
+                    vehicle_id=VEHICLE_ID, num_decisions=1, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)

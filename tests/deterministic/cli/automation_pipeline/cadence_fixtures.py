@@ -8,17 +8,6 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA, PerceptionText
 
 
-class CaptureClock:
-    def __init__(self) -> None:
-        self.now = 0.0
-
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
-
-
 class GatedPerception:
     """Hold selected perception calls while the real host and capture worker run."""
 

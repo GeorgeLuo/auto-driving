@@ -21,7 +21,6 @@ from .memory import get_vehicle_memory_info
 from .memory_runs import inspect_memory, reset_vehicle_memory
 from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
-from autonomy.runtime.session import DEFAULT_INTERVAL_S
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, SELECTABLE_STEPS, STEP_PRESETS
 
 from .step_activations import update_vehicle_step
@@ -270,12 +269,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     automation_run.add_argument(
-        "--interval-s",
-        type=float,
-        default=DEFAULT_INTERVAL_S,
-        help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
-    )
-    automation_run.add_argument(
         "--num-decisions",
         type=int,
         default=0,
@@ -389,12 +382,6 @@ def build_parser() -> argparse.ArgumentParser:
             "Runtime readiness deadline in seconds "
             f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
-    )
-    automation_restart.add_argument(
-        "--interval-s",
-        type=float,
-        default=DEFAULT_INTERVAL_S,
-        help="Target seconds between camera captures. Decisions immediately use the newest pending frame.",
     )
     automation_restart.add_argument(
         "--num-decisions",
@@ -1797,7 +1784,6 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
         result = run_vehicle_automation(
             vehicle_id=args.vehicle_id,
             timeout_s=args.timeout_s,
-            interval_s=args.interval_s,
             num_decisions=args.num_decisions,
             unbounded=args.unbounded,
             take_control=not args.observe_only,
@@ -1809,7 +1795,6 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
         result = start_vehicle_automation_background(
             vehicle_id=args.vehicle_id,
             timeout_s=args.timeout_s,
-            interval_s=args.interval_s,
             num_decisions=args.num_decisions,
             unbounded=args.unbounded,
             take_control=not args.observe_only,
@@ -1858,7 +1843,6 @@ def _handle_vehicles_automation_restart(args: argparse.Namespace) -> int:
     result = restart_vehicle_automation(
         vehicle_id=args.vehicle_id,
         timeout_s=args.timeout_s,
-        interval_s=args.interval_s,
         num_decisions=args.num_decisions,
         unbounded=args.unbounded,
         take_control=not args.observe_only,

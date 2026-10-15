@@ -24,7 +24,6 @@ class ObservationPublicationTests(unittest.TestCase):
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations)),
-            interval_s=0.0,
             vehicle_id="piracer",
             source_id="donkeycar:piracer",
             decision_activations={
@@ -36,7 +35,6 @@ class ObservationPublicationTests(unittest.TestCase):
     def test_warming_publication_before_first_result(self) -> None:
         part = AutonomyPilotPart(
             host=create_host(steps=decision_steps()),
-            interval_s=0.0,
             presets={"perception": "lightweight_observer"},
         )
         payload = part.publish_latest(now_ms=1_000)
@@ -49,7 +47,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["latest_frame_path"], LATEST_FRAME_PATH)
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         image = np.zeros((8, 12, 3), dtype=np.uint8)
         image[:, :] = (10, 20, 30)
         part.run(image_array=image, mode="user")
@@ -76,7 +74,6 @@ class ObservationPublicationTests(unittest.TestCase):
         activations = {step: selection_activation(step) for step in DECISION_STEPS}
         part = AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations)),
-            interval_s=0.0,
             presets={"perception": "started-with"},
         )
         self.assertEqual(part.publish_latest(now_ms=1_000)["presets"], {"perception": "started-with"})
@@ -136,7 +133,7 @@ class ObservationPublicationTests(unittest.TestCase):
             }
 
         host = create_host(steps=DecisionSteps(memory=remember))
-        part = AutonomyPilotPart(host=host, interval_s=0.0)
+        part = AutonomyPilotPart(host=host)
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
@@ -185,7 +182,6 @@ class ObservationPublicationTests(unittest.TestCase):
         })
         part = AutonomyPilotPart(
             host=create_host(steps=DecisionSteps(observation=observe, memory=memory)),
-            interval_s=0.0,
         )
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
@@ -210,7 +206,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
     def test_stale_and_error_health_states(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.5)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         completed = part.latest_state.completed_at_ms
@@ -233,7 +229,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 del context
                 raise RuntimeError("boom")
 
-        failing = AutonomyPilotPart(host=Boom(), interval_s=0.0)  # type: ignore[arg-type]
+        failing = AutonomyPilotPart(host=Boom())  # type: ignore[arg-type]
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
         errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)
@@ -242,7 +238,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIn("RuntimeError", errored["error"] or "")
 
     def test_unavailable_when_image_missing(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         part.run(image_array=None, mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
@@ -338,7 +334,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertNotIn("timing", decision)
 
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         stop = threading.Event()
         errors: list[str] = []
 

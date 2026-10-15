@@ -65,7 +65,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 if before_run is not None:
                     stage_activation(bundle, before_run, vehicle_id=VEHICLE_ID)
                 result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, interval_s=0.4, num_decisions=4, take_control=False,
+                    vehicle_id=VEHICLE_ID, num_decisions=4, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())

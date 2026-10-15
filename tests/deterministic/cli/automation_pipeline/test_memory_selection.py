@@ -85,7 +85,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 chase_runtime(runtime_root),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, interval_s=0.4, num_decisions=5, take_control=False,
+                    vehicle_id=VEHICLE_ID, num_decisions=5, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(

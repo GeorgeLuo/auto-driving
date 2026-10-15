@@ -33,7 +33,7 @@ RECORDING_MEMORY = "tests.shared.autonomy.decision_cycle.memory.activation_fixtu
 def _routes(steps=None, **kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
     loop = FrameLoop(
         host=AutonomyCycleHost(steps=steps or decision_steps(), target=_Target()),
-        interval_s=0.0, vehicle_id="test-car", runtime="test", run_id="test-run",
+        vehicle_id="test-car", runtime="test", run_id="test-run",
     )
     return loop, RuntimeRoutes(loop, **kwargs)
 

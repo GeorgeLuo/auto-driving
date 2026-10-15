@@ -465,7 +465,6 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             runtime_root = RuntimeLayout(Path(__file__).resolve().parent).runtime
             identity_path = runtime_root / "identity.json"
             from autonomy.runtime.assembly import staged_runtime
-            from autonomy.runtime.session import DEFAULT_INTERVAL_S
             from implementations.runtime.picar import AutonomyPilotPart, create_host
             from implementations.runtime.picar.host_telemetry import (
                 DriveModeTelemetryAdapter,
@@ -511,19 +510,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     "Host telemetry unavailable; runtime identity is incomplete: %s",
                     exc,
                 )
-            # Capture runs independently of decisions and run_pilot. The
-            # decision worker consumes the newest pending sample immediately;
-            # shared execution owns movement authority in every drive mode.
-            capture_interval_s = float(
-                getattr(
-                    cfg,
-                    "AUTONOMY_CAPTURE_INTERVAL_S",
-                    DEFAULT_INTERVAL_S,
-                )
-            )
+            # Capture runs when the decision worker is free, independently of
+            # run_pilot. Shared execution owns movement authority in every
+            # drive mode.
             autonomy_part = AutonomyPilotPart(
                 host=host,
-                interval_s=capture_interval_s,
                 vehicle_id=vehicle_id,
                 source_id=source_id if telemetry_store is not None else None,
                 run_id=run_id if telemetry_store is not None else None,

@@ -59,7 +59,7 @@ class LiveHostTestCase(unittest.TestCase):
         self.client = RuntimeClient(self.host.base_url, timeout_s=3.0)
 
     def observe(self, mode: str = "observe_only") -> None:
-        self.client.start(RunConfiguration(mode=mode, interval_s=0.1, num_decisions=0))
+        self.client.start(RunConfiguration(mode=mode, num_decisions=0))
         self.addCleanup(self.client.stop)
         wait_until(
             lambda: any(

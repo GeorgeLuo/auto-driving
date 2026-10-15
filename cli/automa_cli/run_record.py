@@ -63,7 +63,6 @@ def new_run_state(
         "processed_count": 0,
         "skipped_count": 0,
         "num_decisions": configuration.num_decisions,
-        "interval_s": configuration.interval_s,
         "pipeline": "latest_frame_async_decision",
         "control_source": control_source,
         "action_policy": configuration.mode,

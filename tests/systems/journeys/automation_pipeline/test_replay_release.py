@@ -65,7 +65,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             try:
                 automa(
                     "automation", "run", "--id", VEHICLE_ID, "--observe-only",
-                    "--num-decisions", "2", "--interval-s", "0", "--record",
+                    "--num-decisions", "2", "--record",
                 )
             finally:
                 automa("automation", "stop", "--id", VEHICLE_ID, check=False)
@@ -113,11 +113,11 @@ class ReplayByReleaseTests(unittest.TestCase):
             source = f"{hashlib.sha256(plugin.read_bytes()).hexdigest()}.py"
             try:
                 automa("automation", "run", "--id", VEHICLE_ID, "--observe-only",
-                       "--num-decisions", "1", "--interval-s", "0")
+                       "--num-decisions", "1")
                 automa("plugins", "upload", "--id", VEHICLE_ID, "--file", str(plugin), "--step", "perception",
                        "--plugin-id", "uploaded", "--entrypoint", "prototype:Prototype", "--arm")
                 automa("automation", "run", "--id", VEHICLE_ID, "--observe-only",
-                       "--num-decisions", "2", "--interval-s", "0", "--record")
+                       "--num-decisions", "2", "--record")
             finally:
                 automa("automation", "stop", "--id", VEHICLE_ID, check=False)
             runs = runtime_root / VEHICLE_ID / "bundle/runtime/automation/runs"

@@ -178,7 +178,6 @@ def _live_observation_info(vehicle_id: str, *, timeout_s: float) -> dict[str, An
         "skipped_count": publication.get("skipped_count"),
         "skipped_since_previous": publication.get("skipped_since_previous"),
         "frames_captured": publication.get("frames_captured"),
-        "interval_s": publication.get("interval_s"),
         "control": publication.get("control"),
         "frame": publication.get("frame") if isinstance(publication.get("frame"), dict) else None,
         "latest_json_path": LATEST_JSON_PATH,

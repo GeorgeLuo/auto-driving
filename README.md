@@ -374,12 +374,14 @@ Useful run options:
   The launch command returns after readiness and prints
   `vehicles automation stop`. Ctrl-C in a terminal stream stops that stream,
   not the worker.
-- `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds on both hosts.
-- `--interval-s 0` captures as quickly as the vehicle interface allows.
+- The next capture starts as soon as the previous cycle releases its frame:
+  the loop is not shut down, no decision is in flight, and no frame is pending.
+  There is no configured capture interval.
 - Decisions consume the newest pending capture as soon as the previous cycle finishes.
   `skipped_since_previous` counts captures superseded between frames passed through
   the decision cycle; `skipped_count` is the sum of those per-frame counts. Drive ticks
-  outside the capture cadence and pending frames discarded on stop are not skips.
+  during an in-flight cycle are not captures, and pending frames discarded on stop
+  are not skips.
 - `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
 - `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps every completed decision and its exact camera image, capture
@@ -726,12 +728,11 @@ observation/plan/action plugins. A selection staged as a named preset is
 rebuilt from the current catalog, including its configs; any other staged
 selection keeps its plugins, specs and configs. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
-shared autonomy cycle independently of `run_pilot`. The drive loop samples its
-camera memory at the configured capture cadence and publishes it on
-`/autonomy/camera/latest` without waiting for decisions. The native camera and
-drivetrain retain their loop rate (`DRIVE_LOOP_HZ`, 20 Hz); `--interval-s` controls
-which samples enter the autonomy pipeline. Before a run starts, the capture
-cadence defaults to `AUTONOMY_CAPTURE_INTERVAL_S` (0.25 s). The background
+shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
+`DRIVE_LOOP_HZ` (20 Hz) and publishes camera memory on
+`/autonomy/camera/latest` without waiting for decisions. A sample enters the
+autonomy pipeline only when the frame loop is due, which is as soon as the
+previous cycle has released its frame. The background
 decision worker takes the newest pending capture immediately after each cycle,
 dropping superseded captures rather than accumulating a backlog. The matched result remains
 `/autonomy/observation/latest`. While mode remains `user`, pilot outputs stay
@@ -770,8 +771,8 @@ control both vehicles. Change only the vehicle ID:
 ```
 
 `automation restart --id <vehicle>` stops movement, recreates the host, and
-starts it with the requested options. `--observe-only`, `--num-decisions`, and
-`--interval-s` have the same control semantics on both vehicles. The simulator
+starts it with the requested options. `--observe-only` and `--num-decisions`
+have the same control semantics on both vehicles. The simulator
 acquires WS input automatically; the onboard host acquires its drivetrain
 output automatically. A separate mode HTTP request is unnecessary.
 
@@ -788,9 +789,7 @@ old `hold` activation, stage `selected` on that vehicle. `hold` remains availabl
 as a deliberately idle plugin; a custom action plugin can change the requested
 command but cannot bypass runtime movement authority.
 
-Capture status uses `interval_s` and `frames_captured` on both vehicles. The PiCar
-startup setting is `AUTONOMY_CAPTURE_INTERVAL_S`; rename any custom
-`AUTONOMY_OBSERVATION_INTERVAL_S` override when updating.
+Capture status uses `frames_captured` on both vehicles.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
 Run configuration and automation status use `num_decisions` (zero means
 unbounded, explicitly requested with `--unbounded` for movement-enabled runs); host session status

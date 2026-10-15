@@ -23,7 +23,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
                                   vehicle_id="chase-sim-chaser") as host:
                 client = RuntimeClient(host.base_url, timeout_s=2.0)
-                client.start(RunConfiguration(mode="observe_only", interval_s=0.0, num_decisions=2))
+                client.start(RunConfiguration(mode="observe_only", num_decisions=2))
                 session = _wait(
                     lambda: (s := client.status()["session"])["status"] != "running" and s,
                     message="the session did not complete",

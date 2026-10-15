@@ -23,6 +23,7 @@ from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 DECISION_LATEST_PATH = "/autonomy/decision/latest"
+DECISION_TRANSACTION_PATH = "/autonomy/decision/transaction"
 STATUS_JSON_PATH = "/autonomy/status"
 HOST_TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
 HOST_TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
@@ -142,6 +143,12 @@ def fetch_decision_publication(base_url: str, *, timeout_s: float = 3.0) -> dict
     """GET the read-only current decision publication from a runtime host."""
 
     return _get_json(base_url, DECISION_LATEST_PATH, timeout_s=timeout_s)
+
+
+def fetch_decision_transaction(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
+    """GET the current decision and its image from one host snapshot."""
+
+    return _get_json(base_url, DECISION_TRANSACTION_PATH, timeout_s=timeout_s)
 
 
 class _RejectTelemetryRedirect(urllib.request.HTTPRedirectHandler):
@@ -1622,7 +1629,6 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "timing": deepcopy(publication.get("timing"))
         if isinstance(publication.get("timing"), dict)
         else None,
-        "skipped_since_previous": publication.get("skipped_since_previous"),
         "perception": perception if isinstance(perception, dict) else None,
         "observation": observation if isinstance(observation, dict) else None,
         "memory": memory if isinstance(memory, dict) else None,

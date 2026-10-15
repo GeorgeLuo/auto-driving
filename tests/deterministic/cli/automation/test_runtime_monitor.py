@@ -73,10 +73,10 @@ def _session(status: str, processed: int) -> dict:
     }
 
 
-def _host(camera: int, skipped: int, *, last_error: str | None = None) -> dict:
+def _host(camera: int, *, last_error: str | None = None) -> dict:
     return {
         "autonomy": {
-            "components": {"observation": {"frames_captured": camera, "skipped_count": skipped}},
+            "components": {"observation": {"frames_captured": camera}},
             "steps": {"memory": {"plugin_ids": ["recent"], "last_error": None}, "proposal": None},
             "cycle_count": camera,
             "error_count": 0 if last_error is None else 1,
@@ -95,7 +95,6 @@ def _publication(index: int) -> dict:
             "completed_at_ms": 1_040 + index,
         },
         "duration_ms": 40,
-        "skipped_since_previous": index,
         "perception": {"signals": [{"id": "lane"}], "things": [], "text": "signal id=lane"},
         "control": {"reason": "steer-left", "steering": -0.2, "throttle": 0.1},
         "generation_id": "gen-1",
@@ -135,7 +134,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 automation_dir=automation_dir,
                 selections=copy.deepcopy(SELECTIONS),
                 decision=dict(DECISION),
-                configuration=RunConfiguration(mode="autonomy", interval_s=0.0, num_decisions=2),
+                configuration=RunConfiguration(mode="autonomy", num_decisions=2),
                 timeout_s=1.0,
                 record=False,
                 verbose=False,
@@ -150,7 +149,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             client, code, message, lines, state = self._monitor(
                 automation_dir,
                 sessions=[_session("running", 1), _session("completed", 2)],
-                hosts=[_host(10, 3), _host(11, 3), _host(13, 4)],
+                hosts=[_host(10), _host(11), _host(13)],
             )
 
         self.assertTrue(client.stopped)
@@ -175,12 +174,11 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertRegex(lines[8], r"^Runtime view: http://")
         self.assertEqual(code, 0)
         self.assertEqual(
-            message.splitlines()[:6],
+            message.splitlines()[:5],
             [
                 f"Automation completed: {VEHICLE_ID}",
                 "Frames captured: 3",
                 "Decisions completed: 2",
-                "Frames superseded before decision: 1",
                 "Control source: runtime_host",
                 "Action policy: autonomy",
             ],
@@ -203,15 +201,12 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["last_frame"]["frame_id"], "donkey_frame_000001")
         self.assertEqual(state["last_frame"]["capture_to_perception_ms"], 40)
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
-        self.assertEqual(state["last_frame"]["skipped_since_previous"], 1)
         self.assertEqual(state["published_view"]["available"], False)
 
-    def test_missing_skip_counters_are_unavailable_rather_than_zero(self) -> None:
+    def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):
-            runtime_monitor._observation_counts({"components": {"observation": {}}})
-        self.assertEqual(
-            runtime_monitor._observation_counts(_host(0, 0)["autonomy"]), (0, 0)
-        )
+            runtime_monitor._frames_captured({"components": {"observation": {}}})
+        self.assertEqual(runtime_monitor._frames_captured(_host(0)["autonomy"]), 0)
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,7 +214,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             client, code, message, _lines, state = self._monitor(
                 automation_dir,
                 sessions=[_session("error", 0)],
-                hosts=[_host(10, 3), _host(10, 3, last_error="RuntimeError: plan failed")],
+                hosts=[_host(10), _host(10, last_error="RuntimeError: plan failed")],
             )
 
         self.assertTrue(client.stopped)

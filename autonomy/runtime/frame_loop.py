@@ -1,11 +1,12 @@
 """The latest-frame decision loop every vehicle runtime hosts.
 
-A vehicle adapter claims capture slots with ``due()`` and hands each camera
-sample to ``submit()``. Samples publish at the capture cadence without waiting
-for decisions. One background worker takes the newest pending sample after
-each cycle; captures superseded in between are counted as skipped. The cycle
-host owns movement authority, freshness, stopping, and recording; this loop
-owns the pending frame, its publications, and the applied decision identity.
+A vehicle adapter asks ``due()`` before each capture and hands the sample to
+``submit()``. ``due()`` stays false while a cycle runs or a sample waits, so
+the next capture starts when the previous cycle finishes and the camera
+publication updates once per cycle. One background worker runs the cycle on
+the pending sample. The cycle host owns movement authority, freshness,
+stopping, and recording; this loop owns the pending frame, its publications,
+and the applied decision identity.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.activation import (
@@ -31,7 +32,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.report import delivery_values, diagnostic_ceiling, report_from_host_result
-from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
+from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ CAMERA_LATEST_FRAME_PATH = "/autonomy/camera/latest/frame.jpg"
 CAMERA_LATEST_JSON_PATH = "/autonomy/camera/latest"
 CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication_v0"
 DECISION_LATEST_PATH = "/autonomy/decision/latest"
+DECISION_TRANSACTION_PATH = "/autonomy/decision/transaction"
+DECISION_TRANSACTION_SCHEMA = "automa_decision_transaction_v0"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"
@@ -107,9 +110,11 @@ def encode_jpeg(image_array: Any) -> bytes:
         return encoded.tobytes()
 
 
-def stale_after_ms(interval_s: float) -> int:
+def stale_after_ms(cycle_duration_ms: float | None) -> int:
     """Age beyond which a still-present result is marked stale at read time."""
-    return max(1000, int(round(float(interval_s) * 2000.0)))
+    if cycle_duration_ms is None:
+        return 1000
+    return max(1000, int(round(float(cycle_duration_ms) * 2.0)))
 
 
 @dataclass
@@ -127,7 +132,6 @@ class LatestObservationState:
     cycle: dict[str, Any] | None
     error: str | None = None
     duration_ms: float = 0
-    skipped_since_previous: int = 0
     presets: dict[str, str] = field(default_factory=dict)
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
@@ -148,7 +152,6 @@ class LatestObservationState:
             "control": deepcopy(self.control),
             "has_image": self.image is not None,
             "duration_ms": self.duration_ms,
-            "skipped_since_previous": self.skipped_since_previous,
             "presets": dict(self.presets),
             "cycle_schema": None if self.cycle is None else self.cycle.get("schema"),
             "perception_status": None if not isinstance(perception, dict) else perception.get("status"),
@@ -192,8 +195,6 @@ class FrameLoop:
         self,
         *,
         host: AutonomyCycleHost,
-        interval_s: float = DEFAULT_INTERVAL_S,
-        monotonic: Callable[[], float] | None = None,
         presets: dict[str, str] | None = None,
         vehicle_id: str | None = None,
         source_id: str | None = None,
@@ -205,7 +206,6 @@ class FrameLoop:
         camera_source: str | None = None,
         frame_prefix: str | None = None,
     ) -> None:
-        interval_s = RunConfiguration(interval_s=float(interval_s)).interval_s
         if getattr(host, "execution", None) is None:
             raise ValueError(f"{type(self).__name__} needs a host with a control target")
         self.host = host
@@ -213,18 +213,14 @@ class FrameLoop:
         self.camera_source = camera_source or f"{runtime}_camera"
         self.frame_prefix = frame_prefix or runtime
         self.recording_root = recording_root
-        self.interval_s = float(interval_s)
         # Each step's preset label, refreshed from every frame's applied activations.
         self.presets = dict(presets or {})
-        self._monotonic = monotonic or time.monotonic
         self._lock = threading.RLock()
         self.frame_index = 0
         self._capture_sequence = 0
         self.frames_captured = 0
         self.processed_count = 0
-        self.skipped_count = 0
-        self._last_capture_monotonic: float | None = None
-        self._last_decision_capture_sequence = -1
+        self._cycle_duration_ms: float | None = None
         self._pending_frame: _PendingFrame | None = None
         self._queue_generation = 0
         self._shutdown = False
@@ -295,9 +291,7 @@ class FrameLoop:
             camera = self.latest_camera_frame
             return {
                 "runtime": self.runtime,
-                "interval_s": self.interval_s,
                 "processed_count": self.processed_count,
-                "skipped_count": self.skipped_count,
                 "frames_captured": self.frames_captured,
                 "perception_inflight": self._decision_inflight,
                 "memory_update_halted": self._memory_update_halted,
@@ -339,6 +333,34 @@ class FrameLoop:
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
             return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+
+    def publish_decision_transaction(self) -> tuple[dict[str, Any], bytes | None]:
+        """Return the current decision and its image from one locked snapshot.
+
+        A cycle can complete between two separate reads, so the image and the
+        decision can come from different cycles. Cycles run back to back, so
+        this happens often. Callers that publish the live view need both from
+        the same completed cycle.
+        """
+
+        read_at_ms = timestamp_ms()
+        with self._lock:
+            publication = self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+            latest = self.latest_state
+            image = None if latest is None else latest.image
+            decision = publication.get("decision")
+            same_frame = (
+                latest is not None
+                and isinstance(decision, dict)
+                and decision.get("frame_id") == latest.frame_id
+            )
+        if not same_frame or image is None:
+            return publication, None
+        try:
+            return publication, encode_jpeg(image)
+        except Exception:  # noqa: BLE001 - a bad image must not replace the decision
+            logger.exception("Decision transaction image encode failed")
+            return publication, None
 
     def reset_memory(self) -> dict[str, Any]:
         """Reset the live memory step under the same lock as observation cycles.
@@ -436,8 +458,6 @@ class FrameLoop:
             self.recording_root, vehicle_id=self.vehicle_id, encode_image=encode_jpeg,
         ) if record else None
         with self._lock:
-            self.interval_s = configuration.interval_s
-            self._last_capture_monotonic = None
             self._session_frame_id = None
             self._discard_pending_locked()
         status = self.host.start(configuration, recording=recording)
@@ -458,16 +478,13 @@ class FrameLoop:
         self.host.close()
 
     def due(self) -> bool:
-        """Claim the next capture slot when the cadence allows one."""
+        """The next capture can start when no cycle is holding a frame."""
         with self._lock:
-            now = self._monotonic()
-            if self._shutdown or (
-                self._last_capture_monotonic is not None
-                and now - self._last_capture_monotonic < self.interval_s
-            ):
-                return False
-            self._last_capture_monotonic = now
-            return True
+            return (
+                not self._shutdown
+                and not self._decision_inflight
+                and self._pending_frame is None
+            )
 
     def submit(
         self,
@@ -515,7 +532,7 @@ class FrameLoop:
 
     def _camera_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         camera = self.latest_camera_frame
-        threshold_ms = stale_after_ms(self.interval_s)
+        threshold_ms = stale_after_ms(self._cycle_duration_ms)
         observation = self.latest_state
         perception_frame_id = None if observation is None else observation.frame_id
         if camera is None:
@@ -597,20 +614,16 @@ class FrameLoop:
         return frame
 
     def _discard_pending_locked(self) -> None:
-        # Stop/restart discards are not supersessions between decision frames.
         self._pending_frame = None
-        self._last_decision_capture_sequence = self._capture_sequence - 1
         self._queue_generation += 1
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         """Build a publication from the currently locked state and counters."""
         latest = self.latest_state
         processed_count = self.processed_count
-        skipped_count = self.skipped_count
-        interval_s = self.interval_s
         presets = dict(self.presets)
         generation_id = self.generation_id
-        threshold_ms = stale_after_ms(interval_s)
+        threshold_ms = stale_after_ms(self._cycle_duration_ms)
 
         if latest is None:
             health = (
@@ -625,10 +638,8 @@ class FrameLoop:
                 "read_at_ms": read_at_ms,
                 "result_age_ms": None,
                 "stale_after_ms": threshold_ms,
-                "interval_s": interval_s,
                 "frames_captured": self.frames_captured,
                 "processed_count": processed_count,
-                "skipped_count": skipped_count,
                 "presets": presets,
                 "generation_id": generation_id,
                 "frame": None,
@@ -675,10 +686,8 @@ class FrameLoop:
             "read_at_ms": read_at_ms,
             "result_age_ms": age_ms,
             "stale_after_ms": threshold_ms,
-            "interval_s": interval_s,
             "frames_captured": self.frames_captured,
             "processed_count": processed_count,
-            "skipped_count": skipped_count,
             "presets": dict(latest.presets),
             "generation_id": generation_id,
             "step_activations": deepcopy(selections),
@@ -700,7 +709,6 @@ class FrameLoop:
             "error": latest.error,
             "duration_ms": latest.duration_ms,
             "timing": timing,
-            "skipped_since_previous": latest.skipped_since_previous,
             "perception": perception,
             "observation": observation,
             "memory": memory,
@@ -839,7 +847,7 @@ class FrameLoop:
                         "completed_at_ms": published_at_ms,
                     },
                     **delivery_values(records.application),
-                    "stale_after_ms": stale_after_ms(self.interval_s),
+                    "stale_after_ms": stale_after_ms(self._cycle_duration_ms),
                 },
             )
         except (TypeError, ValueError):
@@ -853,7 +861,7 @@ class FrameLoop:
         read_at_ms: int,
         result_age_ms: int | None = None,
     ) -> dict[str, Any]:
-        threshold_ms = stale_after_ms(self.interval_s)
+        threshold_ms = stale_after_ms(self._cycle_duration_ms)
         return {
             "schema": DECISION_PUBLICATION_SCHEMA,
             "ok": False,
@@ -933,11 +941,6 @@ class FrameLoop:
                         return
                     self._pending_frame = None
                     camera = pending.camera
-                    skipped_since_previous = (
-                        camera.sequence - self._last_decision_capture_sequence - 1
-                    )
-                    self._last_decision_capture_sequence = camera.sequence
-                    self.skipped_count += skipped_since_previous
                     self._inflight_frame_id = camera.frame_id
                     generation = self._queue_generation
                     was_running = getattr(self.host, "run_state", None) == "running"
@@ -946,7 +949,6 @@ class FrameLoop:
                     mode_name=pending.mode_name,
                     user_steering=pending.user_steering,
                     user_throttle=pending.user_throttle,
-                    skipped_since_previous=skipped_since_previous,
                 )
                 with self._lock:
                     ended = was_running and self.host.run_state != "running"
@@ -967,7 +969,6 @@ class FrameLoop:
         mode_name: str,
         user_steering: float,
         user_throttle: float,
-        skipped_since_previous: int,
     ) -> bool:
         frame_id, frame_index = camera.frame_id, camera.frame_index
         captured_at_ms = camera.captured_at_ms
@@ -1002,9 +1003,7 @@ class FrameLoop:
                             **camera.metadata,
                             "runtime": self.runtime,
                             "control_application": "shared_execution",
-                            "capture_interval_s": self.interval_s,
                             "capture_sequence": camera.sequence,
-                            "skipped_since_previous": skipped_since_previous,
                         },
                     )
                 )
@@ -1039,6 +1038,8 @@ class FrameLoop:
             # Readers must see one completed cycle and its matching report.
             # Plugin execution above stays outside the publication lock.
             with self._lock:
+                if cycle_dict is not None:
+                    self._cycle_duration_ms = float(duration_ms)
                 self._record_current_cycle(cycle_result if cycle_dict is not None else None, failed=status != "ok")
                 if isinstance(applied, dict) and applied.get("generation_id") != self.generation_id:
                     self._write_applied_decision(applied)
@@ -1070,7 +1071,6 @@ class FrameLoop:
                     cycle=cycle_dict,
                     error=error,
                     duration_ms=duration_ms,
-                    skipped_since_previous=skipped_since_previous,
                     presets=dict(self.presets),
                     decision_publication=decision_publication,
                     decision_error=decision_error,

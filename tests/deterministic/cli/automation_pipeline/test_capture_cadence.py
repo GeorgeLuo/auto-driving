@@ -18,59 +18,72 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
 
 class ChaseCaptureCadenceTests(unittest.TestCase):
     def _run(self, runtime_root: Path, car: _FakeCar, perception: GatedPerception,
-             *, interval_s: float, num_decisions: int):
+             *, num_decisions: int):
         bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
         _write_activations(bundle)
         output = io.StringIO()
         with staged_runners(perception=perception), chase_runtime(runtime_root, car=car):
             result = run_vehicle_automation(
-                vehicle_id=VEHICLE_ID, interval_s=interval_s, num_decisions=num_decisions,
+                vehicle_id=VEHICLE_ID, num_decisions=num_decisions,
                 take_control=False, record=True, verbose=True, output=output,
             )
         state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
         return result, state, output.getvalue()
 
-    def test_latest_capture_drains_during_another_capture_and_reports_exact_skips(self) -> None:
+    def test_next_capture_starts_when_the_worker_releases_the_frame(self) -> None:
         perception = GatedPerception(2)
-
-        class CaptureCar(_FakeCar):
-            def read_sensors(self, request):
-                if self.capture_count == 1:
-                    perception.wait_started(0)
-                if self.capture_count == 3:
-                    # Captures 1 and 2 are pending while perception handles 0.
-                    # Hold capture 3 in flight as the worker takes capture 2.
-                    perception.release[0].set()
-                    perception.wait_started(1)
-                return super().read_sensors(request)
-
+        completed = threading.Event()
+        results = []
         with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            def run() -> None:
+                try:
+                    results.append(self._run(root, _FakeCar(), perception, num_decisions=2))
+                finally:
+                    completed.set()
+
+            thread = threading.Thread(target=run)
+            thread.start()
             try:
-                result, state, _output = self._run(
-                    Path(tmp), CaptureCar(simulator_frame_stride=7), perception,
-                    interval_s=0.0, num_decisions=2,
-                )
+                perception.wait_started(0)
+                state_path = root / "chase-sim-chaser/bundle/runtime/automation/state.json"
+                deadline = time.monotonic() + 2.0
+                while True:
+                    try:
+                        state = json.loads(state_path.read_text())
+                    except FileNotFoundError:
+                        state = {}
+                    if state.get("frames_captured") == 1:
+                        break
+                    self.assertLess(time.monotonic(), deadline, "capture was not published")
+                    time.sleep(0.01)
+                time.sleep(0.05)
+                held = json.loads(state_path.read_text())
+                self.assertEqual(held["frames_captured"], 1)
+                self.assertEqual(perception.contexts[0].metadata["capture_sequence"], 0)
+                perception.release[0].set()
+                self.assertTrue(completed.wait(timeout=2.0), "completion waited after the worker finished")
             finally:
                 perception.release_all()
+                thread.join(timeout=5.0)
+            result, state, _output = results[0]
             self.assertEqual(result.exit_code, 0, result.message)
             contexts = perception.contexts
-            self.assertEqual([c.metadata["capture_sequence"] for c in contexts], [0, 2])
-            self.assertEqual([c.frame_index for c in contexts], [100, 114])
-            self.assertEqual([c.metadata["skipped_since_previous"] for c in contexts], [0, 1])
-            self.assertEqual(state["skipped_count"], 1)
+            self.assertEqual([c.metadata["capture_sequence"] for c in contexts], [0, 1])
+            self.assertEqual([c.frame_index for c in contexts], [100, 101])
+            self.assertEqual((state["frames_captured"], state["processed_count"]), (2, 2))
             self.assertEqual(state["num_decisions"], state["processed_count"])
             self.assertEqual(state["session"]["processed_decisions"], 2)
-            self.assertGreater(state["frames_captured"], state["processed_count"] + state["skipped_count"])
             records = [json.loads(p.read_text()) for p in Path(state["run_dir"]).glob("perception/*/perception.json")]
             records.sort(key=lambda r: r["context"]["metadata"]["capture_sequence"])
-            self.assertEqual([r["skipped_since_previous"] for r in records], [0, 1])
-            self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 114])
+            self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 101])
             self.assertEqual(records[-1]["context"]["metadata"]["simulation_epoch"], "chase-run:test")
+            self.assertIn("Frames captured: 2", result.message)
             self.assertIn("Decisions completed: 2", result.message)
-            self.assertIn("Frames superseded before decision: 1", result.message)
             self.assertIn("Decisions recorded: 2", result.message)
 
-    def test_bounded_completion_wakes_a_long_capture_interval(self) -> None:
+    def test_bounded_completion_does_not_wait_after_the_worker_finishes(self) -> None:
         perception = GatedPerception(1)
         completed = threading.Event()
         results = []
@@ -79,7 +92,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
 
             def run() -> None:
                 try:
-                    results.append(self._run(root, _FakeCar(), perception, interval_s=10.0, num_decisions=1))
+                    results.append(self._run(root, _FakeCar(), perception, num_decisions=1))
                 finally:
                     completed.set()
 
@@ -100,11 +113,10 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                     self.assertLess(time.monotonic(), deadline, "capture was not published")
                     time.sleep(0.01)
                 perception.release[0].set()
-                self.assertTrue(completed.wait(timeout=2.0), "completion waited for the capture interval")
+                self.assertTrue(completed.wait(timeout=2.0), "completion waited after the worker finished")
             finally:
                 perception.release_all()
-                thread.join(timeout=12.0)
+                thread.join(timeout=5.0)
             result, state, _output = results[0]
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual((state["status"], state["frames_captured"], state["processed_count"]), ("completed", 1, 1))
-

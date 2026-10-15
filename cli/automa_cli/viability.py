@@ -234,6 +234,7 @@ def run_perception_viability_measurement(
         "limits": [
             "Polls the latest publication; does not instrument in-process loop counters directly.",
             "Freshness uses frame_id transitions and published result_age_ms/duration_ms fields.",
+            "The achievable rate uses the median capture spacing per processed cycle.",
             "Host RSS/CPU are sampled only when the vehicle supplies an ssh_target connection field.",
         ],
     }
@@ -271,9 +272,8 @@ def _extract_perception_sample(publication: dict[str, Any], *, wall_ms: int, mon
         "mode": publication.get("mode"),
         "presets": publication.get("presets"),
         "frame_id": frame.get("frame_id"),
+        "captured_at_ms": frame.get("captured_at_ms"),
         "processed_count": publication.get("processed_count"),
-        "skipped_count": publication.get("skipped_count"),
-        "interval_s": publication.get("interval_s"),
         "duration_ms": publication.get("duration_ms"),
         "result_age_ms": publication.get("result_age_ms"),
         "control_steering": control.get("steering"),
@@ -307,11 +307,6 @@ def _compute_perception_metrics(
         for s in samples
         if isinstance(s.get("processed_count"), int)
     ]
-    skipped = [
-        int(s["skipped_count"])
-        for s in samples
-        if isinstance(s.get("skipped_count"), int)
-    ]
     # The host reports whether each cycle's control reached the vehicle,
     # whatever its mode; a parked measurement must never apply control.
     never_applied = all(s.get("control_applied") is False for s in healthy) if healthy else False
@@ -319,7 +314,6 @@ def _compute_perception_metrics(
     processed_delta = (
         (processeds[-1] - processeds[0]) if len(processeds) >= 2 else 0
     )
-    skipped_delta = (skipped[-1] - skipped[0]) if len(skipped) >= 2 else None
     # transitions count changes only; include the first observed frame for rate.
     unique_frames = fresh_transitions + (1 if any(s.get("frame_id") for s in samples) else 0)
     # Prefer onboard processed_count delta when available; fall back to unique frames.
@@ -329,6 +323,8 @@ def _compute_perception_metrics(
 
     rss = [float(s["rss_mb"]) for s in host_samples if _is_number(s.get("rss_mb"))]
     cpu = [float(s["cpu_percent"]) for s in host_samples if _is_number(s.get("cpu_percent"))]
+    cycle_period_ms = _median_cycle_period_ms(samples)
+    cycle_hz = (1000.0 / cycle_period_ms) if cycle_period_ms is not None else None
 
     return {
         "elapsed_s": round(elapsed_s, 3),
@@ -339,7 +335,6 @@ def _compute_perception_metrics(
         "fresh_results_per_s": round(fresh_hz, 4),
         "processed_count_delta": processed_delta,
         "processed_results_per_s": round(processed_hz, 4),
-        "skipped_count_delta": skipped_delta,
         "result_age_ms": _distribution(ages),
         "duration_ms": _distribution(durations),
         "control_never_applied": never_applied,
@@ -352,30 +347,23 @@ def _compute_perception_metrics(
             "pid": next((s.get("pid") for s in host_samples if s.get("pid")), None),
             "errors": [s.get("error") for s in host_samples if s.get("error")][:5],
         },
-        "configured_interval_s": _first_number(
-            s.get("interval_s") for s in samples
-        ),
-        "dropped_frame_policy": {
-            "description": (
-                "Capture runs at interval_s cadence; decisions consume the newest pending frame immediately. "
-                "Captures superseded between decision frames are counted in skipped_count."
-            ),
-            "skipped_count_delta": skipped_delta,
-        },
+        "cycle_period_ms": None if cycle_period_ms is None else round(cycle_period_ms, 3),
+        "cycle_hz": None if cycle_hz is None else round(cycle_hz, 4),
     }
 
 
 def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     fresh_hz = float(metrics.get("fresh_results_per_s") or 0.0)
-    interval_s = metrics.get("configured_interval_s")
-    configured_hz = (
-        (1.0 / float(interval_s))
-        if _is_number(interval_s) and float(interval_s) > 0
+    cycle_hz = metrics.get("cycle_hz")
+    reported_hz = (
+        float(cycle_hz)
+        if _is_number(cycle_hz) and float(cycle_hz) > 0
         else REQUIRED_MIN_FRESH_HZ
     )
-    # Design target is >=2 Hz, but a configured 0.5s interval caps theoretical rate at 2.0.
-    # Require at least 90% of the lesser of the design target and the configured cadence.
-    required_hz = min(REQUIRED_MIN_FRESH_HZ, configured_hz) * REQUIRED_CADENCE_FRACTION
+    # The achievable rate is the inverse of the median cycle period, capture
+    # included. Require at least 90% of the lesser of the design target and
+    # that rate.
+    required_hz = min(REQUIRED_MIN_FRESH_HZ, reported_hz) * REQUIRED_CADENCE_FRACTION
     age = metrics.get("result_age_ms") if isinstance(metrics.get("result_age_ms"), dict) else {}
     p95_age = age.get("p95")
     return [
@@ -384,7 +372,7 @@ def _evaluate_perception_gates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
             "passed": fresh_hz >= required_hz,
             "detail": (
                 f"fresh_results_per_s={fresh_hz} required>={required_hz:.4f} "
-                f"(design_target={REQUIRED_MIN_FRESH_HZ}, configured_hz={configured_hz:.4f}, "
+                f"(design_target={REQUIRED_MIN_FRESH_HZ}, cycle_hz={reported_hz:.4f}, "
                 f"fraction={REQUIRED_CADENCE_FRACTION})"
             ),
         },
@@ -469,11 +457,24 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _first_number(values) -> float | None:
-    for value in values:
-        if _is_number(value):
-            return float(value)
-    return None
+def _median_cycle_period_ms(samples: list[dict[str, Any]]) -> float | None:
+    """The median capture-to-capture spacing per processed cycle.
+
+    Each capture starts when the previous cycle finishes, so the spacing
+    covers capture and cycle together. Dividing by the processed_count step
+    keeps the period right when the poll misses cycles.
+    """
+    periods: list[float] = []
+    previous: tuple[float, int] | None = None
+    for sample in samples:
+        captured_at_ms = sample.get("captured_at_ms")
+        processed = sample.get("processed_count")
+        if not _is_number(captured_at_ms) or not isinstance(processed, int):
+            continue
+        if previous is not None and processed > previous[1] and captured_at_ms > previous[0]:
+            periods.append((float(captured_at_ms) - previous[0]) / (processed - previous[1]))
+        previous = (float(captured_at_ms), processed)
+    return statistics.median(periods) if periods else None
 
 
 def _format_perception_report(report: dict[str, Any]) -> str:
@@ -487,6 +488,7 @@ def _format_perception_report(report: dict[str, Any]) -> str:
         f"processed_results_per_s: {metrics.get('processed_results_per_s')}",
         f"result_age_ms p50/p95: {_dist_pair(metrics.get('result_age_ms'))}",
         f"duration_ms p50/p95: {_dist_pair(metrics.get('duration_ms'))}",
+        f"cycle_period_ms: {metrics.get('cycle_period_ms')}",
         f"control_never_applied: {metrics.get('control_never_applied')}  modes: {metrics.get('modes_seen')}",
         f"host rss_mb p50/max: {_dist_pair(metrics.get('host', {}).get('rss_mb'), keys=('p50','max'))}",
         f"host cpu_percent p50/max: {_dist_pair(metrics.get('host', {}).get('cpu_percent'), keys=('p50','max'))}",
@@ -520,7 +522,7 @@ def _format_perception_markdown(report: dict[str, Any]) -> str:
         f"- processed_results_per_s: {metrics.get('processed_results_per_s')}",
         f"- result_age_ms: `{metrics.get('result_age_ms')}`",
         f"- duration_ms: `{metrics.get('duration_ms')}`",
-        f"- skipped_count_delta: {metrics.get('skipped_count_delta')}",
+        f"- cycle_period_ms: {metrics.get('cycle_period_ms')}",
         f"- control_never_applied: {metrics.get('control_never_applied')}",
         f"- modes_seen: {metrics.get('modes_seen')}",
         f"- host: `{metrics.get('host')}`",

@@ -5,10 +5,12 @@ from __future__ import annotations
 import ast
 import logging
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import decision_steps
+from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from implementations.runtime.picar.host_telemetry import (
     HOST_TELEMETRY_BOUNDARY,
@@ -413,7 +415,6 @@ class DriveModeBoundaryTests(unittest.TestCase):
         ):
             part = AutonomyPilotPart(
                 host=create_host(steps=decision_steps()),
-                interval_s=0.0,
                 host_telemetry=adapter,
             )
             part.run(image_array=object(), mode="user")
@@ -440,38 +441,52 @@ class DriveModeBoundaryTests(unittest.TestCase):
         )
         self.assertNotEqual(record["pilot_output"], record["host_selected_output"])
 
-    def test_held_cadence_frame_is_repeated_identity_not_a_new_frame(self) -> None:
-        monotonic = _Clock(0)
+    def test_a_tick_during_a_cycle_repeats_identity_until_the_worker_is_free(self) -> None:
+        perception = GatedPerception(3, blocked=(1,))
         store = _store()
         adapter = DriveModeTelemetryAdapter(store)
         module = __import__(
             "autonomy.runtime.frame_loop",
             fromlist=["timestamp_ms"],
         )
-        with (
-            patch.object(module, "timestamp_ms", return_value=10_000),
-            patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
-        ):
-            part = AutonomyPilotPart(
-                host=create_host(steps=decision_steps()),
-                interval_s=0.5,
-                monotonic=lambda: monotonic.now_ms / 1000.0,
-                host_telemetry=adapter,
-            )
-            part.run(image_array=object(), mode="user")
+        part = AutonomyPilotPart(
+            host=create_host(steps=replace(decision_steps(), perception=perception)),
+            host_telemetry=adapter,
+        )
+        try:
+            with (
+                patch.object(module, "timestamp_ms", return_value=10_000),
+                patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
+            ):
+                part.run(image_array=object(), mode="user")
+                part.wait_for_cycle()
+                part.run(image_array=object(), mode="user")
+                perception.wait_started(1)
+                drive_mode = _drive_mode_class()(host_telemetry=adapter)
+                drive_mode.run("user", 0.1, 0.2, 0.0, 0.0)
+                self.assertFalse(part.due())
+                part.run(image_array=object(), mode="user")
+                drive_mode.run("user", 0.3, 0.4, 0.0, 0.0)
+                records = adapter.records(after_sequence=0, limit=128, now_ms=10_000)
+                self.assertTrue(records["ok"])
+                self.assertEqual(len(records["records"]), 2)
+                self.assertEqual(
+                    records["records"][0]["source_frame"],
+                    records["records"][1]["source_frame"],
+                )
+                self.assertEqual(part.frames_captured, 2)
+                self.assertEqual(records["records"][1]["host_tick"]["skipped_since_previous"], 0)
+                perception.release[1].set()
+                part.wait_for_cycle()
+                self.assertTrue(part.due())
+                part.run(image_array=object(), mode="user")
+                part.wait_for_cycle()
+                self.assertEqual(part.latest_state.frame_index, 2)
+                self.assertEqual(part.frames_captured, 3)
+        finally:
+            perception.release_all()
             part.wait_for_cycle()
-            drive_mode = _drive_mode_class()(host_telemetry=adapter)
-            drive_mode.run("user", 0.1, 0.2, 0.0, 0.0)
-            monotonic.now_ms = 200
-            part.run(image_array=object(), mode="user")
-            drive_mode.run("user", 0.3, 0.4, 0.0, 0.0)
-
-        records = adapter.records(after_sequence=0, limit=128, now_ms=10_000)
-        self.assertTrue(records["ok"])
-        self.assertEqual(len(records["records"]), 2)
-        self.assertEqual(records["records"][0]["source_frame"], records["records"][1]["source_frame"])
-        self.assertEqual(part.latest_state.frame_index, 0)
-        self.assertEqual(records["records"][1]["host_tick"]["skipped_since_previous"], 0)
+            part.shutdown()
 
     def test_observer_failure_preserves_drive_mode_output_and_shutdown_stops_store(self) -> None:
         class RaisingStore:

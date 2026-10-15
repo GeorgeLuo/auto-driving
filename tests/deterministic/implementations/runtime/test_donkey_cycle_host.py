@@ -15,7 +15,6 @@ from autonomy.runtime.session import RunConfiguration
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from autonomy.runtime.frame_loop import ONBOARD_OBSERVATION_STATE_SCHEMA
-from autonomy.runtime.session import DEFAULT_INTERVAL_S
 from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
 
 
@@ -82,7 +81,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         )
 
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
 
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()
@@ -96,7 +95,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")
 
     def test_manual_mode_runs_cycle_and_forces_zero_pilot_outputs(self) -> None:
-        part = AutonomyPilotPart(host=_pushy_host(), interval_s=0.0)
+        part = AutonomyPilotPart(host=_pushy_host())
 
         part.run(
             image_array=np.zeros((4, 4, 3), dtype=np.uint8),
@@ -120,7 +119,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertIsNotNone(part.latest_state.image)
 
     def test_local_mode_preserves_action_pilot_outputs(self) -> None:
-        part = AutonomyPilotPart(host=_pushy_host(), interval_s=0.0)
+        part = AutonomyPilotPart(host=_pushy_host())
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
         part.wait_for_cycle()
@@ -131,7 +130,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(control["steering"], 0.7)
 
     def test_detaches_image_from_vehicle_memory(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         image = np.zeros((3, 3, 3), dtype=np.uint8)
         part.run(image_array=image, mode="user")
         image[:] = 9
@@ -140,7 +139,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(int(part.latest_state.image[0, 0, 0]), 0)
 
     def test_cycle_failure_keeps_zero_controls_and_records_error_state(self) -> None:
-        part = AutonomyPilotPart(host=_ExplodingHost(), interval_s=0.0)  # type: ignore[arg-type]
+        part = AutonomyPilotPart(host=_ExplodingHost())  # type: ignore[arg-type]
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
@@ -170,7 +169,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
                 raise RuntimeError("memory update failed")
             return None
 
-        part = AutonomyPilotPart(host=_pushy_host(memory=remember), interval_s=0.0)
+        part = AutonomyPilotPart(host=_pushy_host(memory=remember))
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
         part.run(image_array=image, mode="local")
@@ -191,9 +190,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
     def test_runtime_runs_set_the_controller_drive_mode(self) -> None:
         controller = SimpleNamespace(mode="user", mode_latch=None, angle=0.3, throttle=0.2)
         host = _pushy_host()
-        part = AutonomyPilotPart(host=host, interval_s=0.0, controller=controller)
+        part = AutonomyPilotPart(host=host, controller=controller)
 
-        part.start(RunConfiguration(mode="autonomy", interval_s=0.0))
+        part.start(RunConfiguration(mode="autonomy"))
         self.assertEqual((controller.mode, controller.mode_latch), ("local", "local"))
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
         self.assertEqual(host.run_state, "running")
@@ -204,7 +203,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
             ("user", "user", 0.0, 0.0),
         )
 
-        part.start(RunConfiguration(mode="observe_only", interval_s=0.0))
+        part.start(RunConfiguration(mode="observe_only"))
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         self.assertEqual(host.run_state, "running")
@@ -213,10 +212,10 @@ class RuntimeCycleHostTests(unittest.TestCase):
     def test_a_run_the_host_ends_hands_donkey_back_to_the_operator(self) -> None:
         controller = SimpleNamespace(mode="user", mode_latch=None, angle=0.3, throttle=0.2)
         host = _pushy_host()
-        part = AutonomyPilotPart(host=host, interval_s=0.0, controller=controller)
+        part = AutonomyPilotPart(host=host, controller=controller)
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
-        part.start(RunConfiguration(mode="autonomy", interval_s=0.0, num_decisions=1))
+        part.start(RunConfiguration(mode="autonomy", num_decisions=1))
         part.run(image_array=image, mode="local")
         part.wait_for_cycle()
         self.assertEqual(host.run_state, "completed")
@@ -235,7 +234,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(host.run_state, "running")
 
     def test_status_omits_raw_image_payload(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), interval_s=0.0)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         part.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         latest = part.observation_status()["latest"]
@@ -244,7 +243,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
     def test_observation_status_provider_does_not_reenter_host_status(self) -> None:
         host = create_host(steps=decision_steps())
-        part = AutonomyPilotPart(host=host, interval_s=0.0)
+        part = AutonomyPilotPart(host=host)
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
 
@@ -266,14 +265,14 @@ class RuntimeCycleHostTests(unittest.TestCase):
         marker = "autonomy_part = AutonomyPilotPart("
         self.assertIn(marker, source)
         snippet = source[source.index(marker) : source.index(marker) + 1600]
-        self.assertIn("interval_s=capture_interval_s", snippet)
+        self.assertNotIn("interval_s=", snippet)
+        self.assertNotIn("capture_interval_s", source)
         self.assertIn("source_id=source_id if telemetry_store is not None else None", snippet)
         self.assertIn("**loop_options", snippet)
         self.assertIn("staged_runtime(", source)
         self.assertIn("run_id=run_id if telemetry_store is not None else None", snippet)
         self.assertNotIn("run_condition", snippet)
-        self.assertIn("AUTONOMY_CAPTURE_INTERVAL_S", source)
-        self.assertEqual(DEFAULT_INTERVAL_S, 0.25)
+        self.assertNotIn("AUTONOMY_CAPTURE_INTERVAL_S", source)
 
 
 if __name__ == "__main__":

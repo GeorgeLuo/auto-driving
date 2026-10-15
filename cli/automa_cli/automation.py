@@ -14,7 +14,7 @@ from typing import Any, TextIO
 
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.client import RuntimeClient
-from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
+from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 from .vehicle_access import create_vehicle_access
@@ -131,11 +131,9 @@ def _host_runtime_status(
             "run_id": None,
             "frames_captured": observation.get("frames_captured", 0),
             "processed_count": observation.get("processed_count", 0),
-            "skipped_count": observation.get("skipped_count", 0),
             "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
                 "num_decisions", 0
             ),
-            "interval_s": observation.get("interval_s"),
             "recording": False,
             "control_source": "runtime_host",
             "action_policy": (autonomy.get("execution") or {}).get("mode"),
@@ -190,7 +188,7 @@ def _applied_selections(
     return applied
 
 
-def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: int,
+def _run_configuration(*, take_control: bool, num_decisions: int,
                        unbounded: bool = False) -> RunConfiguration:
     """Movement runs require a positive bound or an explicit unbounded opt-in."""
 
@@ -207,7 +205,6 @@ def _run_configuration(*, take_control: bool, interval_s: float, num_decisions: 
         )
     return RunConfiguration(
         mode="autonomy" if take_control else "observe_only",
-        interval_s=interval_s,
         num_decisions=num_decisions,
     )
 
@@ -216,7 +213,6 @@ def run_vehicle_automation(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = DEFAULT_INTERVAL_S,
     num_decisions: int = 0,
     unbounded: bool = False,
     take_control: bool = True,
@@ -226,8 +222,7 @@ def run_vehicle_automation(
 ) -> CommandResult:
     try:
         configuration = _run_configuration(
-            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions,
-            unbounded=unbounded,
+            take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -262,7 +257,6 @@ def start_vehicle_automation_background(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = DEFAULT_INTERVAL_S,
     num_decisions: int = 0,
     unbounded: bool = False,
     take_control: bool = True,
@@ -274,8 +268,7 @@ def start_vehicle_automation_background(
 ) -> CommandResult:
     try:
         configuration = _run_configuration(
-            take_control=take_control, interval_s=interval_s, num_decisions=num_decisions,
-            unbounded=unbounded,
+            take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
@@ -411,8 +404,6 @@ def start_vehicle_automation_background(
         vehicle_id,
         "--timeout-s",
         str(timeout_s),
-        "--interval-s",
-        str(interval_s),
         "--num-decisions",
         str(configuration.num_decisions),
         "--foreground",
@@ -1028,7 +1019,6 @@ def restart_vehicle_automation(
     *,
     vehicle_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    interval_s: float = DEFAULT_INTERVAL_S,
     num_decisions: int = 0,
     unbounded: bool = False,
     take_control: bool = True,
@@ -1039,8 +1029,9 @@ def restart_vehicle_automation(
     wait_s: float = 3.0,
 ) -> CommandResult:
     try:
-        _run_configuration(take_control=take_control, interval_s=interval_s,
-                           num_decisions=num_decisions, unbounded=unbounded)
+        _run_configuration(
+            take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
+        )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
     bundle = bundle_paths(vehicle_id)
@@ -1063,7 +1054,6 @@ def restart_vehicle_automation(
     start_result = start_vehicle_automation_background(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
-        interval_s=interval_s,
         num_decisions=num_decisions,
         unbounded=unbounded,
         take_control=take_control,
@@ -1250,9 +1240,7 @@ def _collect_automation_status(
                     "pipeline": state.get("pipeline"),
                     "frames_captured": state.get("frames_captured", 0),
                     "processed_count": state.get("processed_count", 0),
-                    "skipped_count": state.get("skipped_count", 0),
                     "num_decisions": state.get("num_decisions"),
-                    "interval_s": state.get("interval_s"),
                     "recording": state.get("recording"),
                     "pid": state.get("pid"),
                     "control_source": state.get("control_source"),
@@ -1453,8 +1441,6 @@ def _run_label(state: dict[str, Any]) -> str:
         "id": state["run_id"],
         "captured": state.get("frames_captured") or 0,
         "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
-        "skipped": state.get("skipped_count") or 0,
-        "capture_interval_s": state.get("interval_s"),
         "recording": state.get("recording"),
         "control": state.get("control_source"),
         "action": state.get("action_policy"),

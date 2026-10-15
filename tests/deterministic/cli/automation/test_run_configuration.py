@@ -5,6 +5,7 @@ import io
 import unittest
 from unittest.mock import patch
 
+from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.app import main
 from cli.automa_cli.automation import CommandResult, _run_configuration
 
@@ -15,7 +16,7 @@ class RunConfigurationTests(unittest.TestCase):
             for count in (0, 3):
                 with self.subTest(take_control=take_control, count=count):
                     configuration = _run_configuration(
-                        take_control=take_control, interval_s=.25,
+                        take_control=take_control,
                         num_decisions=count, unbounded=True,
                     )
                     self.assertEqual(configuration.num_decisions, 0)
@@ -25,20 +26,20 @@ class RunConfigurationTests(unittest.TestCase):
                 self.subTest(take_control=take_control, count=-1),
                 self.assertRaisesRegex(ValueError, "nonnegative"),
             ):
-                _run_configuration(take_control=take_control, interval_s=.25,
+                _run_configuration(take_control=take_control,
                                    num_decisions=-1, unbounded=True)
 
     def test_bounded_defaults_and_observation_zero_remain_unchanged(self):
         for take_control in (True, False):
-            configuration = _run_configuration(take_control=take_control, interval_s=.25, num_decisions=3)
+            configuration = _run_configuration(take_control=take_control, num_decisions=3)
             self.assertEqual(configuration.num_decisions, 3)
         with self.assertRaisesRegex(ValueError, "use --unbounded"):
-            _run_configuration(take_control=True, interval_s=.25, num_decisions=0)
-        self.assertEqual(_run_configuration(take_control=False, interval_s=.25, num_decisions=0).num_decisions, 0)
+            _run_configuration(take_control=True, num_decisions=0)
+        self.assertEqual(_run_configuration(take_control=False, num_decisions=0).num_decisions, 0)
         with self.assertRaises(ValueError):
-            _run_configuration(take_control=True, interval_s=.25, num_decisions=-1)
-        with self.assertRaises(ValueError):
-            _run_configuration(take_control=True, interval_s=-1, num_decisions=3, unbounded=True)
+            _run_configuration(take_control=True, num_decisions=-1)
+        with self.assertRaises(TypeError):
+            RunConfiguration(interval_s=0.25, num_decisions=3)
 
     def test_cli_dispatches_opt_in_to_foreground_background_and_restart(self):
         for verb, extra, target in (

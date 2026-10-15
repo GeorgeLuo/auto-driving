@@ -1,19 +1,19 @@
 """Donkey part that feeds camera memory to the shared frame loop.
 
-The loop (``autonomy.runtime.frame_loop``) owns capture cadence, the decision
-worker, publications, and the applied identity. This part translates Donkey's
-drive-mode vocabulary, hands the car back to the operator when a run ends,
-and passes completed source frames to the DriveMode telemetry observer.
+The loop (``autonomy.runtime.frame_loop``) owns when a capture is due, the
+decision worker, publications, and the applied identity. This part translates
+Donkey's drive-mode vocabulary, hands the car back to the operator when a run
+ends, and passes completed source frames to the DriveMode telemetry observer.
 """
 from __future__ import annotations
 
 import secrets
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.frame_loop import FrameLoop, detach_image
-from autonomy.runtime.session import DEFAULT_INTERVAL_S, RunConfiguration
+from autonomy.runtime.session import RunConfiguration
 from .control import drive_mode, execution_mode
 
 
@@ -28,8 +28,6 @@ class AutonomyPilotPart(FrameLoop):
         self,
         *,
         host: AutonomyCycleHost,
-        interval_s: float = DEFAULT_INTERVAL_S,
-        monotonic: Callable[[], float] | None = None,
         presets: dict[str, str] | None = None,
         vehicle_id: str | None = None,
         source_id: str | None = None,
@@ -48,7 +46,7 @@ class AutonomyPilotPart(FrameLoop):
         # observing the actual user/pilot/selected values.
         self.host_telemetry = host_telemetry
         super().__init__(
-            host=host, interval_s=interval_s, monotonic=monotonic, presets=presets,
+            host=host, presets=presets,
             vehicle_id=vehicle_id, source_id=source_id,
             decision_activations=decision_activations, generation_id=generation_id,
             run_id=run_id or f"donkey-run-{secrets.token_hex(12)}",
@@ -72,7 +70,7 @@ class AutonomyPilotPart(FrameLoop):
             with self._lock:
                 self._discard_pending_locked()
             if mode_name == "autonomy":
-                self.host.start(RunConfiguration(interval_s=self.interval_s))
+                self.host.start(RunConfiguration())
             else:
                 self.host.stop()
         elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
@@ -120,8 +118,8 @@ class AutonomyPilotPart(FrameLoop):
 
         This is a bounded in-process identity handoff. The source frame is
         copied from the runtime-owned latest observation state and is never
-        created by the DriveMode observer. A held cadence tick therefore
-        repeats the same source identity instead of becoming a new frame.
+        created by the DriveMode observer. A tick that is not due repeats the
+        same source identity instead of becoming a new frame.
         """
 
         setter = getattr(self.host_telemetry, "set_source_frame", None)

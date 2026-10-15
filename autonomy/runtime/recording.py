@@ -286,7 +286,6 @@ def cycle_frame(result: DecisionCycleResult, *, vehicle_id: str, run_id: str) ->
         "perception_completed_at_ms": result.completed_at_ms,
         "perception_duration_ms": result.duration_ms,
         "cycle_duration_ms": result.duration_ms,
-        "skipped_since_previous": context.metadata.get("skipped_since_previous"),
         "generation_id": generation, "step_activations": steps,
         "context": context.to_dict(), "sensor_frame": context.sensor_frame.to_dict(),
         "perception": result.perception.to_dict() if result.perception else None,

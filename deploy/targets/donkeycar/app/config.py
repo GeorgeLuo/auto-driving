@@ -758,13 +758,10 @@ AI_THROTTLE_MULT = 1.0              # this multiplier will scale every throttle 
 
 # Generic Python autonomy runtime. This loads a standard engine that emits
 # pilot/angle and pilot/throttle; Donkey's user/local_angle/local mode still
-# decides whether those outputs control the car.
+# decides whether those outputs control the car. The autonomy part captures
+# when the decision worker is free. Manual user mode still owns movement;
+# the part emits zero pilot outputs while mode is user.
 AUTONOMY_ENABLED = True
-# Default capture cadence until a run supplies --interval-s. The autonomy part
-# samples camera memory at this cadence; decisions immediately consume the
-# newest pending capture. Manual user mode still owns
-# movement; the part emits zero pilot outputs while mode is user.
-AUTONOMY_CAPTURE_INTERVAL_S = 0.25
 
 #Path following
 PATH_FILENAME = "donkey_path.pkl"   # the path will be saved to this filename

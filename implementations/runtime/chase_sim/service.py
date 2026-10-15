@@ -129,7 +129,7 @@ class ChaseFrameLoop(FrameLoop):
             )
 
     def serve_captures(self, stop: threading.Event) -> None:
-        """Capture at the session cadence; a failed capture ends the session with its error."""
+        """Capture when the loop is due; a failed capture ends the session with its error."""
 
         while not stop.is_set():
             if self.host.run_state != "running" or not self.due():

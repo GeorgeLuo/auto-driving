@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, TextIO
@@ -34,17 +35,20 @@ from .staged_bundle import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1
+# The decision copy stays off the recording export. A batch can take longer
+# than the decision stays fresh, so the copy cannot wait for that read.
+DECISION_COPY_INTERVAL_S = 0.05
 
 
-def _observation_counts(host: dict[str, Any]) -> tuple[int, int]:
-    """The host's cumulative camera and skipped frame counters."""
+def _frames_captured(host: dict[str, Any]) -> int:
+    """The host's cumulative camera capture counter."""
 
     components = host.get("components") if isinstance(host.get("components"), dict) else {}
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    counts = tuple(observation.get(key) for key in ("frames_captured", "skipped_count"))
-    if any(type(count) is not int or count < 0 for count in counts):
-        raise RuntimeError("The runtime host does not report capture and skipped-frame counters; update core and autonomy.")
-    return counts
+    count = observation.get("frames_captured")
+    if type(count) is not int or count < 0:
+        raise RuntimeError("The runtime host does not report a capture counter; update core and autonomy.")
+    return count
 
 
 def _host_status(client: RuntimeClient) -> dict[str, Any]:
@@ -52,6 +56,40 @@ def _host_status(client: RuntimeClient) -> dict[str, Any]:
     if not isinstance(autonomy, dict):
         raise RuntimeError(f"{client.base_url} answers but reports no runtime host")
     return autonomy
+
+
+def _copy_latest_decision(
+    decision_view: DecisionViewAdapter,
+    server: RuntimeViewServer,
+    stop: threading.Event,
+    copied: dict[str, tuple[bool, str] | None],
+) -> None:
+    """Publish the host's latest decision until the run loop asks it to stop.
+
+    This thread never reads the recording. The poll can spend a long time on
+    one export batch without pushing the copied decision past its fresh window.
+    """
+
+    while not stop.is_set():
+        try:
+            published = decision_view.refresh()
+            reason = "decision_view_exact_transaction_unavailable"
+        except Exception as exc:  # noqa: BLE001 - publication is observational
+            # Publication availability never grants or revokes authority.
+            server.decision.invalidate_latest()
+            published, reason = False, f"{type(exc).__name__}: {exc}"
+        copied["result"] = (published, reason)
+        stop.wait(DECISION_COPY_INTERVAL_S)
+
+
+def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) -> None:
+    """Stop the decision copy before the view server is torn down."""
+
+    if copier is None:
+        return
+    stop.set()
+    # refresh() retries a skewed publication for at most a second.
+    copier.join(timeout=1.0)
 
 
 def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
@@ -66,6 +104,9 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
     server = None
     run_dir = None
     recording_id = None
+    copier = None
+    stop_copy = threading.Event()
+    copied: dict[str, tuple[bool, str] | None] = {"result": None}
     state = new_run_state(
         vehicle_id=vehicle_id, run_id=None, status="starting", pid=os.getpid(),
         configuration=configuration, record=record,
@@ -77,7 +118,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
     state.update(selections=selections, decision=decision)
     try:
         host = _host_status(client)
-        capture_base, skipped_base = _observation_counts(host)
+        capture_base = _frames_captured(host)
         record_host_status(state, host)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
@@ -104,6 +145,14 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         for line in startup_lines(state):
             if output is not None:
                 print(line, file=output, flush=True)
+        worker = threading.Thread(
+            target=_copy_latest_decision,
+            args=(decision_view, server, stop_copy, copied),
+            name="automa-decision-copy",
+            daemon=True,
+        )
+        worker.start()
+        copier = worker
         last_capture = None
         frames_seen = 0
         while True:
@@ -112,21 +161,19 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                 raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
             host = _host_status(client)
-            capture_count, skipped_count = _observation_counts(host)
             state.update(
                 session=session, execution=session["execution"],
                 processed_count=session["processed_decisions"],
-                frames_captured=max(0, capture_count - capture_base),
-                skipped_count=max(0, skipped_count - skipped_base),
+                frames_captured=max(0, _frames_captured(host) - capture_base),
             )
             record_host_status(state, host)
-            _sync_recording(client, state, run_dir=run_dir, recording_id=recording_id)
             # A terminal session is drained before manual observations can replace
             # its final decision in the live latest-only publication.
             if run_dir is not None and session["status"] != "running":
                 break
             # The host captures at its own cadence; the monitor never executes
-            # a decision or chooses a vehicle command.
+            # a decision or chooses a vehicle command. The decision copy runs
+            # beside this poll, which exports one recording batch per pass.
             publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
             frame = publication_to_frame_record(publication)
             frame_id = frame.get("frame_id")
@@ -141,18 +188,13 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                         control_source=state["control_source"],
                         control_application=state["control_application"],
                     )
-                    try:
-                        published = decision_view.refresh()
-                        reason = "decision_view_exact_transaction_unavailable"
-                    except Exception as exc:  # noqa: BLE001 - publication is observational
-                        # Publication availability never grants or revokes authority.
-                        server.decision.invalidate_latest()
-                        published, reason = False, f"{type(exc).__name__}: {exc}"
-                    if not published and state["decision"]["published"]:
+                    result = copied["result"]
+                    if result is not None and not result[0] and state["decision"]["published"]:
                         state["decision"]["latest_frame_publish_skips"] += 1
-                        state["decision"]["latest_frame_publish_skip_reason"] = reason
-                    # The decision view also publishes its frame; this run's own
-                    # perception frame publishes last, as the latest one.
+                        state["decision"]["latest_frame_publish_skip_reason"] = result[1]
+                    # The decision copy publishes the matched decision image on
+                    # its own thread. This perception frame is the observation
+                    # the run record keeps.
                     frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
                     frame_path.write_bytes(jpeg)
                     server.perception.publish_frame(frame_path=frame_path, frame_record=frame)
@@ -188,18 +230,20 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                         "things": things,
                         "signals": signals,
                         "control": frame.get("control"),
-                        "skipped_since_previous": frame.get("skipped_since_previous"),
                         "generation_id": frame.get("generation_id"),
                     }
                     last_capture = capture
                     frames_seen += 1
                     if output is not None and reports_frame(frames_seen, verbose=verbose):
                         action = (frame.get("control") or {}).get("reason")
-                        line = frame_line(
-                            frame_id, signals=signals, things=things, action=action,
-                            skipped_since_previous=frame.get("skipped_since_previous"),
-                        )
+                        line = frame_line(frame_id, signals=signals, things=things, action=action)
                         print(line, file=output, flush=True)
+            # One batch keeps the export near the capture rate. The stop path
+            # drains whatever remains, and the decision copy does not wait here.
+            if run_dir is not None:
+                _sync_recording(
+                    client, state, run_dir=run_dir, recording_id=recording_id, max_batches=1,
+                )
             state["published_view"] = server.health_payload()
             if last_capture is not None:
                 state["readiness"] = frame_readiness(perception_view_ready(state["published_view"]))
@@ -210,6 +254,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
             time.sleep(MONITOR_POLL_INTERVAL_S)
     except KeyboardInterrupt:
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
+        _join_decision_copy(copier, stop_copy)
         if stop_error is None:
             finish_run(state, server, status="stopped", stop_reason="keyboard_interrupt")
         else:
@@ -217,12 +262,14 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
+        _join_decision_copy(copier, stop_copy)
         finish_run(state, server, status="error",
                    error=error if stop_error is None else f"{error}; {stop_error}")
     else:
         # The host ended the run: its stop reason is how the run ended.
         reason = session["status"]
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
+        _join_decision_copy(copier, stop_copy)
         if reason == "error":
             finish_run(state, server, status="error", stop_reason=reason,
                        error=host.get("last_error") or "the runtime cycle failed")
@@ -236,10 +283,18 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
 
 
 def _sync_recording(client: RuntimeClient, state: dict[str, Any], *,
-                    run_dir: Path | None, recording_id: str | None) -> None:
+                    run_dir: Path | None, recording_id: str | None,
+                    max_batches: int | None = None) -> None:
+    """Copy committed cycles out of the host.
+
+    ``max_batches`` lets a poll export one batch and write the run state.
+    The stop path omits it and drains whatever the polls have not copied.
+    """
+
     if run_dir is None:
         return
-    while True:
+    batches = 0
+    while max_batches is None or batches < max_batches:
         batch = client.read_recording(recording_id, after=state["recorded_count"])
         if batch["run_id"] != recording_id or batch["after"] != state["recorded_count"]:
             raise RuntimeError("the host recording identity or cursor changed")
@@ -255,6 +310,7 @@ def _sync_recording(client: RuntimeClient, state: dict[str, Any], *,
                 item["image_extension"], sources,
             )
             state["recorded_count"] += 1
+        batches += 1
         if state["recorded_count"] == batch["recorded_count"]:
             return
         if not batch["frames"]:

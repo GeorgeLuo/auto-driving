@@ -61,9 +61,7 @@ def new_run_state(
         "updated_at_ms": started_at_ms,
         "frames_captured": 0,
         "processed_count": 0,
-        "skipped_count": 0,
         "num_decisions": configuration.num_decisions,
-        "interval_s": configuration.interval_s,
         "pipeline": "latest_frame_async_decision",
         "control_source": control_source,
         "action_policy": configuration.mode,
@@ -216,14 +214,8 @@ def reports_frame(count: int, *, verbose: bool) -> bool:
     return verbose or count == 1 or count % 10 == 0
 
 
-def frame_line(
-    frame_id: str, *, signals: int, things: int, action: Any,
-    skipped_since_previous: int | None = None,
-) -> str:
-    line = f"{frame_id}: signals={signals} things={things} action={action}"
-    if skipped_since_previous:
-        line += f" skipped_since_previous={skipped_since_previous}"
-    return line
+def frame_line(frame_id: str, *, signals: int, things: int, action: Any) -> str:
+    return f"{frame_id}: signals={signals} things={things} action={action}"
 
 
 def stop_view(view_server: RuntimeViewServer | None) -> dict[str, Any]:
@@ -300,7 +292,6 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
                 f"Automation completed: {vehicle_id}",
                 f"Frames captured: {state['frames_captured']}",
                 f"Decisions completed: {state['processed_count']}",
-                f"Frames superseded before decision: {state['skipped_count']}",
                 f"Control source: {state['control_source']}",
                 f"Action policy: {state['action_policy']}",
                 f"Recording: {'on' if state['recording'] else 'off'}",

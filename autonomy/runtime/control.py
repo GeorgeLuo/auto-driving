@@ -12,14 +12,17 @@ class AutonomyControl:
 
     steering: float = 0.0
     throttle: float = 0.0
-    confidence: float = 0.0
+    confidence: float | None = None
     reason: str = "idle"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "steering", clamp_unit(self.steering))
         object.__setattr__(self, "throttle", clamp_unit(self.throttle))
-        object.__setattr__(self, "confidence", max(0.0, clamp_unit(self.confidence)))
+        confidence = self.confidence
+        if confidence is not None:
+            confidence = max(0.0, clamp_unit(confidence))
+        object.__setattr__(self, "confidence", confidence)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

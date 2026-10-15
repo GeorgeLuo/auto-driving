@@ -48,7 +48,7 @@ class PerceivedThing:
     kind: str
     label: str
     location: ViewLocation
-    confidence: float
+    confidence: float | None = None
     properties: dict[str, Any] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
@@ -71,7 +71,7 @@ class PerceivedThing:
             kind=str(data.get("kind") or "unknown"),
             label=str(data.get("label") or "unknown"),
             location=ViewLocation.from_dict(location),
-            confidence=float(data.get("confidence") or 0.0),
+            confidence=_confidence_from_mapping(data),
             properties=deepcopy(dict(data.get("properties") or {})),
             source_plugin_id=(
                 str(data["source_plugin_id"])
@@ -87,7 +87,7 @@ class PerceptionSignal:
 
     signal_id: str
     value: bool | int | float | str | None
-    confidence: float = 1.0
+    confidence: float | None = None
     properties: dict[str, Any] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
@@ -107,7 +107,7 @@ class PerceptionSignal:
         return cls(
             signal_id=str(data.get("signal_id") or "unknown"),
             value=data.get("value"),
-            confidence=float(data.get("confidence") or 0.0),
+            confidence=_confidence_from_mapping(data),
             properties=deepcopy(dict(data.get("properties") or {})),
             source_plugin_id=(
                 str(data["source_plugin_id"])
@@ -149,7 +149,17 @@ def _finite_float(value: Any, *, field_name: str) -> float:
     return normalized
 
 
-def _normalized_confidence(value: Any, *, record_name: str) -> float:
+def _confidence_from_mapping(data: dict[str, Any]) -> Any:
+    """Missing and JSON null are an absent score. ``0`` stays zero."""
+
+    if "confidence" not in data or data["confidence"] is None:
+        return None
+    return data["confidence"]
+
+
+def _normalized_confidence(value: Any, *, record_name: str) -> float | None:
+    if value is None:
+        return None
     confidence = _finite_float(value, field_name=f"{record_name} confidence")
     return max(0.0, min(1.0, confidence))
 

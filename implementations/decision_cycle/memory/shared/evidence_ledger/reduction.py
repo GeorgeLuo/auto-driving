@@ -227,7 +227,10 @@ class BoundedEvidenceReducer:
                 if not isinstance(candidate, dict):
                     self._report_drop(f"<{kind}>", "invalid_candidate", "not_admitted")
                     continue
-                confidence = float(candidate.get("confidence") or 0.0)
+                raw_confidence = candidate.get("confidence")
+                if raw_confidence is None:
+                    continue
+                confidence = float(raw_confidence)
                 if confidence < self.min_confidence:
                     continue
                 observed_id = str(candidate.get(f"{kind}_id") or "").strip()

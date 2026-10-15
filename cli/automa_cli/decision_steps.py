@@ -327,6 +327,12 @@ def format_step_timing(step: str, timing: dict[str, Any] | None) -> str:
     )
 
 
+def _confidence_text(value: Any) -> str:
+    if value is None:
+        return "none"
+    return str(value)
+
+
 def _ms(value: Any) -> str:
     return f"{value:.3f} ms" if isinstance(value, (int, float)) else "-"
 
@@ -353,7 +359,7 @@ def _proposal_lines(record: dict[str, Any]) -> list[str]:
     ]
     lines.extend(
         f"Retained: record_id={item['record_id']} kind={item['kind']} "
-        f"confidence={item['confidence']} frame_id={item['frame_id']}"
+        f"confidence={_confidence_text(item['confidence'])} frame_id={item['frame_id']}"
         for item in memory["records"]
     )
     lines.extend(_candidate_lines(record.get("candidates"), selected=None))
@@ -393,7 +399,7 @@ def _candidate_lines(candidates: Any, *, selected: str | None) -> list[str]:
         ("* " if selected is not None and item.get("proposal_id") == selected else "- ")
         + f"plugin={item.get('plugin_id')} proposal={item.get('proposal_id')} "
         f"lifecycle={item.get('lifecycle')} freshness={item.get('freshness')} "
-        f"confidence={item.get('confidence')} reason={item.get('reason')} "
+        f"confidence={_confidence_text(item.get('confidence'))} reason={item.get('reason')} "
         f"command={json.dumps(_command(item.get('command')), sort_keys=True)}"
         for item in candidates
     ]

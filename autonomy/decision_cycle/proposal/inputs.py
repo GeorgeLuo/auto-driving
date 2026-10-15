@@ -156,6 +156,14 @@ def _require_exact_json_number(value: object, *, field_name: str) -> float:
     )
 
 
+def _optional_unit_confidence(value: object, *, field_name: str) -> float | None:
+    """A prior host command may omit its score. A supplied score stays in ``[0, 1]``."""
+
+    if value is None:
+        return None
+    return _require_exact_unit_float(value, field_name=field_name)
+
+
 def _require_exact_unit_float(value: object, *, field_name: str) -> float:
     number = _require_exact_json_number(value, field_name=field_name)
     if not (0.0 <= number <= 1.0):
@@ -221,7 +229,7 @@ def _canonical_prior_host_payload(value: object, *, path: str) -> object:
         "throttle": _require_exact_json_number(
             payload["throttle"], field_name=f"{path}.throttle"
         ),
-        "confidence": _require_exact_json_number(
+        "confidence": _optional_unit_confidence(
             payload["confidence"], field_name=f"{path}.confidence"
         ),
         "reason": payload["reason"],
@@ -498,7 +506,10 @@ class DecisionDataSource:
         prior = plain["prior_host_applied_command"]
         if prior["status"] == "ready":
             for field_name in ("steering", "throttle", "confidence"):
-                if type(prior["value"][field_name]) is not float:
+                serialized = prior["value"][field_name]
+                if field_name == "confidence" and serialized is None:
+                    continue
+                if type(serialized) is not float:
                     raise ValueError(
                         f"prior_host_applied_command.value.{field_name} "
                         "must serialize as float"

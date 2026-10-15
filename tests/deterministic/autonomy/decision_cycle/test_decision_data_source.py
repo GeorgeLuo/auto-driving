@@ -335,6 +335,43 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertIs(type(caps["max_abs_steering"]), float)
         self.assertIs(type(caps["max_abs_throttle"]), float)
 
+    def test_prior_host_command_confidence_may_be_null(self) -> None:
+        source = build_decision_data_source(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            prior_host_applied_command=ready_envelope(
+                {
+                    "steering": 0.1,
+                    "throttle": 0.0,
+                    "confidence": None,
+                    "reason": "user",
+                    "applied": True,
+                    "source": "host",
+                },
+                updated_at_ms=1,
+            ),
+        )
+        prior = source.to_dict()["prior_host_applied_command"]["value"]
+        self.assertIsNone(prior["confidence"])
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                prior_host_applied_command=ready_envelope(
+                    {
+                        "steering": 0.1,
+                        "throttle": 0.0,
+                        "confidence": 1.5,
+                        "reason": "user",
+                        "applied": True,
+                        "source": "host",
+                    },
+                    updated_at_ms=1,
+                ),
+            )
+
     def test_ready_observation_accepts_detached_dict(self) -> None:
         from autonomy.decision_cycle.observation.values import Observation
         from autonomy.decision_cycle.proposal.inputs import (

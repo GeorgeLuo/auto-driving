@@ -33,6 +33,14 @@ BASE_ASSUMPTIONS = (
 )
 
 
+def _confidence_sort_key(confidence: float | None) -> tuple[int, float]:
+    """Rank a missing score after every number. Negate only a real score."""
+
+    if confidence is None:
+        return (1, 0.0)
+    return (0, -confidence)
+
+
 def _bbox_mid_x(record: RetainedEvidence) -> float | None:
     location = record.location
     if location is None:
@@ -301,7 +309,7 @@ def propose(
     stale = [rec for cls, rec in usable if cls == "stale"]
 
     def pick(records: list[RetainedEvidence]) -> RetainedEvidence:
-        return sorted(records, key=lambda r: (-r.confidence, r.record_id))[0]
+        return sorted(records, key=lambda r: (*_confidence_sort_key(r.confidence), r.record_id))[0]
 
     # Fresh pool first if any fresh records exist — do not fall back to retained
     # when the fresh pool is only center-band (no usable lateral side).
@@ -320,7 +328,7 @@ def propose(
         # prefer the foreground cue before the stable record-id tie-break.
         ordered = sorted(
             active_pool,
-            key=lambda r: (-r.confidence, -_bbox_bottom(r), r.record_id),
+            key=lambda r: (*_confidence_sort_key(r.confidence), -_bbox_bottom(r), r.record_id),
         )
         primary = None
         side = None
@@ -333,7 +341,7 @@ def propose(
             # Active freshness class present but no lateral cue in that class.
             return _inactive(source, "no_lateral_obstruction_evidence")
 
-        if not math.isfinite(primary.confidence) or not (
+        if primary.confidence is None or not math.isfinite(primary.confidence) or not (
             0.0 <= primary.confidence <= 1.0
         ):
             return ActionProposal(
@@ -420,7 +428,7 @@ def propose(
     if stale:
         primary = pick(stale)
         conf = primary.confidence
-        if not math.isfinite(conf) or not (0.0 <= conf <= 1.0):
+        if conf is None or not math.isfinite(conf) or not (0.0 <= conf <= 1.0):
             conf = 0.0
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,

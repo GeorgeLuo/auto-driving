@@ -395,7 +395,8 @@ class MultiObstructionTracksPlugin:
             selected.append(thing)
         selected.sort(
             key=lambda thing: (
-                float(thing.confidence),
+                thing.confidence is not None,
+                0.0 if thing.confidence is None else float(thing.confidence),
                 float(thing.properties.get("area_fraction", 0.0)),
             ),
             reverse=True,
@@ -495,10 +496,13 @@ def _proposals_related(
     return horizontal_overlap >= 0.35 and vertical_gap <= gap
 
 
-def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float:
+def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float | None:
     if not things:
         return 0.0
-    return float(sum(thing.confidence for thing in things) / len(things))
+    scored = [thing.confidence for thing in things if thing.confidence is not None]
+    if not scored:
+        return None
+    return float(sum(scored) / len(scored))
 
 
 def _odd_kernel(value: int) -> int:

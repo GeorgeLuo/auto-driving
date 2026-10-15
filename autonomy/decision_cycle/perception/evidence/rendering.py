@@ -11,7 +11,7 @@ def signal_line(signal: PerceptionSignal) -> str:
     source = f" plugin={signal.source_plugin_id}" if signal.source_plugin_id else ""
     return (
         f"signal id={signal.signal_id}{source} value={_value_text(signal.value)} "
-        f"confidence={signal.confidence:.3f}{suffix}"
+        f"confidence={_confidence_text(signal.confidence)}{suffix}"
     )
 
 
@@ -24,8 +24,14 @@ def thing_line(thing: PerceivedThing) -> str:
     return (
         f"thing id={thing.thing_id}{source} kind={thing.kind} "
         f"zone={thing.location.zone} frame={thing.location.frame} "
-        f"bbox_xyxy_norm={bbox_text} confidence={thing.confidence:.3f}{suffix}"
+        f"bbox_xyxy_norm={bbox_text} confidence={_confidence_text(thing.confidence)}{suffix}"
     )
+
+
+def _confidence_text(value: float | None) -> str:
+    if value is None:
+        return "none"
+    return f"{value:.3f}"
 
 
 def _property_text(properties: dict[str, Any]) -> str:

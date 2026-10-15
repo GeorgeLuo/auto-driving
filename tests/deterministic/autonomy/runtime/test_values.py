@@ -29,6 +29,8 @@ class AutonomyControlTests(unittest.TestCase):
             (low.steering, low.throttle, low.confidence),
             (-1.0, -1.0, 0.0),
         )
+        self.assertIsNone(AutonomyControl().confidence)
+        self.assertEqual(AutonomyControl(confidence=0.0).confidence, 0.0)
 
     def test_control_rejects_non_finite_output_values(self) -> None:
         for field_name in ("steering", "throttle", "confidence"):

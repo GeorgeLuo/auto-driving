@@ -81,8 +81,8 @@ class RetainedEvidence:
     record_id: str
     kind: str
     label: str
-    confidence: float
     origin: MemoryOrigin
+    confidence: float | None = None
     location: ViewLocation | None = None
     properties: dict[str, Any] = field(default_factory=dict)
 
@@ -127,7 +127,7 @@ class RetainedEvidence:
             record_id=str(data.get("record_id") or ""),
             kind=str(data.get("kind") or ""),
             label=str(data.get("label") or ""),
-            confidence=float(data.get("confidence") or 0.0),
+            confidence=_confidence_from_mapping(data),
             origin=MemoryOrigin.from_dict(origin_data),
             location=location,
             properties=deepcopy(dict(data.get("properties") or {})),
@@ -150,7 +150,15 @@ def _require_non_negative_int(value: Any, *, field_name: str) -> int:
     return normalized
 
 
-def _normalized_confidence(value: Any) -> float:
+def _confidence_from_mapping(data: dict[str, Any]) -> Any:
+    if "confidence" not in data or data["confidence"] is None:
+        return None
+    return data["confidence"]
+
+
+def _normalized_confidence(value: Any) -> float | None:
+    if value is None:
+        return None
     try:
         confidence = float(value)
     except (TypeError, ValueError) as exc:

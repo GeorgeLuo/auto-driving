@@ -98,6 +98,9 @@ PLAN_EXACT_KEYS = frozenset(
         "frame_id",
         "timestamp_ms",
         "status",
+        "command",
+        "reason",
+        "confidence",
         "selected_proposal_id",
         "contributions",
         "candidates",
@@ -531,6 +534,11 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
                 role=str(item["role"]),
             )
         )
+    command = (
+        None
+        if payload["command"] is None
+        else _strict_decode_command(payload["command"], field=f"{field}.command")
+    )
     try:
         plan = ActionPlan(
             frame_id=str(payload["frame_id"]),
@@ -539,6 +547,9 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
             candidates=candidates,
             selected_proposal_id=payload.get("selected_proposal_id"),
             contributions=tuple(contributions),
+            command=command,
+            reason=payload["reason"],
+            confidence=payload["confidence"],
             selector_id=str(payload["selector_id"]),
             metadata=dict(payload.get("metadata") or {}),
             plan_id=str(payload.get("plan_id") or ""),
@@ -881,7 +892,7 @@ def _require_aggregate_cycle_alignment(
     - the plan is over exactly the proposal step's candidates
     - plan/source timestamps agree when both present
     - report timing agrees with the cycle source when source construction succeeds
-    - authority.proposed is the selected plan command (or null for idle/error)
+    - authority.proposed is the plan command (or null for idle/error)
     """
 
     frame_id = cycle.frame_id
@@ -961,7 +972,7 @@ def _require_aggregate_cycle_alignment(
                     details={"field": field, "expected": expected, "got": frame.get(field)},
                 )
 
-    # authority.proposed must be the selected plan command (detached equal value).
+    # authority.proposed must be the plan command (detached equal value).
     proposed = cycle.authority.proposed
     if cycle.status == "error" or plan is None or plan.status == "idle":
         if proposed is not None:
@@ -972,41 +983,29 @@ def _require_aggregate_cycle_alignment(
             )
         return
 
-    selected = plan.selected_candidate()
-    if selected is None:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "selected plan is missing the selected candidate.",
-            details={"field": "cycle.plan.selected_proposal_id"},
-        )
-    selected_command = selected.command
-    if selected_command is None:
-        if proposed is not None:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "authority.proposed must be null when the selected candidate has no command.",
-                details={"field": "cycle.action.authority.proposed"},
-            )
-        return
+    # ActionPlan holds a selected plan's command equal to its candidate's, and
+    # a composed plan's own command, so both compare against plan.command.
+    expected_command = plan.command
+    mismatch = "authority.proposed must equal the plan command."
     if proposed is None:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "authority.proposed must equal the selected plan command.",
+            mismatch,
             details={"field": "cycle.action.authority.proposed"},
         )
     try:
         if canonical_json_utf8(_json_ready(proposed.to_dict())) != canonical_json_utf8(
-            _json_ready(selected_command.to_dict())
+            _json_ready(expected_command.to_dict())
         ):
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
-                "authority.proposed must equal the selected plan command.",
+                mismatch,
                 details={"field": "cycle.action.authority.proposed"},
             )
     except ValueError as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"authority.proposed/selected command are not strictly JSON-serializable: {exc}",
+            f"authority.proposed/plan command are not strictly JSON-serializable: {exc}",
             details={"field": "cycle.action.authority.proposed"},
         ) from exc
 

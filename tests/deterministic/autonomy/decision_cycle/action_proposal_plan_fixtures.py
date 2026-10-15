@@ -1,4 +1,5 @@
 from __future__ import annotations
+from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
@@ -27,3 +28,39 @@ def _active_proposal(
         ),
         available=True,
     )
+
+
+class WeightedMeanPlan:
+    """A composing plan plugin: the weighted mean of the active candidates' commands."""
+
+    plugin_id = "weighted_mean"
+
+    def __init__(self, weights: dict[str, float]) -> None:
+        self.weights = weights
+
+    def plan(self, candidates, source, shared_memory, *, frame_id, timestamp_ms):
+        del source, shared_memory
+        active = [item for item in candidates if item.is_active(frame_id)]
+        total = sum(self.weights[item.plugin_id] for item in active)
+        steering = sum(self.weights[item.plugin_id] * item.command.steering for item in active) / total
+        throttle = sum(self.weights[item.plugin_id] * item.command.throttle for item in active) / total
+        return ActionPlan(
+            frame_id=frame_id,
+            timestamp_ms=timestamp_ms,
+            status="composed",
+            candidates=tuple(candidates),
+            selector_id=self.plugin_id,
+            selected_proposal_id=None,
+            contributions=tuple(
+                PlanContribution(
+                    proposal_id=item.proposal_id,
+                    plugin_id=item.plugin_id,
+                    weight=self.weights[item.plugin_id],
+                    role="mix",
+                )
+                for item in active
+            ),
+            command=ProposedVehicleCommand(steering=steering, throttle=throttle, gear="hold"),
+            reason="weighted_mean",
+            confidence=None,
+        )

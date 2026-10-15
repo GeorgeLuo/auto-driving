@@ -1,13 +1,15 @@
 """Mode-gated action plugin.
 
-``ModeAction`` applies the plan's selected command when the cycle planned and
-the drive mode is in ``LIVE_MODES``; otherwise it authorizes idle control with
+``ModeAction`` applies the plan's command when the cycle planned and the
+drive mode is in ``LIVE_MODES``; otherwise it authorizes idle control with
 the reason. The action record describes authorization; shared execution reports delivery.
 """
 
 from __future__ import annotations
 
-from autonomy.decision_cycle.action.values import ActionDecision
+from typing import Any
+
+from autonomy.decision_cycle.action.values import ActionDecision, plan_control_metadata
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.runtime.control import AutonomyControl
 
@@ -15,7 +17,7 @@ LIVE_MODES = frozenset({"autonomy", "local"})
 
 
 class ModeAction:
-    """Apply the selected command in a live drive mode; otherwise hold idle."""
+    """Apply the plan's command in a live drive mode; otherwise hold idle."""
 
     plugin_id = "mode"
 
@@ -42,8 +44,7 @@ class ModeAction:
                     metadata={"mode": mode, "plugin_id": self.plugin_id},
                 )
             )
-        selected = plan.selected_candidate()
-        if selected is None or selected.command is None:
+        if plan.command is None:
             return ActionDecision(
                 AutonomyControl(
                     confidence=1.0,
@@ -51,19 +52,19 @@ class ModeAction:
                     metadata={"plugin_id": self.plugin_id},
                 )
             )
-        command = selected.command
+        command = plan.command
+        metadata: dict[str, Any] = {"plugin_id": self.plugin_id, **plan_control_metadata(plan)}
+        selected = plan.selected_candidate()
+        if selected is not None:
+            metadata["proposal_lifecycle"] = selected.lifecycle
+            metadata["proposal_freshness"] = selected.freshness
         return ActionDecision(
             AutonomyControl(
                 steering=command.steering,
                 throttle=command.throttle,
-                confidence=selected.confidence,
-                reason=selected.reason,
-                metadata={
-                    "plugin_id": self.plugin_id,
-                    "proposal_id": selected.proposal_id,
-                    "proposal_lifecycle": selected.lifecycle,
-                    "proposal_freshness": selected.freshness,
-                },
+                confidence=plan.confidence,
+                reason=plan.reason,
+                metadata=metadata,
             ),
             applied=True,
         )

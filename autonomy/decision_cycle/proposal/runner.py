@@ -44,7 +44,6 @@ from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
 from autonomy.decision_cycle.proposal.values import (
     ACTION_PROPOSAL_SCHEMA,
-    MAX_PROPOSAL_BYTES,
     ActionProposal,
     synthetic_error_proposal,
 )
@@ -55,7 +54,6 @@ from autonomy.decision_cycle.runner import (
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition
-from autonomy.serialization import canonical_json_size_bytes
 from autonomy.shared_memory import SharedMemory
 
 
@@ -88,15 +86,10 @@ def _admit_candidate(
             frame_id=frame_id,
             reason="plugin_invalid_return",
         )
-    # Re-validate lifecycle matrix + byte bounds and admit a reconstructed copy
-    # so post-construction mutation of nested storage cannot inflate candidates.
+    # Re-validate the lifecycle matrix and admit a reconstructed copy so
+    # post-construction mutation of nested storage cannot change the candidate.
     try:
         plain = returned.to_dict()
-        size = canonical_json_size_bytes(plain)
-        if size > MAX_PROPOSAL_BYTES:
-            raise ActionProposalMatrixError(
-                f"admitted proposal serializes to {size} bytes; max {MAX_PROPOSAL_BYTES}"
-            )
         validated = ActionProposal.from_dict(plain)
     except ActionProposalMatrixError:
         raise

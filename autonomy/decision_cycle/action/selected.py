@@ -1,7 +1,7 @@
-"""Default action: authorize the selected plan; runtime owns movement mode."""
+"""Default action: apply the plan's command; runtime owns movement mode."""
 from __future__ import annotations
 
-from autonomy.decision_cycle.action.values import ActionDecision
+from autonomy.decision_cycle.action.values import ActionDecision, plan_control_metadata
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.runtime.control import AutonomyControl
 
@@ -11,16 +11,15 @@ class SelectedAction:
 
     def decide(self, plan: ActionPlan | None, *, mode: str,
                error_reason: str | None = None) -> ActionDecision:
-        selected = plan.selected_candidate() if plan is not None else None
-        if selected is None or selected.command is None:
+        if plan is None or plan.command is None:
             return ActionDecision(AutonomyControl(reason=error_reason or "no-selected-command"))
         return ActionDecision(
             AutonomyControl(
-                steering=selected.command.steering,
-                throttle=selected.command.throttle,
-                confidence=selected.confidence,
-                reason=selected.reason,
-                metadata={"proposal_id": selected.proposal_id},
+                steering=plan.command.steering,
+                throttle=plan.command.throttle,
+                confidence=plan.confidence,
+                reason=plan.reason,
+                metadata=plan_control_metadata(plan),
             ),
             applied=True,
         )

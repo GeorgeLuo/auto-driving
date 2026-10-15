@@ -1,12 +1,10 @@
 """Plan plugin: select the most confident active candidate.
 
-A candidate is active when its lifecycle is fresh or retained and matches its
-freshness, it is available, it carries a command, and its proposal ID names
-this frame. The active candidate with the highest confidence is selected. A
-missing confidence ranks below every number. Equal confidence goes to the
-lower plugin ID. With no active candidate the plan is
-idle. ``HighestConfidencePlan`` records its plugin ID as the plan's
-``selector_id``.
+Of the candidates ``ActionProposal.is_active`` admits for this frame, the one
+with the highest confidence is selected. A missing confidence ranks below
+every number. Equal confidence goes to the lower plugin ID. With no active
+candidate the plan is idle. ``HighestConfidencePlan`` records its plugin ID
+as the plan's ``selector_id``.
 """
 
 from __future__ import annotations
@@ -15,7 +13,9 @@ from typing import Any
 
 from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
+from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.proposal.values import ActionProposal
+from autonomy.shared_memory import SharedMemory
 
 
 def select_highest_confidence_plan(
@@ -27,15 +27,7 @@ def select_highest_confidence_plan(
     metadata: dict[str, Any] | None = None,
 ) -> ActionPlan:
     candidates_list = list(candidates)
-    active = [
-        item
-        for item in candidates_list
-        if item.lifecycle in {"fresh", "retained"}
-        and item.freshness == item.lifecycle
-        and item.available
-        and item.command is not None
-        and item.proposal_id.endswith(f":{frame_id}")
-    ]
+    active = [item for item in candidates_list if item.is_active(frame_id)]
     plan_metadata: dict[str, Any] = {} if metadata is None else metadata
     if not active:
         return ActionPlan(
@@ -45,6 +37,9 @@ def select_highest_confidence_plan(
             candidates=tuple(candidates_list),
             selected_proposal_id=None,
             contributions=(),
+            command=None,
+            reason="",
+            confidence=None,
             selector_id=selector_id,
             metadata=plan_metadata,
         )
@@ -64,6 +59,9 @@ def select_highest_confidence_plan(
                 role="selected",
             ),
         ),
+        command=selected.command,
+        reason=selected.reason,
+        confidence=selected.confidence,
         selector_id=selector_id,
         metadata=plan_metadata,
     )
@@ -77,6 +75,8 @@ class HighestConfidencePlan:
     def plan(
         self,
         candidates: tuple[ActionProposal, ...],
+        source: DecisionDataSource | None,
+        shared_memory: SharedMemory,
         *,
         frame_id: str,
         timestamp_ms: int,

@@ -1,7 +1,9 @@
 # Plan
 
-Packaged plan plugins: code that selects one candidate from the proposal
-step. The framework that runs them lives in `autonomy/decision_cycle/plan/`.
+Packaged plan plugins: code that turns the proposal step's candidates into
+the one command the action step applies, by selecting a candidate or
+composing several. The framework that runs them lives in
+`autonomy/decision_cycle/plan/`.
 
 ## Layout
 

@@ -148,13 +148,9 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
     def _describe_schema(self) -> dict[str, Any]:
         """The step's contract: configuration, inputs, plugins, output, composition, failure."""
 
-        applied = self.applied
-        base = super()._describe_schema()
         return {
-            "schema": base["schema"],
+            **super()._describe_schema(),
             "plugin_id": self.plugin_id,
-            "runner": base["runner"],
-            "configuration": base["configuration"],
             "inputs": [
                 {
                     "name": "observation",
@@ -200,7 +196,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                     **describe_plugin(definition),
                     "evidence_key": _declared_evidence_key(plugin),
                 }
-                for definition, plugin in applied
+                for definition, plugin in self.applied
             ],
             "output": {
                 "schema": PROPOSAL_RESULT_SCHEMA,
@@ -227,8 +223,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                 "error_reasons": sorted(CYCLE_ERROR_REASONS),
             },
             "composition": composition_declaration(),
-            "failure_policy": base["failure_policy"],
-            "single_plugin": base["single_plugin"],
         }
 
     def __call__(

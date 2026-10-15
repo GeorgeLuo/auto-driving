@@ -79,7 +79,8 @@ def staged_step_info(
         runner = load_staged_runner(activation)
     except Exception as exc:  # noqa: BLE001 - staged plugins are third-party code
         return None, failure("load", exc)
-    # A runner whose describe_schema() returns nothing has no schema.
+    # Observation and action declare no schema, and a runner staged before
+    # its step declared one has no describe_schema().
     describe = getattr(runner, "describe_schema", None)
     try:
         schema = describe() if describe is not None else None

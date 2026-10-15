@@ -183,12 +183,9 @@ class PerceptionRunner(StepRunner[Any]):
             plugin_schemas.append(
                 {**describe_plugin(definition), "contract": contract.to_dict()}
             )
-        base = super()._describe_schema()
         return {
-            "schema": base["schema"],
+            **super()._describe_schema(),
             "plugin_id": self.plugin_id,
-            "runner": base["runner"],
-            "configuration": base["configuration"],
             "inputs": [
                 {
                     "feed_id": feed_id,
@@ -229,8 +226,6 @@ class PerceptionRunner(StepRunner[Any]):
                 ],
             },
             "composition": composition_declaration(),
-            "failure_policy": base["failure_policy"],
-            "single_plugin": base["single_plugin"],
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:

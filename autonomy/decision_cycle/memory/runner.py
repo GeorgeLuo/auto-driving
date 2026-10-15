@@ -292,12 +292,9 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     def _describe_schema(self) -> dict[str, Any]:
         """The step's contract: configuration, inputs, plugins, output, composition, failure."""
 
-        base = super()._describe_schema()
         return {
-            "schema": base["schema"],
+            **super()._describe_schema(),
             "plugin_id": self.plugin_id,
-            "runner": base["runner"],
-            "configuration": base["configuration"],
             "inputs": [
                 {
                     "name": "observation",
@@ -319,7 +316,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                     ),
                 },
             ],
-            "plugins": base["plugins"],
             "output": {
                 "schema": MEMORY_REPORT_SCHEMA,
                 "ledger_summary_keys": list(LEDGER_SUMMARY_KEYS),
@@ -332,8 +328,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 ),
             },
             "composition": composition_declaration(),
-            "failure_policy": base["failure_policy"],
-            "single_plugin": base["single_plugin"],
         }
 
     def report(self) -> dict[str, Any]:

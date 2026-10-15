@@ -568,9 +568,10 @@ the staged runner's `proposal_schema_v1` contract, and the plan and action
 plugins that act on them. `--json` returns `vehicle_proposal_info_v1` with that
 contract under `proposal_schema`, and the decision generation, each decision
 step's plugins and the action authority under `decision`; `vehicles info plan`
-and `vehicles info action` report the same for their step. Like memory info, it
-probes the running autonomy engine and reports its proposal step under `live`
-(`vehicle_proposal_live_v1`): the plugins it runs and its run and failure
+and `vehicles info action` report the same for their step, plan with its
+`plan_schema_v1` contract under `plan_schema` and action with none. Like memory
+info, it probes the running autonomy engine and reports its proposal step
+under `live` (`vehicle_proposal_live_v1`): the plugins it runs and its run and failure
 counts, from the runtime host's `/autonomy/status`. That is the engine's step, not the proposals any view last
 rendered. A worker loads the staged proposals from the controller bundle when
 it starts, as it loads memory, and reports them under `proposal` in its state

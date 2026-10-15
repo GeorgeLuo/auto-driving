@@ -20,11 +20,10 @@ wrote, for a host that clears its map at a reset to restore.
 
 Perception, memory, proposal, and plan declare what a plugin failure or a
 missing input does as one ``FailurePolicy``, ``FAILURE_POLICY`` in the step's
-``interface``. A step that describes its contract sets ``schema_name`` and,
-when it has one, ``failure_policy``. ``describe_schema`` reports ``schema``,
-``runner``, ``configuration``, ``plugins``, ``single_plugin``, and
-``failure_policy``. The step adds its inputs, output, and composition.
-``describe_configuration`` and ``describe_plugin`` build the shared entries.
+``interface``, and set it as ``failure_policy`` beside their ``schema_name``.
+``describe_schema`` reports those with the step's ``runner``,
+``configuration``, ``plugins``, and ``single_plugin``, and each step adds its
+inputs, output, and composition.
 
 Every step's runner is a ``StepRunner``. A step adds what its plugins need
 through the hooks ``StepRunner`` names, not by reimplementing the surface.
@@ -131,8 +130,9 @@ class StepRunner(Generic[PluginT]):
       and ``plugin_timing``.
     - ``status``: extend ``super().status()`` with the step's own fields.
     - ``schema_name`` and ``failure_policy``: the contract ``describe_schema``
-      reports. A step with no ``schema_name`` has no schema. Extend
-      ``_describe_schema`` with the step's inputs, output, and composition.
+      reports; a step with no ``schema_name`` has none.
+    - ``_describe_schema``: extend ``super()._describe_schema()`` with the
+      step's inputs, output, and composition.
 
     A subclass sets the state its hooks read before calling
     ``super().__init__``, which applies the manager's selection.
@@ -282,7 +282,7 @@ class StepRunner(Generic[PluginT]):
     def describe_schema(self) -> dict[str, Any] | None:
         """The step's contract, or None when the step declares no schema."""
 
-        if type(self).schema_name is None:
+        if self.schema_name is None:
             return None
         with self._runtime_lock:
             return self._describe_schema()
@@ -290,15 +290,14 @@ class StepRunner(Generic[PluginT]):
     def _describe_schema(self) -> dict[str, Any]:
         applied = self.applied
         described: dict[str, Any] = {
-            "schema": type(self).schema_name,
+            "schema": self.schema_name,
             "runner": f"{type(self).__module__}:{type(self).__name__}",
             "configuration": describe_configuration(self.plugin_manager, applied),
             "plugins": [describe_plugin(definition) for definition, _plugin in applied],
-            "single_plugin": type(self).single_plugin,
+            "single_plugin": self.single_plugin,
         }
-        policy = type(self).failure_policy
-        if policy is not None:
-            described["failure_policy"] = policy.to_dict()
+        if self.failure_policy is not None:
+            described["failure_policy"] = self.failure_policy.to_dict()
         return described
 
     # Reports ---------------------------------------------------------------

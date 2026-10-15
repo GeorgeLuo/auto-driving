@@ -7,6 +7,7 @@ from pathlib import Path
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.plugins import PluginDefinition
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.decision_cycle.catalog import packaged_activation
@@ -159,3 +160,10 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
             f"    revision = {revision}\n"
         )
     file.write_text(source)
+
+
+def prototype_definition(root: Path, step: str) -> PluginDefinition:
+    """Write ``step``'s ``prototype-<step>`` plugin under ``root`` and return its definition."""
+    file = root / f"{step}.py"
+    write_plugin(file, step, f"prototype-{step}", 1)
+    return PluginDefinition(step=step, plugin_id=f"prototype-{step}", entrypoint=f"{file}:Prototype")

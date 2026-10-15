@@ -9,11 +9,10 @@ from pathlib import Path
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.plugins import PluginDefinition
 from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE
 from autonomy.vehicle import SensorFrame
 from implementations.decision_cycle.catalog import packaged_activation
-from tests.shared.integration.plugin_flow_fixtures import write_plugin
+from tests.shared.integration.plugin_flow_fixtures import prototype_definition
 
 CALLS = {
     "perception": lambda runner, shared: runner.perceive(PerceptionRequest(SensorFrame(
@@ -40,28 +39,22 @@ class RunnerSelectionTests(unittest.TestCase):
         steps = decision_steps(
             {step: packaged_activation(step) for step in CALLS}, source=INSTALLED_PACKAGE
         )
-        with tempfile.TemporaryDirectory() as directory:
-            plan_file = Path(directory) / "plan.py"
-            write_plugin(plan_file, "plan", "prototype-plan", 1)
-            plan_definition = PluginDefinition(
-                step="plan", plugin_id="prototype-plan", entrypoint=f"{plan_file}:Prototype",
-            )
-            for step, call in CALLS.items():
-                with self.subTest(step=step):
-                    runner = getattr(steps, step)
-                    applied = runner.plugin_ids
-                    self.assertTrue(applied)
-                    shared: dict = {}
-                    if runner.single_plugin:
-                        runner.plugin_manager.select([plan_definition])
-                        published = ("prototype-plan",)
-                    else:
-                        runner.plugin_manager.select([])
-                        published = ()
-                    call(runner, shared)
-                    self.assertEqual(runner.plugin_ids, applied)
-                    runner.apply_selection(shared)
-                    self.assertEqual(runner.plugin_ids, published)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        for step, call in CALLS.items():
+            with self.subTest(step=step):
+                runner = getattr(steps, step)
+                applied = runner.plugin_ids
+                self.assertTrue(applied)
+                shared: dict = {}
+                # A one-plugin step cannot restage to nothing; it takes a prototype.
+                selection = [prototype_definition(root, step)] if runner.single_plugin else []
+                runner.plugin_manager.select(selection)
+                call(runner, shared)
+                self.assertEqual(runner.plugin_ids, applied)
+                runner.apply_selection(shared)
+                self.assertEqual(runner.plugin_ids, tuple(item.plugin_id for item in selection))
 
 
 if __name__ == "__main__":

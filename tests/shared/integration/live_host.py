@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import time
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
 
+from autonomy.decision_cycle.activation import write_step_activation
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.paths import ROOT
+from cli.automa_cli.step_activations import bundle_activation_path
 from cli.automa_cli.streaming import probe_live_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
@@ -30,25 +32,26 @@ def wait_until(predicate, *, timeout_s: float = 10.0, message: str):
 
 
 def stage_runtime(runtime_root: Path) -> None:
+    """Stage the steps that have no built-in.
+
+    The bundle is not an extracted release, so plan names the source tree that
+    `vehicles info plan` loads.
+    """
     bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
     _write_activations(bundle)
-    path = Path(bundle["memory_runtime_dir"]) / "active.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(packaged_activation("memory", ["bounded_evidence"]).to_payload()),
-        encoding="utf-8",
-    )
+    for activation in (
+        packaged_activation("memory", ["bounded_evidence"]),
+        packaged_activation("plan", metadata={"controller_bundle": {"root_dir": str(ROOT)}}),
+    ):
+        write_step_activation(bundle_activation_path(bundle, activation.step), activation)
 
 
 class LiveHostTestCase(unittest.TestCase):
-    def prepare_runtime(self) -> None:
-        stage_runtime(self.runtime_root)
-
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.runtime_root = Path(tmp.name) / "vehicles"
-        self.prepare_runtime()
+        stage_runtime(self.runtime_root)
         stack = ExitStack()
         self.addCleanup(stack.close)
         stack.enter_context(staged_runners())

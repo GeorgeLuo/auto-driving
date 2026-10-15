@@ -293,6 +293,15 @@ class ActionProposal:
                 f"schema must be {ACTION_PROPOSAL_SCHEMA!r}; got {self.schema!r}"
             )
 
+    def is_active(self, frame_id: str) -> bool:
+        """Whether a plan may act on this candidate in the cycle for ``frame_id``.
+
+        A fresh or retained candidate is available and carries a command; it
+        is active in the cycle it was proposed for.
+        """
+
+        return self.lifecycle in {"fresh", "retained"} and self.frame_id == frame_id
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,

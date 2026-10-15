@@ -2,9 +2,9 @@
 
 An action plugin receives the cycle's plan (or the error that prevented one)
 and the drive mode, and returns an ``ActionDecision``: the control to apply and
-whether it applies the selected command. ``AuthorityResult`` records the
-selected command, the control the action authorized, and whether that control
-is the selected command. ``gate_id`` is the deciding action plugin's ID.
+whether it applies the plan's command. ``AuthorityResult`` records the plan's
+command, the control the action authorized, and whether that control is the
+plan's command. ``gate_id`` is the deciding action plugin's ID.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
+from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope, unavailable_envelope
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.runtime.control import AutonomyControl
@@ -24,10 +25,21 @@ COMMAND_EPS = 1e-9
 
 @dataclass(frozen=True)
 class ActionDecision:
-    """Control chosen by an action plugin, and whether it applies the selected command."""
+    """Control chosen by an action plugin, and whether it applies the plan's command."""
 
     control: AutonomyControl
     applied: bool = False
+
+
+def plan_control_metadata(plan: ActionPlan) -> dict[str, Any]:
+    """The proposals behind an applied plan: every contribution, and the selected one."""
+
+    metadata: dict[str, Any] = {
+        "proposal_ids": [item.proposal_id for item in plan.contributions],
+    }
+    if plan.selected_proposal_id is not None:
+        metadata["proposal_id"] = plan.selected_proposal_id
+    return metadata
 
 
 def control_output(control: AutonomyControl) -> dict[str, Any]:

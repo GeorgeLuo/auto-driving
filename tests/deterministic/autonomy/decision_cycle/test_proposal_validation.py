@@ -73,7 +73,12 @@ class RunnerBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(result.status, "ok")
         self.assertIsNotNone(result.plan)
-        self.assertNotEqual(result.reason, "action_proposal_matrix_violated")
+        (admitted,) = [
+            candidate
+            for candidate in result.plan.candidates
+            if candidate.plugin_id == "avoid_recent_obstruction"
+        ]
+        self.assertEqual(admitted.metadata["pad"], "x" * 5000)
 
     def test_select_action_plan_failure_is_plan_invariant(self) -> None:
         from unittest.mock import patch

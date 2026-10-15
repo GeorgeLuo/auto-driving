@@ -1,7 +1,7 @@
 """Mode-gated action plugin.
 
-``ModeAction`` applies the plan's selected command when the cycle planned and
-the drive mode is in ``LIVE_MODES``; otherwise it authorizes idle control with
+``ModeAction`` applies the plan's command when the cycle planned and the
+drive mode is in ``LIVE_MODES``; otherwise it authorizes idle control with
 the reason. The action record describes authorization; shared execution reports delivery.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from autonomy.decision_cycle.action.values import ActionDecision
+from autonomy.decision_cycle.action.values import ActionDecision, plan_control_metadata
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.runtime.control import AutonomyControl
 
@@ -17,7 +17,7 @@ LIVE_MODES = frozenset({"autonomy", "local"})
 
 
 class ModeAction:
-    """Apply the selected command in a live drive mode; otherwise hold idle."""
+    """Apply the plan's command in a live drive mode; otherwise hold idle."""
 
     plugin_id = "mode"
 
@@ -53,16 +53,11 @@ class ModeAction:
                 )
             )
         command = plan.command
-        metadata: dict[str, Any] = {
-            "plugin_id": self.plugin_id,
-            "proposal_ids": [item.proposal_id for item in plan.contributions],
-        }
-        if plan.status == "selected":
-            selected = plan.selected_candidate()
-            metadata["proposal_id"] = plan.selected_proposal_id
-            if selected is not None:
-                metadata["proposal_lifecycle"] = selected.lifecycle
-                metadata["proposal_freshness"] = selected.freshness
+        metadata: dict[str, Any] = {"plugin_id": self.plugin_id, **plan_control_metadata(plan)}
+        selected = plan.selected_candidate()
+        if selected is not None:
+            metadata["proposal_lifecycle"] = selected.lifecycle
+            metadata["proposal_freshness"] = selected.freshness
         return ActionDecision(
             AutonomyControl(
                 steering=command.steering,

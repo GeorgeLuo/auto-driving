@@ -81,7 +81,7 @@ class ActionRunner(StepRunner[ActionPlugin]):
                 decision = plugin.decide(None, mode=mode, error_reason=error_reason)
             if not isinstance(decision, ActionDecision):
                 raise TypeError("action plugin must return an ActionDecision")
-            proposed = _selected_command(plan)
+            proposed = _planned_command(plan)
             result = action_result(
                 frame_id=frame_id,
                 plugin_id=plugin.plugin_id,
@@ -104,8 +104,8 @@ class ActionRunner(StepRunner[ActionPlugin]):
         return result
 
 
-def _selected_command(plan: ActionPlan | None) -> ProposedVehicleCommand | None:
-    if plan is None or plan.status not in {"selected", "composed"} or plan.command is None:
+def _planned_command(plan: ActionPlan | None) -> ProposedVehicleCommand | None:
+    if plan is None or plan.command is None:
         return None
     # The authority owns a detached copy of the planned command.
     return ProposedVehicleCommand.from_dict(plan.command.to_dict())

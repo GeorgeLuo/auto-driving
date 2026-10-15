@@ -1,8 +1,9 @@
 """Plan plugin protocol.
 
 A plan plugin reconciles the cycle's proposal candidates into one
-``ActionPlan``: which candidate, if any, the action step should act on. The
-step runs exactly one selected plan plugin.
+``ActionPlan``: the command the action step should act on, taken from one
+candidate or composed from several, or none. The step runs exactly one
+selected plan plugin.
 """
 
 from __future__ import annotations

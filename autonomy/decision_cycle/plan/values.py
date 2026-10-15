@@ -1,11 +1,17 @@
 """The plan record the plan step produces.
 
-``ActionPlan`` records the candidates for one cycle and, when one is
-selected, that proposal and its single contribution. Its validation holds
-the contribution restrictions for every plan, whichever code constructs it.
-The number of candidates is the number of selected proposal plugins; each
-candidate is bounded by its own proposal limits. With no candidates the plan
-is idle.
+``ActionPlan`` records one cycle's candidates and the command the action step
+applies, with its reason and optional confidence. Its ``status`` is one of:
+
+- ``idle``: no command, reason, confidence, or contributions.
+- ``selected``: one candidate's command, reason, and confidence, named by
+  ``selected_proposal_id`` and one contribution of weight 1.0.
+- ``composed``: the plan's own command, built from the candidates its
+  contributions name, each with a finite weight and a role.
+
+Its validation holds these rules for every plan, whichever code constructs
+it. The number of candidates is the number of selected proposal plugins; each
+candidate is bounded by its own proposal limits.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+from autonomy.decision_cycle.confidence import optional_confidence
 from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand
 from autonomy.serialization import (
     deep_freeze,
@@ -97,7 +104,7 @@ class ActionPlan:
         by_id = {candidate.proposal_id: candidate for candidate in ordered}
         if type(self.reason) is not str:
             raise ValueError("reason must be a string")
-        confidence = _plan_confidence(self.confidence)
+        confidence = optional_confidence(self.confidence, field_name="confidence", clamp=False)
         if self.status == "idle":
             if self.selected_proposal_id is not None:
                 raise ValueError("idle plan requires selected_proposal_id=null")
@@ -122,7 +129,7 @@ class ActionPlan:
                 )
             if contrib.role != "selected" or contrib.weight != 1.0:
                 raise ValueError("contribution must be weight=1.0 role=selected")
-            if selected.command is None or not _commands_match(self.command, selected.command):
+            if selected.command is None or self.command != selected.command:
                 raise ValueError("selected plan command must equal the candidate command")
             if self.reason != selected.reason or confidence != selected.confidence:
                 raise ValueError("selected plan reason and confidence must equal the candidate")
@@ -183,18 +190,6 @@ class ActionPlan:
         }
 
 
-def _plan_confidence(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        confidence = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("confidence must be numeric") from exc
-    if not math.isfinite(confidence) or confidence < 0.0 or confidence > 1.0:
-        raise ValueError("confidence must be finite and in [0, 1]")
-    return confidence
-
-
 def _finite_weight(value: Any) -> float:
     if type(value) is bool or not isinstance(value, (int, float)):
         raise ValueError("contribution weight must be finite")
@@ -202,17 +197,4 @@ def _finite_weight(value: Any) -> float:
     if not math.isfinite(weight):
         raise ValueError("contribution weight must be finite")
     return weight
-
-
-def _commands_match(
-    left: ProposedVehicleCommand | None,
-    right: ProposedVehicleCommand | None,
-) -> bool:
-    if left is None or right is None:
-        return left is None and right is None
-    return (
-        left.steering == right.steering
-        and left.throttle == right.throttle
-        and left.gear == right.gear
-    )
 

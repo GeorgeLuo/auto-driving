@@ -367,7 +367,7 @@ def _plan_lines(record: dict[str, Any]) -> list[str]:
     return [
         f"Plan: status={record.get('status')} selector={record.get('selector_id')} selected={selected}",
         f"Command: {json.dumps(_command(record.get('command')), sort_keys=True)} "
-        f"reason={record.get('reason')} confidence={_confidence_text(record.get('confidence'))}",
+        f"reason={record.get('reason')} confidence={confidence_text(record.get('confidence'))}",
         *_candidate_lines(record.get("candidates"), selected=selected),
         "Contributions: " + (", ".join(
             f"{item.get('plugin_id')}(weight={item.get('weight')}, role={item.get('role')})"

@@ -435,6 +435,21 @@
       return candidates.find((candidate) => candidate.proposal_id === selected) || candidates[0] || null;
     }
 
+    // A selected plan carries its candidate's command, reason, and confidence;
+    // a composed plan carries its own. Either way its contributions name the
+    // candidates behind the command.
+    function planSummary(plan, candidate) {
+      const composed = plan.status === "composed";
+      return {
+        command: plan.command || candidate?.command || null,
+        reason: plan.reason || candidate?.reason || "",
+        confidence: plan.confidence,
+        freshness: composed ? "composed" : (candidate?.freshness || candidate?.lifecycle || "—"),
+        plugins: composed ? contributionText(plan) : (candidate?.plugin_id || "none"),
+        contributing: new Set(contributionItems(plan).map((item) => item?.proposal_id)),
+      };
+    }
+
     function evidenceItems() {
       const records = latest?.evidence?.records;
       return Array.isArray(records) ? records : [];
@@ -443,11 +458,8 @@
     function primaryRecordIds() {
       const plan = decisionPlan();
       const candidates = Array.isArray(plan.candidates) ? plan.candidates : [];
-      const chosen = plan.status === "composed"
-        ? candidates.filter((candidate) => contributionItems(plan).some(
-          (item) => item?.proposal_id === candidate.proposal_id,
-        ))
-        : [selectedCandidate()].filter(Boolean);
+      const { contributing } = planSummary(plan, selectedCandidate());
+      const chosen = candidates.filter((candidate) => contributing.has(candidate.proposal_id));
       const ids = new Set();
       for (const candidate of chosen) {
         const refs = Array.isArray(candidate?.source_refs) ? candidate.source_refs : [];
@@ -533,23 +545,16 @@
         appendMetric(cycleMetrics, name.charAt(0).toUpperCase() + name.slice(1), stepTimingText(step));
       }
       appendMetric(cycleMetrics, "Status", cycle.action?.status || latest.status);
-      const composed = plan.status === "composed";
-      appendMetric(
-        cycleMetrics,
-        "Proposal",
-        composed ? `${commandText(plan.command)} · ${contributionText(plan)}` : (candidate?.reason || plan.status || "—"),
-      );
-      appendMetric(cycleMetrics, "Freshness", composed ? "composed" : (candidate?.freshness || candidate?.lifecycle || "—"));
+      const summary = planSummary(plan, candidate);
+      appendMetric(cycleMetrics, "Proposal", summary.reason || plan.status || "—");
+      appendMetric(cycleMetrics, "Confidence", confidenceText(summary.confidence));
+      appendMetric(cycleMetrics, "Freshness", summary.freshness);
       appendMetric(cycleMetrics, "Capture age", latest.freshness?.capture_age_ms != null ? `${latest.freshness.capture_age_ms} ms` : "—");
 
       const authorityMetrics = document.getElementById("authorityMetrics");
       authorityMetrics.replaceChildren();
-      appendMetric(authorityMetrics, "Plugin", composed ? contributionText(plan) : (candidate?.plugin_id || "none"));
-      appendMetric(
-        authorityMetrics,
-        "Proposed",
-        commandText(composed ? (authority.proposed || plan.command) : (authority.proposed || candidate?.command)),
-      );
+      appendMetric(authorityMetrics, "Plugin", summary.plugins);
+      appendMetric(authorityMetrics, "Proposed", commandText(authority.proposed || summary.command));
       appendMetric(authorityMetrics, "Authorized", commandText(authority.authorized_output));
       appendMetric(authorityMetrics, "Authorized as proposed", authority.proposed_applied ? "true" : "false");
       const hostFrame = decision.frame_id || latest.current_image?.frame_id;
@@ -573,9 +578,7 @@
       candidates.replaceChildren();
       for (const rowCandidate of plan.candidates || []) {
         const row = document.createElement("div");
-        const selected = composed
-          ? contributionItems(plan).some((item) => item?.proposal_id === rowCandidate.proposal_id)
-          : rowCandidate.proposal_id === plan.selected_proposal_id;
+        const selected = summary.contributing.has(rowCandidate.proposal_id);
         row.className = ["run", rowCandidate.lifecycle || "", selected ? "selected" : ""].filter(Boolean).join(" ");
         const name = document.createElement("div");
         name.textContent = rowCandidate.reason || rowCandidate.plugin_id || "unknown plugin";
@@ -624,12 +627,12 @@
     function liveStatus(payload) {
       latest = payload;
       const cycle = payload?.decision?.cycle || {};
-      const candidate = selectedCandidate();
+      const { reason } = planSummary(decisionPlan(), selectedCandidate());
       if (cycle.action?.status === "error") {
         return { text: `Live | ${cycle.action.reason || "error"}`, mode: "error" };
       }
-      if (candidate?.reason) {
-        return { text: `Live | ${candidate.reason.replaceAll("_", " ")}`, mode: "live" };
+      if (reason) {
+        return { text: `Live | ${reason.replaceAll("_", " ")}`, mode: "live" };
       }
       return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.action?.status || "idle"}`, mode: "stale" };
     }

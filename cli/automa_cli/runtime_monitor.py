@@ -40,15 +40,15 @@ MONITOR_POLL_INTERVAL_S = 0.1
 DECISION_COPY_INTERVAL_S = 0.05
 
 
-def _observation_counts(host: dict[str, Any]) -> tuple[int, int]:
-    """The host's cumulative camera and skipped frame counters."""
+def _frames_captured(host: dict[str, Any]) -> int:
+    """The host's cumulative camera capture counter."""
 
     components = host.get("components") if isinstance(host.get("components"), dict) else {}
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    counts = tuple(observation.get(key) for key in ("frames_captured", "skipped_count"))
-    if any(type(count) is not int or count < 0 for count in counts):
-        raise RuntimeError("The runtime host does not report capture and skipped-frame counters; update core and autonomy.")
-    return counts
+    count = observation.get("frames_captured")
+    if type(count) is not int or count < 0:
+        raise RuntimeError("The runtime host does not report a capture counter; update core and autonomy.")
+    return count
 
 
 def _host_status(client: RuntimeClient) -> dict[str, Any]:
@@ -118,7 +118,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
     state.update(selections=selections, decision=decision)
     try:
         host = _host_status(client)
-        capture_base, skipped_base = _observation_counts(host)
+        capture_base = _frames_captured(host)
         record_host_status(state, host)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
@@ -161,12 +161,10 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                 raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
             host = _host_status(client)
-            capture_count, skipped_count = _observation_counts(host)
             state.update(
                 session=session, execution=session["execution"],
                 processed_count=session["processed_decisions"],
-                frames_captured=max(0, capture_count - capture_base),
-                skipped_count=max(0, skipped_count - skipped_base),
+                frames_captured=max(0, _frames_captured(host) - capture_base),
             )
             record_host_status(state, host)
             # A terminal session is drained before manual observations can replace
@@ -232,17 +230,13 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                         "things": things,
                         "signals": signals,
                         "control": frame.get("control"),
-                        "skipped_since_previous": frame.get("skipped_since_previous"),
                         "generation_id": frame.get("generation_id"),
                     }
                     last_capture = capture
                     frames_seen += 1
                     if output is not None and reports_frame(frames_seen, verbose=verbose):
                         action = (frame.get("control") or {}).get("reason")
-                        line = frame_line(
-                            frame_id, signals=signals, things=things, action=action,
-                            skipped_since_previous=frame.get("skipped_since_previous"),
-                        )
+                        line = frame_line(frame_id, signals=signals, things=things, action=action)
                         print(line, file=output, flush=True)
             # One batch keeps the export near the capture rate. The stop path
             # drains whatever remains, and the decision copy does not wait here.

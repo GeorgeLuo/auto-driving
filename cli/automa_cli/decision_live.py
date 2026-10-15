@@ -134,6 +134,20 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _transaction_image(transaction: dict[str, Any]) -> tuple[bytes, str] | None:
+    """The transaction's decoded image and content type, or None when absent or malformed."""
+
+    encoded = transaction.get("image_base64")
+    content_type = transaction.get("image_content_type")
+    if not isinstance(encoded, str) or content_type not in {"image/jpeg", "image/png"}:
+        return None
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+    except (ValueError, TypeError):
+        return None
+    return (image_bytes, content_type) if image_bytes else None
+
+
 def _accepted_pair(
     base_url: str,
     *,
@@ -162,23 +176,12 @@ def _accepted_pair(
             last_error = exc.message_text
             time.sleep(0.04)
             continue
-        encoded = transaction.get("image_base64") if isinstance(transaction, dict) else None
-        content_type = transaction.get("image_content_type") if isinstance(transaction, dict) else None
-        if not isinstance(encoded, str) or content_type not in {"image/jpeg", "image/png"}:
+        image = _transaction_image(transaction)
+        if image is None:
             last_error = "matched decision image is unavailable"
             time.sleep(0.04)
             continue
-        try:
-            image_bytes = base64.b64decode(encoded, validate=True)
-        except (ValueError, TypeError):
-            last_error = "matched decision image is unavailable"
-            time.sleep(0.04)
-            continue
-        if not image_bytes:
-            last_error = "matched decision image is unavailable"
-            time.sleep(0.04)
-            continue
-        return normalized, (image_bytes, content_type)
+        return normalized, image
     raise ConnectionError(last_error)
 
 

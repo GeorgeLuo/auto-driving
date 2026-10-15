@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import io
 import json
 import tempfile
@@ -13,15 +12,21 @@ from unittest.mock import patch
 import numpy as np
 
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
+from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli import runtime_monitor
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 
 
-def _part(perception: GatedPerception) -> AutonomyPilotPart:
-    host = create_host(steps=replace(decision_steps(), perception=perception))
+def _part(perception: GatedPerception, **steps) -> AutonomyPilotPart:
+    host = create_host(steps=replace(decision_steps(), perception=perception, **steps))
     return AutonomyPilotPart(host=host, run_id="cadence-test")
+
+
+def _failing_memory(_context, _observation):
+    raise RuntimeError("memory update failed")
 
 
 class OnboardCaptureCadenceTests(unittest.TestCase):
@@ -49,32 +54,30 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             part.wait_for_cycle()
             self.assertTrue(part.due())
             status = part.observation_status()
-            self.assertEqual(
-                (status["frames_captured"], status["processed_count"], status["skipped_count"]),
-                (2, 2, 0),
-            )
+            self.assertEqual((status["frames_captured"], status["processed_count"]), (2, 2))
         finally:
             perception.release_all()
             part.wait_for_cycle()
             part.shutdown()
 
-        held = _part(GatedPerception(1, blocked=()))
+        # A failed memory update halts the worker, so the next capture waits
+        # with no decision in flight and the loop takes no further captures.
+        held = _part(GatedPerception(2, blocked=()), memory=_failing_memory)
         try:
             held.start(RunConfiguration(mode="observe_only"))
-            with held._lock:
-                held._memory_update_halted = True
-            held.submit(image, mode="observe_only")
-            self.assertIsNotNone(held._pending_frame)
-            self.assertFalse(held._decision_inflight)
-            self.assertFalse(held.due())
-            with held._lock:
-                held._pending_frame = None
-                held._memory_update_halted = False
+            held.run(image_array=image, mode="user")
+            held.wait_for_cycle()
+            self.assertTrue(held.observation_status()["memory_update_halted"])
             self.assertTrue(held.due())
+            held.run(image_array=np.full_like(image, 1), mode="user")
+            status = held.observation_status()
+            self.assertFalse(status["perception_inflight"])
+            self.assertEqual((status["frames_captured"], status["processed_count"]), (2, 1))
+            self.assertFalse(held.due())
         finally:
             held.shutdown()
 
-    def test_stop_and_bounded_completion_exclude_pending_captures_from_skips(self) -> None:
+    def test_drive_ticks_during_a_cycle_are_not_captures(self) -> None:
         for bounded in (False, True):
             with self.subTest(bounded=bounded):
                 perception = GatedPerception(1)
@@ -91,9 +94,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     perception.release[0].set()
                     part.wait_for_cycle()
                     self.assertEqual(len(perception.contexts), 1)
-                    status = part.observation_status()
-                    self.assertEqual((status["frames_captured"], status["skipped_count"]), (1, 0))
-                    self.assertEqual(part.publish_latest()["skipped_since_previous"], 0)
+                    self.assertEqual(part.observation_status()["frames_captured"], 1)
                     self.assertEqual(part.host.run_state, "completed" if bounded else "stopped")
                 finally:
                     perception.release_all()
@@ -103,6 +104,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
     def test_monitor_reads_publications_as_soon_as_the_worker_is_free(self) -> None:
         perception = GatedPerception(3, blocked=())
         part = _part(perception)
+        routes = RuntimeRoutes(part)
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
         class RuntimeClient:
@@ -147,18 +149,8 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             return jpeg, {"x-frame-id": publication["frame"]["frame_id"], "content-type": "image/jpeg"}
 
         def transaction(*_args, **_kwargs):
-            jpeg, headers = frame()
-            publication = part.publish_decision_latest()
-            payload = {
-                "schema": "automa_decision_transaction_v0",
-                "publication": publication,
-            }
-            decision = publication.get("decision") if isinstance(publication, dict) else None
-            frame_id = decision.get("frame_id") if isinstance(decision, dict) else None
-            if jpeg and frame_id is not None and headers.get("x-frame-id") == frame_id:
-                payload["image_base64"] = base64.b64encode(jpeg).decode("ascii")
-                payload["image_content_type"] = "image/jpeg"
-            return payload
+            _status, _headers, body = routes.handle("GET", DECISION_TRANSACTION_PATH)
+            return json.loads(body)
 
         seen = []
 
@@ -191,18 +183,16 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 self.assertLess(time.monotonic() - started, 2.0, "monitor waited after the worker was free")
                 state = json.loads((root / "state.json").read_text())
                 self.assertEqual(seen, [0, 2])
-                self.assertEqual((state["frames_captured"], state["processed_count"], state["skipped_count"]), (3, 3, 0))
+                self.assertEqual((state["frames_captured"], state["processed_count"]), (3, 3))
                 self.assertEqual(state["num_decisions"], 3)
                 self.assertNotIn("interval_s", state["session"]["configuration"])
-                self.assertEqual(state["last_frame"]["skipped_since_previous"], 0)
                 recording_id = state["session"]["recording"]["run_id"]
                 records = [json.loads(p.read_text()) for p in (root / "runs" / recording_id).glob("perception/*/perception.json")]
                 records.sort(key=lambda record: record["frame_index"])
                 # Live samples are the latest publication at each poll, so frame 1
                 # is absent from `seen`. The recording keeps that completed decision.
                 self.assertEqual([record["frame_index"] for record in records], [0, 1, 2])
-                self.assertEqual([record["skipped_since_previous"] for record in records], [0, 0, 0])
-                self.assertIn("Frames superseded before decision: 0", message)
+                self.assertIn("Frames captured: 3", message)
             finally:
                 perception.release_all()
                 part.wait_for_cycle()

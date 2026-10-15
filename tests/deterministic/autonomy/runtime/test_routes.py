@@ -15,6 +15,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.routes import RuntimeRoutes
+from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 
 
 class _Target:
@@ -113,8 +114,9 @@ class RuntimeRoutesTests(unittest.TestCase):
         from implementations.decision_cycle.catalog import packaged_activation
 
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
+        perception = GatedPerception(2, blocked=(1,))
         loop, routes = _routes(
-            decision_steps(activations),
+            replace(decision_steps(activations), perception=perception),
             decision_activations={
                 step: activation.to_payload() for step, activation in activations.items()
             },
@@ -131,14 +133,14 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(transaction["publication"]["decision"]["frame_id"], "sim_frame_000042")
         self.assertEqual(transaction["image_content_type"], "image/jpeg")
         self.assertTrue(base64.b64decode(transaction["image_base64"]).startswith(b"\xff\xd8"))
-        with loop._lock:
-            loop._decision_inflight = True
         try:
+            self.assertTrue(loop.due())
             loop.submit(
                 np.full((4, 6, 3), 255, dtype=np.uint8),
                 frame_id="sim_frame_000043",
                 frame_index=43,
             )
+            perception.wait_started(1)
             status, transaction = _json(routes.handle("GET", "/autonomy/decision/transaction"))
             self.assertEqual(status, 200, transaction)
             self.assertEqual(transaction["publication"]["decision"]["frame_id"], "sim_frame_000042")
@@ -147,9 +149,8 @@ class RuntimeRoutesTests(unittest.TestCase):
                 "sim_frame_000043",
             )
         finally:
-            with loop._lock:
-                loop._decision_inflight = False
-                loop._pending_frame = None
+            perception.release_all()
+            loop.wait_for_cycle()
 
     def test_decision_and_memory_routes_fail_closed_with_a_reason(self) -> None:
         _, routes = _routes()

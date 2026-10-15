@@ -1629,7 +1629,6 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "timing": deepcopy(publication.get("timing"))
         if isinstance(publication.get("timing"), dict)
         else None,
-        "skipped_since_previous": publication.get("skipped_since_previous"),
         "perception": perception if isinstance(perception, dict) else None,
         "observation": observation if isinstance(observation, dict) else None,
         "memory": memory if isinstance(memory, dict) else None,

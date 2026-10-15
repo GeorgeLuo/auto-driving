@@ -72,18 +72,15 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             contexts = perception.contexts
             self.assertEqual([c.metadata["capture_sequence"] for c in contexts], [0, 1])
             self.assertEqual([c.frame_index for c in contexts], [100, 101])
-            self.assertEqual([c.metadata["skipped_since_previous"] for c in contexts], [0, 0])
-            self.assertEqual(state["skipped_count"], 0)
             self.assertEqual((state["frames_captured"], state["processed_count"]), (2, 2))
             self.assertEqual(state["num_decisions"], state["processed_count"])
             self.assertEqual(state["session"]["processed_decisions"], 2)
             records = [json.loads(p.read_text()) for p in Path(state["run_dir"]).glob("perception/*/perception.json")]
             records.sort(key=lambda r: r["context"]["metadata"]["capture_sequence"])
-            self.assertEqual([r["skipped_since_previous"] for r in records], [0, 0])
             self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 101])
             self.assertEqual(records[-1]["context"]["metadata"]["simulation_epoch"], "chase-run:test")
+            self.assertIn("Frames captured: 2", result.message)
             self.assertIn("Decisions completed: 2", result.message)
-            self.assertIn("Frames superseded before decision: 0", result.message)
             self.assertIn("Decisions recorded: 2", result.message)
 
     def test_bounded_completion_does_not_wait_after_the_worker_finishes(self) -> None:

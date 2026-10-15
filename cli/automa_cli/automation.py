@@ -131,7 +131,6 @@ def _host_runtime_status(
             "run_id": None,
             "frames_captured": observation.get("frames_captured", 0),
             "processed_count": observation.get("processed_count", 0),
-            "skipped_count": observation.get("skipped_count", 0),
             "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
                 "num_decisions", 0
             ),
@@ -1241,7 +1240,6 @@ def _collect_automation_status(
                     "pipeline": state.get("pipeline"),
                     "frames_captured": state.get("frames_captured", 0),
                     "processed_count": state.get("processed_count", 0),
-                    "skipped_count": state.get("skipped_count", 0),
                     "num_decisions": state.get("num_decisions"),
                     "recording": state.get("recording"),
                     "pid": state.get("pid"),
@@ -1443,7 +1441,6 @@ def _run_label(state: dict[str, Any]) -> str:
         "id": state["run_id"],
         "captured": state.get("frames_captured") or 0,
         "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
-        "skipped": state.get("skipped_count") or 0,
         "recording": state.get("recording"),
         "control": state.get("control_source"),
         "action": state.get("action_policy"),

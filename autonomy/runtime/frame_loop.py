@@ -1,12 +1,12 @@
 """The latest-frame decision loop every vehicle runtime hosts.
 
-A vehicle adapter claims capture slots with ``due()`` and hands each camera
-sample to ``submit()``. The next capture waits until the previous cycle has
-released its frame. Samples publish without waiting for decisions. One
-background worker takes the newest pending sample after each cycle; captures
-superseded in between are counted as skipped. The cycle host owns movement
-authority, freshness, stopping, and recording; this loop owns the pending
-frame, its publications, and the applied decision identity.
+A vehicle adapter asks ``due()`` before each capture and hands the sample to
+``submit()``. ``due()`` stays false while a cycle runs or a sample waits, so
+the next capture starts when the previous cycle finishes and the camera
+publication updates once per cycle. One background worker runs the cycle on
+the pending sample. The cycle host owns movement authority, freshness,
+stopping, and recording; this loop owns the pending frame, its publications,
+and the applied decision identity.
 """
 from __future__ import annotations
 
@@ -132,7 +132,6 @@ class LatestObservationState:
     cycle: dict[str, Any] | None
     error: str | None = None
     duration_ms: float = 0
-    skipped_since_previous: int = 0
     presets: dict[str, str] = field(default_factory=dict)
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
@@ -153,7 +152,6 @@ class LatestObservationState:
             "control": deepcopy(self.control),
             "has_image": self.image is not None,
             "duration_ms": self.duration_ms,
-            "skipped_since_previous": self.skipped_since_previous,
             "presets": dict(self.presets),
             "cycle_schema": None if self.cycle is None else self.cycle.get("schema"),
             "perception_status": None if not isinstance(perception, dict) else perception.get("status"),
@@ -222,9 +220,7 @@ class FrameLoop:
         self._capture_sequence = 0
         self.frames_captured = 0
         self.processed_count = 0
-        self.skipped_count = 0
         self._cycle_duration_ms: float | None = None
-        self._last_decision_capture_sequence = -1
         self._pending_frame: _PendingFrame | None = None
         self._queue_generation = 0
         self._shutdown = False
@@ -296,7 +292,6 @@ class FrameLoop:
             return {
                 "runtime": self.runtime,
                 "processed_count": self.processed_count,
-                "skipped_count": self.skipped_count,
                 "frames_captured": self.frames_captured,
                 "perception_inflight": self._decision_inflight,
                 "memory_update_halted": self._memory_update_halted,
@@ -342,10 +337,10 @@ class FrameLoop:
     def publish_decision_transaction(self) -> tuple[dict[str, Any], bytes | None]:
         """Return the current decision and its image from one locked snapshot.
 
-        A newer capture can replace the camera frame before its cycle finishes.
-        Reading the image and the decision separately then pairs that new frame
-        with the previous decision. Callers that publish the live view need
-        both from the same completed cycle.
+        A cycle can complete between two separate reads, so the image and the
+        decision can come from different cycles. Cycles run back to back, so
+        this happens often. Callers that publish the live view need both from
+        the same completed cycle.
         """
 
         read_at_ms = timestamp_ms()
@@ -619,16 +614,13 @@ class FrameLoop:
         return frame
 
     def _discard_pending_locked(self) -> None:
-        # Stop/restart discards are not supersessions between decision frames.
         self._pending_frame = None
-        self._last_decision_capture_sequence = self._capture_sequence - 1
         self._queue_generation += 1
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         """Build a publication from the currently locked state and counters."""
         latest = self.latest_state
         processed_count = self.processed_count
-        skipped_count = self.skipped_count
         presets = dict(self.presets)
         generation_id = self.generation_id
         threshold_ms = stale_after_ms(self._cycle_duration_ms)
@@ -648,7 +640,6 @@ class FrameLoop:
                 "stale_after_ms": threshold_ms,
                 "frames_captured": self.frames_captured,
                 "processed_count": processed_count,
-                "skipped_count": skipped_count,
                 "presets": presets,
                 "generation_id": generation_id,
                 "frame": None,
@@ -697,7 +688,6 @@ class FrameLoop:
             "stale_after_ms": threshold_ms,
             "frames_captured": self.frames_captured,
             "processed_count": processed_count,
-            "skipped_count": skipped_count,
             "presets": dict(latest.presets),
             "generation_id": generation_id,
             "step_activations": deepcopy(selections),
@@ -719,7 +709,6 @@ class FrameLoop:
             "error": latest.error,
             "duration_ms": latest.duration_ms,
             "timing": timing,
-            "skipped_since_previous": latest.skipped_since_previous,
             "perception": perception,
             "observation": observation,
             "memory": memory,
@@ -952,11 +941,6 @@ class FrameLoop:
                         return
                     self._pending_frame = None
                     camera = pending.camera
-                    skipped_since_previous = (
-                        camera.sequence - self._last_decision_capture_sequence - 1
-                    )
-                    self._last_decision_capture_sequence = camera.sequence
-                    self.skipped_count += skipped_since_previous
                     self._inflight_frame_id = camera.frame_id
                     generation = self._queue_generation
                     was_running = getattr(self.host, "run_state", None) == "running"
@@ -965,7 +949,6 @@ class FrameLoop:
                     mode_name=pending.mode_name,
                     user_steering=pending.user_steering,
                     user_throttle=pending.user_throttle,
-                    skipped_since_previous=skipped_since_previous,
                 )
                 with self._lock:
                     ended = was_running and self.host.run_state != "running"
@@ -986,7 +969,6 @@ class FrameLoop:
         mode_name: str,
         user_steering: float,
         user_throttle: float,
-        skipped_since_previous: int,
     ) -> bool:
         frame_id, frame_index = camera.frame_id, camera.frame_index
         captured_at_ms = camera.captured_at_ms
@@ -1022,7 +1004,6 @@ class FrameLoop:
                             "runtime": self.runtime,
                             "control_application": "shared_execution",
                             "capture_sequence": camera.sequence,
-                            "skipped_since_previous": skipped_since_previous,
                         },
                     )
                 )
@@ -1090,7 +1071,6 @@ class FrameLoop:
                     cycle=cycle_dict,
                     error=error,
                     duration_ms=duration_ms,
-                    skipped_since_previous=skipped_since_previous,
                     presets=dict(self.presets),
                     decision_publication=decision_publication,
                     decision_error=decision_error,

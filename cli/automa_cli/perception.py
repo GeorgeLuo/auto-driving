@@ -175,8 +175,6 @@ def _live_observation_info(vehicle_id: str, *, timeout_s: float) -> dict[str, An
         "presets": publication.get("presets"),
         "mode": publication.get("mode"),
         "processed_count": publication.get("processed_count"),
-        "skipped_count": publication.get("skipped_count"),
-        "skipped_since_previous": publication.get("skipped_since_previous"),
         "frames_captured": publication.get("frames_captured"),
         "control": publication.get("control"),
         "frame": publication.get("frame") if isinstance(publication.get("frame"), dict) else None,

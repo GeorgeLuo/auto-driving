@@ -332,7 +332,6 @@ def _probe_perception(
         mode=publication.get("mode"),
         frames_captured=publication.get("frames_captured"),
         processed_count=publication.get("processed_count"),
-        skipped_count=publication.get("skipped_count"),
     )
     if health != "healthy":
         return {
@@ -363,7 +362,6 @@ def _probe_latest_perception(
         "captured_at_ms": record.get("captured_at_ms"),
         "perception_completed_at_ms": record.get("perception_completed_at_ms"),
         "perception_duration_ms": record.get("perception_duration_ms"),
-        "skipped_since_previous": record.get("skipped_since_previous"),
         "age_ms": age_ms,
     }
     perception = record.get("perception")
@@ -404,8 +402,6 @@ def _perception_screen(
     things = perception.get("things")
     cadence = {
         "processed": publication.get("processed_count"),
-        "skipped": publication.get("skipped_count"),
-        "skipped_since_previous": publication.get("skipped_since_previous"),
         "cycle_ms": publication.get("duration_ms"),
         # The host computes the result age on its own clock.
         "age_ms": publication.get("result_age_ms"),

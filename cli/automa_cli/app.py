@@ -1056,7 +1056,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Health-check perception on a vehicle. The runtime host's observation "
             "publication is polled for a bounded interval (default 60s) to record "
-            "cadence, result age, processing duration, skip policy, and that no control "
+            "cadence, result age, processing duration, cycle period, and that no control "
             "was applied, plus "
             "host RSS/CPU when the vehicle supplies an ssh_target. Measurements save "
             "report.json and summary.md under lab/runs/perception-viability/ unless --no-record."

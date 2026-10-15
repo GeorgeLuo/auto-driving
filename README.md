@@ -374,14 +374,12 @@ Useful run options:
   The launch command returns after readiness and prints
   `vehicles automation stop`. Ctrl-C in a terminal stream stops that stream,
   not the worker.
-- The next capture starts as soon as the previous cycle releases its frame:
-  the loop is not shut down, no decision is in flight, and no frame is pending.
-  There is no configured capture interval.
-- Decisions consume the newest pending capture as soon as the previous cycle finishes.
-  `skipped_since_previous` counts captures superseded between frames passed through
-  the decision cycle; `skipped_count` is the sum of those per-frame counts. Drive ticks
-  during an in-flight cycle are not captures, and pending frames discarded on stop
-  are not skips.
+- The next capture starts as soon as the previous cycle finishes: the loop is
+  not shut down, no decision is in flight, and no frame is pending. There is no
+  configured capture interval.
+- Each capture goes straight to the decision worker, so no capture waits and none
+  is dropped. Drive ticks during an in-flight cycle are not captures, and
+  `/autonomy/camera/latest` updates once per capture.
 - `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
 - `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps every completed decision and its exact camera image, capture
@@ -729,12 +727,10 @@ rebuilt from the current catalog, including its configs; any other staged
 selection keeps its plugins, specs and configs. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
-`DRIVE_LOOP_HZ` (20 Hz) and publishes camera memory on
-`/autonomy/camera/latest` without waiting for decisions. A sample enters the
-autonomy pipeline only when the frame loop is due, which is as soon as the
-previous cycle has released its frame. The background
-decision worker takes the newest pending capture immediately after each cycle,
-dropping superseded captures rather than accumulating a backlog. The matched result remains
+`DRIVE_LOOP_HZ` (20 Hz). It captures a sample only when the frame loop is due,
+which is as soon as the previous cycle finishes, so `/autonomy/camera/latest`
+updates when the decision worker is free. The background decision worker runs
+the cycle on that sample at once, and no backlog builds. The matched result remains
 `/autonomy/observation/latest`. While mode remains `user`, pilot outputs stay
 zero and Donkey DriveMode keeps manual input authoritative.
 

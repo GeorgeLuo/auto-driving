@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.steps import STEP_RUNNERS, step_runner
+from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, step_runner
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
@@ -108,7 +108,7 @@ class PluginCatalog:
         return {
             "schema": PLUGIN_CATALOG_SCHEMA,
             "digest": self.digest,
-            "single_plugin": STEP_RUNNERS[self.step].single_plugin,
+            "single_plugin": self.step in ONE_PLUGIN_STEPS,
             "plugins": [item.to_dict(active_ids=active_ids) for item in self.plugins],
         }
 
@@ -128,7 +128,7 @@ class PluginCatalog:
             raise PluginCatalogError("active_plugin_ids must contain non-empty strings")
         if len(values) != len(set(values)):
             raise PluginCatalogError("active_plugin_ids must not contain duplicates")
-        if STEP_RUNNERS[self.step].single_plugin and len(values) != 1:
+        if self.step in ONE_PLUGIN_STEPS and len(values) != 1:
             raise PluginCatalogError(
                 f"the {self.step} step runs exactly one plugin; {len(values)} selected"
             )

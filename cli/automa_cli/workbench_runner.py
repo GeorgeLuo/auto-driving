@@ -13,7 +13,6 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
-from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
 from autonomy.plugins import LocalPluginCatalog
@@ -185,24 +184,17 @@ class ImageReplayRunner:
             selected[step] = activation
         return selected
 
-    def _selection_preset(self, step: str) -> str | None:
-        """The preset the step's selection came from or equals, else ``custom``.
+    def _selection_preset(self, step: str) -> str:
+        """The preset the step's selection came from or equals, else ``custom``."""
 
-        A one-plugin step with no selection has no preset to publish.
-        """
-
-        activation = self._activations[step]
-        if activation is None:
-            return None
-        return str(activation.metadata.get("preset", CUSTOM_PRESET))
+        return str(self._activations[step].metadata.get("preset", CUSTOM_PRESET))
 
     def _plugin_configuration(self) -> dict[str, Any]:
         """Each selectable step's catalog and active plugins, as the page shows them."""
 
         configuration: dict[str, Any] = {}
         for step in SELECTABLE_STEPS:
-            activation = self._activations[step]
-            active = () if activation is None else activation.plugins
+            active = self._activations[step].plugins
             configuration[f"{step}_plugin_catalog"] = self._catalogs[step].to_dict(
                 active_ids=active
             )
@@ -210,17 +202,9 @@ class ImageReplayRunner:
         return configuration
 
     def _selection_presets(self) -> dict[str, Any]:
-        """Each selectable step's preset, under ``<step>_preset``.
+        """Each selectable step's preset, under ``<step>_preset``."""
 
-        A step with no activation is omitted, so the page shows no preset.
-        """
-
-        presets: dict[str, Any] = {}
-        for step in SELECTABLE_STEPS:
-            preset = self._selection_preset(step)
-            if preset is not None:
-                presets[f"{step}_preset"] = preset
-        return presets
+        return {f"{step}_preset": self._selection_preset(step) for step in SELECTABLE_STEPS}
 
     def _step_reports(self) -> dict[str, Any]:
         """What the built steps report.
@@ -240,14 +224,7 @@ class ImageReplayRunner:
 
     def _apply_plugin_configuration_locked(self) -> None:
         self._state.update(self._plugin_configuration())
-        pipeline = self._state["machine_detail"]["pipeline"]
-        presets = self._selection_presets()
-        for step in SELECTABLE_STEPS:
-            key = f"{step}_preset"
-            if key in presets:
-                pipeline[key] = presets[key]
-            else:
-                pipeline.pop(key, None)
+        self._state["machine_detail"]["pipeline"].update(self._selection_presets())
 
     def frame_bytes(
         self,
@@ -592,9 +569,7 @@ class ImageReplayRunner:
             # configs included.
             catch_up: list[ReplayFrame] = []
             self._selection_overrides.add(step)
-            current = self._activations[step]
-            current_plugins = () if current is None else current.plugins
-            if normalized != current_plugins:
+            if normalized != self._activations[step].plugins:
                 activation = catalog.activation(normalized)
                 if active_phase:
                     catch_up = self._restart_with_selection_locked(step, activation)
@@ -688,21 +663,13 @@ class ImageReplayRunner:
         )
 
     def _store_recorded_activation(self, step: str, activation: StepActivation | None) -> None:
-        """Keep a selectable step's panel activation aligned with a recording.
+        """Show a selectable step's recorded plugins in its panel, none if it ran none.
 
-        A clearable step the recording left empty shows no plugins. A
-        one-plugin step left empty shows nothing selected and runs no plugin.
+        Whether the step runs comes from the recording, not from this activation.
         """
 
-        if step not in SELECTABLE_STEPS:
-            return
-        if activation is None:
-            if step in CLEARABLE_STEPS:
-                self._activations[step] = self._catalogs[step].activation([])
-            else:
-                self._activations[step] = None
-            return
-        self._activations[step] = activation
+        if step in SELECTABLE_STEPS:
+            self._activations[step] = activation or self._catalogs[step].activation([])
 
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, Any]:
         """Restore the first frame's selections before constructing any selectable step."""
@@ -716,8 +683,7 @@ class ImageReplayRunner:
             elif step in SELECTABLE_STEPS:
                 if step not in self._selection_overrides:
                     self._activations[step] = self._default_activations[step]
-                held = self._activations[step]
-                steps[step] = None if held is None else self._build_step(step)
+                steps[step] = self._build_step(step)
         return steps
 
     def _build_step(self, step: str) -> Any:

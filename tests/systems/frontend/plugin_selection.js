@@ -76,6 +76,15 @@ if (mode === "order") {
   toggle("memory", "first", true);
   assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second", "first"]);
   assert.equal(panel.queued, null);
+  // A one-plugin step's choice replaces its plugin.
+  ctx.state.plan_plugin_catalog = {
+    digest: "two-plan-plugins", single_plugin: true,
+    plugins: [{ id: "first" }, { id: "second" }]
+  };
+  accept("plan", ["first"], "custom");
+  inputs("plan")[0].checked = false; // the browser clears the rest of the radio group
+  toggle("plan", "second", true);
+  assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second"]);
 } else if (mode === "state") {
   for (const step of Object.keys(ctx.pluginPanels)) {
     const originalInputs = inputs(step);
@@ -110,12 +119,8 @@ if (mode === "order") {
     assert.equal(elements[step + "PluginOrder"].textContent,
       "Run order: " + snapshot["active_" + step + "_plugin_ids"].join(" → "));
     if (catalog && catalog.single_plugin) {
-      const before = sent.length;
-      toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
-      assert.equal(panel.queued, null, "a single-plugin panel does not queue an empty draft");
-      assert.equal(sent.length, before);
-      assert.deepEqual(checked(step), snapshot["active_" + step + "_plugin_ids"]);
-      assert.equal(elements[panel.summaryId].textContent.includes("selection pending"), false);
+      assert(inputs(step).every((input) => input.type === "radio" && input.name === step + "Plugin"),
+        "a one-plugin step is a single choice");
     } else {
       toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
       assert(elements[panel.summaryId].textContent.includes("selection pending"));
@@ -124,17 +129,9 @@ if (mode === "order") {
       ctx.renderPlugins();
     }
   }
-  for (const step of Object.keys(ctx.pluginPanels)) {
-    const catalog = snapshot[step + "_plugin_catalog"];
-    if (catalog && catalog.single_plugin) {
-      ctx.state["active_" + step + "_plugin_ids"] = [];
-      delete ctx.state.machine_detail.pipeline[step + "_preset"];
-      ctx.renderPlugins();
-      assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
-    } else if (step !== "perception") {
-      accept(step, [], step === "proposal" ? null : "custom");
-      assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
-    }
+  for (const step of Object.keys(ctx.pluginPanels).filter((step) => step !== "perception")) {
+    accept(step, [], step === "proposal" ? null : "custom");
+    assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
   }
 } else {
   throw new Error("unknown test mode " + mode);

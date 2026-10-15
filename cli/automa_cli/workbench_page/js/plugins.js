@@ -1,4 +1,4 @@
-// Plugin panels: the perception, memory, proposal and plan catalogs and their selection drafts.
+// Plugin panels: one per <step>_plugin_catalog in state, with its selection draft.
 // Classic script: the page's files share one global scope.
 "use strict";
 
@@ -18,9 +18,6 @@ function pluginPanel(step) {
   if (!pluginPanels[step]) pluginPanels[step] = newPluginPanel(step);
   return pluginPanels[step];
 }
-// The selection queue addresses these panels before a catalog is loaded.
-pluginPanel("perception");
-pluginPanel("memory");
 function catalogSteps() {
   if (!state) return [];
   return Object.keys(state).filter(function (key) {
@@ -29,44 +26,28 @@ function catalogSteps() {
     return key.slice(0, -"_plugin_catalog".length);
   });
 }
+// A step's panel is mounted once, when its catalog first appears in state.
 function mountPluginPanel(panel) {
-  // A test proxy creates a node on get. The page has no node until this mounts one.
   if (elements[panel.catalogId]) return;
-  var root = document.getElementById("pluginSections");
-  if (!root) return;
   var section = document.createElement("section");
   section.className = "plugin-section";
   var kicker = document.createElement("span");
   kicker.className = "kicker";
   kicker.textContent = panel.step;
-  var summary = document.createElement("span");
-  summary.id = panel.summaryId;
-  summary.className = "plugin-selection-summary muted";
-  summary.textContent = "no catalog";
-  var order = document.createElement("span");
-  order.id = panel.orderId;
-  order.className = "plugin-order muted help";
-  var catalogNode = document.createElement("div");
-  catalogNode.id = panel.catalogId;
-  catalogNode.className = "plugin-catalog";
-  var digest = document.createElement("div");
-  digest.id = panel.digestId;
-  digest.className = "digest muted";
   section.appendChild(kicker);
-  section.appendChild(summary);
-  section.appendChild(order);
-  section.appendChild(catalogNode);
-  section.appendChild(digest);
-  root.appendChild(section);
-  elements[panel.summaryId] = summary;
-  elements[panel.orderId] = order;
-  elements[panel.catalogId] = catalogNode;
-  elements[panel.digestId] = digest;
-}
-function ensurePluginPanels() {
-  catalogSteps().forEach(function (step) {
-    mountPluginPanel(pluginPanel(step));
+  [
+    ["span", panel.summaryId, "plugin-selection-summary muted"],
+    ["span", panel.orderId, "plugin-order muted help"],
+    ["div", panel.catalogId, "plugin-catalog"],
+    ["div", panel.digestId, "digest muted"]
+  ].forEach(function (part) {
+    var node = document.createElement(part[0]);
+    node.id = part[1];
+    node.className = part[2];
+    section.appendChild(node);
+    elements[part[1]] = node;
   });
+  elements.pluginSections.appendChild(section);
 }
 function queuePluginSelection(step, ids) {
   pluginPanel(step).queued = ids;
@@ -168,20 +149,7 @@ function renderPluginPanel(step) {
     choice.checked = active.indexOf(plugin.id) >= 0;
     choice.disabled = !selectionAllowed;
     choice.addEventListener("change", function () {
-      var ids = selectedPluginIdsFromView(panel);
-      if (single && ids.length !== 1) {
-        var restore = panel.draft && panel.draft.length === 1
-          ? panel.draft
-          : (state && state[panel.activeKey]) || [];
-        Array.prototype.forEach.call(
-          container.querySelectorAll("input[data-plugin-id]"),
-          function (input) {
-            input.checked = restore.indexOf(input.getAttribute("data-plugin-id")) >= 0;
-          }
-        );
-        return;
-      }
-      panel.draft = ids;
+      panel.draft = selectedPluginIdsFromView(panel);
       panel.draftDigest = catalog ? catalog.digest : null;
       renderPluginSummary(panel, catalog, plugins, panel.draft);
       queuePluginSelection(step, panel.draft);
@@ -198,6 +166,8 @@ function renderPluginPanel(step) {
   renderPluginSummary(panel, catalog, plugins, active);
 }
 function renderPlugins() {
-  ensurePluginPanels();
-  catalogSteps().forEach(renderPluginPanel);
+  catalogSteps().forEach(function (step) {
+    mountPluginPanel(pluginPanel(step));
+    renderPluginPanel(step);
+  });
 }

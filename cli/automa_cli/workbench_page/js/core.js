@@ -18,7 +18,7 @@ var elements = {};
   "progressText", "seekBar", "perceptionSummary", "perceptionPluginRuns",
   "perceptionCounts", "perceptionLines", "sourceDir", "cadence", "loopToggle", "overlayToggle",
   "startButton", "pauseButton", "resumeButton", "stepButton",
-  "resetButton", "notice",
+  "resetButton", "notice", "pluginSections",
   "memorySelection", "memoryHealth", "memoryPlugins",
   "memoryPublisher", "memoryEpoch", "memoryCount", "memoryPolicy", "memoryDrops", "memoryDropsSummary", "memoryDropsText",
   "memorySearch", "memoryRecords", "failurePanel", "failureText",

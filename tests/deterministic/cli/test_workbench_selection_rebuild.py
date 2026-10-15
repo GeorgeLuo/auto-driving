@@ -22,6 +22,8 @@ class SelectionRebuildTests(unittest.TestCase):
         for phase in ("running", "paused"):
             for step in ("perception", "memory", "proposal", "plan"):
                 with self.subTest(phase=phase, step=step), image_source(1) as root:
+                    # Plan has one packaged plugin. A recording that ran no plan
+                    # shows none, so selecting that plugin is a change.
                     if step == "plan":
                         write_manifest(
                             root,
@@ -70,6 +72,11 @@ class SelectionRebuildTests(unittest.TestCase):
                     # The next pass is at zero, but the previous frame is displayed.
                     self.assertEqual(shown["position"], 0)
                     self.assertEqual(shown["timeline"], [])
+                    if step == "plan":
+                        self.assertEqual(shown["active_plan_plugin_ids"], [])
+                        self.assertEqual(
+                            shown["machine_detail"]["pipeline"]["plan_preset"], "custom"
+                        )
                     frame_id = shown["current_frame"]["frame_id"]
                     selected_ids = {
                         "perception": ["frame", "floor_plane"],
@@ -154,6 +161,8 @@ class SelectionRebuildTests(unittest.TestCase):
                     }
                     for index in range(6)
                 ]
+                # Memory and proposal are cleared below; plan starts from a
+                # recording that ran none.
                 if step == "plan":
                     for entry in frames:
                         entry["steps"] = {"plan": None}
@@ -211,6 +220,7 @@ class SelectionRebuildTests(unittest.TestCase):
                 self.assertEqual(len(selected["timeline"]), 2)
                 self.assertNotIn("future-marker", runner._shared_memory)
                 self.assertEqual(runner._steps["memory"].update_count, 2)
+                # The reference replays the default plan, which the selection now matches.
                 if step == "plan":
                     recorded = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
                     for entry in recorded["frames"]:

@@ -1,6 +1,7 @@
 """The shared runtime HTTP contract, served over the shared frame loop."""
 from __future__ import annotations
 
+import base64
 import json
 import threading
 import unittest
@@ -31,9 +32,13 @@ RECORDING_MEMORY = "tests.shared.autonomy.decision_cycle.memory.activation_fixtu
 
 
 def _routes(steps=None, **kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
+    loop_options = {}
+    if "decision_activations" in kwargs:
+        loop_options["decision_activations"] = kwargs.pop("decision_activations")
     loop = FrameLoop(
         host=AutonomyCycleHost(steps=steps or decision_steps(), target=_Target()),
         vehicle_id="test-car", runtime="test", run_id="test-run",
+        **loop_options,
     )
     return loop, RuntimeRoutes(loop, **kwargs)
 
@@ -102,6 +107,49 @@ class RuntimeRoutesTests(unittest.TestCase):
         status, headers, _ = routes.handle("HEAD", "/autonomy/camera/latest/frame.jpg")
         self.assertEqual((status, headers["X-Frame-Index"]), (200, "42"))
         self.assertEqual(_json(routes.handle("GET", "/autonomy/camera/latest"))[1]["perception_state"], "matched")
+
+    def test_decision_transaction_image_stays_with_its_completed_cycle(self) -> None:
+        from autonomy.decision_cycle.activation import DECISION_STEPS
+        from implementations.decision_cycle.catalog import packaged_activation
+
+        activations = {step: packaged_activation(step) for step in DECISION_STEPS}
+        loop, routes = _routes(
+            decision_steps(activations),
+            decision_activations={
+                step: activation.to_payload() for step, activation in activations.items()
+            },
+        )
+        loop.submit(
+            np.zeros((4, 6, 3), dtype=np.uint8),
+            frame_id="sim_frame_000042",
+            frame_index=42,
+        )
+        loop.wait_for_cycle()
+        status, transaction = _json(routes.handle("GET", "/autonomy/decision/transaction"))
+        self.assertEqual(status, 200, transaction)
+        self.assertEqual(transaction["schema"], "automa_decision_transaction_v0")
+        self.assertEqual(transaction["publication"]["decision"]["frame_id"], "sim_frame_000042")
+        self.assertEqual(transaction["image_content_type"], "image/jpeg")
+        self.assertTrue(base64.b64decode(transaction["image_base64"]).startswith(b"\xff\xd8"))
+        with loop._lock:
+            loop._decision_inflight = True
+        try:
+            loop.submit(
+                np.full((4, 6, 3), 255, dtype=np.uint8),
+                frame_id="sim_frame_000043",
+                frame_index=43,
+            )
+            status, transaction = _json(routes.handle("GET", "/autonomy/decision/transaction"))
+            self.assertEqual(status, 200, transaction)
+            self.assertEqual(transaction["publication"]["decision"]["frame_id"], "sim_frame_000042")
+            self.assertEqual(
+                _json(routes.handle("GET", "/autonomy/camera/latest"))[1]["frame"]["frame_id"],
+                "sim_frame_000043",
+            )
+        finally:
+            with loop._lock:
+                loop._decision_inflight = False
+                loop._pending_frame = None
 
     def test_decision_and_memory_routes_fail_closed_with_a_reason(self) -> None:
         _, routes = _routes()

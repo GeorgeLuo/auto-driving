@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import time
 from typing import Any
 
@@ -18,9 +19,7 @@ from .decision import (
 )
 from .decision_view import unavailable_host_telemetry_panel
 from .host_publications import (
-    fetch_decision_publication,
-    fetch_observation_frame,
-    frame_id_from_headers,
+    fetch_decision_transaction,
     HostTelemetryError,
     fetch_host_telemetry_latest,
     fetch_host_telemetry_records,
@@ -141,14 +140,13 @@ def _accepted_pair(
     vehicle_id: str,
     timeout_s: float,
 ) -> tuple[dict[str, Any], tuple[bytes, str]]:
-    """Read image first and accept only an exact decision/image pair."""
+    """Accept the decision and image the host published as one snapshot."""
 
     deadline = time.monotonic() + min(1.0, max(0.2, float(timeout_s)))
     last_error = "matched decision image is unavailable"
     while time.monotonic() < deadline:
-        image_bytes, image_headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
-        image_frame_id = frame_id_from_headers(image_headers)
-        publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
+        transaction = fetch_decision_transaction(base_url, timeout_s=timeout_s)
+        publication = transaction.get("publication") if isinstance(transaction, dict) else None
         try:
             normalized = accept_decision_publication(
                 publication,
@@ -164,16 +162,22 @@ def _accepted_pair(
             last_error = exc.message_text
             time.sleep(0.04)
             continue
-        if image_frame_id != normalized["frame_id"]:
-            last_error = (
-                f"image frame {image_frame_id!r} did not match decision frame "
-                f"{normalized['frame_id']!r}"
-            )
+        encoded = transaction.get("image_base64") if isinstance(transaction, dict) else None
+        content_type = transaction.get("image_content_type") if isinstance(transaction, dict) else None
+        if not isinstance(encoded, str) or content_type not in {"image/jpeg", "image/png"}:
+            last_error = "matched decision image is unavailable"
             time.sleep(0.04)
             continue
-        content_type = image_headers.get("content-type", "").split(";", 1)[0].strip()
-        if content_type not in {"image/jpeg", "image/png"}:
-            raise ValueError(f"unsupported decision image type {content_type!r}")
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            last_error = "matched decision image is unavailable"
+            time.sleep(0.04)
+            continue
+        if not image_bytes:
+            last_error = "matched decision image is unavailable"
+            time.sleep(0.04)
+            continue
         return normalized, (image_bytes, content_type)
     raise ConnectionError(last_error)
 

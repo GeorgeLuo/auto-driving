@@ -346,14 +346,11 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         )
         normalized = {"frame_id": "frame-1"}
         with patch(
-            "cli.automa_cli.decision_live.fetch_observation_frame",
-            return_value=(
-                b"jpeg",
-                {"x-frame-id": "frame-1", "content-type": "image/jpeg"},
-            ),
-        ), patch(
-            "cli.automa_cli.decision_live.fetch_decision_publication",
-            side_effect=[{}, {}],
+            "cli.automa_cli.decision_live.fetch_decision_transaction",
+            side_effect=[
+                {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
+                {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
+            ],
         ), patch(
             "cli.automa_cli.decision_live.accept_decision_publication",
             side_effect=[future_error, normalized],

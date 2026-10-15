@@ -46,6 +46,8 @@ CAMERA_LATEST_FRAME_PATH = "/autonomy/camera/latest/frame.jpg"
 CAMERA_LATEST_JSON_PATH = "/autonomy/camera/latest"
 CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication_v0"
 DECISION_LATEST_PATH = "/autonomy/decision/latest"
+DECISION_TRANSACTION_PATH = "/autonomy/decision/transaction"
+DECISION_TRANSACTION_SCHEMA = "automa_decision_transaction_v0"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"
@@ -336,6 +338,34 @@ class FrameLoop:
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
             return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+
+    def publish_decision_transaction(self) -> tuple[dict[str, Any], bytes | None]:
+        """Return the current decision and its image from one locked snapshot.
+
+        A newer capture can replace the camera frame before its cycle finishes.
+        Reading the image and the decision separately then pairs that new frame
+        with the previous decision. Callers that publish the live view need
+        both from the same completed cycle.
+        """
+
+        read_at_ms = timestamp_ms()
+        with self._lock:
+            publication = self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+            latest = self.latest_state
+            image = None if latest is None else latest.image
+            decision = publication.get("decision")
+            same_frame = (
+                latest is not None
+                and isinstance(decision, dict)
+                and decision.get("frame_id") == latest.frame_id
+            )
+        if not same_frame or image is None:
+            return publication, None
+        try:
+            return publication, encode_jpeg(image)
+        except Exception:  # noqa: BLE001 - a bad image must not replace the decision
+            logger.exception("Decision transaction image encode failed")
+            return publication, None
 
     def reset_memory(self) -> dict[str, Any]:
         """Reset the live memory step under the same lock as observation cycles.

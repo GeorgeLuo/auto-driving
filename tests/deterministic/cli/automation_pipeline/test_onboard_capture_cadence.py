@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
 import tempfile
@@ -145,6 +146,20 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             jpeg, publication = part.publish_latest_frame_jpeg()
             return jpeg, {"x-frame-id": publication["frame"]["frame_id"], "content-type": "image/jpeg"}
 
+        def transaction(*_args, **_kwargs):
+            jpeg, headers = frame()
+            publication = part.publish_decision_latest()
+            payload = {
+                "schema": "automa_decision_transaction_v0",
+                "publication": publication,
+            }
+            decision = publication.get("decision") if isinstance(publication, dict) else None
+            frame_id = decision.get("frame_id") if isinstance(decision, dict) else None
+            if jpeg and frame_id is not None and headers.get("x-frame-id") == frame_id:
+                payload["image_base64"] = base64.b64encode(jpeg).decode("ascii")
+                payload["image_content_type"] = "image/jpeg"
+            return payload
+
         seen = []
 
         def publication(*_args, **_kwargs):
@@ -162,8 +177,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
                     patch.object(runtime_monitor, "fetch_observation_publication", side_effect=publication),
                     patch.object(runtime_monitor, "fetch_observation_frame", side_effect=frame),
-                    patch("cli.automa_cli.decision_live.fetch_observation_frame", side_effect=frame),
-                    patch("cli.automa_cli.decision_live.fetch_decision_publication", side_effect=lambda *_a, **_kw: part.publish_decision_latest()),
+                    patch("cli.automa_cli.decision_live.fetch_decision_transaction", side_effect=transaction),
                 ):
                     started = time.monotonic()
                     code, message = runtime_monitor.monitor_runtime(

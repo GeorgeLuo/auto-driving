@@ -7,6 +7,7 @@ stdlib server. The CLI reads every vehicle through the same routes.
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import threading
@@ -18,6 +19,8 @@ from autonomy.runtime.frame_loop import (
     CAMERA_LATEST_FRAME_PATH,
     CAMERA_LATEST_JSON_PATH,
     DECISION_LATEST_PATH,
+    DECISION_TRANSACTION_PATH,
+    DECISION_TRANSACTION_SCHEMA,
     FrameLoop,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
@@ -75,6 +78,7 @@ class RuntimeRoutes:
             ("GET", CAMERA_LATEST_JSON_PATH): self._camera,
             ("GET", CAMERA_LATEST_FRAME_PATH): self._camera_frame,
             ("GET", DECISION_LATEST_PATH): self._decision,
+            ("GET", DECISION_TRANSACTION_PATH): self._decision_transaction,
             ("POST", MEMORY_RESET_PATH): self._memory_reset,
             ("GET", TELEMETRY_LATEST_PATH): self._telemetry_latest,
             ("GET", TELEMETRY_RECORDS_PATH): self._telemetry_records,
@@ -216,6 +220,17 @@ class RuntimeRoutes:
     def _decision(self, query: dict[str, list[str]], body: bytes) -> Response:
         payload = self.loop.publish_decision_latest()
         return json_response(payload, 200 if payload.get("status") == "ready" else 503)
+
+    def _decision_transaction(self, query: dict[str, list[str]], body: bytes) -> Response:
+        publication, jpeg = self.loop.publish_decision_transaction()
+        payload: dict[str, Any] = {
+            "schema": DECISION_TRANSACTION_SCHEMA,
+            "publication": publication,
+        }
+        if jpeg is not None:
+            payload["image_base64"] = base64.b64encode(jpeg).decode("ascii")
+            payload["image_content_type"] = "image/jpeg"
+        return json_response(payload, 200 if publication.get("status") == "ready" else 503)
 
     def _memory_reset(self, query: dict[str, list[str]], body: bytes) -> Response:
         payload = {"schema": MEMORY_RESET_SCHEMA, **self.loop.reset_memory()}

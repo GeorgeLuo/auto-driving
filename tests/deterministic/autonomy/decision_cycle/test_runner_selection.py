@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
@@ -10,6 +12,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE
 from autonomy.vehicle import SensorFrame
 from implementations.decision_cycle.catalog import packaged_activation
+from tests.shared.integration.plugin_flow_fixtures import prototype_definition
 
 CALLS = {
     "perception": lambda runner, shared: runner.perceive(PerceptionRequest(SensorFrame(
@@ -20,6 +23,9 @@ CALLS = {
     ),
     "proposal": lambda runner, shared: runner.run(
         frame_id="frame", frame_index=0, timestamp_ms=100, shared_memory=shared,
+    ),
+    "plan": lambda runner, shared: runner(
+        DecisionFrameContext("frame", 0, 100, shared_memory=shared), None
     ),
 }
 
@@ -33,17 +39,22 @@ class RunnerSelectionTests(unittest.TestCase):
         steps = decision_steps(
             {step: packaged_activation(step) for step in CALLS}, source=INSTALLED_PACKAGE
         )
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
         for step, call in CALLS.items():
             with self.subTest(step=step):
                 runner = getattr(steps, step)
                 applied = runner.plugin_ids
                 self.assertTrue(applied)
                 shared: dict = {}
-                runner.plugin_manager.select([])
+                # A one-plugin step cannot restage to nothing; it takes a prototype.
+                selection = [prototype_definition(root, step)] if runner.single_plugin else []
+                runner.plugin_manager.select(selection)
                 call(runner, shared)
                 self.assertEqual(runner.plugin_ids, applied)
                 runner.apply_selection(shared)
-                self.assertEqual(runner.plugin_ids, ())
+                self.assertEqual(runner.plugin_ids, tuple(item.plugin_id for item in selection))
 
 
 if __name__ == "__main__":

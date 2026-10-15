@@ -1,4 +1,4 @@
-"""Perception, memory and proposal select and stage through one update path."""
+"""Perception, memory, proposal and plan select and stage through one update path."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activation_path, vehicle_bundle
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
@@ -193,14 +194,18 @@ class StepSelectionTests(unittest.TestCase):
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step):
                     recorded = copy.deepcopy(original)
+                    # A one-plugin step cannot be left empty by a recording.
+                    clearable = step in CLEARABLE_STEPS
                     for frame in recorded["frames"]:
-                        frame["steps"][step]["plugins"] = []
-                        frame["steps"][step]["metadata"]["preset"] = "custom"
+                        if clearable:
+                            frame["steps"][step]["plugins"] = []
+                            frame["steps"][step]["metadata"]["preset"] = "custom"
                     write_manifest(root, recorded)
                     inspect = ("vehicles", step, "inspect", str(root), "--json")
                     code, stdout, stderr = _invoke(*inspect)
                     self.assertEqual(code, 0, stdout + stderr)
-                    self.assertEqual(json.loads(stdout)["frames"][0]["steps"][step]["plugins"], [])
+                    if clearable:
+                        self.assertEqual(json.loads(stdout)["frames"][0]["steps"][step]["plugins"], [])
                     code, stdout, stderr = _invoke(*inspect, "--preset", DEFAULT_STEP_PRESETS[step])
                     self.assertEqual(code, 0, stdout + stderr)
                     overridden = json.loads(stdout)["frames"][0]["steps"][step]

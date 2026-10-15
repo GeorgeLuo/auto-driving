@@ -1,11 +1,11 @@
-"""Built-in plan plugin: select the most confident active candidate.
+"""Plan plugin: select the most confident active candidate.
 
 A candidate is active when its lifecycle is fresh or retained and matches its
 freshness, it is available, it carries a command, and its proposal ID names
 this frame. The active candidate with the highest confidence is selected; equal
 confidence goes to the lower plugin ID. With no active candidate the plan is
-idle. ``HighestConfidencePlan`` is the plan step's default selection and
-records its plugin ID as the plan's ``selector_id``.
+idle. ``HighestConfidencePlan`` records its plugin ID as the plan's
+``selector_id``.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ def select_highest_confidence_plan(
     frame_id: str,
     timestamp_ms: int,
     candidates: list[ActionProposal] | tuple[ActionProposal, ...],
+    selector_id: str,
     metadata: dict[str, Any] | None = None,
 ) -> ActionPlan:
     candidates_list = list(candidates)
@@ -42,6 +43,7 @@ def select_highest_confidence_plan(
             candidates=tuple(candidates_list),
             selected_proposal_id=None,
             contributions=(),
+            selector_id=selector_id,
             metadata=plan_metadata,
         )
     active.sort(key=lambda item: (-item.confidence, item.plugin_id))
@@ -60,6 +62,7 @@ def select_highest_confidence_plan(
                 role="selected",
             ),
         ),
+        selector_id=selector_id,
         metadata=plan_metadata,
     )
 
@@ -79,5 +82,8 @@ class HighestConfidencePlan:
         timestamp_ms: int,
     ) -> ActionPlan:
         return select_highest_confidence_plan(
-            frame_id=frame_id, timestamp_ms=timestamp_ms, candidates=candidates
+            frame_id=frame_id,
+            timestamp_ms=timestamp_ms,
+            candidates=candidates,
+            selector_id=self.plugin_id,
         )

@@ -474,7 +474,7 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
                 "select_plugins", step="memory", active_plugin_ids=["bounded_evidence"] * 2
             )
         self.assertEqual(repeated.exception.status_code, 422)
-        for step in ("decision", "plan", ""):
+        for step in ("decision", ""):
             with self.assertRaises(ReplayActionError, msg=step) as other:
                 runner.dispatch("select_plugins", step=step, active_plugin_ids=[])
             self.assertEqual(other.exception.status_code, 400)

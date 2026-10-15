@@ -108,7 +108,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertEqual(decision["generation_id"], identity["generation_id"])
         self.assertEqual(
             decision["plugins"],
-            {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["hold"]},
+            {"proposal": ["avoid_recent_obstruction"], "plan": [], "action": ["hold"]},
         )
         self.assertEqual(
             decision["authority"],

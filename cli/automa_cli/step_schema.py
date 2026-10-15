@@ -1,7 +1,7 @@
 """A staged step and its runner's ``describe_schema()`` as the info commands report them.
 
-``vehicles info perception``, ``vehicles info memory`` and ``vehicles info
-proposal`` read the step's staged activation and load
+``vehicles info perception``, ``vehicles info memory``, ``vehicles info
+proposal`` and ``vehicles info plan`` read the step's staged activation and load
 its runner from the controller bundle with ``staged_step_info``. Their JSON
 carries its ``activation`` and ``controller_bundle`` records and the step's
 schema under ``<step>_schema``, with ``<step>_schema_source`` naming the
@@ -79,7 +79,8 @@ def staged_step_info(
         runner = load_staged_runner(activation)
     except Exception as exc:  # noqa: BLE001 - staged plugins are third-party code
         return None, failure("load", exc)
-    # Plan and action plugins declare no schema; their info has none.
+    # Observation and action declare no schema, and a runner staged before
+    # its step declared one has no describe_schema().
     describe = getattr(runner, "describe_schema", None)
     try:
         schema = describe() if describe is not None else None

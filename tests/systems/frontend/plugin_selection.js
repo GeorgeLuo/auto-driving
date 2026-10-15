@@ -14,7 +14,7 @@ function node() {
     addEventListener(name, handler) { this.events[name] = handler; },
     querySelectorAll(selector) {
       const inputs = this.children.flatMap((child) => child.children || [])
-        .filter((child) => child.type === "checkbox");
+        .filter((child) => child.type === "checkbox" || child.type === "radio");
       return selector.endsWith(":checked") ? inputs.filter((input) => input.checked) : inputs;
     }
   };
@@ -76,8 +76,17 @@ if (mode === "order") {
   toggle("memory", "first", true);
   assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second", "first"]);
   assert.equal(panel.queued, null);
+  // A one-plugin step's choice replaces its plugin.
+  ctx.state.plan_plugin_catalog = {
+    digest: "two-plan-plugins", single_plugin: true,
+    plugins: [{ id: "first" }, { id: "second" }]
+  };
+  accept("plan", ["first"], "custom");
+  inputs("plan")[0].checked = false; // the browser clears the rest of the radio group
+  toggle("plan", "second", true);
+  assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), ["second"]);
 } else if (mode === "state") {
-  for (const step of ["perception", "memory", "proposal"]) {
+  for (const step of Object.keys(ctx.pluginPanels)) {
     const originalInputs = inputs(step);
     const original = ctx.state["active_" + step + "_plugin_ids"].slice();
     ctx.state["active_" + step + "_plugin_ids"] = [];
@@ -96,8 +105,9 @@ if (mode === "order") {
   assert.deepEqual(Array.from(ctx.pluginPanels.perception.draft),
     [...snapshot.active_perception_plugin_ids, "frame"]);
 } else if (mode === "visibility") {
-  for (const step of ["perception", "memory", "proposal"]) {
+  for (const step of Object.keys(ctx.pluginPanels)) {
     const panel = ctx.pluginPanels[step];
+    const catalog = snapshot[step + "_plugin_catalog"];
     const preset = snapshot.machine_detail.pipeline[step + "_preset"];
     if (preset) {
       assert(elements[panel.summaryId].textContent.includes(preset),
@@ -108,13 +118,18 @@ if (mode === "order") {
     }
     assert.equal(elements[step + "PluginOrder"].textContent,
       "Run order: " + snapshot["active_" + step + "_plugin_ids"].join(" → "));
-    toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
-    assert(elements[panel.summaryId].textContent.includes("selection pending"));
-    ctx.revertPluginDraft(step);
-    ctx.actionInFlight = false;
-    ctx.renderPlugins();
+    if (catalog && catalog.single_plugin) {
+      assert(inputs(step).every((input) => input.type === "radio" && input.name === step + "Plugin"),
+        "a one-plugin step is a single choice");
+    } else {
+      toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
+      assert(elements[panel.summaryId].textContent.includes("selection pending"));
+      ctx.revertPluginDraft(step);
+      ctx.actionInFlight = false;
+      ctx.renderPlugins();
+    }
   }
-  for (const step of ["memory", "proposal"]) {
+  for (const step of Object.keys(ctx.pluginPanels).filter((step) => step !== "perception")) {
     accept(step, [], step === "proposal" ? null : "custom");
     assert.equal(elements[step + "PluginOrder"].textContent, "No " + step + " plugins selected.");
   }

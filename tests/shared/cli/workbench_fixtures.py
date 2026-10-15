@@ -103,6 +103,7 @@ class FixtureMapper:
                 PerceptionSignal(
                     signal_id="fixture_visible",
                     value=True,
+                    confidence=1.0,
                     source_plugin_id=self.plugin_id,
                 ),
             ),

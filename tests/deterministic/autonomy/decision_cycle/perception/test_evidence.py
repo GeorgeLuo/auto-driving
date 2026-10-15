@@ -56,6 +56,18 @@ class EvidenceValueTests(unittest.TestCase):
         self.assertEqual(_thing(confidence=2.0).confidence, 1.0)
         self.assertEqual(_thing(confidence=-1.0).confidence, 0.0)
 
+    def test_missing_confidence_round_trips_as_none(self) -> None:
+        thing = _thing(confidence=None)
+        signal = PerceptionSignal("ready", True)
+        self.assertIsNone(thing.confidence)
+        self.assertIsNone(signal.confidence)
+        self.assertEqual(PerceptionSignal.from_dict({"signal_id": "ready", "value": True}).confidence, None)
+        self.assertEqual(PerceptionSignal.from_dict({"signal_id": "ready", "value": True, "confidence": None}).confidence, None)
+        self.assertEqual(PerceptionSignal.from_dict({"signal_id": "ready", "value": True, "confidence": 0.0}).confidence, 0.0)
+        restored = PerceivedThing.from_dict(thing.to_dict())
+        self.assertIsNone(restored.confidence)
+        self.assertEqual(restored, thing)
+
 
 class PerceptionEvidenceSerializationTests(unittest.TestCase):
     def test_evidence_survives_detached_perception_serialization(self) -> None:

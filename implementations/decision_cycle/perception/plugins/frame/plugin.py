@@ -54,7 +54,7 @@ class FrameObservationPlugin:
             },
         )
         return PerceptionEvidenceBatch(
-            signals=(PerceptionSignal("front_camera_available", True),),
+            signals=(PerceptionSignal("front_camera_available", True, confidence=1.0),),
             things=(evidence,),
             measurements=measurements,
         )

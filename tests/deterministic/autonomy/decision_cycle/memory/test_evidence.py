@@ -52,6 +52,17 @@ class RetainedEvidenceTests(unittest.TestCase):
         self.assertEqual(restored.location.zone, "center")
         self.assertEqual(restored.origin, record.origin)
 
+    def test_missing_confidence_round_trips_as_none(self) -> None:
+        payload = self.retained().to_dict()
+        del payload["confidence"]
+        self.assertIsNone(RetainedEvidence.from_dict(payload).confidence)
+        payload["confidence"] = None
+        restored = RetainedEvidence.from_dict(payload)
+        self.assertIsNone(restored.confidence)
+        self.assertIsNone(RetainedEvidence.from_dict(restored.to_dict()).confidence)
+        payload["confidence"] = 0.0
+        self.assertEqual(RetainedEvidence.from_dict(payload).confidence, 0.0)
+
     def test_detach_evidence_isolates_nested_mutation(self) -> None:
         original = (self.retained("a"), self.retained("b"))
 

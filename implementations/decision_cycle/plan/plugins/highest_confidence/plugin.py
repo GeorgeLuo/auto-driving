@@ -2,8 +2,9 @@
 
 A candidate is active when its lifecycle is fresh or retained and matches its
 freshness, it is available, it carries a command, and its proposal ID names
-this frame. The active candidate with the highest confidence is selected; equal
-confidence goes to the lower plugin ID. With no active candidate the plan is
+this frame. The active candidate with the highest confidence is selected. A
+missing confidence ranks below every number. Equal confidence goes to the
+lower plugin ID. With no active candidate the plan is
 idle. ``HighestConfidencePlan`` records its plugin ID as the plan's
 ``selector_id``.
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.values import ActionProposal
 
@@ -46,7 +48,7 @@ def select_highest_confidence_plan(
             selector_id=selector_id,
             metadata=plan_metadata,
         )
-    active.sort(key=lambda item: (-item.confidence, item.plugin_id))
+    active.sort(key=lambda item: (*confidence_rank(item.confidence), item.plugin_id))
     selected = active[0]
     return ActionPlan(
         frame_id=frame_id,
@@ -65,8 +67,6 @@ def select_highest_confidence_plan(
         selector_id=selector_id,
         metadata=plan_metadata,
     )
-
-
 
 
 class HighestConfidencePlan:

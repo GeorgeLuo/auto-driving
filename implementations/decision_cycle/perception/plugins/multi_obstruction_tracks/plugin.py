@@ -15,6 +15,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -395,10 +396,9 @@ class MultiObstructionTracksPlugin:
             selected.append(thing)
         selected.sort(
             key=lambda thing: (
-                float(thing.confidence),
-                float(thing.properties.get("area_fraction", 0.0)),
-            ),
-            reverse=True,
+                *confidence_rank(thing.confidence),
+                -float(thing.properties.get("area_fraction", 0.0)),
+            )
         )
         return selected[: max(self.max_tracks * 4, self.max_tracks)]
 
@@ -495,10 +495,13 @@ def _proposals_related(
     return horizontal_overlap >= 0.35 and vertical_gap <= gap
 
 
-def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float:
+def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float | None:
     if not things:
         return 0.0
-    return float(sum(thing.confidence for thing in things) / len(things))
+    scored = [thing.confidence for thing in things if thing.confidence is not None]
+    if not scored:
+        return None
+    return float(sum(scored) / len(scored))
 
 
 def _odd_kernel(value: int) -> int:

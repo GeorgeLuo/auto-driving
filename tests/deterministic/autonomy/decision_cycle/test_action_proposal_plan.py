@@ -17,6 +17,16 @@ from tests.support.action_fixtures import decision_chain, packaged_decision_chai
 
 
 class ActionProposalMatrixTests(unittest.TestCase):
+    def test_missing_confidence_round_trips_as_none_and_zero_stays_zero(self) -> None:
+        payload = _active_proposal(confidence=0.0).to_dict()
+        self.assertEqual(ActionProposal.from_dict(payload).confidence, 0.0)
+        del payload["confidence"]
+        missing = ActionProposal.from_dict(payload)
+        self.assertIsNone(missing.confidence)
+        self.assertIsNone(ActionProposal.from_dict(missing.to_dict()).confidence)
+        payload["confidence"] = None
+        self.assertIsNone(ActionProposal.from_dict(payload).confidence)
+        self.assertEqual(synthetic_error_proposal(plugin_id="p", frame_id="frame_001", reason="plugin_exception").confidence, 0.0)
 
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
         engine = decision_chain(

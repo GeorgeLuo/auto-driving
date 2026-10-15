@@ -401,6 +401,12 @@
       return `steer ${command.steering} / throttle ${command.throttle}`;
     }
 
+    function confidenceText(value) {
+      if (value === null || value === undefined) return "none";
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(3) : "none";
+    }
+
     function decisionPlan() {
       const decision = latest?.decision || {};
       if (decision.plan_summary && typeof decision.plan_summary === "object") {
@@ -541,7 +547,7 @@
         name.textContent = rowCandidate.reason || rowCandidate.plugin_id || "unknown plugin";
         const detail = document.createElement("div");
         detail.className = "secondary";
-        detail.textContent = `${rowCandidate.plugin_id || "unknown"} | ${rowCandidate.lifecycle || "unknown"} | ${commandText(rowCandidate.command)} | conf ${Number(rowCandidate.confidence || 0).toFixed(3)}`;
+        detail.textContent = `${rowCandidate.plugin_id || "unknown"} | ${rowCandidate.lifecycle || "unknown"} | ${commandText(rowCandidate.command)} | conf ${confidenceText(rowCandidate.confidence)}`;
         row.append(name, detail);
         candidates.append(row);
       }
@@ -571,7 +577,7 @@
         name.textContent = `${isPrimary ? "selected · " : ""}${record.label || record.kind || "evidence"}`;
         const detail = document.createElement("div");
         detail.className = "secondary";
-        detail.textContent = `${record.kind || "unknown"} | ${record.location?.frame || "unknown"}:${record.location?.zone || "unknown"} | ${Number(record.confidence || 0).toFixed(3)}`;
+        detail.textContent = `${record.kind || "unknown"} | ${record.location?.frame || "unknown"}:${record.location?.zone || "unknown"} | ${confidenceText(record.confidence)}`;
         row.append(name, detail);
         things.append(row);
       }

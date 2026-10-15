@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 
+from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -84,7 +85,7 @@ class TemporalFloorContinuityPlugin:
 
     def _initialize_history(self) -> None:
         self._last_bbox: tuple[float, float, float, float] | None = None
-        self._last_confidence = 0.0
+        self._last_confidence: float | None = None
         self._misses = 0
         self._age = 0
 
@@ -186,7 +187,9 @@ class TemporalFloorContinuityPlugin:
             if self._last_bbox is not None and self._misses <= self.max_hold_frames:
                 held = _materialize(
                     self._last_bbox,
-                    self._last_confidence * (0.82**self._misses),
+                    None
+                    if self._last_confidence is None
+                    else self._last_confidence * (0.82**self._misses),
                     age_frames=self._age,
                     missed_frames=self._misses,
                     held=True,
@@ -198,7 +201,7 @@ class TemporalFloorContinuityPlugin:
                     "reason": "short_detector_gap",
                 }
             self._last_bbox = None
-            self._last_confidence = 0.0
+            self._last_confidence = None
             self._age = 0
             return None, {
                 "matched": False,
@@ -208,7 +211,7 @@ class TemporalFloorContinuityPlugin:
             }
 
         if self._last_bbox is None:
-            candidate = max(raw, key=_candidate_priority)
+            candidate = min(raw, key=_candidate_priority)
             score = 1.0
             reason = "initial_highest_confidence"
             matched = False
@@ -221,7 +224,7 @@ class TemporalFloorContinuityPlugin:
             score, candidate = max(scored, key=lambda item: item[0], default=(0.0, None))
             matched = candidate is not None and score >= self.minimum_association_score
             if not matched:
-                candidate = max(raw, key=_candidate_priority)
+                candidate = min(raw, key=_candidate_priority)
                 score = 0.0
                 reason = "association_restarted"
             else:
@@ -240,12 +243,16 @@ class TemporalFloorContinuityPlugin:
                 for old, new in zip(self._last_bbox, bbox, strict=True)
             )
         self._last_bbox = smoothed
-        self._last_confidence = (
-            float(candidate.confidence)
-            if self._age == 0 or not matched
-            else (1.0 - self.smoothing_alpha) * self._last_confidence
-            + self.smoothing_alpha * float(candidate.confidence)
-        )
+        incoming = candidate.confidence
+        if incoming is None:
+            self._last_confidence = None
+        elif self._last_confidence is None or self._age == 0 or not matched:
+            self._last_confidence = float(incoming)
+        else:
+            self._last_confidence = (
+                (1.0 - self.smoothing_alpha) * self._last_confidence
+                + self.smoothing_alpha * float(incoming)
+            )
         self._misses = 0
         self._age += 1
         return _materialize(
@@ -265,7 +272,7 @@ class TemporalFloorContinuityPlugin:
 
 def _materialize(
     bbox: tuple[float, float, float, float],
-    confidence: float,
+    confidence: float | None,
     *,
     age_frames: int,
     missed_frames: int,
@@ -290,24 +297,26 @@ def _materialize(
             zone=_zone(bbox),
             bbox_xyxy_norm=bbox,
         ),
-        confidence=_clamp(confidence, 0.0, 1.0),
+        confidence=None if confidence is None else _clamp(confidence, 0.0, 1.0),
         properties=properties,
     )
 
 
-def _candidate_priority(thing: PerceivedThing) -> tuple[float, float, float]:
+def _candidate_priority(thing: PerceivedThing) -> tuple[bool, float, float, float]:
+    """Sort key: highest score first, then the taller box, then the wider."""
+
     bbox = thing.location.bbox_xyxy_norm or (0.0, 0.0, 0.0, 0.0)
     return (
-        float(thing.confidence),
-        max(0.0, bbox[3] - bbox[1]),
-        max(0.0, bbox[2] - bbox[0]),
+        *confidence_rank(thing.confidence),
+        -max(0.0, bbox[3] - bbox[1]),
+        -max(0.0, bbox[2] - bbox[0]),
     )
 
 
 def _association_score(
     previous: tuple[float, float, float, float],
     current: tuple[float, float, float, float] | None,
-    confidence: float,
+    confidence: float | None,
     max_distance: float,
 ) -> float:
     if current is None:
@@ -317,7 +326,8 @@ def _association_score(
     new_center = ((current[0] + current[2]) / 2.0, (current[1] + current[3]) / 2.0)
     distance = float(np.hypot(old_center[0] - new_center[0], old_center[1] - new_center[1]))
     distance_score = max(0.0, 1.0 - distance / max(max_distance, 1e-6))
-    return float(0.55 * iou + 0.30 * distance_score + 0.15 * _clamp(confidence, 0.0, 1.0))
+    confidence_term = 0.0 if confidence is None else _clamp(confidence, 0.0, 1.0)
+    return float(0.55 * iou + 0.30 * distance_score + 0.15 * confidence_term)
 
 
 def _iou(left: tuple[float, float, float, float], right: tuple[float, float, float, float]) -> float:

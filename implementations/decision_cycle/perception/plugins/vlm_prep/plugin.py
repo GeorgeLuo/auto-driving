@@ -84,7 +84,7 @@ class VlmPrepPlugin:
         inputs.diagnostics.emit_json("vlm_prep_summary", "summary.json", summary)
 
         return PerceptionEvidenceBatch(
-            signals=(PerceptionSignal("vlm_prep_available", True),),
+            signals=(PerceptionSignal("vlm_prep_available", True, confidence=1.0),),
             measurements={
                 "image_width_px": int(image.shape[1]),
                 "image_height_px": int(image.shape[0]),

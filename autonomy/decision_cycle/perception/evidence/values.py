@@ -5,6 +5,8 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from autonomy.decision_cycle.confidence import optional_confidence
+
 
 @dataclass(frozen=True)
 class ViewLocation:
@@ -48,7 +50,7 @@ class PerceivedThing:
     kind: str
     label: str
     location: ViewLocation
-    confidence: float
+    confidence: float | None = None
     properties: dict[str, Any] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
@@ -57,7 +59,9 @@ class PerceivedThing:
         object.__setattr__(
             self,
             "confidence",
-            _normalized_confidence(self.confidence, record_name="perception thing"),
+            optional_confidence(
+                self.confidence, field_name="perception thing confidence", clamp=True
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -71,7 +75,7 @@ class PerceivedThing:
             kind=str(data.get("kind") or "unknown"),
             label=str(data.get("label") or "unknown"),
             location=ViewLocation.from_dict(location),
-            confidence=float(data.get("confidence") or 0.0),
+            confidence=data.get("confidence"),
             properties=deepcopy(dict(data.get("properties") or {})),
             source_plugin_id=(
                 str(data["source_plugin_id"])
@@ -87,7 +91,7 @@ class PerceptionSignal:
 
     signal_id: str
     value: bool | int | float | str | None
-    confidence: float = 1.0
+    confidence: float | None = None
     properties: dict[str, Any] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
@@ -96,7 +100,9 @@ class PerceptionSignal:
         object.__setattr__(
             self,
             "confidence",
-            _normalized_confidence(self.confidence, record_name="perception signal"),
+            optional_confidence(
+                self.confidence, field_name="perception signal confidence", clamp=True
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -107,7 +113,7 @@ class PerceptionSignal:
         return cls(
             signal_id=str(data.get("signal_id") or "unknown"),
             value=data.get("value"),
-            confidence=float(data.get("confidence") or 0.0),
+            confidence=data.get("confidence"),
             properties=deepcopy(dict(data.get("properties") or {})),
             source_plugin_id=(
                 str(data["source_plugin_id"])
@@ -147,11 +153,6 @@ def _finite_float(value: Any, *, field_name: str) -> float:
     if not math.isfinite(normalized):
         raise ValueError(f"{field_name} must be finite")
     return normalized
-
-
-def _normalized_confidence(value: Any, *, record_name: str) -> float:
-    confidence = _finite_float(value, field_name=f"{record_name} confidence")
-    return max(0.0, min(1.0, confidence))
 
 
 def _normalized_coordinate(value: Any) -> float:

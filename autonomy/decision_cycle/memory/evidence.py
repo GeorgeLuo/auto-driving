@@ -7,11 +7,11 @@
 
 from __future__ import annotations
 
-import math
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from autonomy.decision_cycle.confidence import optional_confidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
@@ -81,8 +81,8 @@ class RetainedEvidence:
     record_id: str
     kind: str
     label: str
-    confidence: float
     origin: MemoryOrigin
+    confidence: float | None = None
     location: ViewLocation | None = None
     properties: dict[str, Any] = field(default_factory=dict)
 
@@ -93,7 +93,7 @@ class RetainedEvidence:
         object.__setattr__(
             self,
             "confidence",
-            _normalized_confidence(self.confidence),
+            optional_confidence(self.confidence, field_name="confidence", clamp=True),
         )
         if not isinstance(self.origin, MemoryOrigin):
             raise TypeError("retained evidence origin must be MemoryOrigin")
@@ -127,7 +127,7 @@ class RetainedEvidence:
             record_id=str(data.get("record_id") or ""),
             kind=str(data.get("kind") or ""),
             label=str(data.get("label") or ""),
-            confidence=float(data.get("confidence") or 0.0),
+            confidence=data.get("confidence"),
             origin=MemoryOrigin.from_dict(origin_data),
             location=location,
             properties=deepcopy(dict(data.get("properties") or {})),
@@ -148,16 +148,6 @@ def _require_non_negative_int(value: Any, *, field_name: str) -> int:
     if normalized < 0:
         raise ValueError(f"{field_name} must be >= 0")
     return normalized
-
-
-def _normalized_confidence(value: Any) -> float:
-    try:
-        confidence = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("confidence must be numeric") from exc
-    if not math.isfinite(confidence):
-        raise ValueError("confidence must be finite")
-    return max(0.0, min(1.0, confidence))
 
 
 def detach_evidence(records: Any) -> tuple[RetainedEvidence, ...]:

@@ -7,5 +7,6 @@ and its record values; ``runner`` at this level is the shape those runners
 share. ``activation`` is the per-step activation document and ``steps`` builds
 runners from activations. ``context.DecisionFrameContext`` is the input for
 one cycle tick, ``action_identifiers`` the identifier grammar for proposals and
-plans, and ``errors`` the reasons a cycle fails closed.
+plans, ``confidence`` the optional score every record may carry, and
+``errors`` the reasons a cycle fails closed.
 """

@@ -462,7 +462,7 @@
     function overlayLabel(thing, kind) {
       const rawId = String(thing.thing_id || kind);
       const shortId = rawId.length > 22 ? `${rawId.slice(0, 19)}...` : rawId;
-      return `${shortId}  ${Number(thing.confidence || 0).toFixed(2)}`;
+      return `${shortId}  ${confidenceText(thing.confidence, 2)}`;
     }
 
     function rectanglesOverlap(first, second) {
@@ -584,6 +584,12 @@
       return `${Math.round(number * 1000) / 1000} ms`;
     }
 
+    function confidenceText(value, digits = 3) {
+      if (value === null || value === undefined) return "none";
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(digits) : "none";
+    }
+
     function appendMetric(container, name, value) {
       const term = document.createElement("dt");
       term.textContent = name;
@@ -648,7 +654,7 @@
       const perceptionTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "perception") : null;
       appendMetric(metrics, "Cycle", formatMs(latest.cycle?.cycle_duration_ms));
       appendMetric(metrics, "Perception", formatMs(perceptionTiming?.duration_ms));
-      appendMetric(metrics, "Confidence", Number(latest.perception?.confidence || 0).toFixed(3));
+      appendMetric(metrics, "Confidence", confidenceText(latest.perception?.confidence));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");
       appendMetric(metrics, "Memory keys", memoryKeysText(latest.memory));
       appendMetric(
@@ -682,7 +688,7 @@
         name.textContent = thing.label || thing.thing_id || "unnamed finding";
         const detail = document.createElement("div");
         detail.className = "secondary";
-        detail.textContent = `${thing.kind || "unknown"} | ${thing.location?.frame || "unknown"}:${thing.location?.zone || "unknown"} | ${Number(thing.confidence || 0).toFixed(3)}`;
+        detail.textContent = `${thing.kind || "unknown"} | ${thing.location?.frame || "unknown"}:${thing.location?.zone || "unknown"} | ${confidenceText(thing.confidence)}`;
         row.append(name, detail);
         things.append(row);
       }

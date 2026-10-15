@@ -19,6 +19,7 @@ from typing import Any, Callable, TextIO
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, idle_output
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.decision_cycle.confidence import confidence_text
 from autonomy.decision_cycle.timing import step_timing
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
 from implementations.decision_cycle.catalog import selection_activation
@@ -353,7 +354,7 @@ def _proposal_lines(record: dict[str, Any]) -> list[str]:
     ]
     lines.extend(
         f"Retained: record_id={item['record_id']} kind={item['kind']} "
-        f"confidence={item['confidence']} frame_id={item['frame_id']}"
+        f"confidence={confidence_text(item['confidence'])} frame_id={item['frame_id']}"
         for item in memory["records"]
     )
     lines.extend(_candidate_lines(record.get("candidates"), selected=None))
@@ -393,7 +394,7 @@ def _candidate_lines(candidates: Any, *, selected: str | None) -> list[str]:
         ("* " if selected is not None and item.get("proposal_id") == selected else "- ")
         + f"plugin={item.get('plugin_id')} proposal={item.get('proposal_id')} "
         f"lifecycle={item.get('lifecycle')} freshness={item.get('freshness')} "
-        f"confidence={item.get('confidence')} reason={item.get('reason')} "
+        f"confidence={confidence_text(item.get('confidence'))} reason={item.get('reason')} "
         f"command={json.dumps(_command(item.get('command')), sort_keys=True)}"
         for item in candidates
     ]

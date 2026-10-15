@@ -12,6 +12,7 @@ import math
 from collections.abc import Mapping
 from typing import Any, Sequence
 
+from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
@@ -301,7 +302,7 @@ def propose(
     stale = [rec for cls, rec in usable if cls == "stale"]
 
     def pick(records: list[RetainedEvidence]) -> RetainedEvidence:
-        return sorted(records, key=lambda r: (-r.confidence, r.record_id))[0]
+        return sorted(records, key=lambda r: (*confidence_rank(r.confidence), r.record_id))[0]
 
     # Fresh pool first if any fresh records exist — do not fall back to retained
     # when the fresh pool is only center-band (no usable lateral side).
@@ -320,7 +321,7 @@ def propose(
         # prefer the foreground cue before the stable record-id tie-break.
         ordered = sorted(
             active_pool,
-            key=lambda r: (-r.confidence, -_bbox_bottom(r), r.record_id),
+            key=lambda r: (*confidence_rank(r.confidence), -_bbox_bottom(r), r.record_id),
         )
         primary = None
         side = None
@@ -332,22 +333,6 @@ def propose(
         if primary is None:
             # Active freshness class present but no lateral cue in that class.
             return _inactive(source, "no_lateral_obstruction_evidence")
-
-        if not math.isfinite(primary.confidence) or not (
-            0.0 <= primary.confidence <= 1.0
-        ):
-            return ActionProposal(
-                plugin_id=AvoidRecentObstruction.plugin_id,
-                frame_id=source.frame_id,
-                lifecycle="error",
-                freshness="none",
-                confidence=0.0,
-                reason="invalid_record_confidence",
-                command=None,
-                assumptions=BASE_ASSUMPTIONS,
-                source_refs=(_source_ref(primary),),
-                available=False,
-            )
 
         assumptions = list(BASE_ASSUMPTIONS)
         magnitude = float(steer_magnitude)
@@ -419,15 +404,12 @@ def propose(
 
     if stale:
         primary = pick(stale)
-        conf = primary.confidence
-        if not math.isfinite(conf) or not (0.0 <= conf <= 1.0):
-            conf = 0.0
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,
             frame_id=source.frame_id,
             lifecycle="stale",
             freshness="stale",
-            confidence=conf,
+            confidence=primary.confidence,
             reason="stale_obstruction_evidence",
             command=None,
             assumptions=BASE_ASSUMPTIONS,

@@ -10,7 +10,7 @@ def _active_proposal(
     *,
     plugin_id: str = "avoid_recent_obstruction",
     frame_id: str = "frame_001",
-    confidence: float = 0.5,
+    confidence: float | None = 0.5,
     steering: float = 0.35,
 ) -> ActionProposal:
     return ActionProposal(

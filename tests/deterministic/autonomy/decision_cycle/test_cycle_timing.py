@@ -76,7 +76,7 @@ class CycleTimingTests(unittest.TestCase):
         class Raises:
             plugin_id = "raises"
 
-            def plan(self, candidates, *, frame_id, timestamp_ms):
+            def plan(self, candidates, source, shared_memory, *, frame_id, timestamp_ms):
                 raise RuntimeError("plan failed")
 
         plan = PlanRunner.from_plugins({"raises": Raises()})

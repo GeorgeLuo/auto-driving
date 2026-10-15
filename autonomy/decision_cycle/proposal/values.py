@@ -18,7 +18,6 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.decision_cycle.confidence import optional_confidence
 from autonomy.serialization import (
-    canonical_json_size_bytes,
     deep_freeze,
     frozen_mapping_to_dict,
 )
@@ -32,8 +31,6 @@ MAX_ASSUMPTIONS = 8
 MAX_SOURCE_REFS = 16
 MAX_SOURCE_REF_ID = 128
 MAX_SOURCE_REF_NOTE = 64
-MAX_PROPOSAL_METADATA_BYTES = 1024
-MAX_PROPOSAL_BYTES = 4096
 COMMAND_EPS = 1e-9
 
 Lifecycle = Literal[
@@ -290,21 +287,10 @@ class ActionProposal:
 
         if type(self.metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
-        metadata = deep_freeze(self.metadata)
-        meta_plain = frozen_mapping_to_dict(metadata)
-        if canonical_json_size_bytes(meta_plain) > MAX_PROPOSAL_METADATA_BYTES:
-            raise ValueError(
-                f"proposal metadata exceeds {MAX_PROPOSAL_METADATA_BYTES} bytes"
-            )
-        object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "metadata", deep_freeze(self.metadata))
         if self.schema != ACTION_PROPOSAL_SCHEMA:
             raise ValueError(
                 f"schema must be {ACTION_PROPOSAL_SCHEMA!r}; got {self.schema!r}"
-            )
-        size = canonical_json_size_bytes(self.to_dict())
-        if size > MAX_PROPOSAL_BYTES:
-            raise ValueError(
-                f"ActionProposal serializes to {size} bytes; max {MAX_PROPOSAL_BYTES}"
             )
 
     def to_dict(self) -> dict[str, Any]:

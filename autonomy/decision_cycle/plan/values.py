@@ -10,12 +10,12 @@ is idle.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from autonomy.decision_cycle.proposal.values import ActionProposal
+from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand
 from autonomy.serialization import (
-    canonical_json_size_bytes,
     deep_freeze,
     frozen_mapping_to_dict,
 )
@@ -25,8 +25,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 
-ACTION_PLAN_SCHEMA = "action_plan_v0"
-MAX_PLAN_METADATA_BYTES = 1024
+ACTION_PLAN_SCHEMA = "action_plan_v1"
 
 
 @dataclass(frozen=True)
@@ -55,6 +54,9 @@ class ActionPlan:
     selector_id: str
     selected_proposal_id: str | None = None
     contributions: tuple[PlanContribution, ...] = ()
+    command: ProposedVehicleCommand | None = None
+    reason: str = ""
+    confidence: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     plan_id: str = ""
     schema: str = ACTION_PLAN_SCHEMA
@@ -71,7 +73,7 @@ class ActionPlan:
         if plan_id != plan_id_for(frame_id):
             raise ValueError(f"plan_id must be {plan_id_for(frame_id)!r}")
         object.__setattr__(self, "plan_id", plan_id)
-        if self.status not in {"selected", "idle"}:
+        if self.status not in {"selected", "idle", "composed"}:
             raise ValueError(f"invalid plan status {self.status!r}")
         object.__setattr__(
             self, "selector_id", require_ascii_id(self.selector_id, field_name="selector_id")
@@ -92,42 +94,64 @@ class ActionPlan:
         object.__setattr__(self, "candidates", ordered)
 
         contributions = tuple(self.contributions)
+        by_id = {candidate.proposal_id: candidate for candidate in ordered}
+        if type(self.reason) is not str:
+            raise ValueError("reason must be a string")
+        confidence = _plan_confidence(self.confidence)
         if self.status == "idle":
             if self.selected_proposal_id is not None:
                 raise ValueError("idle plan requires selected_proposal_id=null")
             if contributions:
                 raise ValueError("idle plan requires empty contributions")
-        else:
+            if self.command is not None or self.reason != "" or confidence is not None:
+                raise ValueError("idle plan requires command=null, reason='', confidence=null")
+        elif self.status == "selected":
             if self.selected_proposal_id is None:
                 raise ValueError("selected plan requires selected_proposal_id")
-            ids = {c.proposal_id for c in ordered}
-            if self.selected_proposal_id not in ids:
+            if self.selected_proposal_id not in by_id:
                 raise ValueError("selected_proposal_id must reference a candidate")
             if len(contributions) != 1:
                 raise ValueError("selected plan requires exactly one contribution")
             contrib = contributions[0]
+            selected = by_id[self.selected_proposal_id]
             if contrib.proposal_id != self.selected_proposal_id:
                 raise ValueError("contribution.proposal_id must match selection")
-            selected = next(
-                c for c in ordered if c.proposal_id == self.selected_proposal_id
-            )
             if contrib.plugin_id != selected.plugin_id:
                 raise ValueError(
                     "contribution.plugin_id must match selected candidate plugin_id"
                 )
             if contrib.role != "selected" or contrib.weight != 1.0:
                 raise ValueError("contribution must be weight=1.0 role=selected")
+            if selected.command is None or not _commands_match(self.command, selected.command):
+                raise ValueError("selected plan command must equal the candidate command")
+            if self.reason != selected.reason or confidence != selected.confidence:
+                raise ValueError("selected plan reason and confidence must equal the candidate")
+        else:
+            if self.selected_proposal_id is not None:
+                raise ValueError("composed plan requires selected_proposal_id=null")
+            if not isinstance(self.command, ProposedVehicleCommand):
+                raise ValueError("composed plan requires a command")
+            if not contributions:
+                raise ValueError("composed plan requires contributions")
+            seen: set[str] = set()
+            for contrib in contributions:
+                if contrib.proposal_id in seen:
+                    raise ValueError("composed contributions must name distinct candidates")
+                seen.add(contrib.proposal_id)
+                candidate = by_id.get(contrib.proposal_id)
+                if candidate is None:
+                    raise ValueError("contribution must reference a candidate")
+                if contrib.plugin_id != candidate.plugin_id:
+                    raise ValueError("contribution.plugin_id must match the candidate")
+                _finite_weight(contrib.weight)
+                if type(contrib.role) is not str:
+                    raise ValueError("contribution role must be a string")
         object.__setattr__(self, "contributions", contributions)
+        object.__setattr__(self, "confidence", confidence)
 
         if type(self.metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
-        metadata = deep_freeze(self.metadata)
-        meta_plain = frozen_mapping_to_dict(metadata)
-        if canonical_json_size_bytes(meta_plain) > MAX_PLAN_METADATA_BYTES:
-            raise ValueError(
-                f"plan metadata exceeds {MAX_PLAN_METADATA_BYTES} bytes"
-            )
-        object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "metadata", deep_freeze(self.metadata))
         if self.schema != ACTION_PLAN_SCHEMA:
             raise ValueError(
                 f"schema must be {ACTION_PLAN_SCHEMA!r}; got {self.schema!r}"
@@ -148,10 +172,47 @@ class ActionPlan:
             "frame_id": self.frame_id,
             "timestamp_ms": self.timestamp_ms,
             "status": self.status,
+            "command": self.command.to_dict() if self.command is not None else None,
+            "reason": self.reason,
+            "confidence": self.confidence,
             "selected_proposal_id": self.selected_proposal_id,
             "contributions": [item.to_dict() for item in self.contributions],
             "candidates": [item.to_dict() for item in self.candidates],
             "selector_id": self.selector_id,
             "metadata": frozen_mapping_to_dict(self.metadata),
         }
+
+
+def _plan_confidence(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("confidence must be numeric") from exc
+    if not math.isfinite(confidence) or confidence < 0.0 or confidence > 1.0:
+        raise ValueError("confidence must be finite and in [0, 1]")
+    return confidence
+
+
+def _finite_weight(value: Any) -> float:
+    if type(value) is bool or not isinstance(value, (int, float)):
+        raise ValueError("contribution weight must be finite")
+    weight = float(value)
+    if not math.isfinite(weight):
+        raise ValueError("contribution weight must be finite")
+    return weight
+
+
+def _commands_match(
+    left: ProposedVehicleCommand | None,
+    right: ProposedVehicleCommand | None,
+) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    return (
+        left.steering == right.steering
+        and left.throttle == right.throttle
+        and left.gear == right.gear
+    )
 

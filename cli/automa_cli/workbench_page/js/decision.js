@@ -25,7 +25,16 @@ function renderDecision() {
   setText("decisionSummary", text(cycle.status, "unknown") + " · " + selected);
   setText("decisionFrameIdentity", frame ? frame.frame_id : cycle.frame_id);
   setText("decisionStatus", text(cycle.status, "unknown") + " / " + text(plan.status, "no plan"));
-  setText("decisionSelected", selected);
+  var planCommand = plan.command || null;
+  var contributions = Array.isArray(plan.contributions) ? plan.contributions : [];
+  setText("decisionSelected", plan.status === "composed"
+    ? "composed " + (planCommand
+      ? "steering=" + text(planCommand.steering, "—") + " throttle=" + text(planCommand.throttle, "—")
+      : "none")
+      + " · " + contributions.map(function (item) {
+        return text(item.plugin_id, "unknown") + ":" + text(item.role, "—");
+      }).join(", ")
+    : selected);
   setText("decisionProposed", proposed && Object.keys(proposed).length
     ? "steering=" + text(proposed.steering, "—") + " throttle=" + text(proposed.throttle, "—")
     : "none");

@@ -29,13 +29,14 @@ FAILURE_POLICY = FailurePolicy(
 def composition_declaration() -> dict[str, str]:
     """How the one plan plugin uses the proposal step's candidates.
 
-    The plugin reads those candidates, the cycle's ``frame_id``, and its
+    The plugin reads those candidates, a detached copy of the proposal source,
+    the host shared-memory map, the cycle's ``frame_id``, and its
     ``timestamp_ms``, and returns one ``ActionPlan``. The plan's
     ``selector_id`` is the plugin ID.
     """
 
     return {
         "order": "one_plugin",
-        "inputs": "proposal candidates, frame_id, and timestamp_ms",
+        "inputs": "proposal candidates, the proposal source, shared memory, frame_id, and timestamp_ms",
         "output": "one ActionPlan; selector_id is the plugin ID",
     }

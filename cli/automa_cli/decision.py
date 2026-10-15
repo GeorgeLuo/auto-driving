@@ -98,6 +98,9 @@ PLAN_EXACT_KEYS = frozenset(
         "frame_id",
         "timestamp_ms",
         "status",
+        "command",
+        "reason",
+        "confidence",
         "selected_proposal_id",
         "contributions",
         "candidates",
@@ -481,6 +484,28 @@ def _strict_decode_proposal(payload: object, *, field: str) -> ActionProposal:
     return proposal
 
 
+def _upgrade_v0_plan(payload: dict[str, Any]) -> dict[str, Any]:
+    """Fill a pre-command plan from its selected candidate and read it as v1."""
+
+    upgraded = dict(payload)
+    command = None
+    reason = ""
+    confidence = None
+    selected_id = upgraded.get("selected_proposal_id")
+    if upgraded.get("status") == "selected" and isinstance(upgraded.get("candidates"), list):
+        for candidate in upgraded["candidates"]:
+            if isinstance(candidate, dict) and candidate.get("proposal_id") == selected_id:
+                command = candidate.get("command")
+                reason = str(candidate.get("reason") or "")
+                confidence = candidate.get("confidence")
+                break
+    upgraded["schema"] = ACTION_PLAN_SCHEMA
+    upgraded["command"] = command
+    upgraded["reason"] = reason
+    upgraded["confidence"] = confidence
+    return upgraded
+
+
 def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
     if not isinstance(payload, dict):
         raise DecisionSurfaceError(
@@ -488,6 +513,8 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
             f"{field} must be an ActionPlan object.",
             details={"field": field},
         )
+    if payload.get("schema") == "action_plan_v0":
+        payload = _upgrade_v0_plan(payload)
     _require_exact_keys(payload, PLAN_EXACT_KEYS, field=field)
     if payload.get("schema") != ACTION_PLAN_SCHEMA:
         raise DecisionSurfaceError(
@@ -531,6 +558,12 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
                 role=str(item["role"]),
             )
         )
+    command_raw = payload.get("command")
+    command = (
+        ProposedVehicleCommand.from_dict(command_raw)
+        if isinstance(command_raw, dict)
+        else None
+    )
     try:
         plan = ActionPlan(
             frame_id=str(payload["frame_id"]),
@@ -539,6 +572,9 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
             candidates=candidates,
             selected_proposal_id=payload.get("selected_proposal_id"),
             contributions=tuple(contributions),
+            command=command,
+            reason=str(payload.get("reason") or ""),
+            confidence=payload.get("confidence"),
             selector_id=str(payload["selector_id"]),
             metadata=dict(payload.get("metadata") or {}),
             plan_id=str(payload.get("plan_id") or ""),
@@ -881,7 +917,7 @@ def _require_aggregate_cycle_alignment(
     - the plan is over exactly the proposal step's candidates
     - plan/source timestamps agree when both present
     - report timing agrees with the cycle source when source construction succeeds
-    - authority.proposed is the selected plan command (or null for idle/error)
+    - authority.proposed is the plan command (or null for idle/error)
     """
 
     frame_id = cycle.frame_id
@@ -961,7 +997,7 @@ def _require_aggregate_cycle_alignment(
                     details={"field": field, "expected": expected, "got": frame.get(field)},
                 )
 
-    # authority.proposed must be the selected plan command (detached equal value).
+    # authority.proposed must be the plan command (detached equal value).
     proposed = cycle.authority.proposed
     if cycle.status == "error" or plan is None or plan.status == "idle":
         if proposed is not None:
@@ -972,15 +1008,20 @@ def _require_aggregate_cycle_alignment(
             )
         return
 
-    selected = plan.selected_candidate()
-    if selected is None:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "selected plan is missing the selected candidate.",
-            details={"field": "cycle.plan.selected_proposal_id"},
-        )
-    selected_command = selected.command
-    if selected_command is None:
+    if plan.status == "composed":
+        expected_command = plan.command
+        mismatch = "authority.proposed must equal the composed plan command."
+    else:
+        selected = plan.selected_candidate()
+        if selected is None:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "selected plan is missing the selected candidate.",
+                details={"field": "cycle.plan.selected_proposal_id"},
+            )
+        expected_command = selected.command
+        mismatch = "authority.proposed must equal the selected plan command."
+    if expected_command is None:
         if proposed is not None:
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
@@ -991,22 +1032,22 @@ def _require_aggregate_cycle_alignment(
     if proposed is None:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "authority.proposed must equal the selected plan command.",
+            mismatch,
             details={"field": "cycle.action.authority.proposed"},
         )
     try:
         if canonical_json_utf8(_json_ready(proposed.to_dict())) != canonical_json_utf8(
-            _json_ready(selected_command.to_dict())
+            _json_ready(expected_command.to_dict())
         ):
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
-                "authority.proposed must equal the selected plan command.",
+                mismatch,
                 details={"field": "cycle.action.authority.proposed"},
             )
     except ValueError as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            f"authority.proposed/selected command are not strictly JSON-serializable: {exc}",
+            f"authority.proposed/plan command are not strictly JSON-serializable: {exc}",
             details={"field": "cycle.action.authority.proposed"},
         ) from exc
 

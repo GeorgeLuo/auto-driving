@@ -10,6 +10,7 @@ in ``interface``; ``describe_schema`` reports the step's contract.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -53,6 +54,18 @@ class PlanRunner(StepRunner[PlanPlugin]):
                         "plugin with no candidates"
                     ),
                 },
+                {
+                    "name": "source",
+                    "required": False,
+                    "source": "a detached copy of the proposal step's DecisionDataSource",
+                    "missing_behavior": "an absent proposal step passes source=None",
+                },
+                {
+                    "name": "shared_memory",
+                    "required": True,
+                    "source": "the host shared-memory map",
+                    "missing_behavior": "an absent host map passes an empty map",
+                },
             ],
             "output": {
                 "schema": ACTION_PLAN_SCHEMA,
@@ -84,11 +97,15 @@ class PlanRunner(StepRunner[PlanPlugin]):
             ):
                 return None
             candidates = proposal.candidates if proposal is not None else ()
+            source = deepcopy(proposal.source) if proposal is not None else None
+            shared_memory = context.shared_memory if context.shared_memory is not None else {}
             self.run_count += 1
             with self._timed_single() as plugin:
                 try:
                     plan = plugin.plan(
                         tuple(candidates),
+                        source,
+                        shared_memory,
                         frame_id=context.frame_id,
                         timestamp_ms=context.timestamp_ms,
                     )

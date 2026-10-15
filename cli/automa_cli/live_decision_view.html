@@ -401,6 +401,18 @@
       return `steer ${command.steering} / throttle ${command.throttle}`;
     }
 
+    function contributionItems(plan) {
+      return Array.isArray(plan.contributions) ? plan.contributions : [];
+    }
+
+    function contributionText(plan) {
+      const items = contributionItems(plan);
+      if (!items.length) return "none";
+      return items
+        .map((item) => `${item?.plugin_id || "unknown"}:${item?.role || "—"}`)
+        .join(", ");
+    }
+
     function confidenceText(value) {
       if (value === null || value === undefined) return "none";
       const number = Number(value);
@@ -429,8 +441,19 @@
     }
 
     function primaryRecordIds() {
-      const refs = selectedCandidate()?.source_refs;
-      return new Set((Array.isArray(refs) ? refs : []).map((ref) => String(ref.id || "")));
+      const plan = decisionPlan();
+      const candidates = Array.isArray(plan.candidates) ? plan.candidates : [];
+      const chosen = plan.status === "composed"
+        ? candidates.filter((candidate) => contributionItems(plan).some(
+          (item) => item?.proposal_id === candidate.proposal_id,
+        ))
+        : [selectedCandidate()].filter(Boolean);
+      const ids = new Set();
+      for (const candidate of chosen) {
+        const refs = Array.isArray(candidate?.source_refs) ? candidate.source_refs : [];
+        for (const ref of refs) ids.add(String(ref.id || ""));
+      }
+      return ids;
     }
 
     function evidenceRecords() {
@@ -510,14 +533,23 @@
         appendMetric(cycleMetrics, name.charAt(0).toUpperCase() + name.slice(1), stepTimingText(step));
       }
       appendMetric(cycleMetrics, "Status", cycle.action?.status || latest.status);
-      appendMetric(cycleMetrics, "Proposal", candidate?.reason || plan.status || "—");
-      appendMetric(cycleMetrics, "Freshness", candidate?.freshness || candidate?.lifecycle || "—");
+      const composed = plan.status === "composed";
+      appendMetric(
+        cycleMetrics,
+        "Proposal",
+        composed ? `${commandText(plan.command)} · ${contributionText(plan)}` : (candidate?.reason || plan.status || "—"),
+      );
+      appendMetric(cycleMetrics, "Freshness", composed ? "composed" : (candidate?.freshness || candidate?.lifecycle || "—"));
       appendMetric(cycleMetrics, "Capture age", latest.freshness?.capture_age_ms != null ? `${latest.freshness.capture_age_ms} ms` : "—");
 
       const authorityMetrics = document.getElementById("authorityMetrics");
       authorityMetrics.replaceChildren();
-      appendMetric(authorityMetrics, "Plugin", candidate?.plugin_id || "none");
-      appendMetric(authorityMetrics, "Proposed", commandText(authority.proposed || candidate?.command));
+      appendMetric(authorityMetrics, "Plugin", composed ? contributionText(plan) : (candidate?.plugin_id || "none"));
+      appendMetric(
+        authorityMetrics,
+        "Proposed",
+        commandText(composed ? (authority.proposed || plan.command) : (authority.proposed || candidate?.command)),
+      );
       appendMetric(authorityMetrics, "Authorized", commandText(authority.authorized_output));
       appendMetric(authorityMetrics, "Authorized as proposed", authority.proposed_applied ? "true" : "false");
       const hostFrame = decision.frame_id || latest.current_image?.frame_id;
@@ -541,7 +573,9 @@
       candidates.replaceChildren();
       for (const rowCandidate of plan.candidates || []) {
         const row = document.createElement("div");
-        const selected = rowCandidate.proposal_id === plan.selected_proposal_id;
+        const selected = composed
+          ? contributionItems(plan).some((item) => item?.proposal_id === rowCandidate.proposal_id)
+          : rowCandidate.proposal_id === plan.selected_proposal_id;
         row.className = ["run", rowCandidate.lifecycle || "", selected ? "selected" : ""].filter(Boolean).join(" ");
         const name = document.createElement("div");
         name.textContent = rowCandidate.reason || rowCandidate.plugin_id || "unknown plugin";

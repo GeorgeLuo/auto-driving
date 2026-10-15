@@ -7,6 +7,8 @@ the reason. The action record describes authorization; shared execution reports 
 
 from __future__ import annotations
 
+from typing import Any
+
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.runtime.control import AutonomyControl
@@ -42,8 +44,7 @@ class ModeAction:
                     metadata={"mode": mode, "plugin_id": self.plugin_id},
                 )
             )
-        selected = plan.selected_candidate()
-        if selected is None or selected.command is None:
+        if plan.command is None:
             return ActionDecision(
                 AutonomyControl(
                     confidence=1.0,
@@ -51,19 +52,24 @@ class ModeAction:
                     metadata={"plugin_id": self.plugin_id},
                 )
             )
-        command = selected.command
+        command = plan.command
+        metadata: dict[str, Any] = {
+            "plugin_id": self.plugin_id,
+            "proposal_ids": [item.proposal_id for item in plan.contributions],
+        }
+        if plan.status == "selected":
+            selected = plan.selected_candidate()
+            metadata["proposal_id"] = plan.selected_proposal_id
+            if selected is not None:
+                metadata["proposal_lifecycle"] = selected.lifecycle
+                metadata["proposal_freshness"] = selected.freshness
         return ActionDecision(
             AutonomyControl(
                 steering=command.steering,
                 throttle=command.throttle,
-                confidence=selected.confidence,
-                reason=selected.reason,
-                metadata={
-                    "plugin_id": self.plugin_id,
-                    "proposal_id": selected.proposal_id,
-                    "proposal_lifecycle": selected.lifecycle,
-                    "proposal_freshness": selected.freshness,
-                },
+                confidence=plan.confidence,
+                reason=plan.reason,
+                metadata=metadata,
             ),
             applied=True,
         )

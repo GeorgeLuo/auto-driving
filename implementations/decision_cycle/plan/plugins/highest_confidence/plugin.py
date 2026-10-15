@@ -45,6 +45,9 @@ def select_highest_confidence_plan(
             candidates=tuple(candidates_list),
             selected_proposal_id=None,
             contributions=(),
+            command=None,
+            reason="",
+            confidence=None,
             selector_id=selector_id,
             metadata=plan_metadata,
         )
@@ -64,6 +67,9 @@ def select_highest_confidence_plan(
                 role="selected",
             ),
         ),
+        command=selected.command,
+        reason=selected.reason,
+        confidence=selected.confidence,
         selector_id=selector_id,
         metadata=plan_metadata,
     )
@@ -77,6 +83,8 @@ class HighestConfidencePlan:
     def plan(
         self,
         candidates: tuple[ActionProposal, ...],
+        source,
+        shared_memory,
         *,
         frame_id: str,
         timestamp_ms: int,

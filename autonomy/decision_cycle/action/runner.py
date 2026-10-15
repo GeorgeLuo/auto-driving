@@ -105,13 +105,10 @@ class ActionRunner(StepRunner[ActionPlugin]):
 
 
 def _selected_command(plan: ActionPlan | None) -> ProposedVehicleCommand | None:
-    if plan is None:
+    if plan is None or plan.status not in {"selected", "composed"} or plan.command is None:
         return None
-    selected = plan.selected_candidate()
-    if selected is None or selected.command is None:
-        return None
-    # The authority owns a detached copy of the selected command.
-    return ProposedVehicleCommand.from_dict(selected.command.to_dict())
+    # The authority owns a detached copy of the planned command.
+    return ProposedVehicleCommand.from_dict(plan.command.to_dict())
 
 
 def action_result(

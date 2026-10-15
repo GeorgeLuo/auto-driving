@@ -302,6 +302,18 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(health["continuity"]["mean_match_fraction"], 1.0)
         self.assertEqual(health["score"], 1.0)
 
+    def test_representation_health_checks_a_score_only_when_present(self) -> None:
+        location = {"frame": "image", "zone": "center", "bbox_xyxy_norm": (0.2, 0.2, 0.6, 0.6)}
+        unscored = {"thing_id": "region", "kind": "region_proposal", "location": location}
+        out_of_range = {**unscored, "thing_id": "bad", "confidence": 1.5}
+        frames = [
+            {"status": "ok", "perception": {"things": (unscored, out_of_range)}},
+        ]
+
+        health = evaluate_perception_frames(frames)
+
+        self.assertEqual(health["geometry"]["valid_records"], 1)
+
     def test_flagless_run_prefers_simulator_and_uses_vehicle_sensor_contract(
         self,
     ) -> None:

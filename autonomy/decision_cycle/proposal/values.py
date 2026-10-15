@@ -16,6 +16,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_code_point_len,
 )
+from autonomy.decision_cycle.confidence import optional_confidence
 from autonomy.serialization import (
     canonical_json_size_bytes,
     deep_freeze,
@@ -220,16 +221,11 @@ class ActionProposal:
             raise ValueError(f"invalid lifecycle {self.lifecycle!r}")
         if self.freshness not in FRESHNESS_VALUES:
             raise ValueError(f"invalid freshness {self.freshness!r}")
-        if self.confidence is None:
-            confidence = None
-        else:
-            try:
-                confidence = float(self.confidence)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("confidence must be numeric") from exc
-            if not math.isfinite(confidence) or confidence < 0.0 or confidence > 1.0:
-                raise ValueError("confidence must be finite and in [0, 1]")
-        object.__setattr__(self, "confidence", confidence)
+        object.__setattr__(
+            self,
+            "confidence",
+            optional_confidence(self.confidence, field_name="confidence", clamp=False),
+        )
         reason = require_code_point_len(
             str(self.reason), field_name="reason", max_len=MAX_REASON
         )
@@ -365,7 +361,7 @@ class ActionProposal:
             frame_id=str(data.get("frame_id") or ""),
             lifecycle=str(data.get("lifecycle") or ""),
             freshness=str(data.get("freshness") or ""),
-            confidence=_confidence_from_mapping(data),
+            confidence=data.get("confidence"),
             reason=str(data.get("reason") or ""),
             command=command,
             assumptions=assumptions,
@@ -376,12 +372,6 @@ class ActionProposal:
             proposal_id=str(data.get("proposal_id") or ""),
             schema=str(data.get("schema") or ACTION_PROPOSAL_SCHEMA),
         )
-
-
-def _confidence_from_mapping(data: dict[str, Any]) -> Any:
-    if "confidence" not in data or data["confidence"] is None:
-        return None
-    return data["confidence"]
 
 
 def synthetic_error_proposal(

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.values import ActionProposal
 
@@ -47,7 +48,7 @@ def select_highest_confidence_plan(
             selector_id=selector_id,
             metadata=plan_metadata,
         )
-    active.sort(key=lambda item: (item.confidence is None, -(item.confidence or 0.0), item.plugin_id))
+    active.sort(key=lambda item: (*confidence_rank(item.confidence), item.plugin_id))
     selected = active[0]
     return ActionPlan(
         frame_id=frame_id,
@@ -66,8 +67,6 @@ def select_highest_confidence_plan(
         selector_id=selector_id,
         metadata=plan_metadata,
     )
-
-
 
 
 class HighestConfidencePlan:

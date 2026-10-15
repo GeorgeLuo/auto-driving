@@ -15,6 +15,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -395,11 +396,9 @@ class MultiObstructionTracksPlugin:
             selected.append(thing)
         selected.sort(
             key=lambda thing: (
-                thing.confidence is not None,
-                0.0 if thing.confidence is None else float(thing.confidence),
-                float(thing.properties.get("area_fraction", 0.0)),
-            ),
-            reverse=True,
+                *confidence_rank(thing.confidence),
+                -float(thing.properties.get("area_fraction", 0.0)),
+            )
         )
         return selected[: max(self.max_tracks * 4, self.max_tracks)]
 

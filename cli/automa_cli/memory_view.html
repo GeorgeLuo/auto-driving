@@ -282,6 +282,12 @@
       return `${Math.round(number * 1000) / 1000} ms`;
     }
 
+    function confidenceText(value, digits = 3) {
+      if (value === null || value === undefined) return "none";
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(digits) : "none";
+    }
+
     function appendMetric(container, name, value) {
       const term = document.createElement("dt");
       term.textContent = name;
@@ -355,7 +361,7 @@
       return [
         record.kind || "unknown",
         zone ? `zone:${zone}` : "no-location",
-        `conf ${Number(record.confidence || 0).toFixed(2)}`,
+        `conf ${confidenceText(record.confidence, 2)}`,
       ].join(" · ");
     }
 
@@ -621,7 +627,7 @@
       valueSummary.replaceChildren();
       appendMetric(valueSummary, "kind", value.kind);
       appendMetric(valueSummary, "label", value.label);
-      appendMetric(valueSummary, "confidence", Number(value.confidence || 0).toFixed(3));
+      appendMetric(valueSummary, "confidence", confidenceText(value.confidence));
       appendMetric(valueSummary, "location.frame", value.location?.frame || "—");
       appendMetric(valueSummary, "location.zone", value.location?.zone || "—");
       if (Array.isArray(value.location?.bbox_xyxy_norm)) {

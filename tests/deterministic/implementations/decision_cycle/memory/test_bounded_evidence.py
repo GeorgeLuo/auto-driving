@@ -52,7 +52,7 @@ def _thing(
     *,
     kind: str = "floor_boundary",
     zone: str = "center",
-    confidence: float = 0.9,
+    confidence: float | None = 0.9,
 ) -> dict:
     return {
         "thing_id": thing_id,
@@ -304,7 +304,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 self.assertEqual(states["recording_test"]["record_count"], 0)
                 self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
-    def test_skips_false_signals_and_low_confidence(self) -> None:
+    def test_skips_false_signals_and_low_confidence_and_keeps_unscored(self) -> None:
         ledger = BoundedEvidenceReducer(
             max_records=8,
             max_age_ms=5_000,
@@ -315,19 +315,26 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             _observation(
                 "o1",
                 created_at_ms=90,
-                things=(_thing("weak", confidence=0.2), _thing("strong", confidence=0.8)),
+                things=(
+                    _thing("weak", confidence=0.2),
+                    _thing("strong", confidence=0.8),
+                    _thing("unscored", confidence=None),
+                ),
                 signals=(
                     {"signal_id": "floor_visible", "value": False, "confidence": 1.0},
                     {"signal_id": "boundary", "value": True, "confidence": 0.9},
+                    {"signal_id": "unscored", "value": True, "confidence": None},
                 ),
             ),
         )
-        ids = {record.record_id for record in state.records}
+        confidences = {record.record_id: record.confidence for record in state.records}
         self.assertEqual(
-            ids,
+            confidences,
             {
-                "thing:1:11:floor_plane:6:strong",
-                "signal:1:20:lightweight_observer:8:boundary",
+                "thing:1:11:floor_plane:6:strong": 0.8,
+                "thing:1:11:floor_plane:8:unscored": None,
+                "signal:1:20:lightweight_observer:8:boundary": 0.9,
+                "signal:1:20:lightweight_observer:8:unscored": None,
             },
         )
 

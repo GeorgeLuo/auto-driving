@@ -4,6 +4,8 @@ import math
 import statistics
 from typing import Any
 
+from autonomy.decision_cycle.confidence import optional_confidence
+
 
 IGNORED_EVIDENCE_KINDS = {"sensor_frame", "prepared_sensor_frame"}
 
@@ -106,19 +108,15 @@ def _valid_thing_geometry(thing: dict[str, Any]) -> bool:
     bbox = location.get("bbox_xyxy_norm") if isinstance(location, dict) else None
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
         return False
-    confidence_value = thing.get("confidence")
-    if confidence_value is None:
-        return False
     try:
         x1, y1, x2, y2 = (float(value) for value in bbox)
-        confidence = float(confidence_value)
+        optional_confidence(thing.get("confidence"), field_name="confidence", clamp=False)
     except (TypeError, ValueError):
         return False
     return (
-        all(math.isfinite(value) for value in (x1, y1, x2, y2, confidence))
+        all(math.isfinite(value) for value in (x1, y1, x2, y2))
         and 0.0 <= x1 <= x2 <= 1.0
         and 0.0 <= y1 <= y2 <= 1.0
-        and 0.0 <= confidence <= 1.0
     )
 
 

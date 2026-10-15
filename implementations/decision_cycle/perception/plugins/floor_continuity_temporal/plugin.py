@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 
+from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -84,7 +85,7 @@ class TemporalFloorContinuityPlugin:
 
     def _initialize_history(self) -> None:
         self._last_bbox: tuple[float, float, float, float] | None = None
-        self._last_confidence = 0.0
+        self._last_confidence: float | None = None
         self._misses = 0
         self._age = 0
 
@@ -186,7 +187,9 @@ class TemporalFloorContinuityPlugin:
             if self._last_bbox is not None and self._misses <= self.max_hold_frames:
                 held = _materialize(
                     self._last_bbox,
-                    self._last_confidence * (0.82**self._misses),
+                    None
+                    if self._last_confidence is None
+                    else self._last_confidence * (0.82**self._misses),
                     age_frames=self._age,
                     missed_frames=self._misses,
                     held=True,
@@ -198,7 +201,7 @@ class TemporalFloorContinuityPlugin:
                     "reason": "short_detector_gap",
                 }
             self._last_bbox = None
-            self._last_confidence = 0.0
+            self._last_confidence = None
             self._age = 0
             return None, {
                 "matched": False,
@@ -208,7 +211,7 @@ class TemporalFloorContinuityPlugin:
             }
 
         if self._last_bbox is None:
-            candidate = max(raw, key=_candidate_priority)
+            candidate = min(raw, key=_candidate_priority)
             score = 1.0
             reason = "initial_highest_confidence"
             matched = False
@@ -221,7 +224,7 @@ class TemporalFloorContinuityPlugin:
             score, candidate = max(scored, key=lambda item: item[0], default=(0.0, None))
             matched = candidate is not None and score >= self.minimum_association_score
             if not matched:
-                candidate = max(raw, key=_candidate_priority)
+                candidate = min(raw, key=_candidate_priority)
                 score = 0.0
                 reason = "association_restarted"
             else:
@@ -241,20 +244,20 @@ class TemporalFloorContinuityPlugin:
             )
         self._last_bbox = smoothed
         incoming = candidate.confidence
-        if incoming is not None:
-            incoming_value = float(incoming)
-            if self._age == 0 or not matched:
-                self._last_confidence = incoming_value
-            else:
-                self._last_confidence = (
-                    (1.0 - self.smoothing_alpha) * self._last_confidence
-                    + self.smoothing_alpha * incoming_value
-                )
+        if incoming is None:
+            self._last_confidence = None
+        elif self._last_confidence is None or self._age == 0 or not matched:
+            self._last_confidence = float(incoming)
+        else:
+            self._last_confidence = (
+                (1.0 - self.smoothing_alpha) * self._last_confidence
+                + self.smoothing_alpha * float(incoming)
+            )
         self._misses = 0
         self._age += 1
         return _materialize(
             smoothed,
-            None if incoming is None else self._last_confidence,
+            self._last_confidence,
             age_frames=self._age,
             missed_frames=0,
             held=False,
@@ -300,13 +303,13 @@ def _materialize(
 
 
 def _candidate_priority(thing: PerceivedThing) -> tuple[bool, float, float, float]:
+    """Sort key: highest score first, then the taller box, then the wider."""
+
     bbox = thing.location.bbox_xyxy_norm or (0.0, 0.0, 0.0, 0.0)
-    score = thing.confidence
     return (
-        score is not None,
-        0.0 if score is None else float(score),
-        max(0.0, bbox[3] - bbox[1]),
-        max(0.0, bbox[2] - bbox[0]),
+        *confidence_rank(thing.confidence),
+        -max(0.0, bbox[3] - bbox[1]),
+        -max(0.0, bbox[2] - bbox[0]),
     )
 
 

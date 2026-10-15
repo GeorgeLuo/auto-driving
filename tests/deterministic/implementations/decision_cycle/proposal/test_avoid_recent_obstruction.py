@@ -27,7 +27,7 @@ def _record(
     zone: str = "left",
     frame_id: str = "frame_001",
     updated_at_ms: int = 1000,
-    confidence: float = 0.8,
+    confidence: float | None = 0.8,
     record_id: str = "thing:1:a",
     bbox: tuple[float, float, float, float] | None = (0.0, 0.0, 0.2, 0.5),
     location_frame: str = "image",
@@ -125,6 +125,27 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         )
         self.assertEqual(p.lifecycle, "stale")
         self.assertIsNone(p.command)
+
+    def test_unscored_record_steers_without_a_score(self) -> None:
+        p = propose(_source((_record(zone="left", confidence=None),)))
+        self.assertEqual(p.lifecycle, "fresh")
+        self.assertIsNone(p.confidence)
+        assert p.command is not None
+        self.assertGreater(p.command.steering, 0)
+
+        stale = propose(
+            _source((_record(confidence=None, updated_at_ms=0),), now=5000, frame="frame_009")
+        )
+        self.assertEqual(stale.lifecycle, "stale")
+        self.assertIsNone(stale.confidence)
+
+    def test_scored_record_outranks_unscored(self) -> None:
+        unscored = _record(zone="right", confidence=None, record_id="thing:1:a")
+        scored = _record(zone="left", confidence=0.1, record_id="thing:1:b")
+        p = propose(_source((unscored, scored)))
+        self.assertEqual(p.confidence, 0.1)
+        assert p.command is not None
+        self.assertGreater(p.command.steering, 0)
 
     def test_future_dated_provenance(self) -> None:
         p = propose(

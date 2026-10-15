@@ -6,12 +6,16 @@ from pathlib import Path
 
 import numpy as np
 
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
     camera_feed_id,
+)
+from implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin import (
+    TemporalFloorContinuityPlugin,
 )
 from implementations.decision_cycle.perception.plugins.motion_tracks.plugin import (
     MotionTracksPlugin,
@@ -88,6 +92,27 @@ class PerceptionPluginTests(unittest.TestCase):
         self.assertIsNotNone(bbox)
         self.assertGreater(bbox[1], 0.45)
         self.assertLess(bbox[3], 0.75)
+
+    def test_temporal_floor_holds_the_score_its_track_emitted(self) -> None:
+        def boundary(confidence: float | None) -> PerceivedThing:
+            return PerceivedThing(
+                thing_id="floor_boundary_000",
+                kind="floor_boundary",
+                label="floor boundary",
+                location=ViewLocation(
+                    frame="image", zone="left", bbox_xyxy_norm=(0.1, 0.5, 0.3, 0.7)
+                ),
+                confidence=confidence,
+            )
+
+        tracker = TemporalFloorContinuityPlugin()
+        tracker._initialize_history()
+        self.assertIsNone(tracker._select([boundary(None)])[0].confidence)
+        self.assertIsNone(tracker._select([])[0].confidence)
+
+        tracker._initialize_history()
+        self.assertEqual(tracker._select([boundary(0.5)])[0].confidence, 0.5)
+        self.assertAlmostEqual(tracker._select([])[0].confidence, 0.5 * 0.82)
 
     def test_windowed_plugin_warms_up_and_reset_discards_previous_frame(self) -> None:
         rgb = np.random.default_rng(7).integers(0, 256, (72, 96, 3), dtype=np.uint8)

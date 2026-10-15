@@ -90,7 +90,7 @@ class MemoryCommandTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             staged = {}
             presets = {}
-            for step in ("perception", "memory"):
+            for step in ("perception", "memory", "plan"):
                 updated = invoke_automa(
                     "vehicles",
                     "update",
@@ -120,9 +120,8 @@ class MemoryCommandTests(unittest.TestCase):
                 self.assertEqual(
                     text[2], f"Available plugins: {', '.join(activation['available_plugins'])}"
                 )
-                # Same section titles and failure-policy field names wherever
-                # both steps have the concept. Fold into a broader info
-                # integration check later if the two commands grow a shared test.
+                # Every step that declares a schema reports the same section
+                # titles and failure-policy field names.
                 schema = payload[f"{step}_schema"]
                 self.assertEqual(set(schema["failure_policy"]), {"update", "reset", "missing_input"})
                 self.assertIn("order", schema["composition"])

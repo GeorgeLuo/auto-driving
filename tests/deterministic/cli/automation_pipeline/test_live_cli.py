@@ -50,19 +50,23 @@ class LiveCommandsTests(LiveHostTestCase):
                 live = json.loads(result.stdout)
                 self.assertEqual(live["status"], "live")
                 if step == "memory":
-                    # The memory step's time in the host's last cycle.
+                    # The memory stream reads the live step probe. Perception's
+                    # stream is the observation publication.
                     self.assertIsInstance(live["last_duration_ms"], float)
         terminal = self.automa("stream", "perception", "--once", "--no-clear")
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
 
-    def test_perception_info_reports_the_hosts_latest_observation(self) -> None:
+    def test_info_reports_the_hosts_live_state(self) -> None:
         self.observe()
         result = self.automa("info", "perception", "--json")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         live = json.loads(result.stdout)["live_observation"]
         self.assertTrue(live["available"], live)
         self.assertEqual(live["base_url"], self.host.base_url)
+        plan = self.automa("info", "plan", "--json")
+        self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
+        self.assertIsInstance(json.loads(plan.stdout)["live"]["last_duration_ms"], float)
 
     def test_viability_passes_while_the_host_applies_no_control(self) -> None:
         # A parked car's session is manual: the host runs its cycles and

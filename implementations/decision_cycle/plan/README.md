@@ -38,8 +38,9 @@ selects the most confident active candidate; with none, the plan is idle.
 
 ## Framework boundary
 
-`autonomy/decision_cycle/plan/` owns the plugin protocol (`plugin.py`), the
-step runner (`runner.py`), and the plan record (`values.py`). The runner
-checks that a returned plan matches the frame, the plugin ID, and the proposal
-step's candidates. A plugin failure or a plan that fails that check returns no
-plan, and the action step holds.
+As in perception, memory, and proposal, `autonomy/decision_cycle/plan/` owns
+the plugin protocol (`plugin.py`), composition and failure policy
+(`interface.py`), and step execution (`runner.py`). Plan's `values.py` defines
+the plan record. The runner checks that a returned plan matches the frame, the
+plugin ID, and the proposal step's candidates. A plugin failure or a plan that
+fails that check returns no plan, and the action step holds.

@@ -33,7 +33,7 @@ from autonomy.decision_cycle.memory.interface import (
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.runner import StepRunner, describe_configuration, describe_plugin
+from autonomy.decision_cycle.runner import StepRunner
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.shared_memory import SharedMemory
@@ -147,6 +147,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
     step: ClassVar[str] = "memory"
     plugin_id: ClassVar[str] = "autonomy.memory.plugin-runner-v0"
+    schema_name = MEMORY_SCHEMA
+    failure_policy = FAILURE_POLICY
 
     def __init__(
         self,
@@ -287,19 +289,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 return None
             return self._publisher
 
-    def describe_schema(self) -> dict[str, Any]:
+    def _describe_schema(self) -> dict[str, Any]:
         """The step's contract: configuration, inputs, plugins, output, composition, failure."""
 
-        with self._runtime_lock:
-            return self._describe_schema()
-
-    def _describe_schema(self) -> dict[str, Any]:
-        applied = self.applied
         return {
-            "schema": MEMORY_SCHEMA,
+            **super()._describe_schema(),
             "plugin_id": self.plugin_id,
-            "runner": f"{type(self).__module__}:{type(self).__name__}",
-            "configuration": describe_configuration(self.plugin_manager, applied),
             "inputs": [
                 {
                     "name": "observation",
@@ -321,7 +316,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                     ),
                 },
             ],
-            "plugins": [describe_plugin(definition) for definition, _plugin in applied],
             "output": {
                 "schema": MEMORY_REPORT_SCHEMA,
                 "ledger_summary_keys": list(LEDGER_SUMMARY_KEYS),
@@ -334,7 +328,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 ),
             },
             "composition": composition_declaration(),
-            "failure_policy": FAILURE_POLICY.to_dict(),
         }
 
     def report(self) -> dict[str, Any]:

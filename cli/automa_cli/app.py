@@ -33,6 +33,7 @@ from .perception_runs import (
 from .workbench import run_workbench_replay
 from .plugin_catalog import ONE_PLUGIN_STEPS, arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
+from autonomy.decision_cycle.steps import STEP_RUNNERS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .viability import (
@@ -826,7 +827,8 @@ def build_parser() -> argparse.ArgumentParser:
             "and timestamps. Perception, memory, proposal and plan each start from a packaged preset "
             "or an ordered plugin list, as the inspect and update commands take "
             "them; a preset keeps its plugin configs. Page checkboxes retain the order "
-            "of selected plugins and append newly checked plugins. A changed ordered "
+            "of selected plugins and append newly checked plugins. A one-plugin step "
+            "is a single choice and cannot be cleared. A changed ordered "
             "selection uses default configs for that step; the other steps keep their "
             "selections and configs. The same ordered selection keeps the current "
             "configs and pass. Without --serve, one replay runs "
@@ -931,12 +933,15 @@ def build_parser() -> argparse.ArgumentParser:
     memory_info.set_defaults(handler=_handle_vehicles_info_memory)
 
     for step_name in DECISION_STEPS:
+        runner_schema = (
+            " and the runner schema" if STEP_RUNNERS[step_name].schema_name else ""
+        )
         step_info = info_commands.add_parser(
             step_name,
             help=f"Show the staged {step_name} plugins, the decision they belong to and the live {step_name} step state.",
             description=(
                 f"Show the staged {step_name} plugins"
-                + (" and the runner schema" if step_name == "proposal" else "")
+                + runner_schema
                 + ", the proposal, plan and action plugins of the staged decision with its "
                 f"generation and authority, and the {step_name} step as the running autonomy "
                 "engine has it."

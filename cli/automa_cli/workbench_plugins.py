@@ -1,7 +1,7 @@
 """Live catalog listing and selection for the replay workbench.
 
 The workbench offers every packaged plugin of the ``SELECTABLE_STEPS``:
-perception, memory and proposal. A selection is built by the catalog's
+perception, memory, proposal and plan. A selection is built by the catalog's
 ``selection_activation``, the activation the CLI stages for that step, so a
 preset given on the command line keeps its plugin configs. Listing a catalog
 does not construct plugins; construction happens only after the operator
@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.steps import step_runner
+from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, step_runner
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
@@ -108,14 +108,16 @@ class PluginCatalog:
         return {
             "schema": PLUGIN_CATALOG_SCHEMA,
             "digest": self.digest,
+            "single_plugin": self.step in ONE_PLUGIN_STEPS,
             "plugins": [item.to_dict(active_ids=active_ids) for item in self.plugins],
         }
 
     def normalize_selection(self, active_ids: Sequence[str] | None) -> tuple[str, ...]:
         """Validate ids while preserving the given order.
 
-        An empty selection disables plugins for this step. Replay still
-        displays frames, and the other steps keep their selections.
+        An empty selection disables plugins for a step that can be cleared.
+        A one-plugin step requires exactly one id. Replay still displays
+        frames, and the other steps keep their selections.
         """
 
         raw_values = [] if active_ids is None else list(active_ids)
@@ -126,6 +128,10 @@ class PluginCatalog:
             raise PluginCatalogError("active_plugin_ids must contain non-empty strings")
         if len(values) != len(set(values)):
             raise PluginCatalogError("active_plugin_ids must not contain duplicates")
+        if self.step in ONE_PLUGIN_STEPS and len(values) != 1:
+            raise PluginCatalogError(
+                f"the {self.step} step runs exactly one plugin; {len(values)} selected"
+            )
         return self.activation(values).plugins
 
     def activation(self, active_ids: Sequence[str]) -> StepActivation:

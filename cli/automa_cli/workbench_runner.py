@@ -13,7 +13,6 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
-from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
 from autonomy.plugins import LocalPluginCatalog
@@ -373,6 +372,7 @@ class ImageReplayRunner:
                 self._state["adapter"] = image_source.adapter
                 self._state["progress"]["total"] = len(image_source.frames)
                 self._state["machine_detail"] = self._machine_detail()
+                self._apply_plugin_configuration_locked()
                 self._state["phase"] = "running"
                 self._record_action_locked("start", run_id=run_id)
                 self._worker = threading.Thread(
@@ -663,19 +663,13 @@ class ImageReplayRunner:
         )
 
     def _store_recorded_activation(self, step: str, activation: StepActivation | None) -> None:
-        """Keep a selectable step's panel activation aligned with a recording.
+        """Show a selectable step's recorded plugins in its panel, none if it ran none.
 
-        A clearable step the recording left empty shows no plugins. A
-        one-plugin step left empty is not stored as an empty activation.
+        Whether the step runs comes from the recording, not from this activation.
         """
 
-        if step not in SELECTABLE_STEPS:
-            return
-        if activation is None:
-            if step in CLEARABLE_STEPS:
-                self._activations[step] = self._catalogs[step].activation([])
-            return
-        self._activations[step] = activation
+        if step in SELECTABLE_STEPS:
+            self._activations[step] = activation or self._catalogs[step].activation([])
 
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, Any]:
         """Restore the first frame's selections before constructing any selectable step."""
@@ -690,8 +684,6 @@ class ImageReplayRunner:
                 if step not in self._selection_overrides:
                     self._activations[step] = self._default_activations[step]
                 steps[step] = self._build_step(step)
-            elif step == "plan" and step not in self._selection_overrides:
-                steps[step] = recorded_runner(selection_activation(step))
         return steps
 
     def _build_step(self, step: str) -> Any:

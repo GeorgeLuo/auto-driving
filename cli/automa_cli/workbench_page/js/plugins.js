@@ -1,4 +1,4 @@
-// Plugin panels: the perception, memory and proposal catalogs and their selection drafts.
+// Plugin panels: one per <step>_plugin_catalog in state, with its selection draft.
 // Classic script: the page's files share one global scope.
 "use strict";
 
@@ -13,13 +13,44 @@ function newPluginPanel(step) {
     draft: null, draftDigest: null, queued: null, renderKey: null
   };
 }
-var pluginPanels = {
-  perception: newPluginPanel("perception"),
-  memory: newPluginPanel("memory"),
-  proposal: newPluginPanel("proposal")
-};
+var pluginPanels = {};
+function pluginPanel(step) {
+  if (!pluginPanels[step]) pluginPanels[step] = newPluginPanel(step);
+  return pluginPanels[step];
+}
+function catalogSteps() {
+  if (!state) return [];
+  return Object.keys(state).filter(function (key) {
+    return key.endsWith("_plugin_catalog");
+  }).map(function (key) {
+    return key.slice(0, -"_plugin_catalog".length);
+  });
+}
+// A step's panel is mounted once, when its catalog first appears in state.
+function mountPluginPanel(panel) {
+  if (elements[panel.catalogId]) return;
+  var section = document.createElement("section");
+  section.className = "plugin-section";
+  var kicker = document.createElement("span");
+  kicker.className = "kicker";
+  kicker.textContent = panel.step;
+  section.appendChild(kicker);
+  [
+    ["span", panel.summaryId, "plugin-selection-summary muted"],
+    ["span", panel.orderId, "plugin-order muted help"],
+    ["div", panel.catalogId, "plugin-catalog"],
+    ["div", panel.digestId, "digest muted"]
+  ].forEach(function (part) {
+    var node = document.createElement(part[0]);
+    node.id = part[1];
+    node.className = part[2];
+    section.appendChild(node);
+    elements[part[1]] = node;
+  });
+  elements.pluginSections.appendChild(section);
+}
 function queuePluginSelection(step, ids) {
-  pluginPanels[step].queued = ids;
+  pluginPanel(step).queued = ids;
   flushPluginSelection();
 }
 function flushPluginSelection() {
@@ -87,7 +118,7 @@ function renderPluginPanel(step) {
     ? state.controls.allowed_actions : [];
   var selectionAllowed = allowed.indexOf("select_plugins") >= 0;
   var renderKey = catalog ? "catalog:" + text(catalog.digest, "") : "empty";
-  // Keep checkbox nodes through state polls so an in-progress click is not detached.
+  // Keep the choice nodes through state polls so an in-progress click is not detached.
   if (renderKey === panel.renderKey) {
     Array.prototype.forEach.call(
       container.querySelectorAll("input[data-plugin-id]"),
@@ -107,21 +138,23 @@ function renderPluginPanel(step) {
     empty.textContent = "No plugins available.";
     container.appendChild(empty);
   }
+  var single = !!(catalog && catalog.single_plugin);
   plugins.forEach(function (plugin) {
     var item = document.createElement("label");
     item.className = "plugin-entry";
-    var checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.setAttribute("data-plugin-id", text(plugin.id, ""));
-    checkbox.checked = active.indexOf(plugin.id) >= 0;
-    checkbox.disabled = !selectionAllowed;
-    checkbox.addEventListener("change", function () {
+    var choice = document.createElement("input");
+    choice.type = single ? "radio" : "checkbox";
+    if (single) choice.name = step + "Plugin";
+    choice.setAttribute("data-plugin-id", text(plugin.id, ""));
+    choice.checked = active.indexOf(plugin.id) >= 0;
+    choice.disabled = !selectionAllowed;
+    choice.addEventListener("change", function () {
       panel.draft = selectedPluginIdsFromView(panel);
       panel.draftDigest = catalog ? catalog.digest : null;
       renderPluginSummary(panel, catalog, plugins, panel.draft);
       queuePluginSelection(step, panel.draft);
     });
-    item.appendChild(checkbox);
+    item.appendChild(choice);
     var copy = document.createElement("span");
     var title = document.createElement("strong");
     title.textContent = text(plugin.name, plugin.id) + (plugin.revision ? " · " + plugin.revision.slice(0, 12) : "");
@@ -133,5 +166,8 @@ function renderPluginPanel(step) {
   renderPluginSummary(panel, catalog, plugins, active);
 }
 function renderPlugins() {
-  Object.keys(pluginPanels).forEach(renderPluginPanel);
+  catalogSteps().forEach(function (step) {
+    mountPluginPanel(pluginPanel(step));
+    renderPluginPanel(step);
+  });
 }

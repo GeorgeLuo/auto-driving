@@ -9,11 +9,7 @@ import numpy as np
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.execution import ControlExecution
-from implementations.decision_cycle.catalog import (
-    DEFAULT_STEP_PRESETS,
-    packaged_activation,
-    selection_activation,
-)
+from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
     DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
@@ -88,7 +84,11 @@ class ObservationPublicationTests(unittest.TestCase):
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
-        applied = {"proposal": DEFAULT_STEP_PRESETS["proposal"]}
+        applied = {
+            step: activation.metadata["preset"]
+            for step, activation in activations.items()
+            if activation.metadata.get("preset")
+        }
         self.assertEqual(payload["presets"], applied)
         self.assertEqual(part.observation_status()["presets"], applied)
 

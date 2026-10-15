@@ -18,6 +18,7 @@ from autonomy.runtime.plugin_loader import load_runner
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.runtime_view import RuntimeViewServer
+from implementations.decision_cycle.catalog import SELECTABLE_STEPS
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
@@ -99,7 +100,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
                 host.run(frame(root, 0))
                 originals = set()
-                for step in ("perception", "memory", "proposal"):
+                for step in SELECTABLE_STEPS:
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
                     _, receipt = upload(view.url, file, step, f"prototype-{step}", arm=True)
@@ -153,7 +154,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 upload(base, root / "unselected.py", "perception", "unselected")
                 for _ in range(3):
                     polled = get_json(base, "/api/state")
-                    for step in ("perception", "memory", "proposal"):
+                    for step in SELECTABLE_STEPS:
                         self.assertEqual(polled[f"active_{step}_plugin_ids"], earlier[f"active_{step}_plugin_ids"])
                     self.assertEqual(polled["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
                     self.assertEqual(polled["steps"], earlier["steps"])

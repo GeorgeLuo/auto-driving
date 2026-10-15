@@ -36,16 +36,13 @@ class PlanRunner(StepRunner[PlanPlugin]):
             raise TypeError(f"plan plugin {definition.entrypoint} must implement plan()")
 
     def _describe_schema(self) -> dict[str, Any]:
-        base = super()._describe_schema()
         failed_proposal = (
             "a failed proposal skips the plugin and the step returns no plan"
             if FAILURE_POLICY.missing_input == "skip_plugin"
             else "a failed proposal is still passed to the plugin"
         )
         return {
-            "schema": base["schema"],
-            "runner": base["runner"],
-            "configuration": base["configuration"],
+            **super()._describe_schema(),
             "inputs": [
                 {
                     "name": "candidates",
@@ -56,21 +53,7 @@ class PlanRunner(StepRunner[PlanPlugin]):
                         "plugin with no candidates"
                     ),
                 },
-                {
-                    "name": "frame_id",
-                    "required": True,
-                    "source": "the cycle frame",
-                    "missing_behavior": "the runner rejects a plan whose frame_id differs",
-                },
-                {
-                    "name": "timestamp_ms",
-                    "required": True,
-                    "source": "the cycle timestamp",
-                    "missing_behavior": "passed through to the plugin",
-                },
             ],
-            "plugins": base["plugins"],
-            "single_plugin": base["single_plugin"],
             "output": {
                 "schema": ACTION_PLAN_SCHEMA,
                 "records": [
@@ -79,12 +62,13 @@ class PlanRunner(StepRunner[PlanPlugin]):
                         "meaning": "one plan; its selector_id is the plugin ID",
                     }
                 ],
-                "missing_plan_behavior": (
-                    "the step returns no plan and the action step holds"
+                "invalid_plan_behavior": (
+                    "a plugin error, or a plan whose frame_id, candidates, or "
+                    "selector_id does not match, returns no plan and the action "
+                    "step holds"
                 ),
             },
             "composition": composition_declaration(),
-            "failure_policy": base["failure_policy"],
         }
 
     def __call__(
@@ -112,9 +96,9 @@ class PlanRunner(StepRunner[PlanPlugin]):
                 except Exception as exc:  # noqa: BLE001 - a failed plan fails the action closed
                     self.failure_count += 1
                     self.last_error = describe_exception(exc)
-                    if FAILURE_POLICY.update == "isolate_plugin":
-                        return None
-                    raise
+                    if FAILURE_POLICY.update != "isolate_plugin":
+                        raise
+                    return None
                 self.last_error = None
                 return plan
 

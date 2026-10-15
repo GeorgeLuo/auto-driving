@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from autonomy.decision_cycle.steps import STEP_RUNNERS
 from tests.shared.cli.invoke import invoke_automa
 
 
@@ -57,8 +58,9 @@ class DecisionCommandTests(unittest.TestCase):
                 # No runtime host runs, so the probe has no step to report.
                 self.assertEqual(payload["live"]["schema"], f"vehicle_{step}_live_v1")
                 self.assertEqual(payload["live"]["status"], "unavailable")
-                # Proposal's info carries its runner schema; action's does not.
-                self.assertEqual("proposal_schema" in payload, step == "proposal")
+                self.assertEqual(
+                    f"{step}_schema" in payload, STEP_RUNNERS[step].schema_name is not None
+                )
             self.assertEqual(before_info, snapshot_files())
 
 

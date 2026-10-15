@@ -20,11 +20,11 @@ plugin lives in `plugins/highest_confidence/`.
 - Return one `ActionPlan`. Its `selector_id` is the plugin ID. The plan's
   `frame_id` matches the cycle frame, and its candidates are the proposal
   step's candidates. `PlanRunner._check_plan` rejects a plan that does not.
-- What a failure does is declared in
+- How the plugin plans, and what a failure does, is declared in
   `autonomy/decision_cycle/plan/interface.py`: `composition_declaration`
   (one plugin; candidates, `frame_id`, and `timestamp_ms` in; one `ActionPlan`
-  whose `selector_id` is the plugin ID) and `FAILURE_POLICY` (a plugin error
-  or a plan that fails the check returns no plan and the action holds, a
-  reset error propagates, a failed proposal skips the plugin). An absent
-  proposal step still calls the plugin with no candidates. The runner's
-  `describe_schema()` reports these declarations.
+  out) and `FAILURE_POLICY` (a plugin error or a plan that fails the check
+  returns no plan and the action holds, a reset error propagates, a failed
+  proposal skips the plugin). An absent proposal step still calls the plugin
+  with no candidates. The runner's `describe_schema()` reports these
+  declarations.

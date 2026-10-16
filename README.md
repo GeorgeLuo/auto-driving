@@ -880,11 +880,15 @@ The Donkey server exposes:
 - `http://piracer.local:8887/autonomy/status`
 - `http://piracer.local:8887/autonomy/observation/latest`
 - `http://piracer.local:8887/autonomy/observation/latest/frame.jpg`
+- `http://piracer.local:8887/autonomy/observation/transaction`
 
 `/frame.jpg` is the live camera feed. The `/autonomy/observation/latest*`
 endpoints publish the exact onboard-processed frame and its matching
 findings (in-memory only; no default history or disk writes). The JPEG
 response includes `X-Frame-Id` so clients can pair image and JSON.
+The CLI viewer uses `/autonomy/observation/transaction`, which returns the
+publication and its JPEG together so a newer frame cannot split the pair
+between requests over Wi-Fi.
 
 Run the optional local DonkeyCar frontend with:
 

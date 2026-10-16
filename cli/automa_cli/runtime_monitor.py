@@ -21,8 +21,7 @@ from autonomy.runtime.client import RuntimeClient
 from .paths import display_path
 from .perception_view import perception_view_ready
 from .host_publications import (
-    fetch_observation_publication, fetch_observation_frame,
-    frame_id_from_headers, publication_to_frame_record, perception_text_from_publication,
+    fetch_observation_sample, publication_to_frame_record, perception_text_from_publication,
 )
 from .run_record import (
     control_source, finish_run, frame_line, frame_readiness,
@@ -197,70 +196,68 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
             # The host captures at its own cadence; the monitor never executes
             # a decision or chooses a vehicle command. The decision copy runs
             # beside this poll, which exports one recording batch per pass.
-            publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
+            publication, jpeg = fetch_observation_sample(base_url, timeout_s=timeout_s)
             frame = publication_to_frame_record(publication)
             frame_id = frame.get("frame_id")
             # A paused simulator repeats its frame index, so a new cycle is a new capture.
             capture = (frame_id, frame.get("captured_at_ms"))
-            if frame_id and capture != last_capture and session["processed_decisions"]:
-                jpeg, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
-                if frame_id_from_headers(headers) == frame_id:
-                    frame.update(
-                        run_id=run_id, steps=state["steps"],
-                        action_policy=state["action_policy"],
-                        control_source=state["control_source"],
-                        control_application=state["control_application"],
-                    )
-                    result = copied["result"]
-                    if result is not None and not result[0] and state["decision"]["published"]:
-                        state["decision"]["latest_frame_publish_skips"] += 1
-                        state["decision"]["latest_frame_publish_skip_reason"] = result[1]
-                    # The decision copy publishes the matched decision image on
-                    # its own thread. This perception frame is the observation
-                    # the run record keeps.
-                    frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
-                    frame_path.write_bytes(jpeg)
-                    server.perception.publish_frame(frame_path=frame_path, frame_record=frame)
-                    server.perception.publish_perception(frame_record=frame)
-                    write_json_atomically(latest_json_path, frame)
-                    perception_text = perception_text_from_publication(publication) + "\n"
-                    latest_text_path.write_text(perception_text, encoding="utf-8")
-                    frame_json_path, frame_text_path = latest_json_path, latest_text_path
-                    captured_at_ms = frame.get("captured_at_ms")
-                    found = frame["perception"] or {}
-                    signals, things = len(found.get("signals") or []), len(found.get("things") or [])
-                    completed_at_ms = frame.get("perception_completed_at_ms")
-                    state["last_capture"] = {
-                        "frame_id": frame_id,
-                        "frame_index": frame.get("frame_index"),
-                        "captured_at_ms": captured_at_ms,
-                        "front_camera": display_path(frame_path),
-                    }
-                    state["last_frame"] = {
-                        "frame_id": frame_id,
-                        "frame_index": frame.get("frame_index"),
-                        "captured_at_ms": captured_at_ms,
-                        "perception_completed_at_ms": completed_at_ms,
-                        "perception_duration_ms": frame.get("perception_duration_ms"),
-                        "capture_to_perception_ms": (
-                            completed_at_ms - captured_at_ms
-                            if isinstance(completed_at_ms, int) and isinstance(captured_at_ms, int)
-                            else None
-                        ),
-                        "cycle_duration_ms": frame.get("cycle_duration_ms"),
-                        "perception_json": display_path(frame_json_path),
-                        "perception_text": display_path(frame_text_path),
-                        "things": things,
-                        "signals": signals,
-                        "control": frame.get("control"),
-                        "generation_id": frame.get("generation_id"),
-                    }
-                    last_capture = capture
-                    frames_seen += 1
-                    if output is not None and reports_frame(frames_seen, verbose=verbose):
-                        action = (frame.get("control") or {}).get("reason")
-                        line = frame_line(frame_id, signals=signals, things=things, action=action)
-                        print(line, file=output, flush=True)
+            if jpeg is not None and frame_id and capture != last_capture and session["processed_decisions"]:
+                frame.update(
+                    run_id=run_id, steps=state["steps"],
+                    action_policy=state["action_policy"],
+                    control_source=state["control_source"],
+                    control_application=state["control_application"],
+                )
+                result = copied["result"]
+                if result is not None and not result[0] and state["decision"]["published"]:
+                    state["decision"]["latest_frame_publish_skips"] += 1
+                    state["decision"]["latest_frame_publish_skip_reason"] = result[1]
+                # The decision copy publishes the matched decision image on
+                # its own thread. This perception frame is the observation
+                # the run record keeps.
+                frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
+                frame_path.write_bytes(jpeg)
+                server.perception.publish_frame(frame_path=frame_path, frame_record=frame)
+                server.perception.publish_perception(frame_record=frame)
+                write_json_atomically(latest_json_path, frame)
+                perception_text = perception_text_from_publication(publication) + "\n"
+                latest_text_path.write_text(perception_text, encoding="utf-8")
+                frame_json_path, frame_text_path = latest_json_path, latest_text_path
+                captured_at_ms = frame.get("captured_at_ms")
+                found = frame["perception"] or {}
+                signals, things = len(found.get("signals") or []), len(found.get("things") or [])
+                completed_at_ms = frame.get("perception_completed_at_ms")
+                state["last_capture"] = {
+                    "frame_id": frame_id,
+                    "frame_index": frame.get("frame_index"),
+                    "captured_at_ms": captured_at_ms,
+                    "front_camera": display_path(frame_path),
+                }
+                state["last_frame"] = {
+                    "frame_id": frame_id,
+                    "frame_index": frame.get("frame_index"),
+                    "captured_at_ms": captured_at_ms,
+                    "perception_completed_at_ms": completed_at_ms,
+                    "perception_duration_ms": frame.get("perception_duration_ms"),
+                    "capture_to_perception_ms": (
+                        completed_at_ms - captured_at_ms
+                        if isinstance(completed_at_ms, int) and isinstance(captured_at_ms, int)
+                        else None
+                    ),
+                    "cycle_duration_ms": frame.get("cycle_duration_ms"),
+                    "perception_json": display_path(frame_json_path),
+                    "perception_text": display_path(frame_text_path),
+                    "things": things,
+                    "signals": signals,
+                    "control": frame.get("control"),
+                    "generation_id": frame.get("generation_id"),
+                }
+                last_capture = capture
+                frames_seen += 1
+                if output is not None and reports_frame(frames_seen, verbose=verbose):
+                    action = (frame.get("control") or {}).get("reason")
+                    line = frame_line(frame_id, signals=signals, things=things, action=action)
+                    print(line, file=output, flush=True)
             # One batch keeps the export near the capture rate. The stop path
             # drains whatever remains, and the decision copy does not wait here.
             if run_dir is not None:

@@ -6,6 +6,8 @@ telemetry. A PiCar's host and a local Chase host serve the same routes.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import math
 import urllib.error
@@ -22,6 +24,8 @@ from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
+OBSERVATION_TRANSACTION_PATH = "/autonomy/observation/transaction"
+OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction_v0"
 DECISION_LATEST_PATH = "/autonomy/decision/latest"
 DECISION_TRANSACTION_PATH = "/autonomy/decision/transaction"
 STATUS_JSON_PATH = "/autonomy/status"
@@ -96,7 +100,7 @@ class HostTelemetryError(ValueError):
         self.details = details or {}
 
 
-def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, Any]:
+def _get_json(base_url: str, path: str, *, timeout_s: float, missing_ok: bool = False) -> dict[str, Any]:
     """GET one JSON object from a runtime host; an HTTP error's JSON body is the answer."""
 
     url = f"{base_url.rstrip('/')}{path}"
@@ -106,6 +110,8 @@ def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, Any]:
             status_code = getattr(response, "status", 200)
     except urllib.error.HTTPError as exc:
         with exc:
+            if missing_ok and exc.code == 404:
+                return {"http_status": 404}
             body = exc.read() if exc.fp is not None else b""
         status_code = int(exc.code)
         if not body:
@@ -137,6 +143,49 @@ def fetch_observation_publication(base_url: str, *, timeout_s: float = 3.0) -> d
     """GET the latest observation publication from a runtime host."""
 
     return _get_json(base_url, LATEST_JSON_PATH, timeout_s=timeout_s)
+
+
+def fetch_observation_sample(
+    base_url: str, *, timeout_s: float = 3.0,
+) -> tuple[dict[str, Any], bytes | None]:
+    """Read observation metadata and its image from the same host snapshot.
+
+    Older hosts retain their split reads. A raced legacy pair is skipped;
+    transport errors and invalid transactions never select the legacy path.
+    """
+
+    payload = _get_json(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, missing_ok=True)
+    if payload.get("http_status") == 404:
+        publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
+        frame = publication.get("frame") or {}
+        if not frame.get("has_image") or not frame.get("frame_id"):
+            return publication, None
+        jpeg, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
+        matched = frame.get("frame_id") == frame_id_from_headers(headers)
+        return publication, jpeg if matched else None
+    if payload.get("http_status", 200) >= 400:
+        raise ConnectionError(f"Observation transaction returned HTTP {payload['http_status']}")
+    publication = payload.get("publication")
+    if payload.get("schema") != OBSERVATION_TRANSACTION_SCHEMA or not isinstance(publication, dict):
+        raise ValueError("Invalid observation transaction")
+    frame = publication.get("frame") or {}
+    encoded = payload.get("image_base64")
+    if encoded is None and not frame.get("has_image"):
+        return publication, None
+    if (
+        not isinstance(encoded, str)
+        or payload.get("image_content_type") != "image/jpeg"
+        or not frame.get("frame_id")
+        or payload.get("image_frame_id") != frame["frame_id"]
+    ):
+        raise ValueError("Observation transaction image does not match its frame")
+    try:
+        jpeg = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("Invalid observation transaction image encoding") from exc
+    if not jpeg:
+        raise ValueError("Empty observation transaction image")
+    return publication, jpeg
 
 
 def fetch_decision_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:

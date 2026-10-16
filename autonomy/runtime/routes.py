@@ -24,6 +24,8 @@ from autonomy.runtime.frame_loop import (
     FrameLoop,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
+    OBSERVATION_TRANSACTION_PATH,
+    OBSERVATION_TRANSACTION_SCHEMA,
 )
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.plugin_catalog import catalog_write_error
@@ -75,6 +77,7 @@ class RuntimeRoutes:
             ("POST", PLUGINS_PATH): self._catalog,
             ("GET", LATEST_JSON_PATH): self._observation,
             ("GET", LATEST_FRAME_PATH): self._observation_frame,
+            ("GET", OBSERVATION_TRANSACTION_PATH): self._observation_transaction,
             ("GET", CAMERA_LATEST_JSON_PATH): self._camera,
             ("GET", CAMERA_LATEST_FRAME_PATH): self._camera_frame,
             ("GET", DECISION_LATEST_PATH): self._decision,
@@ -194,6 +197,18 @@ class RuntimeRoutes:
 
     def _observation_frame(self, query: dict[str, list[str]], body: bytes) -> Response:
         return self._frame(*self.loop.publish_latest_frame_jpeg())
+
+    def _observation_transaction(self, query: dict[str, list[str]], body: bytes) -> Response:
+        jpeg, publication = self.loop.publish_latest_frame_jpeg()
+        frame = publication.get("frame") or {}
+        payload = {
+            "schema": OBSERVATION_TRANSACTION_SCHEMA,
+            "publication": publication,
+            "image_frame_id": frame.get("frame_id") if jpeg is not None else None,
+            "image_content_type": "image/jpeg" if jpeg is not None else None,
+            "image_base64": base64.b64encode(jpeg).decode("ascii") if jpeg is not None else None,
+        }
+        return json_response(payload, 503 if frame.get("has_image") and jpeg is None else 200)
 
     def _camera_frame(self, query: dict[str, list[str]], body: bytes) -> Response:
         return self._frame(*self.loop.publish_latest_camera_jpeg())

@@ -140,20 +140,16 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     part.host.stop(reason="completed")
                 return {"ok": True, "host_run_id": part.run_id, "session": part.host.session_status()}
 
-        def frame(*_args, **_kwargs):
-            jpeg, publication = part.publish_latest_frame_jpeg()
-            return jpeg, {"x-frame-id": publication["frame"]["frame_id"], "content-type": "image/jpeg"}
-
         def transaction(*_args, **_kwargs):
             _status, _headers, body = routes.handle("GET", DECISION_TRANSACTION_PATH)
             return json.loads(body)
 
         seen = []
 
-        def publication(*_args, **_kwargs):
-            payload = part.publish_latest()
+        def sample(*_args, **_kwargs):
+            jpeg, payload = part.publish_latest_frame_jpeg()
             seen.append(payload["frame"]["frame_index"])
-            return payload
+            return payload, jpeg
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -163,8 +159,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 # publications, monitor polling, loopback view and records are real.
                 with (
                     patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
-                    patch.object(runtime_monitor, "fetch_observation_publication", side_effect=publication),
-                    patch.object(runtime_monitor, "fetch_observation_frame", side_effect=frame),
+                    patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
                     patch("cli.automa_cli.decision_live.fetch_decision_transaction", side_effect=transaction),
                 ):
                     started = time.monotonic()

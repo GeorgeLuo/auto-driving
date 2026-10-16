@@ -107,25 +107,16 @@ class RuntimeMonitorTests(unittest.TestCase):
         jpeg = io.BytesIO()
         Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
         publications = [_publication(0), _publication(1)]
-        current: dict = {}
-
-        def publication(*_args, **_kwargs) -> dict:
+        def sample(*_args, **_kwargs):
             # The latest publication repeats once the host has no newer frame.
-            current["publication"] = publications.pop(0) if len(publications) > 1 else publications[0]
-            return current["publication"]
-
-        def frame(*_args, **_kwargs) -> tuple[bytes, dict]:
-            return jpeg.getvalue(), {"frame_id": current["publication"]["frame"]["frame_id"]}
+            publication = publications.pop(0) if len(publications) > 1 else publications[0]
+            return publication, jpeg.getvalue()
 
         client = _FakeClient(sessions, hosts)
         output = io.StringIO()
         with (
             mock.patch.object(runtime_monitor, "RuntimeClient", return_value=client),
-            mock.patch.object(runtime_monitor, "fetch_observation_publication", side_effect=publication),
-            mock.patch.object(runtime_monitor, "fetch_observation_frame", side_effect=frame),
-            mock.patch.object(
-                runtime_monitor, "frame_id_from_headers", side_effect=lambda headers: headers["frame_id"]
-            ),
+            mock.patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
             mock.patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
             code, message = runtime_monitor.monitor_runtime(

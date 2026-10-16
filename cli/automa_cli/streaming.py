@@ -25,7 +25,7 @@ from .host_publications import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_autonomy_status,
-    fetch_observation_frame,
+    fetch_observation_sample,
     fetch_observation_publication,
     perception_text_from_publication,
     presets_text,
@@ -282,7 +282,9 @@ class _ViewFeed:
         if frame is None or not frame.get("has_image"):
             return
         try:
-            jpeg, _headers = fetch_observation_frame(self.base_url, timeout_s=self.timeout_s)
+            publication, jpeg = fetch_observation_sample(self.base_url, timeout_s=self.timeout_s)
+            if jpeg is None:
+                return
             self.frame_path.write_bytes(jpeg)
             frame_record = publication_to_frame_record(publication)
             self.server.perception.publish_frame(frame_path=self.frame_path, frame_record=frame_record)

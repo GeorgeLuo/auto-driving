@@ -8,6 +8,7 @@ import os
 import socket
 import ssl
 import struct
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -69,6 +70,11 @@ class _WebSocketConnection:
         self.url = url
         self.timeout_s = float(timeout_s)
         self.sock: socket.socket | None = None
+        self._send_lock = threading.Lock()
+        self._write_condition = threading.Condition()
+        self._write_deadline: float | None = None
+        self._aborted = False
+        self._watchdog: threading.Thread | None = None
 
     def __enter__(self) -> _WebSocketConnection:
         self.connect()
@@ -137,24 +143,46 @@ class _WebSocketConnection:
             raise MetricsUiWebSocketError("WebSocket handshake did not return expected accept key")
         self.sock = sock
 
-    def close(self) -> None:
-        sock = self.sock
-        if not sock:
-            return
+    def abort(self) -> None:
+        """Interrupt reads/writes without waiting for the writer or protocol close."""
+        with self._write_condition:
+            self._aborted = True
+            sock, self.sock = self.sock, None
+            self._write_condition.notify_all()
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            sock.close()
+
+    def close(self, *, timeout_s: float = 0.1) -> None:
         try:
-            self._send_frame(b"", opcode=0x8)
-        except OSError:
+            if self.sock is not None:
+                self._send_frame(b"", opcode=0x8, deadline=time.monotonic() + timeout_s)
+        except (OSError, MetricsUiWebSocketError):
             pass
         finally:
-            self.sock = None
-        try:
-            sock.close()
-        except OSError:
-            pass
+            self.abort()
+        if self._watchdog is not None and self._watchdog is not threading.current_thread():
+            self._watchdog.join(timeout=1.0)
 
-    def send_json(self, message: dict[str, Any]) -> None:
+    def _watch_writes(self) -> None:
+        with self._write_condition:
+            while not self._aborted:
+                if self._write_deadline is None:
+                    self._write_condition.wait()
+                    continue
+                remaining = self._write_deadline - time.monotonic()
+                if remaining > 0:
+                    self._write_condition.wait(remaining)
+                    continue
+                # abort uses a reentrant condition and never takes the send lock.
+                self.abort()
+
+    def send_json(self, message: dict[str, Any], *, deadline: float | None = None) -> None:
         payload = json.dumps(message, separators=(",", ":")).encode("utf-8")
-        self._send_frame(payload, opcode=0x1)
+        self._send_frame(payload, opcode=0x1, deadline=deadline)
 
     def recv_json(self, *, timeout_s: float | None = None) -> dict[str, Any]:
         sock = self._require_sock()
@@ -183,22 +211,47 @@ class _WebSocketConnection:
             raise MetricsUiWebSocketError("WebSocket is not connected")
         return self.sock
 
-    def _send_frame(self, payload: bytes, *, opcode: int) -> None:
-        sock = self._require_sock()
-        header = bytearray([0x80 | (opcode & 0x0F)])
-        length = len(payload)
-        if length < 126:
-            header.append(0x80 | length)
-        elif length <= 0xFFFF:
-            header.append(0x80 | 126)
-            header.extend(struct.pack("!H", length))
-        else:
-            header.append(0x80 | 127)
-            header.extend(struct.pack("!Q", length))
-
-        mask = os.urandom(4)
-        masked = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
-        sock.sendall(bytes(header) + mask + masked)
+    def _send_frame(self, payload: bytes, *, opcode: int, deadline: float | None = None) -> None:
+        deadline = time.monotonic() + self.timeout_s if deadline is None else deadline
+        if not self._send_lock.acquire(timeout=max(0.0, deadline - time.monotonic())):
+            self.abort()
+            raise MetricsUiWebSocketError("Timed out waiting for WebSocket writer")
+        try:
+            sock = self._require_sock()
+            with self._write_condition:
+                if time.monotonic() >= deadline:
+                    self.abort()
+                    raise MetricsUiWebSocketError("Timed out before WebSocket write")
+                self._write_deadline = deadline
+                if self._watchdog is None:
+                    self._watchdog = threading.Thread(target=self._watch_writes,
+                                                      name="metrics-ws-write-deadline", daemon=True)
+                    self._watchdog.start()
+                self._write_condition.notify_all()
+            header = bytearray([0x80 | (opcode & 0x0F)])
+            length = len(payload)
+            if length < 126:
+                header.append(0x80 | length)
+            elif length <= 0xFFFF:
+                header.append(0x80 | 126)
+                header.extend(struct.pack("!H", length))
+            else:
+                header.append(0x80 | 127)
+                header.extend(struct.pack("!Q", length))
+            mask = os.urandom(4)
+            masked = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+            sock.sendall(bytes(header) + mask + masked)
+            if self._aborted or time.monotonic() >= deadline:
+                self.abort()
+                raise MetricsUiWebSocketError("Timed out writing WebSocket frame")
+        except OSError as exc:
+            self.abort()
+            raise MetricsUiWebSocketError("WebSocket write failed or timed out") from exc
+        finally:
+            with self._write_condition:
+                self._write_deadline = None
+                self._write_condition.notify_all()
+            self._send_lock.release()
 
     def _recv_frame(self) -> tuple[int, bytes]:
         sock = self._require_sock()

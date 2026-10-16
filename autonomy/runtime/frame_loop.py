@@ -117,6 +117,18 @@ def stale_after_ms(cycle_duration_ms: float | None) -> int:
 
 
 @dataclass
+class _FrameJpegCache:
+    data: bytes | None = field(default=None, repr=False)
+    lock: Any = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def get(self, image: Any) -> bytes:
+        with self.lock:
+            if self.data is None:
+                self.data = encode_jpeg(image)
+            return self.data
+
+
+@dataclass
 class LatestObservationState:
     """One detached observation retained in memory for inspection."""
 
@@ -135,7 +147,7 @@ class LatestObservationState:
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
     context: dict[str, Any] | None = None
-    jpeg_bytes: bytes | None = field(default=None, repr=False)
+    jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
 
     def to_status_dict(self) -> dict[str, Any]:
         """Bounded status view without the raw image or full perception payload."""
@@ -172,7 +184,7 @@ class LatestCameraFrame:
     image: Any
     sequence: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
-    jpeg_bytes: bytes | None = field(default=None, repr=False)
+    jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -228,6 +240,7 @@ class FrameLoop:
         self._decision_inflight = False
         self._memory_update_halted = False
         self._inflight_frame_id: str | None = None
+        self._inflight_camera: LatestCameraFrame | None = None
         self._decision_thread: threading.Thread | None = None
         self.latest_state: LatestObservationState | None = None
         # The last cycle's result, the decision-step runners that produced it,
@@ -422,9 +435,7 @@ class FrameLoop:
 
     @staticmethod
     def _frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
-        if frame.jpeg_bytes is None:
-            frame.jpeg_bytes = encode_jpeg(frame.image)
-        return frame.jpeg_bytes
+        return frame.jpeg_cache.get(frame.image)
 
     @classmethod
     def _jpeg(cls, frame: LatestCameraFrame | LatestObservationState | None,
@@ -457,11 +468,19 @@ class FrameLoop:
         """Return the pilot tuple from the last finished cycle."""
         return self._held_outputs(mode)
 
+    def _recording_jpeg(self, image: Any) -> bytes:
+        # The owning worker invokes this while the host holds its session lock.
+        # Taking the frame-loop lock here would invert Chase start's lock order.
+        camera = self._inflight_camera
+        if camera is not None and image is camera.image:
+            return self._frame_jpeg(camera)
+        return encode_jpeg(image)
+
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         if record and (self.recording_root is None or self.vehicle_id is None):
             raise RuntimeError("recording requires a runtime directory and vehicle identity")
         recording = RunRecording(
-            self.recording_root, vehicle_id=self.vehicle_id, encode_image=encode_jpeg,
+            self.recording_root, vehicle_id=self.vehicle_id, encode_image=self._recording_jpeg,
         ) if record else None
         with self._lock:
             self._session_frame_id = None
@@ -503,6 +522,7 @@ class FrameLoop:
         frame_id: str | None = None,
         frame_index: int | None = None,
         metadata: dict[str, Any] | None = None,
+        jpeg_bytes: bytes | None = None,
     ) -> LatestCameraFrame:
         """Publish one camera sample and make it the newest pending frame.
 
@@ -521,7 +541,7 @@ class FrameLoop:
                 timestamp_ms() if captured_at_ms is None else int(captured_at_ms),
                 frame_id=frame_id,
                 frame_index=frame_index,
-                metadata=metadata,
+                metadata=metadata, jpeg_bytes=jpeg_bytes,
             )
             self._pending_frame = _PendingFrame(
                 camera, mode, float(user_steering or 0.0), float(user_throttle or 0.0)
@@ -604,6 +624,7 @@ class FrameLoop:
         frame_id: str | None = None,
         frame_index: int | None = None,
         metadata: dict[str, Any] | None = None,
+        jpeg_bytes: bytes | None = None,
     ) -> LatestCameraFrame:
         sequence = self._capture_sequence
         frame = LatestCameraFrame(
@@ -613,6 +634,7 @@ class FrameLoop:
             image=image,
             sequence=sequence,
             metadata=dict(metadata or {}),
+            jpeg_cache=_FrameJpegCache(jpeg_bytes),
         )
         self.latest_camera_frame = frame
         self._capture_sequence += 1
@@ -943,11 +965,13 @@ class FrameLoop:
                         # so a concurrent capture can start another worker.
                         self._decision_inflight = False
                         self._inflight_frame_id = None
+                        self._inflight_camera = None
                         self._decision_thread = None
                         return
                     self._pending_frame = None
                     camera = pending.camera
                     self._inflight_frame_id = camera.frame_id
+                    self._inflight_camera = camera
                     generation = self._queue_generation
                     was_running = getattr(self.host, "run_state", None) == "running"
                 succeeded = self._process_frame(
@@ -965,6 +989,7 @@ class FrameLoop:
                 if self._decision_thread is threading.current_thread():
                     self._decision_inflight = False
                     self._inflight_frame_id = None
+                    self._inflight_camera = None
                     self._decision_thread = None
             self.last_status = self.status()
 
@@ -1081,7 +1106,7 @@ class FrameLoop:
                     decision_publication=decision_publication,
                     decision_error=decision_error,
                     context=context,
-                    jpeg_bytes=camera.jpeg_bytes,
+                    jpeg_cache=camera.jpeg_cache,
                 )
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict

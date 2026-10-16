@@ -1080,7 +1080,7 @@ class ChaseSimCar(CarInterface):
     def read_camera_frame(self) -> SensorFrame:
         """Read and validate a camera array once, without a temporary image file."""
         started_ms = _timestamp_ms()
-        passive = self.inspect_passive_capture(include_image_array=True)
+        passive = self.inspect_passive_capture(include_image=True, include_image_array=True)
         self._require_available_capture(passive)
         sensor = passive["sensor"]
         completed_ms = _timestamp_ms()
@@ -1092,6 +1092,8 @@ class ChaseSimCar(CarInterface):
                 captured_at_ms=completed_ms,
                 value=sensor["image"]["image_array"],
                 metadata={"capture_id": sensor["capture_id"]},
+                jpeg_bytes=(sensor["image"].get("validated_bytes")
+                            if sensor["image"]["content_type"] == "image/jpeg" else None),
             )},
             started_at_ms=started_ms,
             completed_at_ms=completed_ms,

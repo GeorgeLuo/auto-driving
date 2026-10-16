@@ -266,7 +266,7 @@ class ChaseCameraStream:
             "captureId": f"{self._subscription_id}:{identity['frameIndex']}",
             "actorId": frame["actorId"], "frameIdentity": identity,
             "playback": frame["playback"], "sensor": frame.get("sensor"),
-        }, include_image_array=True)
+        }, include_image_array=True, include_validated_bytes=True)
         if sensor["image"]["content_type"] != "image/jpeg":
             raise self._invalid("sensor.image.contentType", "camera stream must contain JPEG images")
         self._check_session(self._request_state(), sensor)
@@ -275,6 +275,7 @@ class ChaseCameraStream:
             readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
                 sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
                 captured_at_ms=captured_at_ms, value=sensor["image"]["image_array"],
+                jpeg_bytes=sensor["image"]["validated_bytes"],
             )},
             started_at_ms=captured_at_ms, completed_at_ms=int(time.time() * 1000),
             metadata={

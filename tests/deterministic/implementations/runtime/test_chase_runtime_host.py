@@ -112,6 +112,42 @@ class ChaseRuntimeHostTests(unittest.TestCase):
         self.assertFalse(observation["latest"]["control"]["applied"])
         self.assertEqual(decision["status"], "ready", decision)
 
+    def test_restart_during_recording_does_not_invert_host_and_frame_locks(self):
+        from autonomy.decision_cycle.steps import decision_steps
+        from implementations.runtime.chase_sim import create_host
+        from implementations.runtime.chase_sim.service import ChaseFrameLoop
+        entered, release, start_locked = threading.Event(), threading.Event(), threading.Event()
+        car = _FakeCar()
+        with tempfile.TemporaryDirectory() as tmp:
+            loop = ChaseFrameLoop(car=car, host=create_host(car, steps=decision_steps()), recording_root=Path(tmp), vehicle_id="fixture")
+            self.addCleanup(loop.shutdown)
+            loop.start(RunConfiguration(mode="observe_only"), record=True)
+            encoder = loop.host.recording.encode_image
+            def encode(image):
+                entered.set()
+                if not release.wait(2):
+                    raise AssertionError("recording was not released")
+                return encoder(image)
+            loop.host.recording.encode_image = encode
+            loop.submit(np.zeros((4, 4, 3), dtype=np.uint8))
+            self.assertTrue(entered.wait(1))
+            errors = []
+            def restart():
+                try:
+                    with loop._lock:
+                        start_locked.set()
+                        loop.start(RunConfiguration(mode="observe_only"))
+                except Exception as exc:
+                    errors.append(exc)
+            worker = threading.Thread(target=restart, daemon=True)
+            worker.start()
+            self.assertTrue(start_locked.wait(1))
+            release.set()
+            worker.join(2)
+            self.assertFalse(worker.is_alive(), "restart deadlocked with recording JPEG callback")
+            loop.wait_for_cycle()
+            self.assertEqual(errors, [])
+
     def test_restart_closes_previous_stream_and_reports_transport(self):
         streams = []
         class Stream:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -9,6 +10,7 @@ import numpy as np
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
@@ -41,6 +43,59 @@ class ObservationPublicationTests(unittest.TestCase):
             self.assertNotEqual(first, second)
             self.assertNotEqual(metadata["frame"]["frame_id"], next_metadata["frame"]["frame_id"])
             self.assertEqual(encode.call_count, 2)
+
+    def test_wire_jpeg_is_reused_by_camera_decision_and_recording(self):
+        from autonomy.runtime.frame_loop import encode_jpeg
+        image = np.full((8, 12, 3), 70, dtype=np.uint8)
+        wire = encode_jpeg(image)
+        part = self._hold_part()
+        self.addCleanup(part.shutdown)
+        with tempfile.TemporaryDirectory() as tmp:
+            part.recording_root = Path(tmp)
+            part.start(RunConfiguration(mode="observe_only"), record=True)
+            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=AssertionError("reencoded")):
+                part.submit(image, jpeg_bytes=wire)
+                part.wait_for_cycle()
+                camera, _ = part.publish_latest_camera_jpeg()
+                observation, _ = part.publish_latest_frame_jpeg()
+                _, decision = part.publish_decision_transaction()
+            self.assertEqual((camera, observation, decision), (wire, wire, wire))
+            files = list(Path(tmp).glob("*/frames/*.jpg"))
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0].read_bytes(), wire)
+            self.assertNotIn("jpeg_bytes", part.host.last_context.sensor_frame.readings["front_camera"].to_dict())
+
+    def test_recording_and_concurrent_camera_read_share_one_encode(self):
+        from autonomy.runtime.frame_loop import encode_jpeg
+        part = self._hold_part()
+        self.addCleanup(part.shutdown)
+        entered, release = threading.Event(), threading.Event()
+        def encode(image):
+            entered.set()
+            if not release.wait(2):
+                raise AssertionError("JPEG encode was not released")
+            return encode_jpeg(image)
+        with tempfile.TemporaryDirectory() as tmp:
+            part.recording_root = Path(tmp)
+            part.start(RunConfiguration(mode="observe_only"), record=True)
+            published = []
+            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=encode) as encoder:
+                part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
+                self.assertTrue(entered.wait(1))
+                reader = threading.Thread(target=lambda: published.append(part.publish_latest_camera_jpeg()[0]))
+                reader.start()
+                release.set()
+                part.wait_for_cycle()
+                reader.join(1)
+                self.assertFalse(reader.is_alive())
+                observation, _ = part.publish_latest_frame_jpeg()
+                _, decision = part.publish_decision_transaction()
+                self.assertEqual(encoder.call_count, 1)
+            self.assertEqual(published, [observation])
+            self.assertEqual(decision, observation)
+            files = list(Path(tmp).glob("*/frames/*.jpg"))
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0].read_bytes(), observation)
 
     def _hold_part(self) -> AutonomyPilotPart:
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}

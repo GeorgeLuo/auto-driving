@@ -157,7 +157,7 @@ class ChaseFrameLoop(FrameLoop):
                 return
             self.submit(
                 array, frame_id=format_chase_frame_id(index), frame_index=index,
-                captured_at_ms=reading.captured_at_ms,
+                captured_at_ms=reading.captured_at_ms, jpeg_bytes=reading.jpeg_bytes,
                 metadata={"simulator_frame_index": index, "simulation_epoch": epoch,
                           "camera_transport": sensor_frame.metadata.get("camera_transport", "atomic")},
             )

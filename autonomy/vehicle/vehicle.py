@@ -110,6 +110,8 @@ class SensorReading:
     value: Any = field(default=None, repr=False, compare=False)
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    jpeg_bytes: bytes | None = field(default=None, repr=False, compare=False)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "sensor_id": self.sensor_id,

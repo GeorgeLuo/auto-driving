@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.shared_memory import (
     SHARED_MEMORY_SCHEMA,
     SharedMemoryValueError,
+    read_shared_memory_file,
     shared_memory_document,
     shared_memory_from_document,
 )
@@ -70,6 +73,16 @@ def _document(values: dict) -> dict:
 
 
 class SharedMemoryDocumentTests(unittest.TestCase):
+    def test_a_seed_file_names_itself_when_it_cannot_be_decoded(self) -> None:
+        for content in ("not JSON", json.dumps(_document({"slot": {"$record": "bad"}}))):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "seed.json"
+                path.write_text(content, encoding="utf-8")
+                with self.assertRaises(SharedMemoryValueError) as caught:
+                    read_shared_memory_file(path)
+                self.assertIn(str(path), str(caught.exception))
+                self.assertIn("not JSON" if content == "not JSON" else "slot", str(caught.exception))
+
     def test_json_passes_through(self) -> None:
         original = {
             "flag": True,

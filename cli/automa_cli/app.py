@@ -1041,6 +1041,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     for inspection in (perception_inspect, memory_inspect, *decision_inspects):
         inspection.add_argument(
+            "--shared-memory",
+            type=Path,
+            dest="shared_memory_file",
+            default=None,
+            metavar="FILE",
+            help="Start inspect from a shared_memory_v1 JSON file; recorded as provenance.",
+        )
+        inspection.add_argument(
             "--max-frames",
             type=int,
             default=WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -1948,6 +1956,7 @@ def _handle_vehicles_decision_step_inspect(args: argparse.Namespace) -> int:
         record=args.record,
         json_output=args.json,
         max_frames=args.max_frames,
+        shared_memory_file=args.shared_memory_file,
     )
     if result.message:
         print(result.message)
@@ -1996,6 +2005,7 @@ def _handle_vehicles_memory_inspect(args: argparse.Namespace) -> int:
         record=args.record,
         json_output=args.json,
         max_frames=args.max_frames,
+        shared_memory_file=args.shared_memory_file,
     )
     if result.message:
         print(result.message)
@@ -2139,6 +2149,7 @@ def _handle_vehicles_perception_inspect(args: argparse.Namespace) -> int:
         preset=args.preset,
         plugins=args.plugins,
         max_frames=args.max_frames,
+        shared_memory_file=args.shared_memory_file,
     )
     if result.message:
         print(result.message)

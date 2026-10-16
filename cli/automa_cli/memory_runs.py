@@ -17,10 +17,12 @@ from typing import Any
 from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.runtime.client import RuntimeClient
+from autonomy.shared_memory import SharedMemoryValueError
 from implementations.decision_cycle.catalog import selection_activation
 
 from .decision_steps import format_step_timing
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
+from .inspection_runs import read_shared_memory_seed
 from .paths import ROOT, display_path
 from .runtime_hosts import runtime_base_url
 from .streaming import _live_plugins, _live_step_fields, probe_live_memory
@@ -48,6 +50,7 @@ def inspect_memory(
     record: bool = False,
     json_output: bool = False,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
+    shared_memory_file: Path | None = None,
 ) -> CommandResult:
     """Run an image source through perception, observation and memory, frame by frame.
 
@@ -57,6 +60,10 @@ def inspect_memory(
     only; live frames come from ``perception inspect --record``.
     """
 
+    try:
+        seed, seed_record = read_shared_memory_seed(shared_memory_file)
+    except (OSError, SharedMemoryValueError) as exc:
+        return CommandResult(2, f"Could not read shared memory file: {exc}")
     try:
         image_source, manifest = read_replay_source(source, max_frames=max_frames)
     except SourceValidationError as exc:
@@ -70,6 +77,7 @@ def inspect_memory(
             steps=("perception", "observation", "memory"),
             overrides=overrides,
             first_frame=image_source.frames[0],
+            shared_memory=seed,
         )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
@@ -114,6 +122,8 @@ def inspect_memory(
         "final": replay.runners["memory"].report(),
         "run_dir": None,
     }
+    if seed_record is not None:
+        report["shared_memory_seed"] = seed_record
     if record:
         run_dir = INSPECT_ROOT / run_id
         try:

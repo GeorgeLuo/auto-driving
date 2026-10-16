@@ -441,6 +441,47 @@ run:
 ./cli/automa vehicles perception inspect path/to/images --preset visual_observer
 ```
 
+Start perception inspection (images or live), memory, proposal, plan, or action
+inspection with `--shared-memory FILE`. The file is a `shared_memory_v1` JSON
+document. For example, save this as `seed.json` to continue cardboard object 7:
+
+```json
+{
+  "schema": "shared_memory_v1",
+  "values": {
+    "perception.sim_cardboard_permanence.history": {
+      "objects": [{
+        "object_id": 7,
+        "bbox_xyxy_norm": [0.11, 0.0, 0.76, 0.77],
+        "seen_frames": 9,
+        "missed_frames": 0
+      }],
+      "next_object_id": 8
+    }
+  }
+}
+```
+
+```sh
+./cli/automa vehicles perception inspect path/to/next-frame.png --plugin sim_cardboard_permanence --shared-memory seed.json --json
+```
+
+Each invocation decodes a fresh map. Plugin state keys follow
+`<step>.<plugin_id>.<name>`. Records use
+`{"$record": "module.path:ClassName", "data": {...}}`. Seed retained evidence
+at `memory.bounded_evidence.ledger` with the record spec
+`implementations.decision_cycle.memory.shared.evidence_ledger.ledger:EvidenceLedger`;
+the bounded evidence entry's `final.plugins[].state` from memory inspection can
+be pasted as its `data`. The published `memory.evidence` value is rebuilt from
+that ledger on every update. Keys no selected plugin reads are silently unused;
+tuples decode as lists, so uploaded plugins must accept that representation.
+
+Absent frames reset perception history, and restages reset the affected plugins'
+history keys, including seeded history. JSON reports and recorded `report.json`
+include the original file path and document under `shared_memory_seed`. This is
+provenance: replaying a recording does not reapply its seed. Pass the flag again
+to start another invocation from that history.
+
 The report prints to the terminal: the source, the perception selection,
 aggregate statuses, latency, representation health and each plugin's status
 counts. `--json` includes each frame's identity, timing and plugin outputs.
@@ -514,6 +555,9 @@ restarts; a stopped one uses the selection the next time it starts:
 signals with age expiry and oldest-first eviction.
 
 ### Memory Inspection
+
+Use `--shared-memory FILE` to start with a seeded ledger; see
+[Perception Inspection](#perception-inspection) for the format and producer keys.
 
 Inspect what a memory selection retains: run an image, an image directory, or
 a recorded perception or memory run through perception, observation and memory:

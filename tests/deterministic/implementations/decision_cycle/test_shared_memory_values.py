@@ -31,6 +31,9 @@ from implementations.decision_cycle.perception.plugins.motion_tracks.plugin impo
 from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
 )
+from implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin import (
+    SimCardboardPermanencePlugin,
+)
 from implementations.decision_cycle.perception.shared.image.stored import StoredImage
 from tests.deterministic.implementations.decision_cycle.perception.tracks_replay import (
     OBSTRUCTION_LEFT_EDGES,
@@ -100,6 +103,21 @@ def _observation(observation_id: str, created_at_ms: int, thing_id: str) -> Obse
 
 
 class SharedMemoryValueTests(unittest.TestCase):
+    def test_cardboard_permanence_matches_after_a_round_trip(self) -> None:
+        scene = np.empty((120, 160, 3), dtype=np.uint8)
+        scene[:] = (213, 197, 172)
+        scene[30:70, 40:100] = (158, 107, 56)
+        memory: dict[str, Any] = {}
+        SimCardboardPermanencePlugin().perceive(_inputs(0, scene, memory))
+        restored = _round_trip(memory)
+        shifted = np.roll(scene, 4, axis=1)
+
+        original = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, memory))
+        replayed = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, restored))
+
+        self.assertEqual(_emitted(original), _emitted(replayed))
+        self.assertEqual(memory, restored)
+
     def test_stored_image_decodes_to_a_writable_copy(self) -> None:
         image = StoredImage(np.arange(6, dtype=np.uint8).reshape(2, 3))
 
